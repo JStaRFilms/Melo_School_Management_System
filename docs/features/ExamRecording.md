@@ -266,6 +266,15 @@ Each school has one active exam input mode for this v1.
 - Membership and role resolution continues through the app `users` table using `users.authId`.
 - Preview mode remains available when `NEXT_PUBLIC_CONVEX_URL` is not configured, so the UI can still be exercised before full Convex wiring is finished.
 
+## Live Seed Data
+
+- Live exam-recording testing uses a public Convex action at `functions/academic/seedRunner:seedExamRecordingData`.
+- The seed runner creates or reuses real Better Auth users first, then inserts the app-level school, user, class, subject, student, grading, and assessment data through an internal mutation.
+- Default seeded credentials are:
+  - Admin: `admin@demo-academy.school` / `Admin123!Pass`
+  - Teacher: `teacher@demo-academy.school` / `Teacher123!Pass`
+- The seed is idempotent for the `demo-school` tenant, so rerunning it returns the existing ids instead of duplicating data.
+
 ## Audit Fields
 
 The feature should be audit-ready even before full moderation exists.

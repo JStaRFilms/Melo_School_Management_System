@@ -13,6 +13,8 @@ import type * as functions_academic_adminSelectors from "../functions/academic/a
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
+import type * as functions_academic_seed from "../functions/academic/seed.js";
+import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
@@ -30,6 +32,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
+  "functions/academic/seed": typeof functions_academic_seed;
+  "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
