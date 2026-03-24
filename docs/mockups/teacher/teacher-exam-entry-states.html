@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Exam Entry States - School Management Platform</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Premium Fonts: Outfit & Instrument Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        amber: {
+                            700: '#b45309',
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Outfit', 'sans-serif'],
+                        body: ['Instrument Sans', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Instrument Sans', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        h1, h2, h3 { font-family: 'Outfit', sans-serif; letter-spacing: -0.02em; }
+        .editorial-spacing { letter-spacing: 0.1em; text-transform: uppercase; }
+        
+        /* Skeleton Animation */
+        @keyframes shimmer {
+            0% { background-position: -468px 0; }
+            100% { background-position: 468px 0; }
+        }
+        .skeleton {
+            background: #f1f5f9;
+            background-image: linear-gradient(to right, #f1f5f9 0%, #e2e8f0 20%, #f1f5f9 40%, #f1f5f9 100%);
+            background-repeat: no-repeat;
+            background-size: 800px 104px;
+            display: inline-block;
+            position: relative;
+            animation: shimmer 1.2s infinite linear;
+        }
+    </style>
+</head>
+<body class="p-8 space-y-20">
+
+    <header class="max-w-4xl mx-auto text-center space-y-4">
+        <h1 class="text-4xl font-black text-obsidian-950">Component States Catalog</h1>
+        <p class="text-obsidian-500 font-medium italic">Standard interaction states for the Teacher Exam Entry workflow.</p>
+    </header>
+
+    <!-- 1. LOADING STATE -->
+    <section class="max-w-screen-xl mx-auto space-y-6">
+        <h2 class="text-xs font-bold editorial-spacing text-indigo-600 mb-4 px-2">State 01 / Loading Skeleton</h2>
+        <div class="bg-white border border-obsidian-200 rounded-3xl overflow-hidden shadow-sm">
+            <div class="bg-obsidian-50 p-6 border-b border-obsidian-200">
+                <div class="skeleton h-4 w-32 rounded-full"></div>
+            </div>
+            <div class="p-8 space-y-8">
+                <div class="flex items-center gap-6">
+                    <div class="skeleton w-12 h-12 rounded-full"></div>
+                    <div class="space-y-3 flex-1">
+                        <div class="skeleton h-5 w-48 rounded-md"></div>
+                        <div class="skeleton h-3 w-24 rounded-md"></div>
+                    </div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="skeleton w-12 h-12 rounded-full"></div>
+                    <div class="space-y-3 flex-1">
+                        <div class="skeleton h-5 w-32 rounded-md"></div>
+                        <div class="skeleton h-3 w-20 rounded-md"></div>
+                    </div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                    <div class="skeleton h-12 w-16 rounded-xl"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2. EMPTY STATE -->
+    <section class="max-w-screen-xl mx-auto space-y-6">
+        <h2 class="text-xs font-bold editorial-spacing text-indigo-600 mb-4 px-2">State 02 / Empty Roster</h2>
+        <div class="bg-white border border-dashed border-obsidian-300 rounded-3xl flex flex-col items-center justify-center p-20 text-center gap-6 shadow-xs">
+            <div class="w-20 h-20 bg-obsidian-50 rounded-full flex items-center justify-center text-obsidian-300">
+                <i data-lucide="users-round" class="w-10 h-10"></i>
+            </div>
+            <div class="space-y-2">
+                <h3 class="text-2xl font-bold text-obsidian-950">No Students Selected</h3>
+                <p class="text-obsidian-500 max-w-sm mx-auto">Please choose a Session, Term, Class, and Subject above to load the student roster and begin recording scores.</p>
+            </div>
+            <button class="bg-obsidian-950 text-white font-bold h-12 px-8 rounded-xl flex items-center gap-2 hover:bg-indigo-600 transition-colors">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                Retry Loader
+            </button>
+        </div>
+    </section>
+
+    <!-- 3. SAVED / SUCCESS STATE -->
+    <section class="max-w-screen-xl mx-auto space-y-6">
+        <h2 class="text-xs font-bold editorial-spacing text-indigo-600 mb-4 px-2">State 03 / Data Saved</h2>
+        <div class="bg-emerald-600 text-white rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-emerald-900/10">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                    <i data-lucide="cloud-check" class="w-8 h-8"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold">Changes Synced Successfully</h3>
+                    <p class="text-emerald-100/80 text-sm font-medium">All 28 student records have been updated and are safely stored.</p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button class="bg-white text-emerald-700 font-bold h-12 px-6 rounded-xl hover:bg-emerald-50 transition-colors">View Audit Log</button>
+                <button class="bg-emerald-500 border border-white/20 text-white font-bold h-12 px-6 rounded-xl hover:bg-emerald-400 transition-colors">Dismiss</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. ERROR / VALIDATION STATE -->
+    <section class="max-w-screen-xl mx-auto space-y-6 pb-20">
+        <h2 class="text-xs font-bold editorial-spacing text-red-600 mb-4 px-2">State 04 / Validation Failure</h2>
+        <div class="bg-red-50 border-2 border-red-200 text-red-900 rounded-3xl p-8 flex flex-col md:flex-row items-start gap-6">
+            <div class="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 shrink-0">
+                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            </div>
+            <div class="space-y-4 flex-1">
+                <div>
+                    <h3 class="text-xl font-bold">Submission Blocked</h3>
+                    <p class="text-red-700 font-medium">Some records contain invalid data. Please review the highlighted cells in the roster grid before finalized the sheet.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white/50 border border-red-100 p-4 rounded-xl flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center font-bold text-xs">02</span>
+                        <p class="text-xs font-bold">Chioma Okafor: Exam score (72) exceeds maximum of 60.</p>
+                    </div>
+                    <div class="bg-white/50 border border-red-100 p-4 rounded-xl flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center font-bold text-xs">15</span>
+                        <p class="text-xs font-bold">John Aminu: Missing CA1 and CA2 scores.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

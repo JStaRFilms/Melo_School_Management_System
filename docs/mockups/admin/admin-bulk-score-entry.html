@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Score Recording | OS/SCHOOL Admin</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Clean Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        brand: {
+                            primary: '#2563eb', // Clean operational blue
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Spreadsheet Grid (Desktop) */
+        .roster-grid-wrapper {
+            position: relative;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            background: white;
+        }
+
+        .sticky-column {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 10;
+            border-right: 2px solid #f1f5f9;
+        }
+
+        th {
+            background-color: #f8fafc;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 9px;
+            font-weight: 600;
+            color: #64748b;
+            white-space: nowrap;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+            font-size: 0.8125rem;
+            color: #334155;
+        }
+
+        .score-input {
+            width: 50px;
+            height: 40px;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            text-align: center;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: #0f172a;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .score-input:focus {
+            border-color: #2563eb;
+            background-color: #eff6ff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Mobile Card System (Single Focus) */
+        .mobile-focus-container {
+            min-height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .active-student-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .active-student-card:active {
+            transform: scale(0.98);
+        }
+
+        .card-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: block;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+
+        .progress-bar-segment {
+            height: 3px;
+            flex: 1;
+            background: #e2e8f0;
+            border-radius: 99px;
+            transition: all 0.3s;
+        }
+
+        .progress-bar-segment.active {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-24">
+
+    <!-- CLEAN ADMIN HEADER -->
+    <header class="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="w-8 h-8 flex items-center justify-center text-slate-400">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col">
+                <span class="font-bold text-[10px] tracking-tight text-slate-900 leading-none uppercase">Mathematics Recording</span>
+                <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Primary 4A • T1 2026</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">
+                AD
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto py-6 px-4 md:px-6 space-y-6">
+        
+        <!-- MOBILE JUMP-TO-STUDENT SELECTOR (MD:HIDDEN) -->
+        <div class="md:hidden space-y-3">
+            <div class="flex items-center justify-between px-1">
+                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Jump to Student</span>
+                <span class="text-[9px] font-bold text-blue-600 uppercase tracking-widest leading-none">21 / 28 Complete</span>
+            </div>
+            <div class="relative group">
+                <select class="w-full h-11 bg-white border border-slate-200 rounded-xl px-4 appearance-none font-bold text-xs text-slate-900 focus:border-blue-600 outline-none pr-10 shadow-sm transition-all active:scale-95">
+                    <option>Adebayo Ogunlesi (4A-0922)</option>
+                    <option>Chioma Okafor (4A-0931)</option>
+                    <option>John Aminu (4A-0944)</option>
+                    <option>Morenike Balogun (4A-0955)</option>
+                </select>
+                <i data-lucide="chevron-down" class="w-4 h-4 absolute right-4 top-3.5 text-slate-400"></i>
+            </div>
+        </div>
+
+        <!-- DESKTOP INTRO (HIDDEN ON MOBILE) -->
+        <div class="hidden md:block space-y-1">
+            <div class="flex items-center gap-2 text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                <a href="#">Assessments</a>
+                <i data-lucide="chevron-right" class="w-2.5 h-2.5"></i>
+                <span class="text-slate-900 uppercase">Global Score Overwrite</span>
+            </div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Mathematics • Primary 4A</h1>
+        </div>
+
+        <!-- CONTENT VIEWPORTS -->
+        <section class="space-y-4">
+             
+             <!-- DESKTOP VIEW: SPREADSHEET TABLE (HIDDEN ON MOBILE) -->
+             <div class="hidden md:block roster-grid-wrapper custom-scrollbar">
+                <table class="w-full border-separate border-spacing-0">
+                    <thead>
+                        <tr>
+                            <th class="sticky-column">Student</th>
+                            <th>CA1 <span class="font-light italic">/20</span></th>
+                            <th>CA2 <span class="font-light italic">/20</span></th>
+                            <th>CA3 <span class="font-light italic">/20</span></th>
+                            <th>Exam <span class="text-blue-500 italic">/40</span></th>
+                            <th class="text-center bg-slate-50/50">Total</th>
+                            <th class="text-center">Gr.</th>
+                            <th>Protocol</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 italic md:not-italic">
+                        <tr class="hover:bg-slate-50/50 transition-all cursor-pointer">
+                            <td class="sticky-column">
+                                <span class="font-semibold text-slate-900">Adebayo Ogunlesi</span>
+                                <p class="text-[8px] font-medium text-slate-400 uppercase mt-0.5 tracking-tighter">REG-2025-001</p>
+                            </td>
+                            <td><input type="number" value="18" class="score-input"></td>
+                            <td><input type="number" value="15" class="score-input"></td>
+                            <td><input type="number" value="19" class="score-input"></td>
+                            <td><input type="number" value="34" class="score-input border-blue-100 bg-blue-50/10"></td>
+                            <td class="text-center font-bold text-slate-900">86.0</td>
+                            <td class="text-center font-bold text-blue-600">A</td>
+                            <td class="text-[8px] text-slate-400 uppercase font-medium">Standard Entry</td>
+                        </tr>
+                    </tbody>
+                </table>
+             </div>
+
+             <!-- MOBILE VIEW: SWIPEABLE FOCUS CARDS (HIDDEN ON DESKTOP) -->
+             <div class="md:hidden mobile-focus-container space-y-6">
+                 
+                 <!-- THE SWIPEABLE ACTIVE CARD -->
+                 <div class="active-student-card space-y-6">
+                     <!-- CARD HEADER -->
+                     <div class="flex items-center justify-between">
+                         <div class="flex items-center gap-3">
+                             <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center font-bold text-xs text-white uppercase shadow-lg">AO</div>
+                             <div class="space-y-0.5">
+                                 <h3 class="font-bold text-sm text-slate-900 leading-none">Adebayo Ogunlesi</h3>
+                                 <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: 4A-0922 • RANk: #03</p>
+                             </div>
+                         </div>
+                         <div class="text-right">
+                             <div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 leading-none">Current Avg</div>
+                             <div class="text-lg font-bold text-slate-900 tracking-tighter italic">86.0%</div>
+                         </div>
+                     </div>
+
+                     <!-- SCORE ENTRY GRID -->
+                     <div class="grid grid-cols-2 gap-4">
+                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                             <label class="card-label">CA 1 Contribution</label>
+                             <input type="number" value="18" class="w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 transition-all">
+                         </div>
+                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                             <label class="card-label">CA 2 Contribution</label>
+                             <input type="number" value="15" class="w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none">
+                         </div>
+                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                             <label class="card-label">CA 3 Contribution</label>
+                             <input type="number" value="19" class="w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none">
+                         </div>
+                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-2">
+                             <label class="card-label text-blue-600 font-extrabold">Final Exam /40</label>
+                             <input type="number" value="34" class="w-full h-12 bg-white border-2 border-blue-200 rounded-lg text-center font-black text-lg text-blue-600 outline-none focus:border-blue-600 transition-all">
+                         </div>
+                     </div>
+
+                     <!-- CALCULATION PREVIEW -->
+                     <div class="flex items-center justify-between pt-2">
+                         <div class="flex items-center gap-2">
+                             <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-sm uppercase">A</span>
+                             <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Outstanding Results</span>
+                         </div>
+                         <div class="text-[9px] font-medium text-slate-300 italic">Audit: Modified by Admin 16:04</div>
+                     </div>
+                 </div>
+
+                 <!-- SWIPE NAVIGATION CONTROLS -->
+                 <div class="flex items-center justify-between px-2">
+                     <button class="w-12 h-12 rounded-full border border-slate-200 bg-white flex items-center justify-center text-slate-400 active:bg-slate-50 active:scale-90 transition-all">
+                         <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                     </button>
+                     
+                     <!-- RE-IMPLEMENTED PAGINATION PILLS -->
+                     <div class="flex gap-1.5 flex-1 mx-8">
+                         <div class="progress-bar-segment active"></div>
+                         <div class="progress-bar-segment"></div>
+                         <div class="progress-bar-segment"></div>
+                         <div class="progress-bar-segment"></div>
+                         <div class="progress-bar-segment"></div>
+                     </div>
+
+                     <button class="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center text-white shadow-xl active:scale-90 transition-all">
+                         <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                     </button>
+                 </div>
+
+                 <p class="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Swipe left or right to switch student</p>
+             </div>
+        </section>
+
+    </main>
+
+    <!-- UNIFIED GLOBAL ACTION BAR (MOBILE AT BOTTOM) -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t border-slate-100 md:bg-transparent md:border-none flex items-center justify-between sm:justify-end gap-3 z-50">
+        <div class="md:hidden flex flex-col">
+            <span class="text-[9px] font-bold text-slate-900 uppercase tracking-tighter">Babatunde Adeniyi</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase italic">Admin Security active</span>
+        </div>
+        <button class="bg-indigo-600 text-white h-12 px-8 sm:px-10 rounded-xl sm:rounded-lg font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-indigo-200 active:scale-95 transition-all">
+            Commit Batch
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

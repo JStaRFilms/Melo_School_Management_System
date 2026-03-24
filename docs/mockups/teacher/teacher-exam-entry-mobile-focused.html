@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Focused Entry (Precision Mobile) - School Management Platform</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Premium Fonts: Outfit & Instrument Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        amber: {
+                            700: '#b45309',
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Outfit', 'sans-serif'],
+                        body: ['Instrument Sans', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --radius-lg: 0.625rem;
+            --radius-md: 0.375rem;
+            --radius-sm: 0.25rem;
+        }
+
+        body {
+            font-family: 'Instrument Sans', sans-serif;
+            background-color: #fbfbfc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1, h2, h3 { font-family: 'Outfit', sans-serif; letter-spacing: -0.015em; }
+        .editorial-spacing { letter-spacing: 0.1em; text-transform: uppercase; }
+
+        /* Compact Student Card */
+        .student-card {
+            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: var(--radius-lg);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .student-card.active {
+            border-color: #4f46e5;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateY(-2px);
+        }
+
+        /* Narrower Input for Mobile Precision */
+        .score-input-mobile {
+            width: 100%;
+            height: 44px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius-md);
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            outline: none;
+            transition: all 0.15s;
+        }
+        .score-input-mobile:focus {
+            background: white;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .score-input-mobile.active {
+            border-color: #4f46e5;
+            background: white;
+        }
+
+        /* Fixed Sidebar Progress (Desktop) / Top Progress (Mobile) */
+        .progress-pill {
+            padding: 0.5rem 1rem;
+            background-color: #0f172a;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: white;
+        }
+    </style>
+</head>
+<body class="pb-32">
+
+    <!-- COMPACT MODAL HEADER -->
+    <header class="bg-white border-b border-obsidian-100 p-4 sticky top-0 z-50">
+        <div class="max-w-screen-xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <button class="w-8 h-8 rounded-lg bg-obsidian-50 flex items-center justify-center text-obsidian-400">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                <div class="space-y-0.5">
+                    <h1 class="text-sm font-black text-obsidian-950 uppercase tracking-tight">Mathematics Entry</h1>
+                    <p class="text-[10px] font-bold text-obsidian-400 editorial-spacing">Session 2025/2026 • Term 1</p>
+                </div>
+            </div>
+            <div class="progress-pill">
+                <span class="text-[10px] font-bold editorial-spacing text-white/50">Progress</span>
+                <span class="text-xs font-black">21/28</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="p-4 space-y-4 max-w-sm mx-auto">
+
+        <!-- VARIANT LABELS -->
+        <div class="flex items-center gap-2 mb-2">
+            <span class="text-[10px] font-bold editorial-spacing text-indigo-600">Mode: /60 (Scale to /40)</span>
+            <div class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        </div>
+
+        <!-- COMPACT ACTIVE CARD -->
+        <div class="student-card active p-4 space-y-4 border-2">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-[10px]">CO</div>
+                    <div>
+                        <h3 class="font-bold text-sm text-obsidian-900 leading-none">Chioma Okafor</h3>
+                        <p class="text-[9px] font-mono text-obsidian-400 mt-1">REG-4A022</p>
+                    </div>
+                </div>
+                <div class="text-xs font-black text-indigo-600 italic">Editing Grade...</div>
+            </div>
+
+            <!-- PRECISION SCORE INPUTS -->
+            <div class="grid grid-cols-4 gap-2">
+                <div class="space-y-1">
+                    <label class="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">CA1 /20</label>
+                    <input type="number" value="12" class="score-input-mobile">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">CA2 /20</label>
+                    <input type="number" value="10" class="score-input-mobile">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">CA3 /20</label>
+                    <input type="number" placeholder="--" class="score-input-mobile">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[8px] font-black editorial-spacing text-center block text-amber-700">Exam /60</label>
+                    <input type="number" value="54" class="score-input-mobile active ring-2 ring-indigo-500/20">
+                </div>
+            </div>
+
+            <!-- READ-ONLY CALCULATION BAR -->
+            <div class="bg-obsidian-50 rounded-lg py-2 px-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="calculator" class="w-3 h-3 text-obsidian-400"></i>
+                    <span class="text-xs font-bold text-obsidian-500 uppercase tracking-tighter">Scaled Score (/40)</span>
+                </div>
+                <span class="text-sm font-black text-indigo-600">36.00</span>
+            </div>
+        </div>
+
+        <!-- NEXT STUDENT PREVIEW -->
+        <div class="student-card p-3 flex items-center justify-between opacity-50">
+            <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-obsidian-50 flex items-center justify-center font-bold text-[8px] text-obsidian-500">JA</div>
+                <span class="font-bold text-xs text-obsidian-700">John Aminu</span>
+            </div>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-obsidian-200"></i>
+        </div>
+
+        <!-- VARIANT B: /40 MODE PREVIEW -->
+         <div class="pt-8 space-y-4">
+            <div class="h-[1px] bg-obsidian-100 w-full mb-4"></div>
+            <p class="text-[10px] font-bold editorial-spacing text-amber-700">Alternative Mode: Raw /40 Entry</p>
+            
+            <div class="student-card p-4 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-obsidian-100 flex items-center justify-center font-black text-[10px]">AO</div>
+                    <h3 class="font-bold text-sm text-obsidian-900">Adebayo Ogunlesi</h3>
+                </div>
+                <div class="grid grid-cols-4 gap-2">
+                    <div class="space-y-1 opacity-50"><input type="number" value="18" disabled class="score-input-mobile bg-white border-none"></div>
+                    <div class="space-y-1 opacity-50"><input type="number" value="15" disabled class="score-input-mobile bg-white border-none"></div>
+                    <div class="space-y-1 opacity-50"><input type="number" value="19" disabled class="score-input-mobile bg-white border-none"></div>
+                    <div class="space-y-1">
+                        <label class="text-[8px] font-black editorial-spacing text-center block text-amber-900">Exam /40</label>
+                        <input type="number" value="34" class="score-input-mobile active border-amber-500 border-2">
+                    </div>
+                </div>
+                <div class="text-[8px] font-bold text-obsidian-400 italic text-center">In /40 mode, system skips calculation scaling step.</div>
+            </div>
+         </div>
+
+    </main>
+
+    <!-- PRECISION MOBILE ACTION BAR -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/95 border-t border-obsidian-100 z-50 flex gap-2">
+        <button class="w-full bg-obsidian-950 text-white h-10 rounded-md font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Sync All
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

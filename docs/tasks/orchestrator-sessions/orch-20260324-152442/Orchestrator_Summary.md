@@ -7,8 +7,9 @@
 
 | Task Range | Status | Notes |
 | --- | --- | --- |
-| `T01` | Ready | Blueprint task pending |
-| `T02-T03` | Ready | Design tasks pending |
+| `T01` | Complete | Blueprint doc verified and moved to completed |
+| `T02` | Complete | Teacher design verified, including `/40` and `/60` exam-mode variants |
+| `T03` | Complete | Admin design verified, including mobile cards and swipe gamification |
 | `T04-T06` | Ready | Task-authoring delegation pending |
 | `T07-T09` | Ready | Build tasks pending |
 | `T10` | Ready | Verification and docs sync pending |
@@ -30,12 +31,11 @@
 
 ## Outstanding Issues
 
-- No delegated tasks have been executed yet.
-- Any exam-recording draft docs/mockups currently in the repo should be treated as replaceable working inputs until the assigned sub-agents complete their tasks.
+- `T03` through `T10` remain pending.
+- Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
 
 ## Next Actions
 
-1. Start with `pending/T01_exam_recording_blueprint.task.md`.
-2. After `T01`, run `T02` and `T03`.
-3. Run `T04-T06` to produce execution-grade task briefs.
-4. Execute `T07-T10` in dependency order.
+1. Run `T03` to complete the admin-side design pair.
+2. Run `T04-T06` to produce execution-grade task briefs.
+3. Execute `T07-T10` in dependency order.

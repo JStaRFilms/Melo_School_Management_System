@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Exam Entry (Variants) - School Management Platform</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Premium Fonts: Outfit & Instrument Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        amber: {
+                            700: '#b45309',
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Outfit', 'sans-serif'],
+                        body: ['Instrument Sans', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --radius-lg: 0.625rem;
+            --radius-md: 0.375rem;
+            --radius-sm: 0.25rem;
+        }
+
+        body {
+            font-family: 'Instrument Sans', sans-serif;
+            background-color: #fbfbfc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Outfit', sans-serif;
+            letter-spacing: -0.015em;
+        }
+
+        .editorial-spacing {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        /* Precision Grid */
+        .roster-grid-wrapper {
+            position: relative;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius-lg);
+            background: white;
+        }
+
+        .sticky-column {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 10;
+            border-right: 1px solid #f1f5f9;
+        }
+
+        .roster-row:hover .sticky-column { background: #f8fafc; }
+
+        .score-input {
+            width: 48px;
+            height: 36px;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius-sm);
+            text-align: center;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.875rem;
+            transition: all 0.1s;
+            outline: none;
+        }
+
+        .score-input:focus {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        th {
+            background-color: #f8fafc;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #64748b;
+            white-space: nowrap;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
+
+        /* Compact Selection Bar */
+        .compact-nav {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+        }
+    </style>
+</head>
+<body class="pb-32">
+
+    <!-- COMPACT TOP NAV -->
+    <nav class="compact-nav sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-obsidian-950 rounded flex items-center justify-center text-white text-[10px] font-black italic">OS</div>
+                <span class="text-sm font-bold tracking-tight">OS/SCHOOL</span>
+            </div>
+            <div class="h-4 w-[1px] bg-obsidian-200"></div>
+            <div class="hidden md:flex items-center gap-2 text-[10px] font-bold editorial-spacing text-obsidian-400">
+                <span class="hover:text-indigo-600 cursor-pointer">Teacher</span>
+                <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                <span class="text-obsidian-900">Exam Recording</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="text-right hidden sm:block">
+                <p class="text-[10px] font-bold editorial-spacing text-obsidian-400 leading-none">Mathematics</p>
+                <p class="text-xs font-bold text-obsidian-900 leading-none mt-1">Primary 4A</p>
+            </div>
+            <div class="w-8 h-8 rounded-full bg-obsidian-100 flex items-center justify-center font-bold text-xs">BA</div>
+        </div>
+    </nav>
+
+    <main class="max-w-screen-xl mx-auto p-4 md:p-10 space-y-16">
+        
+        <!-- VARIANT A: EXAM OUT OF 40 -->
+        <section class="space-y-6">
+            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div class="space-y-1">
+                    <h2 class="text-2xl font-black text-obsidian-950">Variant A: Exam Mode /40</h2>
+                    <p class="text-obsidian-500 font-medium font-body italic text-sm">Direct entry into final exam contribution. No scaling column.</p>
+                </div>
+                <div class="bg-indigo-50 border border-indigo-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i data-lucide="check-circle" class="w-4 h-4 text-indigo-600"></i>
+                    <span class="text-[10px] font-bold editorial-spacing text-indigo-700">Active Rule: ExamRawMode=raw40</span>
+                </div>
+            </div>
+
+            <div class="roster-grid-wrapper custom-scrollbar">
+                <table class="w-full border-separate border-spacing-0">
+                    <thead>
+                        <tr>
+                            <th class="sticky-column">Student Profile</th>
+                            <th>CA1 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th>CA2 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th>CA3 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th class="bg-amber-50/50 text-amber-900">Exam <span class="text-amber-500 font-normal">/40</span></th>
+                            <th>Total <span class="text-indigo-600 font-normal">/100</span></th>
+                            <th>Grade</th>
+                            <th>Remark</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-obsidian-100">
+                        <tr class="roster-row">
+                            <td class="sticky-column">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded bg-obsidian-50 flex items-center justify-center font-bold text-[8px] text-obsidian-500">AO</div>
+                                    <span class="font-bold text-sm text-obsidian-900">Adebayo Ogunlesi</span>
+                                </div>
+                            </td>
+                            <td><input type="number" value="18" class="score-input"></td>
+                            <td><input type="number" value="15" class="score-input"></td>
+                            <td><input type="number" value="19" class="score-input"></td>
+                            <td><input type="number" value="34" class="score-input bg-amber-50/20 border-amber-200"></td>
+                            <td class="text-center font-heading font-black text-lg text-obsidian-950">86.00</td>
+                            <td><span class="text-sm font-black text-emerald-600 italic lg:not-italic">A</span></td>
+                            <td><span class="text-[9px] font-bold editorial-spacing text-obsidian-400">Excellent</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="h-[1px] w-full bg-obsidian-100"></div>
+
+        <!-- VARIANT B: EXAM OUT OF 60 (SCALED) -->
+        <section class="space-y-6">
+            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div class="space-y-1">
+                    <h2 class="text-2xl font-black text-obsidian-950">Variant B: Exam Mode /60</h2>
+                    <p class="text-obsidian-500 font-medium font-body italic text-sm">Input out of 60; system displays read-only /40 contribution for total calculation.</p>
+                </div>
+                <div class="bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i data-lucide="info" class="w-4 h-4 text-amber-700"></i>
+                    <span class="text-[10px] font-bold editorial-spacing text-amber-800">Active Rule: ExamRawMode=raw60_scaled</span>
+                </div>
+            </div>
+
+            <div class="roster-grid-wrapper custom-scrollbar">
+                <table class="w-full border-separate border-spacing-0">
+                    <thead>
+                        <tr>
+                            <th class="sticky-column">Student Profile</th>
+                            <th>CA1 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th>CA2 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th>CA3 <span class="text-obsidian-300 font-normal">/20</span></th>
+                            <th class="bg-amber-50/50 text-amber-900">Exam <span class="text-amber-500 font-normal">/60</span></th>
+                            <th class="bg-indigo-50/50 text-indigo-700">Scaled <span class="text-indigo-400 font-normal">/40</span></th>
+                            <th>Total <span class="text-indigo-600 font-normal">/100</span></th>
+                            <th>Grade</th>
+                            <th>Remark</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-obsidian-100">
+                        <tr class="roster-row">
+                            <td class="sticky-column">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded bg-obsidian-50 flex items-center justify-center font-bold text-[8px] text-obsidian-500">AO</div>
+                                    <span class="font-bold text-sm text-obsidian-900">Adebayo Ogunlesi</span>
+                                </div>
+                            </td>
+                            <td><input type="number" value="18" class="score-input"></td>
+                            <td><input type="number" value="15" class="score-input"></td>
+                            <td><input type="number" value="19" class="score-input"></td>
+                            <td><input type="number" value="54" class="score-input bg-amber-50/20 border-amber-200"></td>
+                            <td class="bg-indigo-50/20 text-center font-heading font-black text-xs text-indigo-600 leading-none">36.00</td>
+                            <td class="text-center font-heading font-black text-lg text-obsidian-950">88.00</td>
+                            <td><span class="text-sm font-black text-emerald-600">A</span></td>
+                            <td><span class="text-[9px] font-bold editorial-spacing text-obsidian-400">Excellent</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- PRECISION ACTION BAR (MOBILE BOTTOM) -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 md:hidden bg-white/95 border-t border-obsidian-100 z-50">
+        <button class="w-full bg-obsidian-950 text-white h-12 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Save Changes
+        </button>
+    </div>
+
+    <!-- PRECISION FLOATING ACTION (DESKTOP) -->
+    <div class="fixed bottom-8 right-8 hidden md:flex items-center gap-3">
+        <button class="bg-white border border-obsidian-200 text-obsidian-700 h-10 px-4 rounded-md font-bold text-xs hover:bg-obsidian-50 shadow-sm">Cancel</button>
+        <button class="bg-indigo-600 text-white h-10 px-6 rounded-md font-bold text-xs hover:bg-indigo-700 shadow-xl shadow-indigo-200">Finalize Sheet</button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

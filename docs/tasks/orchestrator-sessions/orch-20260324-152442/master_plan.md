@@ -93,7 +93,7 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 ## Progress Checklist
 
 - [ ] `T01` Blueprint complete
-- [ ] `T02` Teacher design complete
+- [x] `T02` Teacher design complete
 - [ ] `T03` Admin design complete
 - [ ] `T04` Shared/backend task brief complete
 - [ ] `T05` Teacher app task brief complete

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Design System - Precision Academic Editorial</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Premium Fonts: Outfit & Instrument Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        amber: {
+                            700: '#b45309',
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Outfit', 'sans-serif'],
+                        body: ['Instrument Sans', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            /* Tightened Radiuses for "Smart & Clean" look */
+            --radius-pill: 9999px;
+            --radius-lg: 0.625rem; /* 10px */
+            --radius-md: 0.375rem; /* 6px */
+            --radius-sm: 0.25rem;  /* 4px */
+        }
+
+        body {
+            font-family: 'Instrument Sans', sans-serif;
+            background-color: #fbfbfc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Outfit', sans-serif;
+            letter-spacing: -0.015em;
+        }
+
+        /* Precision Card */
+        .card-precision {
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius-lg);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* Editorial Typography Gaps */
+        .editorial-spacing {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 4px;
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 999px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #cbd5e1;
+        }
+
+        /* Table Optimization */
+        th {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.65rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1rem;
+            background-color: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        /* Button Refinement */
+        .btn-precision {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 0.8125rem;
+            transition: all 0.15s ease-in-out;
+            gap: 0.5rem;
+        }
+        .btn-precision:active {
+            transform: translateY(1px);
+        }
+
+    </style>
+</head>
+<body class="p-6 md:p-16">
+
+    <div class="max-w-screen-xl mx-auto space-y-16">
+
+        <header class="border-b border-obsidian-100 pb-10">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-8 h-8 bg-obsidian-950 rounded-lg flex items-center justify-center text-white">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                </div>
+                <span class="font-heading font-bold text-xl tracking-tight">OS/SYSTEM v2.1</span>
+            </div>
+            <h1 class="text-5xl font-black text-obsidian-950">Precision Educational Design</h1>
+            <p class="text-obsidian-500 font-medium text-lg mt-2 font-body max-w-2xl italic">
+                "Removing the bloat. Prioritizing information density, technical clarity, and premium institutional presence."
+            </p>
+        </header>
+
+        <!-- TYPOGRAPHY GRID -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-16">
+            <div class="space-y-8">
+                <h2 class="text-[10px] font-bold editorial-spacing text-indigo-600">Structure / Typography</h2>
+                <div class="space-y-4">
+                    <p class="text-8xl font-black font-heading leading-none">Outfit</p>
+                    <p class="text-obsidian-600 font-medium">Headings and Data Display. High readability, tight kerning.</p>
+                </div>
+                <div class="pt-8 space-y-4">
+                    <p class="text-4xl font-medium font-body leading-tight">Instrument Sans</p>
+                    <p class="text-obsidian-600 font-medium">Body, Controls, and Explanatory Text. Editorial clarity.</p>
+                </div>
+            </div>
+            <div class="card-precision p-12 flex flex-col justify-center bg-obsidian-50 border-none shadow-none">
+                <h3 class="text-2xl font-bold mb-4">Academic Integrity</h3>
+                <p class="text-obsidian-600 leading-relaxed mb-6">
+                    Our reporting suite is built on the premise that data clarity drive pedagogical insight. Every score, remark, and calculation must be instantly verifiable.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <span class="px-2 py-1 bg-white border border-obsidian-200 text-[10px] font-bold editorial-spacing rounded">AA Compliance</span>
+                    <span class="px-2 py-1 bg-white border border-obsidian-200 text-[10px] font-bold editorial-spacing rounded">Mobile First</span>
+                    <span class="px-2 py-1 bg-white border border-obsidian-200 text-[10px] font-bold editorial-spacing rounded">Grid Optimized</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- COMPONENT SHOWCASE -->
+        <section class="space-y-12">
+            <h2 class="text-[10px] font-bold editorial-spacing text-indigo-600">Visuals / Components</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Buttons -->
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold editorial-spacing text-obsidian-400">Actions</h4>
+                    <div class="flex flex-col gap-3">
+                        <button class="btn-precision bg-obsidian-950 text-white hover:bg-obsidian-800">Save Changes</button>
+                        <button class="btn-precision bg-white border border-obsidian-200 text-obsidian-700 hover:bg-obsidian-50">Cancel</button>
+                        <button class="btn-precision bg-indigo-600 text-white hover:bg-indigo-700">Finalize Sheet</button>
+                    </div>
+                </div>
+
+                <!-- Inputs -->
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold editorial-spacing text-obsidian-400">Controls</h4>
+                    <div class="space-y-3">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-obsidian-500 uppercase ml-1">Score Input</label>
+                            <input type="text" placeholder="--" class="w-full h-10 border border-obsidian-200 rounded-md px-3 text-sm font-bold focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 outline-none transition-all">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-obsidian-500 uppercase ml-1">Selection</label>
+                            <select class="w-full h-10 border border-obsidian-200 rounded-md px-3 text-sm font-bold outline-none">
+                                <option>Mathematics</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Highlighting -->
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold editorial-spacing text-obsidian-400">Indicators</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider rounded">Grade A</span>
+                        <span class="px-2 py-1 bg-red-50 text-red-700 border border-red-100 text-[10px] font-bold uppercase tracking-wider rounded">Error: >60</span>
+                        <span class="px-2 py-1 bg-obsidian-100 text-obsidian-700 border border-obsidian-200 text-[10px] font-bold uppercase tracking-wider rounded">Draft</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
