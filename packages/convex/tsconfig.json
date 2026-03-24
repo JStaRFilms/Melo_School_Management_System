@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist"
+  },
+  "include": [
+    "_generated/**/*.ts",
+    "schema.ts",
+    "functions/**/*.ts"
+  ]
+}

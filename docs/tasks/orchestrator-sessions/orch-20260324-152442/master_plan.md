@@ -98,7 +98,7 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 - [x] `T04` Shared/backend task brief complete
 - [x] `T05` Teacher app task brief complete
 - [x] `T06` Admin app task brief complete
-- [ ] `T07` Shared/backend implementation complete
+- [x] `T07` Shared/backend implementation complete
 - [ ] `T08` Teacher app implementation complete
 - [ ] `T09` Admin app implementation complete
 - [ ] `T10` Verification and docs sync complete

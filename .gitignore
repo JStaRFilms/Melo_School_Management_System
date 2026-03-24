@@ -32,3 +32,5 @@ coverage/
 .vscode/
 .idea/
 *.swp
+
+.turbo/
