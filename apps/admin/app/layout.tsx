@@ -20,11 +20,11 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="bg-slate-50 min-h-screen">
-        <AuthProvider>
-          <ConvexClientProvider initialToken={initialToken}>
+        <ConvexClientProvider initialToken={initialToken}>
+          <AuthProvider>
             {children}
-          </ConvexClientProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </ConvexClientProvider>
       </body>
     </html>
   );

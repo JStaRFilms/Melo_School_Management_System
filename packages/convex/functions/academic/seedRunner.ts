@@ -8,6 +8,7 @@ const DEFAULT_ADMIN = {
   email: "admin@demo-academy.school",
   password: "Admin123!Pass",
   origin: "http://localhost:3002",
+  role: "admin",
 } as const;
 
 const DEFAULT_TEACHER = {
@@ -15,6 +16,7 @@ const DEFAULT_TEACHER = {
   email: "teacher@demo-academy.school",
   password: "Teacher123!Pass",
   origin: "http://localhost:3001",
+  role: "teacher",
 } as const;
 
 type SeedIds = {
@@ -36,6 +38,8 @@ type SeedAuthUser = {
   email: string;
   password: string;
   origin: string;
+  role: string;
+  schoolId?: string;
 };
 
 async function readJsonSafe(response: Response) {
@@ -60,6 +64,8 @@ async function ensureAuthUser(
       name: user.name,
       email: user.email,
       password: user.password,
+      role: user.role,
+      ...(user.schoolId ? { schoolId: user.schoolId } : {}),
     }),
   });
   const signUpPayload = await readJsonSafe(signUpResponse);
@@ -142,12 +148,14 @@ export const seedExamRecordingData = action({
       email: args.adminEmail ?? DEFAULT_ADMIN.email,
       password: args.adminPassword ?? DEFAULT_ADMIN.password,
       origin: DEFAULT_ADMIN.origin,
+      role: DEFAULT_ADMIN.role,
     };
     const teacher = {
       name: args.teacherName ?? DEFAULT_TEACHER.name,
       email: args.teacherEmail ?? DEFAULT_TEACHER.email,
       password: args.teacherPassword ?? DEFAULT_TEACHER.password,
       origin: DEFAULT_TEACHER.origin,
+      role: DEFAULT_TEACHER.role,
     };
 
     const adminAuthId = await ensureAuthUser(authBaseUrl, admin);

@@ -275,6 +275,16 @@ Each school has one active exam input mode for this v1.
   - Teacher: `teacher@demo-academy.school` / `Teacher123!Pass`
 - The seed is idempotent for the `demo-school` tenant, so rerunning it returns the existing ids instead of duplicating data.
 
+## Live Verification Script
+
+- The first authenticated live smoke pass is automated in `scripts/test_live_exam_recording.py`.
+- It verifies:
+  - admin settings save
+  - admin grading-band save
+  - admin score-entry save
+  - teacher score-entry save
+- It is designed to restore the changed demo values after each save so repeated verification does not drift the seeded tenant.
+
 ## Audit Fields
 
 The feature should be audit-ready even before full moderation exists.

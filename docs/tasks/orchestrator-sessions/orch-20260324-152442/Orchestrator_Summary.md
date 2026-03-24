@@ -19,8 +19,8 @@
 | `T11` | Complete | Better Auth now uses the official Convex integration path, app auth proxies, and live-mode guards while preserving preview mode |
 | `T12` | Complete | Repo root now targets a real Convex dev deployment, real `_generated` bindings are in place, and teacher/admin local envs are wired for live mode |
 | `T13` | Complete | Live seed runner now provisions real Better Auth users, inserts the demo academic dataset, and reruns idempotently |
-| `T14` | Ready | Live browser verification is now unblocked by seeded data and real auth identities |
-| `T10` | Ready | Verification and docs sync pending |
+| `T14` | Complete | Live admin and teacher smoke tests passed against authenticated apps and the seeded Convex deployment |
+| `T10` | Ready | Final verification/docs sync/review remains pending |
 
 ## Verification Results
 
@@ -40,10 +40,8 @@
 ## Outstanding Issues
 
 - `T10` remains pending after live integration work.
-- `T14` still needs live browser verification against a configured Convex deployment.
 - Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
 
 ## Next Actions
 
-1. Execute `T14`.
-2. Execute `T10`.
+1. Execute `T10`.

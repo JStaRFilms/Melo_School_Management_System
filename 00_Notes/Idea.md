@@ -8,3 +8,6 @@ tags: [creativeos]
 ---
 
 # School Management System
+
+admin: admin@demo-academy.school / Admin123!Pass
+teacher: teacher@demo-academy.school / Teacher123!Pass

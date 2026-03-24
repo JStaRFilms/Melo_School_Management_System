@@ -4,14 +4,19 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   type ReactNode,
 } from "react";
+import { useQuery } from "convex/react";
 import type { AuthSession } from "@school/auth";
 import { authClient } from "@/lib/auth-client";
+import { isConvexConfigured } from "@/lib/convex-runtime";
 
 function mapSession(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  session: any
+  session: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  viewerContext: any
 ): AuthSession | null {
   if (!session?.user || !session?.session) {
     return null;
@@ -22,8 +27,8 @@ function mapSession(
       id: session.user.id,
       email: session.user.email,
       name: session.user.name,
-      role: session.user.role,
-      schoolId: session.user.schoolId,
+      role: viewerContext?.role ?? session.user.role,
+      schoolId: viewerContext?.schoolId ?? session.user.schoolId,
       image: session.user.image,
     },
     session: {
@@ -47,7 +52,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending, error: sessionError } = authClient.useSession();
-  const mappedSession = mapSession(session);
+
+  // Fetch enriched viewer context from Convex when authenticated
+  const viewerContext = useQuery(
+    "functions/auth:getViewerContext" as never,
+    isConvexConfigured && session?.user ? ({} as never) : ("skip" as never)
+  ) as { role?: string; schoolId?: string } | null | undefined;
+
+  const mappedSession = useMemo(
+    () => mapSession(session, viewerContext),
+    [session, viewerContext]
+  );
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<boolean> => {
@@ -70,9 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const isLoading = isPending || (isConvexConfigured && Boolean(session?.user) && viewerContext === undefined);
+
   const value: AuthContextValue = {
     session: mappedSession,
-    isLoading: isPending,
+    isLoading,
     isAuthenticated: Boolean(mappedSession),
     signIn,
     signOut,
