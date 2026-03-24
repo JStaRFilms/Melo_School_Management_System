@@ -12,9 +12,15 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "test:e2e": "turbo test:e2e"
+    "test:e2e": "turbo test:e2e",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "convex:codegen": "convex codegen",
+    "setup:convex": "powershell -ExecutionPolicy Bypass -File scripts/setup-convex.ps1",
+    "setup:convex:unix": "bash scripts/setup-convex.sh"
   },
   "devDependencies": {
+    "convex": "^1.34.0",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },

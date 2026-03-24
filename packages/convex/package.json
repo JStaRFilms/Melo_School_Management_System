@@ -6,7 +6,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "convex:dev": "pnpm -C ../.. convex:dev",
+    "convex:deploy": "pnpm -C ../.. convex:deploy",
+    "convex:codegen": "pnpm -C ../.. convex:codegen"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.3",

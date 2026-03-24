@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConvexError } from "convex/values";
+import type { Id, TableNames } from "../../../_generated/dataModel";
 
 import {
   assertAdminForSchool,
@@ -8,9 +9,13 @@ import {
   getAuthenticatedSchoolMembership,
 } from "../auth";
 
+function asId<TableName extends TableNames>(value: string): Id<TableName> {
+  return value as Id<TableName>;
+}
+
 function createCtx(options?: {
   identity?: { subject: string } | null;
-  user?: { _id: string; schoolId: string; role: string } | null;
+  user?: { _id: Id<"users">; schoolId: Id<"schools">; role: string } | null;
   assignmentExists?: boolean;
 }) {
   const identity =
@@ -19,8 +24,8 @@ function createCtx(options?: {
     options && "user" in options
       ? options.user
       : ({
-          _id: "user-1",
-          schoolId: "school-1",
+          _id: asId<"users">("user-1"),
+          schoolId: asId<"schools">("school-1"),
           role: "teacher",
         } as const);
   const assignmentExists = options?.assignmentExists ?? true;
@@ -41,7 +46,7 @@ function createCtx(options?: {
           },
         }),
       }),
-      get: async (id: string) => {
+      get: async (id: Id<"users">) => {
         if (!user || id !== user._id) return null;
         return user;
       },
@@ -81,7 +86,12 @@ describe("assertTeacherAssignment", () => {
     const ctx = createCtx({ assignmentExists: true });
 
     await expect(
-      assertTeacherAssignment(ctx, "user-1", "class-1", "subject-1")
+      assertTeacherAssignment(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"classes">("class-1"),
+        asId<"subjects">("subject-1")
+      )
     ).resolves.toBeUndefined();
   });
 
@@ -89,7 +99,12 @@ describe("assertTeacherAssignment", () => {
     const ctx = createCtx({ assignmentExists: false });
 
     await expect(
-      assertTeacherAssignment(ctx, "user-1", "class-1", "subject-1")
+      assertTeacherAssignment(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"classes">("class-1"),
+        asId<"subjects">("subject-1")
+      )
     ).rejects.toMatchObject({
       message: "Not assigned to this class-subject",
     });
@@ -99,11 +114,20 @@ describe("assertTeacherAssignment", () => {
 describe("assertAdminForSchool", () => {
   it("passes for an admin in the same school", async () => {
     const ctx = createCtx({
-      user: { _id: "admin-1", schoolId: "school-1", role: "admin" },
+      user: {
+        _id: asId<"users">("admin-1"),
+        schoolId: asId<"schools">("school-1"),
+        role: "admin",
+      },
     });
 
     await expect(
-      assertAdminForSchool(ctx, "admin-1", "school-1", "admin")
+      assertAdminForSchool(
+        ctx,
+        asId<"users">("admin-1"),
+        asId<"schools">("school-1"),
+        "admin"
+      )
     ).resolves.toBeUndefined();
   });
 
@@ -111,7 +135,12 @@ describe("assertAdminForSchool", () => {
     const ctx = createCtx();
 
     await expect(
-      assertAdminForSchool(ctx, "user-1", "school-1", "teacher")
+      assertAdminForSchool(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1"),
+        "teacher"
+      )
     ).rejects.toMatchObject({
       message: "Admin access required",
     });
@@ -119,11 +148,20 @@ describe("assertAdminForSchool", () => {
 
   it("throws on cross-school access", async () => {
     const ctx = createCtx({
-      user: { _id: "admin-1", schoolId: "school-1", role: "admin" },
+      user: {
+        _id: asId<"users">("admin-1"),
+        schoolId: asId<"schools">("school-1"),
+        role: "admin",
+      },
     });
 
     await expect(
-      assertAdminForSchool(ctx, "admin-1", "school-2", "admin")
+      assertAdminForSchool(
+        ctx,
+        asId<"users">("admin-1"),
+        asId<"schools">("school-2"),
+        "admin"
+      )
     ).rejects.toMatchObject({
       message: "Cross-school access denied",
     });
@@ -135,7 +173,11 @@ describe("assertSchoolBoundary", () => {
     const ctx = createCtx();
 
     await expect(
-      assertSchoolBoundary(ctx, "user-1", "school-1")
+      assertSchoolBoundary(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1")
+      )
     ).resolves.toBeUndefined();
   });
 
@@ -143,7 +185,11 @@ describe("assertSchoolBoundary", () => {
     const ctx = createCtx();
 
     await expect(
-      assertSchoolBoundary(ctx, "user-1", "school-2")
+      assertSchoolBoundary(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-2")
+      )
     ).rejects.toMatchObject({
       message: "Cross-school access denied",
     });
