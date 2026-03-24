@@ -73,7 +73,11 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 `T02`, `T05`, `T07` -> `T08`  
 `T03`, `T06`, `T07` -> `T09`  
 `T04` -> `T07`  
-`T07`, `T08`, `T09` -> `T10`
+`T08`, `T09` -> `T11`  
+`T07`, `T08`, `T09` -> `T12`  
+`T11`, `T12` -> `T13`  
+`T11`, `T12`, `T13` -> `T14`  
+`T14` -> `T10`
 
 ## Delegated Task Table
 
@@ -88,6 +92,10 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 | `T07` | Shared domain and backend implementation | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `convex-functions`, `convex-schema-validator`, `convex-best-practices`, `nextjs-standards` |
 | `T08` | Teacher app implementation | `vibe-code` | `/vibe-build` | `takomi`, `frontend-design`, `nextjs-standards` |
 | `T09` | Admin app implementation | `vibe-code` | `/vibe-build` | `takomi`, `frontend-design`, `nextjs-standards` |
+| `T11` | Auth and membership integration | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `nextjs-standards` |
+| `T12` | Convex project wiring and codegen | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `convex-functions`, `nextjs-standards` |
+| `T13` | Seed live exam-recording data | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `nextjs-standards` |
+| `T14` | Live integration verification | `vibe-review` | `/review_code` | `takomi`, `sync-docs`, `nextjs-standards` |
 | `T10` | Verification, docs sync, and review | `vibe-review` | `/vibe-syncDocs` + `/review_code` | `takomi`, `sync-docs`, `nextjs-standards` |
 
 ## Progress Checklist
@@ -101,6 +109,10 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 - [x] `T07` Shared/backend implementation complete
 - [x] `T08` Teacher app implementation complete
 - [x] `T09` Admin app implementation complete
+- [ ] `T11` Auth and membership integration complete
+- [ ] `T12` Convex project wiring and codegen complete
+- [ ] `T13` Seed live exam-recording data complete
+- [ ] `T14` Live integration verification complete
 - [ ] `T10` Verification and docs sync complete
 
 ## Orchestrator Notes

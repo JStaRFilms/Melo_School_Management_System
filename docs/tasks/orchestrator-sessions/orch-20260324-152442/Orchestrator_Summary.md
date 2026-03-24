@@ -16,6 +16,7 @@
 | `T07` | Complete | Shared backend implementation verified with passing tests and real package typecheck |
 | `T08` | Complete | Teacher app implementation verified; selector queries, preview mode, and test wiring fixed |
 | `T09` | Complete | Admin app implementation verified; live Convex wiring, selector queries, and validation visibility fixed |
+| `T11-T14` | Ready | Live integration path queued: auth, Convex wiring, seed data, then real verification |
 | `T10` | Ready | Verification and docs sync pending |
 
 ## Verification Results
@@ -35,9 +36,11 @@
 
 ## Outstanding Issues
 
-- `T10` remains pending.
+- `T10` remains pending after live integration work.
+- `T11` through `T14` are now queued for live-authenticated testing readiness.
 - Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
 
 ## Next Actions
 
-1. Execute `T10`.
+1. Execute `T11`, `T12`, `T13`, and `T14` in order.
+2. Execute `T10`.
