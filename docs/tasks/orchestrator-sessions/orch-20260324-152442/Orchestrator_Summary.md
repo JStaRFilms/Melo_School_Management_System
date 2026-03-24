@@ -16,7 +16,8 @@
 | `T07` | Complete | Shared backend implementation verified with passing tests and real package typecheck |
 | `T08` | Complete | Teacher app implementation verified; selector queries, preview mode, and test wiring fixed |
 | `T09` | Complete | Admin app implementation verified; live Convex wiring, selector queries, and validation visibility fixed |
-| `T11-T14` | Ready | Live integration path queued: auth, Convex wiring, seed data, then real verification |
+| `T11` | Complete | Better Auth now uses the official Convex integration path, app auth proxies, and live-mode guards while preserving preview mode |
+| `T12-T14` | Ready | Convex wiring, seed data, and live verification remain queued after the `T11` auth foundation |
 | `T10` | Ready | Verification and docs sync pending |
 
 ## Verification Results
@@ -37,10 +38,12 @@
 ## Outstanding Issues
 
 - `T10` remains pending after live integration work.
-- `T11` through `T14` are now queued for live-authenticated testing readiness.
+- `T12` still needs to replace the temporary `_generated/api.ts` shim with real Convex codegen and project wiring.
+- `T13` still needs to seed Better Auth users whose ids align with `users.authId`.
+- `T14` still needs live browser verification against a configured Convex deployment.
 - Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
 
 ## Next Actions
 
-1. Execute `T11`, `T12`, `T13`, and `T14` in order.
+1. Execute `T12`, `T13`, and `T14` in order.
 2. Execute `T10`.

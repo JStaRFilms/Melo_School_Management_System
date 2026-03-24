@@ -6,6 +6,10 @@
   },
   "include": [
     "_generated/**/*.ts",
+    "auth.config.ts",
+    "betterAuth.ts",
+    "convex.config.ts",
+    "http.ts",
     "schema.ts",
     "functions/**/*.ts"
   ]

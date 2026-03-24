@@ -9,8 +9,10 @@
     "lint": "eslint . --ext .ts"
   },
   "dependencies": {
-    "convex": "^1.0.0",
-    "@school/shared": "workspace:*"
+    "@convex-dev/better-auth": "^0.11.3",
+    "@school/shared": "workspace:*",
+    "better-auth": "^1.2.0",
+    "convex": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

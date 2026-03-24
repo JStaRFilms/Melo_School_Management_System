@@ -12,8 +12,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@school/auth": "workspace:*",
     "@school/convex": "workspace:*",
     "@school/shared": "workspace:*",
+    "better-auth": "^1.2.0",
     "convex": "^1.0.0",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",

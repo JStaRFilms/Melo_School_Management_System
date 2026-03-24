@@ -259,6 +259,13 @@ Each school has one active exam input mode for this v1.
 - May edit any exam-entry sheet in the same school
 - May manage school settings and grading bands
 
+## Live Auth Integration
+
+- In live mode, the admin and teacher apps proxy Better Auth requests through local `/api/auth` routes to the Convex deployment.
+- Convex resolves authenticated identities through Better Auth's Convex provider, so `ctx.auth.getUserIdentity()` is available to the exam-recording backend.
+- Membership and role resolution continues through the app `users` table using `users.authId`.
+- Preview mode remains available when `NEXT_PUBLIC_CONVEX_URL` is not configured, so the UI can still be exercised before full Convex wiring is finished.
+
 ## Audit Fields
 
 The feature should be audit-ready even before full moderation exists.

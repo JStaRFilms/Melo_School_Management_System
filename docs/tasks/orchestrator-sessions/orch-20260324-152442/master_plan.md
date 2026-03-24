@@ -109,7 +109,7 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 - [x] `T07` Shared/backend implementation complete
 - [x] `T08` Teacher app implementation complete
 - [x] `T09` Admin app implementation complete
-- [ ] `T11` Auth and membership integration complete
+- [x] `T11` Auth and membership integration complete
 - [ ] `T12` Convex project wiring and codegen complete
 - [ ] `T13` Seed live exam-recording data complete
 - [ ] `T14` Live integration verification complete
