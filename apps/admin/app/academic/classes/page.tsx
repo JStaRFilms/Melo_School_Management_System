@@ -15,7 +15,7 @@ type ClassSummary = {
   _id: string;
   name: string;
   level: string;
-  gradeName: string;
+  gradeName?: string;
   classLabel?: string;
   formTeacherId?: string;
   formTeacherName?: string;
@@ -109,7 +109,7 @@ export default function ClassesPage() {
       return;
     }
 
-    setSelectedGradeName(currentClass.gradeName);
+    setSelectedGradeName(currentClass.gradeName ?? currentClass.name);
     setSelectedClassLabel(currentClass.classLabel ?? "");
     setSelectedFormTeacherId(currentClass.formTeacherId ?? "");
   }, [currentClass]);
@@ -197,7 +197,16 @@ export default function ClassesPage() {
   };
 
   const handleSaveClassConfig = async () => {
-    if (!selectedClassId) {
+    if (!selectedClassId || !currentClass) {
+      return;
+    }
+
+    const normalizedGradeName = humanNameFinal(
+      selectedGradeName ?? currentClass.gradeName ?? currentClass.name
+    );
+    const normalizedClassLabel = humanNameFinal(selectedClassLabel ?? "");
+    if (!normalizedGradeName) {
+      setError("Class grade name is required");
       return;
     }
 
@@ -207,8 +216,8 @@ export default function ClassesPage() {
     try {
       await updateClass({
         classId: selectedClassId,
-        gradeName: humanNameFinal(selectedGradeName),
-        classLabel: humanNameFinal(selectedClassLabel) || null,
+        gradeName: normalizedGradeName,
+        classLabel: normalizedClassLabel || null,
         formTeacherId: selectedFormTeacherId || null,
       } as never);
       await setClassSubjects({
