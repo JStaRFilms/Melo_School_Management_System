@@ -6,7 +6,7 @@ import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
 } from "./auth";
-import { formatClassDisplayName, normalizeHumanName } from "@school/shared";
+import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 
 export const getTeacherSessions = query({
   args: {},
@@ -19,6 +19,7 @@ export const getTeacherSessions = query({
       .collect();
 
     return sessions
+      .filter((session: any) => !session.isArchived)
       .sort((a: any, b: any) => b.startDate - a.startDate)
       .map((session: any) => ({
         _id: session._id,
@@ -34,7 +35,7 @@ export const getTermsBySession = query({
     const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
     const session = await ctx.db.get(args.sessionId);
 
-    if (!session || session.schoolId !== schoolId) {
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -66,6 +67,7 @@ export const getTeacherAssignableClasses = query({
         .collect();
 
       return classes
+        .filter((classDoc: any) => !classDoc.isArchived)
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((classDoc: any) => ({
           _id: classDoc._id,
@@ -87,7 +89,12 @@ export const getTeacherAssignableClasses = query({
     );
 
     return classes
-      .filter((classDoc: any) => classDoc && classDoc.schoolId === schoolId)
+      .filter(
+        (classDoc: any) =>
+          classDoc &&
+          classDoc.schoolId === schoolId &&
+          !classDoc.isArchived
+      )
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((classDoc: any) => ({
         _id: classDoc._id,
@@ -107,7 +114,7 @@ export const getTeacherAssignableSubjectsByClass = query({
     const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
     const classDoc = await ctx.db.get(args.classId);
 
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -118,6 +125,7 @@ export const getTeacherAssignableSubjectsByClass = query({
         .collect();
 
       return subjects
+        .filter((subject: any) => !subject.isArchived)
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((subject: any) => ({
           id: subject._id,
@@ -141,7 +149,12 @@ export const getTeacherAssignableSubjectsByClass = query({
     );
 
     return subjects
-      .filter((subject: any) => subject && subject.schoolId === schoolId)
+      .filter(
+        (subject: any) =>
+          subject &&
+          subject.schoolId === schoolId &&
+          !subject.isArchived
+      )
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((subject: any) => ({
         id: subject._id,

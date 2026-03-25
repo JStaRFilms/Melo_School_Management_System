@@ -9,6 +9,7 @@ import {
   Plus,
   Users2,
 } from "lucide-react";
+import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type ClassSummary = {
@@ -66,6 +67,9 @@ export default function ClassesPage() {
   );
   const updateClass = useMutation(
     "functions/academic/academicSetup:updateClass" as never
+  );
+  const archiveClass = useMutation(
+    "functions/academic/academicSetup:archiveClass" as never
   );
   const setClassSubjects = useMutation(
     "functions/academic/academicSetup:setClassSubjects" as never
@@ -190,7 +194,7 @@ export default function ClassesPage() {
       setBuilderSubjectIds([]);
       setSuccessMessage("Class blueprint saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create class");
+      setError(getUserFacingErrorMessage(err, "Failed to create class"));
     } finally {
       setIsSubmitting(false);
     }
@@ -226,9 +230,30 @@ export default function ClassesPage() {
       } as never);
       setSuccessMessage("Class configuration updated.");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save class blueprint"
-      );
+      setError(getUserFacingErrorMessage(err, "Failed to save class blueprint"));
+    } finally {
+      setIsSavingClassConfig(false);
+    }
+  };
+
+  const handleArchiveSelectedClass = async () => {
+    if (!selectedClassId || !currentClass) {
+      return;
+    }
+
+    if (!window.confirm(`Archive ${currentClass.name}? This preserves the class for history and removes it from active setup lists.`)) {
+      return;
+    }
+
+    resetFlash();
+    setIsSavingClassConfig(true);
+
+    try {
+      await archiveClass({ classId: selectedClassId } as never);
+      setSelectedClassId(null);
+      setSuccessMessage("Class archived.");
+    } catch (err) {
+      setError(getUserFacingErrorMessage(err, "Failed to archive class"));
     } finally {
       setIsSavingClassConfig(false);
     }
@@ -249,9 +274,7 @@ export default function ClassesPage() {
       } as never);
       setSuccessMessage("Subject teacher assignment saved.");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to assign subject teacher"
-      );
+      setError(getUserFacingErrorMessage(err, "Failed to assign subject teacher"));
     }
   };
 
@@ -415,6 +438,7 @@ export default function ClassesPage() {
         setSelectedFormTeacherId={setSelectedFormTeacherId}
         onToggleSubject={handleSelectedSubjectToggle}
         onSaveClassConfig={handleSaveClassConfig}
+        onArchiveClass={handleArchiveSelectedClass}
         onAssignTeacher={handleAssignTeacher}
         onRequestCreate={scrollToBuilder}
         isSavingClassConfig={isSavingClassConfig}
@@ -447,9 +471,10 @@ export default function ClassesPage() {
           setSelectedGradeName={setSelectedGradeName}
           setSelectedClassLabel={setSelectedClassLabel}
           setSelectedFormTeacherId={setSelectedFormTeacherId}
-          onToggleSubject={handleSelectedSubjectToggle}
-          onSaveClassConfig={handleSaveClassConfig}
-          onAssignTeacher={handleAssignTeacher}
+        onToggleSubject={handleSelectedSubjectToggle}
+        onSaveClassConfig={handleSaveClassConfig}
+        onArchiveClass={handleArchiveSelectedClass}
+        onAssignTeacher={handleAssignTeacher}
           isSavingClassConfig={isSavingClassConfig}
         />
       </section>
@@ -524,6 +549,7 @@ function ClassSection({
   setSelectedFormTeacherId,
   onToggleSubject,
   onSaveClassConfig,
+  onArchiveClass,
   onAssignTeacher,
   onRequestCreate,
   isSavingClassConfig,
@@ -547,6 +573,7 @@ function ClassSection({
   setSelectedFormTeacherId: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
+  onArchiveClass: () => Promise<void>;
   onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
   onRequestCreate: () => void;
   isSavingClassConfig: boolean;
@@ -589,6 +616,7 @@ function ClassSection({
         setSelectedFormTeacherId={setSelectedFormTeacherId}
         onToggleSubject={onToggleSubject}
         onSaveClassConfig={onSaveClassConfig}
+        onArchiveClass={onArchiveClass}
         onAssignTeacher={onAssignTeacher}
         isSavingClassConfig={isSavingClassConfig}
       />
@@ -613,6 +641,7 @@ function ClassGrid({
   setSelectedFormTeacherId,
   onToggleSubject,
   onSaveClassConfig,
+  onArchiveClass,
   onAssignTeacher,
   isSavingClassConfig,
 }: {
@@ -632,6 +661,7 @@ function ClassGrid({
   setSelectedFormTeacherId: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
+  onArchiveClass: () => Promise<void>;
   onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
   isSavingClassConfig: boolean;
 }) {
@@ -665,6 +695,7 @@ function ClassGrid({
           onFormTeacherChange={setSelectedFormTeacherId}
           onToggleSubject={onToggleSubject}
           onSaveClassConfig={onSaveClassConfig}
+          onArchiveClass={onArchiveClass}
           onAssignTeacher={onAssignTeacher}
           isSavingClassConfig={isSavingClassConfig}
         />
@@ -690,6 +721,7 @@ function ClassCard({
   onFormTeacherChange,
   onToggleSubject,
   onSaveClassConfig,
+  onArchiveClass,
   onAssignTeacher,
   isSavingClassConfig,
 }: {
@@ -709,6 +741,7 @@ function ClassCard({
   onFormTeacherChange: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
+  onArchiveClass: () => Promise<void>;
   onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
   isSavingClassConfig: boolean;
 }) {
@@ -812,6 +845,15 @@ function ClassCard({
           >
             <Layers3 className="h-3.5 w-3.5 text-white/50" />
             {isSavingClassConfig ? "Saving..." : "Save Class Blueprint"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onArchiveClass}
+            disabled={isSavingClassConfig}
+            className="flex h-10 w-full items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
+          >
+            Archive Class
           </button>
 
           {currentOfferings && currentOfferings.length > 0 ? (

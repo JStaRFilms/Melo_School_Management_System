@@ -21,6 +21,9 @@ export default defineSchema({
       v.literal("teacher"),
       v.literal("admin")
     ),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -32,6 +35,15 @@ export default defineSchema({
     classId: v.id("classes"),
     userId: v.id("users"),
     admissionNumber: v.string(),
+    gender: v.optional(v.string()),
+    dateOfBirth: v.optional(v.number()),
+    guardianName: v.optional(v.string()),
+    guardianPhone: v.optional(v.string()),
+    address: v.optional(v.string()),
+    photoStorageId: v.optional(v.id("_storage")),
+    photoFileName: v.optional(v.string()),
+    photoContentType: v.optional(v.string()),
+    photoUpdatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -46,6 +58,9 @@ export default defineSchema({
     gradeName: v.optional(v.string()),
     classLabel: v.optional(v.string()),
     formTeacherId: v.optional(v.id("users")),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -55,6 +70,9 @@ export default defineSchema({
     schoolId: v.id("schools"),
     name: v.string(),
     code: v.string(),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -111,6 +129,9 @@ export default defineSchema({
     startDate: v.number(),
     endDate: v.number(),
     isActive: v.boolean(),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -202,5 +223,11 @@ export default defineSchema({
       "classId",
       "subjectId",
       "studentId",
+    ])
+    .index("by_student_and_term", [
+      "schoolId",
+      "studentId",
+      "sessionId",
+      "termId",
     ]),
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
 import type {
   StudentRosterEntry,
@@ -20,6 +21,8 @@ interface RosterGridRowProps {
   gradingBands: GradingBandResponse[];
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
+  sessionId?: string;
+  termId?: string;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -42,6 +45,8 @@ export function RosterGridRow({
   gradingBands,
   draftScores,
   validationErrors,
+  sessionId = "",
+  termId = "",
   onScoreChange,
 }: RosterGridRowProps) {
   const examMax = examInputMode === "raw40" ? 40 : 60;
@@ -81,9 +86,19 @@ export function RosterGridRow({
           <div className="w-6 h-6 rounded bg-obsidian-50 flex items-center justify-center font-bold text-[8px] text-obsidian-500">
             {getInitials(displayStudentName)}
           </div>
-          <span className="font-bold text-sm text-obsidian-900">
-            {displayStudentName}
-          </span>
+          <div>
+            <span className="font-bold text-sm text-obsidian-900">
+              {displayStudentName}
+            </span>
+            <div>
+              <Link
+                href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}`}
+                className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-600"
+              >
+                View Report Card
+              </Link>
+            </div>
+          </div>
         </div>
       </td>
 

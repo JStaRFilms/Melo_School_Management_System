@@ -1,8 +1,8 @@
 import { internalMutation } from "../../_generated/server";
 import { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { deriveAssessmentFields } from "@school/shared";
-import { normalizeHumanName, normalizePersonName } from "@school/shared";
+import { deriveAssessmentFields } from "@school/shared/exam-recording";
+import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",

@@ -19,6 +19,7 @@ import {
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FloatingNotice } from "./components/FloatingNotice";
 import { StudentCreationForm } from "./components/StudentCreationForm";
+import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import type {
   ClassSummary,
@@ -46,6 +47,7 @@ export default function StudentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
@@ -78,6 +80,19 @@ export default function StudentsPage() {
     const timeoutId = window.setTimeout(() => setNotice(null), 2800);
     return () => window.clearTimeout(timeoutId);
   }, [notice]);
+
+  useEffect(() => {
+    if (!matrix?.students.length) {
+      setSelectedStudentId(null);
+      return;
+    }
+
+    setSelectedStudentId((current) =>
+      current && matrix.students.some((student) => student._id === current)
+        ? current
+        : matrix.students[0]?._id ?? null
+    );
+  }, [matrix]);
 
   const selectedClassName =
     classes?.find((classDoc) => classDoc._id === selectedClassId)?.name ??
@@ -307,6 +322,8 @@ export default function StudentsPage() {
           totalSubjects={matrixSummary.totalSubjects}
           isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
           studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
+          selectedStudentId={selectedStudentId}
+          onSelectStudent={setSelectedStudentId}
           onToggle={(studentId, subjectId) => {
             void handleToggleSubject(studentId, subjectId);
           }}
@@ -319,6 +336,12 @@ export default function StudentsPage() {
           Select a class and session to load the enrollment grid.
         </section>
       )}
+
+      <StudentProfileEditor
+        studentId={selectedStudentId}
+        classes={classes}
+        onNotice={setNotice}
+      />
     </div>
   );
 }

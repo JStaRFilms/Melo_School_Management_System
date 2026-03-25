@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Hash, Plus, PlusSquare } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
+import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type SessionRecord = {
@@ -41,6 +42,9 @@ export default function SessionsPage() {
   const updateSession = useMutation(
     "functions/academic/academicSetup:updateSession" as never
   );
+  const archiveSession = useMutation(
+    "functions/academic/academicSetup:archiveSession" as never
+  );
   const createTerm = useMutation(
     "functions/academic/academicSetup:createTerm" as never
   );
@@ -58,6 +62,7 @@ export default function SessionsPage() {
   const [termEndDate, setTermEndDate] = useState("");
   const [activateTerm, setActivateTerm] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
@@ -123,8 +128,9 @@ export default function SessionsPage() {
       setSessionStartDate("");
       setSessionEndDate("");
       setActivateSession(true);
+      setSuccessMessage("Session created.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session");
+      setError(getUserFacingErrorMessage(err, "Failed to create session"));
     } finally {
       setIsSavingSession(false);
     }
@@ -152,8 +158,9 @@ export default function SessionsPage() {
       setTermStartDate("");
       setTermEndDate("");
       setActivateTerm(true);
+      setSuccessMessage("Term created.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create term");
+      setError(getUserFacingErrorMessage(err, "Failed to create term"));
     } finally {
       setIsSavingTerm(false);
     }
@@ -184,6 +191,7 @@ export default function SessionsPage() {
 
     setIsUpdatingSession(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       await updateSession({
@@ -192,8 +200,9 @@ export default function SessionsPage() {
         startDate: new Date(editSessionStartDate).getTime(),
         endDate: new Date(editSessionEndDate).getTime(),
       } as never);
+      setSuccessMessage("Session updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update session");
+      setError(getUserFacingErrorMessage(err, "Failed to update session"));
     } finally {
       setIsUpdatingSession(false);
     }
@@ -206,14 +215,40 @@ export default function SessionsPage() {
 
     setIsUpdatingSession(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       await updateSession({
         sessionId,
         isActive: true,
       } as never);
+      setSuccessMessage("Active session updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to activate session");
+      setError(getUserFacingErrorMessage(err, "Failed to activate session"));
+    } finally {
+      setIsUpdatingSession(false);
+    }
+  };
+
+  const handleArchiveSelectedSession = async () => {
+    if (!selectedSession) {
+      return;
+    }
+
+    if (!window.confirm(`Archive ${selectedSession.name}? This keeps the record for history and removes it from active setup lists.`)) {
+      return;
+    }
+
+    setIsUpdatingSession(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await archiveSession({ sessionId: selectedSession._id } as never);
+      setSelectedSessionId(null);
+      setSuccessMessage("Session archived.");
+    } catch (err) {
+      setError(getUserFacingErrorMessage(err, "Failed to archive session"));
     } finally {
       setIsUpdatingSession(false);
     }
@@ -232,6 +267,12 @@ export default function SessionsPage() {
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+
+      {successMessage ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {successMessage}
         </div>
       ) : null}
 
@@ -431,6 +472,19 @@ export default function SessionsPage() {
                 </button>
               ) : null}
             </div>
+
+            {!selectedSession.isActive ? (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveSelectedSession()}
+                  disabled={isUpdatingSession}
+                  className="h-11 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
+                >
+                  Archive Session
+                </button>
+              </div>
+            ) : null}
           </form>
         ) : null}
 

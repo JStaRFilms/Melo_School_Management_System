@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
 import type {
   StudentRosterEntry,
@@ -25,6 +26,8 @@ interface AdminRosterGridProps {
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
   sheetLabel: string;
+  sessionId: string;
+  termId: string;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -39,6 +42,8 @@ export function AdminRosterGrid({
   draftScores,
   validationErrors,
   sheetLabel,
+  sessionId,
+  termId,
   onScoreChange,
 }: AdminRosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -125,6 +130,8 @@ export function AdminRosterGrid({
                 gradingBands={gradingBands}
                 draftScores={draftScores}
                 validationErrors={validationErrors}
+                sessionId={sessionId}
+                termId={termId}
                 onScoreChange={onScoreChange}
               />
             ))}
@@ -187,6 +194,12 @@ export function AdminRosterGrid({
                     <h3 className="font-bold text-sm text-slate-900 leading-none">
                       {student.studentName}
                     </h3>
+                    <Link
+                      href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}`}
+                      className="mt-1 inline-flex text-[10px] font-bold uppercase tracking-[0.12em] text-indigo-600"
+                    >
+                      View Report Card
+                    </Link>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                       {student.assessmentRecord
                         ? "Standard Entry"

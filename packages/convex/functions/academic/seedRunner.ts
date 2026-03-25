@@ -2,7 +2,7 @@ import { action } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { normalizeHumanName, normalizePersonName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",

@@ -6,7 +6,7 @@ import {
   assertAdminForSchool,
   teacherHasClassAccess,
 } from "./auth";
-import { normalizeHumanName, normalizePersonName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -27,7 +27,7 @@ export const createStudent = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -81,7 +81,7 @@ export const listStudentsByClass = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -117,6 +117,14 @@ export const updateStudent = mutation({
     name: v.optional(v.string()),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
+    gender: v.optional(v.union(v.string(), v.null())),
+    dateOfBirth: v.optional(v.union(v.number(), v.null())),
+    guardianName: v.optional(v.union(v.string(), v.null())),
+    guardianPhone: v.optional(v.union(v.string(), v.null())),
+    address: v.optional(v.union(v.string(), v.null())),
+    photoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+    photoFileName: v.optional(v.union(v.string(), v.null())),
+    photoContentType: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -132,7 +140,7 @@ export const updateStudent = mutation({
     // Verify new class if changing
     if (args.classId) {
       const classDoc = await ctx.db.get(args.classId);
-      if (!classDoc || classDoc.schoolId !== schoolId) {
+      if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
         throw new ConvexError("Cross-school access denied");
       }
     }
@@ -150,19 +158,158 @@ export const updateStudent = mutation({
       }
     }
 
-    const updates: Record<string, unknown> = {};
+    const userUpdates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
     if (args.name !== undefined) {
-      await ctx.db.patch(student.userId, {
-        name: normalizePersonName(args.name),
-        updatedAt: Date.now(),
-      });
+      userUpdates.name = normalizePersonName(args.name);
     }
-    if (args.admissionNumber !== undefined) updates.admissionNumber = args.admissionNumber;
-    if (args.classId !== undefined) updates.classId = args.classId;
-    updates.updatedAt = Date.now();
+    const nextAdmissionNumber = args.admissionNumber ?? student.admissionNumber;
+    if (args.admissionNumber !== undefined) {
+      userUpdates.authId = toStudentAuthId(
+        String(schoolId),
+        args.admissionNumber
+      );
+      userUpdates.email = `${args.admissionNumber
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase()}@students.local`;
+    }
+    if (
+      args.photoStorageId === undefined &&
+      (args.photoFileName !== undefined || args.photoContentType !== undefined)
+    ) {
+      throw new ConvexError("Photo upload metadata is incomplete");
+    }
 
-    await ctx.db.patch(args.studentId, updates);
+    const nextStudentRecord: any = {
+      schoolId: student.schoolId,
+      classId: args.classId ?? student.classId,
+      userId: student.userId,
+      admissionNumber: nextAdmissionNumber,
+      createdAt: student.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    const nextGender = args.gender === undefined ? student.gender : args.gender ?? undefined;
+    const nextDateOfBirth =
+      args.dateOfBirth === undefined
+        ? student.dateOfBirth
+        : args.dateOfBirth ?? undefined;
+    const nextGuardianName =
+      args.guardianName === undefined
+        ? student.guardianName
+        : args.guardianName ?? undefined;
+    const nextGuardianPhone =
+      args.guardianPhone === undefined
+        ? student.guardianPhone
+        : args.guardianPhone ?? undefined;
+    const nextAddress =
+      args.address === undefined ? student.address : args.address ?? undefined;
+    const nextPhotoStorageId =
+      args.photoStorageId === undefined
+        ? student.photoStorageId
+        : args.photoStorageId ?? undefined;
+    const nextPhotoFileName =
+      args.photoStorageId === undefined
+        ? student.photoFileName
+        : args.photoStorageId
+          ? args.photoFileName ?? student.photoFileName
+          : undefined;
+    const nextPhotoContentType =
+      args.photoStorageId === undefined
+        ? student.photoContentType
+        : args.photoStorageId
+          ? args.photoContentType ?? student.photoContentType
+          : undefined;
+    const nextPhotoUpdatedAt =
+      args.photoStorageId === undefined
+        ? student.photoUpdatedAt
+        : args.photoStorageId
+          ? Date.now()
+          : undefined;
+
+    if (nextGender) nextStudentRecord.gender = nextGender;
+    if (nextDateOfBirth) nextStudentRecord.dateOfBirth = nextDateOfBirth;
+    if (nextGuardianName) nextStudentRecord.guardianName = nextGuardianName;
+    if (nextGuardianPhone) nextStudentRecord.guardianPhone = nextGuardianPhone;
+    if (nextAddress) nextStudentRecord.address = nextAddress;
+    if (nextPhotoStorageId) nextStudentRecord.photoStorageId = nextPhotoStorageId;
+    if (nextPhotoFileName) nextStudentRecord.photoFileName = nextPhotoFileName;
+    if (nextPhotoContentType) {
+      nextStudentRecord.photoContentType = nextPhotoContentType;
+    }
+    if (nextPhotoUpdatedAt) nextStudentRecord.photoUpdatedAt = nextPhotoUpdatedAt;
+
+    await ctx.db.patch(student.userId, userUpdates);
+    await ctx.db.replace(args.studentId, nextStudentRecord);
     return null;
+  },
+});
+
+export const getStudentProfile = query({
+  args: { studentId: v.id("students") },
+  returns: v.object({
+    _id: v.id("students"),
+    name: v.string(),
+    admissionNumber: v.string(),
+    classId: v.id("classes"),
+    className: v.string(),
+    gender: v.union(v.string(), v.null()),
+    dateOfBirth: v.union(v.number(), v.null()),
+    guardianName: v.union(v.string(), v.null()),
+    guardianPhone: v.union(v.string(), v.null()),
+    address: v.union(v.string(), v.null()),
+    photoUrl: v.union(v.string(), v.null()),
+    photoFileName: v.union(v.string(), v.null()),
+    photoContentType: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) {
+      throw new ConvexError("Student not found");
+    }
+
+    const [studentUser, classDoc, photoUrl] = await Promise.all([
+      ctx.db.get(student.userId),
+      ctx.db.get(student.classId),
+      student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+    ]);
+
+    if (!classDoc || classDoc.schoolId !== schoolId) {
+      throw new ConvexError("Student class not found");
+    }
+
+    return {
+      _id: student._id,
+      name: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
+      admissionNumber: student.admissionNumber,
+      classId: student.classId,
+      className: normalizeHumanName(classDoc.name),
+      gender: student.gender ?? null,
+      dateOfBirth: student.dateOfBirth ?? null,
+      guardianName: student.guardianName ?? null,
+      guardianPhone: student.guardianPhone ?? null,
+      address: student.address ?? null,
+      photoUrl,
+      photoFileName: student.photoFileName ?? null,
+      photoContentType: student.photoContentType ?? null,
+    };
+  },
+});
+
+export const generateStudentPhotoUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    return await ctx.storage.generateUploadUrl();
   },
 });
 
@@ -235,12 +382,12 @@ export const setStudentSubjectSelections = mutation({
     }
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -279,7 +426,7 @@ export const setStudentSubjectSelections = mutation({
       seenSubjectIds.add(subjectKey);
 
       const subject = await ctx.db.get(subjectId);
-      if (!subject || subject.schoolId !== schoolId) {
+      if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
         throw new ConvexError("Cross-school access denied for subject");
       }
 
@@ -343,7 +490,7 @@ export const getStudentSubjectSelections = query({
     }
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -357,7 +504,7 @@ export const getStudentSubjectSelections = query({
     const results = [];
     for (const selection of selections) {
       const subject = await ctx.db.get(selection.subjectId);
-      if (!subject) continue;
+      if (!subject || subject.isArchived) continue;
 
       results.push({
         _id: selection._id,
@@ -415,7 +562,7 @@ export const getClassStudentSubjectMatrix = query({
     }
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -428,7 +575,7 @@ export const getClassStudentSubjectMatrix = query({
     const subjects = [];
     for (const offering of offerings) {
       const subject = await ctx.db.get(offering.subjectId);
-      if (subject) {
+      if (subject && !subject.isArchived) {
         subjects.push({
           _id: subject._id,
             name: normalizeHumanName(subject.name),

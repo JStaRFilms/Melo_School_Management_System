@@ -5,7 +5,7 @@ import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
 } from "./auth";
-import { formatClassDisplayName, normalizeHumanName } from "@school/shared";
+import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 
 export const getAdminSessions = query({
   args: {},
@@ -20,6 +20,7 @@ export const getAdminSessions = query({
       .collect();
 
     return sessions
+      .filter((session: any) => !session.isArchived)
       .sort((a: any, b: any) => b.startDate - a.startDate)
       .map((session: any) => ({
         id: session._id,
@@ -36,7 +37,7 @@ export const getTermsBySession = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -68,6 +69,7 @@ export const getAllClasses = query({
       .collect();
 
     return classes
+      .filter((classDoc: any) => !classDoc.isArchived)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((classDoc: any) => ({
         id: classDoc._id,
@@ -88,7 +90,7 @@ export const getSubjectsByClass = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -98,6 +100,7 @@ export const getSubjectsByClass = query({
       .collect();
 
     return subjects
+      .filter((subject: any) => !subject.isArchived)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((subject: any) => ({
         id: subject._id,

@@ -5,7 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
-import { validateGradingBands } from "@school/shared";
+import { validateGradingBands } from "@school/shared/exam-recording";
 
 /**
  * Get active grading bands for a school

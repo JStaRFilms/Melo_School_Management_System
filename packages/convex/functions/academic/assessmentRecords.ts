@@ -9,11 +9,12 @@ import {
 import {
   validateScoreRanges,
   deriveAssessmentFields,
-  ExamInputMode,
-  GradingBand,
+} from "@school/shared/exam-recording";
+import type { ExamInputMode, GradingBand } from "@school/shared/exam-recording";
+import {
   normalizeHumanName,
   normalizePersonName,
-} from "@school/shared";
+} from "@school/shared/name-format";
 
 /**
  * Get exam entry sheet with roster, existing scores, settings, and bands
@@ -107,19 +108,19 @@ export const getExamEntrySheet = query({
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     // Verify subject belongs to user's school
     const subjectDoc = await ctx.db.get(args.subjectId);
-    if (!subjectDoc || subjectDoc.schoolId !== schoolId) {
+    if (!subjectDoc || subjectDoc.schoolId !== schoolId || subjectDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     // Verify session belongs to user's school
     const sessionDoc = await ctx.db.get(args.sessionId);
-    if (!sessionDoc || sessionDoc.schoolId !== schoolId) {
+    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -254,19 +255,19 @@ export const upsertAssessmentRecordsBulk = mutation({
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     // Verify subject belongs to user's school
     const subjectDoc = await ctx.db.get(args.subjectId);
-    if (!subjectDoc || subjectDoc.schoolId !== schoolId) {
+    if (!subjectDoc || subjectDoc.schoolId !== schoolId || subjectDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     // Verify session belongs to user's school
     const sessionDoc = await ctx.db.get(args.sessionId);
-    if (!sessionDoc || sessionDoc.schoolId !== schoolId) {
+    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 

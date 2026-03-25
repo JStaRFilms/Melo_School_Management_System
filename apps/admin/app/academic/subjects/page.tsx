@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpenText, Plus, Shapes } from "lucide-react";
+import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type SubjectRecord = {
@@ -22,6 +23,9 @@ export default function SubjectsPage() {
   );
   const updateSubject = useMutation(
     "functions/academic/academicSetup:updateSubject" as never
+  );
+  const archiveSubject = useMutation(
+    "functions/academic/academicSetup:archiveSubject" as never
   );
 
   const [name, setName] = useState("");
@@ -77,7 +81,7 @@ export default function SubjectsPage() {
       setCode("");
       setSuccessMessage("Subject catalog updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create subject");
+      setError(getUserFacingErrorMessage(err, "Failed to create subject"));
     } finally {
       setIsSubmitting(false);
     }
@@ -107,7 +111,35 @@ export default function SubjectsPage() {
       } as never);
       setSuccessMessage("Subject updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update subject");
+      setError(
+        getUserFacingErrorMessage(err, "Failed to update subject")
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleArchiveSubject = async () => {
+    if (!selectedSubject) {
+      return;
+    }
+
+    if (!window.confirm(`Archive ${selectedSubject.name}? This keeps the record for history and removes it from active setup.`)) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+    setIsUpdating(true);
+
+    try {
+      await archiveSubject({ subjectId: selectedSubject._id } as never);
+      setSelectedSubjectId(null);
+      setSuccessMessage("Subject archived.");
+    } catch (err) {
+      setError(
+        getUserFacingErrorMessage(err, "Failed to archive subject")
+      );
     } finally {
       setIsUpdating(false);
     }
@@ -306,6 +338,17 @@ export default function SubjectsPage() {
               {isUpdating ? "Saving..." : "Save Subject"}
             </button>
           </form>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleArchiveSubject()}
+              disabled={isUpdating}
+              className="flex h-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
+            >
+              Archive Subject
+            </button>
+          </div>
         </section>
       ) : null}
     </div>

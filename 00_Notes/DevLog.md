@@ -27,4 +27,10 @@ I noticed that when I'm on the student route, the academic student route, I have
 
 [ ] I should be able to cleanly edit the details of a student not just their subjects
 
-[-] The admin and switch-areas pages need a single unified nav bar. Right now it’s patchy: some options appear, others vanish, and you get yanked around to different places. Build one shared nav bar that works for admin, students, and teachers.
+[x] The admin and switch-areas pages need a single unified nav bar. Right now it’s patchy: some options appear, others vanish, and you get yanked around to different places. Build one shared nav bar that works for admin, students, and teachers.
+
+[ ] We need to set up archive-only deletion for subjects, sessions, teachers, and classes: instead of deleting, archive the records so sensitive data is never lost. Make sure error handling covers all cases. Also, I should be able to edit the students' details later.
+
+[ ] You can set a finalizing date. Once it's set, nobody can edit after that point. You could also set it so people can only edit the exams between certain dates. The admin controls that, so it's secure. Nobody can just edit it. It's an option they can turn on or off.
+
+[ ] I can also add a dedicated “archived records” admin view next, so archived subjects/classes/teachers/sessions are browsable without restoring delete behavior.

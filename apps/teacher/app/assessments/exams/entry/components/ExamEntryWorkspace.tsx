@@ -366,6 +366,8 @@ export function ExamEntryWorkspace({
           gradingBands={sheetData?.gradingBands ?? []}
           draftScores={draftScores}
           validationErrors={validationErrors}
+          sessionId={selection.sessionId ?? ""}
+          termId={selection.termId ?? ""}
           onScoreChange={handleScoreChange}
         />
       )}

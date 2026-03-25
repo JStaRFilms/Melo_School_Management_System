@@ -592,6 +592,8 @@ function AdminScoreEntryContent({
           draftScores={draftScores}
           validationErrors={validationErrors}
           sheetLabel={sheetLabel}
+          sessionId={selection.sessionId ?? ""}
+          termId={selection.termId ?? ""}
           onScoreChange={handleScoreChange}
         />
       )}

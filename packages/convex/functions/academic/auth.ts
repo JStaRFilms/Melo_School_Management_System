@@ -25,6 +25,10 @@ export async function getAuthenticatedSchoolMembership(
     throw new ConvexError("School membership not found");
   }
 
+  if (user.isArchived) {
+    throw new ConvexError("Your account has been archived");
+  }
+
   return {
     userId: user._id,
     schoolId: user.schoolId,
@@ -73,13 +77,30 @@ export async function getTeacherAssignableClassIds(
     .query("classes")
     .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
     .collect();
+  const schoolSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
+
+  const activeClassIds = new Set(
+    schoolClasses
+      .filter((classDoc: any) => !classDoc.isArchived)
+      .map((classDoc: any) => String(classDoc._id))
+  );
+  const activeSubjectIds = new Set(
+    schoolSubjects
+      .filter((subject: any) => !subject.isArchived)
+      .map((subject: any) => String(subject._id))
+  );
 
   const classIds = new Set<string>();
 
   for (const assignment of teacherAssignments) {
     if (
       String(assignment.schoolId) === String(schoolId) &&
-      linkedTeacherIds.has(String(assignment.teacherId))
+      linkedTeacherIds.has(String(assignment.teacherId)) &&
+      activeClassIds.has(String(assignment.classId)) &&
+      activeSubjectIds.has(String(assignment.subjectId))
     ) {
       classIds.add(String(assignment.classId));
     }
@@ -87,6 +108,8 @@ export async function getTeacherAssignableClassIds(
 
   for (const offering of classOfferings) {
     if (
+      activeClassIds.has(String(offering.classId)) &&
+      activeSubjectIds.has(String(offering.subjectId)) &&
       offering.teacherId &&
       linkedTeacherIds.has(String(offering.teacherId))
     ) {
@@ -96,6 +119,7 @@ export async function getTeacherAssignableClassIds(
 
   for (const classDoc of schoolClasses) {
     if (
+      !classDoc.isArchived &&
       classDoc.formTeacherId &&
       linkedTeacherIds.has(String(classDoc.formTeacherId))
     ) {
@@ -114,6 +138,9 @@ export async function getTeacherAssignableSubjectIds(
 ): Promise<Array<Id<"subjects">>> {
   const linkedTeacherIds = await getLinkedTeacherIds(ctx, teacherId, schoolId);
   const classDoc = await ctx.db.get(classId);
+  if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
+    return [];
+  }
   const teacherAssignments = await ctx.db
     .query("teacherAssignments")
     .withIndex("by_teacher_and_class", (q: any) =>
@@ -124,13 +151,24 @@ export async function getTeacherAssignableSubjectIds(
     .query("classSubjects")
     .withIndex("by_class", (q: any) => q.eq("classId", classId))
     .collect();
+  const schoolSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
+
+  const activeSubjectIds = new Set(
+    schoolSubjects
+      .filter((subject: any) => !subject.isArchived)
+      .map((subject: any) => String(subject._id))
+  );
 
   const subjectIds = new Set<string>();
 
   for (const assignment of teacherAssignments) {
     if (
       String(assignment.schoolId) === String(schoolId) &&
-      linkedTeacherIds.has(String(assignment.teacherId))
+      linkedTeacherIds.has(String(assignment.teacherId)) &&
+      activeSubjectIds.has(String(assignment.subjectId))
     ) {
       subjectIds.add(String(assignment.subjectId));
     }
@@ -139,6 +177,7 @@ export async function getTeacherAssignableSubjectIds(
   for (const offering of classOfferings) {
     if (
       String(offering.schoolId) === String(schoolId) &&
+      activeSubjectIds.has(String(offering.subjectId)) &&
       offering.teacherId &&
       linkedTeacherIds.has(String(offering.teacherId))
     ) {
@@ -154,7 +193,10 @@ export async function getTeacherAssignableSubjectIds(
 
   if (isFormTeacher) {
     for (const offering of classOfferings) {
-      if (String(offering.schoolId) === String(schoolId)) {
+      if (
+        String(offering.schoolId) === String(schoolId) &&
+        activeSubjectIds.has(String(offering.subjectId))
+      ) {
         subjectIds.add(String(offering.subjectId));
       }
     }
@@ -181,6 +223,15 @@ async function teacherHasClassSubjectAccess(
   subjectId: Id<"subjects">
 ): Promise<boolean> {
   const classDoc = await ctx.db.get(classId);
+  const subjectDoc = await ctx.db.get(subjectId);
+  if (
+    !classDoc ||
+    classDoc.isArchived ||
+    !subjectDoc ||
+    subjectDoc.isArchived
+  ) {
+    return false;
+  }
   const schoolId = classDoc?.schoolId;
   const linkedTeacherIds = schoolId
     ? await getLinkedTeacherIds(ctx, teacherId, schoolId)
@@ -201,6 +252,7 @@ async function teacherHasClassSubjectAccess(
 
   if (
     classDoc &&
+    !classDoc.isArchived &&
     classDoc.formTeacherId &&
     linkedTeacherIds.has(String(classDoc.formTeacherId))
   ) {
@@ -238,7 +290,7 @@ async function getLinkedTeacherIds(
   const teacherIds = new Set<string>([String(teacherId)]);
   const currentTeacher = await ctx.db.get(teacherId);
 
-  if (!currentTeacher?.email) {
+  if (!currentTeacher?.email || currentTeacher.isArchived) {
     return teacherIds;
   }
 
@@ -250,6 +302,7 @@ async function getLinkedTeacherIds(
   for (const user of schoolUsers) {
     if (
       user.role === "teacher" &&
+      !user.isArchived &&
       typeof user.email === "string" &&
       user.email.toLowerCase() === currentTeacher.email.toLowerCase()
     ) {

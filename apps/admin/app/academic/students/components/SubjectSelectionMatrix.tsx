@@ -10,6 +10,8 @@ interface SubjectSelectionMatrixProps {
   totalSubjects: number;
   isIssueVisible: boolean;
   studentsWithNoSubjects: number;
+  selectedStudentId?: string | null;
+  onSelectStudent?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -20,6 +22,8 @@ export function SubjectSelectionMatrix({
   totalSubjects,
   isIssueVisible,
   studentsWithNoSubjects,
+  selectedStudentId,
+  onSelectStudent,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionMatrixProps) {
@@ -88,7 +92,9 @@ export function SubjectSelectionMatrix({
                   {matrix.students.map((student) => (
                     <tr
                       key={student._id}
-                      className="transition-colors hover:bg-slate-50"
+                      className={`transition-colors hover:bg-slate-50 ${
+                        selectedStudentId === student._id ? "bg-indigo-50/60" : ""
+                      }`}
                     >
                       <td className="sticky left-0 z-20 border-r-2 border-r-slate-100 bg-white p-4">
                         <div className="flex items-center gap-3">
@@ -97,9 +103,15 @@ export function SubjectSelectionMatrix({
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="truncate">
-                              <p className="truncate text-sm font-semibold text-slate-950">
-                                {humanNameFinalStrict(student.studentName)}
-                              </p>
+                              <button
+                                type="button"
+                                onClick={() => onSelectStudent?.(student._id)}
+                                className="truncate text-left"
+                              >
+                                <p className="truncate text-sm font-semibold text-slate-950">
+                                  {humanNameFinalStrict(student.studentName)}
+                                </p>
+                              </button>
                               <p className="truncate text-[10px] font-bold uppercase tracking-tight text-slate-400">
                                 {student.admissionNumber}
                               </p>

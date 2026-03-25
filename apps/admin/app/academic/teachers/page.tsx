@@ -1,8 +1,9 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { KeyRound, Mail, Search, Send, UserPlus } from "lucide-react";
+import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
 
 type TeacherRecord = {
@@ -49,6 +50,9 @@ export default function TeachersPage() {
   );
   const resetTeacherPassword = useAction(
     "functions/academic/academicSetup:resetTeacherPassword" as never
+  );
+  const archiveTeacher = useMutation(
+    "functions/academic/academicSetup:archiveTeacher" as never
   );
 
   const [name, setName] = useState("");
@@ -154,7 +158,7 @@ export default function TeachersPage() {
       } as never);
       setSuccessMessage("Teacher profile updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update teacher");
+      setError(getUserFacingErrorMessage(err, "Failed to update teacher"));
     } finally {
       setIsSavingProfile(false);
     }
@@ -179,9 +183,34 @@ export default function TeachersPage() {
         `Password reset for ${selectedTeacher.email}. Existing sessions were revoked.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password");
+      setError(getUserFacingErrorMessage(err, "Failed to reset password"));
     } finally {
       setIsResettingPassword(false);
+    }
+  };
+
+  const handleArchiveTeacher = async () => {
+    if (!selectedTeacher) {
+      return;
+    }
+
+    if (!window.confirm(`Archive ${selectedTeacher.name}? This preserves the record for history and removes active teaching access.`)) {
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setError(null);
+    setResult(null);
+    setSuccessMessage(null);
+
+    try {
+      await archiveTeacher({ teacherId: selectedTeacher._id } as never);
+      setSelectedTeacherId(null);
+      setSuccessMessage("Teacher archived.");
+    } catch (err) {
+      setError(getUserFacingErrorMessage(err, "Failed to archive teacher"));
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -452,6 +481,17 @@ export default function TeachersPage() {
               </button>
             </div>
           </form>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleArchiveTeacher()}
+              disabled={isSavingProfile}
+              className="h-11 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
+            >
+              Archive Teacher
+            </button>
+          </div>
         </section>
       ) : null}
 

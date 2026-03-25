@@ -14,7 +14,7 @@ import {
   normalizeClassLabel,
   normalizeHumanName,
   normalizePersonName,
-} from "@school/shared";
+} from "@school/shared/name-format";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -200,7 +200,12 @@ export const listTeachers = query({
     const teachers = await ctx.db
       .query("users")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.eq(q.field("role"), "teacher"))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("role"), "teacher"),
+          q.neq(q.field("isArchived"), true)
+        )
+      )
       .collect();
 
     return teachers
@@ -227,7 +232,12 @@ export const getTeacherRecordInternal = internalQuery({
   }),
   handler: async (ctx, args) => {
     const teacher = await ctx.db.get(args.teacherId);
-    if (!teacher || teacher.schoolId !== args.schoolId || teacher.role !== "teacher") {
+    if (
+      !teacher ||
+      teacher.schoolId !== args.schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
       throw new ConvexError("Teacher not found");
     }
 
@@ -260,6 +270,7 @@ export const findTeacherByEmailInternal = internalQuery({
       .filter((q) =>
         q.and(
           q.eq(q.field("role"), "teacher"),
+          q.neq(q.field("isArchived"), true),
           q.eq(q.field("email"), normalizedEmail)
         )
       )
@@ -286,7 +297,12 @@ export const updateTeacherRecordInternal = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const teacher = await ctx.db.get(args.teacherId);
-    if (!teacher || teacher.schoolId !== args.schoolId || teacher.role !== "teacher") {
+    if (
+      !teacher ||
+      teacher.schoolId !== args.schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
       throw new ConvexError("Teacher not found");
     }
 
@@ -426,6 +442,87 @@ export const resetTeacherPassword = action({
   },
 });
 
+export const archiveTeacher = mutation({
+  args: { teacherId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const teacher = await ctx.db.get(args.teacherId);
+    if (
+      !teacher ||
+      teacher.schoolId !== schoolId ||
+      teacher.role !== "teacher"
+    ) {
+      throw new ConvexError("Teacher not found");
+    }
+
+    if (teacher.isArchived) {
+      throw new ConvexError("Teacher is already archived");
+    }
+
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+    for (const classDoc of classes) {
+      if (String(classDoc.formTeacherId) !== String(args.teacherId)) {
+        continue;
+      }
+
+      await ctx.db.replace(classDoc._id, {
+        schoolId: classDoc.schoolId,
+        name: classDoc.name,
+        level: classDoc.level,
+        gradeName: classDoc.gradeName,
+        classLabel: classDoc.classLabel,
+        isArchived: classDoc.isArchived ?? false,
+        archivedAt: classDoc.archivedAt,
+        archivedBy: classDoc.archivedBy,
+        createdAt: classDoc.createdAt,
+        updatedAt: Date.now(),
+      });
+    }
+
+    const classSubjects = await ctx.db
+      .query("classSubjects")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+    for (const offering of classSubjects) {
+      if (String(offering.teacherId) !== String(args.teacherId)) {
+        continue;
+      }
+
+      await ctx.db.replace(offering._id, {
+        schoolId: offering.schoolId,
+        classId: offering.classId,
+        subjectId: offering.subjectId,
+        createdAt: offering.createdAt,
+        updatedAt: Date.now(),
+      });
+    }
+
+    const teacherAssignments = await ctx.db
+      .query("teacherAssignments")
+      .withIndex("by_teacher", (q) => q.eq("teacherId", args.teacherId))
+      .collect();
+    for (const assignment of teacherAssignments) {
+      await ctx.db.delete(assignment._id);
+    }
+
+    await ctx.db.patch(args.teacherId, {
+      isArchived: true,
+      archivedAt: Date.now(),
+      archivedBy: userId,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
 // ==================== SESSION MANAGEMENT ====================
 
 export const createSession = mutation({
@@ -469,6 +566,7 @@ export const createSession = mutation({
       startDate: args.startDate,
       endDate: args.endDate,
       isActive: args.isActive,
+      isArchived: false,
       createdAt: now,
       updatedAt: now,
     });
@@ -498,6 +596,7 @@ export const listSessions = query({
       .collect();
 
     return sessions
+      .filter((session) => !session.isArchived)
       .sort((a, b) => b.startDate - a.startDate)
       .map((s) => ({
         _id: s._id,
@@ -586,7 +685,7 @@ export const updateSession = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -626,6 +725,37 @@ export const updateSession = mutation({
     }
 
     await ctx.db.patch(args.sessionId, updates);
+    return null;
+  },
+});
+
+export const archiveSession = mutation({
+  args: { sessionId: v.id("academicSessions") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    if (session.isArchived) {
+      throw new ConvexError("Session is already archived");
+    }
+
+    if (session.isActive) {
+      throw new ConvexError("Active sessions cannot be archived");
+    }
+
+    await ctx.db.patch(args.sessionId, {
+      isArchived: true,
+      archivedAt: Date.now(),
+      archivedBy: userId,
+      updatedAt: Date.now(),
+    });
     return null;
   },
 });
@@ -755,6 +885,7 @@ export const createSubject = mutation({
       schoolId,
       name: normalizeHumanName(args.name),
       code: args.code,
+      isArchived: false,
       createdAt: now,
       updatedAt: now,
     });
@@ -782,6 +913,7 @@ export const listSubjects = query({
       .collect();
 
     return subjects
+      .filter((subject) => !subject.isArchived)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((s) => ({
         _id: s._id,
@@ -805,7 +937,7 @@ export const updateSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId) {
+    if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -832,7 +964,7 @@ export const updateSubject = mutation({
   },
 });
 
-export const deleteSubject = mutation({
+export const archiveSubject = mutation({
   args: { subjectId: v.id("subjects") },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -845,22 +977,21 @@ export const deleteSubject = mutation({
       throw new ConvexError("Cross-school access denied");
     }
 
-    // Check for existing class-subject offerings
-    const offerings = await ctx.db
-      .query("classSubjects")
-      .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
-      .first();
-
-    if (offerings) {
-      throw new ConvexError(
-        "Cannot delete subject with existing class offerings"
-      );
+    if (subject.isArchived) {
+      throw new ConvexError("Subject is already archived");
     }
 
-    await ctx.db.delete(args.subjectId);
+    await ctx.db.patch(args.subjectId, {
+      isArchived: true,
+      archivedAt: Date.now(),
+      archivedBy: userId,
+      updatedAt: Date.now(),
+    });
     return null;
   },
 });
+
+export const deleteSubject = archiveSubject;
 
 // ==================== CLASS MANAGEMENT ====================
 
@@ -880,7 +1011,12 @@ export const createClass = mutation({
 
     if (args.formTeacherId) {
       const teacher = await ctx.db.get(args.formTeacherId);
-      if (!teacher || teacher.schoolId !== schoolId || teacher.role !== "teacher") {
+      if (
+        !teacher ||
+        teacher.schoolId !== schoolId ||
+        teacher.role !== "teacher" ||
+        teacher.isArchived
+      ) {
         throw new ConvexError("Invalid form teacher");
       }
     }
@@ -905,6 +1041,7 @@ export const createClass = mutation({
       name: displayName,
       level: args.level,
       gradeName,
+      isArchived: false,
       ...(classLabel ? { classLabel } : {}),
       ...(args.formTeacherId ? { formTeacherId: args.formTeacherId } : {}),
       createdAt: now,
@@ -941,6 +1078,7 @@ export const listClasses = query({
 
     const results = await Promise.all(
       classes
+        .filter((classDoc) => !classDoc.isArchived)
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(async (classDoc) => {
           const [teacher, offerings, students] = await Promise.all([
@@ -961,7 +1099,9 @@ export const listClasses = query({
               await Promise.all(
                 offerings.map(async (offering) => {
                   const subject = await ctx.db.get(offering.subjectId);
-                  return subject?.name ? normalizeHumanName(subject.name) : null;
+                  return subject?.name && !subject.isArchived
+                    ? normalizeHumanName(subject.name)
+                    : null;
                 })
               )
             ).filter((name): name is string => Boolean(name));
@@ -976,8 +1116,11 @@ export const listClasses = query({
               level: classDoc.level,
               gradeName: getStoredGradeName(classDoc),
               classLabel: getStoredClassLabel(classDoc),
-              formTeacherId: classDoc.formTeacherId,
-        formTeacherName: teacher?.name ? normalizePersonName(teacher.name) : undefined,
+              formTeacherId: teacher?.isArchived ? undefined : classDoc.formTeacherId,
+              formTeacherName:
+                teacher?.name && !teacher.isArchived
+                  ? normalizePersonName(teacher.name)
+                  : undefined,
               subjectNames,
               studentCount: students.length,
               createdAt: classDoc.createdAt,
@@ -1049,13 +1192,18 @@ export const updateClass = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     if (args.formTeacherId) {
       const teacher = await ctx.db.get(args.formTeacherId);
-      if (!teacher || teacher.schoolId !== schoolId || teacher.role !== "teacher") {
+      if (
+        !teacher ||
+        teacher.schoolId !== schoolId ||
+        teacher.role !== "teacher" ||
+        teacher.isArchived
+      ) {
         throw new ConvexError("Invalid form teacher");
       }
     }
@@ -1092,6 +1240,9 @@ export const updateClass = mutation({
         name: nextName,
         level: nextLevel,
         gradeName: nextGradeName,
+        isArchived: classDoc.isArchived ?? false,
+        ...(classDoc.archivedAt ? { archivedAt: classDoc.archivedAt } : {}),
+        ...(classDoc.archivedBy ? { archivedBy: classDoc.archivedBy } : {}),
         ...(nextClassLabel ? { classLabel: nextClassLabel } : {}),
         ...(nextFormTeacherId ? { formTeacherId: nextFormTeacherId } : {}),
         createdAt: classDoc.createdAt,
@@ -1120,6 +1271,33 @@ export const updateClass = mutation({
   },
 });
 
+export const archiveClass = mutation({
+  args: { classId: v.id("classes") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const classDoc = await ctx.db.get(args.classId);
+    if (!classDoc || classDoc.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    if (classDoc.isArchived) {
+      throw new ConvexError("Class is already archived");
+    }
+
+    await ctx.db.patch(args.classId, {
+      isArchived: true,
+      archivedAt: Date.now(),
+      archivedBy: userId,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
 // ==================== CLASS SUBJECT OFFERINGS ====================
 
 export const setClassSubjects = mutation({
@@ -1134,7 +1312,7 @@ export const setClassSubjects = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -1143,7 +1321,7 @@ export const setClassSubjects = mutation({
     // Verify all subjects belong to this school
     for (const subjectId of args.subjectIds) {
       const subject = await ctx.db.get(subjectId);
-      if (!subject || subject.schoolId !== schoolId) {
+      if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
         throw new ConvexError("Cross-school access denied for subject");
       }
     }
@@ -1231,7 +1409,7 @@ export const getClassSubjects = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -1243,12 +1421,15 @@ export const getClassSubjects = query({
     const results = [];
     for (const offering of offerings) {
       const subject = await ctx.db.get(offering.subjectId);
-      if (!subject) continue;
+      if (!subject || subject.isArchived) continue;
 
       let teacherName: string | undefined;
       if (offering.teacherId) {
         const teacher = await ctx.db.get(offering.teacherId);
-        teacherName = teacher?.name ? normalizePersonName(teacher.name) : undefined;
+        teacherName =
+          teacher?.name && !teacher.isArchived
+            ? normalizePersonName(teacher.name)
+            : undefined;
       }
 
       results.push({
@@ -1256,7 +1437,7 @@ export const getClassSubjects = query({
         subjectId: offering.subjectId,
         subjectName: normalizeHumanName(subject.name),
         subjectCode: subject.code,
-        teacherId: offering.teacherId,
+        teacherId: teacherName ? offering.teacherId : undefined,
         teacherName,
       });
     }
@@ -1278,17 +1459,22 @@ export const assignTeacherToClassSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId) {
+    if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
     const teacher = await ctx.db.get(args.teacherId);
-    if (!teacher || teacher.schoolId !== schoolId || teacher.role !== "teacher") {
+    if (
+      !teacher ||
+      teacher.schoolId !== schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
       throw new ConvexError("Invalid teacher");
     }
 
