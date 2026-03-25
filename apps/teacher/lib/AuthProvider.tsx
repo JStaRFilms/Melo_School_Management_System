@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch enriched viewer context from Convex when authenticated
   const viewerContext = useQuery(
     "functions/auth:getViewerContext" as never,
-    isConvexConfigured && session?.user ? ({} as never) : ("skip" as never)
+    isConvexConfigured() && session?.user ? ({} as never) : ("skip" as never)
   ) as { role?: string; schoolId?: string } | null | undefined;
 
   const mappedSession = useMemo(
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (session?.user as { role?: string } | undefined)?.role ?? null;
 
   const hasResolvedMembership = useMemo(() => {
-    if (!isConvexConfigured) {
+    if (!isConvexConfigured()) {
       return true;
     }
 
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isLoading =
     isPending ||
-    (isConvexConfigured && Boolean(session?.user) && !hasResolvedMembership);
+    (isConvexConfigured() && Boolean(session?.user) && !hasResolvedMembership);
 
   const value: AuthContextValue = {
     session: mappedSession,

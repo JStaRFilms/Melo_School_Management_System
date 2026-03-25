@@ -1,0 +1,321 @@
+"use client";
+
+import { useDeferredValue, useMemo, useState } from "react";
+import { useAction, useQuery } from "convex/react";
+import { Mail, Search, Send, UserPlus } from "lucide-react";
+
+type TeacherRecord = {
+  _id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+};
+
+type ProvisionResult = {
+  teacherId: string;
+  email: string;
+  temporaryPassword: string;
+};
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+export default function TeachersPage() {
+  const teachers = useQuery(
+    "functions/academic/academicSetup:listTeachers" as never
+  ) as TeacherRecord[] | undefined;
+  const createTeacher = useAction(
+    "functions/academic/academicSetup:createTeacher" as never
+  );
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ProvisionResult | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const deferredSearch = useDeferredValue(search);
+
+  const filteredTeachers = useMemo(() => {
+    if (!teachers) {
+      return [];
+    }
+
+    const query = deferredSearch.trim().toLowerCase();
+    if (!query) {
+      return teachers;
+    }
+
+    return teachers.filter(
+      (teacher) =>
+        teacher.name.toLowerCase().includes(query) ||
+        teacher.email.toLowerCase().includes(query)
+    );
+  }, [deferredSearch, teachers]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim() || !email.trim() || !temporaryPassword.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const response = (await createTeacher({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        temporaryPassword: temporaryPassword.trim(),
+        origin: window.location.origin,
+      } as never)) as ProvisionResult;
+
+      setResult(response);
+      setName("");
+      setEmail("");
+      setTemporaryPassword("Teacher123!Pass");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to provision teacher"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (teachers === undefined) {
+    return (
+      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
+        <div className="text-[#64748b]">Loading staff directory...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-28">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-4 bg-white border border-[#e2e8f0] rounded-xl shadow-sm">
+          <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.08em] block mb-1">
+            Total Staff
+          </span>
+          <span className="text-2xl font-black text-[#0f172a]">{teachers.length}</span>
+        </div>
+        <div className="p-4 bg-white border border-[#e2e8f0] rounded-xl shadow-sm">
+          <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.08em] block mb-1">
+            Live Access
+          </span>
+          <span className="text-2xl font-black text-emerald-600">{teachers.length}</span>
+        </div>
+        <div className="relative sm:col-span-1">
+          <Search className="w-4 h-4 text-[#94a3b8] absolute left-3.5 top-3.5" />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Find teacher by name..."
+            className="h-11 w-full rounded-xl border border-[#e2e8f0] bg-white pl-10 pr-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-[#f1f5f9] pt-6">
+        <h2 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
+          Faculty List
+        </h2>
+        <div className="h-11 px-4 rounded-xl bg-[#0f172a] text-white shadow-xl shadow-[#e2e8f0] flex items-center gap-2 text-xs font-bold uppercase tracking-[0.025em]">
+          <UserPlus className="w-4 h-4 text-white/50" />
+          New Faculty
+        </div>
+      </div>
+
+      <section className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
+              Create Teacher
+            </h3>
+            <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
+              Admin-only provisioning
+            </p>
+          </div>
+          <span className="text-[8px] font-extrabold uppercase tracking-[0.15em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0]">
+            Step 1 of Setup
+          </span>
+        </div>
+
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {result ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 flex flex-col gap-2">
+            <p className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-[0.15em]">
+              Provisioned Successfully
+            </p>
+            <p className="text-sm font-semibold text-emerald-900">
+              {result.email}
+            </p>
+            <p className="text-xs font-medium text-emerald-800">
+              Temporary password:{" "}
+              <span className="font-bold">{result.temporaryPassword}</span>
+            </p>
+          </div>
+        ) : null}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
+                Teacher Name
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                placeholder="Temitope Yusuf"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                placeholder="teacher@school.edu"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
+                Temporary Password
+              </label>
+              <input
+                type="text"
+                value={temporaryPassword}
+                onChange={(event) => setTemporaryPassword(event.target.value)}
+                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1.2fr_0.8fr] gap-3">
+            <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2">
+              <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em]">
+                Assignment Preview
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-white text-[#475569] border border-[#e2e8f0]">
+                  Added to school staff directory
+                </span>
+                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-white text-[#475569] border border-[#e2e8f0]">
+                  Subject assignments happen in class setup
+                </span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-[0.05em] block mb-1">
+                  Provisioning
+                </span>
+                <p className="text-xs font-bold text-emerald-900">
+                  Creates the teacher sign-in account and school membership immediately.
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  !name.trim() ||
+                  !email.trim() ||
+                  !temporaryPassword.trim()
+                }
+                className="mt-4 h-11 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 disabled:opacity-50"
+              >
+                <Send className="w-4 h-4 text-white/50" />
+                {isSubmitting ? "Creating Teacher" : "Create Teacher"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredTeachers.map((teacher) => (
+          <div
+            key={teacher._id}
+            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 space-y-4 hover:border-[#cbd5e1] hover:shadow-lg transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-[#0f172a] flex items-center justify-center text-white font-bold text-sm">
+                {getInitials(teacher.name)}
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <h4 className="font-bold text-[#0f172a] text-sm truncate">
+                  {teacher.name}
+                </h4>
+                <p className="text-[9px] font-bold text-[#94a3b8] uppercase tracking-[0.15em]">
+                  Staff Record
+                </p>
+              </div>
+              <div className="ml-auto">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 block" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em]">
+                Account Status
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569]">
+                  Teacher
+                </span>
+                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569]">
+                  Ready for assignment
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-[#f8fafc]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Mail className="w-3 h-3 text-[#cbd5e1]" />
+                <span className="text-[10px] font-medium text-[#64748b] truncate">
+                  {teacher.email}
+                </span>
+              </div>
+              <span className="text-[9px] font-medium text-[#94a3b8]">
+                {new Date(teacher.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+        ))}
+
+        {filteredTeachers.length === 0 ? (
+          <div className="bg-[#f8fafc] border-2 border-dashed border-[#e2e8f0] rounded-2xl p-4 flex flex-col items-center justify-center min-h-[160px] text-center">
+            <UserPlus className="w-6 h-6 text-[#cbd5e1] mb-3" />
+            <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-[0.15em]">
+              No Staff Match
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

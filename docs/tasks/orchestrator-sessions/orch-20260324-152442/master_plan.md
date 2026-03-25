@@ -79,7 +79,7 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 `T11`, `T12`, `T13` -> `T14`  
 `T14` -> `T10`  
 `T15` -> `T16`  
-`T10` -> `T17`
+`T16` -> `T10` -> `T17`
 
 ## Delegated Task Table
 
@@ -119,7 +119,7 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 - [x] `T13` Seed live exam-recording data complete
 - [x] `T14` Live integration verification complete
 - [x] `T15` Admin academic setup UI mockups complete
-- [ ] `T16` Admin academic setup and enrollment implementation complete
+- [x] `T16` Admin academic setup and enrollment implementation complete
 - [ ] `T10` Verification and docs sync complete
 - [ ] `T17` Platform super admin and school provisioning complete
 

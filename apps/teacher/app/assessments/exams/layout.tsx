@@ -12,7 +12,7 @@ export default function ExamLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isConvexConfigured || isLoading) {
+    if (!isConvexConfigured() || isLoading) {
       return;
     }
 
@@ -32,7 +32,7 @@ export default function ExamLayout({ children }: { children: ReactNode }) {
   };
 
   if (
-    isConvexConfigured &&
+    isConvexConfigured() &&
     (isLoading ||
       !isAuthenticated ||
       (session?.user?.role !== "teacher" && session?.user?.role !== "admin"))

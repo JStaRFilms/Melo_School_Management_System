@@ -27,5 +27,5 @@ export default function HomePage() {
     redirect("/sign-in?error=unauthorized");
   }
 
-  redirect("/assessments/exams/entry");
+  redirect("/enrollment/subjects");
 }

@@ -9,6 +9,7 @@
  */
 
 import type * as betterAuth from "../betterAuth.js";
+import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
@@ -16,6 +17,7 @@ import type * as functions_academic_gradingBands from "../functions/academic/gra
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
+import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as http from "../http.js";
@@ -28,6 +30,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   betterAuth: typeof betterAuth;
+  "functions/academic/academicSetup": typeof functions_academic_academicSetup;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
@@ -35,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/settings": typeof functions_academic_settings;
+  "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
   http: typeof http;

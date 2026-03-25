@@ -5,7 +5,7 @@ import { getAuthenticatedSchoolMembership } from "./auth";
 
 export const getTeacherSessions = query({
   args: {},
-  returns: v.array(v.object({ id: v.string(), name: v.string() })),
+  returns: v.array(v.object({ _id: v.id("academicSessions"), name: v.string() })),
   handler: async (ctx: any) => {
     const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
     const sessions = await ctx.db
@@ -15,7 +15,7 @@ export const getTeacherSessions = query({
 
     return sessions
       .sort((a: any, b: any) => b.startDate - a.startDate)
-      .map((session: any) => ({ id: session._id, name: session.name }));
+      .map((session: any) => ({ _id: session._id, name: session.name }));
   },
 });
 
@@ -44,7 +44,7 @@ export const getTermsBySession = query({
 
 export const getTeacherAssignableClasses = query({
   args: {},
-  returns: v.array(v.object({ id: v.string(), name: v.string() })),
+  returns: v.array(v.object({ _id: v.id("classes"), name: v.string() })),
   handler: async (ctx: any) => {
     const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
 
@@ -56,7 +56,7 @@ export const getTeacherAssignableClasses = query({
 
       return classes
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
-        .map((classDoc: any) => ({ id: classDoc._id, name: classDoc.name }));
+        .map((classDoc: any) => ({ _id: classDoc._id, name: classDoc.name }));
     }
 
     if (role !== "teacher") {
@@ -76,7 +76,7 @@ export const getTeacherAssignableClasses = query({
     return classes
       .filter((classDoc: any) => classDoc && classDoc.schoolId === schoolId)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((classDoc: any) => ({ id: classDoc._id, name: classDoc.name }));
+      .map((classDoc: any) => ({ _id: classDoc._id, name: classDoc.name }));
   },
 });
 

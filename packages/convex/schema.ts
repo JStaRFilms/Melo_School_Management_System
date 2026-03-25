@@ -43,6 +43,7 @@ export default defineSchema({
     schoolId: v.id("schools"),
     name: v.string(),
     level: v.string(),
+    formTeacherId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -67,7 +68,40 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_teacher", ["teacherId"])
+    .index("by_class", ["classId"])
+    .index("by_teacher_and_class", ["teacherId", "classId"])
     .index("by_teacher_and_class_and_subject", ["teacherId", "classId", "subjectId"]),
+
+  classSubjects: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    subjectId: v.id("subjects"),
+    teacherId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class", ["classId"])
+    .index("by_subject", ["subjectId"])
+    .index("by_class_and_subject", ["classId", "subjectId"]),
+
+  studentSubjectSelections: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    subjectId: v.id("subjects"),
+    sessionId: v.id("academicSessions"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_class", ["classId"])
+    .index("by_subject", ["subjectId"])
+    .index("by_session", ["sessionId"])
+    .index("by_student_and_session", ["studentId", "sessionId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_student_and_class_and_session", ["studentId", "classId", "sessionId"]),
 
   academicSessions: defineTable({
     schoolId: v.id("schools"),
