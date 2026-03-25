@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Management | OS/SCHOOL Admin</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Clean Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .class-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .class-card:hover {
+            border-color: #cbd5e1;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
+        }
+        .badge-subject {
+            font-size: 8px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.375rem;
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+        .btn-action {
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: all 0.2s;
+            gap: 0.5rem;
+        }
+        .label-precision {
+            font-size: 8px;
+            font-weight: 800;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-32">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="w-8 h-8 flex items-center justify-center text-slate-400">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col">
+                <span class="font-bold text-[10px] tracking-tight text-slate-900 uppercase">Architecture</span>
+                <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Class & Subject Offerings</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">AD</div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-8">
+
+        <!-- CLASS BUILDER -->
+        <section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Class Builder</h2>
+                    <p class="text-[10px] font-medium text-slate-400 uppercase tracking-tight mt-0.5">Create class and define subject offerings</p>
+                </div>
+                <span class="text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">Step 2 of Setup</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <span class="label-precision">Class Name</span>
+                    <div class="h-10 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-bold text-slate-900 flex items-center">Primary 5A</div>
+                </div>
+                <div>
+                    <span class="label-precision">Section</span>
+                    <div class="h-10 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-bold text-slate-900 flex items-center justify-between">
+                        <span>Primary</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300"></i>
+                    </div>
+                </div>
+                <div>
+                    <span class="label-precision">Form Teacher</span>
+                    <div class="h-10 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-bold text-slate-900 flex items-center justify-between">
+                        <span>Assign Later</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="space-y-2">
+                <span class="label-precision">Subject Offerings</span>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    <div class="px-3 py-2 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-xs font-bold text-indigo-700">Mathematics</div>
+                    <div class="px-3 py-2 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-xs font-bold text-indigo-700">English</div>
+                    <div class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500">French</div>
+                    <div class="px-3 py-2 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-xs font-bold text-indigo-700">Basic Science</div>
+                    <div class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500">Civic Education</div>
+                    <div class="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500">IRS</div>
+                    <div class="px-3 py-2 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-xs font-bold text-indigo-700">Social Studies</div>
+                    <div class="px-3 py-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-400">+ More</div>
+                </div>
+            </div>
+            <div class="flex justify-end">
+                <button class="btn-action bg-indigo-600 text-white shadow-lg shadow-indigo-100">
+                    <i data-lucide="layers-3" class="w-3.5 h-3.5 text-white/50"></i>
+                    Save Class Blueprint
+                </button>
+            </div>
+        </section>
+
+        <!-- PRIMARY SECTION -->
+        <section class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-[10px]">P</span>
+                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-[0.15em]">Primary Section</h2>
+                </div>
+                <button class="btn-action bg-slate-900 text-white shadow-xl shadow-slate-100">
+                    <i data-lucide="plus" class="w-3.5 h-3.5 text-white/40"></i>
+                    New Class
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- CLASS CARD 1 -->
+                <div class="class-card bg-white p-5 space-y-5">
+                    <div class="flex items-center justify-between">
+                        <div class="space-y-0.5">
+                            <h3 class="text-xl font-black text-slate-950 tracking-tight">Primary 4A</h3>
+                            <p class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Form Teacher: O. Adeniyi</p>
+                        </div>
+                        <div class="flex items-center gap-1 opacity-20 hover:opacity-100 transition-opacity">
+                            <button class="p-2"><i data-lucide="edit-2" class="w-4 h-4 text-slate-900"></i></button>
+                            <button class="p-2"><i data-lucide="trash-2" class="w-4 h-4 text-red-600"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <span class="label-precision">Current Offerings</span>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span class="badge-subject">Mathematics</span>
+                            <span class="badge-subject">English</span>
+                            <span class="badge-subject">Social Studies</span>
+                            <span class="badge-subject">Basic Science</span>
+                            <span class="badge-subject">+ 4 more</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-slate-50 flex items-center justify-between">
+                        <div class="space-y-0.5">
+                            <span class="label-precision">Students</span>
+                            <span class="text-[11px] font-bold text-slate-900">28 Registered</span>
+                        </div>
+                        <button class="btn-action bg-slate-50 text-slate-600 border border-slate-200">
+                            Configure Subjects
+                        </button>
+                    </div>
+                </div>
+
+                <!-- CLASS CARD 2 -->
+                <div class="class-card bg-white p-5 space-y-5">
+                    <div class="flex items-center justify-between">
+                        <div class="space-y-0.5">
+                            <h3 class="text-xl font-black text-slate-950 tracking-tight">Primary 4B</h3>
+                            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">No Form Teacher Assigned</p>
+                        </div>
+                        <div class="opacity-20 hover:opacity-100 transition-opacity flex">
+                             <button class="p-2"><i data-lucide="edit-2" class="w-4 h-4 text-slate-900"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <span class="label-precision">Current Offerings</span>
+                        <span class="text-[10px] font-bold text-slate-300 uppercase italic">Empty Set</span>
+                    </div>
+
+                    <div class="pt-4 border-t border-slate-50 flex items-center justify-between">
+                        <div class="space-y-0.5">
+                            <span class="label-precision">Students</span>
+                            <span class="text-[11px] font-bold text-slate-900">24 Registered</span>
+                        </div>
+                        <button class="btn-action bg-indigo-600 text-white shadow-lg shadow-indigo-100">
+                            Setup Offerings
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- SECONDARY SECTION -->
+        <section class="space-y-4 pt-4">
+             <div class="flex items-center justify-between border-t border-slate-100 pt-8">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-[10px]">S</span>
+                    <h2 class="text-xs font-black text-slate-900 uppercase tracking-[0.15em]">Secondary Section</h2>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- TEMPLATE FOR SECONDARY -->
+                <div class="class-card bg-white border-dashed p-5 flex flex-col items-center justify-center min-h-[160px] opacity-40 hover:opacity-100 transition-opacity cursor-pointer">
+                    <i data-lucide="layout-grid" class="w-8 h-8 text-slate-200 mb-3"></i>
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Initialize Secondary Classes</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- UNIFIED GLOBAL ACTION BAR (MOBILE AT BOTTOM) -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t border-slate-100 flex items-center justify-between sm:justify-end gap-4 z-50">
+        <div class="flex flex-col">
+            <span class="text-[10px] font-black text-slate-900 uppercase tracking-tighter italic italic">System/Structure v2.1</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 italic">Session 2025/2026 Snapshot active</span>
+        </div>
+        <button class="bg-slate-900 text-white h-12 px-10 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+            Audit Archive
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

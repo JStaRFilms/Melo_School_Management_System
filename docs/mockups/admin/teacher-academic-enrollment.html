@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subject Enrollment | Teacher Portal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Clean Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+
+        .enroll-matrix-wrapper::-webkit-scrollbar {
+            height: 4px;
+        }
+        .enroll-matrix-wrapper::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .enroll-matrix-wrapper::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 99px;
+        }
+
+        .sticky-col {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 20;
+            border-right: 2px solid #f1f5f9;
+        }
+
+        .th-enroll {
+            background-color: #f8fafc;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            font-size: 8px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #e2e8f0;
+            min-width: 60px;
+        }
+
+        .td-enroll {
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            border-bottom: 1px solid #f8fafc;
+        }
+
+        .check-pill {
+            display: inline-flex;
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid #e2e8f0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+            position: relative;
+        }
+        .check-pill.checked {
+            background-color: #4f46e5;
+            border-color: #4f46e5;
+        }
+        .check-pill.checked::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 5px;
+            border-left: 2px solid white;
+            border-bottom: 2px solid white;
+            transform: rotate(-45deg);
+            top: 4px;
+            left: 4px;
+        }
+
+        .btn-action {
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: all 0.2s;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-32">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="w-8 h-8 flex items-center justify-center text-slate-400">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col">
+                <span class="font-bold text-[10px] tracking-tight text-slate-900 uppercase">Primary 4A</span>
+                <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Subject Selection (Teacher Edit)</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">OA</div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto py-6 px-4 md:px-6 space-y-6">
+
+        <!-- CONTEXT / PERMISSION BANNER -->
+        <div class="bg-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-white/60"></i>
+                </div>
+                <div class="space-y-0.5">
+                    <h1 class="text-sm font-extrabold uppercase tracking-tight">Teacher Control Mode</h1>
+                    <p class="text-[9px] font-medium text-white/70 uppercase tracking-widest leading-none">Permission: Assigned Subject Overwrite only</p>
+                </div>
+            </div>
+            <p class="text-[8px] font-extrabold uppercase italic hidden sm:block">ID: OA-2025-001</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+            <div class="space-y-1">
+                <h2 class="text-xs font-extrabold text-slate-900 uppercase tracking-widest">Roster Lock</h2>
+                <p class="text-[10px] font-medium text-slate-400 uppercase tracking-tight">Students are created by admin. Teacher edits subject ticks only for Primary 4A.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[8px] font-extrabold uppercase tracking-widest border border-slate-200">Add Student Disabled</span>
+                <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[8px] font-extrabold uppercase tracking-widest border border-emerald-200">Assigned Class</span>
+            </div>
+        </div>
+
+        <!-- ENROLLMENT MATRIX -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between px-1">
+                 <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Subject Selection Grid</h2>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div class="enroll-matrix-wrapper overflow-x-auto relative">
+                    <table class="w-full border-separate border-spacing-0">
+                        <thead>
+                            <tr>
+                                <th class="sticky-col bg-slate-50 p-4 text-left text-[9px] font-black text-slate-900 uppercase tracking-widest min-w-[180px] z-30">Student Identity</th>
+                                <th class="th-enroll">Math</th>
+                                <th class="th-enroll">Eng</th>
+                                <th class="th-enroll">S.Stud</th>
+                                <th class="th-enroll">Sci</th>
+                                <th class="th-enroll bg-slate-100/50">Yoruba</th>
+                                <th class="th-enroll">French</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 italic md:not-italic">
+                            <!-- STUDENT 1 -->
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="sticky-col p-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-[10px]">AO</div>
+                                        <div class="space-y-0.5 truncate">
+                                            <span class="font-bold text-xs text-slate-900">Adebayo Ogunlesi</span>
+                                            <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tighter truncate">4A-0922 • M</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll bg-slate-50/50"><div class="check-pill checked border-indigo-600 bg-indigo-50/20"></div></td>
+                                <td class="td-enroll"><div class="check-pill"></div></td>
+                            </tr>
+                            <!-- STUDENT 2 -->
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="sticky-col p-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-[10px]">CO</div>
+                                        <div class="space-y-0.5 truncate">
+                                            <span class="font-bold text-xs text-slate-900">Chioma Okafor</span>
+                                            <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">4A-0931 • F</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll bg-slate-50/50"><div class="check-pill"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="bg-slate-50/50 p-4 border-t border-slate-100 flex items-center justify-between">
+                    <p class="text-[8px] font-bold text-slate-300 uppercase tracking-[0.15em] italic">Note: Changes apply instantly across the semester profile.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ASSISTIVE INFO -->
+        <div class="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] gap-3">
+            <p class="text-[10px] text-slate-400 font-medium italic text-center md:text-left">Teachers cannot add/remove students from the roster. Please contact the Admin for registry changes.</p>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                    <i data-lucide="check-check" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <p class="text-[9px] font-extrabold text-emerald-900 uppercase tracking-widest">Save State</p>
+                    <p class="text-[10px] font-medium text-emerald-700">Row selections synced after class-teacher review.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FLOATING GLOBAL ACTIONS -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t border-slate-100 flex items-center justify-between sm:justify-end gap-3 z-50">
+        <div class="flex flex-col">
+            <span class="text-[9px] font-black text-slate-950 uppercase tracking-tighter leading-none italic">Teacher Entry</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">4A Physics Overlay</span>
+        </div>
+        <div class="flex gap-2">
+            <button class="bg-indigo-600 text-white h-12 px-10 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+                Update Row selections
+            </button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

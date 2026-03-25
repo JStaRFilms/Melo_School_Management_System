@@ -9,8 +9,14 @@
 
 ## Mandatory Mockup-Driven Implementation
 
-The `/docs/mockups` folder is the source of truth for all front-end UI and UX.
+The `/docs/mockups/admin` folder is the source of truth for all front-end UI and UX.
 Before implementing any page, open the corresponding mockup and replicate its structure, states, typography, and responsive behavior.
+Key Mockups for Academic Setup:
+- `admin-academic-config.html` (Sessions, Terms, Subjects)
+- `admin-teacher-management.html` (Staff listing/creation)
+- `admin-class-management.html` (Classes and offerings)
+- `admin-student-enrollment.html` (Student roster & subject matrix)
+- `teacher-academic-enrollment.html` (Teacher-level enrollment view)
 
 ## MUS Priority Order
 

@@ -77,7 +77,9 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 `T07`, `T08`, `T09` -> `T12`  
 `T11`, `T12` -> `T13`  
 `T11`, `T12`, `T13` -> `T14`  
-`T14` -> `T10`
+`T14` -> `T10`  
+`T15` -> `T16`  
+`T10` -> `T17`
 
 ## Delegated Task Table
 
@@ -96,6 +98,9 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 | `T12` | Convex project wiring and codegen | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `convex-functions`, `nextjs-standards` |
 | `T13` | Seed live exam-recording data | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `nextjs-standards` |
 | `T14` | Live integration verification | `vibe-review` | `/review_code` | `takomi`, `sync-docs`, `nextjs-standards` |
+| `T15` | Admin academic setup UI mockups | `vibe-architect` | `/vibe-design` | `takomi`, `frontend-design`, `ui-ux-pro-max`, `nextjs-standards` |
+| `T16` | Admin academic setup and enrollment implementation | `vibe-code` | `/vibe-build` | `takomi`, `convex`, `convex-functions`, `convex-schema-validator`, `convex-best-practices`, `nextjs-standards` |
+| `T17` | Platform super admin and school provisioning | `vibe-architect` | `/vibe-spawnTask` | `takomi`, `avoid-feature-creep`, `convex`, `nextjs-standards` |
 | `T10` | Verification, docs sync, and review | `vibe-review` | `/vibe-syncDocs` + `/review_code` | `takomi`, `sync-docs`, `nextjs-standards` |
 
 ## Progress Checklist
@@ -113,7 +118,10 @@ The orchestrator must not implement the feature directly. Each task is assigned 
 - [x] `T12` Convex project wiring and codegen complete
 - [x] `T13` Seed live exam-recording data complete
 - [x] `T14` Live integration verification complete
+- [x] `T15` Admin academic setup UI mockups complete
+- [ ] `T16` Admin academic setup and enrollment implementation complete
 - [ ] `T10` Verification and docs sync complete
+- [ ] `T17` Platform super admin and school provisioning complete
 
 ## Orchestrator Notes
 

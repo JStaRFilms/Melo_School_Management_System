@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Setup States | OS/SCHOOL Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        indigo: {
+                            600: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .state-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-50">
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <div class="space-y-1">
+            <p class="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">Admin Academic Setup</p>
+            <h1 class="text-2xl font-black tracking-tight text-slate-950">Loading, Empty, Validation, and Success States</h1>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <section class="state-card p-5 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                        <div class="w-5 h-5 border-2 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-extrabold uppercase tracking-widest text-slate-900">Loading State</h2>
+                        <p class="text-[11px] font-medium text-slate-500">Fetching session, class, and subject setup from live school data.</p>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <div class="h-11 rounded-lg bg-slate-100 animate-pulse"></div>
+                    <div class="h-11 rounded-lg bg-slate-100 animate-pulse"></div>
+                    <div class="h-32 rounded-xl bg-slate-100 animate-pulse"></div>
+                </div>
+            </section>
+
+            <section class="state-card p-5 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-slate-50 text-slate-300 flex items-center justify-center border border-slate-200">
+                        <i data-lucide="inbox" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-extrabold uppercase tracking-widest text-slate-900">Empty State</h2>
+                        <p class="text-[11px] font-medium text-slate-500">No students in this class yet. Admin must add students before teachers can edit subject selections.</p>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                    <p class="text-sm font-bold text-slate-900">No Students Registered</p>
+                    <p class="text-[11px] font-medium text-slate-400 mt-1">Use the Add Student panel to create the first roster entry.</p>
+                </div>
+            </section>
+
+            <section class="state-card p-5 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+                        <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-extrabold uppercase tracking-widest text-slate-900">Validation State</h2>
+                        <p class="text-[11px] font-medium text-slate-500">Session dates overlap and one student is missing a compulsory subject.</p>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+                    <p class="text-[10px] font-extrabold uppercase tracking-widest text-amber-900">Fix Before Save</p>
+                    <ul class="space-y-1 text-[11px] font-medium text-amber-800">
+                        <li>Third Term start date overlaps Second Term end date.</li>
+                        <li>Maryam Hassan has no Mathematics selection.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="state-card p-5 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200">
+                        <i data-lucide="check-check" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-extrabold uppercase tracking-widest text-slate-900">Success State</h2>
+                        <p class="text-[11px] font-medium text-slate-500">Teacher created, class blueprint saved, and enrollment matrix synced.</p>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p class="text-[10px] font-extrabold uppercase tracking-widest text-emerald-900">Last Commit</p>
+                    <p class="text-[11px] font-medium text-emerald-800 mt-1">Primary 4A enrollment saved for 28 students across 10 offered subjects.</p>
+                </div>
+            </section>
+        </div>
+    </main>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

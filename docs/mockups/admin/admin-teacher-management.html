@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Management | OS/SCHOOL Admin</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Clean Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+        .card-teacher {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            transition: all 0.2s;
+        }
+        .card-teacher:active {
+            transform: scale(0.98);
+        }
+        .input-precision {
+            height: 2.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.625rem;
+            padding: 0 0.875rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            width: 100%;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .input-precision:focus {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.05);
+        }
+        .label-precision {
+            font-size: 9px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.375rem;
+            display: block;
+        }
+        .btn-action {
+            height: 2.75rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1rem;
+            border-radius: 0.625rem;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: all 0.2s;
+            gap: 0.5rem;
+        }
+        .btn-action:active {
+            transform: scale(0.97);
+        }
+        .badge-subject {
+            font-size: 8px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 0.25rem 0.5rem;
+            border-radius: 99px;
+            letter-spacing: 0.05em;
+            background-color: #f1f5f9;
+            color: #475569;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-24">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="w-8 h-8 flex items-center justify-center text-slate-400">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col">
+                <span class="font-bold text-[10px] tracking-tight text-slate-900 uppercase">Staff Directory</span>
+                <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Teacher Management</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">AD</div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+
+        <!-- STATS / SEARCH -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <span class="label-precision">Total Staff</span>
+                <span class="text-xl font-bold text-slate-900">12</span>
+            </div>
+            <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <span class="label-precision">Active Now</span>
+                <span class="text-xl font-bold text-emerald-600">8</span>
+            </div>
+            <div class="col-span-2 relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
+                <input type="text" placeholder="Find teacher by name..." class="input-precision pl-10 h-11 bg-white border-slate-100 shadow-sm focus:border-slate-300">
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between border-t border-slate-100 pt-6">
+            <h2 class="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Faculty List</h2>
+            <button class="btn-action bg-slate-900 text-white shadow-xl shadow-slate-200">
+                <i data-lucide="user-plus" class="w-4 h-4 text-white/40"></i>
+                New Faculty
+            </button>
+        </div>
+
+        <!-- QUICK CREATE PANEL -->
+        <section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Create Teacher</h3>
+                    <p class="text-[10px] font-medium text-slate-400 uppercase tracking-tight mt-0.5">Admin-only provisioning</p>
+                </div>
+                <span class="text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Step 1 of Setup</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label class="label-precision">Teacher Name</label>
+                    <input type="text" value="Temitope Yusuf" class="input-precision">
+                </div>
+                <div>
+                    <label class="label-precision">Email Address</label>
+                    <input type="email" value="t.yusuf@school.edu" class="input-precision">
+                </div>
+                <div>
+                    <label class="label-precision">Primary Role</label>
+                    <div class="input-precision flex items-center justify-between bg-slate-50">
+                        <span>Teacher</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-[1.2fr_0.8fr] gap-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                    <span class="label-precision">Assignment Preview</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="badge-subject">Primary 4A • Mathematics</span>
+                        <span class="badge-subject">Primary 4A • Science</span>
+                        <span class="badge-subject">Primary 5B • Mathematics</span>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-col justify-between">
+                    <div>
+                        <span class="label-precision text-emerald-700">Provisioning</span>
+                        <p class="text-xs font-bold text-emerald-900">Creates teacher account and school membership immediately.</p>
+                    </div>
+                    <button class="btn-action mt-4 bg-emerald-600 text-white w-full">
+                        <i data-lucide="send" class="w-4 h-4 text-white/50"></i>
+                        Create Teacher
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TEACHER CARDS (MOBILE FIRST) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            <!-- TEACHER 1 -->
+            <div class="card-teacher bg-white p-4 space-y-4 hover:border-indigo-200 hover:shadow-lg transition-all cursor-pointer">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white font-bold text-sm">OA</div>
+                    <div class="space-y-0.5">
+                        <h4 class="font-bold text-slate-900 text-sm">Olusola Adeniyi</h4>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">REG-TCH-001</p>
+                    </div>
+                    <div class="ml-auto">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 block"></span>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <span class="label-precision">Assignments</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="badge-subject">Mathematics (4A)</span>
+                        <span class="badge-subject">Physics (SS1)</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between pt-2 border-t border-slate-50">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="mail" class="w-3 h-3 text-slate-300"></i>
+                        <span class="text-[10px] font-medium text-slate-500">o.adeniyi@school.edu</span>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-300"></i>
+                </div>
+            </div>
+
+            <!-- TEACHER 2 -->
+            <div class="card-teacher bg-white p-4 space-y-4 hover:border-indigo-200 hover:shadow-lg transition-all cursor-pointer">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-sm">BC</div>
+                    <div class="space-y-0.5">
+                        <h4 class="font-bold text-slate-900 text-sm">Blessing Chikere</h4>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">REG-TCH-002</p>
+                    </div>
+                    <div class="ml-auto">
+                        <span class="w-2 h-2 rounded-full bg-slate-200 block"></span>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <span class="label-precision">Assignments</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="badge-subject">English (4A)</span>
+                        <span class="badge-subject">English (4B)</span>
+                        <span class="badge-subject">Lit (SS2)</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between pt-2 border-t border-slate-50">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="mail" class="w-3 h-3 text-slate-300"></i>
+                        <span class="text-[10px] font-medium text-slate-500">b.chikere@school.edu</span>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-300"></i>
+                </div>
+            </div>
+
+            <!-- EMPTY ADD STATE -->
+            <div class="card-teacher bg-slate-50 border-2 border-dashed border-slate-200 p-4 flex flex-col items-center justify-center min-h-[160px] group transition-all hover:bg-slate-100/50 hover:border-slate-300 cursor-pointer">
+                <div class="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm mb-3">
+                    <i data-lucide="plus" class="w-5 h-5 text-slate-400"></i>
+                </div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Add New Staff</span>
+            </div>
+
+        </div>
+
+        <!-- RECENT ACTIVITY / LOG -->
+        <section class="space-y-3 pt-6 border-t border-slate-100">
+            <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recent Staff Activity</h3>
+            <div class="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+                <div class="p-3.5 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                        <p class="text-xs font-bold text-slate-900">OA <span class="text-slate-500 font-medium">added to Mathematics (4A)</span></p>
+                    </div>
+                    <span class="text-[9px] font-medium text-slate-400">14:02 Today</span>
+                </div>
+                <div class="p-3.5 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-slate-200"></div>
+                        <p class="text-xs font-bold text-slate-900">BC <span class="text-slate-500 font-medium">record updated by Admin</span></p>
+                    </div>
+                    <span class="text-[9px] font-medium text-slate-400">Yest. 11:30</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FLOATING HUD -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t border-slate-100 flex items-center justify-between sm:justify-end gap-3 z-50">
+        <div class="flex flex-col">
+            <span class="text-[9px] font-bold text-slate-900 uppercase tracking-tighter italic italic">Precision Directory v1</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">12 Entries • 0 Errors</span>
+        </div>
+        <button class="bg-slate-900 text-white h-12 px-10 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+            Export Master List
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

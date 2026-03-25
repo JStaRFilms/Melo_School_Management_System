@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Enrollment | OS/SCHOOL Admin</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Clean Professional Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        },
+                        indigo: {
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+
+        /* CUSTOM SCROLLBAR FOR HORIZONTAL MATRIX */
+        .enroll-matrix-wrapper::-webkit-scrollbar {
+            height: 4px;
+        }
+        .enroll-matrix-wrapper::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .enroll-matrix-wrapper::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 99px;
+        }
+
+        .sticky-col {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 20;
+            border-right: 2px solid #f1f5f9;
+        }
+
+        .th-enroll {
+            background-color: #f8fafc;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            font-size: 8px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #e2e8f0;
+            min-width: 60px;
+        }
+
+        .td-enroll {
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            border-bottom: 1px solid #f8fafc;
+        }
+
+        /* CHECKBOX REFINEMENT */
+        .check-pill {
+            display: inline-flex;
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid #e2e8f0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+            position: relative;
+        }
+        .check-pill.checked {
+            background-color: #4f46e5;
+            border-color: #4f46e5;
+        }
+        .check-pill.checked::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 5px;
+            border-left: 2px solid white;
+            border-bottom: 2px solid white;
+            transform: rotate(-45deg);
+            top: 4px;
+            left: 4px;
+        }
+
+        .btn-action {
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: all 0.2s;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-32">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-6 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button class="w-8 h-8 flex items-center justify-center text-slate-400">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col">
+                <span class="font-bold text-[10px] tracking-tight text-slate-900 uppercase">Primary 4A</span>
+                <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Academic Enrollment Matrix</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">AD</div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto py-6 px-4 md:px-6 space-y-6">
+
+        <!-- CONTEXT / QUICK FILTERS -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-xs uppercase">4A</div>
+                <div class="space-y-0.5">
+                    <h1 class="text-sm font-extrabold text-slate-900 uppercase">Student Enrollment Matrix</h1>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Active Session: 2025/2026</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button class="btn-action bg-slate-100 text-slate-600 border border-slate-200">Roster View</button>
+                <button class="btn-action bg-indigo-600 text-white shadow-xl shadow-indigo-100">Add Student</button>
+            </div>
+        </div>
+
+        <!-- STATUS / VALIDATION -->
+        <div class="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-3">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <div class="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                    <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                </div>
+                <div class="space-y-1">
+                    <h2 class="text-xs font-extrabold text-amber-900 uppercase tracking-widest">Validation Watch</h2>
+                    <p class="text-[11px] font-medium text-amber-800">2 students are missing at least one compulsory subject. Admin can still add students; teacher can only edit subject ticks.</p>
+                </div>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                <div class="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                    <i data-lucide="check-check" class="w-4 h-4"></i>
+                </div>
+                <div class="space-y-1">
+                    <h2 class="text-xs font-extrabold text-emerald-900 uppercase tracking-widest">Saved Snapshot</h2>
+                    <p class="text-[11px] font-medium text-emerald-800">Primary 4A enrollment synced 3 minutes ago for Second Term 2025/2026.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN ADD STUDENT PANEL -->
+        <section class="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Add Student To Class</h2>
+                    <p class="text-[10px] font-medium text-slate-400 uppercase tracking-tight mt-0.5">Admin-only roster creation</p>
+                </div>
+                <span class="text-[8px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Step 3 of Setup</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="md:col-span-2">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Student Name</span>
+                    <div class="h-11 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 flex items-center">Maryam Hassan</div>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Admission No.</span>
+                    <div class="h-11 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 flex items-center font-mono">4A-0951</div>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Class</span>
+                    <div class="h-11 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 flex items-center justify-between">
+                        <span>Primary 4A</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-between items-center">
+                <p class="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Once added, teachers may update subject selections only.</p>
+                <button class="btn-action bg-indigo-600 text-white shadow-lg shadow-indigo-100">
+                    <i data-lucide="user-plus" class="w-4 h-4 text-white/50"></i>
+                    Add Student
+                </button>
+            </div>
+        </section>
+
+        <!-- ENROLLMENT MATRIX (DESKTOP GRID / MOBILE HORIZ SCROLL) -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between px-1">
+                 <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Subject Selection Grid</h2>
+                 <p class="text-[9px] font-bold text-slate-300 uppercase tracking-widest italic md:hidden">Swipe right to view subjects →</p>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div class="enroll-matrix-wrapper overflow-x-auto relative">
+                    <table class="w-full border-separate border-spacing-0">
+                        <thead>
+                            <tr>
+                                <th class="sticky-col bg-slate-50 p-4 text-left text-[9px] font-black text-slate-900 uppercase tracking-widest min-w-[180px] z-30">Student Identity</th>
+                                <th class="th-enroll">Math</th>
+                                <th class="th-enroll">Eng</th>
+                                <th class="th-enroll">S.Stud</th>
+                                <th class="th-enroll">Sci</th>
+                                <th class="th-enroll">CRS</th>
+                                <th class="th-enroll">IRS</th>
+                                <th class="th-enroll">Yoruba</th>
+                                <th class="th-enroll">French</th>
+                                <th class="th-enroll">Phy Edu</th>
+                                <th class="th-enroll">Art</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 italic md:not-italic">
+                            <!-- STUDENT 1 -->
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="sticky-col p-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-[10px]">AO</div>
+                                        <div class="space-y-0.5 truncate">
+                                            <span class="font-bold text-xs text-slate-900">Adebayo Ogunlesi</span>
+                                            <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tighter truncate">4A-0922 • M</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                            </tr>
+                            <!-- STUDENT 2 -->
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="sticky-col p-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-[10px]">CO</div>
+                                        <div class="space-y-0.5 truncate">
+                                            <span class="font-bold text-xs text-slate-900">Chioma Okafor</span>
+                                            <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">4A-0931 • F</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                                <td class="td-enroll"><div class="check-pill checked"></div></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- FOOTER INFO -->
+                <div class="bg-slate-50/50 p-4 border-t border-slate-100 flex items-center justify-between">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Showing 28 students • 12 Subjects</p>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+                        <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest leading-none">Unsaved Changes detected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FLOATING GLOBAL ACTIONS -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t border-slate-100 flex items-center justify-between sm:justify-end gap-3 z-50">
+        <div class="flex flex-col">
+            <span class="text-[9px] font-black text-slate-950 uppercase tracking-tighter italic">Batch Update Active</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Modified: 10 mins ago</span>
+        </div>
+        <div class="flex gap-2">
+            <button class="btn-action bg-white border border-slate-200 text-slate-600">Reset Grid</button>
+            <button class="bg-slate-900 text-white h-12 px-10 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">
+                Commit Enrollment
+            </button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
