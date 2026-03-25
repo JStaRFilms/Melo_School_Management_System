@@ -1,5 +1,5 @@
 import { action, internalMutation, mutation, query } from "../../_generated/server";
-import { internal } from "../../_generated/api";
+import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -68,13 +68,19 @@ export const createTeacher = action({
     ctx,
     args
   ): Promise<{
-    teacherId: Id<"users">;
-    email: string;
-    temporaryPassword: string;
+      teacherId: Id<"users">;
+      email: string;
+      temporaryPassword: string;
   }> => {
-    const { schoolId, userId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    if (viewer.role !== "admin") {
+      throw new ConvexError("Admin access required");
+    }
+
+    const schoolId = viewer.schoolId;
 
     const authBaseUrl = process.env.CONVEX_SITE_URL?.trim();
     if (!authBaseUrl) {
