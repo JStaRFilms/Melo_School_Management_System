@@ -1,5 +1,12 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "BETTER_AUTH_SECRET",
+    "SITE_URL",
+    "TRUSTED_ORIGINS",
+    "NEXT_PUBLIC_CONVEX_URL",
+    "NEXT_PUBLIC_CONVEX_SITE_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

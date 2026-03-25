@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 
-export default function SignInPage() {
+function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn, isLoading, error } = useAuth();
@@ -106,5 +106,28 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SignInFallback() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-slate-900">Teacher Sign In</h1>
+            <p className="mt-2 text-sm text-slate-500">Loading sign-in form...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInFallback />}>
+      <SignInForm />
+    </Suspense>
   );
 }

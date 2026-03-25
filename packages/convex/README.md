@@ -55,6 +55,11 @@ Also copy `CONVEX_SITE_URL` from the repo root `.env.local` into `NEXT_PUBLIC_CO
 
 Then set `BETTER_AUTH_SECRET`, `SITE_URL`, and `TRUSTED_ORIGINS` for each app.
 
+Production note:
+- `SITE_URL` must be the real deployed URL for that specific app, not `localhost`
+- `TRUSTED_ORIGINS` should include the real admin and teacher origins that are allowed to share auth flows
+- use the same `BETTER_AUTH_SECRET` across the admin app, teacher app, and Convex deployment
+
 ### 4. Start development
 
 ```bash
