@@ -63,6 +63,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => mapSession(session, viewerContext),
     [session, viewerContext]
   );
+  const sessionRole =
+    (session?.user as { role?: string } | undefined)?.role ?? null;
+
+  const hasResolvedMembership = useMemo(() => {
+    if (!isConvexConfigured) {
+      return true;
+    }
+
+    if (!session?.user) {
+      return true;
+    }
+
+    return Boolean(viewerContext?.role ?? sessionRole);
+  }, [session, sessionRole, viewerContext]);
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<boolean> => {
@@ -85,7 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  const isLoading = isPending || (isConvexConfigured && Boolean(session?.user) && viewerContext === undefined);
+  const isLoading =
+    isPending ||
+    (isConvexConfigured && Boolean(session?.user) && !hasResolvedMembership);
 
   const value: AuthContextValue = {
     session: mappedSession,
