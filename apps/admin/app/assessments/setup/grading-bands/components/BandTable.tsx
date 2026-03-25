@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { GradingBandDraft, BandValidationError } from "@/types";
 import { validateBandsClient } from "@/exam-helpers";
 import { BandRow } from "./BandRow";

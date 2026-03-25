@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { GradingBandDraft, BandValidationError, GradingBandResponse } from "@/types";
 import { validateBandsClient } from "@/exam-helpers";

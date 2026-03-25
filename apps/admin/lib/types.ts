@@ -1,4 +1,4 @@
-import type { ExamInputMode, GradingBand } from "@school/shared";
+import type { ExamInputMode, GradingBand } from "../../../packages/shared/src/exam-recording";
 
 // Id type matching Convex generated type
 export type Id<TableName extends string> = string & {

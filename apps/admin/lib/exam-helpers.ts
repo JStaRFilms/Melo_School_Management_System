@@ -1,9 +1,9 @@
-import type { ExamInputMode, GradingBand } from "@school/shared";
+import type { ExamInputMode, GradingBand } from "../../../packages/shared/src/exam-recording";
 import {
   examScaledScore as computeExamScaled,
   total as computeTotal,
   deriveGradeAndRemark,
-} from "@school/shared";
+} from "../../../packages/shared/src/exam-recording";
 import type {
   DraftScores,
   GradingBandDraft,
@@ -227,6 +227,13 @@ export function validateBandsClient(
   // Check for null values
   for (let i = 0; i < bands.length; i++) {
     const band = bands[i];
+    if (band.gradeLetter.trim().length === 0) {
+      errors.push({
+        type: "ordering",
+        message: "Each grading band needs a grade letter or label.",
+        bandIndices: [i],
+      });
+    }
     if (band.minScore === null || band.maxScore === null) {
       errors.push({
         type: "ordering",

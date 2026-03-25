@@ -109,6 +109,15 @@ describe("validateGradingBands", () => {
     });
   });
 
+  it("should fail when a band is missing a grade letter", () => {
+    const bands = [
+      createBand(0, 39, "", "Fail"),
+      createBand(40, 100, "A", "Excellent"),
+    ];
+    const errors = validateGradingBands(bands);
+    expect(errors.some((e) => e.message.includes("grade letter"))).toBe(true);
+  });
+
   it("should fail when minScore > maxScore", () => {
     const bands = [
       createBand(0, 39, "F", "Fail"),

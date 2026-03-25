@@ -23,8 +23,8 @@ describe("BandTable", () => {
     );
 
     expect(screen.getByText("Grading Bands")).toBeInTheDocument();
-    expect(screen.getByText("F")).toBeInTheDocument();
-    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("F")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("A")).toBeInTheDocument();
   });
 
   it("renders Add Tier button", () => {
@@ -63,6 +63,29 @@ describe("BandTable", () => {
     expect(onBandsChange).toHaveBeenCalledWith([
       ...mockBands,
       { minScore: null, maxScore: null, gradeLetter: "", remark: "" },
+    ]);
+  });
+
+  it("updates the grade letter when edited", () => {
+    const onBandsChange = vi.fn();
+    const onValidationChange = vi.fn();
+
+    render(
+      <BandTable
+        bands={mockBands}
+        onBandsChange={onBandsChange}
+        validationErrors={[]}
+        onValidationChange={onValidationChange}
+      />
+    );
+
+    fireEvent.change(screen.getByDisplayValue("F"), {
+      target: { value: "g" },
+    });
+
+    expect(onBandsChange).toHaveBeenCalledWith([
+      { ...mockBands[0], gradeLetter: "G" },
+      mockBands[1],
     ]);
   });
 

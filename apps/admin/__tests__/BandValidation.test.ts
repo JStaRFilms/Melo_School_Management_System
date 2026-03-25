@@ -22,6 +22,15 @@ describe("validateBandsClient", () => {
     expect(errors[0].type).toBe("empty");
   });
 
+  it("requires each band to have a grade letter", () => {
+    const bands: GradingBandDraft[] = [
+      { minScore: 0, maxScore: 39, gradeLetter: "", remark: "Fail" },
+    ];
+
+    const errors = validateBandsClient(bands);
+    expect(errors.some((e) => e.message.includes("grade letter"))).toBe(true);
+  });
+
   it("detects ordering violation when min > max", () => {
     const bands: GradingBandDraft[] = [
       { minScore: 50, maxScore: 30, gradeLetter: "A", remark: "Test" },

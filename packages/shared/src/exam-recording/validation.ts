@@ -84,6 +84,12 @@ export function validateGradingBands(bands: GradingBand[]): ValidationError[] {
 
   // Rule 1 & 2: Validate individual bands
   for (const band of bands) {
+    if (band.gradeLetter.trim().length === 0) {
+      errors.push({
+        field: "record",
+        message: "Each grading band needs a grade letter or label.",
+      });
+    }
     if (band.minScore > band.maxScore) {
       errors.push({
         field: "record",

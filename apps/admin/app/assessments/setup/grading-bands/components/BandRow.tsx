@@ -30,11 +30,19 @@ export function BandRow({
       className={`hover:bg-slate-50 transition-colors ${hasError ? "bg-red-50/10" : ""}`}
     >
       <td className="p-4 sm:p-6">
-        <span
-          className={`inline-flex items-center justify-center w-10 h-10 rounded-lg font-bold text-lg ${badgeClass}`}
-        >
-          {band.gradeLetter || "?"}
-        </span>
+        <input
+          type="text"
+          value={band.gradeLetter}
+          onChange={(e) => {
+            const nextValue = e.target.value.toUpperCase().replace(/\s+/g, "");
+            onChange(index, "gradeLetter", nextValue);
+          }}
+          placeholder="?"
+          maxLength={4}
+          aria-label={`Grade letter for band ${index + 1}`}
+          spellCheck={false}
+          className={`band-input w-10 px-0 uppercase tracking-[0.12em] ${badgeClass} ${hasError ? "error-border" : ""}`}
+        />
       </td>
       <td className="p-4 sm:p-6">
         <div className="flex items-center gap-1.5">
