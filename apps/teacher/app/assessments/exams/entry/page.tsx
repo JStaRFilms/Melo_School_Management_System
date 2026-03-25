@@ -20,6 +20,20 @@ import type {
   UpsertResponse,
 } from "@/lib/types";
 
+interface LegacySelectorOption {
+  _id: string;
+  name: string;
+}
+
+function normalizeSelectorOptions(
+  options: SelectorOption[] | LegacySelectorOption[] | undefined
+): SelectorOption[] | undefined {
+  return options?.map((option) => ({
+    id: "id" in option ? option.id : option._id,
+    name: option.name,
+  }));
+}
+
 export default function ExamEntryPage() {
   const searchParams = useSearchParams();
   const selection = useMemo(
@@ -50,7 +64,7 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
 
   const sessions = useQuery(
     "functions/academic/teacherSelectors:getTeacherSessions" as never
-  ) as SelectorOption[] | undefined;
+  ) as LegacySelectorOption[] | undefined;
   const terms = useQuery(
     "functions/academic/teacherSelectors:getTermsBySession" as never,
     selection.sessionId
@@ -59,7 +73,7 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
-  ) as SelectorOption[] | undefined;
+  ) as LegacySelectorOption[] | undefined;
   const subjects = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
     selection.classId
@@ -98,12 +112,21 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
     [upsertAssessmentRecordsBulk]
   );
 
+  const normalizedSessions = useMemo(
+    () => normalizeSelectorOptions(sessions) ?? [],
+    [sessions]
+  );
+  const normalizedClasses = useMemo(
+    () => normalizeSelectorOptions(classes) ?? [],
+    [classes]
+  );
+
   return (
     <ExamEntryWorkspace
       selection={selection}
-      sessions={sessions ?? []}
+      sessions={normalizedSessions}
       terms={terms ?? []}
-      classes={classes ?? []}
+      classes={normalizedClasses}
       subjects={subjects ?? []}
       sheetData={sheetData}
       isLoadingSheet={isSheetReady && sheetData === undefined}

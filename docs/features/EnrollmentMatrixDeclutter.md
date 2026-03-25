@@ -61,6 +61,7 @@ Simplify the admin and teacher enrollment matrix screens so every visible contro
 - Admin header buttons `Roster View` and top-level `Add Student` are currently decorative and have no handlers.
 - Large inline success/state cards repeat information that the page already knows and crowd the screen.
 - The admin page is 538 lines and the teacher page is 375 lines, so both should be split into smaller focused components.
+- The matrix now benefits from row-level quick actions so a user can select all subjects for one student and then trim the extras.
 
 ## Proposed Cleanup
 - Remove dead footer action bars unless we introduce a real staged-edit workflow.
@@ -78,6 +79,7 @@ Simplify the admin and teacher enrollment matrix screens so every visible contro
 - Kept a single real admin roster CTA that scrolls to the add-student form.
 - Updated both screens to explain that subject ticks save instantly.
 - Reduced the teacher page below the previous monolith size and split the admin screen into focused route-local components.
+- Added row-level `All` and `Clear` actions so subject setup can start from a full class load and then be narrowed down per student.
 
 ## Regression Checks
 - Admin can still create a student in the selected class.

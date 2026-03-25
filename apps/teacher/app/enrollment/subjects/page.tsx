@@ -119,6 +119,43 @@ export default function TeacherSubjectSelectionPage() {
     [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
   );
 
+  const handleSetStudentSubjects = useCallback(
+    async (studentId: string, subjectIds: string[]) => {
+      if (!selectedClassId || !selectedSessionId || !matrix) {
+        return;
+      }
+
+      const student = matrix.students.find((entry) => entry._id === studentId);
+      if (!student) {
+        return;
+      }
+
+      setNotice(null);
+
+      try {
+        await setStudentSubjectSelections({
+          studentId,
+          classId: selectedClassId,
+          sessionId: selectedSessionId,
+          subjectIds,
+        } as never);
+        setNotice({
+          tone: "success",
+          message: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
+        });
+      } catch (err) {
+        setNotice({
+          tone: "error",
+          message: getUserFacingErrorMessage(
+            err,
+            "We couldn't update the subject selection right now."
+          ),
+        });
+      }
+    },
+    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
+  );
+
   if (sessions === undefined || classes === undefined) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-6 md:px-6">
@@ -176,6 +213,9 @@ export default function TeacherSubjectSelectionPage() {
           studentsWithNoSubjects={studentsWithNoSubjects}
           onToggle={(studentId, subjectId) => {
             void handleToggleSubject(studentId, subjectId);
+          }}
+          onSetStudentSubjects={(studentId, subjectIds) => {
+            void handleSetStudentSubjects(studentId, subjectIds);
           }}
         />
       ) : (

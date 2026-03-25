@@ -11,6 +11,7 @@ interface SubjectSelectionMatrixProps {
   isIssueVisible: boolean;
   studentsWithNoSubjects: number;
   onToggle: (studentId: string, subjectId: string) => void;
+  onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
 
 export function SubjectSelectionMatrix({
@@ -20,7 +21,10 @@ export function SubjectSelectionMatrix({
   isIssueVisible,
   studentsWithNoSubjects,
   onToggle,
+  onSetStudentSubjects,
 }: SubjectSelectionMatrixProps) {
+  const allSubjectIds = matrix?.subjects.map((subject) => subject._id) ?? [];
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
@@ -91,13 +95,40 @@ export function SubjectSelectionMatrix({
                           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400">
                             {studentInitials(humanNameFinalStrict(student.studentName))}
                           </div>
-                          <div className="truncate">
-                            <p className="truncate text-sm font-semibold text-slate-950">
-                              {humanNameFinalStrict(student.studentName)}
-                            </p>
-                            <p className="truncate text-[10px] font-bold uppercase tracking-tight text-slate-400">
-                              {student.admissionNumber}
-                            </p>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate">
+                              <p className="truncate text-sm font-semibold text-slate-950">
+                                {humanNameFinalStrict(student.studentName)}
+                              </p>
+                              <p className="truncate text-[10px] font-bold uppercase tracking-tight text-slate-400">
+                                {student.admissionNumber}
+                              </p>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onSetStudentSubjects(student._id, allSubjectIds)
+                                }
+                                disabled={
+                                  student.selectedSubjectIds.length ===
+                                  matrix.subjects.length
+                                }
+                                className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                                aria-label={`Select all subjects for ${student.studentName}`}
+                              >
+                                All
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onSetStudentSubjects(student._id, [])}
+                                disabled={student.selectedSubjectIds.length === 0}
+                                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+                                aria-label={`Clear all subjects for ${student.studentName}`}
+                              >
+                                Clear
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -165,6 +196,6 @@ function studentInitials(name: string) {
 
   return parts
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
+    .map((part: string) => part[0]?.toUpperCase() ?? "")
     .join("");
 }
