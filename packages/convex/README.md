@@ -59,6 +59,7 @@ Production note:
 - `SITE_URL` must be the real deployed URL for that specific app, not `localhost`
 - `TRUSTED_ORIGINS` should include the real admin and teacher origins that are allowed to share auth flows
 - use the same `BETTER_AUTH_SECRET` across the admin app, teacher app, and Convex deployment
+- if you deploy admin and teacher as separate Vercel projects, make sure each public domain is attached to the matching project root (`apps/admin` vs `apps/teacher`)
 
 ### 4. Start development
 
