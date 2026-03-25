@@ -34,3 +34,9 @@ I noticed that when I'm on the student route, the academic student route, I have
 [ ] You can set a finalizing date. Once it's set, nobody can edit after that point. You could also set it so people can only edit the exams between certain dates. The admin controls that, so it's secure. Nobody can just edit it. It's an option they can turn on or off.
 
 [ ] I can also add a dedicated “archived records” admin view next, so archived subjects/classes/teachers/sessions are browsable without restoring delete behavior.
+
+[ ] Each teacher should only see the classes they're assigned to. They can't see or edit other classes in the drop-down menu.
+
+[x] Alright, I've implemented the results the way I like them. There are a few changes I need you to make, though. Look at the fields: teacher name, teacher's comment, and head teacher's comment. We don't expose teacher's comment or head teacher's comment in Convex or anywhere in the UI yet, so we need a clean, intuitive way to input them. Every student gets their own head-teacher comment and class-teacher comment. For now, just expose two separate inputs in the admin panel, one for the teacher's comment and one for the head teacher's comment. I'll tweak the flow later.
+
+Also, we don't yet expose "next term begins" in Convex. For this iteration, let’s add a manual date picker that sets the next-term start date and reflects it for every student in that term.

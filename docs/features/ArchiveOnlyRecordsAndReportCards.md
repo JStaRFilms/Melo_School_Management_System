@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add archive-only lifecycle management for academic setup records so sensitive school data is never hard-deleted, expand student editing beyond subject selection, and introduce report-card viewing/export on both the admin and teacher apps with student photos included.
+Add archive-only lifecycle management for academic setup records so sensitive school data is never hard-deleted, expand student editing beyond subject selection, and introduce report-card viewing/export on both the admin and teacher apps with student photos included. This also now covers admin-managed report-card comments per student and a manual next-term start date per term.
 
 ## Why This Feature Exists
 
@@ -33,6 +33,8 @@ The current exam-recording slice also stops before report-card generation. This 
 - Student photo upload and replacement
 - Student report-card viewing
 - Student report-card export with profile details and photo
+- Admin-side report-card comment entry for each student
+- Admin-side manual next-term start date entry for each term
 - Report-card access in both:
   - admin app
   - teacher app
@@ -84,6 +86,7 @@ Specifically:
 - new admin report-card route(s)
   - student list / selector
   - detailed report-card view
+  - admin-only comment/date editor panel
   - export/print action
 
 ### Client: Teacher App
@@ -113,6 +116,8 @@ Specifically:
   - archive-aware student matrix behavior
 - new report-card query/action module
   - compile a single student's report-card payload from student, class, school, session, term, and assessment records
+  - store admin-supplied class-teacher and head-teacher comments per student
+  - store an admin-supplied `nextTermBegins` date on each academic term
   - support export-ready data for admin and teacher surfaces
 
 ## Client / Server Split
@@ -208,6 +213,29 @@ Specifically:
 7. Server validates and saves profile changes.
 8. Student roster and report-card views refresh automatically.
 
+### 3b. Save Report-Card Comments
+
+1. Admin opens a student's report card in the admin app.
+2. Client preloads the saved class-teacher comment and head-teacher comment for that student, session, and term.
+3. Admin edits one or both fields and clicks save.
+4. Server validates:
+   - admin access
+   - student/session/term school ownership
+   - term belongs to the selected session
+   - comment length stays within allowed limits
+5. Server upserts the comment row and the report-card query refreshes automatically.
+
+### 3c. Save Next-Term Start Date
+
+1. Admin selects a date in the admin report-card panel.
+2. Client sends the selected term and the chosen next-term start date.
+3. Server validates:
+   - admin access
+   - term ownership
+   - provided date is after the selected term end date
+4. Server stores the date on the academic term.
+5. Every report card for that term reflects the same saved date.
+
 ### 3. View Report Card
 
 1. Admin or teacher clicks a student.
@@ -289,6 +317,24 @@ Report-card queries should derive, not store:
 - student display name
 - subject rows for the selected term
 
+### Add Report-Card Metadata Storage
+
+#### `academicTerms`
+
+- `nextTermBegins?: number`
+
+#### `reportCardComments`
+
+- `schoolId: id("schools")`
+- `studentId: id("students")`
+- `sessionId: id("academicSessions")`
+- `termId: id("academicTerms")`
+- `classTeacherComment?: string`
+- `headTeacherComment?: string`
+- `createdAt: number`
+- `updatedAt: number`
+- `updatedBy: id("users")`
+
 ## Archive Rules
 
 ### Subjects
@@ -347,6 +393,8 @@ All new flows must return user-facing errors that are specific, school-safe, and
 - missing student profile data
 - unauthorized teacher access to another class
 - archived linked data still resolvable for historical viewing
+- comment too long
+- invalid term/date pairing for next-term start
 
 ### Export Errors
 
@@ -374,6 +422,8 @@ All new flows must return user-facing errors that are specific, school-safe, and
 ### Report Cards
 
 - `getStudentReportCard`
+- `saveStudentReportCardComments`
+- `saveTermNextTermBegins`
 - report-card entry comes from the existing admin and teacher assessment rosters
 
 ## UI Notes
@@ -425,17 +475,28 @@ This keeps us aligned with the project 200-line modularity rule.
 - the student management screen now supports selecting a student from the matrix and editing the student profile in place
 - the student profile editor supports photo upload, replacement, and removal
 - the admin assessment roster links directly to a printable student report-card page
+- the admin report-card page now includes print-hidden controls for class-teacher comments, head-teacher comments, and the term-wide next-term start date
 
 ### Teacher App
 
 - the teacher assessment roster now links directly to a printable student report-card page
 - teacher report-card access is still constrained by assigned class access checks on the server
 
+### Report Card Output
+
+- report cards now render in a fuller print-sheet layout instead of the earlier simple summary table
+- the backend now builds each report card from the student's full subject list for the selected session
+- if a subject has no assessment record yet, the report card still includes it with zero-filled score cells and a pending status
+- once assessment data is entered later, the same report-card sheet updates automatically without changing the student export flow
+- the bottom section now reads from admin-managed per-student comments
+- the `Next Term Begins` field now reads from the term's saved manual date rather than an inferred next-term lookup
+
 ## Verification
 
 - `pnpm -C packages/convex exec tsc --noEmit --incremental false --pretty false`
 - `pnpm -C apps/admin exec tsc --noEmit --incremental false --pretty false`
 - `pnpm -C apps/teacher exec tsc --noEmit --incremental false --pretty false`
+- `convex dev --once --typecheck enable`
 
 ## Known Follow-Up
 

@@ -144,6 +144,7 @@ export default defineSchema({
     name: v.string(),
     startDate: v.number(),
     endDate: v.number(),
+    nextTermBegins: v.optional(v.number()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -230,4 +231,19 @@ export default defineSchema({
       "sessionId",
       "termId",
     ]),
+
+  reportCardComments: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classTeacherComment: v.optional(v.string()),
+    headTeacherComment: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_session_term", ["studentId", "sessionId", "termId"])
+    .index("by_school_and_term", ["schoolId", "termId"]),
 });
