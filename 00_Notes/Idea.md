@@ -11,3 +11,6 @@ tags: [creativeos]
 
 admin: admin@demo-academy.school / Admin123!Pass
 teacher: teacher@demo-academy.school / Teacher123!Pass
+
+pnpm --filter @school/teacher dev
+pnpm --filter @school/admin dev

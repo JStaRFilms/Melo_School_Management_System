@@ -119,7 +119,7 @@ This feature allows administrators to:
 - Session management now supports:
   - editing session details after creation
   - promoting an inactive saved session to active later
-  - warning-only confirmation when the current active session already has linked `studentSubjectSelections` or `assessmentRecords`
+  - warning-only confirmation before switching the active session, with copy that reminds admins existing enrollment and assessment records stay attached to their original session history
   - preserving the single-active-session rule
 - Class management now supports:
   - `gradeName` plus optional `classLabel`

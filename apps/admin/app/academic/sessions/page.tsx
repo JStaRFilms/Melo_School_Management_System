@@ -44,17 +44,6 @@ export default function SessionsPage() {
   const createTerm = useMutation(
     "functions/academic/academicSetup:createTerm" as never
   );
-  const sessionWarnings = useQuery(
-    "functions/academic/academicSetup:getSessionActivationWarnings" as never
-  ) as
-    | {
-        activeSessionId: string | null;
-        activeSessionName: string | null;
-        hasStudentSubjectSelections: boolean;
-        hasAssessmentRecords: boolean;
-        warningMessage: string | null;
-      }
-    | undefined;
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
@@ -86,6 +75,17 @@ export default function SessionsPage() {
     () => sessions?.find((session) => session._id === selectedSessionId) ?? null,
     [selectedSessionId, sessions]
   );
+  const activeSession = useMemo(
+    () => sessions?.find((session) => session.isActive) ?? null,
+    [sessions]
+  );
+  const activationWarningMessage = useMemo(() => {
+    if (!activeSession) {
+      return null;
+    }
+
+    return `Changing the active session will keep ${activeSession.name} as history. Existing enrollment and assessment records stay attached to the session where they were originally saved.`;
+  }, [activeSession]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -160,16 +160,12 @@ export default function SessionsPage() {
   };
 
   const confirmActivationIfNeeded = (targetSessionId: string) => {
-    if (
-      !sessionWarnings?.warningMessage ||
-      !sessionWarnings.activeSessionId ||
-      sessionWarnings.activeSessionId === targetSessionId
-    ) {
+    if (!activeSession || activeSession._id === targetSessionId) {
       return true;
     }
 
     return window.confirm(
-      `${sessionWarnings.warningMessage}\n\nContinue and make the selected session active?`
+      `${activationWarningMessage}\n\nContinue and make the selected session active?`
     );
   };
 
@@ -358,9 +354,9 @@ export default function SessionsPage() {
           )}
         </div>
 
-        {sessionWarnings?.warningMessage ? (
+        {activationWarningMessage ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {sessionWarnings.warningMessage}
+            {activationWarningMessage}
           </div>
         ) : null}
 
