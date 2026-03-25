@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpenText, Plus, Shapes } from "lucide-react";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
@@ -20,12 +20,30 @@ export default function SubjectsPage() {
   const createSubject = useMutation(
     "functions/academic/academicSetup:createSubject" as never
   );
+  const updateSubject = useMutation(
+    "functions/academic/academicSetup:updateSubject" as never
+  );
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const selectedSubject =
+    subjects?.find((subject) => subject._id === selectedSubjectId) ?? null;
+
+  useEffect(() => {
+    if (!selectedSubject) {
+      return;
+    }
+
+    setEditName(selectedSubject.name);
+    setEditCode(selectedSubject.code);
+  }, [selectedSubject]);
 
   const subjectStats = useMemo(() => {
     if (!subjects) {
@@ -62,6 +80,36 @@ export default function SubjectsPage() {
       setError(err instanceof Error ? err.message : "Failed to create subject");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateSubject = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSubject) {
+      return;
+    }
+
+    const normalizedName = humanNameFinal(editName);
+    const normalizedCode = editCode.trim().toUpperCase();
+    if (!normalizedName || !normalizedCode) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+    setIsUpdating(true);
+
+    try {
+      await updateSubject({
+        subjectId: selectedSubject._id,
+        name: normalizedName,
+        code: normalizedCode,
+      } as never);
+      setSuccessMessage("Subject updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update subject");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -187,7 +235,10 @@ export default function SubjectsPage() {
             {subjects.map((subject) => (
               <div
                 key={subject._id}
-                className="flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-[#f8fafc] sm:px-5"
+                onClick={() => setSelectedSubjectId(subject._id)}
+                className={`flex cursor-pointer items-center justify-between gap-4 px-4 py-4 transition-colors sm:px-5 ${
+                  selectedSubjectId === subject._id ? "bg-[#eef2ff]" : "hover:bg-[#f8fafc]"
+                }`}
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-[#0f172a]">
@@ -205,6 +256,58 @@ export default function SubjectsPage() {
           </div>
         )}
       </section>
+
+      {selectedSubject ? (
+        <section className="space-y-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5">
+          <div>
+            <h2 className="text-sm font-extrabold uppercase tracking-[0.15em] text-[#0f172a]">
+              Edit Subject
+            </h2>
+            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-tight text-[#94a3b8]">
+              Changes update the catalog used by class offerings and enrollment selectors.
+            </p>
+          </div>
+
+          <form onSubmit={handleUpdateSubject} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
+                  Subject Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(event) => setEditName(humanNameTyping(event.target.value))}
+                  onBlur={(event) => setEditName(humanNameFinal(event.target.value))}
+                  className="h-11 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
+                  Subject Code
+                </label>
+                <input
+                  type="text"
+                  value={editCode}
+                  onChange={(event) => setEditCode(event.target.value.toUpperCase())}
+                  className="h-11 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold uppercase text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isUpdating || !editName.trim() || !editCode.trim()}
+              className="flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0f172a] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-xl transition-all hover:bg-[#1e293b] disabled:opacity-50"
+            >
+              <Shapes className="h-4 w-4 text-white/50" />
+              {isUpdating ? "Saving..." : "Save Subject"}
+            </button>
+          </form>
+        </section>
+      ) : null}
     </div>
   );
 }

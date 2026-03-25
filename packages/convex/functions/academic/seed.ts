@@ -2,7 +2,7 @@ import { internalMutation } from "../../_generated/server";
 import { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { deriveAssessmentFields } from "@school/shared";
-import { normalizeHumanName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",
@@ -165,7 +165,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const adminUserId = await ctx.db.insert("users", {
       schoolId,
       authId: args.adminAuthId,
-      name: normalizeHumanName(DEFAULT_ADMIN.name),
+      name: normalizePersonName(DEFAULT_ADMIN.name),
       email: DEFAULT_ADMIN.email,
       role: "admin",
       createdAt: now,
@@ -175,7 +175,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const teacherUserId = await ctx.db.insert("users", {
       schoolId,
       authId: args.teacherAuthId,
-      name: normalizeHumanName(DEFAULT_TEACHER.name),
+      name: normalizePersonName(DEFAULT_TEACHER.name),
       email: DEFAULT_TEACHER.email,
       role: "teacher",
       createdAt: now,
@@ -207,6 +207,8 @@ export const seedExamRecordingDataInternal = internalMutation({
       schoolId,
       name: normalizeHumanName("JSS 1A"),
       level: normalizeHumanName("Junior Secondary"),
+      gradeName: normalizeHumanName("JSS 1"),
+      classLabel: normalizeHumanName("A"),
       createdAt: now,
       updatedAt: now,
     });
@@ -245,7 +247,7 @@ export const seedExamRecordingDataInternal = internalMutation({
       const userId = await ctx.db.insert("users", {
         schoolId,
         authId: `seed-student-${student.admNo}`,
-        name: normalizeHumanName(student.name),
+        name: normalizePersonName(student.name),
         email: student.email,
         role: "student",
         createdAt: now,

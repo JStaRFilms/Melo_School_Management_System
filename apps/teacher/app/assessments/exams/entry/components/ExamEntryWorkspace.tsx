@@ -24,7 +24,7 @@ import {
   hasAnyErrors,
   validateField,
 } from "@/lib/exam-helpers";
-import { humanNameFinal } from "@/lib/human-name";
+import { humanNameFinalStrict } from "@/lib/human-name";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -243,7 +243,7 @@ export function ExamEntryWorkspace({
       setExtraErrorSummaries(
         result.errors.map((error) => ({
           studentName:
-            humanNameFinal(
+    humanNameFinalStrict(
               sheetData.roster.find((student) => student.studentId === error.studentId)
                 ?.studentName ?? "Unknown student"
             ),

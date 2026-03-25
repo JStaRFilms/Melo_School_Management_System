@@ -1,9 +1,9 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
-import { Mail, Search, Send, UserPlus } from "lucide-react";
-import { humanNameFinal, humanNameTyping } from "@/human-name";
+import { KeyRound, Mail, Search, Send, UserPlus } from "lucide-react";
+import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
 
 type TeacherRecord = {
   _id: string;
@@ -44,16 +44,40 @@ export default function TeachersPage() {
   const createTeacher = useAction(
     "functions/academic/academicSetup:createTeacher" as never
   );
+  const updateTeacherProfile = useAction(
+    "functions/academic/academicSetup:updateTeacherProfile" as never
+  );
+  const resetTeacherPassword = useAction(
+    "functions/academic/academicSetup:resetTeacherPassword" as never
+  );
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [search, setSearch] = useState("");
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [resetPasswordValue, setResetPasswordValue] = useState("Teacher123!Pass");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ProvisionResult | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const deferredSearch = useDeferredValue(search);
+  const selectedTeacher =
+    teachers?.find((teacher) => teacher._id === selectedTeacherId) ?? null;
+
+  useEffect(() => {
+    if (!selectedTeacher) {
+      return;
+    }
+
+    setEditName(selectedTeacher.name);
+    setEditEmail(selectedTeacher.email);
+  }, [selectedTeacher]);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) {
@@ -74,7 +98,7 @@ export default function TeachersPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const normalizedName = humanNameFinal(name);
+    const normalizedName = humanNameFinalStrict(name);
     if (!normalizedName || !email.trim() || !temporaryPassword.trim()) {
       return;
     }
@@ -82,6 +106,7 @@ export default function TeachersPage() {
     setIsSubmitting(true);
     setError(null);
     setResult(null);
+    setSuccessMessage(null);
 
     try {
       const response = (await createTeacher({
@@ -95,11 +120,68 @@ export default function TeachersPage() {
       setName("");
       setEmail("");
       setTemporaryPassword("Teacher123!Pass");
+      setSuccessMessage("Teacher account created.");
     } catch (err) {
       console.error("Teacher provisioning failed", err);
       setError(getTeacherProvisionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTeacher = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedTeacher) {
+      return;
+    }
+
+    const normalizedName = humanNameFinalStrict(editName);
+    const normalizedEmail = editEmail.trim().toLowerCase();
+    if (!normalizedName || !normalizedEmail) {
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setError(null);
+    setResult(null);
+    setSuccessMessage(null);
+
+    try {
+      await updateTeacherProfile({
+        teacherId: selectedTeacher._id,
+        name: normalizedName,
+        email: normalizedEmail,
+      } as never);
+      setSuccessMessage("Teacher profile updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update teacher");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleResetTeacherPassword = async () => {
+    if (!selectedTeacher || !resetPasswordValue.trim()) {
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setError(null);
+    setResult(null);
+    setSuccessMessage(null);
+
+    try {
+      await resetTeacherPassword({
+        teacherId: selectedTeacher._id,
+        temporaryPassword: resetPasswordValue.trim(),
+      } as never);
+      setSuccessMessage(
+        `Password reset for ${selectedTeacher.email}. Existing sessions were revoked.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -172,6 +254,17 @@ export default function TeachersPage() {
           </div>
         ) : null}
 
+        {successMessage && !result ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-[0.15em]">
+              Update saved
+            </p>
+            <p className="mt-1 text-sm font-medium text-emerald-900">
+              {successMessage}
+            </p>
+          </div>
+        ) : null}
+
         {result ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 flex flex-col gap-2">
             <p className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-[0.15em]">
@@ -196,8 +289,12 @@ export default function TeachersPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(event) => setName(humanNameTyping(event.target.value))}
-                onBlur={(event) => setName(humanNameFinal(event.target.value))}
+            onChange={(event) =>
+              setName(humanNameTypingStrict(event.target.value))
+            }
+            onBlur={(event) =>
+              setName(humanNameFinalStrict(event.target.value))
+            }
                 className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
                 placeholder="Temitope Yusuf"
                 required
@@ -271,11 +368,103 @@ export default function TeachersPage() {
         </form>
       </section>
 
+      {selectedTeacher ? (
+        <section className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
+                Edit Teacher
+              </h3>
+              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
+                Update login email, display name, or reset access
+              </p>
+            </div>
+            <span className="text-[8px] font-extrabold uppercase tracking-[0.15em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0]">
+              {selectedTeacher.email}
+            </span>
+          </div>
+
+          <form onSubmit={handleUpdateTeacher} className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-4">
+            <div className="space-y-3">
+              <div>
+                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
+                  Teacher Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+            onChange={(event) =>
+              setEditName(humanNameTypingStrict(event.target.value))
+            }
+            onBlur={(event) =>
+              setEditName(humanNameFinalStrict(event.target.value))
+            }
+                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
+                  Login Email
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(event) => setEditEmail(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingProfile || !editName.trim() || !editEmail.trim()}
+                className="h-11 rounded-xl bg-[#0f172a] text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 px-4"
+              >
+                <Send className="w-4 h-4 text-white/50" />
+                {isSavingProfile ? "Saving Changes" : "Save Teacher Changes"}
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-amber-700" />
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-amber-900">
+                  Reset Password
+                </span>
+              </div>
+              <p className="text-xs font-medium text-amber-900">
+                This sets a new temporary password and signs the teacher out of all current sessions.
+              </p>
+              <input
+                type="text"
+                value={resetPasswordValue}
+                onChange={(event) => setResetPasswordValue(event.target.value)}
+                className="h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-amber-400"
+              />
+              <button
+                type="button"
+                onClick={handleResetTeacherPassword}
+                disabled={isResettingPassword || !resetPasswordValue.trim()}
+                className="h-11 w-full rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-lg shadow-amber-100 disabled:opacity-50"
+              >
+                <KeyRound className="w-4 h-4 text-white/60" />
+                {isResettingPassword ? "Resetting Password" : "Reset Password"}
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTeachers.map((teacher) => (
           <div
             key={teacher._id}
-            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 space-y-4 hover:border-[#cbd5e1] hover:shadow-lg transition-all"
+            onClick={() => setSelectedTeacherId(teacher._id)}
+            className={`cursor-pointer bg-white border rounded-2xl p-4 space-y-4 transition-all ${
+              selectedTeacherId === teacher._id
+                ? "border-[#4f46e5] shadow-lg shadow-[#e0e7ff]"
+                : "border-[#e2e8f0] hover:border-[#cbd5e1] hover:shadow-lg"
+            }`}
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-[#0f172a] flex items-center justify-center text-white font-bold text-sm">

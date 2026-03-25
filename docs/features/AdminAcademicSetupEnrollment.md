@@ -6,18 +6,18 @@ Provide a streamlined, mobile-first workflow for school administrators to config
 ## Overview
 This feature allows administrators to:
 1.  **Define the Academic Calendar**: Create sessions (e.g., 2025/2026) and terms.
-2.  **Manage the Staff**: Create and list teachers with real Better Auth-backed accounts.
-3.  **Build the Catalog**: Define the list of subjects offered by the school.
-4.  **Structure the School**: Create classes, assign form teachers, and define subject offerings.
+2.  **Manage the Staff**: Create, edit, and reset teachers with real Better Auth-backed accounts.
+3.  **Build the Catalog**: Define and later edit the list of subjects offered by the school.
+4.  **Structure the School**: Create classes, assign form teachers, define subject offerings, and support both academic grade names and school-specific class labels.
 5.  **Assign Teaching Access**: Map teachers to class subjects so assigned teachers can later edit student subject selections.
 6.  **Enroll Students**: Add students to classes using the shared school user model.
 7.  **Select Student Subjects**: Map students to specific subjects within their class (matrix view).
 
 ## In Scope
-- Teacher creation and listing (Admin)
-- Session and Term management (Admin)
-- Subject catalog management (Admin)
-- Class creation, form-teacher assignment, and subject offering selection (Admin)
+- Teacher creation, editing, listing, and password reset (Admin)
+- Session and Term management, including later active-session switching (Admin)
+- Subject catalog management and editing (Admin)
+- Class creation, renaming, form-teacher assignment, and subject offering selection (Admin)
 - Subject-teacher assignment for class access (Admin)
 - Student roster management (Admin adds students to classes)
 - Student subject enrollment matrix (Admin/Teacher)
@@ -76,7 +76,9 @@ This feature allows administrators to:
 - `code` (e.g., "MAT101")
 
 ### `classes`
-- `name` (e.g., "Primary 4A")
+- `gradeName` (e.g., "Primary 4")
+- `classLabel` (optional, e.g., "Olive Blossom")
+- `name` (derived display name for compatibility, e.g., "Primary 4 - Olive Blossom")
 - `level` (Primary/Secondary)
 - `formTeacherId` (reference to teacher)
 
@@ -102,15 +104,34 @@ This feature allows administrators to:
   - Better Auth account is created first
   - matching school-scoped `users` row is inserted after auth provisioning succeeds
   - failed provisioning shows a concise in-page notice while the full error is logged to the browser console
+- Teacher editing is also a live action:
+  - Better Auth user profile is updated
+  - matching school-scoped `users` row is patched
+  - email is normalized to lowercase before duplicate checks and saves
+- Teacher password reset is admin-led:
+  - admin sets a temporary password
+  - teacher sessions are revoked after reset
+  - no self-service recovery flow is included in this slice
 - Student creation inserts both:
   - a linked `users` row with role `student`
   - a `students` row scoped to the selected class
+- Subject management now supports editing existing subject names and codes in place from the admin setup UI.
+- Session management now supports:
+  - editing session details after creation
+  - promoting an inactive saved session to active later
+  - warning-only confirmation when the current active session already has linked `studentSubjectSelections` or `assessmentRecords`
+  - preserving the single-active-session rule
 - Class management now supports:
+  - `gradeName` plus optional `classLabel`
+  - backward-compatible derived display names
+  - legacy class backfill so older rows gain `gradeName`
   - form-teacher assignment
   - subject offering selection
   - subject-teacher assignment for teacher access
 - Teacher access to the enrollment matrix is enforced through class-subject assignments.
 - The admin and teacher enrollment pages both use the same `studentSubjectSelections` model.
+- Enrollment matrix subject ticks save immediately; the UI no longer presents a fake separate commit step.
+- Success and error feedback on enrollment pages now uses compact transient notices instead of large persistent state panels.
 
 ## UI/UX Direction
 - **Mobile First**: All setup screens must be functional on a phone (one-handed operation).

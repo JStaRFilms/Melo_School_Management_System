@@ -4,42 +4,98 @@
  * Rules:
  * - Trim and collapse whitespace.
  * - Title-case each token (capitalize the first letter after any non-letter boundary).
- * - Preserve short acronym-like tokens that are already uppercase (e.g., "JSS", "ICT", "1A").
+ * - In the permissive mode, preserve short acronym-like tokens that are already uppercase
+ *   (e.g., "JSS", "ICT", "1A").
+ * - In the strict person-name mode, always title-case alphabetic tokens.
  * - Do not attempt to be linguistically perfect (e.g., "McDonald" stays "Mcdonald").
  */
 
 const ACRONYM_LIKE_MAX_LEN = 5;
 
 export function humanNameTyping(input: string): string {
-  return formatHumanName(input, false);
+  return formatHumanName(input, false, true);
 }
 
 export function humanNameFinal(input: string): string {
-  return formatHumanName(input, true);
+  return formatHumanName(input, true, true);
+}
+
+export function humanNameTypingStrict(input: string): string {
+  return formatHumanName(input, false, false);
+}
+
+export function humanNameFinalStrict(input: string): string {
+  return formatHumanName(input, true, false);
 }
 
 export function normalizeHumanName(input: string): string {
   return humanNameFinal(input);
 }
 
-function formatHumanName(input: string, collapseWhitespace: boolean): string {
+export function normalizePersonName(input: string): string {
+  return humanNameFinalStrict(input);
+}
+
+export type ClassNameParts = {
+  gradeName?: string | null;
+  classLabel?: string | null;
+  name?: string | null;
+};
+
+export function formatClassDisplayName(parts: ClassNameParts): string {
+  const normalizedGradeName = normalizeOptionalHumanName(parts.gradeName);
+  const normalizedClassLabel = normalizeOptionalHumanName(parts.classLabel);
+
+  if (normalizedGradeName) {
+    return normalizedClassLabel
+      ? `${normalizedGradeName} - ${normalizedClassLabel}`
+      : normalizedGradeName;
+  }
+
+  return normalizeOptionalHumanName(parts.name) ?? "";
+}
+
+export function normalizeClassGradeName(input: string): string {
+  return humanNameFinal(input);
+}
+
+export function normalizeClassLabel(input: string): string {
+  return humanNameFinal(input);
+}
+
+function formatHumanName(
+  input: string,
+  collapseWhitespace: boolean,
+  preserveAcronyms: boolean
+): string {
   const source = collapseWhitespace
     ? input.trim().replace(/\s+/g, " ")
     : input;
 
   if (!source) return "";
 
-  return source.replace(/\S+/g, (token) => normalizeToken(token));
+  return source.replace(/\S+/g, (token) =>
+    normalizeToken(token, preserveAcronyms)
+  );
 }
 
-function normalizeToken(token: string): string {
+function normalizeOptionalHumanName(input?: string | null): string | null {
+  if (!input) {
+    return null;
+  }
+
+  const normalized = humanNameFinal(input);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeToken(token: string, preserveAcronyms: boolean): string {
   if (!token) return token;
 
   if (isRomanNumeral(token)) {
     return token.toUpperCase();
   }
 
-  if (isAcronymLike(token)) {
+  if (preserveAcronyms && isAcronymLike(token)) {
     return token.toUpperCase();
   }
 

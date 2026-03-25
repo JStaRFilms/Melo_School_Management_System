@@ -2,7 +2,7 @@ import { action } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { normalizeHumanName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",
@@ -60,7 +60,7 @@ async function ensureAuthUser(
       origin: user.origin,
     },
     body: JSON.stringify({
-      name: normalizeHumanName(user.name),
+      name: normalizePersonName(user.name),
       email: user.email,
       password: user.password,
     }),
@@ -141,13 +141,13 @@ export const seedExamRecordingData = action({
     }
 
     const admin = {
-      name: normalizeHumanName(args.adminName ?? DEFAULT_ADMIN.name),
+      name: normalizePersonName(args.adminName ?? DEFAULT_ADMIN.name),
       email: args.adminEmail ?? DEFAULT_ADMIN.email,
       password: args.adminPassword ?? DEFAULT_ADMIN.password,
       origin: DEFAULT_ADMIN.origin,
     };
     const teacher = {
-      name: normalizeHumanName(args.teacherName ?? DEFAULT_TEACHER.name),
+      name: normalizePersonName(args.teacherName ?? DEFAULT_TEACHER.name),
       email: args.teacherEmail ?? DEFAULT_TEACHER.email,
       password: args.teacherPassword ?? DEFAULT_TEACHER.password,
       origin: DEFAULT_TEACHER.origin,

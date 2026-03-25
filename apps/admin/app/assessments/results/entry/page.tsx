@@ -490,11 +490,11 @@ function AdminScoreEntryContent({
   const roster = sheetData?.roster ?? [];
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
-  const selectedSubjectName = humanNameFinal(
+    const selectedSubjectName = humanNameFinal(
     subjects.find((subject) => subject.id === selection.subjectId)?.name ??
       "Score Entry"
   );
-  const selectedClassName = humanNameFinal(
+    const selectedClassName = humanNameFinal(
     classes.find((classOption) => classOption.id === selection.classId)?.name ??
       "Select Class"
   );
@@ -502,7 +502,7 @@ function AdminScoreEntryContent({
     humanNameFinal(
       terms.find((term) => term.id === selection.termId)?.name ?? "Select Term"
     );
-  const selectedSessionName = humanNameFinal(
+    const selectedSessionName = humanNameFinal(
     sessions.find((session) => session.id === selection.sessionId)?.name ??
       "Select Session"
   );

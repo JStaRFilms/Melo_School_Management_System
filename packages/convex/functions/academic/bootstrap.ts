@@ -2,7 +2,7 @@ import { action, internalMutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { normalizeHumanName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared";
 
 type BootstrapIds = {
   schoolId: Id<"schools">;
@@ -25,6 +25,8 @@ async function ensureAuthUser(args: {
   name: string;
   email: string;
   password: string;
+  role?: string;
+  schoolId?: string;
 }) {
   const signUpResponse = await fetch(`${args.authBaseUrl}/api/auth/sign-up/email`, {
     method: "POST",
@@ -32,11 +34,13 @@ async function ensureAuthUser(args: {
       "content-type": "application/json",
       origin: args.origin,
     },
-    body: JSON.stringify({
-      name: args.name,
-      email: args.email,
-      password: args.password,
-    }),
+      body: JSON.stringify({
+        name: args.name,
+        email: args.email,
+        password: args.password,
+        ...(args.role ? { role: args.role } : {}),
+        ...(args.schoolId ? { schoolId: args.schoolId } : {}),
+      }),
   });
 
   const signUpPayload = await readJsonSafe(signUpResponse);
@@ -131,7 +135,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       adminUserId = existingAdmin._id;
       await ctx.db.patch(adminUserId, {
         authId: args.adminAuthId,
-        name: normalizeHumanName(args.adminName),
+        name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
         updatedAt: now,
@@ -140,7 +144,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       adminUserId = await ctx.db.insert("users", {
         schoolId,
         authId: args.adminAuthId,
-        name: normalizeHumanName(args.adminName),
+        name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
         createdAt: now,
@@ -259,9 +263,10 @@ export const bootstrapSchoolAdmin = action({
     const adminAuthId = await ensureAuthUser({
       authBaseUrl,
       origin: args.origin,
-      name: normalizeHumanName(args.adminName),
+      name: normalizePersonName(args.adminName),
       email: args.adminEmail.trim().toLowerCase(),
       password: args.adminPassword,
+      role: "admin",
     });
 
     const bootstrapped: BootstrapIds = await ctx.runMutation(
@@ -269,7 +274,7 @@ export const bootstrapSchoolAdmin = action({
       {
         schoolName: normalizeHumanName(args.schoolName),
         schoolSlug: normalizedSlug,
-        adminName: normalizeHumanName(args.adminName),
+        adminName: normalizePersonName(args.adminName),
         adminEmail: args.adminEmail.trim().toLowerCase(),
         adminAuthId,
         ...(args.sessionName?.trim()

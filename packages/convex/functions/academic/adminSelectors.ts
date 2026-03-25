@@ -5,7 +5,7 @@ import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
 } from "./auth";
-import { normalizeHumanName } from "@school/shared";
+import { formatClassDisplayName, normalizeHumanName } from "@school/shared";
 
 export const getAdminSessions = query({
   args: {},
@@ -71,7 +71,11 @@ export const getAllClasses = query({
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((classDoc: any) => ({
         id: classDoc._id,
-        name: normalizeHumanName(classDoc.name),
+        name: formatClassDisplayName({
+          gradeName: classDoc.gradeName ?? classDoc.name,
+          classLabel: classDoc.classLabel,
+          name: classDoc.name,
+        }),
       }));
   },
 });

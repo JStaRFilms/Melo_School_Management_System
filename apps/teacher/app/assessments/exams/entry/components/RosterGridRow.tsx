@@ -9,7 +9,7 @@ import type {
   Id,
   GradingBandResponse,
 } from "@/lib/types";
-import { humanNameFinal } from "@/lib/human-name";
+import { humanNameFinalStrict } from "@/lib/human-name";
 import { ScoreInput } from "./ScoreInput";
 import { ComputedColumns } from "./ComputedColumns";
 import { getEffectiveValue, computeDerivedValues } from "@/lib/exam-helpers";
@@ -45,7 +45,7 @@ export function RosterGridRow({
   onScoreChange,
 }: RosterGridRowProps) {
   const examMax = examInputMode === "raw40" ? 40 : 60;
-  const displayStudentName = humanNameFinal(student.studentName);
+  const displayStudentName = humanNameFinalStrict(student.studentName);
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
   const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [

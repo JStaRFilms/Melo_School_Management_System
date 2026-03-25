@@ -1,13 +1,20 @@
-import { action, internalMutation, mutation, query } from "../../_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
+import { authComponent, createAuth } from "../../betterAuth";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
-import { normalizeHumanName } from "@school/shared";
+import {
+  formatClassDisplayName,
+  normalizeClassGradeName,
+  normalizeClassLabel,
+  normalizeHumanName,
+  normalizePersonName,
+} from "@school/shared";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -19,6 +26,49 @@ async function readJsonSafe(response: Response) {
   }
 }
 
+function normalizeTeacherEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function buildClassName(args: {
+  gradeName?: string | null;
+  classLabel?: string | null;
+  legacyName?: string | null;
+}) {
+  return formatClassDisplayName({
+    gradeName: args.gradeName,
+    classLabel: args.classLabel,
+    name: args.legacyName,
+  });
+}
+
+function getStoredGradeName(classDoc: {
+  gradeName?: string | null;
+  name: string;
+}) {
+  return normalizeClassGradeName(classDoc.gradeName ?? classDoc.name);
+}
+
+function getStoredClassLabel(classDoc: {
+  classLabel?: string | null;
+}) {
+  return classDoc.classLabel ? normalizeClassLabel(classDoc.classLabel) : undefined;
+}
+
+async function ensureActingAdminAuthRole(ctx: any, schoolId: Id<"schools">) {
+  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+
+  await auth.api.updateUser({
+    headers,
+    body: {
+      role: "admin",
+      schoolId: String(schoolId),
+    },
+  });
+
+  return { auth, headers };
+}
+
 export const createTeacherRecordInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
@@ -28,10 +78,11 @@ export const createTeacherRecordInternal = internalMutation({
   },
   returns: v.id("users"),
   handler: async (ctx, args) => {
+    const normalizedEmail = normalizeTeacherEmail(args.email);
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .filter((q) => q.eq(q.field("email"), args.email))
+      .filter((q) => q.eq(q.field("email"), normalizedEmail))
       .unique();
 
     if (existingUser) {
@@ -42,8 +93,8 @@ export const createTeacherRecordInternal = internalMutation({
     const teacherId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
-      name: normalizeHumanName(args.name),
-      email: args.email,
+      name: normalizePersonName(args.name),
+      email: normalizedEmail,
       role: "teacher",
       createdAt: now,
       updatedAt: now,
@@ -82,6 +133,7 @@ export const createTeacher = action({
     }
 
     const schoolId = viewer.schoolId;
+    const normalizedEmail = normalizeTeacherEmail(args.email);
 
     const authBaseUrl = process.env.CONVEX_SITE_URL?.trim();
     if (!authBaseUrl) {
@@ -97,9 +149,11 @@ export const createTeacher = action({
         origin: args.origin,
       },
       body: JSON.stringify({
-        name: normalizeHumanName(args.name),
-        email: args.email,
+        name: normalizePersonName(args.name),
+        email: normalizedEmail,
         password: args.temporaryPassword,
+        role: "teacher",
+        schoolId: String(schoolId),
       }),
     });
 
@@ -115,14 +169,14 @@ export const createTeacher = action({
       {
         schoolId,
         name: normalizeHumanName(args.name),
-        email: args.email,
+        email: normalizedEmail,
         authId: signUpPayload.user.id,
       }
     );
 
     return {
       teacherId,
-      email: args.email,
+      email: normalizedEmail,
       temporaryPassword: args.temporaryPassword,
     };
   },
@@ -153,10 +207,222 @@ export const listTeachers = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((t) => ({
         _id: t._id,
-        name: normalizeHumanName(t.name),
+        name: normalizePersonName(t.name),
         email: t.email,
         createdAt: t.createdAt,
       }));
+  },
+});
+
+export const getTeacherRecordInternal = internalQuery({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+  },
+  returns: v.object({
+    _id: v.id("users"),
+    authId: v.string(),
+    email: v.string(),
+    name: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || teacher.schoolId !== args.schoolId || teacher.role !== "teacher") {
+      throw new ConvexError("Teacher not found");
+    }
+
+    return {
+      _id: teacher._id,
+      authId: teacher.authId,
+      email: teacher.email,
+      name: teacher.name,
+    };
+  },
+});
+
+export const findTeacherByEmailInternal = internalQuery({
+  args: {
+    schoolId: v.id("schools"),
+    email: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      _id: v.id("users"),
+      email: v.string(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    const normalizedEmail = normalizeTeacherEmail(args.email);
+    const teacher = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("role"), "teacher"),
+          q.eq(q.field("email"), normalizedEmail)
+        )
+      )
+      .unique();
+
+    if (!teacher) {
+      return null;
+    }
+
+    return {
+      _id: teacher._id,
+      email: teacher.email,
+    };
+  },
+});
+
+export const updateTeacherRecordInternal = internalMutation({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    name: v.string(),
+    email: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || teacher.schoolId !== args.schoolId || teacher.role !== "teacher") {
+      throw new ConvexError("Teacher not found");
+    }
+
+    await ctx.db.patch(args.teacherId, {
+      name: normalizeHumanName(args.name),
+      email: normalizeTeacherEmail(args.email),
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
+export const updateTeacherProfile = action({
+  args: {
+    teacherId: v.id("users"),
+    name: v.string(),
+    email: v.string(),
+  },
+  returns: v.object({
+    teacherId: v.id("users"),
+    name: v.string(),
+    email: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    if (viewer.role !== "admin") {
+      throw new ConvexError("Admin access required");
+    }
+
+    const teacher = await ctx.runQuery(
+      (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
+      {
+        teacherId: args.teacherId,
+        schoolId: viewer.schoolId,
+      }
+    );
+
+    const normalizedName = normalizeHumanName(args.name);
+    const normalizedEmail = normalizeTeacherEmail(args.email);
+
+    const duplicateTeacher = await ctx.runQuery(
+      (internal as any).functions.academic.academicSetup.findTeacherByEmailInternal,
+      {
+        schoolId: viewer.schoolId,
+        email: normalizedEmail,
+      }
+    );
+
+    if (duplicateTeacher && duplicateTeacher._id !== args.teacherId) {
+      throw new ConvexError("A teacher with this email already exists");
+    }
+
+    const { auth, headers } = await ensureActingAdminAuthRole(ctx, viewer.schoolId);
+
+    await auth.api.adminUpdateUser({
+      headers,
+      body: {
+        userId: teacher.authId,
+        data: {
+          name: normalizedName,
+          email: normalizedEmail,
+          role: "teacher",
+          schoolId: String(viewer.schoolId),
+        },
+      },
+    });
+
+    await ctx.runMutation(
+      (internal as any).functions.academic.academicSetup.updateTeacherRecordInternal,
+      {
+        teacherId: args.teacherId,
+        schoolId: viewer.schoolId,
+        name: normalizedName,
+        email: normalizedEmail,
+      }
+    );
+
+    return {
+      teacherId: args.teacherId,
+      name: normalizedName,
+      email: normalizedEmail,
+    };
+  },
+});
+
+export const resetTeacherPassword = action({
+  args: {
+    teacherId: v.id("users"),
+    temporaryPassword: v.string(),
+  },
+  returns: v.object({
+    teacherId: v.id("users"),
+    temporaryPassword: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    if (viewer.role !== "admin") {
+      throw new ConvexError("Admin access required");
+    }
+
+    const teacher = await ctx.runQuery(
+      (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
+      {
+        teacherId: args.teacherId,
+        schoolId: viewer.schoolId,
+      }
+    );
+
+    const { auth, headers } = await ensureActingAdminAuthRole(ctx, viewer.schoolId);
+
+    await auth.api.setUserPassword({
+      headers,
+      body: {
+        userId: teacher.authId,
+        newPassword: args.temporaryPassword,
+      },
+    });
+
+    await auth.api.revokeUserSessions({
+      headers,
+      body: {
+        userId: teacher.authId,
+      },
+    });
+
+    return {
+      teacherId: args.teacherId,
+      temporaryPassword: args.temporaryPassword,
+    };
   },
 });
 
@@ -244,6 +510,67 @@ export const listSessions = query({
   },
 });
 
+export const getSessionActivationWarnings = query({
+  args: {},
+  returns: v.object({
+    activeSessionId: v.union(v.id("academicSessions"), v.null()),
+    activeSessionName: v.union(v.string(), v.null()),
+    hasStudentSubjectSelections: v.boolean(),
+    hasAssessmentRecords: v.boolean(),
+    warningMessage: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const activeSession = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .unique();
+
+    if (!activeSession) {
+      return {
+        activeSessionId: null,
+        activeSessionName: null,
+        hasStudentSubjectSelections: false,
+        hasAssessmentRecords: false,
+        warningMessage: null,
+      };
+    }
+
+    const [selectionRecord, assessmentRecord] = await Promise.all([
+      ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_session", (q) => q.eq("sessionId", activeSession._id))
+        .first(),
+      ctx.db
+        .query("assessmentRecords")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .filter((q) => q.eq(q.field("sessionId"), activeSession._id))
+        .first(),
+    ]);
+
+    const hasStudentSubjectSelections = Boolean(selectionRecord);
+    const hasAssessmentRecords = Boolean(assessmentRecord);
+
+    return {
+      activeSessionId: activeSession._id,
+      activeSessionName: normalizeHumanName(activeSession.name),
+      hasStudentSubjectSelections,
+      hasAssessmentRecords,
+      warningMessage:
+        hasStudentSubjectSelections || hasAssessmentRecords
+          ? `Changing the active session will keep ${normalizeHumanName(
+              activeSession.name
+            )} as history, but it already has live enrollment or assessment data.`
+          : null,
+    };
+  },
+});
+
 export const updateSession = mutation({
   args: {
     sessionId: v.id("academicSessions"),
@@ -261,6 +588,18 @@ export const updateSession = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.schoolId !== schoolId) {
       throw new ConvexError("Cross-school access denied");
+    }
+
+    const nextStartDate = args.startDate ?? session.startDate;
+    const nextEndDate = args.endDate ?? session.endDate;
+    if (nextEndDate <= nextStartDate) {
+      throw new ConvexError("End date must be after start date");
+    }
+
+    if (args.isActive === false && session.isActive) {
+      throw new ConvexError(
+        "An active session cannot be turned off directly. Activate another session instead."
+      );
     }
 
     const updates: Record<string, unknown> = {};
@@ -527,7 +866,9 @@ export const deleteSubject = mutation({
 
 export const createClass = mutation({
   args: {
-    name: v.string(),
+    name: v.optional(v.string()),
+    gradeName: v.optional(v.string()),
+    classLabel: v.optional(v.string()),
     level: v.string(),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
   },
@@ -544,11 +885,27 @@ export const createClass = mutation({
       }
     }
 
+    const gradeName = normalizeClassGradeName(args.gradeName ?? args.name ?? "");
+    if (!gradeName) {
+      throw new ConvexError("Class grade name is required");
+    }
+
+    const classLabel = args.classLabel
+      ? normalizeClassLabel(args.classLabel)
+      : undefined;
+    const displayName = buildClassName({
+      gradeName,
+      classLabel,
+      legacyName: args.name,
+    });
+
     const now = Date.now();
     return await ctx.db.insert("classes", {
       schoolId,
-      name: normalizeHumanName(args.name),
+      name: displayName,
       level: args.level,
+      gradeName,
+      ...(classLabel ? { classLabel } : {}),
       ...(args.formTeacherId ? { formTeacherId: args.formTeacherId } : {}),
       createdAt: now,
       updatedAt: now,
@@ -563,6 +920,8 @@ export const listClasses = query({
       _id: v.id("classes"),
       name: v.string(),
       level: v.string(),
+      gradeName: v.string(),
+      classLabel: v.optional(v.string()),
       formTeacherId: v.optional(v.id("users")),
       formTeacherName: v.optional(v.string()),
       subjectNames: v.array(v.string()),
@@ -609,10 +968,16 @@ export const listClasses = query({
 
             return {
               _id: classDoc._id,
-              name: normalizeHumanName(classDoc.name),
+              name: buildClassName({
+                gradeName: classDoc.gradeName ?? classDoc.name,
+                classLabel: classDoc.classLabel,
+                legacyName: classDoc.name,
+              }),
               level: classDoc.level,
+              gradeName: getStoredGradeName(classDoc),
+              classLabel: getStoredClassLabel(classDoc),
               formTeacherId: classDoc.formTeacherId,
-              formTeacherName: teacher?.name ? normalizeHumanName(teacher.name) : undefined,
+        formTeacherName: teacher?.name ? normalizePersonName(teacher.name) : undefined,
               subjectNames,
               studentCount: students.length,
               createdAt: classDoc.createdAt,
@@ -624,11 +989,57 @@ export const listClasses = query({
   },
 });
 
+export const backfillClassNaming = mutation({
+  args: {},
+  returns: v.object({
+    updatedCount: v.number(),
+  }),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+
+    let updatedCount = 0;
+    for (const classDoc of classes) {
+      const gradeName = getStoredGradeName(classDoc);
+      const classLabel = getStoredClassLabel(classDoc);
+      const name = buildClassName({
+        gradeName,
+        classLabel,
+        legacyName: classDoc.name,
+      });
+
+      if (
+        classDoc.gradeName !== gradeName ||
+        classDoc.classLabel !== classLabel ||
+        classDoc.name !== name
+      ) {
+        await ctx.db.patch(classDoc._id, {
+          gradeName,
+          name,
+          ...(classLabel ? { classLabel } : {}),
+          updatedAt: Date.now(),
+        });
+        updatedCount += 1;
+      }
+    }
+
+    return { updatedCount };
+  },
+});
+
 export const updateClass = mutation({
   args: {
     classId: v.id("classes"),
     name: v.optional(v.string()),
+    gradeName: v.optional(v.string()),
     level: v.optional(v.string()),
+    classLabel: v.optional(v.union(v.string(), v.null())),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
   },
   returns: v.null(),
@@ -650,14 +1061,39 @@ export const updateClass = mutation({
     }
 
     const updatedAt = Date.now();
-    const nextName = normalizeHumanName(args.name ?? classDoc.name);
+    const nextGradeName = normalizeClassGradeName(
+      args.gradeName ?? args.name ?? getStoredGradeName(classDoc)
+    );
+    if (!nextGradeName) {
+      throw new ConvexError("Class grade name is required");
+    }
     const nextLevel = args.level ?? classDoc.level;
+    const nextClassLabel =
+      args.classLabel === null
+        ? undefined
+        : args.classLabel !== undefined
+          ? args.classLabel.trim()
+            ? normalizeClassLabel(args.classLabel)
+            : undefined
+          : getStoredClassLabel(classDoc);
+    const nextName = buildClassName({
+      gradeName: nextGradeName,
+      classLabel: nextClassLabel,
+      legacyName: args.name ?? classDoc.name,
+    });
+    const nextFormTeacherId =
+      args.formTeacherId === undefined
+        ? classDoc.formTeacherId
+        : args.formTeacherId ?? undefined;
 
-    if (args.formTeacherId === null) {
+    if (args.formTeacherId === null || args.classLabel === null) {
       const replacement = {
         schoolId: classDoc.schoolId,
         name: nextName,
         level: nextLevel,
+        gradeName: nextGradeName,
+        ...(nextClassLabel ? { classLabel: nextClassLabel } : {}),
+        ...(nextFormTeacherId ? { formTeacherId: nextFormTeacherId } : {}),
         createdAt: classDoc.createdAt,
         updatedAt,
       };
@@ -668,9 +1104,13 @@ export const updateClass = mutation({
     const updates: Record<string, unknown> = {
       name: nextName,
       level: nextLevel,
+      gradeName: nextGradeName,
       updatedAt,
     };
 
+    if (args.classLabel !== undefined) {
+      updates.classLabel = nextClassLabel;
+    }
     if (args.formTeacherId !== undefined) {
       updates.formTeacherId = args.formTeacherId;
     }
@@ -698,6 +1138,8 @@ export const setClassSubjects = mutation({
       throw new ConvexError("Cross-school access denied");
     }
 
+    const nextSubjectIds = new Set(args.subjectIds.map((subjectId) => String(subjectId)));
+
     // Verify all subjects belong to this school
     for (const subjectId of args.subjectIds) {
       const subject = await ctx.db.get(subjectId);
@@ -712,6 +1154,12 @@ export const setClassSubjects = mutation({
       .withIndex("by_class", (q) => q.eq("classId", args.classId))
       .collect();
 
+    const removedSubjectIds = new Set(
+      existingOfferings
+        .map((offering) => String(offering.subjectId))
+        .filter((subjectId) => !nextSubjectIds.has(subjectId))
+    );
+
     for (const offering of existingOfferings) {
       await ctx.db.delete(offering._id);
     }
@@ -723,6 +1171,30 @@ export const setClassSubjects = mutation({
 
     for (const assignment of existingAssignments) {
       await ctx.db.delete(assignment._id);
+    }
+
+    if (removedSubjectIds.size > 0) {
+      const activeSession = await ctx.db
+        .query("academicSessions")
+        .withIndex("by_school_active", (q) =>
+          q.eq("schoolId", schoolId).eq("isActive", true)
+        )
+        .unique();
+
+      if (activeSession) {
+        const activeSelections = await ctx.db
+          .query("studentSubjectSelections")
+          .withIndex("by_class_and_session", (q) =>
+            q.eq("classId", args.classId).eq("sessionId", activeSession._id)
+          )
+          .collect();
+
+        for (const selection of activeSelections) {
+          if (removedSubjectIds.has(String(selection.subjectId))) {
+            await ctx.db.delete(selection._id);
+          }
+        }
+      }
     }
 
     // Insert new offerings
@@ -776,7 +1248,7 @@ export const getClassSubjects = query({
       let teacherName: string | undefined;
       if (offering.teacherId) {
         const teacher = await ctx.db.get(offering.teacherId);
-        teacherName = teacher?.name ? normalizeHumanName(teacher.name) : undefined;
+        teacherName = teacher?.name ? normalizePersonName(teacher.name) : undefined;
       }
 
       results.push({

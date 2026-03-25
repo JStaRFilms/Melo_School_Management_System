@@ -38,21 +38,39 @@ export default function SessionsPage() {
   const createSession = useMutation(
     "functions/academic/academicSetup:createSession" as never
   );
+  const updateSession = useMutation(
+    "functions/academic/academicSetup:updateSession" as never
+  );
   const createTerm = useMutation(
     "functions/academic/academicSetup:createTerm" as never
   );
+  const sessionWarnings = useQuery(
+    "functions/academic/academicSetup:getSessionActivationWarnings" as never
+  ) as
+    | {
+        activeSessionId: string | null;
+        activeSessionName: string | null;
+        hasStudentSubjectSelections: boolean;
+        hasAssessmentRecords: boolean;
+        warningMessage: string | null;
+      }
+    | undefined;
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
   const [sessionStartDate, setSessionStartDate] = useState("");
   const [sessionEndDate, setSessionEndDate] = useState("");
   const [activateSession, setActivateSession] = useState(true);
+  const [editSessionName, setEditSessionName] = useState("");
+  const [editSessionStartDate, setEditSessionStartDate] = useState("");
+  const [editSessionEndDate, setEditSessionEndDate] = useState("");
   const [termName, setTermName] = useState("First Term");
   const [termStartDate, setTermStartDate] = useState("");
   const [termEndDate, setTermEndDate] = useState("");
   const [activateTerm, setActivateTerm] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
   const [isSavingTerm, setIsSavingTerm] = useState(false);
 
   useEffect(() => {
@@ -68,6 +86,16 @@ export default function SessionsPage() {
     () => sessions?.find((session) => session._id === selectedSessionId) ?? null,
     [selectedSessionId, sessions]
   );
+
+  useEffect(() => {
+    if (!selectedSession) {
+      return;
+    }
+
+    setEditSessionName(selectedSession.name);
+    setEditSessionStartDate(toDateInput(selectedSession.startDate));
+    setEditSessionEndDate(toDateInput(selectedSession.endDate));
+  }, [selectedSession]);
 
   const terms = useQuery(
     "functions/academic/academicSetup:listTermsBySession" as never,
@@ -128,6 +156,70 @@ export default function SessionsPage() {
       setError(err instanceof Error ? err.message : "Failed to create term");
     } finally {
       setIsSavingTerm(false);
+    }
+  };
+
+  const confirmActivationIfNeeded = (targetSessionId: string) => {
+    if (
+      !sessionWarnings?.warningMessage ||
+      !sessionWarnings.activeSessionId ||
+      sessionWarnings.activeSessionId === targetSessionId
+    ) {
+      return true;
+    }
+
+    return window.confirm(
+      `${sessionWarnings.warningMessage}\n\nContinue and make the selected session active?`
+    );
+  };
+
+  const handleUpdateSelectedSession = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+    if (!selectedSession) {
+      return;
+    }
+
+    const normalizedName = humanNameFinal(editSessionName);
+    if (!normalizedName || !editSessionStartDate || !editSessionEndDate) {
+      return;
+    }
+
+    setIsUpdatingSession(true);
+    setError(null);
+
+    try {
+      await updateSession({
+        sessionId: selectedSession._id,
+        name: normalizedName,
+        startDate: new Date(editSessionStartDate).getTime(),
+        endDate: new Date(editSessionEndDate).getTime(),
+      } as never);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update session");
+    } finally {
+      setIsUpdatingSession(false);
+    }
+  };
+
+  const handleMakeActive = async (sessionId: string) => {
+    if (!confirmActivationIfNeeded(sessionId)) {
+      return;
+    }
+
+    setIsUpdatingSession(true);
+    setError(null);
+
+    try {
+      await updateSession({
+        sessionId,
+        isActive: true,
+      } as never);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to activate session");
+    } finally {
+      setIsUpdatingSession(false);
     }
   };
 
@@ -197,7 +289,7 @@ export default function SessionsPage() {
                           : "bg-[#f1f5f9] text-[#64748b] border-[#e2e8f0]"
                       }`}
                     >
-                      {session.isActive ? "Active" : "Archived"}
+                      {session.isActive ? "Active" : "Saved"}
                     </span>
                   </div>
                   <span className="text-[10px] font-bold text-[#94a3b8]">
@@ -249,12 +341,102 @@ export default function SessionsPage() {
                         </div>
                       </div>
                     </div>
+                    {!session.isActive ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleMakeActive(session._id)}
+                        disabled={isUpdatingSession}
+                        className="mt-4 h-10 rounded-xl bg-emerald-600 px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-lg shadow-emerald-100 disabled:opacity-50"
+                      >
+                        {isUpdatingSession ? "Switching..." : "Make Active Session"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </button>
             ))
           )}
         </div>
+
+        {sessionWarnings?.warningMessage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {sessionWarnings.warningMessage}
+          </div>
+        ) : null}
+
+        {selectedSession ? (
+          <form
+            onSubmit={handleUpdateSelectedSession}
+            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-3"
+          >
+            <div>
+              <h3 className="text-xs font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
+                Edit Selected Session
+              </h3>
+              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
+                Update label and dates, or switch it active later.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
+                  Session Label
+                </label>
+                <input
+                  type="text"
+                  value={editSessionName}
+                  onChange={(event) => setEditSessionName(humanNameTyping(event.target.value))}
+                  onBlur={(event) => setEditSessionName(humanNameFinal(event.target.value))}
+                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={editSessionStartDate}
+                  onChange={(event) => setEditSessionStartDate(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={editSessionEndDate}
+                  onChange={(event) => setEditSessionEndDate(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
+                  required
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="submit"
+                disabled={isUpdatingSession}
+                className="h-11 flex-1 rounded-xl bg-[#0f172a] text-white font-bold text-xs uppercase tracking-[0.025em] shadow-xl disabled:opacity-50"
+              >
+                {isUpdatingSession ? "Saving Changes" : "Save Session Changes"}
+              </button>
+              {!selectedSession.isActive ? (
+                <button
+                  type="button"
+                  onClick={() => void handleMakeActive(selectedSession._id)}
+                  disabled={isUpdatingSession}
+                  className="h-11 flex-1 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-[0.025em] shadow-lg shadow-emerald-100 disabled:opacity-50"
+                >
+                  {isUpdatingSession ? "Switching Active Session" : "Make This Session Active"}
+                </button>
+              ) : null}
+            </div>
+          </form>
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <form

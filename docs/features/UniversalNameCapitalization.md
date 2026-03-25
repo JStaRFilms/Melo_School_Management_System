@@ -72,6 +72,9 @@ Client-side normalization is applied on change and blur for name inputs, and app
 - Teacher app helper: `apps/teacher/lib/human-name.ts` (used via `@/lib/human-name`)
 - Typing helper: `humanNameTyping`
 - Final helper: `humanNameFinal`
+- Strict person-name helper: `humanNameTypingStrict` / `humanNameFinalStrict`
+
+Strict person-name normalization is used for student, teacher, and admin user names so all-caps tokens like `SANI` are converted to title case instead of being preserved.
 
 Updated name-entry routes:
 - `apps/admin/app/academic/teachers/page.tsx`

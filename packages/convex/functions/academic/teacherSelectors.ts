@@ -2,7 +2,7 @@ import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { getAuthenticatedSchoolMembership } from "./auth";
-import { normalizeHumanName } from "@school/shared";
+import { formatClassDisplayName, normalizeHumanName } from "@school/shared";
 
 export const getTeacherSessions = query({
   args: {},
@@ -65,7 +65,11 @@ export const getTeacherAssignableClasses = query({
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((classDoc: any) => ({
           _id: classDoc._id,
-          name: normalizeHumanName(classDoc.name),
+          name: formatClassDisplayName({
+            gradeName: classDoc.gradeName ?? classDoc.name,
+            classLabel: classDoc.classLabel,
+            name: classDoc.name,
+          }),
         }));
     }
 
@@ -86,7 +90,14 @@ export const getTeacherAssignableClasses = query({
     return classes
       .filter((classDoc: any) => classDoc && classDoc.schoolId === schoolId)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((classDoc: any) => ({ _id: classDoc._id, name: classDoc.name }));
+      .map((classDoc: any) => ({
+        _id: classDoc._id,
+        name: formatClassDisplayName({
+          gradeName: classDoc.gradeName ?? classDoc.name,
+          classLabel: classDoc.classLabel,
+          name: classDoc.name,
+        }),
+      }));
   },
 });
 

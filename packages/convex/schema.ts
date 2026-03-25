@@ -43,6 +43,8 @@ export default defineSchema({
     schoolId: v.id("schools"),
     name: v.string(),
     level: v.string(),
+    gradeName: v.optional(v.string()),
+    classLabel: v.optional(v.string()),
     formTeacherId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),

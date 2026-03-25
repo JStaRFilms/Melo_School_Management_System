@@ -1,1 +1,7 @@
-export { humanNameFinal, humanNameTyping } from "@school/shared";
+export {
+  humanNameFinal,
+  humanNameFinalStrict,
+  humanNameTyping,
+  humanNameTypingStrict,
+  normalizePersonName,
+} from "@school/shared";

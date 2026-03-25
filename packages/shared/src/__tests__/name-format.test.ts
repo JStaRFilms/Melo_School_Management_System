@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeHumanName } from "../name-format";
+import { normalizeHumanName, normalizePersonName } from "../name-format";
 
 describe("normalizeHumanName", () => {
   it("trims and collapses whitespace", () => {
@@ -24,5 +24,9 @@ describe("normalizeHumanName", () => {
     expect(normalizeHumanName("john paul ii")).toBe("John Paul II");
     expect(normalizeHumanName("henry iv")).toBe("Henry IV");
   });
-});
 
+  it("strictly title-cases person names", () => {
+    expect(normalizePersonName("SANI khadija")).toBe("Sani Khadija");
+    expect(normalizePersonName("MARYAM")).toBe("Maryam");
+  });
+});

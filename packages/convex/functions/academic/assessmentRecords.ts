@@ -12,6 +12,7 @@ import {
   ExamInputMode,
   GradingBand,
   normalizeHumanName,
+  normalizePersonName,
 } from "@school/shared";
 
 /**
@@ -185,7 +186,7 @@ export const getExamEntrySheet = query({
       students.map(async (student: any) => {
         // Get user details for student name
         const user = await ctx.db.get(student.userId);
-        const studentName = normalizeHumanName(user?.name ?? "Unknown");
+        const studentName = normalizePersonName(user?.name ?? "Unknown");
 
         return {
           studentId: student._id,

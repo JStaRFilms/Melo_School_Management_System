@@ -5,7 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
-import { normalizeHumanName } from "@school/shared";
+import { normalizeHumanName, normalizePersonName } from "@school/shared";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -45,7 +45,7 @@ export const createStudent = mutation({
     const studentUserId = await ctx.db.insert("users", {
       schoolId,
       authId: toStudentAuthId(String(schoolId), args.admissionNumber),
-      name: normalizeHumanName(args.name),
+      name: normalizePersonName(args.name),
       email: `${args.admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
       role: "student",
       createdAt: now,
@@ -98,7 +98,7 @@ export const listStudentsByClass = query({
           const studentUser = await ctx.db.get(student.userId);
           return {
             _id: student._id,
-            studentName: normalizeHumanName(studentUser?.name ?? "Unnamed Student"),
+            studentName: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
             admissionNumber: student.admissionNumber,
             classId: student.classId,
             createdAt: student.createdAt,
@@ -152,7 +152,7 @@ export const updateStudent = mutation({
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) {
       await ctx.db.patch(student.userId, {
-        name: normalizeHumanName(args.name),
+        name: normalizePersonName(args.name),
         updatedAt: Date.now(),
       });
     }
@@ -230,6 +230,9 @@ export const setStudentSubjectSelections = mutation({
     if (!student || student.schoolId !== schoolId) {
       throw new ConvexError("Cross-school access denied");
     }
+    if (student.classId !== args.classId) {
+      throw new ConvexError("Student is not enrolled in this class");
+    }
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId) {
@@ -251,22 +254,6 @@ export const setStudentSubjectSelections = mutation({
       classOfferings.map((o) => String(o.subjectId))
     );
 
-    for (const subjectId of args.subjectIds) {
-      if (!offeredSubjectIds.has(String(subjectId))) {
-        const subject = await ctx.db.get(subjectId);
-        throw new ConvexError(
-          `Subject "${subject?.name ?? subjectId}" is not offered in this class`
-        );
-      }
-
-      // Verify subject belongs to this school
-      const subject = await ctx.db.get(subjectId);
-      if (!subject || subject.schoolId !== schoolId) {
-        throw new ConvexError("Cross-school access denied for subject");
-      }
-    }
-
-    // Remove existing selections for this student/class/session
     const existingSelections = await ctx.db
       .query("studentSubjectSelections")
       .withIndex("by_student_and_class_and_session", (q) =>
@@ -277,13 +264,46 @@ export const setStudentSubjectSelections = mutation({
       )
       .collect();
 
+    const existingSubjectIds = new Set(
+      existingSelections.map((selection) => String(selection.subjectId))
+    );
+
+    const subjectIdsToSave: typeof args.subjectIds = [];
+    const seenSubjectIds = new Set<string>();
+
+    for (const subjectId of args.subjectIds) {
+      const subjectKey = String(subjectId);
+      if (seenSubjectIds.has(subjectKey)) {
+        continue;
+      }
+      seenSubjectIds.add(subjectKey);
+
+      const subject = await ctx.db.get(subjectId);
+      if (!subject || subject.schoolId !== schoolId) {
+        throw new ConvexError("Cross-school access denied for subject");
+      }
+
+      if (!offeredSubjectIds.has(subjectKey)) {
+        if (existingSubjectIds.has(subjectKey)) {
+          continue;
+        }
+
+        throw new ConvexError(
+          "One of the selected subjects is no longer offered for this class. Refresh the grid and try again."
+        );
+      }
+
+      subjectIdsToSave.push(subjectId);
+    }
+
+    // Remove existing selections for this student/class/session
     for (const selection of existingSelections) {
       await ctx.db.delete(selection._id);
     }
 
     // Insert new selections
     const now = Date.now();
-    for (const subjectId of args.subjectIds) {
+    for (const subjectId of subjectIdsToSave) {
       await ctx.db.insert("studentSubjectSelections", {
         schoolId,
         studentId: args.studentId,
@@ -342,7 +362,7 @@ export const getStudentSubjectSelections = query({
       results.push({
         _id: selection._id,
         subjectId: selection.subjectId,
-          subjectName: normalizeHumanName(subject.name),
+            subjectName: normalizeHumanName(subject.name),
         subjectCode: subject.code,
         classId: selection.classId,
       });
@@ -416,6 +436,7 @@ export const getClassStudentSubjectMatrix = query({
         });
       }
     }
+    const visibleSubjectIds = new Set(subjects.map((subject) => String(subject._id)));
 
     // Get students in this class
     const students = await ctx.db
@@ -436,6 +457,10 @@ export const getClassStudentSubjectMatrix = query({
     // Build selection map
     const selectionMap = new Map<string, string[]>();
     for (const selection of allSelections) {
+      if (!visibleSubjectIds.has(String(selection.subjectId))) {
+        continue;
+      }
+
       const key = String(selection.studentId);
       if (!selectionMap.has(key)) {
         selectionMap.set(key, []);
@@ -449,7 +474,7 @@ export const getClassStudentSubjectMatrix = query({
         const studentUser = await ctx.db.get(student.userId);
         return {
           _id: student._id,
-            studentName: normalizeHumanName(studentUser?.name ?? "Unnamed Student"),
+            studentName: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
           admissionNumber: student.admissionNumber,
           selectedSubjectIds: (selectionMap.get(String(student._id)) ?? []).map(
             (id) => id as any

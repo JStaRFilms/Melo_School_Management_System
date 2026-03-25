@@ -4,11 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   ChevronDown,
-  Edit2,
   Layers3,
   LayoutGrid,
   Plus,
-  Trash2,
   Users2,
 } from "lucide-react";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
@@ -17,6 +15,8 @@ type ClassSummary = {
   _id: string;
   name: string;
   level: string;
+  gradeName: string;
+  classLabel?: string;
   formTeacherId?: string;
   formTeacherName?: string;
   subjectNames: string[];
@@ -61,6 +61,9 @@ export default function ClassesPage() {
   const createClass = useMutation(
     "functions/academic/academicSetup:createClass" as never
   );
+  const backfillClassNaming = useMutation(
+    "functions/academic/academicSetup:backfillClassNaming" as never
+  );
   const updateClass = useMutation(
     "functions/academic/academicSetup:updateClass" as never
   );
@@ -71,17 +74,21 @@ export default function ClassesPage() {
     "functions/academic/academicSetup:assignTeacherToClassSubject" as never
   );
 
-  const [className, setClassName] = useState("");
+  const [builderGradeName, setBuilderGradeName] = useState("");
+  const [builderClassLabel, setBuilderClassLabel] = useState("");
   const [level, setLevel] = useState("Primary");
   const [builderFormTeacherId, setBuilderFormTeacherId] = useState("");
   const [builderSubjectIds, setBuilderSubjectIds] = useState<string[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectedGradeName, setSelectedGradeName] = useState("");
+  const [selectedClassLabel, setSelectedClassLabel] = useState("");
   const [selectedFormTeacherId, setSelectedFormTeacherId] = useState("");
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingClassConfig, setIsSavingClassConfig] = useState(false);
+  const [hasRequestedBackfill, setHasRequestedBackfill] = useState(false);
 
   const currentClass = useMemo(
     () => classes?.find((classDoc) => classDoc._id === selectedClassId) ?? null,
@@ -95,13 +102,26 @@ export default function ClassesPage() {
 
   useEffect(() => {
     if (!currentClass) {
+      setSelectedGradeName("");
+      setSelectedClassLabel("");
       setSelectedFormTeacherId("");
       setSelectedSubjectIds([]);
       return;
     }
 
+    setSelectedGradeName(currentClass.gradeName);
+    setSelectedClassLabel(currentClass.classLabel ?? "");
     setSelectedFormTeacherId(currentClass.formTeacherId ?? "");
   }, [currentClass]);
+
+  useEffect(() => {
+    if (!classes || classes.length === 0 || hasRequestedBackfill) {
+      return;
+    }
+
+    void backfillClassNaming({} as never);
+    setHasRequestedBackfill(true);
+  }, [backfillClassNaming, classes, hasRequestedBackfill]);
 
   useEffect(() => {
     if (!currentOfferings) {
@@ -139,8 +159,9 @@ export default function ClassesPage() {
 
   const handleCreateClass = async (event: React.FormEvent) => {
     event.preventDefault();
-    const normalizedClassName = humanNameFinal(className);
-    if (!normalizedClassName) {
+    const normalizedGradeName = humanNameFinal(builderGradeName);
+    const normalizedClassLabel = humanNameFinal(builderClassLabel);
+    if (!normalizedGradeName) {
       return;
     }
 
@@ -149,7 +170,8 @@ export default function ClassesPage() {
 
     try {
       const classId = (await createClass({
-        name: normalizedClassName,
+        gradeName: normalizedGradeName,
+        classLabel: normalizedClassLabel || undefined,
         level,
         formTeacherId: builderFormTeacherId || null,
       } as never)) as string;
@@ -161,7 +183,8 @@ export default function ClassesPage() {
         } as never);
       }
 
-      setClassName("");
+      setBuilderGradeName("");
+      setBuilderClassLabel("");
       setLevel("Primary");
       setBuilderFormTeacherId("");
       setBuilderSubjectIds([]);
@@ -184,6 +207,8 @@ export default function ClassesPage() {
     try {
       await updateClass({
         classId: selectedClassId,
+        gradeName: humanNameFinal(selectedGradeName),
+        classLabel: humanNameFinal(selectedClassLabel) || null,
         formTeacherId: selectedFormTeacherId || null,
       } as never);
       await setClassSubjects({
@@ -221,6 +246,13 @@ export default function ClassesPage() {
     }
   };
 
+  const scrollToBuilder = () => {
+    document.getElementById("class-builder")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
   if (classes === undefined || subjects === undefined || teachers === undefined) {
     return (
       <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
@@ -243,7 +275,10 @@ export default function ClassesPage() {
         </div>
       ) : null}
 
-      <section className="space-y-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5">
+      <section
+        id="class-builder"
+        className="space-y-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5"
+      >
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-extrabold uppercase tracking-[0.15em] text-[#0f172a]">
@@ -259,13 +294,22 @@ export default function ClassesPage() {
         </div>
 
         <form onSubmit={handleCreateClass} className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <LabeledInput
-              label="Class Name"
-              value={className}
-              onChange={(value) => setClassName(humanNameTyping(value))}
-              onBlur={(value) => setClassName(humanNameFinal(value))}
-              placeholder="Primary 5A"
+              label="Grade Name"
+              value={builderGradeName}
+              onChange={(value) => setBuilderGradeName(humanNameTyping(value))}
+              onBlur={(value) => setBuilderGradeName(humanNameFinal(value))}
+              placeholder="Primary 4"
+            />
+
+            <LabeledInput
+              label="Class Label"
+              value={builderClassLabel}
+              onChange={(value) => setBuilderClassLabel(humanNameTyping(value))}
+              onBlur={(value) => setBuilderClassLabel(humanNameFinal(value))}
+              placeholder="Olive Blossom"
+              required={false}
             />
 
             <div>
@@ -332,7 +376,7 @@ export default function ClassesPage() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isSubmitting || !className.trim()}
+              disabled={isSubmitting || !builderGradeName.trim()}
               className="flex h-10 items-center gap-2 rounded-lg bg-[#4f46e5] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-lg shadow-[#4f46e5]/10 transition-all hover:bg-[#4338ca] disabled:opacity-50"
             >
               <Layers3 className="h-3.5 w-3.5 text-white/50" />
@@ -351,14 +395,19 @@ export default function ClassesPage() {
         subjects={subjects}
         teachers={teachers}
         selectedClassId={selectedClassId}
+        selectedGradeName={selectedGradeName}
+        selectedClassLabel={selectedClassLabel}
         selectedSubjectIds={selectedSubjectIds}
         selectedFormTeacherId={selectedFormTeacherId}
         currentOfferings={currentOfferings}
         setSelectedClassId={setSelectedClassId}
+        setSelectedGradeName={setSelectedGradeName}
+        setSelectedClassLabel={setSelectedClassLabel}
         setSelectedFormTeacherId={setSelectedFormTeacherId}
         onToggleSubject={handleSelectedSubjectToggle}
         onSaveClassConfig={handleSaveClassConfig}
         onAssignTeacher={handleAssignTeacher}
+        onRequestCreate={scrollToBuilder}
         isSavingClassConfig={isSavingClassConfig}
       />
 
@@ -380,10 +429,14 @@ export default function ClassesPage() {
           subjects={subjects}
           teachers={teachers}
           selectedClassId={selectedClassId}
+          selectedGradeName={selectedGradeName}
+          selectedClassLabel={selectedClassLabel}
           selectedSubjectIds={selectedSubjectIds}
           selectedFormTeacherId={selectedFormTeacherId}
           currentOfferings={currentOfferings}
           setSelectedClassId={setSelectedClassId}
+          setSelectedGradeName={setSelectedGradeName}
+          setSelectedClassLabel={setSelectedClassLabel}
           setSelectedFormTeacherId={setSelectedFormTeacherId}
           onToggleSubject={handleSelectedSubjectToggle}
           onSaveClassConfig={handleSaveClassConfig}
@@ -415,12 +468,14 @@ function LabeledInput({
   onChange,
   onBlur,
   placeholder,
+  required = true,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onBlur?: (value: string) => void;
   placeholder: string;
+  required?: boolean;
 }) {
   return (
     <div>
@@ -434,7 +489,7 @@ function LabeledInput({
         onBlur={(event) => onBlur?.(event.target.value)}
         className="h-10 w-full rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
         placeholder={placeholder}
-        required
+        required={required}
       />
     </div>
   );
@@ -449,14 +504,19 @@ function ClassSection({
   subjects,
   teachers,
   selectedClassId,
+  selectedGradeName,
+  selectedClassLabel,
   selectedSubjectIds,
   selectedFormTeacherId,
   currentOfferings,
   setSelectedClassId,
+  setSelectedGradeName,
+  setSelectedClassLabel,
   setSelectedFormTeacherId,
   onToggleSubject,
   onSaveClassConfig,
   onAssignTeacher,
+  onRequestCreate,
   isSavingClassConfig,
 }: {
   title: string;
@@ -467,14 +527,19 @@ function ClassSection({
   subjects: Subject[];
   teachers: Teacher[];
   selectedClassId: string | null;
+  selectedGradeName: string;
+  selectedClassLabel: string;
   selectedSubjectIds: string[];
   selectedFormTeacherId: string;
   currentOfferings: ClassOffering[] | undefined;
   setSelectedClassId: (value: string | null) => void;
+  setSelectedGradeName: (value: string) => void;
+  setSelectedClassLabel: (value: string) => void;
   setSelectedFormTeacherId: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
   onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
+  onRequestCreate: () => void;
   isSavingClassConfig: boolean;
 }) {
   return (
@@ -488,7 +553,11 @@ function ClassSection({
             {title}
           </h2>
         </div>
-        <button className="flex h-10 items-center gap-2 rounded-lg bg-[#0f172a] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-xl shadow-[#e2e8f0] transition-all hover:bg-[#1e293b]">
+        <button
+          type="button"
+          onClick={onRequestCreate}
+          className="flex h-10 items-center gap-2 rounded-lg bg-[#0f172a] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-xl shadow-[#e2e8f0] transition-all hover:bg-[#1e293b]"
+        >
           <Plus className="h-3.5 w-3.5 text-white/40" />
           New Class
         </button>
@@ -500,10 +569,14 @@ function ClassSection({
         subjects={subjects}
         teachers={teachers}
         selectedClassId={selectedClassId}
+        selectedGradeName={selectedGradeName}
+        selectedClassLabel={selectedClassLabel}
         selectedSubjectIds={selectedSubjectIds}
         selectedFormTeacherId={selectedFormTeacherId}
         currentOfferings={currentOfferings}
         setSelectedClassId={setSelectedClassId}
+        setSelectedGradeName={setSelectedGradeName}
+        setSelectedClassLabel={setSelectedClassLabel}
         setSelectedFormTeacherId={setSelectedFormTeacherId}
         onToggleSubject={onToggleSubject}
         onSaveClassConfig={onSaveClassConfig}
@@ -520,10 +593,14 @@ function ClassGrid({
   subjects,
   teachers,
   selectedClassId,
+  selectedGradeName,
+  selectedClassLabel,
   selectedSubjectIds,
   selectedFormTeacherId,
   currentOfferings,
   setSelectedClassId,
+  setSelectedGradeName,
+  setSelectedClassLabel,
   setSelectedFormTeacherId,
   onToggleSubject,
   onSaveClassConfig,
@@ -535,10 +612,14 @@ function ClassGrid({
   subjects: Subject[];
   teachers: Teacher[];
   selectedClassId: string | null;
+  selectedGradeName: string;
+  selectedClassLabel: string;
   selectedSubjectIds: string[];
   selectedFormTeacherId: string;
   currentOfferings: ClassOffering[] | undefined;
   setSelectedClassId: (value: string | null) => void;
+  setSelectedGradeName: (value: string) => void;
+  setSelectedClassLabel: (value: string) => void;
   setSelectedFormTeacherId: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
@@ -563,11 +644,15 @@ function ClassGrid({
           subjects={subjects}
           teachers={teachers}
           isSelected={selectedClassId === classDoc._id}
+          selectedGradeName={selectedGradeName}
+          selectedClassLabel={selectedClassLabel}
           selectedSubjectIds={selectedSubjectIds}
           selectedFormTeacherId={selectedFormTeacherId}
           currentOfferings={selectedClassId === classDoc._id ? currentOfferings : undefined}
           onSelect={() => setSelectedClassId(classDoc._id)}
           onCancel={() => setSelectedClassId(null)}
+          onGradeNameChange={setSelectedGradeName}
+          onClassLabelChange={setSelectedClassLabel}
           onFormTeacherChange={setSelectedFormTeacherId}
           onToggleSubject={onToggleSubject}
           onSaveClassConfig={onSaveClassConfig}
@@ -584,11 +669,15 @@ function ClassCard({
   subjects,
   teachers,
   isSelected,
+  selectedGradeName,
+  selectedClassLabel,
   selectedSubjectIds,
   selectedFormTeacherId,
   currentOfferings,
   onSelect,
   onCancel,
+  onGradeNameChange,
+  onClassLabelChange,
   onFormTeacherChange,
   onToggleSubject,
   onSaveClassConfig,
@@ -599,11 +688,15 @@ function ClassCard({
   subjects: Subject[];
   teachers: Teacher[];
   isSelected: boolean;
+  selectedGradeName: string;
+  selectedClassLabel: string;
   selectedSubjectIds: string[];
   selectedFormTeacherId: string;
   currentOfferings: ClassOffering[] | undefined;
   onSelect: () => void;
   onCancel: () => void;
+  onGradeNameChange: (value: string) => void;
+  onClassLabelChange: (value: string) => void;
   onFormTeacherChange: (value: string) => void;
   onToggleSubject: (subjectId: string) => void;
   onSaveClassConfig: () => Promise<void>;
@@ -631,18 +724,31 @@ function ClassCard({
               : "No Form Teacher Assigned"}
           </p>
         </div>
-        <div className="flex items-center gap-1 opacity-20 transition-opacity hover:opacity-100">
-          <button type="button" className="p-2">
-            <Edit2 className="h-4 w-4 text-[#0f172a]" />
-          </button>
-          <button type="button" className="p-2">
-            <Trash2 className="h-4 w-4 text-red-600" />
-          </button>
-        </div>
+        <span className="rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#64748b]">
+          {isSelected ? "Editing" : "Saved"}
+        </span>
       </div>
 
       {isSelected ? (
         <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <LabeledInput
+              label="Grade Name"
+              value={selectedGradeName}
+              onChange={(value) => onGradeNameChange(humanNameTyping(value))}
+              onBlur={(value) => onGradeNameChange(humanNameFinal(value))}
+              placeholder="Primary 4"
+            />
+            <LabeledInput
+              label="Class Label"
+              value={selectedClassLabel}
+              onChange={(value) => onClassLabelChange(humanNameTyping(value))}
+              onBlur={(value) => onClassLabelChange(humanNameFinal(value))}
+              placeholder="Olive Blossom"
+              required={false}
+            />
+          </div>
+
           <div>
             <span className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
               Form Teacher
