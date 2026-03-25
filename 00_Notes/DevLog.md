@@ -25,3 +25,4 @@ Okay, so here in Nigeria it's common to have many classes. For example, I could 
 /academic/students
 I noticed that when I'm on the student route, the academic student route, I have to manually click on all the subjects one by one. I strongly believe that if I've already clicked on the subjects for a class, like I'm in a class and sorting out that class right now for a class student, I should have the option - I should have like a small button that is select all or something like that. So select all and then deselect the ones that child is not offering. That way it's easier - do you understand accounting - it's easier for me to handle. Do you get it? Yeah. IT'S BETER UX
 
+I should be able to cleanly edit the details of a student not just their subjects

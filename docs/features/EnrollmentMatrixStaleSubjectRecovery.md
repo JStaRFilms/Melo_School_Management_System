@@ -20,7 +20,7 @@ Prevent student enrollment saves from crashing when a class subject offering cha
 3. When the enrollment matrix loads, it filters out any stale subject selections that no longer belong to the visible class offering.
 4. When an admin or teacher toggles a subject, the backend accepts the new valid subject set and ignores stale legacy subject ids that only survived from older saved selections.
 5. If the client still hits a real write failure, the UI shows a clean message without Convex request metadata.
-6. Teacher authorization checks now accept either explicit `teacherAssignments` rows or legacy `classSubjects.teacherId` links when the teacher is allowed to edit a class.
+6. Teacher authorization checks now accept explicit `teacherAssignments` rows, legacy `classSubjects.teacherId` links, and `classes.formTeacherId` when the teacher is allowed to edit a class.
 
 ## Database Schema
 
@@ -37,6 +37,8 @@ Prevent student enrollment saves from crashing when a class subject offering cha
   - preferred teacher-to-class/subject assignment source
 - `classSubjects`
   - compatibility source for legacy teacher-to-class links in the teacher workspace
+- `classes`
+  - form teacher fallback source for class-level teacher ownership
 
 ### Schema changes
 - None
@@ -50,4 +52,4 @@ Prevent student enrollment saves from crashing when a class subject offering cha
 
 ## Notes
 - The current data model stores class subject offerings without session history. This fix keeps active enrollment stable and user-friendly without widening scope into a larger academic-history redesign.
-- Teacher-side class access now uses the same compatibility rule as the exam selector flow, so schools that still rely on `classSubjects.teacherId` do not lose teacher editing access.
+- Teacher-side class access now uses the same compatibility rule as the exam selector flow, so schools that rely on `classSubjects.teacherId` or only assign a form teacher during class setup do not lose teacher editing access.

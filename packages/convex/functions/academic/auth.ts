@@ -60,6 +60,7 @@ export async function getTeacherAssignableClassIds(
   teacherId: Id<"users">,
   schoolId: Id<"schools">
 ): Promise<Array<Id<"classes">>> {
+  const linkedTeacherIds = await getLinkedTeacherIds(ctx, teacherId, schoolId);
   const teacherAssignments = await ctx.db
     .query("teacherAssignments")
     .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId))
@@ -68,11 +69,18 @@ export async function getTeacherAssignableClassIds(
     .query("classSubjects")
     .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
     .collect();
+  const schoolClasses = await ctx.db
+    .query("classes")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
 
   const classIds = new Set<string>();
 
   for (const assignment of teacherAssignments) {
-    if (String(assignment.schoolId) === String(schoolId)) {
+    if (
+      String(assignment.schoolId) === String(schoolId) &&
+      linkedTeacherIds.has(String(assignment.teacherId))
+    ) {
       classIds.add(String(assignment.classId));
     }
   }
@@ -80,9 +88,18 @@ export async function getTeacherAssignableClassIds(
   for (const offering of classOfferings) {
     if (
       offering.teacherId &&
-      String(offering.teacherId) === String(teacherId)
+      linkedTeacherIds.has(String(offering.teacherId))
     ) {
       classIds.add(String(offering.classId));
+    }
+  }
+
+  for (const classDoc of schoolClasses) {
+    if (
+      classDoc.formTeacherId &&
+      linkedTeacherIds.has(String(classDoc.formTeacherId))
+    ) {
+      classIds.add(String(classDoc._id));
     }
   }
 
@@ -95,6 +112,8 @@ export async function getTeacherAssignableSubjectIds(
   schoolId: Id<"schools">,
   classId: Id<"classes">
 ): Promise<Array<Id<"subjects">>> {
+  const linkedTeacherIds = await getLinkedTeacherIds(ctx, teacherId, schoolId);
+  const classDoc = await ctx.db.get(classId);
   const teacherAssignments = await ctx.db
     .query("teacherAssignments")
     .withIndex("by_teacher_and_class", (q: any) =>
@@ -109,7 +128,10 @@ export async function getTeacherAssignableSubjectIds(
   const subjectIds = new Set<string>();
 
   for (const assignment of teacherAssignments) {
-    if (String(assignment.schoolId) === String(schoolId)) {
+    if (
+      String(assignment.schoolId) === String(schoolId) &&
+      linkedTeacherIds.has(String(assignment.teacherId))
+    ) {
       subjectIds.add(String(assignment.subjectId));
     }
   }
@@ -118,9 +140,23 @@ export async function getTeacherAssignableSubjectIds(
     if (
       String(offering.schoolId) === String(schoolId) &&
       offering.teacherId &&
-      String(offering.teacherId) === String(teacherId)
+      linkedTeacherIds.has(String(offering.teacherId))
     ) {
       subjectIds.add(String(offering.subjectId));
+    }
+  }
+
+  const isFormTeacher =
+    classDoc &&
+    String(classDoc.schoolId) === String(schoolId) &&
+    classDoc.formTeacherId &&
+    linkedTeacherIds.has(String(classDoc.formTeacherId));
+
+  if (isFormTeacher) {
+    for (const offering of classOfferings) {
+      if (String(offering.schoolId) === String(schoolId)) {
+        subjectIds.add(String(offering.subjectId));
+      }
     }
   }
 
@@ -144,6 +180,11 @@ async function teacherHasClassSubjectAccess(
   classId: Id<"classes">,
   subjectId: Id<"subjects">
 ): Promise<boolean> {
+  const classDoc = await ctx.db.get(classId);
+  const schoolId = classDoc?.schoolId;
+  const linkedTeacherIds = schoolId
+    ? await getLinkedTeacherIds(ctx, teacherId, schoolId)
+    : new Set<string>([String(teacherId)]);
   const assignment = await ctx.db
     .query("teacherAssignments")
     .withIndex("by_teacher_and_class_and_subject", (q: any) =>
@@ -158,6 +199,23 @@ async function teacherHasClassSubjectAccess(
     return true;
   }
 
+  if (
+    classDoc &&
+    classDoc.formTeacherId &&
+    linkedTeacherIds.has(String(classDoc.formTeacherId))
+  ) {
+    const offering = await ctx.db
+      .query("classSubjects")
+      .withIndex("by_class_and_subject", (q: any) =>
+        q.eq("classId", classId).eq("subjectId", subjectId)
+      )
+      .unique();
+
+    if (offering) {
+      return true;
+    }
+  }
+
   const offering = await ctx.db
     .query("classSubjects")
     .withIndex("by_class_and_subject", (q: any) =>
@@ -168,8 +226,38 @@ async function teacherHasClassSubjectAccess(
   return Boolean(
     offering &&
       offering.teacherId &&
-      String(offering.teacherId) === String(teacherId)
+      linkedTeacherIds.has(String(offering.teacherId))
   );
+}
+
+async function getLinkedTeacherIds(
+  ctx: any,
+  teacherId: Id<"users">,
+  schoolId: Id<"schools">
+): Promise<Set<string>> {
+  const teacherIds = new Set<string>([String(teacherId)]);
+  const currentTeacher = await ctx.db.get(teacherId);
+
+  if (!currentTeacher?.email) {
+    return teacherIds;
+  }
+
+  const schoolUsers = await ctx.db
+    .query("users")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
+
+  for (const user of schoolUsers) {
+    if (
+      user.role === "teacher" &&
+      typeof user.email === "string" &&
+      user.email.toLowerCase() === currentTeacher.email.toLowerCase()
+    ) {
+      teacherIds.add(String(user._id));
+    }
+  }
+
+  return teacherIds;
 }
 
 /**

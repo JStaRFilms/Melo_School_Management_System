@@ -17,7 +17,12 @@ function asId<TableName extends TableNames>(value: string): Id<TableName> {
 
 function createCtx(options?: {
   identity?: { subject: string } | null;
-  user?: { _id: Id<"users">; schoolId: Id<"schools">; role: string } | null;
+  user?: {
+    _id: Id<"users">;
+    schoolId: Id<"schools">;
+    role: string;
+    email?: string;
+  } | null;
   teacherAssignments?: Array<{
     schoolId: Id<"schools">;
     teacherId: Id<"users">;
@@ -30,6 +35,17 @@ function createCtx(options?: {
     subjectId: Id<"subjects">;
     teacherId?: Id<"users"> | null;
   }>;
+  classes?: Array<{
+    _id: Id<"classes">;
+    schoolId: Id<"schools">;
+    formTeacherId?: Id<"users"> | null;
+  }>;
+  schoolUsers?: Array<{
+    _id: Id<"users">;
+    schoolId: Id<"schools">;
+    role: string;
+    email: string;
+  }>;
 }) {
   const identity =
     options && "identity" in options ? options.identity : { subject: "auth-user-1" };
@@ -40,6 +56,7 @@ function createCtx(options?: {
           _id: asId<"users">("user-1"),
           schoolId: asId<"schools">("school-1"),
           role: "teacher",
+          email: "teacher@example.com",
         } as const);
   const teacherAssignments = options?.teacherAssignments ?? [
     {
@@ -50,6 +67,21 @@ function createCtx(options?: {
     },
   ];
   const classSubjects = options?.classSubjects ?? [];
+  const classes = options?.classes ?? [
+    {
+      _id: asId<"classes">("class-1"),
+      schoolId: asId<"schools">("school-1"),
+      formTeacherId: null,
+    },
+  ];
+  const schoolUsers = options?.schoolUsers ?? [
+    {
+      _id: user?._id ?? asId<"users">("user-1"),
+      schoolId: user?.schoolId ?? asId<"schools">("school-1"),
+      role: user?.role ?? "teacher",
+      email: "teacher@example.com",
+    },
+  ];
 
   return {
     auth: {
@@ -80,6 +112,14 @@ function createCtx(options?: {
               return classSubjects.filter(matchesCriteria);
             }
 
+            if (table === "classes") {
+              return classes.filter(matchesCriteria);
+            }
+
+            if (table === "users") {
+              return schoolUsers.filter(matchesCriteria);
+            }
+
             return [];
           };
 
@@ -87,15 +127,32 @@ function createCtx(options?: {
             collect: async () => filterRows(),
             unique: async () => {
               if (table === "users") return user;
+              if (table === "classes") {
+                const rows = filterRows();
+                return rows[0] ?? null;
+              }
               const rows = filterRows();
               return rows[0] ?? null;
             },
           };
         },
       }),
-      get: async (id: Id<"users">) => {
-        if (!user || id !== user._id) return null;
-        return user;
+      get: async (id: string) => {
+        if (user && id === user._id) {
+          return user;
+        }
+
+        const schoolUser = schoolUsers.find((candidate) => candidate._id === id);
+        if (schoolUser) {
+          return schoolUser;
+        }
+
+        const classDoc = classes.find((candidate) => candidate._id === id);
+        if (classDoc) {
+          return classDoc;
+        }
+
+        return null;
       },
     },
   };
@@ -151,6 +208,35 @@ describe("assertTeacherAssignment", () => {
           classId: asId<"classes">("class-1"),
           subjectId: asId<"subjects">("subject-1"),
           teacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      assertTeacherAssignment(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"classes">("class-1"),
+        asId<"subjects">("subject-1")
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes when the teacher is the form teacher for the class and the subject is offered", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-1"),
+        },
+      ],
+      classes: [
+        {
+          _id: asId<"classes">("class-1"),
+          schoolId: asId<"schools">("school-1"),
+          formTeacherId: asId<"users">("user-1"),
         },
       ],
     });
@@ -224,6 +310,28 @@ describe("teacher assignment helpers", () => {
     ]);
   });
 
+  it("includes form teacher classes when building class ids", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [],
+      classes: [
+        {
+          _id: asId<"classes">("class-4"),
+          schoolId: asId<"schools">("school-1"),
+          formTeacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      getTeacherAssignableClassIds(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1")
+      )
+    ).resolves.toEqual([asId<"classes">("class-4")]);
+  });
+
   it("merges teacherAssignments and classSubjects when building subject ids", async () => {
     const ctx = createCtx({
       teacherAssignments: [
@@ -257,6 +365,43 @@ describe("teacher assignment helpers", () => {
     ]);
   });
 
+  it("includes all offered subjects for a form teacher class", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-7"),
+        },
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-8"),
+        },
+      ],
+      classes: [
+        {
+          _id: asId<"classes">("class-1"),
+          schoolId: asId<"schools">("school-1"),
+          formTeacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      getTeacherAssignableSubjectIds(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1"),
+        asId<"classes">("class-1")
+      )
+    ).resolves.toEqual([
+      asId<"subjects">("subject-7"),
+      asId<"subjects">("subject-8"),
+    ]);
+  });
+
   it("reports class access when the teacher is linked through classSubjects", async () => {
     const ctx = createCtx({
       teacherAssignments: [],
@@ -278,6 +423,71 @@ describe("teacher assignment helpers", () => {
         asId<"classes">("class-3")
       )
     ).resolves.toBe(true);
+  });
+
+  it("reports class access when the teacher is the form teacher", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [],
+      classes: [
+        {
+          _id: asId<"classes">("class-5"),
+          schoolId: asId<"schools">("school-1"),
+          formTeacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      teacherHasClassAccess(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1"),
+        asId<"classes">("class-5")
+      )
+    ).resolves.toBe(true);
+  });
+
+  it("matches equivalent teacher rows with the same email in the same school", async () => {
+    const ctx = createCtx({
+      user: {
+        _id: asId<"users">("user-1"),
+        schoolId: asId<"schools">("school-1"),
+        role: "teacher",
+        email: "dorcas@school.test",
+      },
+      teacherAssignments: [],
+      classSubjects: [],
+      classes: [
+        {
+          _id: asId<"classes">("class-6"),
+          schoolId: asId<"schools">("school-1"),
+          formTeacherId: asId<"users">("legacy-teacher"),
+        },
+      ],
+      schoolUsers: [
+        {
+          _id: asId<"users">("user-1"),
+          schoolId: asId<"schools">("school-1"),
+          role: "teacher",
+          email: "dorcas@school.test",
+        },
+        {
+          _id: asId<"users">("legacy-teacher"),
+          schoolId: asId<"schools">("school-1"),
+          role: "teacher",
+          email: "dorcas@school.test",
+        },
+      ],
+    });
+
+    await expect(
+      getTeacherAssignableClassIds(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1")
+      )
+    ).resolves.toEqual([asId<"classes">("class-6")]);
   });
 });
 

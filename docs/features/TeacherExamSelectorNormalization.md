@@ -2,7 +2,7 @@
 
 ## Goal
 
-Restore the teacher exam-entry selector flow so teachers can reliably see assigned classes and subjects in live Convex mode, even when a school stores teacher links through the legacy `classSubjects.teacherId` path instead of `teacherAssignments`.
+Restore the teacher exam-entry selector flow so teachers can reliably see assigned classes and subjects in live Convex mode, including schools that assign a teacher as the class form teacher before subject-level teacher mapping is completed.
 
 ## Components
 
@@ -22,8 +22,9 @@ Restore the teacher exam-entry selector flow so teachers can reliably see assign
 3. The live teacher selectors currently return sessions and classes as `{ _id, name }`.
 4. When the `<option value>` receives `undefined`, the browser falls back to the visible label text.
 5. The next term query then sends a session name like `2025/2026 Academic Session` instead of `Id<"academicSessions">`, which triggers Convex argument validation.
-6. Teacher class and subject options must be sourced from both explicit `teacherAssignments` rows and legacy `classSubjects.teacherId` links so live schools can still open the exam sheet.
-7. The fix is to normalize live teacher session and class results into `{ id, name }` before passing them into the shared selector UI, while the backend authorization helper accepts either assignment source.
+6. Teacher class and subject options must be sourced from explicit `teacherAssignments` rows, legacy `classSubjects.teacherId` links, and `classes.formTeacherId` for form-teacher-led class ownership.
+7. When a teacher is the form teacher for a class, the teacher flows should expose the class and its offered subjects even if subject-level teacher mapping has not been completed yet.
+8. The fix is to normalize live teacher session and class results into `{ id, name }` before passing them into the shared selector UI, while the backend authorization helper accepts all supported assignment sources.
 
 ## Database Schema
 
@@ -33,6 +34,7 @@ No schema change.
 - `classes._id` remains the source of truth for class selection.
 - `teacherAssignments.teacherId` remains the preferred assignment source.
 - `classSubjects.teacherId` is treated as a compatibility source for schools that still persist teacher links there.
+- `classes.formTeacherId` is treated as a class-level fallback source for teacher access in primary-style workflows.
 
 ## Regression Check
 
