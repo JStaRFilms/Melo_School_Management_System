@@ -3,6 +3,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { Mail, Search, Send, UserPlus } from "lucide-react";
+import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type TeacherRecord = {
   _id: string;
@@ -73,7 +74,8 @@ export default function TeachersPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!name.trim() || !email.trim() || !temporaryPassword.trim()) {
+    const normalizedName = humanNameFinal(name);
+    if (!normalizedName || !email.trim() || !temporaryPassword.trim()) {
       return;
     }
 
@@ -83,7 +85,7 @@ export default function TeachersPage() {
 
     try {
       const response = (await createTeacher({
-        name: name.trim(),
+        name: normalizedName,
         email: email.trim().toLowerCase(),
         temporaryPassword: temporaryPassword.trim(),
         origin: window.location.origin,
@@ -194,7 +196,8 @@ export default function TeachersPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => setName(humanNameTyping(event.target.value))}
+                onBlur={(event) => setName(humanNameFinal(event.target.value))}
                 className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
                 placeholder="Temitope Yusuf"
                 required

@@ -11,6 +11,7 @@ import {
   Trash2,
   Users2,
 } from "lucide-react";
+import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type ClassSummary = {
   _id: string;
@@ -138,7 +139,8 @@ export default function ClassesPage() {
 
   const handleCreateClass = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!className.trim()) {
+    const normalizedClassName = humanNameFinal(className);
+    if (!normalizedClassName) {
       return;
     }
 
@@ -147,7 +149,7 @@ export default function ClassesPage() {
 
     try {
       const classId = (await createClass({
-        name: className.trim(),
+        name: normalizedClassName,
         level,
         formTeacherId: builderFormTeacherId || null,
       } as never)) as string;
@@ -261,7 +263,8 @@ export default function ClassesPage() {
             <LabeledInput
               label="Class Name"
               value={className}
-              onChange={setClassName}
+              onChange={(value) => setClassName(humanNameTyping(value))}
+              onBlur={(value) => setClassName(humanNameFinal(value))}
               placeholder="Primary 5A"
             />
 
@@ -410,11 +413,13 @@ function LabeledInput({
   label,
   value,
   onChange,
+  onBlur,
   placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: (value: string) => void;
   placeholder: string;
 }) {
   return (
@@ -426,6 +431,7 @@ function LabeledInput({
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={(event) => onBlur?.(event.target.value)}
         className="h-10 w-full rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
         placeholder={placeholder}
         required

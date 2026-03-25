@@ -16,6 +16,7 @@ import {
   getInitials,
   getGradeColorClass,
 } from "@/exam-helpers";
+import { humanNameFinal } from "@/human-name";
 
 interface AdminRosterGridProps {
   roster: StudentRosterEntry[];
@@ -60,7 +61,7 @@ export function AdminRosterGrid({
           <select className="w-full h-11 bg-white border border-slate-200 rounded-xl px-4 appearance-none font-bold text-xs text-slate-900 focus:border-blue-600 outline-none pr-10 shadow-sm transition-all active:scale-95">
             {roster.map((student) => (
               <option key={student.studentId} value={student.studentId}>
-                {student.studentName}
+                {humanNameFinal(student.studentName)}
               </option>
             ))}
           </select>

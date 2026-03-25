@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CheckCheck, ShieldAlert } from "lucide-react";
+import { humanNameFinal } from "@/lib/human-name";
 
 type SessionSummary = {
   _id: string;
@@ -250,11 +251,11 @@ export default function TeacherSubjectSelectionPage() {
                           <td className="sticky left-0 z-20 border-r-2 border-r-[#f1f5f9] bg-white p-4">
                             <div className="flex items-center gap-3">
                               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f1f5f9] text-[10px] font-bold text-[#94a3b8]">
-                                {studentInitials(student.studentName)}
+                                {studentInitials(humanNameFinal(student.studentName))}
                               </div>
                               <div className="truncate">
                                 <p className="truncate text-xs font-bold text-[#0f172a]">
-                                  {student.studentName}
+                                  {humanNameFinal(student.studentName)}
                                 </p>
                                 <p className="truncate text-[8px] font-bold uppercase tracking-tight text-[#94a3b8]">
                                   {student.admissionNumber}
@@ -362,7 +363,7 @@ export default function TeacherSubjectSelectionPage() {
 }
 
 function studentInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const parts = humanNameFinal(name).split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return "ST";
   }

@@ -7,6 +7,7 @@ import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
+import { normalizeHumanName } from "@school/shared";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -41,7 +42,7 @@ export const createTeacherRecordInternal = internalMutation({
     const teacherId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
-      name: args.name,
+      name: normalizeHumanName(args.name),
       email: args.email,
       role: "teacher",
       createdAt: now,
@@ -96,7 +97,7 @@ export const createTeacher = action({
         origin: args.origin,
       },
       body: JSON.stringify({
-        name: args.name,
+        name: normalizeHumanName(args.name),
         email: args.email,
         password: args.temporaryPassword,
       }),
@@ -113,7 +114,7 @@ export const createTeacher = action({
       (internal as any).functions.academic.academicSetup.createTeacherRecordInternal,
       {
         schoolId,
-        name: args.name,
+        name: normalizeHumanName(args.name),
         email: args.email,
         authId: signUpPayload.user.id,
       }
@@ -152,7 +153,7 @@ export const listTeachers = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((t) => ({
         _id: t._id,
-        name: t.name,
+        name: normalizeHumanName(t.name),
         email: t.email,
         createdAt: t.createdAt,
       }));
@@ -198,7 +199,7 @@ export const createSession = mutation({
     const now = Date.now();
     return await ctx.db.insert("academicSessions", {
       schoolId,
-      name: args.name,
+      name: normalizeHumanName(args.name),
       startDate: args.startDate,
       endDate: args.endDate,
       isActive: args.isActive,
@@ -234,7 +235,7 @@ export const listSessions = query({
       .sort((a, b) => b.startDate - a.startDate)
       .map((s) => ({
         _id: s._id,
-        name: s.name,
+        name: normalizeHumanName(s.name),
         startDate: s.startDate,
         endDate: s.endDate,
         isActive: s.isActive,
@@ -263,7 +264,7 @@ export const updateSession = mutation({
     }
 
     const updates: Record<string, unknown> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    if (args.name !== undefined) updates.name = normalizeHumanName(args.name);
     if (args.startDate !== undefined) updates.startDate = args.startDate;
     if (args.endDate !== undefined) updates.endDate = args.endDate;
     if (args.isActive !== undefined) updates.isActive = args.isActive;
@@ -336,7 +337,7 @@ export const createTerm = mutation({
     return await ctx.db.insert("academicTerms", {
       schoolId,
       sessionId: args.sessionId,
-      name: args.name,
+      name: normalizeHumanName(args.name),
       startDate: args.startDate,
       endDate: args.endDate,
       isActive: args.isActive,
@@ -377,7 +378,7 @@ export const listTermsBySession = query({
       .sort((a, b) => a.startDate - b.startDate)
       .map((t) => ({
         _id: t._id,
-        name: t.name,
+        name: normalizeHumanName(t.name),
         startDate: t.startDate,
         endDate: t.endDate,
         isActive: t.isActive,
@@ -413,7 +414,7 @@ export const createSubject = mutation({
     const now = Date.now();
     return await ctx.db.insert("subjects", {
       schoolId,
-      name: args.name,
+      name: normalizeHumanName(args.name),
       code: args.code,
       createdAt: now,
       updatedAt: now,
@@ -445,7 +446,7 @@ export const listSubjects = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((s) => ({
         _id: s._id,
-        name: s.name,
+        name: normalizeHumanName(s.name),
         code: s.code,
         createdAt: s.createdAt,
       }));
@@ -483,7 +484,7 @@ export const updateSubject = mutation({
     }
 
     const updates: Record<string, unknown> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    if (args.name !== undefined) updates.name = normalizeHumanName(args.name);
     if (args.code !== undefined) updates.code = args.code;
     updates.updatedAt = Date.now();
 
@@ -546,7 +547,7 @@ export const createClass = mutation({
     const now = Date.now();
     return await ctx.db.insert("classes", {
       schoolId,
-      name: args.name,
+      name: normalizeHumanName(args.name),
       level: args.level,
       ...(args.formTeacherId ? { formTeacherId: args.formTeacherId } : {}),
       createdAt: now,
@@ -598,23 +599,23 @@ export const listClasses = query({
           ]);
 
           const subjectNames = (
-            await Promise.all(
-              offerings.map(async (offering) => {
-                const subject = await ctx.db.get(offering.subjectId);
-                return subject?.name ?? null;
-              })
-            )
-          ).filter((name): name is string => Boolean(name));
+              await Promise.all(
+                offerings.map(async (offering) => {
+                  const subject = await ctx.db.get(offering.subjectId);
+                  return subject?.name ? normalizeHumanName(subject.name) : null;
+                })
+              )
+            ).filter((name): name is string => Boolean(name));
 
-          return {
-            _id: classDoc._id,
-            name: classDoc.name,
-            level: classDoc.level,
-            formTeacherId: classDoc.formTeacherId,
-            formTeacherName: teacher?.name,
-            subjectNames,
-            studentCount: students.length,
-            createdAt: classDoc.createdAt,
+            return {
+              _id: classDoc._id,
+              name: normalizeHumanName(classDoc.name),
+              level: classDoc.level,
+              formTeacherId: classDoc.formTeacherId,
+              formTeacherName: teacher?.name ? normalizeHumanName(teacher.name) : undefined,
+              subjectNames,
+              studentCount: students.length,
+              createdAt: classDoc.createdAt,
           };
         })
     );
@@ -649,7 +650,7 @@ export const updateClass = mutation({
     }
 
     const updatedAt = Date.now();
-    const nextName = args.name ?? classDoc.name;
+    const nextName = normalizeHumanName(args.name ?? classDoc.name);
     const nextLevel = args.level ?? classDoc.level;
 
     if (args.formTeacherId === null) {
@@ -775,13 +776,13 @@ export const getClassSubjects = query({
       let teacherName: string | undefined;
       if (offering.teacherId) {
         const teacher = await ctx.db.get(offering.teacherId);
-        teacherName = teacher?.name;
+        teacherName = teacher?.name ? normalizeHumanName(teacher.name) : undefined;
       }
 
       results.push({
         _id: offering._id,
         subjectId: offering.subjectId,
-        subjectName: subject.name,
+        subjectName: normalizeHumanName(subject.name),
         subjectCode: subject.code,
         teacherId: offering.teacherId,
         teacherName,

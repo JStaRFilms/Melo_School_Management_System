@@ -2,6 +2,7 @@ import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { normalizeHumanName } from "@school/shared";
 
 export const getTeacherSessions = query({
   args: {},
@@ -15,7 +16,10 @@ export const getTeacherSessions = query({
 
     return sessions
       .sort((a: any, b: any) => b.startDate - a.startDate)
-      .map((session: any) => ({ _id: session._id, name: session.name }));
+      .map((session: any) => ({
+        _id: session._id,
+        name: normalizeHumanName(session.name),
+      }));
   },
 });
 
@@ -38,7 +42,10 @@ export const getTermsBySession = query({
     return terms
       .filter((term: any) => term.schoolId === schoolId)
       .sort((a: any, b: any) => a.startDate - b.startDate)
-      .map((term: any) => ({ id: term._id, name: term.name }));
+      .map((term: any) => ({
+        id: term._id,
+        name: normalizeHumanName(term.name),
+      }));
   },
 });
 
@@ -56,7 +63,10 @@ export const getTeacherAssignableClasses = query({
 
       return classes
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
-        .map((classDoc: any) => ({ _id: classDoc._id, name: classDoc.name }));
+        .map((classDoc: any) => ({
+          _id: classDoc._id,
+          name: normalizeHumanName(classDoc.name),
+        }));
     }
 
     if (role !== "teacher") {
@@ -99,7 +109,10 @@ export const getTeacherAssignableSubjectsByClass = query({
 
       return subjects
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
-        .map((subject: any) => ({ id: subject._id, name: subject.name }));
+        .map((subject: any) => ({
+          id: subject._id,
+          name: normalizeHumanName(subject.name),
+        }));
     }
 
     if (role !== "teacher") {
@@ -126,6 +139,9 @@ export const getTeacherAssignableSubjectsByClass = query({
     return subjects
       .filter((subject: any) => subject && subject.schoolId === schoolId)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((subject: any) => ({ id: subject._id, name: subject.name }));
+      .map((subject: any) => ({
+        id: subject._id,
+        name: normalizeHumanName(subject.name),
+      }));
   },
 });

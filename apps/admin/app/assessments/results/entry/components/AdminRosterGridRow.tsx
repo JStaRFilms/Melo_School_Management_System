@@ -10,6 +10,7 @@ import type {
   GradingBandResponse,
 } from "@/types";
 import { getEffectiveValue, computeDerivedValues, getGradeColorClass } from "@/exam-helpers";
+import { humanNameFinal } from "@/human-name";
 
 interface AdminRosterGridRowProps {
   student: StudentRosterEntry;
@@ -33,6 +34,7 @@ export function AdminRosterGridRow({
   onScoreChange,
 }: AdminRosterGridRowProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
+  const displayStudentName = humanNameFinal(student.studentName);
 
   const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [student]);
   const ca2 = getEffectiveValue(student.studentId, "ca2", draftScores, [student]);
@@ -59,7 +61,7 @@ export function AdminRosterGridRow({
     <tr className="hover:bg-slate-50/50 transition-all cursor-pointer">
       <td className="sticky-column">
         <span className="font-semibold text-slate-900">
-          {student.studentName}
+          {displayStudentName}
         </span>
         <p className="text-[8px] font-medium text-slate-400 uppercase mt-0.5 tracking-tighter">
           {student.assessmentRecord

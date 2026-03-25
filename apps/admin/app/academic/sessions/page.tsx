@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Hash, Plus, PlusSquare } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
+import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type SessionRecord = {
   _id: string;
@@ -75,7 +76,8 @@ export default function SessionsPage() {
 
   const handleCreateSession = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!sessionName.trim() || !sessionStartDate || !sessionEndDate) {
+    const normalizedSessionName = humanNameFinal(sessionName);
+    if (!normalizedSessionName || !sessionStartDate || !sessionEndDate) {
       return;
     }
 
@@ -84,7 +86,7 @@ export default function SessionsPage() {
 
     try {
       await createSession({
-        name: sessionName.trim(),
+        name: normalizedSessionName,
         startDate: new Date(sessionStartDate).getTime(),
         endDate: new Date(sessionEndDate).getTime(),
         isActive: activateSession,
@@ -102,7 +104,8 @@ export default function SessionsPage() {
 
   const handleCreateTerm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedSessionId || !termName.trim() || !termStartDate || !termEndDate) {
+    const normalizedTermName = humanNameFinal(termName);
+    if (!selectedSessionId || !normalizedTermName || !termStartDate || !termEndDate) {
       return;
     }
 
@@ -112,7 +115,7 @@ export default function SessionsPage() {
     try {
       await createTerm({
         sessionId: selectedSessionId,
-        name: termName.trim(),
+        name: normalizedTermName,
         startDate: new Date(termStartDate).getTime(),
         endDate: new Date(termEndDate).getTime(),
         isActive: activateTerm,
@@ -273,7 +276,8 @@ export default function SessionsPage() {
               <input
                 type="text"
                 value={sessionName}
-                onChange={(event) => setSessionName(event.target.value)}
+                onChange={(event) => setSessionName(humanNameTyping(event.target.value))}
+                onBlur={(event) => setSessionName(humanNameFinal(event.target.value))}
                 className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
                 placeholder="2026/2027 Academic Session"
               />
@@ -349,7 +353,8 @@ export default function SessionsPage() {
                 <input
                   type="text"
                   value={termName}
-                  onChange={(event) => setTermName(event.target.value)}
+                  onChange={(event) => setTermName(humanNameTyping(event.target.value))}
+                  onBlur={(event) => setTermName(humanNameFinal(event.target.value))}
                   className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
                 />
               </div>

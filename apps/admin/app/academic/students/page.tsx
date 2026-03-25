@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AlertTriangle, CheckCheck, UserPlus } from "lucide-react";
+import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type ClassSummary = {
   _id: string;
@@ -95,7 +96,8 @@ export default function StudentsPage() {
 
   const handleCreateStudent = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedClassId || !studentName.trim() || !admissionNumber.trim()) {
+    const normalizedStudentName = humanNameFinal(studentName);
+    if (!selectedClassId || !normalizedStudentName || !admissionNumber.trim()) {
       return;
     }
 
@@ -105,7 +107,7 @@ export default function StudentsPage() {
 
     try {
       await createStudent({
-        name: studentName.trim(),
+        name: normalizedStudentName,
         admissionNumber: admissionNumber.trim(),
         classId: selectedClassId,
       } as never);
@@ -296,7 +298,12 @@ export default function StudentsPage() {
                 <input
                   type="text"
                   value={studentName}
-                  onChange={(event) => setStudentName(event.target.value)}
+                  onChange={(event) =>
+                    setStudentName(humanNameTyping(event.target.value))
+                  }
+                  onBlur={(event) =>
+                    setStudentName(humanNameFinal(event.target.value))
+                  }
                   className="h-11 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
                   placeholder="Maryam Hassan"
                   required
@@ -394,11 +401,11 @@ export default function StudentsPage() {
                           <td className="sticky left-0 z-20 border-r-2 border-r-[#f1f5f9] bg-white p-4">
                             <div className="flex items-center gap-3">
                               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f1f5f9] text-[10px] font-bold text-[#94a3b8]">
-                                {studentInitials(student.studentName)}
+                                {studentInitials(humanNameFinal(student.studentName))}
                               </div>
                               <div className="truncate">
                                 <p className="truncate text-xs font-bold text-[#0f172a]">
-                                  {student.studentName}
+                                  {humanNameFinal(student.studentName)}
                                 </p>
                                 <p className="truncate text-[8px] font-bold uppercase tracking-tight text-[#94a3b8]">
                                   {student.admissionNumber}
@@ -519,7 +526,7 @@ export default function StudentsPage() {
 }
 
 function studentInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const parts = humanNameFinal(name).split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return "ST";
   }

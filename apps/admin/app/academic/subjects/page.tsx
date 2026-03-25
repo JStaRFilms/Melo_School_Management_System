@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpenText, Plus, Shapes } from "lucide-react";
+import { humanNameFinal, humanNameTyping } from "@/human-name";
 
 type SubjectRecord = {
   _id: string;
@@ -40,7 +41,8 @@ export default function SubjectsPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!name.trim() || !code.trim()) {
+    const normalizedSubjectName = humanNameFinal(name);
+    if (!normalizedSubjectName || !code.trim()) {
       return;
     }
 
@@ -50,7 +52,7 @@ export default function SubjectsPage() {
 
     try {
       await createSubject({
-        name: name.trim(),
+        name: normalizedSubjectName,
         code: code.trim().toUpperCase(),
       } as never);
       setName("");
@@ -126,7 +128,8 @@ export default function SubjectsPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => setName(humanNameTyping(event.target.value))}
+                onBlur={(event) => setName(humanNameFinal(event.target.value))}
                 className="h-11 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
                 placeholder="Mathematics"
                 required

@@ -5,6 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
+import { normalizeHumanName } from "@school/shared";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -44,7 +45,7 @@ export const createStudent = mutation({
     const studentUserId = await ctx.db.insert("users", {
       schoolId,
       authId: toStudentAuthId(String(schoolId), args.admissionNumber),
-      name: args.name,
+      name: normalizeHumanName(args.name),
       email: `${args.admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
       role: "student",
       createdAt: now,
@@ -97,7 +98,7 @@ export const listStudentsByClass = query({
           const studentUser = await ctx.db.get(student.userId);
           return {
             _id: student._id,
-            studentName: studentUser?.name ?? "Unnamed Student",
+            studentName: normalizeHumanName(studentUser?.name ?? "Unnamed Student"),
             admissionNumber: student.admissionNumber,
             classId: student.classId,
             createdAt: student.createdAt,
@@ -151,7 +152,7 @@ export const updateStudent = mutation({
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) {
       await ctx.db.patch(student.userId, {
-        name: args.name,
+        name: normalizeHumanName(args.name),
         updatedAt: Date.now(),
       });
     }
@@ -341,7 +342,7 @@ export const getStudentSubjectSelections = query({
       results.push({
         _id: selection._id,
         subjectId: selection.subjectId,
-        subjectName: subject.name,
+          subjectName: normalizeHumanName(subject.name),
         subjectCode: subject.code,
         classId: selection.classId,
       });
@@ -410,7 +411,7 @@ export const getClassStudentSubjectMatrix = query({
       if (subject) {
         subjects.push({
           _id: subject._id,
-          name: subject.name,
+            name: normalizeHumanName(subject.name),
           code: subject.code,
         });
       }
@@ -448,7 +449,7 @@ export const getClassStudentSubjectMatrix = query({
         const studentUser = await ctx.db.get(student.userId);
         return {
           _id: student._id,
-          studentName: studentUser?.name ?? "Unnamed Student",
+            studentName: normalizeHumanName(studentUser?.name ?? "Unnamed Student"),
           admissionNumber: student.admissionNumber,
           selectedSubjectIds: (selectionMap.get(String(student._id)) ?? []).map(
             (id) => id as any

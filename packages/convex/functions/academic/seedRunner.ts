@@ -2,6 +2,7 @@ import { action } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { normalizeHumanName } from "@school/shared";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",
@@ -58,11 +59,11 @@ async function ensureAuthUser(
       "content-type": "application/json",
       origin: user.origin,
     },
-      body: JSON.stringify({
-        name: user.name,
-        email: user.email,
-        password: user.password,
-      }),
+    body: JSON.stringify({
+      name: normalizeHumanName(user.name),
+      email: user.email,
+      password: user.password,
+    }),
   });
   const signUpPayload = await readJsonSafe(signUpResponse);
 
@@ -140,13 +141,13 @@ export const seedExamRecordingData = action({
     }
 
     const admin = {
-      name: args.adminName ?? DEFAULT_ADMIN.name,
+      name: normalizeHumanName(args.adminName ?? DEFAULT_ADMIN.name),
       email: args.adminEmail ?? DEFAULT_ADMIN.email,
       password: args.adminPassword ?? DEFAULT_ADMIN.password,
       origin: DEFAULT_ADMIN.origin,
     };
     const teacher = {
-      name: args.teacherName ?? DEFAULT_TEACHER.name,
+      name: normalizeHumanName(args.teacherName ?? DEFAULT_TEACHER.name),
       email: args.teacherEmail ?? DEFAULT_TEACHER.email,
       password: args.teacherPassword ?? DEFAULT_TEACHER.password,
       origin: DEFAULT_TEACHER.origin,

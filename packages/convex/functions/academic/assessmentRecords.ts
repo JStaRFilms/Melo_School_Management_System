@@ -6,7 +6,13 @@ import {
   getAuthenticatedSchoolMembership,
   assertTeacherAssignment,
 } from "./auth";
-import { validateScoreRanges, deriveAssessmentFields, ExamInputMode, GradingBand } from "@school/shared";
+import {
+  validateScoreRanges,
+  deriveAssessmentFields,
+  ExamInputMode,
+  GradingBand,
+  normalizeHumanName,
+} from "@school/shared";
 
 /**
  * Get exam entry sheet with roster, existing scores, settings, and bands
@@ -179,7 +185,7 @@ export const getExamEntrySheet = query({
       students.map(async (student: any) => {
         // Get user details for student name
         const user = await ctx.db.get(student.userId);
-        const studentName = user?.name ?? "Unknown";
+        const studentName = normalizeHumanName(user?.name ?? "Unknown");
 
         return {
           studentId: student._id,

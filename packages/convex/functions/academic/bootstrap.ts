@@ -2,6 +2,7 @@ import { action, internalMutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { normalizeHumanName } from "@school/shared";
 
 type BootstrapIds = {
   schoolId: Id<"schools">;
@@ -103,16 +104,17 @@ export const bootstrapSchoolAdminInternal = internalMutation({
     let schoolId: Id<"schools">;
     if (!school) {
       schoolId = await ctx.db.insert("schools", {
-        name: args.schoolName,
+        name: normalizeHumanName(args.schoolName),
         slug: args.schoolSlug,
         createdAt: now,
         updatedAt: now,
       });
     } else {
       schoolId = school._id;
-      if (school.name !== args.schoolName) {
+      const nextSchoolName = normalizeHumanName(args.schoolName);
+      if (school.name !== nextSchoolName) {
         await ctx.db.patch(schoolId, {
-          name: args.schoolName,
+          name: nextSchoolName,
           updatedAt: now,
         });
       }
@@ -129,7 +131,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       adminUserId = existingAdmin._id;
       await ctx.db.patch(adminUserId, {
         authId: args.adminAuthId,
-        name: args.adminName,
+        name: normalizeHumanName(args.adminName),
         email: args.adminEmail,
         role: "admin",
         updatedAt: now,
@@ -138,7 +140,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       adminUserId = await ctx.db.insert("users", {
         schoolId,
         authId: args.adminAuthId,
-        name: args.adminName,
+        name: normalizeHumanName(args.adminName),
         email: args.adminEmail,
         role: "admin",
         createdAt: now,
@@ -148,10 +150,11 @@ export const bootstrapSchoolAdminInternal = internalMutation({
 
     let sessionId: Id<"academicSessions"> | undefined;
     if (args.sessionName?.trim()) {
+      const nextSessionName = normalizeHumanName(args.sessionName);
       const existingSession = await ctx.db
         .query("academicSessions")
         .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .filter((q) => q.eq(q.field("name"), args.sessionName))
+        .filter((q) => q.eq(q.field("name"), nextSessionName))
         .unique();
 
       if (existingSession) {
@@ -159,7 +162,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       } else {
         sessionId = await ctx.db.insert("academicSessions", {
           schoolId,
-          name: args.sessionName,
+          name: nextSessionName,
           startDate: now,
           endDate: now + 1000,
           isActive: true,
@@ -171,10 +174,11 @@ export const bootstrapSchoolAdminInternal = internalMutation({
 
     let termId: Id<"academicTerms"> | undefined;
     if (sessionId && args.termName?.trim()) {
+      const nextTermName = normalizeHumanName(args.termName);
       const existingTerm = await ctx.db
         .query("academicTerms")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId!))
-        .filter((q) => q.eq(q.field("name"), args.termName))
+        .filter((q) => q.eq(q.field("name"), nextTermName))
         .unique();
 
       if (existingTerm) {
@@ -183,7 +187,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         termId = await ctx.db.insert("academicTerms", {
           schoolId,
           sessionId,
-          name: args.termName,
+          name: nextTermName,
           startDate: now,
           endDate: now + 1000,
           isActive: true,
@@ -255,7 +259,7 @@ export const bootstrapSchoolAdmin = action({
     const adminAuthId = await ensureAuthUser({
       authBaseUrl,
       origin: args.origin,
-      name: args.adminName,
+      name: normalizeHumanName(args.adminName),
       email: args.adminEmail.trim().toLowerCase(),
       password: args.adminPassword,
     });
@@ -263,15 +267,15 @@ export const bootstrapSchoolAdmin = action({
     const bootstrapped: BootstrapIds = await ctx.runMutation(
       (internal as any).functions.academic.bootstrap.bootstrapSchoolAdminInternal,
       {
-        schoolName: args.schoolName.trim(),
+        schoolName: normalizeHumanName(args.schoolName),
         schoolSlug: normalizedSlug,
-        adminName: args.adminName.trim(),
+        adminName: normalizeHumanName(args.adminName),
         adminEmail: args.adminEmail.trim().toLowerCase(),
         adminAuthId,
         ...(args.sessionName?.trim()
-          ? { sessionName: args.sessionName.trim() }
+          ? { sessionName: normalizeHumanName(args.sessionName) }
           : {}),
-        ...(args.termName?.trim() ? { termName: args.termName.trim() } : {}),
+        ...(args.termName?.trim() ? { termName: normalizeHumanName(args.termName) } : {}),
       }
     );
 

@@ -2,6 +2,7 @@ import { internalMutation } from "../../_generated/server";
 import { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { deriveAssessmentFields } from "@school/shared";
+import { normalizeHumanName } from "@school/shared";
 
 const DEFAULT_ADMIN = {
   name: "Admin User",
@@ -155,7 +156,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     }
 
     const schoolId = await ctx.db.insert("schools", {
-      name: "Demo Academy",
+      name: normalizeHumanName("Demo Academy"),
       slug: "demo-school",
       createdAt: now,
       updatedAt: now,
@@ -164,7 +165,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const adminUserId = await ctx.db.insert("users", {
       schoolId,
       authId: args.adminAuthId,
-      name: DEFAULT_ADMIN.name,
+      name: normalizeHumanName(DEFAULT_ADMIN.name),
       email: DEFAULT_ADMIN.email,
       role: "admin",
       createdAt: now,
@@ -174,7 +175,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const teacherUserId = await ctx.db.insert("users", {
       schoolId,
       authId: args.teacherAuthId,
-      name: DEFAULT_TEACHER.name,
+      name: normalizeHumanName(DEFAULT_TEACHER.name),
       email: DEFAULT_TEACHER.email,
       role: "teacher",
       createdAt: now,
@@ -183,7 +184,7 @@ export const seedExamRecordingDataInternal = internalMutation({
 
     const sessionId = await ctx.db.insert("academicSessions", {
       schoolId,
-      name: "2025/2026",
+      name: normalizeHumanName("2025/2026"),
       startDate: new Date("2025-09-01").getTime(),
       endDate: new Date("2026-07-31").getTime(),
       isActive: true,
@@ -194,7 +195,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const termId = await ctx.db.insert("academicTerms", {
       schoolId,
       sessionId,
-      name: "First Term",
+      name: normalizeHumanName("First Term"),
       startDate: new Date("2025-09-01").getTime(),
       endDate: new Date("2025-12-20").getTime(),
       isActive: true,
@@ -204,8 +205,8 @@ export const seedExamRecordingDataInternal = internalMutation({
 
     const classId = await ctx.db.insert("classes", {
       schoolId,
-      name: "JSS 1A",
-      level: "Junior Secondary",
+      name: normalizeHumanName("JSS 1A"),
+      level: normalizeHumanName("Junior Secondary"),
       createdAt: now,
       updatedAt: now,
     });
@@ -214,7 +215,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     for (const subject of SUBJECTS) {
       const subjectId = await ctx.db.insert("subjects", {
         schoolId,
-        name: subject.name,
+        name: normalizeHumanName(subject.name),
         code: subject.code,
         createdAt: now,
         updatedAt: now,
@@ -244,7 +245,7 @@ export const seedExamRecordingDataInternal = internalMutation({
       const userId = await ctx.db.insert("users", {
         schoolId,
         authId: `seed-student-${student.admNo}`,
-        name: student.name,
+        name: normalizeHumanName(student.name),
         email: student.email,
         role: "student",
         createdAt: now,

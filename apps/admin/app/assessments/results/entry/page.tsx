@@ -33,6 +33,7 @@ import {
   mockTermsBySession,
 } from "@/mock-data";
 import { isConvexConfigured } from "@/convex-runtime";
+import { humanNameFinal } from "@/human-name";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -489,17 +490,22 @@ function AdminScoreEntryContent({
   const roster = sheetData?.roster ?? [];
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
-  const selectedSubjectName =
+  const selectedSubjectName = humanNameFinal(
     subjects.find((subject) => subject.id === selection.subjectId)?.name ??
-    "Score Entry";
-  const selectedClassName =
+      "Score Entry"
+  );
+  const selectedClassName = humanNameFinal(
     classes.find((classOption) => classOption.id === selection.classId)?.name ??
-    "Select Class";
+      "Select Class"
+  );
   const selectedTermName =
-    terms.find((term) => term.id === selection.termId)?.name ?? "Select Term";
-  const selectedSessionName =
+    humanNameFinal(
+      terms.find((term) => term.id === selection.termId)?.name ?? "Select Term"
+    );
+  const selectedSessionName = humanNameFinal(
     sessions.find((session) => session.id === selection.sessionId)?.name ??
-    "Select Session";
+      "Select Session"
+  );
   const sheetLabel = `${selectedSubjectName} \u2022 ${selectedClassName}`;
   const errorSummaries = useMemo(
     () => [

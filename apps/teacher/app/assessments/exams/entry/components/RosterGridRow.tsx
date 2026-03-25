@@ -9,6 +9,7 @@ import type {
   Id,
   GradingBandResponse,
 } from "@/lib/types";
+import { humanNameFinal } from "@/lib/human-name";
 import { ScoreInput } from "./ScoreInput";
 import { ComputedColumns } from "./ComputedColumns";
 import { getEffectiveValue, computeDerivedValues } from "@/lib/exam-helpers";
@@ -44,6 +45,7 @@ export function RosterGridRow({
   onScoreChange,
 }: RosterGridRowProps) {
   const examMax = examInputMode === "raw40" ? 40 : 60;
+  const displayStudentName = humanNameFinal(student.studentName);
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
   const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [
@@ -77,10 +79,10 @@ export function RosterGridRow({
       <td className="sticky-column">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded bg-obsidian-50 flex items-center justify-center font-bold text-[8px] text-obsidian-500">
-            {getInitials(student.studentName)}
+            {getInitials(displayStudentName)}
           </div>
           <span className="font-bold text-sm text-obsidian-900">
-            {student.studentName}
+            {displayStudentName}
           </span>
         </div>
       </td>
