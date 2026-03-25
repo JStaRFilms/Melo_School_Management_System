@@ -36,6 +36,7 @@ coverage/
 *.swp
 
 .turbo/
+*.tsbuildinfo
 
 # --- Convex ---
 # Keep _generated folder for codegen

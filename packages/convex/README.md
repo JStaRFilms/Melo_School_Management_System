@@ -60,6 +60,14 @@ Production note:
 - `TRUSTED_ORIGINS` should include the real admin and teacher origins that are allowed to share auth flows
 - use the same `BETTER_AUTH_SECRET` across the admin app, teacher app, and Convex deployment
 - if you deploy admin and teacher as separate Vercel projects, make sure each public domain is attached to the matching project root (`apps/admin` vs `apps/teacher`)
+- after any `BETTER_AUTH_SECRET` change, rotate the Better Auth keys and set the returned value as the Convex `JWKS` env:
+
+```bash
+pnpm exec convex run functions/auth:rotateKeysForStaticConfig
+pnpm exec convex env set JWKS '<paste-the-json-string-returned-above>'
+```
+
+- once `JWKS` is set, both `packages/convex/auth.config.ts` and the Better Auth Convex plugin will use the static key set instead of the database row
 
 ### 4. Start development
 

@@ -30,6 +30,8 @@ Excluded:
 - bootstrap is protected by a dedicated Convex env token
 - the token is intended for one-time CLI-driven setup
 - after bootstrap, the token can be removed from the deployment env
+- Better Auth production deploys must keep `BETTER_AUTH_SECRET` aligned across Vercel and Convex
+- if the secret changes, rotate Better Auth keys and pin the new `JWKS` in Convex env before resuming live logins
 
 ## Data Flow
 

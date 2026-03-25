@@ -11,6 +11,11 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
   verbose: false,
 });
 
+function getStaticJwks() {
+  const jwks = process.env.JWKS?.trim();
+  return jwks && jwks.length > 0 ? jwks : undefined;
+}
+
 function getTrustedOrigins() {
   const configuredOrigins =
     process.env.TRUSTED_ORIGINS?.split(",")
@@ -26,6 +31,8 @@ function getTrustedOrigins() {
 }
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
+  const jwks = getStaticJwks();
+
   return {
     appName: "School Management System",
     baseURL: process.env.CONVEX_SITE_URL ?? process.env.SITE_URL,
@@ -48,7 +55,13 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
         },
       },
     },
-    plugins: [convexPlugin({ authConfig })],
+    plugins: [
+      convexPlugin({
+        authConfig,
+        jwks,
+        jwksRotateOnTokenGenerationError: !jwks,
+      }),
+    ],
   } satisfies BetterAuthOptions;
 }
 
