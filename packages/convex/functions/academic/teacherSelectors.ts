@@ -1,7 +1,11 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
-import { getAuthenticatedSchoolMembership } from "./auth";
+import {
+  getAuthenticatedSchoolMembership,
+  getTeacherAssignableClassIds,
+  getTeacherAssignableSubjectIds,
+} from "./auth";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared";
 
 export const getTeacherSessions = query({
@@ -77,12 +81,7 @@ export const getTeacherAssignableClasses = query({
       throw new ConvexError("Unauthorized");
     }
 
-    const assignments = await ctx.db
-      .query("teacherAssignments")
-      .withIndex("by_teacher", (q: any) => q.eq("teacherId", userId))
-      .collect();
-
-    const classIds = [...new Set(assignments.map((assignment: any) => String(assignment.classId)))];
+    const classIds = await getTeacherAssignableClassIds(ctx, userId, schoolId);
     const classes = await Promise.all(
       classIds.map((classId) => ctx.db.get(classId))
     );
@@ -130,18 +129,12 @@ export const getTeacherAssignableSubjectsByClass = query({
       throw new ConvexError("Unauthorized");
     }
 
-    const assignments = await ctx.db
-      .query("teacherAssignments")
-      .withIndex("by_teacher", (q: any) => q.eq("teacherId", userId))
-      .collect();
-
-    const subjectIds = [
-      ...new Set(
-        assignments
-          .filter((assignment: any) => String(assignment.classId) === String(args.classId))
-          .map((assignment: any) => String(assignment.subjectId))
-      ),
-    ];
+    const subjectIds = await getTeacherAssignableSubjectIds(
+      ctx,
+      userId,
+      schoolId,
+      args.classId
+    );
 
     const subjects = await Promise.all(
       subjectIds.map((subjectId) => ctx.db.get(subjectId))

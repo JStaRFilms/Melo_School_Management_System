@@ -43,6 +43,107 @@ export async function assertTeacherAssignment(
   classId: Id<"classes">,
   subjectId: Id<"subjects">
 ): Promise<void> {
+  const hasAssignment = await teacherHasClassSubjectAccess(
+    ctx,
+    teacherId,
+    classId,
+    subjectId
+  );
+
+  if (!hasAssignment) {
+    throw new ConvexError("Not assigned to this class-subject");
+  }
+}
+
+export async function getTeacherAssignableClassIds(
+  ctx: any,
+  teacherId: Id<"users">,
+  schoolId: Id<"schools">
+): Promise<Array<Id<"classes">>> {
+  const teacherAssignments = await ctx.db
+    .query("teacherAssignments")
+    .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId))
+    .collect();
+  const classOfferings = await ctx.db
+    .query("classSubjects")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
+
+  const classIds = new Set<string>();
+
+  for (const assignment of teacherAssignments) {
+    if (String(assignment.schoolId) === String(schoolId)) {
+      classIds.add(String(assignment.classId));
+    }
+  }
+
+  for (const offering of classOfferings) {
+    if (
+      offering.teacherId &&
+      String(offering.teacherId) === String(teacherId)
+    ) {
+      classIds.add(String(offering.classId));
+    }
+  }
+
+  return [...classIds] as Array<Id<"classes">>;
+}
+
+export async function getTeacherAssignableSubjectIds(
+  ctx: any,
+  teacherId: Id<"users">,
+  schoolId: Id<"schools">,
+  classId: Id<"classes">
+): Promise<Array<Id<"subjects">>> {
+  const teacherAssignments = await ctx.db
+    .query("teacherAssignments")
+    .withIndex("by_teacher_and_class", (q: any) =>
+      q.eq("teacherId", teacherId).eq("classId", classId)
+    )
+    .collect();
+  const classOfferings = await ctx.db
+    .query("classSubjects")
+    .withIndex("by_class", (q: any) => q.eq("classId", classId))
+    .collect();
+
+  const subjectIds = new Set<string>();
+
+  for (const assignment of teacherAssignments) {
+    if (String(assignment.schoolId) === String(schoolId)) {
+      subjectIds.add(String(assignment.subjectId));
+    }
+  }
+
+  for (const offering of classOfferings) {
+    if (
+      String(offering.schoolId) === String(schoolId) &&
+      offering.teacherId &&
+      String(offering.teacherId) === String(teacherId)
+    ) {
+      subjectIds.add(String(offering.subjectId));
+    }
+  }
+
+  return [...subjectIds] as Array<Id<"subjects">>;
+}
+
+export async function teacherHasClassAccess(
+  ctx: any,
+  teacherId: Id<"users">,
+  schoolId: Id<"schools">,
+  classId: Id<"classes">
+): Promise<boolean> {
+  const classIds = await getTeacherAssignableClassIds(ctx, teacherId, schoolId);
+
+  return classIds.some((id) => String(id) === String(classId));
+}
+
+async function teacherHasClassSubjectAccess(
+  ctx: any,
+  teacherId: Id<"users">,
+  classId: Id<"classes">,
+  subjectId: Id<"subjects">
+): Promise<boolean> {
   const assignment = await ctx.db
     .query("teacherAssignments")
     .withIndex("by_teacher_and_class_and_subject", (q: any) =>
@@ -53,9 +154,22 @@ export async function assertTeacherAssignment(
     )
     .unique();
 
-  if (!assignment) {
-    throw new ConvexError("Not assigned to this class-subject");
+  if (assignment) {
+    return true;
   }
+
+  const offering = await ctx.db
+    .query("classSubjects")
+    .withIndex("by_class_and_subject", (q: any) =>
+      q.eq("classId", classId).eq("subjectId", subjectId)
+    )
+    .unique();
+
+  return Boolean(
+    offering &&
+      offering.teacherId &&
+      String(offering.teacherId) === String(teacherId)
+  );
 }
 
 /**

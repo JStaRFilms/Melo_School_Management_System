@@ -4,6 +4,7 @@ import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
+  teacherHasClassAccess,
 } from "./auth";
 import { normalizeHumanName, normalizePersonName } from "@school/shared";
 
@@ -210,15 +211,14 @@ export const setStudentSubjectSelections = mutation({
 
     // Teachers can edit subject selections for their assigned classes
     if (role === "teacher") {
-      // Verify teacher is assigned to this class for at least one subject
-      const assignment = await ctx.db
-        .query("teacherAssignments")
-        .withIndex("by_teacher_and_class", (q) =>
-          q.eq("teacherId", userId).eq("classId", args.classId)
-        )
-        .first();
+      const hasAccess = await teacherHasClassAccess(
+        ctx,
+        userId,
+        schoolId,
+        args.classId
+      );
 
-      if (!assignment) {
+      if (!hasAccess) {
         throw new ConvexError("Not assigned to this class");
       }
     } else if (role !== "admin") {
@@ -400,14 +400,14 @@ export const getClassStudentSubjectMatrix = query({
 
     // Teachers can view their assigned classes
     if (role === "teacher") {
-      const assignment = await ctx.db
-        .query("teacherAssignments")
-        .withIndex("by_teacher_and_class", (q) =>
-          q.eq("teacherId", userId).eq("classId", args.classId)
-        )
-        .first();
+      const hasAccess = await teacherHasClassAccess(
+        ctx,
+        userId,
+        schoolId,
+        args.classId
+      );
 
-      if (!assignment) {
+      if (!hasAccess) {
         throw new ConvexError("Not assigned to this class");
       }
     } else if (role !== "admin") {

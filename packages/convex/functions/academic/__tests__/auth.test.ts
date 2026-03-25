@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ConvexError } from "convex/values";
 import type { Id, TableNames } from "../../../_generated/dataModel";
 
 import {
   assertAdminForSchool,
   assertSchoolBoundary,
   assertTeacherAssignment,
+  getTeacherAssignableClassIds,
+  getTeacherAssignableSubjectIds,
+  teacherHasClassAccess,
   getAuthenticatedSchoolMembership,
 } from "../auth";
 
@@ -16,7 +18,18 @@ function asId<TableName extends TableNames>(value: string): Id<TableName> {
 function createCtx(options?: {
   identity?: { subject: string } | null;
   user?: { _id: Id<"users">; schoolId: Id<"schools">; role: string } | null;
-  assignmentExists?: boolean;
+  teacherAssignments?: Array<{
+    schoolId: Id<"schools">;
+    teacherId: Id<"users">;
+    classId: Id<"classes">;
+    subjectId: Id<"subjects">;
+  }>;
+  classSubjects?: Array<{
+    schoolId: Id<"schools">;
+    classId: Id<"classes">;
+    subjectId: Id<"subjects">;
+    teacherId?: Id<"users"> | null;
+  }>;
 }) {
   const identity =
     options && "identity" in options ? options.identity : { subject: "auth-user-1" };
@@ -28,7 +41,15 @@ function createCtx(options?: {
           schoolId: asId<"schools">("school-1"),
           role: "teacher",
         } as const);
-  const assignmentExists = options?.assignmentExists ?? true;
+  const teacherAssignments = options?.teacherAssignments ?? [
+    {
+      schoolId: asId<"schools">("school-1"),
+      teacherId: asId<"users">("user-1"),
+      classId: asId<"classes">("class-1"),
+      subjectId: asId<"subjects">("subject-1"),
+    },
+  ];
+  const classSubjects = options?.classSubjects ?? [];
 
   return {
     auth: {
@@ -36,15 +57,41 @@ function createCtx(options?: {
     },
     db: {
       query: (table: string) => ({
-        withIndex: () => ({
-          unique: async () => {
-            if (table === "users") return user;
+        withIndex: (indexName?: string, indexFilter?: (q: any) => any) => {
+          const criteria: Record<string, unknown> = {};
+          const query = {
+            eq(field: string, value: unknown) {
+              criteria[field] = value;
+              return query;
+            },
+          };
+
+          indexFilter?.(query);
+
+          const matchesCriteria = (row: Record<string, unknown>) =>
+            Object.entries(criteria).every(([field, value]) => row[field] === value);
+
+          const filterRows = () => {
             if (table === "teacherAssignments") {
-              return assignmentExists ? { _id: "assignment-1" } : null;
+              return teacherAssignments.filter(matchesCriteria);
             }
-            return null;
-          },
-        }),
+
+            if (table === "classSubjects") {
+              return classSubjects.filter(matchesCriteria);
+            }
+
+            return [];
+          };
+
+          return {
+            collect: async () => filterRows(),
+            unique: async () => {
+              if (table === "users") return user;
+              const rows = filterRows();
+              return rows[0] ?? null;
+            },
+          };
+        },
       }),
       get: async (id: Id<"users">) => {
         if (!user || id !== user._id) return null;
@@ -83,7 +130,30 @@ describe("getAuthenticatedSchoolMembership", () => {
 
 describe("assertTeacherAssignment", () => {
   it("passes when an assignment exists", async () => {
-    const ctx = createCtx({ assignmentExists: true });
+    const ctx = createCtx();
+
+    await expect(
+      assertTeacherAssignment(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"classes">("class-1"),
+        asId<"subjects">("subject-1")
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes when the matching class-subject offering stores the teacher id", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-1"),
+          teacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
 
     await expect(
       assertTeacherAssignment(
@@ -96,7 +166,17 @@ describe("assertTeacherAssignment", () => {
   });
 
   it("throws when no assignment exists", async () => {
-    const ctx = createCtx({ assignmentExists: false });
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-1"),
+          teacherId: asId<"users">("user-2"),
+        },
+      ],
+    });
 
     await expect(
       assertTeacherAssignment(
@@ -108,6 +188,96 @@ describe("assertTeacherAssignment", () => {
     ).rejects.toMatchObject({
       message: "Not assigned to this class-subject",
     });
+  });
+});
+
+describe("teacher assignment helpers", () => {
+  it("merges teacherAssignments and classSubjects when building class ids", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          teacherId: asId<"users">("user-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-1"),
+        },
+      ],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-2"),
+          subjectId: asId<"subjects">("subject-2"),
+          teacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      getTeacherAssignableClassIds(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1")
+      )
+    ).resolves.toEqual([
+      asId<"classes">("class-1"),
+      asId<"classes">("class-2"),
+    ]);
+  });
+
+  it("merges teacherAssignments and classSubjects when building subject ids", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          teacherId: asId<"users">("user-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-1"),
+        },
+      ],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-1"),
+          subjectId: asId<"subjects">("subject-2"),
+          teacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      getTeacherAssignableSubjectIds(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1"),
+        asId<"classes">("class-1")
+      )
+    ).resolves.toEqual([
+      asId<"subjects">("subject-1"),
+      asId<"subjects">("subject-2"),
+    ]);
+  });
+
+  it("reports class access when the teacher is linked through classSubjects", async () => {
+    const ctx = createCtx({
+      teacherAssignments: [],
+      classSubjects: [
+        {
+          schoolId: asId<"schools">("school-1"),
+          classId: asId<"classes">("class-3"),
+          subjectId: asId<"subjects">("subject-3"),
+          teacherId: asId<"users">("user-1"),
+        },
+      ],
+    });
+
+    await expect(
+      teacherHasClassAccess(
+        ctx,
+        asId<"users">("user-1"),
+        asId<"schools">("school-1"),
+        asId<"classes">("class-3")
+      )
+    ).resolves.toBe(true);
   });
 });
 
