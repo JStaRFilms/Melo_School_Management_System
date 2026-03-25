@@ -101,6 +101,7 @@ This feature allows administrators to:
 - Teacher creation is a real live action, not a fake local insert:
   - Better Auth account is created first
   - matching school-scoped `users` row is inserted after auth provisioning succeeds
+  - failed provisioning shows a concise in-page notice while the full error is logged to the browser console
 - Student creation inserts both:
   - a linked `users` row with role `student`
   - a `students` row scoped to the selected class

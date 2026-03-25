@@ -26,6 +26,16 @@ function getInitials(name: string) {
     .join("");
 }
 
+function getTeacherProvisionErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    if (/already exists|use another email/i.test(error.message)) {
+      return "A teacher with this email already exists.";
+    }
+  }
+
+  return "Teacher could not be created. Check the browser console for details.";
+}
+
 export default function TeachersPage() {
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
@@ -84,9 +94,8 @@ export default function TeachersPage() {
       setEmail("");
       setTemporaryPassword("Teacher123!Pass");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to provision teacher"
-      );
+      console.error("Teacher provisioning failed", err);
+      setError(getTeacherProvisionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -153,8 +162,11 @@ export default function TeachersPage() {
         </div>
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-amber-800">
+              Teacher not created
+            </p>
+            <p className="mt-1 text-sm font-medium text-amber-900">{error}</p>
           </div>
         ) : null}
 
