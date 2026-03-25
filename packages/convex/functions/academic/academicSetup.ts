@@ -93,8 +93,6 @@ export const createTeacher = action({
         name: args.name,
         email: args.email,
         password: args.temporaryPassword,
-        role: "teacher",
-        schoolId: String(schoolId),
       }),
     });
 

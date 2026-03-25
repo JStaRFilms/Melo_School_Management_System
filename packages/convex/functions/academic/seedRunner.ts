@@ -38,8 +38,6 @@ type SeedAuthUser = {
   email: string;
   password: string;
   origin: string;
-  role: string;
-  schoolId?: string;
 };
 
 async function readJsonSafe(response: Response) {
@@ -60,13 +58,11 @@ async function ensureAuthUser(
       "content-type": "application/json",
       origin: user.origin,
     },
-    body: JSON.stringify({
-      name: user.name,
-      email: user.email,
-      password: user.password,
-      role: user.role,
-      ...(user.schoolId ? { schoolId: user.schoolId } : {}),
-    }),
+      body: JSON.stringify({
+        name: user.name,
+        email: user.email,
+        password: user.password,
+      }),
   });
   const signUpPayload = await readJsonSafe(signUpResponse);
 
@@ -148,14 +144,12 @@ export const seedExamRecordingData = action({
       email: args.adminEmail ?? DEFAULT_ADMIN.email,
       password: args.adminPassword ?? DEFAULT_ADMIN.password,
       origin: DEFAULT_ADMIN.origin,
-      role: DEFAULT_ADMIN.role,
     };
     const teacher = {
       name: args.teacherName ?? DEFAULT_TEACHER.name,
       email: args.teacherEmail ?? DEFAULT_TEACHER.email,
       password: args.teacherPassword ?? DEFAULT_TEACHER.password,
       origin: DEFAULT_TEACHER.origin,
-      role: DEFAULT_TEACHER.role,
     };
 
     const adminAuthId = await ensureAuthUser(authBaseUrl, admin);

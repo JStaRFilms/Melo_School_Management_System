@@ -13,6 +13,7 @@ import type * as functions_academic_academicSetup from "../functions/academic/ac
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
+import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
+  "functions/academic/bootstrap": typeof functions_academic_bootstrap;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
