@@ -3,7 +3,7 @@ import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
-import { authComponent, createAuth } from "../../betterAuth";
+import { createAuth } from "../../betterAuth";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
@@ -345,17 +345,12 @@ export const updateTeacherProfile = action({
       throw new ConvexError("A teacher with this email already exists");
     }
 
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
 
-    await auth.api.adminUpdateUser({
-      headers,
-      body: {
-        userId: teacher.authId,
-        data: {
-          name: normalizedName,
-          email: normalizedEmail,
-        },
-      },
+    await authContext.internalAdapter.updateUser(teacher.authId, {
+      name: normalizedName,
+      email: normalizedEmail,
     });
 
     await ctx.runMutation(
@@ -402,22 +397,21 @@ export const resetTeacherPassword = action({
       }
     );
 
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    const minPasswordLength = authContext.password.config.minPasswordLength;
+    if (args.temporaryPassword.length < minPasswordLength) {
+      throw new ConvexError("Password is too short");
+    }
 
-    await auth.api.setUserPassword({
-      headers,
-      body: {
-        userId: teacher.authId,
-        newPassword: args.temporaryPassword,
-      },
-    });
+    const maxPasswordLength = authContext.password.config.maxPasswordLength;
+    if (args.temporaryPassword.length > maxPasswordLength) {
+      throw new ConvexError("Password is too long");
+    }
 
-    await auth.api.revokeUserSessions({
-      headers,
-      body: {
-        userId: teacher.authId,
-      },
-    });
+    const hashedPassword = await authContext.password.hash(args.temporaryPassword);
+    await authContext.internalAdapter.updatePassword(teacher.authId, hashedPassword);
+    await authContext.internalAdapter.deleteSessions(teacher.authId);
 
     return {
       teacherId: args.teacherId,

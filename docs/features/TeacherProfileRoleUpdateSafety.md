@@ -23,9 +23,9 @@ Allow school admins to edit a teacher's display name and login email without tou
 
 1. Admin opens an existing teacher record in the teacher directory.
 2. The client submits only the normalized name and lowercase email.
-3. The Convex action reuses the current admin session headers directly instead of trying to mutate the acting admin's Better Auth role during the request.
-4. The Convex action updates the Better Auth user profile with profile fields only.
-5. The same admin session headers are reused for password reset and session revocation operations.
+3. The Convex action verifies the acting school admin through the app's school-scoped `users` table.
+4. The Convex action updates the Better Auth user profile through Better Auth's internal adapter instead of the admin plugin endpoint.
+5. Password reset and session revocation also use Better Auth's internal adapter, so they do not depend on the current auth session having a synced Better Auth `admin` role.
 6. The Convex mutation patches the school-scoped `users` row with the same name and email.
 7. The teacher keeps the original `teacher` role throughout the edit.
 
@@ -38,5 +38,6 @@ Allow school admins to edit a teacher's display name and login email without tou
 ## Regression Fix
 
 - Removed the temporary `auth.api.updateUser` call that tried to set the acting admin's `role` before teacher edits and password resets.
-- This avoids Better Auth rejecting the request with `APIError: role is not allowed to be set`.
+- Replaced Better Auth admin plugin calls with direct internal-adapter updates after the app-level admin guard passes.
+- This avoids Better Auth rejecting the request with `APIError: role is not allowed to be set` and `APIError: You are not allowed to update users`.
 - The admin teacher page now shows operation-specific error headers instead of always saying `Teacher not created`.
