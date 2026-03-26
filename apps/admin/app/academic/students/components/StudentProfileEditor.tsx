@@ -18,6 +18,7 @@ type StudentProfile = {
   admissionNumber: string;
   classId: string;
   className: string;
+  houseName: string | null;
   gender: string | null;
   dateOfBirth: number | null;
   guardianName: string | null;
@@ -55,6 +56,7 @@ export function StudentProfileEditor({
   const [name, setName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [classId, setClassId] = useState("");
+  const [houseName, setHouseName] = useState("");
   const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [guardianName, setGuardianName] = useState("");
@@ -72,6 +74,7 @@ export function StudentProfileEditor({
     setName(studentProfile.name);
     setAdmissionNumber(studentProfile.admissionNumber);
     setClassId(studentProfile.classId);
+    setHouseName(studentProfile.houseName ?? "");
     setGender(studentProfile.gender ?? "");
     setDateOfBirth(toDateInput(studentProfile.dateOfBirth));
     setGuardianName(studentProfile.guardianName ?? "");
@@ -155,6 +158,7 @@ export function StudentProfileEditor({
         name,
         admissionNumber,
         classId,
+        houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
         guardianName: guardianName || null,
@@ -208,6 +212,7 @@ export function StudentProfileEditor({
               ))}
             </select>
           </Field>
+          <Field label="House"><input value={houseName} onChange={(event) => setHouseName(event.target.value)} className={fieldInputClassName} placeholder="Blue House" /></Field>
           <Field label="Gender"><input value={gender} onChange={(event) => setGender(event.target.value)} className={fieldInputClassName} placeholder="Female" /></Field>
           <Field label="Date of Birth"><input type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className={fieldInputClassName} /></Field>
           <Field label="Guardian Name"><input value={guardianName} onChange={(event) => setGuardianName(event.target.value)} className={fieldInputClassName} /></Field>

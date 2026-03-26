@@ -25,7 +25,7 @@
 [x] /academic/students
 I noticed that when I'm on the student route, the academic student route, I have to manually click on all the subjects one by one. I strongly believe that if I've already clicked on the subjects for a class, like I'm in a class and sorting out that class right now for a class student, I should have the option - I should have like a small button that is select all or something like that. So select all and then deselect the ones that child is not offering. That way it's easier - do you understand accounting - it's easier for me to handle. Do you get it? Yeah. IT'S BETER UX
 
-[ ] I should be able to cleanly edit the details of a student not just their subjects
+[x] I should be able to cleanly edit the details of a student not just their subjects
 
 [x] The admin and switch-areas pages need a single unified nav bar. Right now it’s patchy: some options appear, others vanish, and you get yanked around to different places. Build one shared nav bar that works for admin, students, and teachers.
 
@@ -35,7 +35,7 @@ I noticed that when I'm on the student route, the academic student route, I have
 
 [ ] I can also add a dedicated “archived records” admin view next, so archived subjects/classes/teachers/sessions are browsable without restoring delete behavior.
 
-[ ] Each teacher should only see the classes they're assigned to. They can't see or edit other classes in the drop-down menu.
+[x] Each teacher should only see the classes they're assigned to. They can't see or edit other classes in the drop-down menu.
 
 [x] Alright, I've implemented the results the way I like them. There are a few changes I need you to make, though. Look at the fields: teacher name, teacher's comment, and head teacher's comment. We don't expose teacher's comment or head teacher's comment in Convex or anywhere in the UI yet, so we need a clean, intuitive way to input them. Every student gets their own head-teacher comment and class-teacher comment. For now, just expose two separate inputs in the admin panel, one for the teacher's comment and one for the head teacher's comment. I'll tweak the flow later.
 

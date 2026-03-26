@@ -39,6 +39,7 @@ export default defineSchema({
     classId: v.id("classes"),
     userId: v.id("users"),
     admissionNumber: v.string(),
+    houseName: v.optional(v.string()),
     gender: v.optional(v.string()),
     dateOfBirth: v.optional(v.number()),
     guardianName: v.optional(v.string()),

@@ -12,6 +12,19 @@ function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
 }
 
+function normalizeOptionalHouseName(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return normalizeHumanName(trimmed);
+}
+
 // ==================== STUDENT ROSTER ====================
 
 export const createStudent = mutation({
@@ -117,6 +130,7 @@ export const updateStudent = mutation({
     name: v.optional(v.string()),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
+    houseName: v.optional(v.union(v.string(), v.null())),
     gender: v.optional(v.union(v.string(), v.null())),
     dateOfBirth: v.optional(v.union(v.number(), v.null())),
     guardianName: v.optional(v.union(v.string(), v.null())),
@@ -191,6 +205,10 @@ export const updateStudent = mutation({
     };
 
     const nextGender = args.gender === undefined ? student.gender : args.gender ?? undefined;
+    const nextHouseName =
+      args.houseName === undefined
+        ? student.houseName
+        : normalizeOptionalHouseName(args.houseName);
     const nextDateOfBirth =
       args.dateOfBirth === undefined
         ? student.dateOfBirth
@@ -228,6 +246,7 @@ export const updateStudent = mutation({
           ? Date.now()
           : undefined;
 
+    if (nextHouseName) nextStudentRecord.houseName = nextHouseName;
     if (nextGender) nextStudentRecord.gender = nextGender;
     if (nextDateOfBirth) nextStudentRecord.dateOfBirth = nextDateOfBirth;
     if (nextGuardianName) nextStudentRecord.guardianName = nextGuardianName;
@@ -254,6 +273,7 @@ export const getStudentProfile = query({
     admissionNumber: v.string(),
     classId: v.id("classes"),
     className: v.string(),
+    houseName: v.union(v.string(), v.null()),
     gender: v.union(v.string(), v.null()),
     dateOfBirth: v.union(v.number(), v.null()),
     guardianName: v.union(v.string(), v.null()),
@@ -289,6 +309,7 @@ export const getStudentProfile = query({
       admissionNumber: student.admissionNumber,
       classId: student.classId,
       className: normalizeHumanName(classDoc.name),
+      houseName: student.houseName ?? null,
       gender: student.gender ?? null,
       dateOfBirth: student.dateOfBirth ?? null,
       guardianName: student.guardianName ?? null,

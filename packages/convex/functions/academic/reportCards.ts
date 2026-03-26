@@ -418,7 +418,9 @@ async function buildStudentReportCard(
       guardianName: student.guardianName ?? null,
       guardianPhone: student.guardianPhone ?? null,
       address: student.address ?? null,
-      houseName: null,
+      houseName: student.houseName
+        ? normalizeHumanName(student.houseName)
+        : null,
       nextTermBegins: term.nextTermBegins ?? null,
       photoUrl,
     },
