@@ -21,6 +21,7 @@ interface AdminRosterGridRowProps {
   validationErrors: ValidationErrors;
   sessionId: string;
   termId: string;
+  classId: string;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -36,6 +37,7 @@ export function AdminRosterGridRow({
   validationErrors,
   sessionId,
   termId,
+  classId,
   onScoreChange,
 }: AdminRosterGridRowProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -70,7 +72,7 @@ export function AdminRosterGridRow({
         </span>
         <div className="mt-1">
           <Link
-            href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}`}
+            href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
             className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-600"
           >
             View Report Card

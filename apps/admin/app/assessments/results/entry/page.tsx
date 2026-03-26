@@ -585,17 +585,18 @@ function AdminScoreEntryContent({
           </p>
         </div>
       ) : (
-        <AdminRosterGrid
-          roster={roster}
-          examInputMode={examInputMode}
-          gradingBands={sheetData?.gradingBands ?? []}
-          draftScores={draftScores}
-          validationErrors={validationErrors}
-          sheetLabel={sheetLabel}
-          sessionId={selection.sessionId ?? ""}
-          termId={selection.termId ?? ""}
-          onScoreChange={handleScoreChange}
-        />
+            <AdminRosterGrid
+              roster={roster}
+              examInputMode={examInputMode}
+              gradingBands={sheetData?.gradingBands ?? []}
+              draftScores={draftScores}
+              validationErrors={validationErrors}
+              sheetLabel={sheetLabel}
+              sessionId={selection.sessionId ?? ""}
+              termId={selection.termId ?? ""}
+              classId={selection.classId ?? ""}
+              onScoreChange={handleScoreChange}
+            />
       )}
 
       {isSheetReady && roster.length > 0 ? (

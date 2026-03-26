@@ -242,3 +242,50 @@ To stay aligned with the 200-line modularity rule, split the work into:
 - Admin can upload or replace the school logo from the report-card area
 - Uploaded school logo appears on exported report cards
 - Error states are explicit for batch loading, printing, and logo upload
+
+## Implementation Notes
+
+### Backend
+
+- `schools` now stores optional logo metadata in Convex
+- `getStudentReportCard` now returns:
+  - `classId`
+  - resolved `schoolLogoUrl`
+- `getStudentsForReportCardBatch` now returns the ordered student roster for a class/session/term with admin and teacher authorization checks
+- school-logo upload is handled by a dedicated `schoolBranding` Convex module with:
+  - `generateSchoolLogoUploadUrl`
+  - `saveSchoolLogo`
+  - `removeSchoolLogo`
+
+### Admin App
+
+- the admin report-card page now supports class-aware batch navigation
+- the page includes a print-hidden batch navigator with:
+  - student jump dropdown
+  - previous button
+  - next button
+- the admin controls panel now includes a school-logo upload card for report-card branding
+- admin score-entry links now pass `classId` into the report-card route so the batch context is ready immediately
+
+### Teacher App
+
+- the teacher report-card page now supports the same class-aware batch navigation
+- teacher score-entry links now pass `classId` into the report-card route
+- teacher access remains read/export only
+
+### Shared UI
+
+- `ReportCardBatchNavigator` now provides the shared class-run navigation UI
+- `ReportCardSheetData` now includes `classId` so pages can preserve batch context while reusing the same printable sheet
+
+## Verification
+
+- `convex dev --once --typecheck enable`
+- `corepack pnpm -C packages/convex exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/admin exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/teacher exec tsc --noEmit --incremental false --pretty false`
+
+## Follow-Up
+
+- This pass delivers fast student-to-student class navigation and branding upload
+- true one-click print-all for the whole class is still deferred; current printing remains per student using the faster batch navigator

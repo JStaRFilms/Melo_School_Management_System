@@ -55,20 +55,6 @@ function getStoredClassLabel(classDoc: {
   return classDoc.classLabel ? normalizeClassLabel(classDoc.classLabel) : undefined;
 }
 
-async function ensureActingAdminAuthRole(ctx: any, schoolId: Id<"schools">) {
-  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-
-  await auth.api.updateUser({
-    headers,
-    body: {
-      role: "admin",
-      schoolId: String(schoolId),
-    },
-  });
-
-  return { auth, headers };
-}
-
 export const createTeacherRecordInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
@@ -359,7 +345,7 @@ export const updateTeacherProfile = action({
       throw new ConvexError("A teacher with this email already exists");
     }
 
-    const { auth, headers } = await ensureActingAdminAuthRole(ctx, viewer.schoolId);
+    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
 
     await auth.api.adminUpdateUser({
       headers,
@@ -368,8 +354,6 @@ export const updateTeacherProfile = action({
         data: {
           name: normalizedName,
           email: normalizedEmail,
-          role: "teacher",
-          schoolId: String(viewer.schoolId),
         },
       },
     });
@@ -418,7 +402,7 @@ export const resetTeacherPassword = action({
       }
     );
 
-    const { auth, headers } = await ensureActingAdminAuthRole(ctx, viewer.schoolId);
+    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
 
     await auth.api.setUserPassword({
       headers,

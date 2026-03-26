@@ -368,6 +368,7 @@ export function ExamEntryWorkspace({
           validationErrors={validationErrors}
           sessionId={selection.sessionId ?? ""}
           termId={selection.termId ?? ""}
+          classId={selection.classId ?? ""}
           onScoreChange={handleScoreChange}
         />
       )}

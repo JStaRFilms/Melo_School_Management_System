@@ -26,6 +26,7 @@ interface RosterGridProps {
   validationErrors: ValidationErrors;
   sessionId?: string;
   termId?: string;
+  classId?: string;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -50,6 +51,7 @@ export function RosterGrid({
   validationErrors,
   sessionId = "",
   termId = "",
+  classId = "",
   onScoreChange,
 }: RosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -123,7 +125,7 @@ export function RosterGrid({
                       {student.studentName}
                     </h3>
                     <Link
-                      href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}`}
+                      href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
                       className="mt-1 inline-flex text-[10px] font-bold uppercase tracking-[0.12em] text-indigo-600"
                     >
                       View Report Card
@@ -341,6 +343,7 @@ export function RosterGrid({
                 validationErrors={validationErrors}
                 sessionId={sessionId}
                 termId={termId}
+                classId={classId}
                 onScoreChange={onScoreChange}
               />
             ))}

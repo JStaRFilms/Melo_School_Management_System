@@ -108,6 +108,7 @@ This feature allows administrators to:
   - Better Auth user profile is updated
   - matching school-scoped `users` row is patched
   - email is normalized to lowercase before duplicate checks and saves
+  - teacher role is intentionally left unchanged during profile edits
 - Teacher password reset is admin-led:
   - admin sets a temporary password
   - teacher sessions are revoked after reset

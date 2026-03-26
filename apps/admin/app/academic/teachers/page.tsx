@@ -19,6 +19,11 @@ type ProvisionResult = {
   temporaryPassword: string;
 };
 
+type TeacherActionErrorState = {
+  title: string;
+  message: string;
+} | null;
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -63,7 +68,7 @@ export default function TeachersPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [resetPasswordValue, setResetPasswordValue] = useState("Teacher123!Pass");
-  const [error, setError] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<TeacherActionErrorState>(null);
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -108,7 +113,7 @@ export default function TeachersPage() {
     }
 
     setIsSubmitting(true);
-    setError(null);
+    setErrorState(null);
     setResult(null);
     setSuccessMessage(null);
 
@@ -127,7 +132,10 @@ export default function TeachersPage() {
       setSuccessMessage("Teacher account created.");
     } catch (err) {
       console.error("Teacher provisioning failed", err);
-      setError(getTeacherProvisionErrorMessage(err));
+      setErrorState({
+        title: "Teacher not created",
+        message: getTeacherProvisionErrorMessage(err),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -146,7 +154,7 @@ export default function TeachersPage() {
     }
 
     setIsSavingProfile(true);
-    setError(null);
+    setErrorState(null);
     setResult(null);
     setSuccessMessage(null);
 
@@ -158,7 +166,10 @@ export default function TeachersPage() {
       } as never);
       setSuccessMessage("Teacher profile updated.");
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to update teacher"));
+      setErrorState({
+        title: "Teacher update failed",
+        message: getUserFacingErrorMessage(err, "Failed to update teacher"),
+      });
     } finally {
       setIsSavingProfile(false);
     }
@@ -170,7 +181,7 @@ export default function TeachersPage() {
     }
 
     setIsResettingPassword(true);
-    setError(null);
+    setErrorState(null);
     setResult(null);
     setSuccessMessage(null);
 
@@ -183,7 +194,10 @@ export default function TeachersPage() {
         `Password reset for ${selectedTeacher.email}. Existing sessions were revoked.`
       );
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to reset password"));
+      setErrorState({
+        title: "Password reset failed",
+        message: getUserFacingErrorMessage(err, "Failed to reset password"),
+      });
     } finally {
       setIsResettingPassword(false);
     }
@@ -199,7 +213,7 @@ export default function TeachersPage() {
     }
 
     setIsSavingProfile(true);
-    setError(null);
+    setErrorState(null);
     setResult(null);
     setSuccessMessage(null);
 
@@ -208,7 +222,10 @@ export default function TeachersPage() {
       setSelectedTeacherId(null);
       setSuccessMessage("Teacher archived.");
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to archive teacher"));
+      setErrorState({
+        title: "Teacher archive failed",
+        message: getUserFacingErrorMessage(err, "Failed to archive teacher"),
+      });
     } finally {
       setIsSavingProfile(false);
     }
@@ -274,12 +291,14 @@ export default function TeachersPage() {
           </span>
         </div>
 
-        {error ? (
+        {errorState ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-amber-800">
-              Teacher not created
+              {errorState.title}
             </p>
-            <p className="mt-1 text-sm font-medium text-amber-900">{error}</p>
+            <p className="mt-1 text-sm font-medium text-amber-900">
+              {errorState.message}
+            </p>
           </div>
         ) : null}
 

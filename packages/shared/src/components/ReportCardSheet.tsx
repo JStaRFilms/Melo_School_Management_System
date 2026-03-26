@@ -8,6 +8,7 @@ export type ReportCardSheetData = {
   schoolMotto?: string | null;
   sessionName: string;
   termName: string;
+  classId: string;
   className: string;
   generatedAt: number;
   assessmentConfig: {
@@ -113,6 +114,8 @@ function ensurePrintStyles() {
       .rc-print-root { width: 194mm !important; max-width: 194mm !important; margin: 0 auto !important; padding: 0 !important; }
       .rc-sheet { width: 100% !important; max-width: 100% !important; border-radius: 0 !important; box-shadow: none !important; border-width: 1px !important; }
       .rc-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .rc-stack-item { break-after: page; page-break-after: always; margin-bottom: 8mm !important; }
+      .rc-stack-item:last-child { break-after: auto; page-break-after: auto; margin-bottom: 0 !important; }
     }
   `;
   document.head.appendChild(style);
@@ -123,9 +126,11 @@ function ensurePrintStyles() {
 export function ReportCardSheet({
   reportCard,
   backHref,
+  hideToolbar = false,
 }: {
   reportCard: ReportCardSheetData;
   backHref: string;
+  hideToolbar?: boolean;
 }) {
   if (typeof window !== "undefined") ensurePrintStyles();
 
@@ -170,6 +175,7 @@ export function ReportCardSheet({
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
       {/* ── Toolbar (hidden during print) ── */}
+      {hideToolbar ? null : (
       <div
         className="rc-no-print"
         style={{
@@ -247,6 +253,7 @@ export function ReportCardSheet({
           </button>
         </div>
       </div>
+      )}
 
       {/* ── Report Card Sheet ── */}
       <div

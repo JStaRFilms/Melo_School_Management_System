@@ -6,6 +6,10 @@ export default defineSchema({
   schools: defineTable({
     name: v.string(),
     slug: v.string(),
+    logoStorageId: v.optional(v.id("_storage")),
+    logoFileName: v.optional(v.string()),
+    logoContentType: v.optional(v.string()),
+    logoUpdatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }),

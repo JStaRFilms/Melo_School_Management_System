@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
+import { SchoolLogoManagerCard } from "./SchoolLogoManagerCard";
 
 function formatDateInputValue(value: number | null) {
   if (!value) return "";
@@ -213,60 +214,67 @@ export function ReportCardAdminPanel({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="mb-3">
-              <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-700">
-                Next Term Begins
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                This date is shared across every report card in the selected
-                term.
+          <div className="space-y-5">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-700">
+                  Next Term Begins
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  This date is shared across every report card in the selected
+                  term.
+                </p>
+              </div>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-800">
+                  Next-term start date
+                </span>
+                <input
+                  type="date"
+                  value={nextTermBegins}
+                  onChange={(event) => {
+                    setNextTermBegins(event.target.value);
+                    setTermError(null);
+                    setTermSuccess(null);
+                  }}
+                  className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                />
+              </label>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Leave the field empty if you want the exported report card to show
+                a dash for now.
               </p>
-            </div>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-800">
-                Next-term start date
-              </span>
-              <input
-                type="date"
-                value={nextTermBegins}
-                onChange={(event) => {
-                  setNextTermBegins(event.target.value);
-                  setTermError(null);
-                  setTermSuccess(null);
-                }}
-                className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-              />
-            </label>
+              {termError ? (
+                <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {termError}
+                </div>
+              ) : null}
+              {termSuccess ? (
+                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {termSuccess}
+                </div>
+              ) : null}
 
-            <p className="mt-3 text-xs text-slate-500">
-              Leave the field empty if you want the exported report card to show
-              a dash for now.
-            </p>
-
-            {termError ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {termError}
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveNextTermBegins}
+                  disabled={isSavingNextTerm}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingNextTerm ? "Saving date..." : "Save date"}
+                </button>
               </div>
-            ) : null}
-            {termSuccess ? (
-              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {termSuccess}
-              </div>
-            ) : null}
+            </section>
 
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveNextTermBegins}
-                disabled={isSavingNextTerm}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSavingNextTerm ? "Saving date..." : "Save date"}
-              </button>
-            </div>
-          </section>
+            <SchoolLogoManagerCard
+              schoolName={reportCard.schoolName}
+              schoolLogoUrl={reportCard.schoolLogoUrl}
+            />
+          </div>
         </div>
       </div>
     </div>
