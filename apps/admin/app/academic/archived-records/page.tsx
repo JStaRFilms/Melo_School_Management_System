@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "convex/react";
 import {
@@ -56,40 +56,56 @@ export default function ArchivedRecordsPage() {
   const normalizedSearch = deferredSearch.trim().toLowerCase();
   const hasInvalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
-  const filteredRecords =
-    archiveData?.records.filter((record) => {
-      if (activeType !== "all" && record.type !== activeType) {
-        return false;
-      }
+  const filteredRecords = useMemo(
+    () =>
+      archiveData?.records.filter((record: ArchivedRecordItem) => {
+        if (activeType !== "all" && record.type !== activeType) {
+          return false;
+        }
 
-      if (hasInvalidDateRange) {
-        return false;
-      }
+        if (hasInvalidDateRange) {
+          return false;
+        }
 
-      const archivedDay = new Date(record.archivedAt).toISOString().slice(0, 10);
-      if (dateFrom && archivedDay < dateFrom) {
-        return false;
-      }
-      if (dateTo && archivedDay > dateTo) {
-        return false;
-      }
+        const archivedDay = new Date(record.archivedAt)
+          .toISOString()
+          .slice(0, 10);
+        if (dateFrom && archivedDay < dateFrom) {
+          return false;
+        }
+        if (dateTo && archivedDay > dateTo) {
+          return false;
+        }
 
-      if (!normalizedSearch) {
-        return true;
-      }
+        if (!normalizedSearch) {
+          return true;
+        }
 
-      const haystacks = [
-        record.name,
-        record.subtitle ?? "",
-        record.typeLabel,
-        record.archivedByName ?? "",
-        record.statusNote,
-        record.linkedHistory,
-        ...record.detailFields.map((field) => `${field.label} ${field.value}`),
-      ];
+        const haystacks = [
+          record.name,
+          record.subtitle ?? "",
+          record.typeLabel,
+          record.archivedByName ?? "",
+          record.statusNote,
+          record.linkedHistory,
+          ...record.detailFields.map(
+            (field) => `${field.label} ${field.value}`
+          ),
+        ];
 
-      return haystacks.some((value) => value.toLowerCase().includes(normalizedSearch));
-    }) ?? [];
+        return haystacks.some((value) =>
+          value.toLowerCase().includes(normalizedSearch)
+        );
+      }) ?? [],
+    [
+      activeType,
+      archiveData?.records,
+      dateFrom,
+      dateTo,
+      hasInvalidDateRange,
+      normalizedSearch,
+    ]
+  );
 
   useEffect(() => {
     if (!selectedRecord) {

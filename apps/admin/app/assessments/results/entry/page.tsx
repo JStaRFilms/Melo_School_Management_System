@@ -487,7 +487,7 @@ function AdminScoreEntryContent({
     );
   }, [hasUnsavedChanges]);
 
-  const roster = sheetData?.roster ?? [];
+  const roster = useMemo(() => sheetData?.roster ?? [], [sheetData?.roster]);
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
     const selectedSubjectName = humanNameFinal(

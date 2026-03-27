@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChangeEvent } from "react";
+import Image from "next/image";
 
 import { getStudentPhotoValidationError } from "./studentPhotoValidation";
 
@@ -44,9 +45,12 @@ export function StudentPhotoPanel({
         Student Photo
       </p>
       {previewUrl ? (
-        <img
+        <Image
           src={previewUrl}
           alt={name}
+          width={640}
+          height={176}
+          unoptimized
           className="h-44 w-full rounded-2xl object-cover"
         />
       ) : (

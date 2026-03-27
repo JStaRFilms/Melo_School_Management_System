@@ -346,3 +346,21 @@ This v1 stores derived values at write time. If schools later change grading ban
 - Admins can manage school grading bands.
 - Invalid score ranges and invalid grading bands are blocked with clear validation.
 - All reads and writes remain scoped to one school.
+
+## Verification Status
+
+Verified on `2026-03-27` against the current repo state.
+
+- Typecheck: PASS
+- Lint: PASS
+- Build: PASS
+- Shared exam-recording tests: PASS
+- Convex academic tests: PASS
+- Workspace tests: PASS
+- Live admin and teacher smoke tests: previously passed in `T14` and were not rerun in this follow-up verification pass
+
+Implementation notes confirmed during verification:
+
+- The school-wide exam input mode supports both `raw40` and `raw60_scaled_to_40`.
+- The `/60 -> /40` conversion is documented and enforced for primary-school flows.
+- Moderation, ranking, CGPA, and report-card generation remain out of scope for this v1 slice.

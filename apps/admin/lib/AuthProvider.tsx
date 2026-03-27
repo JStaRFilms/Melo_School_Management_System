@@ -23,11 +23,30 @@ export interface SignInResult {
   error: string | null;
 }
 
+type RawSession = {
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    role?: string;
+    schoolId?: string;
+    image?: string | null;
+  } | null;
+  session?: {
+    id: string;
+    userId?: string | null;
+    expiresAt: Date | string;
+  } | null;
+} | null | undefined;
+
+type ViewerContext = {
+  role?: string;
+  schoolId?: string;
+} | null | undefined;
+
 function mapSession(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  session: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  viewerContext: any
+  session: RawSession,
+  viewerContext: ViewerContext
 ): AuthSession | null {
   if (!session?.user || !session?.session) {
     return null;

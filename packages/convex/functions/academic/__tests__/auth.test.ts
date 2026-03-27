@@ -22,6 +22,7 @@ function createCtx(options?: {
     schoolId: Id<"schools">;
     role: string;
     email?: string;
+    isArchived?: boolean;
   } | null;
   teacherAssignments?: Array<{
     schoolId: Id<"schools">;
@@ -39,6 +40,12 @@ function createCtx(options?: {
     _id: Id<"classes">;
     schoolId: Id<"schools">;
     formTeacherId?: Id<"users"> | null;
+    isArchived?: boolean;
+  }>;
+  subjects?: Array<{
+    _id: Id<"subjects">;
+    schoolId: Id<"schools">;
+    isArchived?: boolean;
   }>;
   schoolUsers?: Array<{
     _id: Id<"users">;
@@ -67,11 +74,19 @@ function createCtx(options?: {
     },
   ];
   const classSubjects = options?.classSubjects ?? [];
-  const classes = options?.classes ?? [
+  const explicitClasses = options?.classes ?? [
     {
       _id: asId<"classes">("class-1"),
       schoolId: asId<"schools">("school-1"),
       formTeacherId: null,
+      isArchived: false,
+    },
+  ];
+  const explicitSubjects = options?.subjects ?? [
+    {
+      _id: asId<"subjects">("subject-1"),
+      schoolId: asId<"schools">("school-1"),
+      isArchived: false,
     },
   ];
   const schoolUsers = options?.schoolUsers ?? [
@@ -82,6 +97,53 @@ function createCtx(options?: {
       email: "teacher@example.com",
     },
   ];
+  const classMap = new Map(
+    explicitClasses.map((classDoc) => [classDoc._id, classDoc])
+  );
+  const subjectMap = new Map(
+    explicitSubjects.map((subjectDoc) => [subjectDoc._id, subjectDoc])
+  );
+
+  for (const assignment of teacherAssignments) {
+    if (!classMap.has(assignment.classId)) {
+      classMap.set(assignment.classId, {
+        _id: assignment.classId,
+        schoolId: assignment.schoolId,
+        formTeacherId: null,
+        isArchived: false,
+      });
+    }
+
+    if (!subjectMap.has(assignment.subjectId)) {
+      subjectMap.set(assignment.subjectId, {
+        _id: assignment.subjectId,
+        schoolId: assignment.schoolId,
+        isArchived: false,
+      });
+    }
+  }
+
+  for (const offering of classSubjects) {
+    if (!classMap.has(offering.classId)) {
+      classMap.set(offering.classId, {
+        _id: offering.classId,
+        schoolId: offering.schoolId,
+        formTeacherId: null,
+        isArchived: false,
+      });
+    }
+
+    if (!subjectMap.has(offering.subjectId)) {
+      subjectMap.set(offering.subjectId, {
+        _id: offering.subjectId,
+        schoolId: offering.schoolId,
+        isArchived: false,
+      });
+    }
+  }
+
+  const classes = [...classMap.values()];
+  const subjects = [...subjectMap.values()];
 
   return {
     auth: {
@@ -116,6 +178,10 @@ function createCtx(options?: {
               return classes.filter(matchesCriteria);
             }
 
+            if (table === "subjects") {
+              return subjects.filter(matchesCriteria);
+            }
+
             if (table === "users") {
               return schoolUsers.filter(matchesCriteria);
             }
@@ -128,6 +194,10 @@ function createCtx(options?: {
             unique: async () => {
               if (table === "users") return user;
               if (table === "classes") {
+                const rows = filterRows();
+                return rows[0] ?? null;
+              }
+              if (table === "subjects") {
                 const rows = filterRows();
                 return rows[0] ?? null;
               }
@@ -150,6 +220,11 @@ function createCtx(options?: {
         const classDoc = classes.find((candidate) => candidate._id === id);
         if (classDoc) {
           return classDoc;
+        }
+
+        const subjectDoc = subjects.find((candidate) => candidate._id === id);
+        if (subjectDoc) {
+          return subjectDoc;
         }
 
         return null;

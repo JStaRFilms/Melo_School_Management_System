@@ -16,6 +16,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "."),
       "@school/shared": path.resolve(__dirname, "../../packages/shared/src"),
       "@school/convex": path.resolve(__dirname, "../../packages/convex"),
+      "react/jsx-runtime": path.resolve(
+        __dirname,
+        "node_modules/react/jsx-runtime.js"
+      ),
+      "react/jsx-dev-runtime": path.resolve(
+        __dirname,
+        "node_modules/react/jsx-dev-runtime.js"
+      ),
     },
   },
 });

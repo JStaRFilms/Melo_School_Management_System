@@ -23,12 +23,12 @@
 | `T15` | Complete | Academic setup mockups now explicitly cover teacher creation, session/term setup, class offerings, admin-only student creation, teacher subject editing, and states |
 | `T16` | Complete | Academic setup is now live across admin and teacher apps, including auth-backed teacher creation, class configuration, student roster creation, and shared subject-selection matrices |
 | `T17` | Later | Platform super admin and multi-school provisioning are captured as a deferred follow-on slice |
-| `T10` | Ready | Final verification/docs sync/review remains pending after the academic setup slice landed |
+| `T10` | Complete | Final verification/docs sync/review completed; docs updated and verification status recorded |
 
 ## Verification Results
 
 - TypeScript: PASS
-- Lint: Not run
+- Lint: PASS
 - Build: PASS
 - Tests: PASS
 
@@ -42,7 +42,6 @@
 
 ## Outstanding Issues
 
-- `T10` remains pending after live integration work.
 - `T16` is complete; bootstrap/onboarding for the first real school admin is the next practical follow-on.
 - `T17` is intentionally deferred until after the current school's setup flow is stable.
 - Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
@@ -50,5 +49,4 @@
 ## Next Actions
 
 1. Execute the first-school bootstrap flow.
-2. Execute `T10`.
-3. Execute `T17`.
+2. Execute `T17`.

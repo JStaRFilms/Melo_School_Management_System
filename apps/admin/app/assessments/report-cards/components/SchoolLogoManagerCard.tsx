@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -127,9 +128,12 @@ export function SchoolLogoManagerCard({
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         {previewUrl ? (
-          <img
+          <Image
             src={previewUrl}
             alt={schoolName}
+            width={640}
+            height={144}
+            unoptimized
             className="h-36 w-full rounded-2xl object-contain"
           />
         ) : (

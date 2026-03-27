@@ -44,3 +44,5 @@ Also, we don't yet expose "next term begins" in Convex. For this iteration, let�
 [ ] /academic/students I saw the form on the admin academic student page that lets you edit student info. We need a separate page just for onboarding a student. Instead of the usual flow, go to a class, pick the student, you’d start on a student page, pick the student, then pick the class. The two approaches run side-by-side. I’ll list the fields we need: first name, last name, admission number, class, house, gender, date of birth, guardian name, guardian phone, address, and more.
 
 [ ] We need to work on debloadting all the pages and working on UI generally
+
+[ ] We need to add photo editor 
