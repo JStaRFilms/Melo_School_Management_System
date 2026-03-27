@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
@@ -13,6 +13,14 @@ import {
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 
 export default function AdminReportCardPage() {
+  return (
+    <Suspense fallback={<ReportCardPageFallback message="Loading report card..." />}>
+      <AdminReportCardPageContent />
+    </Suspense>
+  );
+}
+
+function AdminReportCardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -186,5 +194,13 @@ export default function AdminReportCardPage() {
         backHref="/assessments/results/entry"
       />
     </>
+  );
+}
+
+function ReportCardPageFallback({ message }: { message: string }) {
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+      <div className="text-slate-500">{message}</div>
+    </div>
   );
 }

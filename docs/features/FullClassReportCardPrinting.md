@@ -114,6 +114,7 @@ That is much better than reopening report cards individually, but it still falls
 ### Admin And Teacher Pages
 
 - both report-card pages now support `printClass=1` mode
+- both report-card pages wrap their search-parameter-driven client content in `Suspense` so Next.js App Router production builds can prerender the route safely
 - when full-class print mode is active:
   - the page loads the full class stack
   - opens the browser print dialog automatically once ready

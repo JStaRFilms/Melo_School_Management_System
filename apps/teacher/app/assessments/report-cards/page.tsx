@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
@@ -12,6 +12,14 @@ import {
 } from "@school/shared";
 
 export default function TeacherReportCardPage() {
+  return (
+    <Suspense fallback={<ReportCardPageFallback message="Loading report card..." />}>
+      <TeacherReportCardPageContent />
+    </Suspense>
+  );
+}
+
+function TeacherReportCardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -179,5 +187,13 @@ export default function TeacherReportCardPage() {
         backHref="/assessments/exams/entry"
       />
     </>
+  );
+}
+
+function ReportCardPageFallback({ message }: { message: string }) {
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+      <div className="text-slate-500">{message}</div>
+    </div>
   );
 }
