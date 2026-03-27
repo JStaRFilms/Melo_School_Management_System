@@ -128,6 +128,9 @@ export const createStudent = mutation({
     guardianName: v.optional(v.union(v.string(), v.null())),
     guardianPhone: v.optional(v.union(v.string(), v.null())),
     address: v.optional(v.union(v.string(), v.null())),
+    photoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+    photoFileName: v.optional(v.union(v.string(), v.null())),
+    photoContentType: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
@@ -143,6 +146,7 @@ export const createStudent = mutation({
     const guardianName = normalizeOptionalText(args.guardianName);
     const guardianPhone = normalizeOptionalText(args.guardianPhone);
     const address = normalizeOptionalText(args.address);
+    const photoMetadata = getValidatedPhotoMetadata(args);
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
@@ -195,6 +199,12 @@ export const createStudent = mutation({
     }
     if (address) {
       studentRecord.address = address;
+    }
+    if (photoMetadata) {
+      studentRecord.photoStorageId = args.photoStorageId;
+      studentRecord.photoFileName = photoMetadata.fileName;
+      studentRecord.photoContentType = photoMetadata.contentType;
+      studentRecord.photoUpdatedAt = now;
     }
 
     return await ctx.db.insert("students", studentRecord as any);

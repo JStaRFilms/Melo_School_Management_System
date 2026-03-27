@@ -105,7 +105,7 @@ Make subject selection genuinely usable on small phones for both admin and teach
 - `Select All` and `Clear All` moved into the mobile editor sheet where they support the "select all, then trim down" workflow cleanly.
 - Desktop and tablet screens still use the existing matrix pattern.
 - Admin mobile now has roster-action sheets for `Add Student` and `Edit Student Profile`, so the user does not need to scroll away from the subject workflow to manage student details.
-- The add-student flow now supports initial profile capture with required gender and optional guardian or demographic fields, plus a saved-with-reminders warning when optional details are skipped.
+- The add-student flow now supports initial profile capture with required gender, optional guardian or demographic fields, and an optional student photo capped at 1 MB, plus a saved-with-reminders warning when optional details are skipped.
 
 ## Verification Notes
 - The responsive split lives entirely in the client UI layer and reuses the existing enrollment query and mutation.

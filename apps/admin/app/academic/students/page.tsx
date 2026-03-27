@@ -23,6 +23,7 @@ import { MobileSheet } from "./components/MobileSheet";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
+import { getStudentPhotoValidationError } from "./components/studentPhotoValidation";
 import type {
   ClassSummary,
   EnrollmentMatrix,
@@ -41,6 +42,9 @@ export default function StudentsPage() {
   const createStudent = useMutation(
     "functions/academic/studentEnrollment:createStudent" as never
   );
+  const generateStudentPhotoUploadUrl = useMutation(
+    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
+  );
   const setStudentSubjectSelections = useMutation(
     "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
@@ -55,6 +59,7 @@ export default function StudentsPage() {
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isAddStudentSheetOpen, setIsAddStudentSheetOpen] = useState(false);
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
@@ -145,6 +150,22 @@ export default function StudentsPage() {
     };
   }, [matrix]);
 
+  const studentPhotoPreviewUrl = useMemo(() => {
+    if (!studentPhotoFile) {
+      return null;
+    }
+
+    return URL.createObjectURL(studentPhotoFile);
+  }, [studentPhotoFile]);
+
+  useEffect(() => {
+    return () => {
+      if (studentPhotoFile && studentPhotoPreviewUrl) {
+        URL.revokeObjectURL(studentPhotoPreviewUrl);
+      }
+    };
+  }, [studentPhotoFile, studentPhotoPreviewUrl]);
+
   const focusStudentForm = useCallback(() => {
     if (!selectedClassId) {
       setNotice({
@@ -198,6 +219,7 @@ export default function StudentsPage() {
     setGuardianName("");
     setGuardianPhone("");
     setAddress("");
+    setStudentPhotoFile(null);
   }, []);
 
   const handleCreateStudent = async (event: FormEvent) => {
@@ -213,6 +235,7 @@ export default function StudentsPage() {
       !trimmedGuardianName ? "guardian name" : null,
       !trimmedGuardianPhone ? "guardian phone" : null,
       !trimmedAddress ? "address" : null,
+      !studentPhotoFile ? "student photo" : null,
     ].filter(Boolean) as string[];
 
     if (
@@ -227,7 +250,44 @@ export default function StudentsPage() {
     setIsSubmitting(true);
     setNotice(null);
 
+    let uploadedPhoto = false;
     try {
+      let uploadedPhotoMetadata: {
+        storageId: string;
+        fileName: string;
+        contentType: string;
+      } | null = null;
+
+      if (studentPhotoFile) {
+        const validationError = getStudentPhotoValidationError(studentPhotoFile);
+        if (validationError) {
+          throw new Error(validationError);
+        }
+
+        const uploadUrl = (await generateStudentPhotoUploadUrl({} as never)) as string;
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": studentPhotoFile.type },
+          body: studentPhotoFile,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error("Photo upload failed");
+        }
+
+        const uploadPayload = (await uploadResponse.json()) as { storageId: string };
+        if (!uploadPayload.storageId) {
+          throw new Error("Photo upload failed");
+        }
+
+        uploadedPhotoMetadata = {
+          storageId: uploadPayload.storageId,
+          fileName: studentPhotoFile.name,
+          contentType: studentPhotoFile.type,
+        };
+        uploadedPhoto = true;
+      }
+
       const createdStudentId = (await createStudent({
         name: normalizedStudentName,
         admissionNumber: admissionNumber.trim(),
@@ -238,6 +298,9 @@ export default function StudentsPage() {
         guardianName: trimmedGuardianName || null,
         guardianPhone: trimmedGuardianPhone || null,
         address: trimmedAddress || null,
+        photoStorageId: uploadedPhotoMetadata?.storageId ?? undefined,
+        photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
+        photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
       } as never)) as string;
       resetStudentCreationForm();
       setSelectedStudentId(createdStudentId);
@@ -257,7 +320,9 @@ export default function StudentsPage() {
         tone: "error",
         message: getUserFacingErrorMessage(
           err,
-          "We couldn't add the student right now."
+          uploadedPhoto
+            ? "The photo uploaded, but we couldn't finish creating the student."
+            : "We couldn't add the student right now."
         ),
       });
     } finally {
@@ -414,6 +479,7 @@ export default function StudentsPage() {
             guardianName={guardianName}
             guardianPhone={guardianPhone}
             address={address}
+            photoPreviewUrl={studentPhotoPreviewUrl}
             isSubmitting={isSubmitting}
             variant="inline"
             sectionRef={studentFormRef}
@@ -431,6 +497,14 @@ export default function StudentsPage() {
             onGuardianNameChange={setGuardianName}
             onGuardianPhoneChange={setGuardianPhone}
             onAddressChange={setAddress}
+            onPhotoChange={setStudentPhotoFile}
+            onRemovePhoto={() => setStudentPhotoFile(null)}
+            onPhotoValidationError={(message) =>
+              setNotice({
+                tone: "error",
+                message,
+              })
+            }
             onSubmit={handleCreateStudent}
           />
         </div>
@@ -487,6 +561,7 @@ export default function StudentsPage() {
               guardianName={guardianName}
               guardianPhone={guardianPhone}
               address={address}
+              photoPreviewUrl={studentPhotoPreviewUrl}
               isSubmitting={isSubmitting}
               variant="sheet"
               sectionRef={studentFormRef}
@@ -504,6 +579,14 @@ export default function StudentsPage() {
               onGuardianNameChange={setGuardianName}
               onGuardianPhoneChange={setGuardianPhone}
               onAddressChange={setAddress}
+              onPhotoChange={setStudentPhotoFile}
+              onRemovePhoto={() => setStudentPhotoFile(null)}
+              onPhotoValidationError={(message) =>
+                setNotice({
+                  tone: "error",
+                  message,
+                })
+              }
               onSubmit={handleCreateStudent}
             />
           </MobileSheet>

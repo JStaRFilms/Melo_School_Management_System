@@ -117,7 +117,8 @@ This feature allows administrators to:
   - a linked `users` row with role `student`
   - a `students` row scoped to the selected class
   - required onboarding data now includes gender
-  - optional onboarding fields may also be captured immediately during creation: house, date of birth, guardian name, guardian phone, and address
+  - optional onboarding fields may also be captured immediately during creation: house, date of birth, guardian name, guardian phone, address, and student photo
+  - create-time student photos reuse the same storage-backed metadata flow as profile editing and reject files larger than 1 MB
   - if those optional fields are skipped, the save flow still succeeds and shows a reminder listing what is still missing
 - Subject management now supports editing existing subject names and codes in place from the admin setup UI.
 - Session management now supports:

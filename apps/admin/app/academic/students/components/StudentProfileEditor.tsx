@@ -6,6 +6,7 @@ import { getUserFacingErrorMessage } from "@school/shared";
 
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
+import { getStudentPhotoValidationError } from "./studentPhotoValidation";
 import type { ClassSummary, EnrollmentNotice } from "./types";
 
 interface StudentProfileEditorProps {
@@ -139,8 +140,9 @@ export function StudentProfileEditor({
       } | null = null;
 
       if (photoFile) {
-        if (!photoFile.type.startsWith("image/")) {
-          throw new Error("Student photo must be an image file");
+        const validationError = getStudentPhotoValidationError(photoFile);
+        if (validationError) {
+          throw new Error(validationError);
         }
 
         const uploadUrl = (await generateStudentPhotoUploadUrl({} as never)) as string;
@@ -258,6 +260,12 @@ export function StudentProfileEditor({
             setPhotoFile(null);
             setClearPhoto(true);
           }}
+          onValidationError={(message) =>
+            onNotice({
+              tone: "error",
+              message,
+            })
+          }
         />
       </div>
 

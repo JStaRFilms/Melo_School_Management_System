@@ -5,6 +5,7 @@ import type { FormEvent, RefObject } from "react";
 import { UserPlus } from "lucide-react";
 
 import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
+import { StudentPhotoPanel } from "./StudentPhotoPanel";
 
 interface StudentCreationFormProps {
   selectedClassName: string;
@@ -16,6 +17,7 @@ interface StudentCreationFormProps {
   guardianName: string;
   guardianPhone: string;
   address: string;
+  photoPreviewUrl: string | null;
   isSubmitting: boolean;
   variant?: "inline" | "sheet";
   sectionRef: RefObject<HTMLElement>;
@@ -29,6 +31,9 @@ interface StudentCreationFormProps {
   onGuardianNameChange: (value: string) => void;
   onGuardianPhoneChange: (value: string) => void;
   onAddressChange: (value: string) => void;
+  onPhotoChange: (file: File | null) => void;
+  onRemovePhoto: () => void;
+  onPhotoValidationError: (message: string) => void;
   onSubmit: (event: FormEvent) => Promise<void>;
 }
 
@@ -42,6 +47,7 @@ export function StudentCreationForm({
   guardianName,
   guardianPhone,
   address,
+  photoPreviewUrl,
   isSubmitting,
   variant = "inline",
   sectionRef,
@@ -55,6 +61,9 @@ export function StudentCreationForm({
   onGuardianNameChange,
   onGuardianPhoneChange,
   onAddressChange,
+  onPhotoChange,
+  onRemovePhoto,
+  onPhotoValidationError,
   onSubmit,
 }: StudentCreationFormProps) {
   const isSheet = variant === "sheet";
@@ -135,18 +144,28 @@ export function StudentCreationForm({
           </div>
         </div>
 
-        <StudentCreationOptionalFields
-          houseName={houseName}
-          dateOfBirth={dateOfBirth}
-          guardianName={guardianName}
-          guardianPhone={guardianPhone}
-          address={address}
-          onHouseNameChange={onHouseNameChange}
-          onDateOfBirthChange={onDateOfBirthChange}
-          onGuardianNameChange={onGuardianNameChange}
-          onGuardianPhoneChange={onGuardianPhoneChange}
-          onAddressChange={onAddressChange}
-        />
+        <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
+          <StudentCreationOptionalFields
+            houseName={houseName}
+            dateOfBirth={dateOfBirth}
+            guardianName={guardianName}
+            guardianPhone={guardianPhone}
+            address={address}
+            onHouseNameChange={onHouseNameChange}
+            onDateOfBirthChange={onDateOfBirthChange}
+            onGuardianNameChange={onGuardianNameChange}
+            onGuardianPhoneChange={onGuardianPhoneChange}
+            onAddressChange={onAddressChange}
+          />
+          <StudentPhotoPanel
+            name={studentName || "Student photo"}
+            previewUrl={photoPreviewUrl}
+            onPhotoChange={onPhotoChange}
+            onRemovePhoto={onRemovePhoto}
+            helperText="Optional. JPG/PNG up to 1 MB."
+            onValidationError={onPhotoValidationError}
+          />
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-slate-500">

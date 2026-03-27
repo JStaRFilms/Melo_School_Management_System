@@ -1,10 +1,16 @@
 "use client";
 
+import type { ChangeEvent } from "react";
+
+import { getStudentPhotoValidationError } from "./studentPhotoValidation";
+
 interface StudentPhotoPanelProps {
   name: string;
   previewUrl: string | null;
   onPhotoChange: (file: File | null) => void;
   onRemovePhoto: () => void;
+  helperText?: string;
+  onValidationError?: (message: string) => void;
 }
 
 export function StudentPhotoPanel({
@@ -12,7 +18,26 @@ export function StudentPhotoPanel({
   previewUrl,
   onPhotoChange,
   onRemovePhoto,
+  helperText = "JPG/PNG up to 1 MB.",
+  onValidationError,
 }: StudentPhotoPanelProps) {
+  const handlePhotoInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      onPhotoChange(null);
+      return;
+    }
+
+    const validationError = getStudentPhotoValidationError(file);
+    if (validationError) {
+      event.target.value = "";
+      onValidationError?.(validationError);
+      return;
+    }
+
+    onPhotoChange(file);
+  };
+
   return (
     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -32,9 +57,10 @@ export function StudentPhotoPanel({
       <input
         type="file"
         accept="image/*"
-        onChange={(event) => onPhotoChange(event.target.files?.[0] ?? null)}
+        onChange={handlePhotoInputChange}
         className="block w-full text-xs text-slate-500"
       />
+      <p className="text-xs text-slate-500">{helperText}</p>
       <button
         type="button"
         onClick={onRemovePhoto}
