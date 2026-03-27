@@ -137,6 +137,7 @@ Platform super admin assigns an admin to a newly created (or existing) school.
 ### Provisioning Steps
 
 1. **Better Auth Account** — Create a new user in Better Auth with email/password.
+   Better Auth stores credentials only; school and platform authorization remains in Convex app tables.
 2. **School Membership** — Insert a `users` row with:
    - `schoolId` = target school
    - `authId` = Better Auth user ID
@@ -156,7 +157,8 @@ After assignment:
 
 - A school must have at least one admin to become active
 - An admin can only be assigned to one school at a time (for v1)
-- If the email already exists in Better Auth, the flow fails with a clear error (no silent merges)
+- If the email already exists and is already linked to a school or platform admin, the flow fails with a clear error
+- If the email only exists as an orphaned Better Auth record from an earlier partial attempt, the system cleans up that orphan and retries automatically
 
 ---
 
@@ -283,6 +285,23 @@ Because the very first platform admin cannot be created from inside a dashboard 
 - intended only for creating the first platform admin or emergency recovery
 
 This is not the normal school-provisioning workflow and should not be used for day-to-day operations once the first platform admin exists.
+
+---
+
+## Related Future Scope
+
+For later platform-super-admin work that should come after provisioning, see:
+
+- `docs/features/PlatformSuperAdminFutureBacklog.md`
+
+This includes:
+
+- school lifecycle controls
+- platform billing and subscriptions
+- plan entitlements
+- support access
+- audit trails
+- domain management
 
 ---
 

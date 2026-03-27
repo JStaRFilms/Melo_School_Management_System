@@ -25,8 +25,6 @@ async function ensureAuthUser(args: {
   name: string;
   email: string;
   password: string;
-  role?: string;
-  schoolId?: string;
 }) {
   const signUpResponse = await fetch(`${args.authBaseUrl}/api/auth/sign-up/email`, {
     method: "POST",
@@ -38,8 +36,6 @@ async function ensureAuthUser(args: {
         name: args.name,
         email: args.email,
         password: args.password,
-        ...(args.role ? { role: args.role } : {}),
-        ...(args.schoolId ? { schoolId: args.schoolId } : {}),
       }),
   });
 
@@ -267,7 +263,6 @@ export const bootstrapSchoolAdmin = action({
       name: normalizePersonName(args.adminName),
       email: args.adminEmail.trim().toLowerCase(),
       password: args.adminPassword,
-      role: "admin",
     });
 
     const bootstrapped: BootstrapIds = await ctx.runMutation(

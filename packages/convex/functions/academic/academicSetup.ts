@@ -143,8 +143,6 @@ export const createTeacher = action({
         name: normalizePersonName(args.name),
         email: normalizedEmail,
         password: args.temporaryPassword,
-        role: "teacher",
-        schoolId: String(schoolId),
       }),
     });
 

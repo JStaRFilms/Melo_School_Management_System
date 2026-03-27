@@ -1,8 +1,15 @@
-import { action, internalMutation, mutation, query } from "../../_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { getAuthenticatedPlatformAdmin } from "./auth";
+import { provisionSchoolAdminAuthUser } from "./provisioningHelpers";
 
 /**
  * List all schools with status and assigned-admin summary.
@@ -154,6 +161,34 @@ export const assignSchoolAdminInternal = internalMutation({
   },
 });
 
+export const inspectProvisioningEmailInternal = internalQuery({
+  args: {
+    email: v.string(),
+  },
+  returns: v.object({
+    schoolUserExists: v.boolean(),
+    platformAdminExists: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const normalizedEmail = args.email.trim().toLowerCase();
+
+    const existingSchoolUser = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("email"), normalizedEmail))
+      .first();
+
+    const existingPlatformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+      .unique();
+
+    return {
+      schoolUserExists: Boolean(existingSchoolUser),
+      platformAdminExists: Boolean(existingPlatformAdmin),
+    };
+  },
+});
+
 /**
  * Action: provision a school admin end-to-end.
  * 1. Creates a Better Auth account via the auth API
@@ -188,13 +223,6 @@ export const provisionSchoolAdmin = action({
       {}
     );
 
-    const authBaseUrl = process.env.CONVEX_SITE_URL?.trim();
-    if (!authBaseUrl) {
-      throw new ConvexError(
-        "CONVEX_SITE_URL is not configured on the Convex deployment."
-      );
-    }
-
     const adminName = args.adminName.trim();
     const adminEmail = args.adminEmail.trim().toLowerCase();
     const adminPassword = args.adminPassword;
@@ -211,49 +239,11 @@ export const provisionSchoolAdmin = action({
       throw new ConvexError("Password must be at least 8 characters");
     }
 
-    // Create Better Auth account
-    const signUpResponse = await fetch(
-      `${authBaseUrl}/api/auth/sign-up/email`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: args.origin,
-        },
-        body: JSON.stringify({
-          name: adminName,
-          email: adminEmail,
-          password: adminPassword,
-        }),
-      }
-    );
-
-    let authId: string;
-
-    if (signUpResponse.ok) {
-      const signUpPayload = await signUpResponse.json();
-      authId = signUpPayload?.user?.id;
-      if (!authId) {
-        throw new ConvexError(
-          "Failed to extract auth ID from sign-up response"
-        );
-      }
-    } else if (signUpResponse.status === 422) {
-      // User already exists - no silent merge per requirements
-      const errorPayload = await signUpResponse.json().catch(() => null);
-      throw new ConvexError(
-        `An account with this email already exists. ${
-          errorPayload?.message ?? "Please use a different email."
-        }`
-      );
-    } else {
-      const errorPayload = await signUpResponse.json().catch(() => null);
-      throw new ConvexError(
-        `Failed to create auth account: ${
-          errorPayload?.message ?? signUpResponse.statusText
-        }`
-      );
-    }
+    const authId = await provisionSchoolAdminAuthUser(ctx, {
+      adminEmail,
+      adminName,
+      adminPassword,
+    });
 
     // Call internal mutation to create user row and transition school
     const result: {
