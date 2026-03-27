@@ -106,6 +106,10 @@ export default function SessionsPage() {
     "functions/academic/academicSetup:listTermsBySession" as never,
     selectedSessionId ? ({ sessionId: selectedSessionId } as never) : ("skip" as never)
   ) as TermRecord[] | undefined;
+  const activeTermsForSelectedSession = useMemo(
+    () => (terms ?? []).filter((term) => term.isActive),
+    [terms]
+  );
 
   const handleCreateSession = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -235,7 +239,14 @@ export default function SessionsPage() {
       return;
     }
 
-    if (!window.confirm(`Archive ${selectedSession.name}? This keeps the record for history and removes it from active setup lists.`)) {
+    const archiveMessage =
+      activeTermsForSelectedSession.length > 0
+        ? `Archive ${selectedSession.name}? This keeps the session for history, removes it from active setup lists, and automatically marks ${activeTermsForSelectedSession
+            .map((term) => term.name)
+            .join(", ")} inactive.`
+        : `Archive ${selectedSession.name}? This keeps the record for history and removes it from active setup lists.`;
+
+    if (!window.confirm(archiveMessage)) {
       return;
     }
 
@@ -246,7 +257,11 @@ export default function SessionsPage() {
     try {
       await archiveSession({ sessionId: selectedSession._id } as never);
       setSelectedSessionId(null);
-      setSuccessMessage("Session archived.");
+      setSuccessMessage(
+        activeTermsForSelectedSession.length > 0
+          ? "Session archived. Its current term status was cleared automatically."
+          : "Session archived."
+      );
     } catch (err) {
       setError(getUserFacingErrorMessage(err, "Failed to archive session"));
     } finally {
@@ -378,6 +393,17 @@ export default function SessionsPage() {
                         </div>
                       </div>
                     </div>
+                    {!session.isActive && activeTermsForSelectedSession.length > 0 ? (
+                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Archiving this inactive session will automatically mark{" "}
+                        <span className="font-semibold">
+                          {activeTermsForSelectedSession
+                            .map((term) => term.name)
+                            .join(", ")}
+                        </span>{" "}
+                        inactive first. No academic records will be deleted.
+                      </div>
+                    ) : null}
                     {!session.isActive ? (
                       <button
                         type="button"

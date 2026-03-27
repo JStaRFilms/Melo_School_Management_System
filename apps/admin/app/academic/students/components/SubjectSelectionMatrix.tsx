@@ -12,6 +12,7 @@ interface SubjectSelectionMatrixProps {
   studentsWithNoSubjects: number;
   selectedStudentId?: string | null;
   onSelectStudent?: (studentId: string) => void;
+  onOpenProfile?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -24,6 +25,7 @@ export function SubjectSelectionMatrix({
   studentsWithNoSubjects,
   selectedStudentId,
   onSelectStudent,
+  onOpenProfile,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionMatrixProps) {
@@ -79,6 +81,7 @@ export function SubjectSelectionMatrix({
                 totalSubjects={totalSubjects}
                 selectedStudentId={selectedStudentId}
                 onSelectStudent={onSelectStudent}
+                onOpenProfile={onOpenProfile}
                 onToggle={onToggle}
                 onSetStudentSubjects={onSetStudentSubjects}
               />

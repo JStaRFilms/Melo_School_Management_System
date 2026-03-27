@@ -21,6 +21,6 @@ export type EnrollmentMatrix = {
 };
 
 export type EnrollmentNotice = {
-  tone: "success" | "error";
+  tone: "success" | "error" | "warning";
   message: string;
 };

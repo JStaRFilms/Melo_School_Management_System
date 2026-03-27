@@ -8,12 +8,17 @@ Make subject selection genuinely usable on small phones for both admin and teach
 ### Client
 - `apps/admin/app/academic/students/page.tsx`
 - `apps/admin/app/academic/students/components/SubjectSelectionMatrix.tsx`
+- `apps/admin/app/academic/students/components/StudentCreationForm.tsx`
+- `apps/admin/app/academic/students/components/StudentProfileEditor.tsx`
 - `apps/teacher/app/enrollment/subjects/page.tsx`
 - `apps/teacher/app/enrollment/subjects/components/SubjectSelectionMatrix.tsx`
 - New shared route-local mobile components:
   - `StudentSubjectMobileList`
   - `StudentSubjectMobileCard`
   - `StudentSubjectEditorSheet`
+- Admin-only mobile roster components:
+  - `AdminMobileRosterActions`
+  - `MobileSheet`
 - Shared responsive behavior:
   - desktop and tablet keep the existing matrix
   - small screens switch to a stacked card list with a dedicated subject editor surface
@@ -38,6 +43,7 @@ Make subject selection genuinely usable on small phones for both admin and teach
 6. The user toggles subjects from the sheet.
 7. The client calls `setStudentSubjectSelections` immediately after each change, matching the current live-save model.
 8. The list updates the student summary count and completion state without requiring horizontal scrolling.
+9. On admin mobile, add-student and full-profile editing open in sheets instead of forcing the user to scroll to separate sections lower on the page.
 
 ## Database Schema
 
@@ -61,12 +67,14 @@ Make subject selection genuinely usable on small phones for both admin and teach
 - Show name, admission number, and selected-subject count up front
 - Make the primary action `Edit Subjects`
 - Keep `All` and `Clear` visible but secondary
+- On admin, expose `Add Student` and `Edit Profile` as direct mobile actions
 
 ### Mobile editor sheet
 - Open from the bottom as a full-height or near-full-height sheet
 - Use large subject rows with clear checked states
 - Keep the student name and quick actions pinned at the top
 - Keep save model instant, with lightweight feedback
+- On admin, allow the subject sheet to jump directly into the full profile sheet
 
 ### Desktop behavior
 - Preserve the existing matrix layout on larger screens
@@ -96,6 +104,8 @@ Make subject selection genuinely usable on small phones for both admin and teach
 - Subject editing on phones now happens inside a bottom sheet with larger tap targets.
 - `Select All` and `Clear All` moved into the mobile editor sheet where they support the "select all, then trim down" workflow cleanly.
 - Desktop and tablet screens still use the existing matrix pattern.
+- Admin mobile now has roster-action sheets for `Add Student` and `Edit Student Profile`, so the user does not need to scroll away from the subject workflow to manage student details.
+- The add-student flow now supports initial profile capture with required gender and optional guardian or demographic fields, plus a saved-with-reminders warning when optional details are skipped.
 
 ## Verification Notes
 - The responsive split lives entirely in the client UI layer and reuses the existing enrollment query and mutation.

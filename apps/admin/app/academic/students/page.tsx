@@ -16,8 +16,10 @@ import {
   humanNameTypingStrict,
 } from "@/human-name";
 
+import { AdminMobileRosterActions } from "./components/AdminMobileRosterActions";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FloatingNotice } from "./components/FloatingNotice";
+import { MobileSheet } from "./components/MobileSheet";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
@@ -47,7 +49,16 @@ export default function StudentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [gender, setGender] = useState("");
+  const [houseName, setHouseName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianPhone, setGuardianPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [isAddStudentSheetOpen, setIsAddStudentSheetOpen] = useState(false);
+  const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
@@ -82,6 +93,17 @@ export default function StudentsPage() {
   }, [notice]);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const syncViewport = (event?: MediaQueryListEvent) => {
+      setIsMobileViewport(event?.matches ?? mediaQuery.matches);
+    };
+
+    syncViewport();
+    mediaQuery.addEventListener("change", syncViewport);
+    return () => mediaQuery.removeEventListener("change", syncViewport);
+  }, []);
+
+  useEffect(() => {
     if (!matrix?.students.length) {
       setSelectedStudentId(null);
       return;
@@ -101,6 +123,9 @@ export default function StudentsPage() {
     sessions?.find((session) => session._id === selectedSessionId)?.name ??
     sessions?.find((session) => session.isActive)?.name ??
     "No active session";
+  const selectedStudentName =
+    matrix?.students.find((student) => student._id === selectedStudentId)
+      ?.studentName ?? null;
 
   const matrixSummary = useMemo(() => {
     if (!matrix) {
@@ -135,11 +160,67 @@ export default function StudentsPage() {
     }, 120);
   }, [selectedClassId]);
 
+  const openAddStudent = useCallback(() => {
+    if (!selectedClassId) {
+      setNotice({
+        tone: "error",
+        message: "Select a class first, then add the student.",
+      });
+      return;
+    }
+
+    setIsAddStudentSheetOpen(true);
+  }, [selectedClassId]);
+
+  const openProfileEditor = useCallback(
+    (studentId?: string | null) => {
+      const nextStudentId = studentId ?? selectedStudentId;
+      if (!nextStudentId) {
+        setNotice({
+          tone: "error",
+          message: "Select a student first to edit the full profile.",
+        });
+        return;
+      }
+
+      setSelectedStudentId(nextStudentId);
+      setIsProfileSheetOpen(true);
+    },
+    [selectedStudentId]
+  );
+
+  const resetStudentCreationForm = useCallback(() => {
+    setStudentName("");
+    setAdmissionNumber("");
+    setGender("");
+    setHouseName("");
+    setDateOfBirth("");
+    setGuardianName("");
+    setGuardianPhone("");
+    setAddress("");
+  }, []);
+
   const handleCreateStudent = async (event: FormEvent) => {
     event.preventDefault();
     const normalizedStudentName = humanNameFinalStrict(studentName);
+    const trimmedHouseName = houseName.trim();
+    const trimmedGuardianName = guardianName.trim();
+    const trimmedGuardianPhone = guardianPhone.trim();
+    const trimmedAddress = address.trim();
+    const missingOptionalFields = [
+      !trimmedHouseName ? "house" : null,
+      !dateOfBirth ? "date of birth" : null,
+      !trimmedGuardianName ? "guardian name" : null,
+      !trimmedGuardianPhone ? "guardian phone" : null,
+      !trimmedAddress ? "address" : null,
+    ].filter(Boolean) as string[];
 
-    if (!selectedClassId || !normalizedStudentName || !admissionNumber.trim()) {
+    if (
+      !selectedClassId ||
+      !normalizedStudentName ||
+      !admissionNumber.trim() ||
+      !gender.trim()
+    ) {
       return;
     }
 
@@ -147,18 +228,30 @@ export default function StudentsPage() {
     setNotice(null);
 
     try {
-      await createStudent({
+      const createdStudentId = (await createStudent({
         name: normalizedStudentName,
         admissionNumber: admissionNumber.trim(),
         classId: selectedClassId,
-      } as never);
-      setStudentName("");
-      setAdmissionNumber("");
+        gender,
+        houseName: trimmedHouseName || null,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
+        guardianName: trimmedGuardianName || null,
+        guardianPhone: trimmedGuardianPhone || null,
+        address: trimmedAddress || null,
+      } as never)) as string;
+      resetStudentCreationForm();
+      setSelectedStudentId(createdStudentId);
+      setIsAddStudentSheetOpen(false);
       setNotice({
-        tone: "success",
-        message: `${normalizedStudentName} was added to ${selectedClassName}.`,
+        tone: missingOptionalFields.length > 0 ? "warning" : "success",
+        message:
+          missingOptionalFields.length > 0
+            ? `${normalizedStudentName} was added to ${selectedClassName}. You have not added ${joinFieldLabels(missingOptionalFields)} yet.`
+            : `${normalizedStudentName} was added to ${selectedClassName}.`,
       });
-      studentNameInputRef.current?.focus();
+      if (!isMobileViewport) {
+        studentNameInputRef.current?.focus();
+      }
     } catch (err) {
       setNotice({
         tone: "error",
@@ -279,7 +372,14 @@ export default function StudentsPage() {
           </div>
           <button
             type="button"
-            onClick={focusStudentForm}
+            onClick={() => {
+              if (isMobileViewport) {
+                openAddStudent();
+                return;
+              }
+
+              focusStudentForm();
+            }}
             className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-700"
           >
             Add Student
@@ -296,23 +396,44 @@ export default function StudentsPage() {
         onSessionChange={setSelectedSessionId}
       />
 
-      {selectedClassId ? (
-        <StudentCreationForm
-          selectedClassName={selectedClassName}
-          studentName={studentName}
-          admissionNumber={admissionNumber}
-          isSubmitting={isSubmitting}
-          sectionRef={studentFormRef}
-          inputRef={studentNameInputRef}
-          onStudentNameChange={(value) =>
-            setStudentName(humanNameTypingStrict(value))
-          }
-          onStudentNameBlur={(value) =>
-            setStudentName(humanNameFinalStrict(value))
-          }
-          onAdmissionNumberChange={setAdmissionNumber}
-          onSubmit={handleCreateStudent}
-        />
+      <AdminMobileRosterActions
+        selectedStudentName={selectedStudentName}
+        onAddStudent={openAddStudent}
+        onEditProfile={() => openProfileEditor()}
+      />
+
+      {selectedClassId && !isMobileViewport ? (
+        <div>
+          <StudentCreationForm
+            selectedClassName={selectedClassName}
+            studentName={studentName}
+            admissionNumber={admissionNumber}
+            gender={gender}
+            houseName={houseName}
+            dateOfBirth={dateOfBirth}
+            guardianName={guardianName}
+            guardianPhone={guardianPhone}
+            address={address}
+            isSubmitting={isSubmitting}
+            variant="inline"
+            sectionRef={studentFormRef}
+            inputRef={studentNameInputRef}
+            onStudentNameChange={(value) =>
+              setStudentName(humanNameTypingStrict(value))
+            }
+            onStudentNameBlur={(value) =>
+              setStudentName(humanNameFinalStrict(value))
+            }
+            onAdmissionNumberChange={setAdmissionNumber}
+            onGenderChange={setGender}
+            onHouseNameChange={setHouseName}
+            onDateOfBirthChange={setDateOfBirth}
+            onGuardianNameChange={setGuardianName}
+            onGuardianPhoneChange={setGuardianPhone}
+            onAddressChange={setAddress}
+            onSubmit={handleCreateStudent}
+          />
+        </div>
       ) : null}
 
       {selectedClassId && selectedSessionId ? (
@@ -324,6 +445,7 @@ export default function StudentsPage() {
           studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
           selectedStudentId={selectedStudentId}
           onSelectStudent={setSelectedStudentId}
+          onOpenProfile={(studentId) => openProfileEditor(studentId)}
           onToggle={(studentId, subjectId) => {
             void handleToggleSubject(studentId, subjectId);
           }}
@@ -337,11 +459,95 @@ export default function StudentsPage() {
         </section>
       )}
 
-      <StudentProfileEditor
-        studentId={selectedStudentId}
-        classes={classes}
-        onNotice={setNotice}
-      />
+      {!isMobileViewport ? (
+        <div>
+          <StudentProfileEditor
+            studentId={selectedStudentId}
+            classes={classes}
+            onNotice={setNotice}
+          />
+        </div>
+      ) : null}
+
+      {isMobileViewport ? (
+        <>
+          <MobileSheet
+            isOpen={isAddStudentSheetOpen}
+            title="Add Student"
+            description={`Add a new student to ${selectedClassName}.`}
+            onClose={() => setIsAddStudentSheetOpen(false)}
+          >
+            <StudentCreationForm
+              selectedClassName={selectedClassName}
+              studentName={studentName}
+              admissionNumber={admissionNumber}
+              gender={gender}
+              houseName={houseName}
+              dateOfBirth={dateOfBirth}
+              guardianName={guardianName}
+              guardianPhone={guardianPhone}
+              address={address}
+              isSubmitting={isSubmitting}
+              variant="sheet"
+              sectionRef={studentFormRef}
+              inputRef={studentNameInputRef}
+              onStudentNameChange={(value) =>
+                setStudentName(humanNameTypingStrict(value))
+              }
+              onStudentNameBlur={(value) =>
+                setStudentName(humanNameFinalStrict(value))
+              }
+              onAdmissionNumberChange={setAdmissionNumber}
+              onGenderChange={setGender}
+              onHouseNameChange={setHouseName}
+              onDateOfBirthChange={setDateOfBirth}
+              onGuardianNameChange={setGuardianName}
+              onGuardianPhoneChange={setGuardianPhone}
+              onAddressChange={setAddress}
+              onSubmit={handleCreateStudent}
+            />
+          </MobileSheet>
+
+          <MobileSheet
+            isOpen={isProfileSheetOpen}
+            title="Edit Student Profile"
+            description={
+              selectedStudentName
+                ? `Update ${selectedStudentName}'s details without leaving this screen.`
+                : "Select a student to edit the full profile."
+            }
+            onClose={() => setIsProfileSheetOpen(false)}
+          >
+            <StudentProfileEditor
+              studentId={selectedStudentId}
+              classes={classes}
+              onNotice={(nextNotice) => {
+                setNotice(nextNotice);
+                if (nextNotice.tone === "success") {
+                  setIsProfileSheetOpen(false);
+                }
+              }}
+              variant="sheet"
+            />
+          </MobileSheet>
+        </>
+      ) : null}
     </div>
   );
+}
+
+function joinFieldLabels(fields: string[]) {
+  if (fields.length === 0) {
+    return "";
+  }
+
+  if (fields.length === 1) {
+    return fields[0];
+  }
+
+  if (fields.length === 2) {
+    return `${fields[0]} and ${fields[1]}`;
+  }
+
+  return `${fields.slice(0, -1).join(", ")}, and ${fields[fields.length - 1]}`;
 }

@@ -13,6 +13,7 @@ interface SubjectSelectionMobileEditorProps {
   totalSubjects: number;
   selectedStudentId?: string | null;
   onSelectStudent?: (studentId: string) => void;
+  onOpenProfile?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -22,6 +23,7 @@ export function SubjectSelectionMobileEditor({
   totalSubjects,
   selectedStudentId,
   onSelectStudent,
+  onOpenProfile,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionMobileEditorProps) {
@@ -106,6 +108,17 @@ export function SubjectSelectionMobileEditor({
                     <span>Edit Subjects</span>
                     <ChevronRight className="h-4 w-4 text-slate-400" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorStudentId(student._id);
+                      onSelectStudent?.(student._id);
+                      onOpenProfile?.(student._id);
+                    }}
+                    className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700"
+                  >
+                    Edit Profile
+                  </button>
                 </div>
               </div>
             </article>
@@ -119,6 +132,10 @@ export function SubjectSelectionMobileEditor({
         totalSubjects={totalSubjects}
         isOpen={isEditorOpen}
         onClose={() => setIsEditorOpen(false)}
+        onOpenProfile={(studentId) => {
+          setIsEditorOpen(false);
+          onOpenProfile?.(studentId);
+        }}
         onToggle={onToggle}
         onSetStudentSubjects={onSetStudentSubjects}
       />

@@ -53,6 +53,36 @@ function normalizeOptionalText(value: string | null | undefined) {
   return trimmed || undefined;
 }
 
+function normalizeGender(
+  value: string | null | undefined,
+  options?: { required?: boolean }
+) {
+  if (value === undefined || value === null) {
+    if (options?.required) {
+      throw new ConvexError("Gender is required");
+    }
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    if (options?.required) {
+      throw new ConvexError("Gender is required");
+    }
+    return undefined;
+  }
+
+  if (normalized === "male") {
+    return "Male";
+  }
+
+  if (normalized === "female") {
+    return "Female";
+  }
+
+  throw new ConvexError("Select a valid gender");
+}
+
 function getValidatedPhotoMetadata(args: {
   photoStorageId?: Id<"_storage"> | null;
   photoFileName?: string | null;
@@ -92,6 +122,12 @@ export const createStudent = mutation({
     name: v.string(),
     admissionNumber: v.string(),
     classId: v.id("classes"),
+    houseName: v.optional(v.union(v.string(), v.null())),
+    gender: v.string(),
+    dateOfBirth: v.optional(v.union(v.number(), v.null())),
+    guardianName: v.optional(v.union(v.string(), v.null())),
+    guardianPhone: v.optional(v.union(v.string(), v.null())),
+    address: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
@@ -101,6 +137,12 @@ export const createStudent = mutation({
 
     const studentName = normalizeRequiredStudentName(args.name);
     const admissionNumber = normalizeAdmissionNumber(args.admissionNumber);
+    const gender = normalizeGender(args.gender, { required: true });
+    const houseName = normalizeOptionalHouseName(args.houseName);
+    const dateOfBirth = args.dateOfBirth ?? undefined;
+    const guardianName = normalizeOptionalText(args.guardianName);
+    const guardianPhone = normalizeOptionalText(args.guardianPhone);
+    const address = normalizeOptionalText(args.address);
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
@@ -129,14 +171,33 @@ export const createStudent = mutation({
       updatedAt: now,
     });
 
-    return await ctx.db.insert("students", {
+    const studentRecord: Record<string, unknown> = {
       schoolId,
       classId: args.classId,
       userId: studentUserId,
       admissionNumber,
+      gender,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+
+    if (houseName) {
+      studentRecord.houseName = houseName;
+    }
+    if (dateOfBirth) {
+      studentRecord.dateOfBirth = dateOfBirth;
+    }
+    if (guardianName) {
+      studentRecord.guardianName = guardianName;
+    }
+    if (guardianPhone) {
+      studentRecord.guardianPhone = guardianPhone;
+    }
+    if (address) {
+      studentRecord.address = address;
+    }
+
+    return await ctx.db.insert("students", studentRecord as any);
   },
 });
 
@@ -270,7 +331,10 @@ export const updateStudent = mutation({
       updatedAt: Date.now(),
     };
 
-    const nextGender = args.gender === undefined ? student.gender : args.gender ?? undefined;
+    const nextGender =
+      args.gender === undefined
+        ? student.gender
+        : normalizeGender(args.gender ?? undefined);
     const nextHouseName =
       args.houseName === undefined
         ? student.houseName

@@ -12,6 +12,7 @@ interface StudentSubjectEditorSheetProps {
   totalSubjects: number;
   isOpen: boolean;
   onClose: () => void;
+  onOpenProfile?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -22,6 +23,7 @@ export function StudentSubjectEditorSheet({
   totalSubjects,
   isOpen,
   onClose,
+  onOpenProfile,
   onToggle,
   onSetStudentSubjects,
 }: StudentSubjectEditorSheetProps) {
@@ -95,6 +97,15 @@ export function StudentSubjectEditorSheet({
                 Clear All
               </button>
             </div>
+            {onOpenProfile ? (
+              <button
+                type="button"
+                onClick={() => onOpenProfile(activeStudent._id)}
+                className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700"
+              >
+                Edit Full Profile
+              </button>
+            ) : null}
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/70 p-4">

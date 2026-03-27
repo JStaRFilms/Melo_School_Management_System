@@ -17,7 +17,6 @@ import {
 } from "@school/shared/name-format";
 import {
   assertClassCanBeArchived,
-  assertSessionCanBeArchived,
   assertSubjectCanBeArchived,
   assertTeacherCanBeArchived,
 } from "./archiveGuardrails";
@@ -690,10 +689,21 @@ export const archiveSession = mutation({
       throw new ConvexError("Active sessions cannot be archived");
     }
 
-    await assertSessionCanBeArchived(ctx, {
-      schoolId,
-      sessionId: args.sessionId,
-    });
+    const terms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    for (const term of terms) {
+      if (term.schoolId !== schoolId || !term.isActive) {
+        continue;
+      }
+
+      await ctx.db.patch(term._id, {
+        isActive: false,
+        updatedAt: Date.now(),
+      });
+    }
 
     await ctx.db.patch(args.sessionId, {
       isArchived: true,

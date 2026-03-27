@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
+import { StudentPhotoPanel } from "./StudentPhotoPanel";
+import { StudentProfileFormFields } from "./StudentProfileFormFields";
 import type { ClassSummary, EnrollmentNotice } from "./types";
 
 interface StudentProfileEditorProps {
   studentId: string | null;
   classes: ClassSummary[];
   onNotice: (notice: EnrollmentNotice) => void;
+  variant?: "inline" | "sheet";
 }
 
 type StudentProfile = {
@@ -41,6 +44,7 @@ export function StudentProfileEditor({
   studentId,
   classes,
   onNotice,
+  variant = "inline",
 }: StudentProfileEditorProps) {
   const studentProfile = useQuery(
     "functions/academic/studentEnrollment:getStudentProfile" as never,
@@ -105,6 +109,10 @@ export function StudentProfileEditor({
   }, [photoFile, previewUrl]);
 
   if (!studentId) {
+    if (variant === "sheet") {
+      return null;
+    }
+
     return (
       <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
         Select a student from the grid to edit full profile details.
@@ -201,7 +209,13 @@ export function StudentProfileEditor({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section
+      className={
+        variant === "sheet"
+          ? "rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+          : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      }
+    >
       <div className="mb-4">
         <h2 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-950">
           Edit Student Profile
@@ -212,56 +226,39 @@ export function StudentProfileEditor({
       </div>
 
       <div className="grid gap-5 md:grid-cols-[1fr_240px]">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Student Name"><input value={name} onChange={(event) => setName(event.target.value)} className={fieldInputClassName} /></Field>
-          <Field label="Admission No."><input value={admissionNumber} onChange={(event) => setAdmissionNumber(event.target.value)} className={fieldInputClassName} /></Field>
-          <Field label="Class">
-            <select value={classId} onChange={(event) => setClassId(event.target.value)} className={fieldInputClassName}>
-              {classes.map((classDoc) => (
-                <option key={classDoc._id} value={classDoc._id}>{classDoc.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="House"><input value={houseName} onChange={(event) => setHouseName(event.target.value)} className={fieldInputClassName} placeholder="Blue House" /></Field>
-          <Field label="Gender"><input value={gender} onChange={(event) => setGender(event.target.value)} className={fieldInputClassName} placeholder="Female" /></Field>
-          <Field label="Date of Birth"><input type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className={fieldInputClassName} /></Field>
-          <Field label="Guardian Name"><input value={guardianName} onChange={(event) => setGuardianName(event.target.value)} className={fieldInputClassName} /></Field>
-          <Field label="Guardian Phone"><input value={guardianPhone} onChange={(event) => setGuardianPhone(event.target.value)} className={fieldInputClassName} /></Field>
-          <Field label="Address"><input value={address} onChange={(event) => setAddress(event.target.value)} className={fieldInputClassName} /></Field>
-        </div>
-
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-            Student Photo
-          </p>
-          {previewUrl ? (
-            <img src={previewUrl} alt={name} className="h-44 w-full rounded-2xl object-cover" />
-          ) : (
-            <div className="flex h-44 w-full items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-              No Photo
-            </div>
-          )}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              setPhotoFile(file);
-              setClearPhoto(false);
-            }}
-            className="block w-full text-xs text-slate-500"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setPhotoFile(null);
-              setClearPhoto(true);
-            }}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700"
-          >
-            Remove Photo
-          </button>
-        </div>
+        <StudentProfileFormFields
+          name={name}
+          admissionNumber={admissionNumber}
+          classId={classId}
+          houseName={houseName}
+          gender={gender}
+          dateOfBirth={dateOfBirth}
+          guardianName={guardianName}
+          guardianPhone={guardianPhone}
+          address={address}
+          classes={classes}
+          onNameChange={setName}
+          onAdmissionNumberChange={setAdmissionNumber}
+          onClassIdChange={setClassId}
+          onHouseNameChange={setHouseName}
+          onGenderChange={setGender}
+          onDateOfBirthChange={setDateOfBirth}
+          onGuardianNameChange={setGuardianName}
+          onGuardianPhoneChange={setGuardianPhone}
+          onAddressChange={setAddress}
+        />
+        <StudentPhotoPanel
+          name={name}
+          previewUrl={previewUrl}
+          onPhotoChange={(file) => {
+            setPhotoFile(file);
+            setClearPhoto(false);
+          }}
+          onRemovePhoto={() => {
+            setPhotoFile(null);
+            setClearPhoto(true);
+          }}
+        />
       </div>
 
       <div className="mt-5 flex justify-end">
@@ -277,23 +274,3 @@ export function StudentProfileEditor({
     </section>
   );
 }
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-const fieldInputClassName =
-  "h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-indigo-600 focus:shadow-[0_0_0_4px_rgba(79,70,229,0.06)]";

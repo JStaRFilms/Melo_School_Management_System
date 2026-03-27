@@ -379,7 +379,6 @@ All new flows must return user-facing errors that are specific, school-safe, and
 - cross-school access denied
 - record already archived
 - cannot archive active session
-- cannot archive session with an active term
 - cannot archive teacher while still assigned to active classes or subjects
 - cannot archive subject while it is still attached to active class setups or live student selections
 - cannot archive class while students are still enrolled
@@ -473,6 +472,7 @@ This keeps us aligned with the project 200-line modularity rule.
 - `subjects`, `classes`, `academicSessions`, and teacher `users` rows now carry archive metadata
 - active setup selectors and access checks filter archived records out by default
 - class, subject, session, and teacher archive mutations now preserve data instead of deleting it
+- archiving an already-inactive session now automatically marks any still-active terms in that session inactive before archiving, so the admin flow does not dead-end
 - archiving a teacher now fails with a clear blocker message until active assignments are reassigned, rather than stripping those links automatically
 - class archival now fails while students are still enrolled so student editing access is not orphaned
 - subject archival now fails while the subject is still wired into active class/session workflows
