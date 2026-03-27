@@ -5,12 +5,23 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { useQuery } from "convex/react";
 import type { AuthSession } from "@school/auth";
 import { authClient } from "@/auth-client";
 import { isConvexConfigured } from "@/convex-runtime";
+import {
+  AUTH_ERROR_MESSAGES,
+  getSignInErrorMessage,
+  isValidEmailAddress,
+} from "@school/auth";
+
+export interface SignInResult {
+  success: boolean;
+  error: string | null;
+}
 
 function mapSession(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,7 +54,7 @@ interface AuthContextValue {
   session: AuthSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<boolean>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   error: string | null;
 }
@@ -51,6 +62,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [authError, setAuthError] = useState<string | null>(null);
   const { data: session, isPending, error: sessionError } = authClient.useSession();
 
   // Fetch enriched viewer context from Convex when authenticated
@@ -79,15 +91,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session, sessionRole, viewerContext]);
 
   const signIn = useCallback(
-    async (email: string, password: string): Promise<boolean> => {
+    async (email: string, password: string): Promise<SignInResult> => {
+      setAuthError(null);
+
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail || !password) {
+        const message = AUTH_ERROR_MESSAGES.missingCredentials;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
+      if (!isValidEmailAddress(normalizedEmail)) {
+        const message = AUTH_ERROR_MESSAGES.invalidEmail;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
       try {
         const result = await authClient.signIn.email({
-          email,
+          email: normalizedEmail,
           password,
         });
-        return Boolean(result?.data);
+
+        if ((result as { error?: unknown } | undefined)?.error) {
+          const message = getSignInErrorMessage(
+            (result as { error?: unknown }).error
+          );
+          setAuthError(message);
+          return { success: false, error: message };
+        }
+
+        if (result?.data) {
+          return { success: true, error: null };
+        }
+
+        const message = AUTH_ERROR_MESSAGES.retry;
+        setAuthError(message);
+        return { success: false, error: message };
       } catch (err) {
-        return false;
+        const message = getSignInErrorMessage(err);
+        setAuthError(message);
+        return { success: false, error: message };
       }
     },
     []
@@ -95,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
+      setAuthError(null);
       await authClient.signOut();
     } catch {}
   }, []);
@@ -109,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: Boolean(mappedSession),
     signIn,
     signOut,
-    error: sessionError?.message ?? null,
+    error: authError ?? sessionError?.message ?? null,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

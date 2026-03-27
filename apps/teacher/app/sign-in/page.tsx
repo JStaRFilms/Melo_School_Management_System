@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
+import { AUTH_ERROR_MESSAGES } from "@school/auth";
 
 function SignInForm() {
   const router = useRouter();
@@ -21,17 +22,25 @@ function SignInForm() {
     setLocalError(null);
 
     if (!email || !password) {
-      setLocalError("Please enter email and password");
+      setLocalError(AUTH_ERROR_MESSAGES.missingCredentials);
       return;
     }
 
-    const success = await signIn(email, password);
-    if (success) {
+    const result = await signIn(email, password);
+    if (result.success) {
       router.push(callbackUrl);
+      return;
     }
+
+    setLocalError(result.error ?? AUTH_ERROR_MESSAGES.retry);
   };
 
-  const displayError = localError ?? error ?? (errorParam === "unauthorized" ? "You don't have permission to access this area" : null);
+  const displayError =
+    localError ??
+    error ??
+    (errorParam === "unauthorized"
+      ? AUTH_ERROR_MESSAGES.unauthorizedArea
+      : null);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
