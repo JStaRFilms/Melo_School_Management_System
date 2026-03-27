@@ -14,3 +14,6 @@ teacher: teacher@demo-academy.school / Teacher123!Pass
 
 pnpm --filter @school/teacher dev
 pnpm --filter @school/admin dev
+
+pnpm convex:dev
+pnpm convex deploy
