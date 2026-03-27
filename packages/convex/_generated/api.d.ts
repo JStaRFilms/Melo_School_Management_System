@@ -25,6 +25,9 @@ import type * as functions_academic_settings from "../functions/academic/setting
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
+import type * as functions_platform_auth from "../functions/platform/auth.js";
+import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
+import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as http from "../http.js";
 
 import type {
@@ -51,6 +54,9 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
+  "functions/platform/auth": typeof functions_platform_auth;
+  "functions/platform/bootstrap": typeof functions_platform_bootstrap;
+  "functions/platform/index": typeof functions_platform_index;
   http: typeof http;
 }>;
 

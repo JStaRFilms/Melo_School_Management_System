@@ -110,6 +110,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       schoolId = await ctx.db.insert("schools", {
         name: normalizeHumanName(args.schoolName),
         slug: args.schoolSlug,
+        status: "active",
         createdAt: now,
         updatedAt: now,
       });

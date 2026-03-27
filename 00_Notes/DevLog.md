@@ -46,3 +46,5 @@ Also, we don't yet expose "next term begins" in Convex. For this iteration, letâ
 [ ] We need to work on debloadting all the pages and working on UI generally
 
 [ ] We need to add photo editor 
+
+[ ] School admins should be able to create other sub admins likewise the platform super admin can create school admins. So there's a first school admin, right? That first admin is the one who can create other school admins and also archive them. And if that person leaves the school, they should be able to pass their supremeness to another admin to lead the others. All admins can create sub-admins, but only the supreme admin in that school can archive or "delete" other admins.

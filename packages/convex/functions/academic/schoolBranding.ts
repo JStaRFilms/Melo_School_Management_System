@@ -41,6 +41,7 @@ export const saveSchoolLogo = mutation({
     await ctx.db.replace(schoolId, {
       name: school.name,
       slug: school.slug,
+      ...(school.status ? { status: school.status } : { status: "active" }),
       logoStorageId: args.logoStorageId,
       logoFileName: args.logoFileName,
       logoContentType: args.logoContentType,
@@ -69,6 +70,7 @@ export const removeSchoolLogo = mutation({
     await ctx.db.replace(schoolId, {
       name: school.name,
       slug: school.slug,
+      ...(school.status ? { status: school.status } : { status: "active" }),
       createdAt: school.createdAt,
       updatedAt: Date.now(),
     });

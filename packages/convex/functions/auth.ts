@@ -33,6 +33,34 @@ export const getViewerContext = query({
   },
 });
 
+export const getPlatformViewerContext = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    if (!authUser) {
+      return null;
+    }
+
+    const platformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q: any) => q.eq("authId", authUser._id))
+      .unique();
+
+    if (!platformAdmin || !platformAdmin.isActive) {
+      return null;
+    }
+
+    return {
+      authUserId: authUser._id,
+      appUserId: null,
+      email: authUser.email,
+      name: authUser.name,
+      role: "platformAdmin",
+      schoolId: null,
+    };
+  },
+});
+
 export const rotateKeysForStaticConfig = action({
   args: {},
   returns: v.array(

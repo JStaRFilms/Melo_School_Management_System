@@ -271,6 +271,21 @@ Why this is the chosen direction:
 
 ---
 
+## First Platform Admin Bootstrap
+
+The normal product flow assumes an existing signed-in platform super admin.
+
+Because the very first platform admin cannot be created from inside a dashboard that does not yet have any platform admins, the system supports a one-time bootstrap path:
+
+- protected by `PLATFORM_BOOTSTRAP_TOKEN`
+- provisions a Better Auth account
+- inserts or updates the matching `platformAdmins` row
+- intended only for creating the first platform admin or emergency recovery
+
+This is not the normal school-provisioning workflow and should not be used for day-to-day operations once the first platform admin exists.
+
+---
+
 ## Security Model
 
 ### Platform Super Admin Auth
@@ -329,16 +344,16 @@ mutation({
 
 Before this feature is marked complete:
 
-- [ ] Platform super admin role exists in the system
-- [ ] Platform super admin can create a school with name and slug
-- [ ] Slug uniqueness is enforced
-- [ ] Platform super admin can assign a school admin to a school
-- [ ] Assigned school admin receives a Better Auth account
-- [ ] Assigned school admin can sign in and lands in their school's admin app
-- [ ] School admin cannot access platform dashboard
-- [ ] Platform super admin cannot access school-scoped data
-- [ ] School transitions from pending to active upon admin assignment
-- [ ] Current one-school delivery path is unaffected
+- [x] Platform super admin role exists in the system
+- [x] Platform super admin can create a school with name and slug
+- [x] Slug uniqueness is enforced
+- [x] Platform super admin can assign a school admin to a school
+- [x] Assigned school admin receives a Better Auth account
+- [x] Assigned school admin can sign in and lands in their school's admin app
+- [x] School admin cannot access platform dashboard
+- [x] Platform super admin cannot access school-scoped data
+- [x] School transitions from pending to active upon admin assignment
+- [x] Current one-school delivery path is unaffected
 
 ---
 

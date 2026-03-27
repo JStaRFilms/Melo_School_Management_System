@@ -2,17 +2,32 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Platform super admin accounts (not school-scoped)
+  platformAdmins: defineTable({
+    authId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_auth", ["authId"])
+    .index("by_email", ["email"]),
+
   // Stub tables for prerequisite data (from prior FRs)
   schools: defineTable({
     name: v.string(),
     slug: v.string(),
+    status: v.optional(v.union(v.literal("pending"), v.literal("active"))),
     logoStorageId: v.optional(v.id("_storage")),
     logoFileName: v.optional(v.string()),
     logoContentType: v.optional(v.string()),
     logoUpdatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_status", ["status"]),
 
   users: defineTable({
     schoolId: v.id("schools"),
