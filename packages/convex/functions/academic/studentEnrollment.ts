@@ -1,4 +1,5 @@
 import { mutation, query } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import {
@@ -25,6 +26,65 @@ function normalizeOptionalHouseName(value: string | null | undefined) {
   return normalizeHumanName(trimmed);
 }
 
+function normalizeRequiredStudentName(value: string) {
+  const normalized = normalizePersonName(value);
+  if (!normalized) {
+    throw new ConvexError("Student name is required");
+  }
+
+  return normalized;
+}
+
+function normalizeAdmissionNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new ConvexError("Admission number is required");
+  }
+
+  return trimmed;
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function getValidatedPhotoMetadata(args: {
+  photoStorageId?: Id<"_storage"> | null;
+  photoFileName?: string | null;
+  photoContentType?: string | null;
+}) {
+  if (
+    args.photoStorageId === undefined &&
+    (args.photoFileName !== undefined || args.photoContentType !== undefined)
+  ) {
+    throw new ConvexError("Photo upload metadata is incomplete");
+  }
+
+  if (args.photoStorageId === undefined || args.photoStorageId === null) {
+    return null;
+  }
+
+  const fileName = args.photoFileName?.trim();
+  const contentType = args.photoContentType?.trim();
+  if (!fileName || !contentType) {
+    throw new ConvexError("Photo upload metadata is incomplete");
+  }
+
+  if (!contentType.startsWith("image/")) {
+    throw new ConvexError("Student photo must be an image file");
+  }
+
+  return {
+    fileName,
+    contentType,
+  };
+}
+
 // ==================== STUDENT ROSTER ====================
 
 export const createStudent = mutation({
@@ -39,16 +99,19 @@ export const createStudent = mutation({
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
+    const studentName = normalizeRequiredStudentName(args.name);
+    const admissionNumber = normalizeAdmissionNumber(args.admissionNumber);
+
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
+      throw new ConvexError("Selected class is not available");
     }
 
     // Check for duplicate admission number
     const existing = await ctx.db
       .query("students")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.eq(q.field("admissionNumber"), args.admissionNumber))
+      .filter((q) => q.eq(q.field("admissionNumber"), admissionNumber))
       .unique();
 
     if (existing) {
@@ -58,9 +121,9 @@ export const createStudent = mutation({
     const now = Date.now();
     const studentUserId = await ctx.db.insert("users", {
       schoolId,
-      authId: toStudentAuthId(String(schoolId), args.admissionNumber),
-      name: normalizePersonName(args.name),
-      email: `${args.admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
+      authId: toStudentAuthId(String(schoolId), admissionNumber),
+      name: studentName,
+      email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
       role: "student",
       createdAt: now,
       updatedAt: now,
@@ -70,7 +133,7 @@ export const createStudent = mutation({
       schoolId,
       classId: args.classId,
       userId: studentUserId,
-      admissionNumber: args.admissionNumber,
+      admissionNumber,
       createdAt: now,
       updatedAt: now,
     });
@@ -148,23 +211,32 @@ export const updateStudent = mutation({
 
     const student = await ctx.db.get(args.studentId);
     if (!student || student.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
+      throw new ConvexError("Student not found");
+    }
+    const studentUser = await ctx.db.get(student.userId);
+    if (!studentUser || studentUser.schoolId !== schoolId) {
+      throw new ConvexError("Student account not found");
     }
 
     // Verify new class if changing
     if (args.classId) {
       const classDoc = await ctx.db.get(args.classId);
       if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-        throw new ConvexError("Cross-school access denied");
+        throw new ConvexError("Selected class is not available");
       }
     }
 
     // Check for duplicate admission number if changing
-    if (args.admissionNumber && args.admissionNumber !== student.admissionNumber) {
+    const nextAdmissionNumber =
+      args.admissionNumber === undefined
+        ? student.admissionNumber
+        : normalizeAdmissionNumber(args.admissionNumber);
+
+    if (nextAdmissionNumber !== student.admissionNumber) {
       const existing = await ctx.db
         .query("students")
         .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .filter((q) => q.eq(q.field("admissionNumber"), args.admissionNumber))
+        .filter((q) => q.eq(q.field("admissionNumber"), nextAdmissionNumber))
         .unique();
 
       if (existing) {
@@ -176,24 +248,18 @@ export const updateStudent = mutation({
       updatedAt: Date.now(),
     };
     if (args.name !== undefined) {
-      userUpdates.name = normalizePersonName(args.name);
+      userUpdates.name = normalizeRequiredStudentName(args.name);
     }
-    const nextAdmissionNumber = args.admissionNumber ?? student.admissionNumber;
     if (args.admissionNumber !== undefined) {
       userUpdates.authId = toStudentAuthId(
         String(schoolId),
-        args.admissionNumber
+        nextAdmissionNumber
       );
-      userUpdates.email = `${args.admissionNumber
+      userUpdates.email = `${nextAdmissionNumber
         .replace(/[^a-zA-Z0-9]/g, "")
         .toLowerCase()}@students.local`;
     }
-    if (
-      args.photoStorageId === undefined &&
-      (args.photoFileName !== undefined || args.photoContentType !== undefined)
-    ) {
-      throw new ConvexError("Photo upload metadata is incomplete");
-    }
+    const uploadedPhotoMetadata = getValidatedPhotoMetadata(args);
 
     const nextStudentRecord: any = {
       schoolId: student.schoolId,
@@ -216,13 +282,15 @@ export const updateStudent = mutation({
     const nextGuardianName =
       args.guardianName === undefined
         ? student.guardianName
-        : args.guardianName ?? undefined;
+        : normalizeOptionalText(args.guardianName);
     const nextGuardianPhone =
       args.guardianPhone === undefined
         ? student.guardianPhone
-        : args.guardianPhone ?? undefined;
+        : normalizeOptionalText(args.guardianPhone);
     const nextAddress =
-      args.address === undefined ? student.address : args.address ?? undefined;
+      args.address === undefined
+        ? student.address
+        : normalizeOptionalText(args.address);
     const nextPhotoStorageId =
       args.photoStorageId === undefined
         ? student.photoStorageId
@@ -231,13 +299,13 @@ export const updateStudent = mutation({
       args.photoStorageId === undefined
         ? student.photoFileName
         : args.photoStorageId
-          ? args.photoFileName ?? student.photoFileName
+          ? uploadedPhotoMetadata?.fileName ?? student.photoFileName
           : undefined;
     const nextPhotoContentType =
       args.photoStorageId === undefined
         ? student.photoContentType
         : args.photoStorageId
-          ? args.photoContentType ?? student.photoContentType
+          ? uploadedPhotoMetadata?.contentType ?? student.photoContentType
           : undefined;
     const nextPhotoUpdatedAt =
       args.photoStorageId === undefined
@@ -259,7 +327,7 @@ export const updateStudent = mutation({
     }
     if (nextPhotoUpdatedAt) nextStudentRecord.photoUpdatedAt = nextPhotoUpdatedAt;
 
-    await ctx.db.patch(student.userId, userUpdates);
+    await ctx.db.patch(studentUser._id, userUpdates);
     await ctx.db.replace(args.studentId, nextStudentRecord);
     return null;
   },

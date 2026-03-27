@@ -134,6 +134,7 @@ This feature allows administrators to:
 - Enrollment matrix subject ticks save immediately; the UI no longer presents a fake separate commit step.
 - Success and error feedback on enrollment pages now uses compact transient notices instead of large persistent state panels.
 - Each student row in the enrollment matrix now includes quick `All` and `Clear` controls so admins can start with every subject selected and remove the ones a child does not offer.
+- On small screens, the enrollment routes now switch from a squeezed horizontal matrix to student cards with a bottom-sheet subject editor.
 
 ## UI/UX Direction
 - **Mobile First**: All setup screens must be functional on a phone (one-handed operation).

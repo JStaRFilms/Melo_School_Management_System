@@ -122,8 +122,9 @@ export function StudentProfileEditor({
 
   const handleSave = async () => {
     setIsSaving(true);
+    let uploadedPhoto = false;
     try {
-      let uploadedPhoto: {
+      let uploadedPhotoMetadata: {
         storageId: string;
         fileName: string;
         contentType: string;
@@ -146,11 +147,16 @@ export function StudentProfileEditor({
         }
 
         const uploadPayload = (await uploadResponse.json()) as { storageId: string };
-        uploadedPhoto = {
+        if (!uploadPayload.storageId) {
+          throw new Error("Photo upload failed");
+        }
+
+        uploadedPhotoMetadata = {
           storageId: uploadPayload.storageId,
           fileName: photoFile.name,
           contentType: photoFile.type,
         };
+        uploadedPhoto = true;
       }
 
       await updateStudent({
@@ -166,11 +172,13 @@ export function StudentProfileEditor({
         address: address || null,
         photoStorageId: clearPhoto
           ? null
-          : uploadedPhoto?.storageId ?? undefined,
-        photoFileName: clearPhoto ? null : uploadedPhoto?.fileName ?? undefined,
+          : uploadedPhotoMetadata?.storageId ?? undefined,
+        photoFileName: clearPhoto
+          ? null
+          : uploadedPhotoMetadata?.fileName ?? undefined,
         photoContentType: clearPhoto
           ? null
-          : uploadedPhoto?.contentType ?? undefined,
+          : uploadedPhotoMetadata?.contentType ?? undefined,
       } as never);
 
       onNotice({
@@ -182,7 +190,9 @@ export function StudentProfileEditor({
         tone: "error",
         message: getUserFacingErrorMessage(
           error,
-          "We couldn't save the student profile right now."
+          uploadedPhoto
+            ? "The photo uploaded, but we couldn't finish saving the student profile."
+            : "We couldn't save the student profile right now."
         ),
       });
     } finally {

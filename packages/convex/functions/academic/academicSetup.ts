@@ -15,6 +15,12 @@ import {
   normalizeHumanName,
   normalizePersonName,
 } from "@school/shared/name-format";
+import {
+  assertClassCanBeArchived,
+  assertSessionCanBeArchived,
+  assertSubjectCanBeArchived,
+  assertTeacherCanBeArchived,
+} from "./archiveGuardrails";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -441,54 +447,10 @@ export const archiveTeacher = mutation({
       throw new ConvexError("Teacher is already archived");
     }
 
-    const classes = await ctx.db
-      .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .collect();
-    for (const classDoc of classes) {
-      if (String(classDoc.formTeacherId) !== String(args.teacherId)) {
-        continue;
-      }
-
-      await ctx.db.replace(classDoc._id, {
-        schoolId: classDoc.schoolId,
-        name: classDoc.name,
-        level: classDoc.level,
-        gradeName: classDoc.gradeName,
-        classLabel: classDoc.classLabel,
-        isArchived: classDoc.isArchived ?? false,
-        archivedAt: classDoc.archivedAt,
-        archivedBy: classDoc.archivedBy,
-        createdAt: classDoc.createdAt,
-        updatedAt: Date.now(),
-      });
-    }
-
-    const classSubjects = await ctx.db
-      .query("classSubjects")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .collect();
-    for (const offering of classSubjects) {
-      if (String(offering.teacherId) !== String(args.teacherId)) {
-        continue;
-      }
-
-      await ctx.db.replace(offering._id, {
-        schoolId: offering.schoolId,
-        classId: offering.classId,
-        subjectId: offering.subjectId,
-        createdAt: offering.createdAt,
-        updatedAt: Date.now(),
-      });
-    }
-
-    const teacherAssignments = await ctx.db
-      .query("teacherAssignments")
-      .withIndex("by_teacher", (q) => q.eq("teacherId", args.teacherId))
-      .collect();
-    for (const assignment of teacherAssignments) {
-      await ctx.db.delete(assignment._id);
-    }
+    await assertTeacherCanBeArchived(ctx, {
+      schoolId,
+      teacherId: args.teacherId,
+    });
 
     await ctx.db.patch(args.teacherId, {
       isArchived: true,
@@ -728,6 +690,11 @@ export const archiveSession = mutation({
       throw new ConvexError("Active sessions cannot be archived");
     }
 
+    await assertSessionCanBeArchived(ctx, {
+      schoolId,
+      sessionId: args.sessionId,
+    });
+
     await ctx.db.patch(args.sessionId, {
       isArchived: true,
       archivedAt: Date.now(),
@@ -958,6 +925,11 @@ export const archiveSubject = mutation({
     if (subject.isArchived) {
       throw new ConvexError("Subject is already archived");
     }
+
+    await assertSubjectCanBeArchived(ctx, {
+      schoolId,
+      subjectId: args.subjectId,
+    });
 
     await ctx.db.patch(args.subjectId, {
       isArchived: true,
@@ -1265,6 +1237,16 @@ export const archiveClass = mutation({
     if (classDoc.isArchived) {
       throw new ConvexError("Class is already archived");
     }
+
+    await assertClassCanBeArchived(ctx, {
+      schoolId,
+      classId: args.classId,
+      className: buildClassName({
+        gradeName: classDoc.gradeName ?? classDoc.name,
+        classLabel: classDoc.classLabel,
+        legacyName: classDoc.name,
+      }),
+    });
 
     await ctx.db.patch(args.classId, {
       isArchived: true,

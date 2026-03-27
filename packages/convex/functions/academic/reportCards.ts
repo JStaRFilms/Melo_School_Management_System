@@ -117,7 +117,7 @@ async function assertClassReportCardAccess(
     ctx.db.get(args.termId),
   ]);
 
-  if (!classDoc || classDoc.schoolId !== args.schoolId || classDoc.isArchived) {
+  if (!classDoc || classDoc.schoolId !== args.schoolId) {
     throw new ConvexError("Class not found");
   }
   if (!session || session.schoolId !== args.schoolId) {

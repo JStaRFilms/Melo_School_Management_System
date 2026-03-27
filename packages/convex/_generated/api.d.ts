@@ -11,6 +11,7 @@
 import type * as betterAuth from "../betterAuth.js";
 import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
+import type * as functions_academic_archiveGuardrails from "../functions/academic/archiveGuardrails.js";
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   betterAuth: typeof betterAuth;
   "functions/academic/academicSetup": typeof functions_academic_academicSetup;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
+  "functions/academic/archiveGuardrails": typeof functions_academic_archiveGuardrails;
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;

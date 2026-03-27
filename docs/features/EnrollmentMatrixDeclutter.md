@@ -80,6 +80,7 @@ Simplify the admin and teacher enrollment matrix screens so every visible contro
 - Updated both screens to explain that subject ticks save instantly.
 - Reduced the teacher page below the previous monolith size and split the admin screen into focused route-local components.
 - Added row-level `All` and `Clear` actions so subject setup can start from a full class load and then be narrowed down per student.
+- Reworked the mobile experience into student cards plus a bottom-sheet subject editor so phones no longer depend on horizontal matrix scrolling.
 
 ## Regression Checks
 - Admin can still create a student in the selected class.

@@ -40,3 +40,7 @@ I noticed that when I'm on the student route, the academic student route, I have
 [x] Alright, I've implemented the results the way I like them. There are a few changes I need you to make, though. Look at the fields: teacher name, teacher's comment, and head teacher's comment. We don't expose teacher's comment or head teacher's comment in Convex or anywhere in the UI yet, so we need a clean, intuitive way to input them. Every student gets their own head-teacher comment and class-teacher comment. For now, just expose two separate inputs in the admin panel, one for the teacher's comment and one for the head teacher's comment. I'll tweak the flow later.
 
 Also, we don't yet expose "next term begins" in Convex. For this iteration, let’s add a manual date picker that sets the next-term start date and reflects it for every student in that term.
+
+[ ] /academic/students I saw the form on the admin academic student page that lets you edit student info. We need a separate page just for onboarding a student. Instead of the usual flow, go to a class, pick the student, you’d start on a student page, pick the student, then pick the class. The two approaches run side-by-side. I’ll list the fields we need: first name, last name, admission number, class, house, gender, date of birth, guardian name, guardian phone, address, and more.
+
+[ ] We need to work on debloadting all the pages and working on UI generally

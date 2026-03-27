@@ -28,6 +28,8 @@ The current exam-recording slice also stops before report-card generation. This 
   - sessions
   - teachers
   - classes
+- Hardening pass for archive behavior so archival never strips linked academic history as a side effect
+- Explicit archive blockers and user-facing errors when a record is still tied to active workflows
 - Guardrails so archived records disappear from active setup and selection flows, but remain available for historical audit and report cards
 - Student profile editing from admin workflows, not only subject selection
 - Student photo upload and replacement
@@ -42,6 +44,7 @@ The current exam-recording slice also stops before report-card generation. This 
 ### Out Of Scope
 
 - Permanent delete / purge UI
+- Archived-records admin browser UI (this can ship as the next slice once archive-only behavior is stable)
 - Parent portal report-card delivery
 - Multi-term cumulative report books
 - Ranking / positions / psychomotor / affective domains unless already present elsewhere
@@ -158,6 +161,7 @@ Specifically:
 #### Server
 
 - Archive mutations patch records instead of deleting them
+- Archive mutations must not silently delete linked assignments or historical relationships
 - Archive queries exclude archived records by default
 - Historical report-card queries may still resolve archived entities for already-saved records
 
@@ -375,6 +379,10 @@ All new flows must return user-facing errors that are specific, school-safe, and
 - cross-school access denied
 - record already archived
 - cannot archive active session
+- cannot archive session with an active term
+- cannot archive teacher while still assigned to active classes or subjects
+- cannot archive subject while it is still attached to active class setups or live student selections
+- cannot archive class while students are still enrolled
 - cannot archive record that is still required by an active workflow
 
 ### Student Editing Errors
@@ -465,7 +473,9 @@ This keeps us aligned with the project 200-line modularity rule.
 - `subjects`, `classes`, `academicSessions`, and teacher `users` rows now carry archive metadata
 - active setup selectors and access checks filter archived records out by default
 - class, subject, session, and teacher archive mutations now preserve data instead of deleting it
-- archiving a teacher also clears future-facing class and subject assignments so archived teachers stop showing up in active flows
+- archiving a teacher now fails with a clear blocker message until active assignments are reassigned, rather than stripping those links automatically
+- class archival now fails while students are still enrolled so student editing access is not orphaned
+- subject archival now fails while the subject is still wired into active class/session workflows
 - student updates now support broader profile editing, class reassignment validation, and photo metadata storage
 - report-card data is composed from existing assessment records through `packages/convex/functions/academic/reportCards.ts`
 
