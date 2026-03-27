@@ -1,51 +1,93 @@
 # Feature: Archived Records Page (Admin)
 
 ## Goal
-Provide a dedicated interface for school admins to browse, filter, and audit archived academic records (subjects, classes, teachers, sessions) without hard-deleting sensitive historical data.
+Provide a dedicated admin view for browsing archived subjects, classes, teachers, and sessions without bringing back hard-delete behavior.
+
+## Status
+Implemented.
 
 ## User Story
-As a school admin, I want to view a list of all archived records so that I can audit why they were archived, who archived them, and ensure historical data remains accessible for past report cards or compliance.
+As a school admin, I want to inspect archived academic records in one place so I can audit when they were archived, who archived them, and what historical records still depend on them.
 
-## Components
+## Client Components
 
-### 1. Summary Header
-- **Counts:** Total archived Items, split by type (Classes, Subjects, Teachers, Sessions).
-- **Vibe:** Premium cards with subtle borders and clear numbers.
+### Route
+- `apps/admin/app/academic/archived-records/page.tsx`
+- Client-rendered admin page using Convex `useQuery`.
 
-### 2. Global Filters & Search
-- **Segmented Control/Tabs:** Switch between record types (All, Classes, Subjects, Teachers, Sessions).
-- **Search Bar:** Real-time filtering by name or admission number (for students if applicable) or teacher name.
-- **Date Filter:** Filter by archival date range.
+### UI Building Blocks
+- `apps/admin/app/academic/archived-records/components/ArchivedRecordsFilters.tsx`
+  - Type tabs for `all`, `class`, `subject`, `teacher`, `session`.
+  - Search input.
+  - Archived-from and archived-to date filters.
+- `apps/admin/app/academic/archived-records/components/ArchivedRecordsList.tsx`
+  - Desktop table.
+  - Mobile cards.
+  - Empty state when filters return no matches.
+- `apps/admin/app/academic/archived-records/components/ArchivedRecordDrawer.tsx`
+  - Read-only detail panel for the selected archived record.
+  - Shows archive metadata, linked history, and preserved record snapshot.
+- `apps/admin/app/academic/archived-records/loading.tsx`
+  - Route-level skeleton.
+- `apps/admin/app/academic/archived-records/error.tsx`
+  - Route-level retry state for unexpected failures.
 
-### 3. Responsive Record List
-- **Table (Desktop):** Name, Type, Archived Date, Archived By, Reason/Status.
-- **Cards (Mobile):** High-density cards showing key info with a "Detail" chevron.
-- **Status Chips:** Clear badges for the record type.
+### Navigation
+- `packages/shared/src/workspace-navigation.ts`
+  - Adds an `Archive Audit` admin section entry.
+- `apps/admin/app/academic/classes/page.tsx`
+  - Existing footer CTA now routes to the archive audit page.
 
-### 4. Detail Drawer (Side Panel)
-- Opens when a record is selected.
-- Shows full metadata:
-  - Original creation date.
-  - Archival timestamp.
-  - Archival author.
-  - Blockers encountered during archival (if any).
-  - Linked history snippet.
-- **Note:** Restoration is not implemented in this view to prevent accidental resurrection without full setup validation.
+## Server Components
 
-### 5. Empty & Error States
-- **Empty State:** Clean illustration/icon with messaging like "No archived records found. Your history is clean."
-- **Loading State:** Shimmer/Skeleton effects.
-- **Error State:** Clear alert with a retry action.
+### Query
+- `packages/convex/functions/academic/archiveRecords.ts`
+- Query: `listArchivedRecords`
 
-## Design Aesthetic
-- **Font:** Plus Jakarta Sans.
-- **Colors:** Platform Neutrals (FAFAFA backgrounds), Platform Primary (3B82F6).
-- **Shadows:** Subtle (`shadow-sm` or custom `--card-shadow`).
-- **Mobile-First:** Single column cards on small screens, transitioning to full tables on desktop.
+### Responsibilities
+- Authenticates the current user and enforces admin access for the school.
+- Reads archived records directly from the existing academic tables instead of introducing a second archive ledger.
+- Returns:
+  - Summary counts.
+  - A normalized list of archived sessions, classes, teachers, and subjects.
+  - Archive metadata (`archivedAt`, `archivedBy`).
+  - Human-readable linked history summaries.
+  - Record-specific detail fields for the drawer.
 
-## Layout Plan
-1.  **Top Navigation:** Breadcrumbs + Title.
-2.  **Summary Stats:** 4 cards in a grid (1 col mobile, 4 col desktop).
-3.  **Controls:** Search + Tabs (sticky on mobile).
-4.  **Content Area:** The list or empty/loading state.
-5.  **Overlay:** Side drawer for details.
+## Data Flow
+1. Admin opens `/academic/archived-records`.
+2. The page calls `functions/academic/archiveRecords:listArchivedRecords`.
+3. Convex collects school-scoped archived rows and supporting linked history counts.
+4. The client renders summary cards and a unified record list.
+5. Filters run client-side against the normalized query result.
+6. Selecting a record opens the read-only drawer.
+
+## Data Sources
+- `users` for archived teachers and archive actor lookup.
+- `academicSessions` for archived sessions.
+- `classes` for archived classes.
+- `subjects` for archived subjects.
+- Supporting counts pulled from:
+  - `academicTerms`
+  - `classSubjects`
+  - `teacherAssignments`
+  - `students`
+  - `studentSubjectSelections`
+  - `assessmentRecords`
+
+## Schema Notes
+- No new table was added for this feature.
+- The page relies on the existing archive fields already present on academic entities:
+  - `isArchived`
+  - `archivedAt`
+  - `archivedBy`
+
+## Constraints
+- No restore action is exposed.
+- No hard-delete action is exposed.
+- Blocker snapshots are not yet persisted historically, so the drawer explains that only current metadata and linked usage can be shown.
+
+## Verification
+- `pnpm --filter @school/convex typecheck`
+- `pnpm --filter @school/admin typecheck`
+- `pnpm --filter @school/admin test`

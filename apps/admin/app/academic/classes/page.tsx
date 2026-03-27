@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   Layers3,
@@ -47,6 +48,7 @@ type ClassOffering = {
 };
 
 export default function ClassesPage() {
+  const router = useRouter();
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
@@ -488,7 +490,11 @@ export default function ClassesPage() {
             {classes.length} Classes • {subjects.length} Subjects
           </span>
         </div>
-        <button className="h-12 rounded-xl bg-[#0f172a] px-10 text-[11px] font-bold uppercase tracking-[0.15em] text-white shadow-xl transition-all hover:bg-[#1e293b]">
+        <button
+          type="button"
+          onClick={() => router.push("/academic/archived-records")}
+          className="h-12 rounded-xl bg-[#0f172a] px-10 text-[11px] font-bold uppercase tracking-[0.15em] text-white shadow-xl transition-all hover:bg-[#1e293b]"
+        >
           Audit Archive
         </button>
       </div>
