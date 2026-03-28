@@ -6,7 +6,7 @@ import { getUserFacingErrorMessage } from "@school/shared";
 
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
-import { getStudentPhotoValidationError } from "./studentPhotoValidation";
+import { uploadStudentPhoto } from "./studentPhotoUpload";
 import type { ClassSummary, EnrollmentNotice } from "./types";
 
 interface StudentProfileEditorProps {
@@ -19,6 +19,9 @@ interface StudentProfileEditorProps {
 type StudentProfile = {
   _id: string;
   name: string;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
   admissionNumber: string;
   classId: string;
   className: string;
@@ -58,7 +61,8 @@ export function StudentProfileEditor({
     "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
   );
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [classId, setClassId] = useState("");
   const [houseName, setHouseName] = useState("");
@@ -76,7 +80,8 @@ export function StudentProfileEditor({
       return;
     }
 
-    setName(studentProfile.name);
+    setFirstName(studentProfile.firstName ?? "");
+    setLastName(studentProfile.lastName ?? "");
     setAdmissionNumber(studentProfile.admissionNumber);
     setClassId(studentProfile.classId);
     setHouseName(studentProfile.houseName ?? "");
@@ -100,6 +105,8 @@ export function StudentProfileEditor({
 
     return studentProfile?.photoUrl ?? null;
   }, [clearPhoto, photoFile, studentProfile?.photoUrl]);
+
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || studentProfile?.displayName || "Unnamed Student";
 
   useEffect(() => {
     return () => {
@@ -133,45 +140,18 @@ export function StudentProfileEditor({
     setIsSaving(true);
     let uploadedPhoto = false;
     try {
-      let uploadedPhotoMetadata: {
-        storageId: string;
-        fileName: string;
-        contentType: string;
-      } | null = null;
-
-      if (photoFile) {
-        const validationError = getStudentPhotoValidationError(photoFile);
-        if (validationError) {
-          throw new Error(validationError);
-        }
-
-        const uploadUrl = (await generateStudentPhotoUploadUrl({} as never)) as string;
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": photoFile.type },
-          body: photoFile,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error("Photo upload failed");
-        }
-
-        const uploadPayload = (await uploadResponse.json()) as { storageId: string };
-        if (!uploadPayload.storageId) {
-          throw new Error("Photo upload failed");
-        }
-
-        uploadedPhotoMetadata = {
-          storageId: uploadPayload.storageId,
-          fileName: photoFile.name,
-          contentType: photoFile.type,
-        };
-        uploadedPhoto = true;
-      }
+      const uploadedPhotoMetadata = photoFile
+        ? await uploadStudentPhoto(photoFile, () =>
+            generateStudentPhotoUploadUrl({} as never) as Promise<string>
+          )
+        : null;
+      uploadedPhoto = Boolean(uploadedPhotoMetadata);
 
       await updateStudent({
         studentId,
-        name,
+        name: displayName,
+        firstName,
+        lastName,
         admissionNumber,
         classId,
         houseName: houseName || null,
@@ -193,7 +173,7 @@ export function StudentProfileEditor({
 
       onNotice({
         tone: "success",
-        message: `${name} was updated successfully.`,
+        message: `${displayName} was updated successfully.`,
       });
     } catch (error) {
       onNotice({
@@ -229,7 +209,8 @@ export function StudentProfileEditor({
 
       <div className="grid gap-5 md:grid-cols-[1fr_240px]">
         <StudentProfileFormFields
-          name={name}
+          firstName={firstName}
+          lastName={lastName}
           admissionNumber={admissionNumber}
           classId={classId}
           houseName={houseName}
@@ -239,7 +220,8 @@ export function StudentProfileEditor({
           guardianPhone={guardianPhone}
           address={address}
           classes={classes}
-          onNameChange={setName}
+          onFirstNameChange={setFirstName}
+          onLastNameChange={setLastName}
           onAdmissionNumberChange={setAdmissionNumber}
           onClassIdChange={setClassId}
           onHouseNameChange={setHouseName}
@@ -250,7 +232,7 @@ export function StudentProfileEditor({
           onAddressChange={setAddress}
         />
         <StudentPhotoPanel
-          name={name}
+          name={displayName}
           previewUrl={previewUrl}
           onPhotoChange={(file) => {
             setPhotoFile(file);
@@ -273,7 +255,7 @@ export function StudentProfileEditor({
         <button
           type="button"
           onClick={() => void handleSave()}
-          disabled={isSaving || !name.trim() || !admissionNumber.trim() || !classId}
+          disabled={isSaving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
           className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 disabled:opacity-50"
         >
           {isSaving ? "Saving..." : "Save Student"}

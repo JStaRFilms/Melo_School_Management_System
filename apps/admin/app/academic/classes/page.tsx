@@ -139,6 +139,8 @@ export default function ClassesPage() {
 
   const primaryClasses =
     classes?.filter((classDoc) => classDoc.level === "Primary") ?? [];
+  const nurseryClasses =
+    classes?.filter((classDoc) => classDoc.level === "Nursery") ?? [];
   const secondaryClasses =
     classes?.filter((classDoc) => classDoc.level === "Secondary") ?? [];
 
@@ -355,6 +357,7 @@ export default function ClassesPage() {
                 onChange={(event) => setLevel(event.target.value)}
                 className="h-10 w-full rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
               >
+                <option value="Nursery">Nursery</option>
                 <option value="Primary">Primary</option>
                 <option value="Secondary">Secondary</option>
               </select>
@@ -419,6 +422,32 @@ export default function ClassesPage() {
           </div>
         </form>
       </section>
+
+      <ClassSection
+        title="Nursery Section"
+        accent="N"
+        accentClass="bg-amber-100 text-amber-700"
+        emptyLabel="Initialize Nursery Classes"
+        classes={nurseryClasses}
+        subjects={subjects}
+        teachers={teachers}
+        selectedClassId={selectedClassId}
+        selectedGradeName={selectedGradeName}
+        selectedClassLabel={selectedClassLabel}
+        selectedSubjectIds={selectedSubjectIds}
+        selectedFormTeacherId={selectedFormTeacherId}
+        currentOfferings={currentOfferings}
+        setSelectedClassId={setSelectedClassId}
+        setSelectedGradeName={setSelectedGradeName}
+        setSelectedClassLabel={setSelectedClassLabel}
+        setSelectedFormTeacherId={setSelectedFormTeacherId}
+        onToggleSubject={handleSelectedSubjectToggle}
+        onSaveClassConfig={handleSaveClassConfig}
+        onArchiveClass={handleArchiveSelectedClass}
+        onAssignTeacher={handleAssignTeacher}
+        onRequestCreate={scrollToBuilder}
+        isSavingClassConfig={isSavingClassConfig}
+      />
 
       <ClassSection
         title="Primary Section"

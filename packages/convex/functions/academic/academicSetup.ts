@@ -20,6 +20,7 @@ import {
   assertSubjectCanBeArchived,
   assertTeacherCanBeArchived,
 } from "./archiveGuardrails";
+import { resolveStoredUserNameFields } from "./studentNameCompat";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -33,6 +34,26 @@ async function readJsonSafe(response: Response) {
 
 function normalizeTeacherEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function normalizeClassLevel(level: string) {
+  const normalized = normalizeHumanName(level);
+  if (!normalized) {
+    throw new ConvexError("Class level is required");
+  }
+
+  const canonical = normalized.toLowerCase();
+  if (["nursery", "nur", "creche", "kindergarten", "kg"].includes(canonical)) {
+    return "Nursery";
+  }
+  if (["primary", "pri"].includes(canonical)) {
+    return "Primary";
+  }
+  if (["secondary", "sec"].includes(canonical)) {
+    return "Secondary";
+  }
+
+  return normalized;
 }
 
 function buildClassName(args: {
@@ -70,6 +91,10 @@ export const createTeacherRecordInternal = internalMutation({
   returns: v.id("users"),
   handler: async (ctx, args) => {
     const normalizedEmail = normalizeTeacherEmail(args.email);
+    const teacherName = resolveStoredUserNameFields({
+      name: args.name,
+      requiredMessage: "Teacher name is required",
+    });
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
@@ -84,7 +109,9 @@ export const createTeacherRecordInternal = internalMutation({
     const teacherId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
-      name: normalizePersonName(args.name),
+      name: teacherName.name,
+      ...(teacherName.firstName ? { firstName: teacherName.firstName } : {}),
+      ...(teacherName.lastName ? { lastName: teacherName.lastName } : {}),
       email: normalizedEmail,
       role: "teacher",
       createdAt: now,
@@ -987,6 +1014,7 @@ export const createClass = mutation({
     const classLabel = args.classLabel
       ? normalizeClassLabel(args.classLabel)
       : undefined;
+    const level = normalizeClassLevel(args.level);
     const displayName = buildClassName({
       gradeName,
       classLabel,
@@ -997,7 +1025,7 @@ export const createClass = mutation({
     return await ctx.db.insert("classes", {
       schoolId,
       name: displayName,
-      level: args.level,
+      level,
       gradeName,
       isArchived: false,
       ...(classLabel ? { classLabel } : {}),
@@ -1071,7 +1099,7 @@ export const listClasses = query({
                 classLabel: classDoc.classLabel,
                 legacyName: classDoc.name,
               }),
-              level: classDoc.level,
+              level: normalizeClassLevel(classDoc.level),
               gradeName: getStoredGradeName(classDoc),
               classLabel: getStoredClassLabel(classDoc),
               formTeacherId: teacher?.isArchived ? undefined : classDoc.formTeacherId,
@@ -1114,15 +1142,18 @@ export const backfillClassNaming = mutation({
         classLabel,
         legacyName: classDoc.name,
       });
+      const level = normalizeClassLevel(classDoc.level);
 
       if (
         classDoc.gradeName !== gradeName ||
         classDoc.classLabel !== classLabel ||
-        classDoc.name !== name
+        classDoc.name !== name ||
+        classDoc.level !== level
       ) {
         await ctx.db.patch(classDoc._id, {
           gradeName,
           name,
+          level,
           ...(classLabel ? { classLabel } : {}),
           updatedAt: Date.now(),
         });
@@ -1173,7 +1204,7 @@ export const updateClass = mutation({
     if (!nextGradeName) {
       throw new ConvexError("Class grade name is required");
     }
-    const nextLevel = args.level ?? classDoc.level;
+    const nextLevel = normalizeClassLevel(args.level ?? classDoc.level);
     const nextClassLabel =
       args.classLabel === null
         ? undefined

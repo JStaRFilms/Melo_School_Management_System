@@ -9,8 +9,12 @@ import {
 import {
   formatClassDisplayName,
   normalizeHumanName,
-  normalizePersonName,
 } from "@school/shared/name-format";
+import { getReadableUserName } from "./studentNameCompat";
+import {
+  buildExtrasCollectionView,
+  reportCardExtraPrintableValidator,
+} from "./reportCardExtrasModel";
 
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
@@ -63,6 +67,9 @@ const reportCardResultValidator = v.object({
   student: v.object({
     _id: v.id("students"),
     name: v.string(),
+    displayName: v.string(),
+    firstName: v.union(v.string(), v.null()),
+    lastName: v.union(v.string(), v.null()),
     admissionNumber: v.string(),
     gender: v.union(v.string(), v.null()),
     dateOfBirth: v.union(v.number(), v.null()),
@@ -95,6 +102,7 @@ const reportCardResultValidator = v.object({
       isRecorded: v.boolean(),
     })
   ),
+  extras: reportCardExtraPrintableValidator,
   classTeacherName: v.union(v.string(), v.null()),
   classTeacherComment: v.union(v.string(), v.null()),
   headTeacherComment: v.union(v.string(), v.null()),
@@ -194,9 +202,10 @@ async function getStudentsForClassReportCardBatch(
   const roster = await Promise.all(
     students.map(async (student) => {
       const studentUser = await ctx.db.get(student.userId);
+      const studentName = getReadableUserName(studentUser);
       return {
         studentId: student._id,
-        studentName: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
+        studentName: studentName.displayName || "Unnamed Student",
         admissionNumber: student.admissionNumber,
       };
     })
@@ -281,6 +290,7 @@ async function buildStudentReportCard(
     classSubjectDocs,
     settings,
     reportCardComment,
+    extrasView,
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
@@ -309,8 +319,15 @@ async function buildStudentReportCard(
           .eq("studentId", args.studentId)
           .eq("sessionId", args.sessionId)
           .eq("termId", args.termId)
-      )
+        )
       .unique(),
+    buildExtrasCollectionView(ctx, {
+      schoolId: args.schoolId,
+      classId: reportCardClassId,
+      studentId: args.studentId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+    }),
   ]);
 
   if (!classDoc || classDoc.schoolId !== args.schoolId) {
@@ -322,6 +339,8 @@ async function buildStudentReportCard(
     String(classDoc.formTeacherId) !== String(student.userId)
       ? await ctx.db.get(classDoc.formTeacherId)
       : null;
+  const studentName = getReadableUserName(studentUser);
+  const classTeacherName = getReadableUserName(classTeacher);
 
   const subjectIds = new Set(
     (
@@ -411,7 +430,10 @@ async function buildStudentReportCard(
     },
     student: {
       _id: student._id,
-      name: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
+      name: studentName.displayName || "Unnamed Student",
+      displayName: studentName.displayName || "Unnamed Student",
+      firstName: studentName.firstName,
+      lastName: studentName.lastName,
       admissionNumber: student.admissionNumber,
       gender: student.gender ?? null,
       dateOfBirth: student.dateOfBirth ?? null,
@@ -432,9 +454,10 @@ async function buildStudentReportCard(
       totalScore,
     },
     results,
+    extras: extrasView.printableBundles,
     classTeacherName:
       classTeacher && classTeacher.schoolId === args.schoolId
-        ? normalizePersonName(classTeacher.name)
+        ? classTeacherName.displayName || null
         : null,
     classTeacherComment: reportCardComment?.classTeacherComment ?? null,
     headTeacherComment: reportCardComment?.headTeacherComment ?? null,
@@ -545,28 +568,37 @@ export const saveStudentReportCardComments = mutation({
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classTeacherComment: v.union(v.string(), v.null()),
-    headTeacherComment: v.union(v.string(), v.null()),
+    headTeacherComment: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
-    await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    const [student, session, term, existingComment] = await Promise.all([
-      ctx.db.get(args.studentId),
-      ctx.db.get(args.sessionId),
-      ctx.db.get(args.termId),
-      ctx.db
-        .query("reportCardComments")
-        .withIndex("by_student_session_term", (q) =>
-          q
-            .eq("studentId", args.studentId)
-            .eq("sessionId", args.sessionId)
-            .eq("termId", args.termId)
-        )
-        .unique(),
-    ]);
+    const [student, session, term, existingComment, assessmentRecords] =
+      await Promise.all([
+        ctx.db.get(args.studentId),
+        ctx.db.get(args.sessionId),
+        ctx.db.get(args.termId),
+        ctx.db
+          .query("reportCardComments")
+          .withIndex("by_student_session_term", (q) =>
+            q
+              .eq("studentId", args.studentId)
+              .eq("sessionId", args.sessionId)
+              .eq("termId", args.termId)
+          )
+          .unique(),
+        ctx.db
+          .query("assessmentRecords")
+          .withIndex("by_student_and_term", (q) =>
+            q
+              .eq("schoolId", schoolId)
+              .eq("studentId", args.studentId)
+              .eq("sessionId", args.sessionId)
+              .eq("termId", args.termId)
+          )
+          .collect(),
+      ]);
 
     if (!student || student.schoolId !== schoolId) {
       throw new ConvexError("Student not found");
@@ -578,36 +610,74 @@ export const saveStudentReportCardComments = mutation({
       throw new ConvexError("Term not found");
     }
 
+    const reportCardClassId = assessmentRecords[0]?.classId ?? student.classId;
+
+    if (role === "teacher") {
+      const hasClassAccess = await teacherHasClassAccess(
+        ctx,
+        userId,
+        schoolId,
+        reportCardClassId
+      );
+
+      if (!hasClassAccess) {
+        throw new ConvexError("Not assigned to this class");
+      }
+
+      if (args.headTeacherComment !== undefined) {
+        throw new ConvexError("Admin access required");
+      }
+    } else {
+      await assertAdminForSchool(ctx, userId, schoolId, role);
+    }
+
     const classTeacherComment = normalizeOptionalComment(args.classTeacherComment);
-    const headTeacherComment = normalizeOptionalComment(args.headTeacherComment);
+    const headTeacherComment =
+      args.headTeacherComment === undefined
+        ? existingComment?.headTeacherComment ?? undefined
+        : normalizeOptionalComment(args.headTeacherComment);
     const now = Date.now();
 
     if (existingComment) {
-      await ctx.db.replace(existingComment._id, {
+      const replacement: Record<string, unknown> = {
         schoolId,
         studentId: args.studentId,
         sessionId: args.sessionId,
         termId: args.termId,
-        classTeacherComment,
-        headTeacherComment,
         createdAt: existingComment.createdAt,
         updatedAt: now,
         updatedBy: userId,
-      });
+      };
+
+      if (classTeacherComment !== undefined) {
+        replacement.classTeacherComment = classTeacherComment;
+      }
+      if (headTeacherComment !== undefined) {
+        replacement.headTeacherComment = headTeacherComment;
+      }
+
+      await ctx.db.replace(existingComment._id, replacement as any);
       return null;
     }
 
-    await ctx.db.insert("reportCardComments", {
+    const newComment: Record<string, unknown> = {
       schoolId,
       studentId: args.studentId,
       sessionId: args.sessionId,
       termId: args.termId,
-      classTeacherComment,
-      headTeacherComment,
       createdAt: now,
       updatedAt: now,
       updatedBy: userId,
-    });
+    };
+
+    if (classTeacherComment !== undefined) {
+      newComment.classTeacherComment = classTeacherComment;
+    }
+    if (headTeacherComment !== undefined) {
+      newComment.headTeacherComment = headTeacherComment;
+    }
+
+    await ctx.db.insert("reportCardComments", newComment as any);
 
     return null;
   },

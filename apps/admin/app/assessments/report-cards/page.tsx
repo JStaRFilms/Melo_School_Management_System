@@ -39,6 +39,9 @@ function AdminReportCardPageContent() {
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
+  const extrasHref = studentId
+    ? `/assessments/report-card-extras?studentId=${studentId}&sessionId=${sessionId}&termId=${termId}${resolvedClassId ? `&classId=${resolvedClassId}` : ""}`
+    : undefined;
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     sessionId && termId && resolvedClassId
@@ -180,6 +183,7 @@ function AdminReportCardPageContent() {
         termName={reportCard.termName}
         isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
         isPrintingFullClass={isPrintClassMode}
+        extrasHref={extrasHref}
         onSelectStudent={handleSelectStudent}
         onPrintFullClass={handlePrintFullClass}
       />

@@ -5,11 +5,11 @@ import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 
 type BootstrapIds = {
-  schoolId: Id<"schools">;
-  adminUserId: Id<"users">;
-  sessionId?: Id<"academicSessions">;
-  termId?: Id<"academicTerms">;
-};
+    schoolId: Id<"schools">;
+    adminUserId: Id<"users">;
+    sessionId?: Id<"academicSessions">;
+    termId?: Id<"academicTerms">;
+  };
 
 async function readJsonSafe(response: Response) {
   try {
@@ -32,11 +32,11 @@ async function ensureAuthUser(args: {
       "content-type": "application/json",
       origin: args.origin,
     },
-      body: JSON.stringify({
-        name: args.name,
-        email: args.email,
-        password: args.password,
-      }),
+    body: JSON.stringify({
+      name: args.name,
+      email: args.email,
+      password: args.password,
+    }),
   });
 
   const signUpPayload = await readJsonSafe(signUpResponse);
@@ -135,6 +135,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        managerUserId: null,
         updatedAt: now,
       });
     } else {
@@ -144,10 +145,20 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        managerUserId: null,
         createdAt: now,
         updatedAt: now,
       });
     }
+
+    await ctx.runMutation(
+      internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,
+      {
+        schoolId,
+        leadAdminUserId: adminUserId,
+        updatedBy: adminUserId,
+      }
+    );
 
     let sessionId: Id<"academicSessions"> | undefined;
     if (args.sessionName?.trim()) {

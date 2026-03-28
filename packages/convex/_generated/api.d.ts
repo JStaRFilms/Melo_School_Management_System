@@ -10,6 +10,8 @@
 
 import type * as betterAuth from "../betterAuth.js";
 import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
+import type * as functions_academic_adminLeadership from "../functions/academic/adminLeadership.js";
+import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
 import type * as functions_academic_archiveGuardrails from "../functions/academic/archiveGuardrails.js";
 import type * as functions_academic_archiveRecords from "../functions/academic/archiveRecords.js";
@@ -17,12 +19,15 @@ import type * as functions_academic_assessmentRecords from "../functions/academi
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
+import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
+import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCards from "../functions/academic/reportCards.js";
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
+import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
@@ -40,6 +45,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   betterAuth: typeof betterAuth;
   "functions/academic/academicSetup": typeof functions_academic_academicSetup;
+  "functions/academic/adminLeadership": typeof functions_academic_adminLeadership;
+  "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
   "functions/academic/archiveGuardrails": typeof functions_academic_archiveGuardrails;
   "functions/academic/archiveRecords": typeof functions_academic_archiveRecords;
@@ -47,12 +54,15 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
+  "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
+  "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCards": typeof functions_academic_reportCards;
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
+  "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
   "functions/platform/auth": typeof functions_platform_auth;

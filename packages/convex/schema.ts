@@ -33,6 +33,8 @@ export default defineSchema({
     schoolId: v.id("schools"),
     authId: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     email: v.string(),
     role: v.union(
       v.literal("student"),
@@ -40,6 +42,7 @@ export default defineSchema({
       v.literal("teacher"),
       v.literal("admin")
     ),
+    managerUserId: v.optional(v.union(v.id("users"), v.null())),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -48,6 +51,17 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_auth", ["authId"]),
+
+  schoolAdminLeadership: defineTable({
+    schoolId: v.id("schools"),
+    leadAdminUserId: v.id("users"),
+    previousLeadAdminUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_lead_admin", ["leadAdminUserId"]),
 
   students: defineTable({
     schoolId: v.id("schools"),
@@ -266,4 +280,93 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_school_and_term", ["schoolId", "termId"]),
+
+  reportCardExtraScaleTemplates: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    options: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        shortLabel: v.optional(v.string()),
+        order: v.number(),
+      })
+    ),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"]),
+
+  reportCardExtraBundles: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    sections: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        order: v.number(),
+        fields: v.array(
+          v.object({
+            id: v.string(),
+            label: v.string(),
+            type: v.union(
+              v.literal("text"),
+              v.literal("number"),
+              v.literal("boolean"),
+              v.literal("scale")
+            ),
+            scaleTemplateId: v.optional(v.id("reportCardExtraScaleTemplates")),
+            printable: v.boolean(),
+            order: v.number(),
+          })
+        ),
+      })
+    ),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"]),
+
+  reportCardExtraClassAssignments: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    bundleId: v.id("reportCardExtraBundles"),
+    order: v.number(),
+    createdAt: v.number(),
+    assignedBy: v.id("users"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class", ["classId"])
+    .index("by_bundle", ["bundleId"])
+    .index("by_class_and_bundle", ["classId", "bundleId"]),
+
+  reportCardExtraStudentValues: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    bundleId: v.id("reportCardExtraBundles"),
+    values: v.array(
+      v.object({
+        fieldId: v.string(),
+        textValue: v.optional(v.string()),
+        numberValue: v.optional(v.number()),
+        booleanValue: v.optional(v.boolean()),
+        scaleOptionId: v.optional(v.string()),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_session_term", ["studentId", "sessionId", "termId"])
+    .index("by_class_session_term", ["classId", "sessionId", "termId"]),
 });

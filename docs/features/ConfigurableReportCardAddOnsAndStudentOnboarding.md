@@ -11,7 +11,8 @@ This feature also adds a dedicated student-first onboarding route so new student
 
 - `apps/admin/app/assessments/setup/report-card-bundles/page.tsx`
 - `apps/admin/app/assessments/report-card-extras/page.tsx`
-- `apps/teacher/app/assessments/report-card-extras/page.tsx`
+- `apps/teacher/app/assessments/report-card-workbench/page.tsx`
+- `apps/teacher/app/assessments/report-card-extras/page.tsx` as a compatibility redirect to the workbench
 - `apps/admin/app/academic/students/onboarding/page.tsx`
 - existing report-card pages in admin and teacher apps so extras render in the same printable view:
   - `apps/admin/app/assessments/report-cards/page.tsx`
@@ -19,9 +20,11 @@ This feature also adds a dedicated student-first onboarding route so new student
 
 ### Server
 
-- `packages/convex/functions/academic/reportCardAddOns.ts` for bundle, scale, assignment, and entry operations
+- `packages/convex/functions/academic/reportCardExtras.ts` for bundle, scale, assignment, and entry operations
+- `packages/convex/functions/academic/reportCardExtrasModel.ts` for normalization, validation, and printable extras composition
 - `packages/convex/functions/academic/reportCards.ts` for composing extras into printable report-card payloads
 - `packages/convex/functions/academic/studentEnrollment.ts` for the student-first onboarding create flow and compatibility name handling
+- `packages/convex/functions/academic/studentNameCompat.ts` for safe display-name compatibility and split-name backfill behavior
 - `packages/convex/functions/academic/academicSetup.ts` if class-level level labeling needs a small Nursery-aware update
 
 ## Data Flow
@@ -37,7 +40,7 @@ This feature also adds a dedicated student-first onboarding route so new student
 
 ### 2. Teacher enters class extras
 
-1. Teacher opens the extras workspace for a session, term, class, and student.
+1. Teacher opens the report-card workbench for a session, term, class, and student.
 2. The server loads only bundles assigned to the selected class.
 3. The UI renders the configured sections in a clean, read-only-from-schema layout.
 4. If the teacher is the class form teacher, the fields are editable.
@@ -74,75 +77,51 @@ This feature also adds a dedicated student-first onboarding route so new student
 
 ### New tables
 
-- `reportCardScales`
+- `reportCardExtraScaleTemplates`
   - `schoolId`
   - `name`
   - `description?`
   - `options`
     - ordered reusable scale entries such as `A`, `B`, `C`, `D`, `E`
-  - `isArchived`
-  - `createdAt`, `updatedAt`
-- `reportCardBundles`
+  - `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
+- `reportCardExtraBundles`
   - `schoolId`
   - `name`
   - `description?`
-  - `status` or `isActive`
-  - `version`
-  - `createdAt`, `updatedAt`
-- `reportCardBundleSections`
+  - `sections`
+    - each section contains ordered fields
+    - each field stores `id`, `label`, `type`, `printable`, `order`, and optional `scaleTemplateId`
+  - `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
+- `reportCardExtraClassAssignments`
   - `schoolId`
-  - `bundleId`
-  - `title`
-  - `sortOrder`
-  - `createdAt`, `updatedAt`
-- `reportCardBundleFields`
-  - `schoolId`
-  - `bundleId`
-  - `sectionId`
-  - `label`
-  - `fieldKey`
-  - `fieldType`
-  - `sortOrder`
-  - `required`
-  - `scaleId?`
-  - `options?`
-  - `createdAt`, `updatedAt`
-- `reportCardBundleAssignments`
-  - `schoolId`
-  - `bundleId`
   - `classId`
-  - `createdAt`, `updatedAt`
-- `reportCardExtraValues`
+  - `bundleId`
+  - `order`
+  - `createdAt`, `assignedBy`, `updatedAt`, `updatedBy`
+- `reportCardExtraStudentValues`
   - `schoolId`
-  - `sessionId`
-  - `termId`
   - `classId`
   - `studentId`
+  - `sessionId`
+  - `termId`
   - `bundleId`
-  - `fieldId`
-  - `valueText?`
-  - `valueNumber?`
-  - `valueChoice?`
-  - `valueRating?`
-  - `bundleVersionSnapshot`
-  - `bundleNameSnapshot`
-  - `fieldLabelSnapshot`
-  - `fieldTypeSnapshot`
-  - `enteredBy`
-  - `updatedBy`
-  - `createdAt`, `updatedAt`
+  - `values`
+    - ordered field-value payloads keyed by `fieldId`
+  - `createdAt`, `updatedAt`, `updatedBy`
 
 ### Indexing expectations
 
 - All new tables are school-scoped.
-- Assignment and entry lookups should be indexed by `schoolId` plus the class/session/term identifiers used in the UI.
-- Entry rows should be fast to fetch by `studentId` and by `classId + sessionId + termId`.
+- Bundle and scale setup reads are indexed by school.
+- Class assignment reads are indexed by class.
+- Entry reads are indexed by `studentId + sessionId + termId` and by `classId + sessionId + termId` for report-card composition.
 
 ## Permissions
 
 - Admin
   - can create, edit, archive, and assign bundles and scales
   - can edit extras for any class in the school
+  - can add or update the head-teacher comment from the teacher workbench when signed into the teacher workspace as an admin
   - can use the student-first onboarding route
   - can override field values even when the class form teacher is unavailable
 - Form teacher
@@ -160,17 +139,21 @@ This feature also adds a dedicated student-first onboarding route so new student
 ### Bundle builder
 
 - Admin starts on the bundle builder route.
+- The route is discoverable from the admin workspace navigation as `Bundle Setup`.
 - Admin adds sections, then fields inside each section.
 - Admin chooses a reusable scale when a field needs an A-to-E style rubric.
 - Admin reorders sections and fields before saving.
 - Admin assigns the bundle to one or more classes from the same screen or a nearby assignment panel.
+- A class can accumulate multiple bundles, so assignment is additive rather than single-select.
 - The preview shows how the bundle will look on a report card before teachers ever use it.
 
 ### Teacher extras entry
 
-- Teacher opens the extras route, chooses session, term, class, and student, and sees only the bundles tied to that class.
-- The layout stays focused and classroom-friendly rather than feeling bolted onto the exam grid.
+- Teacher opens the workbench route, chooses session, term, class, and student, and sees only the bundles tied to that class.
+- The existing teacher workbench remains the single editing surface for comments, subject selection, and report extras instead of splitting that work across multiple pages.
+- When the signed-in user is an admin inside the teacher workspace, the same workbench also exposes the head-teacher comment editor for that selected student and class context.
 - Editable fields appear only when the user has permission for that class.
+- When several bundles are assigned to the class, the workspace renders each bundle and its sections in order.
 - Save feedback should be compact and immediate.
 
 ### Student-first onboarding
@@ -190,7 +173,7 @@ This feature also adds a dedicated student-first onboarding route so new student
 ## Regression Checks
 
 - Existing `/academic/students` class-first enrollment still works.
-- Existing student profile editing still works.
+- Existing student profile editing still works and now exposes first and last names alongside the compatibility display name.
 - Existing exam recording and report-card print flows still work when no bundles are configured.
 - Teacher report-card access still respects school and class boundaries.
 - Existing students with only `users.name` still render correctly before the name backfill is complete.

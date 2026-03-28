@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report Card Workbench - Mockup V2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #f8fafc;
+    }
+    
+    /* Segmented scale wrapper */
+    .scale-wrapper {
+      display: flex;
+      width: 100%;
+      max-width: 280px;
+    }
+    .rating-radio:checked + label {
+      background-color: #0f172a;
+      color: white;
+      border-color: #0f172a;
+      z-index: 10;
+    }
+    .rating-radio:focus-visible + label {
+      outline: 2px solid #0f172a;
+      outline-offset: 2px;
+      z-index: 10;
+    }
+    
+    .scale-label {
+      flex: 1;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #e2e8f0;
+      background-color: white;
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      margin-right: -1px;
+      transition: all 0.15s;
+    }
+    .scale-label:first-of-type {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }
+    .scale-label:last-of-type {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+      margin-right: 0;
+    }
+    .scale-label:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      z-index: 5;
+    }
+
+    /* Details/Summary Styling */
+    details > summary {
+      list-style: none;
+    }
+    details > summary::-webkit-details-marker {
+      display: none;
+    }
+    details[open] summary ~ * {
+      animation: sweep .3s ease-in-out;
+    }
+    @keyframes sweep {
+      0%    {opacity: 0; transform: translateY(-10px)}
+      100%  {opacity: 1; transform: translateY(0)}
+    }
+    details[open] summary .chevron {
+      transform: rotate(90deg);
+    }
+  </style>
+</head>
+<body class="text-brand-900 antialiased p-4 sm:p-8 min-h-screen flex justify-center pb-24">
+
+  <main class="w-full max-w-3xl space-y-6">
+    
+    <!-- Top Header Area -->
+    <header class="flex flex-col gap-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-[22px] font-bold tracking-tight text-brand-900">Report Card Workbench</h1>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="text-[10px] uppercase font-bold tracking-widest text-brand-500 bg-brand-100 px-2 py-0.5 rounded">2025/2026 Academic Session</span>
+            <span class="text-[10px] uppercase font-bold tracking-widest text-brand-500 bg-brand-100 px-2 py-0.5 rounded">Second Term</span>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <button class="border border-brand-200 bg-white hover:bg-brand-50 text-brand-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors duration-200">
+            Print view
+          </button>
+          <button class="bg-brand-900 hover:bg-brand-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center gap-2">
+            Next 
+            <span class="bg-brand-800 border border-brand-700 text-[10px] px-1.5 py-0.5 rounded text-brand-200 font-bold">1 of 7</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Selectors -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+        <label class="relative block rounded-xl border border-brand-200 bg-white focus-within:ring-2 focus-within:ring-brand-900 focus-within:border-brand-900 transition-all">
+          <span class="absolute top-2 left-4 text-[10px] font-bold uppercase tracking-widest text-brand-400">Class</span>
+          <select class="w-full bg-transparent px-4 pt-6 pb-2 text-sm font-semibold outline-none appearance-none cursor-pointer">
+            <option>JSS 1 - Olive Blaze</option>
+          </select>
+          <svg class="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </label>
+
+        <label class="relative block rounded-xl border border-brand-200 bg-white focus-within:ring-2 focus-within:ring-brand-900 focus-within:border-brand-900 transition-all">
+          <span class="absolute top-2 left-4 text-[10px] font-bold uppercase tracking-widest text-brand-400">Student</span>
+          <select class="w-full bg-transparent px-4 pt-6 pb-2 text-sm font-semibold outline-none appearance-none cursor-pointer">
+            <option>Adamu Zainab (OBCA/25/0007)</option>
+          </select>
+          <svg class="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </label>
+      </div>
+    </header>
+
+    <!-- Foldable Sections -->
+    <div class="space-y-4">
+
+      <!-- RESULTS ACCORDION -->
+      <details class="bg-white border border-brand-200 rounded-xl overflow-hidden shadow-sm group">
+        <summary class="px-5 py-4 cursor-pointer flex items-center justify-between outline-none focus-visible:ring-2 focus-visible:ring-brand-900">
+          <div class="flex items-center gap-4">
+            <svg class="chevron text-brand-400 transition-transform duration-200" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500 group-hover:text-brand-900 transition-colors">Results</span>
+          </div>
+          <div class="text-[11px] font-semibold text-brand-900">
+            Avg: <span class="font-bold">52.1</span> &nbsp;&nbsp; Total: <span class="font-bold">625.0</span>
+          </div>
+        </summary>
+        <div class="px-5 pb-5 pt-2 border-t border-brand-100 bg-brand-50/50">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-brand-400 mb-1">Total Score</p>
+              <p class="text-xl font-bold text-brand-900">625.0<span class="text-xs text-brand-500 font-medium ml-1">/ 1100</span></p>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-brand-400 mb-1">Average</p>
+              <p class="text-xl font-bold text-brand-900">52.1%</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-brand-400 mb-1">Grade</p>
+              <p class="text-xl font-bold text-emerald-600">C</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-brand-400 mb-1">Position</p>
+              <p class="text-xl font-bold text-brand-900">14<span class="text-xs text-brand-500 font-medium ml-1">of 35</span></p>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- SUBJECTS ACCORDION -->
+      <details class="bg-white border border-brand-200 rounded-xl overflow-hidden shadow-sm group">
+        <summary class="px-5 py-4 cursor-pointer flex items-center justify-between outline-none focus-visible:ring-2 focus-visible:ring-brand-900">
+          <div class="flex items-center gap-4">
+            <svg class="chevron text-brand-400 transition-transform duration-200" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500 group-hover:text-brand-900 transition-colors">Subjects</span>
+          </div>
+          <div class="text-[11px] font-semibold text-brand-900">
+            <span class="font-bold">11</span> of 11 selected
+          </div>
+        </summary>
+        <div class="px-5 py-5 border-t border-brand-100 bg-brand-50/50">
+          <p class="text-xs text-brand-500 text-center py-4">[ Subject Matrix Editor UI ]</p>
+        </div>
+      </details>
+
+      <!-- REPORT EXTRAS ACCORDION (The requested focus) -->
+      <details class="bg-white border border-brand-200 rounded-xl overflow-hidden shadow-sm group">
+        <summary class="px-5 py-4 cursor-pointer flex items-center justify-between outline-none focus-visible:ring-2 focus-visible:ring-brand-900">
+          <div class="flex items-center gap-4">
+            <svg class="chevron text-brand-400 transition-transform duration-200" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500 group-hover:text-brand-900 transition-colors">Report Extras</span>
+          </div>
+          <div class="text-[11px] font-semibold text-brand-900 flex items-center gap-3">
+            <span>1 bundle</span>
+            <span class="text-brand-400 hidden sm:inline-block">|</span>
+            <span class="hidden sm:inline-block">Student: <span class="font-bold">Adamu Zainab</span></span>
+          </div>
+        </summary>
+        
+        <!-- Extran UI Content -->
+        <div class="border-t border-brand-100 bg-white">
+          
+          <div class="px-5">
+            <div class="py-5 border-b border-brand-100">
+              <h3 class="text-sm font-bold text-brand-900">Primary Conduct</h3>
+              <p class="text-xs text-brand-500 mt-0.5">Used for all primary school students</p>
+            </div>
+
+            <!-- The sections from the screenshot: Psychomotor Skill & Affective Domain -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 py-6 pb-8">
+              
+              <!-- Left Column: Psychomotor -->
+              <div class="space-y-6">
+                <div class="flex items-center gap-2 border-b border-brand-100 pb-2">
+                  <h4 class="text-[10px] font-bold uppercase tracking-widest text-brand-400">Psychomotor Skill</h4>
+                </div>
+
+                <div class="space-y-4">
+                  <!-- Text Input Example -->
+                  <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Creative Activities</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <input type="text" value="Calm sha" class="w-full text-sm font-medium bg-white border border-brand-200 rounded-lg px-3 py-2 outline-none focus:border-brand-900 focus:ring-1 focus:ring-brand-900 transition-all placeholder:text-brand-300">
+                  </div>
+
+                  <!-- Number Input Example -->
+                  <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Handling Tools</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <input type="number" value="10" class="w-full text-sm font-medium bg-white border border-brand-200 rounded-lg px-3 py-2 outline-none focus:border-brand-900 focus:ring-1 focus:ring-brand-900 transition-all">
+                  </div>
+
+                  <!-- Hand Writing Select -> Segmented Pills Option -->
+                  <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Hand Writing</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <!-- Instead of an ugly select, a segmented option for "Yes / No / Average" or 1-5 scale. Let's show how a select could be a segmented control if options are small -->
+                    <div class="scale-wrapper max-w-full">
+                      <input type="radio" name="hw_s" id="hw_s-1" class="rating-radio hidden" value="Poor">
+                      <label for="hw_s-1" class="scale-label">Poor</label>
+                      <input type="radio" name="hw_s" id="hw_s-2" class="rating-radio hidden" value="Average">
+                      <label for="hw_s-2" class="scale-label">Average</label>
+                      <input type="radio" name="hw_s" id="hw_s-3" class="rating-radio hidden" value="Good" checked>
+                      <label for="hw_s-3" class="scale-label">Good</label>
+                      <input type="radio" name="hw_s" id="hw_s-4" class="rating-radio hidden" value="Excellent">
+                      <label for="hw_s-4" class="scale-label">Excellent</label>
+                    </div>
+                  </div>
+
+                   <!-- Physical Activity -->
+                   <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Physical Activity</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <div class="scale-wrapper max-w-full">
+                      <input type="radio" name="pa_s" id="pa_s-1" class="rating-radio hidden" value="Poor">
+                      <label for="pa_s-1" class="scale-label">Poor</label>
+                      <input type="radio" name="pa_s" id="pa_s-2" class="rating-radio hidden" value="Average" checked>
+                      <label for="pa_s-2" class="scale-label">Average</label>
+                      <input type="radio" name="pa_s" id="pa_s-3" class="rating-radio hidden" value="Good">
+                      <label for="pa_s-3" class="scale-label">Good</label>
+                      <input type="radio" name="pa_s" id="pa_s-4" class="rating-radio hidden" value="Excellent">
+                      <label for="pa_s-4" class="scale-label">Excellent</label>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Right Column: Affective -->
+              <div class="space-y-6">
+                 <div class="flex items-center gap-2 border-b border-brand-100 pb-2">
+                  <h4 class="text-[10px] font-bold uppercase tracking-widest text-brand-400">Affective Domain</h4>
+                </div>
+
+                <div class="space-y-4">
+                  
+                  <!-- Punctuality (Standard Select -> pills) -->
+                  <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Punctuality</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <div class="scale-wrapper max-w-full">
+                      <input type="radio" name="punc2" id="punc2-0" class="rating-radio hidden" value="Not set" checked>
+                      <label for="punc2-0" class="scale-label">Not set</label>
+                      <input type="radio" name="punc2" id="punc2-1" class="rating-radio hidden" value="Fair">
+                      <label for="punc2-1" class="scale-label">Fair</label>
+                      <input type="radio" name="punc2" id="punc2-2" class="rating-radio hidden" value="Good">
+                      <label for="punc2-2" class="scale-label">Good</label>
+                      <input type="radio" name="punc2" id="punc2-3" class="rating-radio hidden" value="Very Good">
+                      <label for="punc2-3" class="scale-label">Very Good</label>
+                    </div>
+                  </div>
+
+                  <!-- Neatness -->
+                  <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                      <label class="text-[11px] font-bold uppercase tracking-widest text-brand-600">Neatness</label>
+                      <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400">Printable</span>
+                    </div>
+                    <div class="scale-wrapper max-w-full">
+                      <input type="radio" name="neat" id="neat-0" class="rating-radio hidden" value="Not set">
+                      <label for="neat-0" class="scale-label">Not set</label>
+                      <input type="radio" name="neat" id="neat-1" class="rating-radio hidden" value="Fair">
+                      <label for="neat-1" class="scale-label">Fair</label>
+                      <input type="radio" name="neat" id="neat-2" class="rating-radio hidden" value="Good">
+                      <label for="neat-2" class="scale-label">Good</label>
+                      <input type="radio" name="neat" id="neat-3" class="rating-radio hidden" value="Very Good" checked>
+                      <label for="neat-3" class="scale-label">Very Good</label>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+          </div>
+          
+          <!-- Sticky Save Bar for Extras (appears at bottom of extras section if it's long) -->
+          <div class="bg-brand-50 border-t border-brand-200 px-5 py-3 flex items-center justify-between">
+             <span class="text-[11px] font-semibold text-brand-500">Unsaved changes in Primary Conduct</span>
+             <div class="flex gap-2">
+                <button class="text-[11px] font-bold uppercase tracking-widest text-brand-500 hover:text-brand-900 px-3 py-1.5">Reset</button>
+                <button class="bg-brand-900 hover:bg-brand-800 text-white text-[11px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-md transition-colors shadow-sm">Save Extras</button>
+             </div>
+          </div>
+        </div>
+
+      </details>
+
+    </div>
+
+    <!-- COMMENTS SECTION (Always visible below accordions) -->
+    <div class="space-y-6 pt-4">
+
+      <!-- Head Teacher Comment (Read Only style from screens) -->
+      <div class="bg-brand-50 border-l-4 border-brand-200 rounded-lg rounded-l-none px-5 py-4">
+        <label class="block text-[10px] font-bold uppercase tracking-widest text-brand-400 mb-1 flex items-center gap-2">
+          Head Teacher Comment
+          <span class="bg-white border text-brand-400 text-[9px] px-1.5 py-0.5 rounded leading-none">LOCKED</span>
+        </label>
+        <p class="text-sm font-medium text-brand-600 leading-relaxed min-h-[48px]">You can do better next term</p>
+      </div>
+
+      <!-- Class Teacher Comment -->
+      <div class="bg-white border border-brand-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-brand-900 focus-within:border-brand-900 transition-all shadow-sm">
+        <div class="bg-brand-50/50 border-b border-brand-100 px-5 py-3 flex items-center justify-between">
+           <label class="text-[10px] font-bold uppercase tracking-widest text-brand-600">Class Teacher Comment</label>
+           <button class="text-[10px] font-bold uppercase tracking-widest text-brand-900 hover:opacity-70 transition-opacity flex items-center gap-1">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+             Save
+           </button>
+        </div>
+        <div class="relative">
+          <textarea class="w-full h-32 bg-transparent p-5 text-sm font-medium resize-none outline-none placeholder:text-brand-300" placeholder="Type your observation here...">You need to be focus next term</textarea>
+          <div class="absolute right-4 bottom-3 text-[10px] font-bold tracking-widest text-brand-400">30 / 1000</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</body>
+</html>

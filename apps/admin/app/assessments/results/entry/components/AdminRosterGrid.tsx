@@ -203,6 +203,12 @@ export function AdminRosterGrid({
                     >
                       View Report Card
                     </Link>
+                    <Link
+                      href={`/assessments/report-card-extras?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
+                      className="ml-3 mt-1 inline-flex text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700"
+                    >
+                      Report Extras
+                    </Link>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                       {student.assessmentRecord
                         ? "Standard Entry"

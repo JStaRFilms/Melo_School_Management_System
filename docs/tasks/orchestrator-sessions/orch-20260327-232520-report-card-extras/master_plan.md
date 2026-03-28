@@ -2,7 +2,7 @@
 
 **Session ID:** `orch-20260327-232520-report-card-extras`  
 **Mode:** `takomi -> mode-orchestrator`  
-**Status:** Blueprint complete; external implementation orchestration pending
+**Status:** Complete after external implementation plus local verification and finalization
 
 ## Overview
 
@@ -72,11 +72,11 @@ approval gate -> `T01`, `T02`, `T03`, `T04`
 | ID | Subtask | Mode | Workflow | Status |
 | --- | --- | --- | --- | --- |
 | `T00` | Feature blueprint doc | `vibe-architect` | `/vibe-genesis` | Complete |
-| `T01` | Foundation domain and schema | `vibe-code` | `/vibe-build` | Pending approval |
-| `T02` | Admin bundle configuration UI | `vibe-code` | `/vibe-build` | Pending approval |
-| `T03` | Report-card extras entry and print integration | `vibe-code` | `/vibe-build` | Pending approval |
-| `T04` | Student-first onboarding UI | `vibe-code` | `/vibe-build` | Pending approval |
-| `T05` | Integration, regressions, docs, final summary | `vibe-review` | `/vibe-syncDocs` + `/review_code` | Pending approval |
+| `T01` | Foundation domain and schema | `vibe-code` | `/vibe-build` | Complete |
+| `T02` | Admin bundle configuration UI | `vibe-code` | `/vibe-build` | Complete |
+| `T03` | Report-card extras entry and print integration | `vibe-code` | `/vibe-build` | Complete |
+| `T04` | Student-first onboarding UI | `vibe-code` | `/vibe-build` | Complete |
+| `T05` | Integration, regressions, docs, final summary | `vibe-review` | `/vibe-syncDocs` + `/review_code` | Complete |
 
 ## File Ownership
 
@@ -84,8 +84,8 @@ approval gate -> `T01`, `T02`, `T03`, `T04`
   - `docs/features/ConfigurableReportCardAddOnsAndStudentOnboarding.md`
 - `T01`
   - `packages/convex/schema.ts`
-  - `packages/convex/functions/academic/reportCardBundleConfig.ts`
   - `packages/convex/functions/academic/reportCardExtras.ts`
+  - `packages/convex/functions/academic/reportCardExtrasModel.ts`
   - supporting shared type files only if needed by backend contract
 - `T02`
   - `apps/admin/app/assessments/setup/report-card-bundles/**`
@@ -116,14 +116,15 @@ No task advances with unresolved blocking findings.
 
 - [x] `T00` Feature blueprint complete and reviewed
 - [x] User approved moving to external orchestration of remaining tasks
-- [ ] `T01` Foundation domain and schema complete
-- [ ] `T02` Admin bundle configuration UI complete
-- [ ] `T03` Report-card extras entry and print integration complete
-- [ ] `T04` Student-first onboarding UI complete
-- [ ] `T05` Integration, docs, and final summary complete
+- [x] `T01` Foundation domain and schema complete
+- [x] `T02` Admin bundle configuration UI complete
+- [x] `T03` Report-card extras entry and print integration complete
+- [x] `T04` Student-first onboarding UI complete
+- [x] `T05` Integration, docs, and final summary complete
 
 ## Orchestrator Notes
 
-- The local approval gate is now satisfied. The next orchestrator should execute only `T01` through `T05`.
+- `T01` is complete after implementer, spec, and code-quality gates.
+- `T02`, `T03`, and `T04` were completed by the external orchestrator, then locally verified and corrected where runtime contracts still diverged from the shipped backend.
 - Existing names must be backfilled automatically where possible; ambiguous names must remain safe and editable.
 - Keep implementation files modular and split early to stay aligned with the 200-line rule.

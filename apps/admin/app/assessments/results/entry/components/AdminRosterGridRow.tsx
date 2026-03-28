@@ -77,6 +77,12 @@ export function AdminRosterGridRow({
           >
             View Report Card
           </Link>
+          <Link
+            href={`/assessments/report-card-extras?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
+            className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
+          >
+            Report Extras
+          </Link>
         </div>
         <p className="text-[8px] font-medium text-slate-400 uppercase mt-0.5 tracking-tighter">
           {student.assessmentRecord

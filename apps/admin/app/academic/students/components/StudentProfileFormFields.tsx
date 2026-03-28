@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import type { ClassSummary } from "./types";
 
 interface StudentProfileFormFieldsProps {
-  name: string;
+  firstName: string;
+  lastName: string;
   admissionNumber: string;
   classId: string;
   houseName: string;
@@ -15,7 +16,8 @@ interface StudentProfileFormFieldsProps {
   guardianPhone: string;
   address: string;
   classes: ClassSummary[];
-  onNameChange: (value: string) => void;
+  onFirstNameChange: (value: string) => void;
+  onLastNameChange: (value: string) => void;
   onAdmissionNumberChange: (value: string) => void;
   onClassIdChange: (value: string) => void;
   onHouseNameChange: (value: string) => void;
@@ -27,7 +29,8 @@ interface StudentProfileFormFieldsProps {
 }
 
 export function StudentProfileFormFields({
-  name,
+  firstName,
+  lastName,
   admissionNumber,
   classId,
   houseName,
@@ -37,7 +40,8 @@ export function StudentProfileFormFields({
   guardianPhone,
   address,
   classes,
-  onNameChange,
+  onFirstNameChange,
+  onLastNameChange,
   onAdmissionNumberChange,
   onClassIdChange,
   onHouseNameChange,
@@ -49,11 +53,20 @@ export function StudentProfileFormFields({
 }: StudentProfileFormFieldsProps) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <Field label="Student Name">
+      <Field label="First Name">
         <input
-          value={name}
-          onChange={(event) => onNameChange(event.target.value)}
+          value={firstName}
+          onChange={(event) => onFirstNameChange(event.target.value)}
           className={fieldInputClassName}
+          placeholder="First name"
+        />
+      </Field>
+      <Field label="Last Name">
+        <input
+          value={lastName}
+          onChange={(event) => onLastNameChange(event.target.value)}
+          className={fieldInputClassName}
+          placeholder="Last name"
         />
       </Field>
       <Field label="Admission No.">

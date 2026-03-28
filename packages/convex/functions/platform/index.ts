@@ -137,15 +137,25 @@ export const assignSchoolAdminInternal = internalMutation({
     const now = Date.now();
 
     // Insert school-scoped admin user
-    await ctx.db.insert("users", {
+    const adminUserId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
       name: args.adminName,
       email: args.adminEmail,
       role: "admin",
+      managerUserId: null,
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.runMutation(
+      internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,
+      {
+        schoolId: args.schoolId,
+        leadAdminUserId: adminUserId,
+        updatedBy: adminUserId,
+      }
+    );
 
     // Transition school from pending to active
     await ctx.db.patch(args.schoolId, {
