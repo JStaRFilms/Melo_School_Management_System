@@ -3,7 +3,6 @@ import { convex as convexPlugin } from "@convex-dev/better-auth/plugins";
 import type { GenericCtx } from "@convex-dev/better-auth/utils";
 import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
-import { admin as adminPlugin } from "better-auth/plugins";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
@@ -26,7 +25,7 @@ function getTrustedOrigins() {
   const localOrigins =
     process.env.NODE_ENV === "production"
       ? []
-      : ["http://localhost:3001", "http://localhost:3002"];
+      : ["http://localhost:3001", "http://localhost:3002", "http://localhost:3003"];
 
   return Array.from(new Set([...configuredOrigins, ...localOrigins]));
 }
@@ -44,22 +43,7 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
       requireEmailVerification: false,
     },
     trustedOrigins: getTrustedOrigins(),
-    user: {
-      additionalFields: {
-        role: {
-          type: "string",
-          required: false,
-        },
-        schoolId: {
-          type: "string",
-          required: false,
-        },
-      },
-    },
     plugins: [
-      adminPlugin({
-        adminRoles: ["admin"],
-      }),
       convexPlugin({
         authConfig,
         jwks,

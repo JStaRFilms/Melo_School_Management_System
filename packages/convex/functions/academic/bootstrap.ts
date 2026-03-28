@@ -5,11 +5,11 @@ import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 
 type BootstrapIds = {
-  schoolId: Id<"schools">;
-  adminUserId: Id<"users">;
-  sessionId?: Id<"academicSessions">;
-  termId?: Id<"academicTerms">;
-};
+    schoolId: Id<"schools">;
+    adminUserId: Id<"users">;
+    sessionId?: Id<"academicSessions">;
+    termId?: Id<"academicTerms">;
+  };
 
 async function readJsonSafe(response: Response) {
   try {
@@ -25,8 +25,6 @@ async function ensureAuthUser(args: {
   name: string;
   email: string;
   password: string;
-  role?: string;
-  schoolId?: string;
 }) {
   const signUpResponse = await fetch(`${args.authBaseUrl}/api/auth/sign-up/email`, {
     method: "POST",
@@ -34,13 +32,11 @@ async function ensureAuthUser(args: {
       "content-type": "application/json",
       origin: args.origin,
     },
-      body: JSON.stringify({
-        name: args.name,
-        email: args.email,
-        password: args.password,
-        ...(args.role ? { role: args.role } : {}),
-        ...(args.schoolId ? { schoolId: args.schoolId } : {}),
-      }),
+    body: JSON.stringify({
+      name: args.name,
+      email: args.email,
+      password: args.password,
+    }),
   });
 
   const signUpPayload = await readJsonSafe(signUpResponse);
@@ -110,6 +106,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
       schoolId = await ctx.db.insert("schools", {
         name: normalizeHumanName(args.schoolName),
         slug: args.schoolSlug,
+        status: "active",
         createdAt: now,
         updatedAt: now,
       });
@@ -138,6 +135,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        managerUserId: null,
         updatedAt: now,
       });
     } else {
@@ -147,10 +145,20 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        managerUserId: null,
         createdAt: now,
         updatedAt: now,
       });
     }
+
+    await ctx.runMutation(
+      internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,
+      {
+        schoolId,
+        leadAdminUserId: adminUserId,
+        updatedBy: adminUserId,
+      }
+    );
 
     let sessionId: Id<"academicSessions"> | undefined;
     if (args.sessionName?.trim()) {
@@ -266,7 +274,6 @@ export const bootstrapSchoolAdmin = action({
       name: normalizePersonName(args.adminName),
       email: args.adminEmail.trim().toLowerCase(),
       password: args.adminPassword,
-      role: "admin",
     });
 
     const bootstrapped: BootstrapIds = await ctx.runMutation(

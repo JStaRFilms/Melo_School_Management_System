@@ -35,6 +35,7 @@ The current exam-recording slice also stops before report-card generation. This 
 - Student photo upload and replacement
 - Student report-card viewing
 - Student report-card export with profile details and photo
+- Teacher-side report-card workbench for class-teacher comments and student subject updates
 - Admin-side report-card comment entry for each student
 - Admin-side manual next-term start date entry for each term
 - Report-card access in both:
@@ -95,10 +96,12 @@ Specifically:
 ### Client: Teacher App
 
 - existing teacher enrollment and/or assessment flows gain student-level clickthrough to report-card view
-- new teacher report-card route(s)
-  - view a selected student's report card
-  - export/print using the same shared rendering logic as admin
-- teacher-side permissions remain read/export for report cards, without giving teacher setup-edit powers outside existing scope
+- new teacher report-card workbench route
+  - class and student selectors at the top
+  - report-card results section
+  - student subject-change section
+  - class-teacher comment editor
+- teacher-side permissions remain scoped to assigned classes, without giving teacher setup-edit powers outside existing scope
 
 ### Shared UI / Domain Helpers
 
@@ -189,6 +192,7 @@ Specifically:
 - Enforce access:
   - admin can view/export for any student in the school
   - teacher can only view/export students connected to their assigned class/subject context
+  - teacher can save the class-teacher comment only for the assigned class
 
 ## Data Flow
 
@@ -219,11 +223,12 @@ Specifically:
 
 ### 3b. Save Report-Card Comments
 
-1. Admin opens a student's report card in the admin app.
+1. Admin opens a student's report card in the admin app or teacher opens the workbench page.
 2. Client preloads the saved class-teacher comment and head-teacher comment for that student, session, and term.
-3. Admin edits one or both fields and clicks save.
+3. Teacher edits the class-teacher field; admin can edit one or both fields from the admin panel.
 4. Server validates:
-   - admin access
+   - teacher access to the assigned class when the save comes from the workbench
+   - admin access for head-teacher edits
    - student/session/term school ownership
    - term belongs to the selected session
    - comment length stays within allowed limits
@@ -490,6 +495,7 @@ This keeps us aligned with the project 200-line modularity rule.
 ### Teacher App
 
 - the teacher assessment roster now links directly to a printable student report-card page
+- the teacher workbench now opens with class and student navigation plus inline subject and comment controls
 - teacher report-card access is still constrained by assigned class access checks on the server
 
 ### Report Card Output
@@ -498,7 +504,7 @@ This keeps us aligned with the project 200-line modularity rule.
 - the backend now builds each report card from the student's full subject list for the selected session
 - if a subject has no assessment record yet, the report card still includes it with zero-filled score cells and a pending status
 - once assessment data is entered later, the same report-card sheet updates automatically without changing the student export flow
-- the bottom section now reads from admin-managed per-student comments
+- the bottom section now reads from the per-student comments saved by admins or the teacher workbench, with the head-teacher field still admin-only
 - the `Next Term Begins` field now reads from the term's saved manual date rather than an inferred next-term lookup
 
 ## Verification

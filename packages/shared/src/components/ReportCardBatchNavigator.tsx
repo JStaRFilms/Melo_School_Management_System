@@ -16,6 +16,7 @@ export function ReportCardBatchNavigator({
   isPrintingFullClass,
   onSelectStudent,
   onPrintFullClass,
+  extrasHref,
 }: {
   students: ReportCardBatchStudent[];
   activeStudentId: string;
@@ -26,6 +27,7 @@ export function ReportCardBatchNavigator({
   isPrintingFullClass?: boolean;
   onSelectStudent: (studentId: string) => void;
   onPrintFullClass?: () => void;
+  extrasHref?: string;
 }) {
   const activeIndex = students.findIndex(
     (student) => student.studentId === activeStudentId
@@ -85,6 +87,14 @@ export function ReportCardBatchNavigator({
           </div>
 
           <div className="flex items-end gap-2">
+            {extrasHref ? (
+              <a
+                href={extrasHref}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
+              >
+                Report Extras
+              </a>
+            ) : null}
             {onPrintFullClass ? (
               <button
                 type="button"

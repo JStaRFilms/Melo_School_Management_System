@@ -99,6 +99,12 @@ export function RosterGridRow({
               >
                 View Report Card
               </Link>
+              <Link
+                href={`/assessments/report-card-extras?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
+                className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
+              >
+                Report Extras
+              </Link>
             </div>
           </div>
         </div>

@@ -158,6 +158,7 @@ export const seedExamRecordingDataInternal = internalMutation({
     const schoolId = await ctx.db.insert("schools", {
       name: normalizeHumanName("Demo Academy"),
       slug: "demo-school",
+      status: "active",
       createdAt: now,
       updatedAt: now,
     });

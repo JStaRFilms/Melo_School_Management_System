@@ -34,6 +34,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     description: "Manage staff, academics, and assessment setup.",
     sections: [
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
+      { href: "/admin", label: "Admins", matchers: ["/admin"] },
       { href: "/academic/sessions", label: "Sessions", matchers: ["/academic/sessions"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
@@ -54,9 +55,19 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/assessments/setup/grading-bands"],
       },
       {
+        href: "/assessments/setup/report-card-bundles",
+        label: "Bundle Setup",
+        matchers: ["/assessments/setup/report-card-bundles"],
+      },
+      {
         href: "/assessments/results/entry",
         label: "Score Entry",
         matchers: ["/assessments/results/entry"],
+      },
+      {
+        href: "/assessments/report-card-extras",
+        label: "Report Extras",
+        matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
       },
     ],
   },
@@ -73,6 +84,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         href: "/assessments/exams/entry",
         label: "Exam Entry",
         matchers: ["/assessments/exams", "/assessments/exams/entry"],
+      },
+      {
+        href: "/assessments/report-card-workbench",
+        label: "Report Extras",
+        matchers: ["/assessments/report-card-workbench", "/assessments/report-card-extras", "/assessments/report-cards"],
       },
       {
         href: "/enrollment/subjects",

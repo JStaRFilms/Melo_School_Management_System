@@ -7,7 +7,11 @@ import {
   assertAdminForSchool,
   teacherHasClassAccess,
 } from "./auth";
-import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
+import { normalizeHumanName } from "@school/shared/name-format";
+import {
+  getReadableUserName,
+  resolveStoredUserNameFields,
+} from "./studentNameCompat";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -24,15 +28,6 @@ function normalizeOptionalHouseName(value: string | null | undefined) {
   }
 
   return normalizeHumanName(trimmed);
-}
-
-function normalizeRequiredStudentName(value: string) {
-  const normalized = normalizePersonName(value);
-  if (!normalized) {
-    throw new ConvexError("Student name is required");
-  }
-
-  return normalized;
 }
 
 function normalizeAdmissionNumber(value: string) {
@@ -119,7 +114,9 @@ function getValidatedPhotoMetadata(args: {
 
 export const createStudent = mutation({
   args: {
-    name: v.string(),
+    name: v.optional(v.union(v.string(), v.null())),
+    firstName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.union(v.string(), v.null())),
     admissionNumber: v.string(),
     classId: v.id("classes"),
     houseName: v.optional(v.union(v.string(), v.null())),
@@ -138,7 +135,12 @@ export const createStudent = mutation({
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    const studentName = normalizeRequiredStudentName(args.name);
+    const studentName = resolveStoredUserNameFields({
+      name: args.name,
+      firstName: args.firstName,
+      lastName: args.lastName,
+      requiredMessage: "Student name is required",
+    });
     const admissionNumber = normalizeAdmissionNumber(args.admissionNumber);
     const gender = normalizeGender(args.gender, { required: true });
     const houseName = normalizeOptionalHouseName(args.houseName);
@@ -168,7 +170,9 @@ export const createStudent = mutation({
     const studentUserId = await ctx.db.insert("users", {
       schoolId,
       authId: toStudentAuthId(String(schoolId), admissionNumber),
-      name: studentName,
+      name: studentName.name,
+      ...(studentName.firstName ? { firstName: studentName.firstName } : {}),
+      ...(studentName.lastName ? { lastName: studentName.lastName } : {}),
       email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
       role: "student",
       createdAt: now,
@@ -244,9 +248,10 @@ export const listStudentsByClass = query({
         .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
           const studentUser = await ctx.db.get(student.userId);
+          const studentName = getReadableUserName(studentUser);
           return {
             _id: student._id,
-            studentName: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
+            studentName: studentName.displayName || "Unnamed Student",
             admissionNumber: student.admissionNumber,
             classId: student.classId,
             createdAt: student.createdAt,
@@ -261,7 +266,9 @@ export const listStudentsByClass = query({
 export const updateStudent = mutation({
   args: {
     studentId: v.id("students"),
-    name: v.optional(v.string()),
+    name: v.optional(v.union(v.string(), v.null())),
+    firstName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.union(v.string(), v.null())),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
     houseName: v.optional(v.union(v.string(), v.null())),
@@ -315,18 +322,36 @@ export const updateStudent = mutation({
       }
     }
 
-    const userUpdates: Record<string, unknown> = {
+    const userName = resolveStoredUserNameFields({
+      name: args.name,
+      firstName: args.firstName,
+      lastName: args.lastName,
+      fallbackName: studentUser.name,
+      fallbackFirstName: studentUser.firstName,
+      fallbackLastName: studentUser.lastName,
+      requiredMessage: "Student name is required",
+    });
+
+    const nextUserRecord: Record<string, unknown> = {
+      schoolId: studentUser.schoolId,
+      authId: studentUser.authId,
+      name: userName.name,
+      email: studentUser.email,
+      role: studentUser.role,
+      createdAt: studentUser.createdAt,
       updatedAt: Date.now(),
+      ...(studentUser.isArchived !== undefined ? { isArchived: studentUser.isArchived } : {}),
+      ...(studentUser.archivedAt !== undefined ? { archivedAt: studentUser.archivedAt } : {}),
+      ...(studentUser.archivedBy !== undefined ? { archivedBy: studentUser.archivedBy } : {}),
+      ...(userName.firstName ? { firstName: userName.firstName } : {}),
+      ...(userName.lastName ? { lastName: userName.lastName } : {}),
     };
-    if (args.name !== undefined) {
-      userUpdates.name = normalizeRequiredStudentName(args.name);
-    }
     if (args.admissionNumber !== undefined) {
-      userUpdates.authId = toStudentAuthId(
+      nextUserRecord.authId = toStudentAuthId(
         String(schoolId),
         nextAdmissionNumber
       );
-      userUpdates.email = `${nextAdmissionNumber
+      nextUserRecord.email = `${nextAdmissionNumber
         .replace(/[^a-zA-Z0-9]/g, "")
         .toLowerCase()}@students.local`;
     }
@@ -401,7 +426,7 @@ export const updateStudent = mutation({
     }
     if (nextPhotoUpdatedAt) nextStudentRecord.photoUpdatedAt = nextPhotoUpdatedAt;
 
-    await ctx.db.patch(studentUser._id, userUpdates);
+    await ctx.db.replace(studentUser._id, nextUserRecord as any);
     await ctx.db.replace(args.studentId, nextStudentRecord);
     return null;
   },
@@ -412,6 +437,9 @@ export const getStudentProfile = query({
   returns: v.object({
     _id: v.id("students"),
     name: v.string(),
+    displayName: v.string(),
+    firstName: v.union(v.string(), v.null()),
+    lastName: v.union(v.string(), v.null()),
     admissionNumber: v.string(),
     classId: v.id("classes"),
     className: v.string(),
@@ -445,9 +473,14 @@ export const getStudentProfile = query({
       throw new ConvexError("Student class not found");
     }
 
+    const studentName = getReadableUserName(studentUser);
+
     return {
       _id: student._id,
-      name: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
+      name: studentName.displayName || "Unnamed Student",
+      displayName: studentName.displayName || "Unnamed Student",
+      firstName: studentName.firstName,
+      lastName: studentName.lastName,
       admissionNumber: student.admissionNumber,
       classId: student.classId,
       className: normalizeHumanName(classDoc.name),
@@ -780,13 +813,14 @@ export const getClassStudentSubjectMatrix = query({
 
     const studentResults = students
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
-      .map(async (student) => {
-        const studentUser = await ctx.db.get(student.userId);
-        return {
-          _id: student._id,
-            studentName: normalizePersonName(studentUser?.name ?? "Unnamed Student"),
-          admissionNumber: student.admissionNumber,
-          selectedSubjectIds: (selectionMap.get(String(student._id)) ?? []).map(
+        .map(async (student) => {
+          const studentUser = await ctx.db.get(student.userId);
+          const studentName = getReadableUserName(studentUser);
+          return {
+            _id: student._id,
+            studentName: studentName.displayName || "Unnamed Student",
+            admissionNumber: student.admissionNumber,
+            selectedSubjectIds: (selectionMap.get(String(student._id)) ?? []).map(
             (id) => id as any
           ),
         };

@@ -22,7 +22,8 @@
 | `T14` | Complete | Live admin and teacher smoke tests passed against authenticated apps and the seeded Convex deployment |
 | `T15` | Complete | Academic setup mockups now explicitly cover teacher creation, session/term setup, class offerings, admin-only student creation, teacher subject editing, and states |
 | `T16` | Complete | Academic setup is now live across admin and teacher apps, including auth-backed teacher creation, class configuration, student roster creation, and shared subject-selection matrices |
-| `T17` | Later | Platform super admin and multi-school provisioning are captured as a deferred follow-on slice |
+| `T17` | Complete | Platform super admin and multi-school provisioning are now captured as a later implementation blueprint that is ready for delegation |
+| `T18` | Ready | Platform super admin implementation can now be delegated directly from the finalized T17 blueprint |
 | `T10` | Complete | Final verification/docs sync/review completed; docs updated and verification status recorded |
 
 ## Verification Results
@@ -42,11 +43,11 @@
 
 ## Outstanding Issues
 
-- `T16` is complete; bootstrap/onboarding for the first real school admin is the next practical follow-on.
-- `T17` is intentionally deferred until after the current school's setup flow is stable.
+- `T17` is complete as a planning slice, but its actual implementation still remains a future build.
+- `T18` is the next concrete implementation slice for platform provisioning.
+- Any future platform implementation should preserve the separate `apps/platform` surface and dedicated `platformAdmins` model documented in the feature spec.
 - Any remaining exam-recording draft assets outside the verified teacher artifacts should still be treated as editable working inputs until their assigned tasks are completed.
 
 ## Next Actions
 
-1. Execute the first-school bootstrap flow.
-2. Execute `T17`.
+1. Execute `T18` when platform provisioning becomes the active build priority.

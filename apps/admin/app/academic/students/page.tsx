@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import {
@@ -23,7 +24,7 @@ import { MobileSheet } from "./components/MobileSheet";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
-import { getStudentPhotoValidationError } from "./components/studentPhotoValidation";
+import { uploadStudentPhoto } from "./components/studentPhotoUpload";
 import type {
   ClassSummary,
   EnrollmentMatrix,
@@ -252,41 +253,12 @@ export default function StudentsPage() {
 
     let uploadedPhoto = false;
     try {
-      let uploadedPhotoMetadata: {
-        storageId: string;
-        fileName: string;
-        contentType: string;
-      } | null = null;
-
-      if (studentPhotoFile) {
-        const validationError = getStudentPhotoValidationError(studentPhotoFile);
-        if (validationError) {
-          throw new Error(validationError);
-        }
-
-        const uploadUrl = (await generateStudentPhotoUploadUrl({} as never)) as string;
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": studentPhotoFile.type },
-          body: studentPhotoFile,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error("Photo upload failed");
-        }
-
-        const uploadPayload = (await uploadResponse.json()) as { storageId: string };
-        if (!uploadPayload.storageId) {
-          throw new Error("Photo upload failed");
-        }
-
-        uploadedPhotoMetadata = {
-          storageId: uploadPayload.storageId,
-          fileName: studentPhotoFile.name,
-          contentType: studentPhotoFile.type,
-        };
-        uploadedPhoto = true;
-      }
+      const uploadedPhotoMetadata = studentPhotoFile
+        ? await uploadStudentPhoto(studentPhotoFile, () =>
+            generateStudentPhotoUploadUrl({} as never) as Promise<string>
+          )
+        : null;
+      uploadedPhoto = Boolean(uploadedPhotoMetadata);
 
       const createdStudentId = (await createStudent({
         name: normalizedStudentName,
@@ -434,21 +406,32 @@ export default function StudentsPage() {
               Subject ticks save instantly, so there is nothing separate to
               commit at the bottom of the page.
             </p>
+            <p className="text-sm text-slate-500">
+              Need student-first intake instead? Use the dedicated onboarding route for first name, last name, guardian details, and class selection later in the flow.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (isMobileViewport) {
-                openAddStudent();
-                return;
-              }
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link
+              href="/academic/students/onboarding"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+            >
+              Student-First Onboarding
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                if (isMobileViewport) {
+                  openAddStudent();
+                  return;
+                }
 
-              focusStudentForm();
-            }}
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-700"
-          >
-            Add Student
-          </button>
+                focusStudentForm();
+              }}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-700"
+            >
+              Add Student
+            </button>
+          </div>
         </div>
       </header>
 

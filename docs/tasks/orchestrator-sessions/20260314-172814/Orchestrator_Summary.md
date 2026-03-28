@@ -1,31 +1,32 @@
 # Orchestrator Summary
 
 **Session ID:** `orch-20260314-172814`  
-**Status:** Initialized
+**Status:** Audited and reconciled
 
 ## Execution Overview
 
 | Task Range | Status | Notes |
 | --- | --- | --- |
-| `T01-T10` | Ready | Genesis and orchestration setup tasks created |
-| `T11-T18` | Ready | Design tasks created |
-| `T19-T24` | Ready | Foundation tasks created |
-| `T25-T45` | Ready | Product implementation tasks created |
-| `T46` | Ready | Hardening and handoff task created |
+| `T01-T13` | Verified Complete | Genesis and early design foundation artifacts exist |
+| `T14-T18` | Mixed | `T14-T15` reverted/pending, `T18` verified complete |
+| `T19-T24` | Mixed | `T19` and `T21` verified complete; others remain pending/partial |
+| `T25-T45` | Mixed | `T30` verified complete; several others partially satisfied but not fully complete |
+| `T46` | Pending | Hardening and handoff task not yet complete |
 
 ## Session Counts
 
 - FR issues created: `21`
-- Pending task files created: `46`
+- Pending task files after audit: `29`
 - In-progress task files: `0`
-- Completed task files: `0`
+- Completed task files after audit: `17`
 
 ## Verification Results
 
-- TypeScript: Not run
-- Lint: Not run
-- Build: Not run
-- E2E: Not run
+- Session audit: Completed on `2026-03-27`
+- TypeScript: Not run as part of this historical-session audit
+- Lint: Not run as part of this historical-session audit
+- Build: Not run as part of this historical-session audit
+- E2E: Not run as part of this historical-session audit
 
 ## Scope Compliance
 
@@ -38,14 +39,16 @@
 
 ## Outstanding Issues
 
-- No task has been executed yet.
-- Design deliverables and implementation artifacts remain pending.
+- The original session had stale status drift.
+- `T14` had a false completion record with missing claimed artifacts.
+- Several tasks are partially satisfied by newer work but not complete against their original scope.
+- Billing, payments, portal, OCR/AI, and release-hardening tasks remain genuinely pending.
 
 ## Next Actions
 
-1. Start with `T01` in the `pending/` folder.
-2. Move completed tasks through `in-progress/` to `completed/`.
-3. Update this file after each completed execution batch.
+1. Use `Audit_Reconciliation_2026-03-27.md` as the source of truth for this legacy session.
+2. Treat partial tasks conservatively unless their full original scope is explicitly evidenced.
+3. When future work lands, either complete the original task fully or replace it with smaller follow-up tasks instead of silently over-claiming completion.
 
 ## Release Roadmap
 
