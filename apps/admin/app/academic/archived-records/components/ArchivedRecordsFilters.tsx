@@ -23,7 +23,9 @@ const FILTER_OPTIONS: Array<{
   { value: "class", label: "Classes" },
   { value: "subject", label: "Subjects" },
   { value: "teacher", label: "Teachers" },
+  { value: "student", label: "Students" },
   { value: "session", label: "Sessions" },
+  { value: "event", label: "Events" },
 ];
 
 export function ArchivedRecordsFilters({
@@ -71,7 +73,7 @@ export function ArchivedRecordsFilters({
               type="search"
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search by name, code, email, archived by..."
+              placeholder="Search by name, admission number, code, email, archived by..."
               className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
             />
           </label>

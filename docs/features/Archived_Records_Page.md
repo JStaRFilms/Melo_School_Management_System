@@ -1,13 +1,13 @@
 # Feature: Archived Records Page (Admin)
 
 ## Goal
-Provide a dedicated admin view for browsing archived subjects, classes, teachers, and sessions without bringing back hard-delete behavior.
+Provide a dedicated admin view for browsing and restoring archived subjects, classes, teachers, students, sessions, and events without bringing back hard-delete behavior.
 
 ## Status
 Implemented.
 
 ## User Story
-As a school admin, I want to inspect archived academic records in one place so I can audit when they were archived, who archived them, and what historical records still depend on them.
+As a school admin, I want to inspect archived school records in one place so I can audit when they were archived, who archived them, what historical records still depend on them, and restore them when needed.
 
 ## Client Components
 
@@ -17,7 +17,7 @@ As a school admin, I want to inspect archived academic records in one place so I
 
 ### UI Building Blocks
 - `apps/admin/app/academic/archived-records/components/ArchivedRecordsFilters.tsx`
-  - Type tabs for `all`, `class`, `subject`, `teacher`, `session`.
+  - Type tabs for `all`, `class`, `subject`, `teacher`, `student`, `session`, `event`.
   - Search input.
   - Archived-from and archived-to date filters.
 - `apps/admin/app/academic/archived-records/components/ArchivedRecordsList.tsx`
@@ -25,8 +25,8 @@ As a school admin, I want to inspect archived academic records in one place so I
   - Mobile cards.
   - Empty state when filters return no matches.
 - `apps/admin/app/academic/archived-records/components/ArchivedRecordDrawer.tsx`
-  - Read-only detail panel for the selected archived record.
-  - Shows archive metadata, linked history, and preserved record snapshot.
+  - Detail panel for the selected archived record.
+  - Shows archive metadata, linked history, preserved record snapshot, and restore action.
 - `apps/admin/app/academic/archived-records/loading.tsx`
   - Route-level skeleton.
 - `apps/admin/app/academic/archived-records/error.tsx`
@@ -49,7 +49,7 @@ As a school admin, I want to inspect archived academic records in one place so I
 - Reads archived records directly from the existing academic tables instead of introducing a second archive ledger.
 - Returns:
   - Summary counts.
-  - A normalized list of archived sessions, classes, teachers, and subjects.
+  - A normalized list of archived sessions, classes, teachers, subjects, students, and events.
   - Archive metadata (`archivedAt`, `archivedBy`).
   - Human-readable linked history summaries.
   - Record-specific detail fields for the drawer.
@@ -60,18 +60,20 @@ As a school admin, I want to inspect archived academic records in one place so I
 3. Convex collects school-scoped archived rows and supporting linked history counts.
 4. The client renders summary cards and a unified record list.
 5. Filters run client-side against the normalized query result.
-6. Selecting a record opens the read-only drawer.
+6. Selecting a record opens the detail drawer.
+7. Admin can restore the record directly from the drawer when the matching restore mutation is available.
 
 ## Data Sources
 - `users` for archived teachers and archive actor lookup.
 - `academicSessions` for archived sessions.
 - `classes` for archived classes.
 - `subjects` for archived subjects.
+- `students` for archived students.
+- `schoolEvents` for archived events.
 - Supporting counts pulled from:
   - `academicTerms`
   - `classSubjects`
   - `teacherAssignments`
-  - `students`
   - `studentSubjectSelections`
   - `assessmentRecords`
 
@@ -83,9 +85,10 @@ As a school admin, I want to inspect archived academic records in one place so I
   - `archivedBy`
 
 ## Constraints
-- No restore action is exposed.
 - No hard-delete action is exposed.
 - Blocker snapshots are not yet persisted historically, so the drawer explains that only current metadata and linked usage can be shown.
+- Student restore is duplicate-safe: if another active student already uses the same admission number, restore stays blocked until that conflict is resolved.
+- Event records currently archive and restore without dependent-record blockers because no downstream event consumers are wired yet.
 
 ## Verification
 - `pnpm --filter @school/convex typecheck`

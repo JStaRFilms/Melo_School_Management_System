@@ -79,6 +79,9 @@ export default defineSchema({
     photoFileName: v.optional(v.string()),
     photoContentType: v.optional(v.string()),
     photoUpdatedAt: v.optional(v.number()),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -112,6 +115,24 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"]),
+
+  schoolEvents: defineTable({
+    schoolId: v.id("schools"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    location: v.optional(v.string()),
+    startDate: v.number(),
+    endDate: v.number(),
+    isAllDay: v.boolean(),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_start", ["schoolId", "startDate"]),
 
   teacherAssignments: defineTable({
     schoolId: v.id("schools"),

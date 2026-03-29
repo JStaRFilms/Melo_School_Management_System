@@ -246,7 +246,9 @@ export async function assertClassCanBeArchived(
     )
     .collect();
 
-  if (students.length > 0) {
+  const activeStudents = students.filter((student: any) => !student.isArchived);
+
+  if (activeStudents.length > 0) {
     throw new ConvexError(
       `Move all enrolled students out of ${args.className} before archiving it.`
     );

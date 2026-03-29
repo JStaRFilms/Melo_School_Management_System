@@ -211,6 +211,11 @@ export default function StudentsPage() {
     [selectedStudentId]
   );
 
+  const handleStudentArchived = useCallback(() => {
+    setSelectedStudentId(null);
+    setIsProfileSheetOpen(false);
+  }, []);
+
   const resetStudentCreationForm = useCallback(() => {
     setStudentName("");
     setAdmissionNumber("");
@@ -522,6 +527,7 @@ export default function StudentsPage() {
             studentId={selectedStudentId}
             classes={classes}
             onNotice={setNotice}
+            onStudentArchived={handleStudentArchived}
           />
         </div>
       ) : null}
@@ -593,6 +599,7 @@ export default function StudentsPage() {
                   setIsProfileSheetOpen(false);
                 }
               }}
+              onStudentArchived={handleStudentArchived}
               variant="sheet"
             />
           </MobileSheet>

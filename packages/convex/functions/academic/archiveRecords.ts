@@ -11,7 +11,9 @@ const archiveRecordTypeValidator = v.union(
   v.literal("session"),
   v.literal("class"),
   v.literal("teacher"),
-  v.literal("subject")
+  v.literal("subject"),
+  v.literal("student"),
+  v.literal("event")
 );
 
 const archiveRecordValidator = v.object({
@@ -64,6 +66,8 @@ export const listArchivedRecords = query({
       archivedClasses: v.number(),
       archivedTeachers: v.number(),
       archivedSubjects: v.number(),
+      archivedStudents: v.number(),
+      archivedEvents: v.number(),
     }),
     records: v.array(archiveRecordValidator),
   }),
@@ -76,6 +80,7 @@ export const listArchivedRecords = query({
       sessions,
       classes,
       subjects,
+      events,
       terms,
       classSubjects,
       teacherAssignments,
@@ -87,6 +92,7 @@ export const listArchivedRecords = query({
       ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("subjects").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      ctx.db.query("schoolEvents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("academicTerms").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("classSubjects").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("teacherAssignments").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
@@ -106,10 +112,12 @@ export const listArchivedRecords = query({
     const assessmentCountBySession = new Map<string, number>();
     const selectionCountBySession = new Map<string, number>();
     const selectionCountBySubject = new Map<string, number>();
+    const selectionCountByStudent = new Map<string, number>();
     const assignmentCountByTeacher = new Map<string, number>();
     const classOfferingCountByTeacher = new Map<string, number>();
     const formClassCountByTeacher = new Map<string, number>();
     const studentCountByClass = new Map<string, number>();
+    const assessmentCountByStudent = new Map<string, number>();
     const termCountBySession = new Map<string, number>();
 
     for (const classSubject of classSubjects) {
@@ -153,17 +161,21 @@ export const listArchivedRecords = query({
     for (const selection of selections) {
       const sessionId = String(selection.sessionId);
       const subjectId = String(selection.subjectId);
+      const studentId = String(selection.studentId);
       selectionCountBySession.set(sessionId, (selectionCountBySession.get(sessionId) ?? 0) + 1);
       selectionCountBySubject.set(subjectId, (selectionCountBySubject.get(subjectId) ?? 0) + 1);
+      selectionCountByStudent.set(studentId, (selectionCountByStudent.get(studentId) ?? 0) + 1);
     }
 
     for (const assessment of assessments) {
       const classId = String(assessment.classId);
       const subjectId = String(assessment.subjectId);
       const sessionId = String(assessment.sessionId);
+      const studentId = String(assessment.studentId);
       assessmentCountByClass.set(classId, (assessmentCountByClass.get(classId) ?? 0) + 1);
       assessmentCountBySubject.set(subjectId, (assessmentCountBySubject.get(subjectId) ?? 0) + 1);
       assessmentCountBySession.set(sessionId, (assessmentCountBySession.get(sessionId) ?? 0) + 1);
+      assessmentCountByStudent.set(studentId, (assessmentCountByStudent.get(studentId) ?? 0) + 1);
     }
 
     const archivedByName = (archivedBy?: unknown) => {
@@ -268,11 +280,76 @@ export const listArchivedRecords = query({
         ],
       }));
 
+    const studentRecords = students
+      .filter((student) => student.isArchived)
+      .map((student) => {
+        const studentUser = userLookup.get(String(student.userId));
+        const classDoc = classLookup.get(String(student.classId));
+        return {
+          id: `student:${String(student._id)}`,
+          type: "student" as const,
+          typeLabel: "Student",
+          recordId: String(student._id),
+          name: studentUser ? normalizePersonName(studentUser.name) : "Unnamed Student",
+          subtitle: student.admissionNumber,
+          archivedAt: student.archivedAt ?? student.updatedAt,
+          createdAt: student.createdAt,
+          archivedById: student.archivedBy ?? null,
+          archivedByName: archivedByName(student.archivedBy),
+          statusNote: "Removed from active enrollment and assessment workflows while preserving the student history.",
+          linkedHistory: `${pluralize(selectionCountByStudent.get(String(student._id)) ?? 0, "subject selection")}, ${pluralize(assessmentCountByStudent.get(String(student._id)) ?? 0, "assessment row")}, and the original student profile remain attached to this archived student.`,
+          detailFields: [
+            { label: "Admission number", value: student.admissionNumber },
+            {
+              label: "Class",
+              value: classDoc ? buildClassName(classDoc) : "Archived class record missing",
+            },
+            {
+              label: "Subject selections",
+              value: String(selectionCountByStudent.get(String(student._id)) ?? 0),
+            },
+            {
+              label: "Assessment records",
+              value: String(assessmentCountByStudent.get(String(student._id)) ?? 0),
+            },
+          ],
+        };
+      });
+
+    const eventRecords = events
+      .filter((event) => event.isArchived)
+      .map((event) => ({
+        id: `event:${String(event._id)}`,
+        type: "event" as const,
+        typeLabel: "Event",
+        recordId: String(event._id),
+        name: normalizeHumanName(event.title),
+        subtitle:
+          event.location && event.location.trim().length > 0
+            ? event.location.trim()
+            : `${formatDateLabel(event.startDate)} to ${formatDateLabel(event.endDate)}`,
+        archivedAt: event.archivedAt ?? event.updatedAt,
+        createdAt: event.createdAt,
+        archivedById: event.archivedBy ?? null,
+        archivedByName: archivedByName(event.archivedBy),
+        statusNote: "Removed from the active school calendar while preserving the original event record.",
+        linkedHistory:
+          "No dependent academic records are linked yet. The archived row stays available for audit and future calendar reuse.",
+        detailFields: [
+          { label: "Starts", value: formatDateLabel(event.startDate) },
+          { label: "Ends", value: formatDateLabel(event.endDate) },
+          { label: "Location", value: event.location?.trim() || "No location" },
+          { label: "All-day", value: event.isAllDay ? "Yes" : "No" },
+        ],
+      }));
+
     const records = [
       ...sessionRecords,
       ...classRecords,
       ...teacherRecords,
       ...subjectRecords,
+      ...studentRecords,
+      ...eventRecords,
     ].sort((a, b) => b.archivedAt - a.archivedAt);
 
     return {
@@ -282,6 +359,8 @@ export const listArchivedRecords = query({
         archivedClasses: classRecords.length,
         archivedTeachers: teacherRecords.length,
         archivedSubjects: subjectRecords.length,
+        archivedStudents: studentRecords.length,
+        archivedEvents: eventRecords.length,
       },
       records,
     };

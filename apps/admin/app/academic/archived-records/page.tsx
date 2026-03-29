@@ -7,7 +7,9 @@ import {
   Archive,
   BookMarked,
   CalendarDays,
+  CalendarRange,
   FolderArchive,
+  GraduationCap,
   Users,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -56,6 +58,12 @@ export default function ArchivedRecordsPage() {
   const restoreSubject = useMutation(
     "functions/academic/academicSetup:restoreSubject" as never
   );
+  const restoreStudent = useMutation(
+    "functions/academic/studentEnrollment:restoreStudent" as never
+  );
+  const restoreEvent = useMutation(
+    "functions/academic/events:restoreEvent" as never
+  );
 
   const [activeType, setActiveType] = useState<ArchiveFilterType>("all");
   const [searchValue, setSearchValue] = useState("");
@@ -92,6 +100,12 @@ export default function ArchivedRecordsPage() {
           break;
         case "subject":
           await restoreSubject({ subjectId: selectedRecord.recordId as never });
+          break;
+        case "student":
+          await restoreStudent({ studentId: selectedRecord.recordId as never });
+          break;
+        case "event":
+          await restoreEvent({ eventId: selectedRecord.recordId as never });
           break;
         default:
           throw new Error("Unsupported archived record type");
@@ -176,12 +190,13 @@ export default function ArchivedRecordsPage() {
             Archived Records
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-            Browse archived academic history and restore records when needed
+            Browse archived records and restore them when needed
           </h1>
           <p className="mt-3 max-w-3xl text-sm text-slate-600">
-            Archived sessions, classes, teachers, and subjects stay available for
-            audit, report history, and compliance review. Use restore when an
-            archived record should return to active setup.
+            Archived sessions, classes, teachers, subjects, students, and
+            events stay available for audit, report history, and compliance
+            review. Use restore when an archived record should return to active
+            setup.
           </p>
         </div>
       </section>
@@ -193,7 +208,7 @@ export default function ArchivedRecordsPage() {
       ) : null}
 
       {archiveData ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
           <SummaryCard
             label="Total Archived"
             value={archiveData.summary.totalArchived}
@@ -219,14 +234,26 @@ export default function ArchivedRecordsPage() {
             icon={<Users className="h-5 w-5" />}
           />
           <SummaryCard
+            label="Students"
+            value={archiveData.summary.archivedStudents}
+            note="Removed from active enrollment"
+            icon={<GraduationCap className="h-5 w-5" />}
+          />
+          <SummaryCard
             label="Sessions"
             value={archiveData.summary.archivedSessions}
             note="Kept for historic assessment context"
             icon={<CalendarDays className="h-5 w-5" />}
           />
+          <SummaryCard
+            label="Events"
+            value={archiveData.summary.archivedEvents}
+            note="Removed from the active calendar"
+            icon={<CalendarRange className="h-5 w-5" />}
+          />
         </section>
       ) : (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
           <LoadingShell />
         </section>
       )}

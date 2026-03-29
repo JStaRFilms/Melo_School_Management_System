@@ -45,6 +45,46 @@ function normalizeAdmissionNumber(value: string) {
   return trimmed;
 }
 
+function archivedRecordNotice(recordType: string) {
+  return `This failed because the ${recordType} was previously archived. Check the archives.`;
+}
+
+async function findStudentsByAdmissionNumber(
+  ctx: any,
+  schoolId: Id<"schools">,
+  admissionNumber: string
+) {
+  return await ctx.db
+    .query("students")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .filter((q: any) => q.eq(q.field("admissionNumber"), admissionNumber))
+    .collect();
+}
+
+async function findStudentUserByAdmissionNumber(
+  ctx: any,
+  schoolId: Id<"schools">,
+  admissionNumber: string
+) {
+  const normalizedAuthId = toStudentAuthId(String(schoolId), admissionNumber);
+  const normalizedEmail = `${admissionNumber
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase()}@students.local`;
+
+  const users = await ctx.db
+    .query("users")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .filter((q: any) =>
+      q.or(
+        q.eq(q.field("authId"), normalizedAuthId),
+        q.eq(q.field("email"), normalizedEmail)
+      )
+    )
+    .collect();
+
+  return users.find((user: any) => user.role === "student") ?? null;
+}
+
 function normalizeOptionalText(value: string | null | undefined) {
   if (value === undefined || value === null) {
     return undefined;
@@ -162,14 +202,37 @@ export const createStudent = mutation({
     }
 
     // Check for duplicate admission number
-    const existing = await ctx.db
-      .query("students")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.eq(q.field("admissionNumber"), admissionNumber))
-      .unique();
+    const existingStudents = await findStudentsByAdmissionNumber(
+      ctx,
+      schoolId,
+      admissionNumber
+    );
+    const activeDuplicate = existingStudents.find(
+      (student: any) => !student.isArchived
+    );
+    const archivedDuplicate = existingStudents.find(
+      (student: any) => student.isArchived
+    );
 
-    if (existing) {
+    if (activeDuplicate) {
       throw new ConvexError("A student with this admission number already exists");
+    }
+
+    if (archivedDuplicate) {
+      throw new ConvexError(archivedRecordNotice("student"));
+    }
+
+    const duplicateStudentUser = await findStudentUserByAdmissionNumber(
+      ctx,
+      schoolId,
+      admissionNumber
+    );
+    if (duplicateStudentUser) {
+      throw new ConvexError(
+        duplicateStudentUser.isArchived
+          ? archivedRecordNotice("student")
+          : "A student with this admission number already exists"
+      );
     }
 
     const now = Date.now();
@@ -251,6 +314,7 @@ export const listStudentsByClass = query({
 
     const results = await Promise.all(
       students
+        .filter((student) => !student.isArchived)
         .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
           const studentUser = await ctx.db.get(student.userId);
@@ -294,11 +358,15 @@ export const updateStudent = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId) {
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
       throw new ConvexError("Student not found");
     }
     const studentUser = await ctx.db.get(student.userId);
-    if (!studentUser || studentUser.schoolId !== schoolId) {
+    if (
+      !studentUser ||
+      studentUser.schoolId !== schoolId ||
+      studentUser.isArchived
+    ) {
       throw new ConvexError("Student account not found");
     }
 
@@ -317,14 +385,37 @@ export const updateStudent = mutation({
         : normalizeAdmissionNumber(args.admissionNumber);
 
     if (nextAdmissionNumber !== student.admissionNumber) {
-      const existing = await ctx.db
-        .query("students")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .filter((q) => q.eq(q.field("admissionNumber"), nextAdmissionNumber))
-        .unique();
+      const existingStudents = await findStudentsByAdmissionNumber(
+        ctx,
+        schoolId,
+        nextAdmissionNumber
+      );
+      const duplicateStudent = existingStudents.find(
+        (candidate: any) => candidate._id !== args.studentId
+      );
 
-      if (existing) {
-        throw new ConvexError("A student with this admission number already exists");
+      if (duplicateStudent) {
+        throw new ConvexError(
+          duplicateStudent.isArchived
+            ? archivedRecordNotice("student")
+            : "A student with this admission number already exists"
+        );
+      }
+
+      const duplicateStudentUser = await findStudentUserByAdmissionNumber(
+        ctx,
+        schoolId,
+        nextAdmissionNumber
+      );
+      if (
+        duplicateStudentUser &&
+        duplicateStudentUser._id !== student.userId
+      ) {
+        throw new ConvexError(
+          duplicateStudentUser.isArchived
+            ? archivedRecordNotice("student")
+            : "A student with this admission number already exists"
+        );
       }
     }
 
@@ -465,7 +556,7 @@ export const getStudentProfile = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId) {
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
       throw new ConvexError("Student not found");
     }
 
@@ -515,7 +606,48 @@ export const generateStudentPhotoUploadUrl = mutation({
   },
 });
 
-export const deleteStudent = mutation({
+async function archiveStudentRecord(
+  ctx: any,
+  args: {
+    studentId: Id<"students">;
+    actingUserId: Id<"users">;
+    schoolId: Id<"schools">;
+  }
+) {
+  const student = await ctx.db.get(args.studentId);
+  if (!student || student.schoolId !== args.schoolId) {
+    throw new ConvexError("Cross-school access denied");
+  }
+
+  const studentUser = await ctx.db.get(student.userId);
+  if (
+    !studentUser ||
+    studentUser.schoolId !== args.schoolId ||
+    studentUser.isArchived
+  ) {
+    throw new ConvexError("Student account not found");
+  }
+
+  if (student.isArchived) {
+    throw new ConvexError("Student is already archived");
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(args.studentId, {
+    isArchived: true,
+    archivedAt: now,
+    archivedBy: args.actingUserId,
+    updatedAt: now,
+  });
+  await ctx.db.patch(student.userId, {
+    isArchived: true,
+    archivedAt: now,
+    archivedBy: args.actingUserId,
+    updatedAt: now,
+  });
+}
+
+export const archiveStudent = mutation({
   args: { studentId: v.id("students") },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -523,32 +655,92 @@ export const deleteStudent = mutation({
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
+    await archiveStudentRecord(ctx, {
+      studentId: args.studentId,
+      actingUserId: userId,
+      schoolId,
+    });
+    return null;
+  },
+});
+
+export const deleteStudent = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    await archiveStudentRecord(ctx, {
+      studentId: args.studentId,
+      actingUserId: userId,
+      schoolId,
+    });
+    return null;
+  },
+});
+
+export const restoreStudent = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
     const student = await ctx.db.get(args.studentId);
     if (!student || student.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
+      throw new ConvexError("Student not found");
     }
 
-    // Delete related subject selections first
-    const selections = await ctx.db
-      .query("studentSubjectSelections")
-      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
-      .collect();
-
-    for (const selection of selections) {
-      await ctx.db.delete(selection._id);
+    const studentUser = await ctx.db.get(student.userId);
+    if (!studentUser || studentUser.schoolId !== schoolId) {
+      throw new ConvexError("Student account not found");
     }
 
-    const optOuts = await ctx.db
-      .query("studentSubjectAggregationOptOuts")
-      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
-      .collect();
-
-    for (const optOut of optOuts) {
-      await ctx.db.delete(optOut._id);
+    if (!student.isArchived) {
+      throw new ConvexError("Student is not archived");
     }
 
-    await ctx.db.delete(args.studentId);
-    await ctx.db.delete(student.userId);
+    const duplicateStudents = await findStudentsByAdmissionNumber(
+      ctx,
+      schoolId,
+      student.admissionNumber
+    );
+    const activeStudentDuplicate = duplicateStudents.find(
+      (candidate: any) =>
+        candidate._id !== args.studentId && !candidate.isArchived
+    );
+    if (activeStudentDuplicate) {
+      throw new ConvexError(
+        "Restore blocked because an active student already uses this admission number."
+      );
+    }
+
+    const studentUserDuplicate = await findStudentUserByAdmissionNumber(
+      ctx,
+      schoolId,
+      student.admissionNumber
+    );
+    if (
+      studentUserDuplicate &&
+      studentUserDuplicate._id !== student.userId &&
+      !studentUserDuplicate.isArchived
+    ) {
+      throw new ConvexError(
+        "Restore blocked because an active student account already uses this admission number."
+      );
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.studentId, {
+      isArchived: false,
+      updatedAt: now,
+    });
+    await ctx.db.patch(student.userId, {
+      isArchived: false,
+      updatedAt: now,
+    });
+
     return null;
   },
 });
@@ -585,7 +777,7 @@ export const setStudentSubjectSelections = mutation({
 
     // Verify school boundary
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId) {
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
     if (student.classId !== args.classId) {
@@ -762,7 +954,7 @@ export const getStudentSubjectSelections = query({
       await getAuthenticatedSchoolMembership(ctx);
 
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId) {
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
@@ -910,6 +1102,7 @@ export const getClassStudentSubjectMatrix = query({
     }
 
     const studentResults = students
+      .filter((student) => !student.isArchived)
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
           const studentUser = await ctx.db.get(student.userId);

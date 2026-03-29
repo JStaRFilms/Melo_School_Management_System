@@ -59,8 +59,8 @@ export function ArchivedRecordDrawer({
               Restorable Archive
             </p>
             <p className="mt-1 text-sm text-blue-900">
-              This record remains available for history, report cards, and admin
-              audit. You can restore it to return it to active setup.
+              This record remains available for history and admin audit. You can
+              restore it to return it to active setup.
             </p>
           </section>
 

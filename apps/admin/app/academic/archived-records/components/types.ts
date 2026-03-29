@@ -1,4 +1,10 @@
-export type ArchiveRecordType = "session" | "class" | "teacher" | "subject";
+export type ArchiveRecordType =
+  | "session"
+  | "class"
+  | "teacher"
+  | "subject"
+  | "student"
+  | "event";
 
 export interface ArchivedRecordItem {
   id: string;
@@ -25,4 +31,6 @@ export interface ArchivedRecordsSummary {
   archivedClasses: number;
   archivedTeachers: number;
   archivedSubjects: number;
+  archivedStudents: number;
+  archivedEvents: number;
 }

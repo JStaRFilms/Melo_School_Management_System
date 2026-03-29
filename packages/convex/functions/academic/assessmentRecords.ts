@@ -196,17 +196,19 @@ export const getExamEntrySheet = query({
 
     // Left-join roster with existing records
     const roster = await Promise.all(
-      students.map(async (student: any) => {
-        // Get user details for student name
-        const user = await ctx.db.get(student.userId);
-        const studentName = normalizePersonName(user?.name ?? "Unknown");
+      students
+        .filter((student: any) => !student.isArchived)
+        .map(async (student: any) => {
+          // Get user details for student name
+          const user = await ctx.db.get(student.userId);
+          const studentName = normalizePersonName(user?.name ?? "Unknown");
 
-        return {
-          studentId: student._id,
-          studentName,
-          assessmentRecord: recordMap.get(student._id) ?? null,
-        };
-      })
+          return {
+            studentId: student._id,
+            studentName,
+            assessmentRecord: recordMap.get(student._id) ?? null,
+          };
+        })
     );
 
     return {
@@ -364,7 +366,8 @@ export const upsertAssessmentRecordsBulk = mutation({
       if (
         !studentDoc ||
         studentDoc.schoolId !== schoolId ||
-        studentDoc.classId !== args.classId
+        studentDoc.classId !== args.classId ||
+        studentDoc.isArchived
       ) {
         errors.push({
           studentId: record.studentId,

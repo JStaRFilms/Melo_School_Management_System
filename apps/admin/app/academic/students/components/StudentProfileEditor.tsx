@@ -13,6 +13,7 @@ interface StudentProfileEditorProps {
   studentId: string | null;
   classes: ClassSummary[];
   onNotice: (notice: EnrollmentNotice) => void;
+  onStudentArchived?: (studentId: string) => void;
   variant?: "inline" | "sheet";
 }
 
@@ -48,6 +49,7 @@ export function StudentProfileEditor({
   studentId,
   classes,
   onNotice,
+  onStudentArchived,
   variant = "inline",
 }: StudentProfileEditorProps) {
   const studentProfile = useQuery(
@@ -56,6 +58,9 @@ export function StudentProfileEditor({
   ) as StudentProfile | undefined;
   const updateStudent = useMutation(
     "functions/academic/studentEnrollment:updateStudent" as never
+  );
+  const archiveStudent = useMutation(
+    "functions/academic/studentEnrollment:archiveStudent" as never
   );
   const generateStudentPhotoUploadUrl = useMutation(
     "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
@@ -74,6 +79,7 @@ export function StudentProfileEditor({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [clearPhoto, setClearPhoto] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   useEffect(() => {
     if (!studentProfile) {
@@ -190,6 +196,40 @@ export function StudentProfileEditor({
     }
   };
 
+  const handleArchive = async () => {
+    if (!studentProfile) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Archive ${displayName}? This keeps the student record for history and removes the student from active enrollment.`
+      )
+    ) {
+      return;
+    }
+
+    setIsArchiving(true);
+    try {
+      await archiveStudent({ studentId: studentProfile._id } as never);
+      onNotice({
+        tone: "success",
+        message: `${displayName} was archived. You can restore the student from the archives page.`,
+      });
+      onStudentArchived?.(studentProfile._id);
+    } catch (error) {
+      onNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(
+          error,
+          "We couldn't archive the student right now."
+        ),
+      });
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
   return (
     <section
       className={
@@ -251,11 +291,26 @@ export function StudentProfileEditor({
         />
       </div>
 
-      <div className="mt-5 flex justify-end">
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
+        <button
+          type="button"
+          onClick={() => void handleArchive()}
+          disabled={isSaving || isArchiving}
+          className="inline-flex h-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-5 text-sm font-bold text-rose-700 disabled:opacity-50"
+        >
+          {isArchiving ? "Archiving..." : "Archive Student"}
+        </button>
         <button
           type="button"
           onClick={() => void handleSave()}
-          disabled={isSaving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
+          disabled={
+            isSaving ||
+            isArchiving ||
+            !firstName.trim() ||
+            !lastName.trim() ||
+            !admissionNumber.trim() ||
+            !classId
+          }
           className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 disabled:opacity-50"
         >
           {isSaving ? "Saving..." : "Save Student"}

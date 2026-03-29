@@ -20,6 +20,8 @@ function chipClasses(recordType: ArchivedRecordItem["type"]) {
   if (recordType === "class") return "bg-emerald-50 text-emerald-700";
   if (recordType === "subject") return "bg-amber-50 text-amber-700";
   if (recordType === "teacher") return "bg-fuchsia-50 text-fuchsia-700";
+  if (recordType === "student") return "bg-indigo-50 text-indigo-700";
+  if (recordType === "event") return "bg-cyan-50 text-cyan-700";
   return "bg-blue-50 text-blue-700";
 }
 
@@ -37,8 +39,8 @@ export function ArchivedRecordsList({
           No archived records found
         </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
-          Try changing the filters or search terms. Archived academic records
-          remain here for audit and reporting history only.
+          Try changing the filters or search terms. Archived school records
+          remain here for audit, restoration, and reporting history.
         </p>
       </section>
     );

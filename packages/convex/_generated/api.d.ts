@@ -18,6 +18,7 @@ import type * as functions_academic_archiveRecords from "../functions/academic/a
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
+import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
+  "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;

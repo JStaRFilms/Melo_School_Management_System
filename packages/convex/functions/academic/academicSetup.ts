@@ -1321,7 +1321,7 @@ export const listClasses = query({
                   ? normalizePersonName(teacher.name)
                   : undefined,
               subjectNames,
-              studentCount: students.length,
+              studentCount: students.filter((student) => !student.isArchived).length,
               createdAt: classDoc.createdAt,
           };
         })

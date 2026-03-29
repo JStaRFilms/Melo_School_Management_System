@@ -28,6 +28,7 @@ The current exam-recording slice also stops before report-card generation. This 
   - sessions
   - teachers
   - classes
+  - students
 - Hardening pass for archive behavior so archival never strips linked academic history as a side effect
 - Explicit archive blockers and user-facing errors when a record is still tied to active workflows
 - Guardrails so archived records disappear from active setup and selection flows, but remain available for historical audit, report cards, and restoration
@@ -86,6 +87,7 @@ Specifically:
   - prevent archiving active classes with unresolved constraints unless rules are satisfied
 - `apps/admin/app/academic/students/page.tsx`
   - expand from create + subject matrix to include student profile editing
+  - add archive action for active students
   - add entry point to view a student report card
   - add student photo upload area
 - new admin report-card route(s)
@@ -121,6 +123,7 @@ Specifically:
   - richer student update/query support
   - photo upload support
   - archive-aware student matrix behavior
+  - student archive and restore mutations
 - new report-card query/action module
   - compile a single student's report-card payload from student, class, school, session, term, and assessment records
   - store admin-supplied class-teacher and head-teacher comments per student
@@ -153,6 +156,7 @@ Specifically:
 - Update linked `users` row for the student name
 - Update `students` row for profile fields
 - Handle photo upload metadata and replacement safely
+- Archive student records without deleting linked history
 
 ### Archive-Only Academic Records
 
@@ -169,6 +173,20 @@ Specifically:
 - Archive queries exclude archived records by default
 - Restore mutations re-enable archived records when no active conflict blocks them
 - Historical report-card queries may still resolve archived entities for already-saved records
+
+### Archive-Only Students
+
+#### Client
+
+- Student profile editor exposes `Archive Student`
+- Archived students can be restored from the archive browser
+- Archived students disappear from the active enrollment matrix and assessment rosters
+
+#### Server
+
+- Student archive patches both the `students` row and linked student `users` row
+- Student restore clears the archive flag on both rows when no active admission-number conflict exists
+- Duplicate student creation now tells admins to check archives when the admission number belongs to an archived student
 
 ### Report Cards
 
@@ -232,6 +250,16 @@ Specifically:
 6. Client submits profile mutation with updated fields and photo metadata.
 7. Server validates and saves profile changes.
 8. Student roster and report-card views refresh automatically.
+
+### 2b. Archive Or Restore Student
+
+1. Admin opens a student profile and clicks `Archive Student`.
+2. Client confirms archive wording instead of destructive delete wording.
+3. Server marks both the student row and linked student user row as archived.
+4. The student disappears from active enrollment and assessment-entry flows.
+5. Subject selections, assessment history, and report-card reads remain intact.
+6. Admin restores the student later from the archived-records page.
+7. Restore fails with a clear message if another active student already uses the same admission number.
 
 ### 3b. Save Report-Card Comments
 
@@ -311,7 +339,7 @@ Archive metadata should be added to these entities:
 Notes:
 
 - teacher archival happens on the teacher `users` row because teachers are stored there
-- student rows are not part of this archival request and should remain separate from this change
+- student archival now patches both the `students` row and the linked student `users` row so identity history stays consistent
 
 ### Expand `students`
 
@@ -441,6 +469,8 @@ All new flows must return user-facing errors that are specific, school-safe, and
 
 - `getStudentProfile`
 - `updateStudent`
+- `archiveStudent`
+- `restoreStudent`
 - `generateStudentPhotoUploadUrl`
 - photo save and removal are handled through `updateStudent`
 
@@ -477,6 +507,7 @@ This keeps us aligned with the project 200-line modularity rule.
 
 - Admin can archive a subject, session, teacher, or class without losing underlying data
 - Admin can restore archived subjects, sessions, teachers, and classes from the archive browser
+- Admin can archive and restore students without losing linked history
 - Archived records no longer appear in active setup selectors
 - Admin can edit student profile details beyond subjects
 - Admin can upload and replace a student photo
@@ -498,12 +529,14 @@ This keeps us aligned with the project 200-line modularity rule.
 - class archival now fails while students are still enrolled so student editing access is not orphaned
 - subject archival now fails while the subject is still wired into active class/session workflows
 - student updates now support broader profile editing, class reassignment validation, and photo metadata storage
+- student archive now preserves the linked user row, subject selections, and assessment history while removing the student from active workflows
 - report-card data is composed from existing assessment records through `packages/convex/functions/academic/reportCards.ts`
 
 ### Admin App
 
 - archive actions were added to the subjects, sessions, teachers, and classes setup screens
 - the student management screen now supports selecting a student from the matrix and editing the student profile in place
+- the student profile editor now exposes `Archive Student`, and archived students can be restored from the archive browser
 - the student profile editor supports photo upload, replacement, and removal
 - the admin assessment roster links directly to a printable student report-card page
 - the admin report-card page now includes print-hidden controls for class-teacher comments, head-teacher comments, and the term-wide next-term start date
