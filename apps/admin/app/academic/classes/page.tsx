@@ -223,16 +223,30 @@ export default function ClassesPage() {
     setIsSavingClassConfig(true);
 
     try {
-      await updateClass({
-        classId: selectedClassId,
-        gradeName: normalizedGradeName,
-        classLabel: normalizedClassLabel || null,
-        formTeacherId: selectedFormTeacherId || null,
-      } as never);
-      await setClassSubjects({
-        classId: selectedClassId,
-        subjectIds: selectedSubjectIds,
-      } as never);
+      try {
+        await updateClass({
+          classId: selectedClassId,
+          gradeName: normalizedGradeName,
+          classLabel: normalizedClassLabel || null,
+          formTeacherId: selectedFormTeacherId || null,
+        } as never);
+      } catch (err) {
+        throw new Error(
+          getUserFacingErrorMessage(err, "Failed to update class details")
+        );
+      }
+
+      try {
+        await setClassSubjects({
+          classId: selectedClassId,
+          subjectIds: selectedSubjectIds,
+        } as never);
+      } catch (err) {
+        throw new Error(
+          getUserFacingErrorMessage(err, "Failed to update class subject offerings")
+        );
+      }
+
       setSuccessMessage("Class configuration updated.");
     } catch (err) {
       setError(getUserFacingErrorMessage(err, "Failed to save class blueprint"));
