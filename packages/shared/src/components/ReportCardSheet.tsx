@@ -969,8 +969,22 @@ function ExtraBundleBlock({
   showBundleHeading: boolean;
   lastBundle?: boolean;
 }) {
-  const leftSections = sections.filter((_, i) => i % 2 === 0);
-  const rightSections = sections.filter((_, i) => i % 2 === 1);
+  const leftSections: typeof sections = [];
+  const rightSections: typeof sections = [];
+  let leftCount = 0;
+  let rightCount = 0;
+
+  for (const section of sections) {
+    // Estimate "height" by item count + constant for header
+    const sectionWeight = section.items.length + 2;
+    if (leftCount <= rightCount) {
+      leftSections.push(section);
+      leftCount += sectionWeight;
+    } else {
+      rightSections.push(section);
+      rightCount += sectionWeight;
+    }
+  }
 
   return (
     <div
