@@ -36,7 +36,7 @@ export function ExtrasWorkspace({
     setSuccess(null);
   }, [entry]);
 
-  const bundles = entry?.bundles ?? [];
+  const bundles = useMemo(() => entry?.bundles ?? [], [entry]);
   const canEdit = entry?.canEdit ?? false;
   const savePayload = useMemo(
     () =>

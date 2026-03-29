@@ -379,6 +379,69 @@ export const getClassReportCardExtraBundles = query({
   },
 });
 
+export const listSchoolReportCardExtraBundleAssignments = query({
+  args: {},
+  returns: v.array(classBundleAssignmentValidator),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const [assignments, bundles] = await Promise.all([
+      ctx.db
+        .query("reportCardExtraClassAssignments")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .collect(),
+      ctx.db
+        .query("reportCardExtraBundles")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .collect(),
+    ]);
+
+    const bundleNames = new Map(
+      bundles.map((bundle) => [String(bundle._id), bundle.name] as const)
+    );
+    const assignmentsByClass = new Map<
+      string,
+      {
+        classId: Id<"classes">;
+        bundleAssignments: Array<{
+          bundleId: Id<"reportCardExtraBundles">;
+          bundleName: string;
+          order: number;
+        }>;
+      }
+    >();
+
+    for (const assignment of assignments) {
+      const bundleName = bundleNames.get(String(assignment.bundleId));
+      if (!bundleName) {
+        continue;
+      }
+
+      const classKey = String(assignment.classId);
+      const current = assignmentsByClass.get(classKey) ?? {
+        classId: assignment.classId,
+        bundleAssignments: [],
+      };
+      current.bundleAssignments.push({
+        bundleId: assignment.bundleId,
+        bundleName,
+        order: assignment.order,
+      });
+      assignmentsByClass.set(classKey, current);
+    }
+
+    return Array.from(assignmentsByClass.values())
+      .map((entry) => ({
+        classId: entry.classId,
+        bundleAssignments: entry.bundleAssignments
+          .slice()
+          .sort((a, b) => a.order - b.order || a.bundleName.localeCompare(b.bundleName)),
+      }))
+      .sort((a, b) => String(a.classId).localeCompare(String(b.classId)));
+  },
+});
+
 export const getStudentReportCardExtrasEntry = query({
   args: {
     studentId: v.id("students"),

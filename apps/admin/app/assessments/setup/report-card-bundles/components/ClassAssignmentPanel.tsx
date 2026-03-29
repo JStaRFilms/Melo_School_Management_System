@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { Loader2, Search } from "lucide-react";
 import type { BundleRecord, ClassAssignmentRecord, ClassSummary } from "../types";
@@ -11,26 +10,30 @@ interface ClassAssignmentPanelProps {
   bundles: BundleRecord[];
   classes: ClassSummary[];
   initialAssignments?: Record<string, ClassAssignmentRecord>;
-  live?: boolean;
   selectedBundleId: string | null;
   onSetClassBundles?: (classId: string, bundleIds: string[]) => Promise<void>;
 }
 
 const EMPTY_ASSIGNMENTS: Record<string, ClassAssignmentRecord> = {};
+const FILTER_OPTIONS = [
+  ["all", "All"],
+  ["assigned", "Assigned"],
+  ["unassigned", "Unassigned"],
+  ["selected-bundle", "Using selected"],
+] as const;
 
 export function StaticClassAssignmentPanel(props: ClassAssignmentPanelProps) {
   return <ClassAssignmentPanelContent {...props} />;
 }
 
-export function LiveClassAssignmentPanel(props: Omit<ClassAssignmentPanelProps, "live">) {
-  return <ClassAssignmentPanelContent {...props} live />;
+export function LiveClassAssignmentPanel(props: ClassAssignmentPanelProps) {
+  return <ClassAssignmentPanelContent {...props} />;
 }
 
-function ClassAssignmentPanelContent({
+const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   bundles,
   classes,
   initialAssignments = EMPTY_ASSIGNMENTS,
-  live = false,
   selectedBundleId,
   onSetClassBundles,
 }: ClassAssignmentPanelProps) {
@@ -120,17 +123,6 @@ function ClassAssignmentPanelContent({
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      {live &&
-        classes.map((classItem) => (
-          <LiveAssignmentObserver
-            classId={classItem.id}
-            key={classItem.id}
-            onChange={(assignment) =>
-              setAssignmentMap((current) => ({ ...current, [classItem.id]: assignment }))
-            }
-          />
-        ))}
-
       <div className="space-y-1 border-b border-slate-100 pb-5">
         <h2 className="text-lg font-semibold text-slate-900">Class assignment</h2>
         <p className="text-sm text-slate-500">
@@ -150,12 +142,7 @@ function ClassAssignmentPanelContent({
         </label>
 
         <div className="flex flex-wrap gap-2">
-          {[
-            ["all", "All"],
-            ["assigned", "Assigned"],
-            ["unassigned", "Unassigned"],
-            ["selected-bundle", "Using selected"],
-          ].map(([value, label]) => (
+          {FILTER_OPTIONS.map(([value, label]) => (
             <button
               key={value}
               className={[
@@ -322,25 +309,4 @@ function ClassAssignmentPanelContent({
       </div>
     </section>
   );
-}
-
-function LiveAssignmentObserver({
-  classId,
-  onChange,
-}: {
-  classId: string;
-  onChange: (assignment: ClassAssignmentRecord) => void;
-}) {
-  const assignment = useQuery(
-    "functions/academic/reportCardExtras:getClassReportCardExtraBundles" as never,
-    { classId } as never
-  ) as ClassAssignmentRecord | undefined;
-
-  useEffect(() => {
-    if (assignment) {
-      onChange(assignment);
-    }
-  }, [assignment, onChange]);
-
-  return null;
-}
+});

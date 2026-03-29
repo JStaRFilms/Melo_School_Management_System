@@ -80,8 +80,18 @@ export function ReportCardBundlesScreen({
     return createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null);
   }, [bundles, selectedBundleId]);
 
-  const scaleDirty = serializeScaleDraft(scaleDraft) !== serializeScaleDraft(activeScaleSource);
-  const bundleDirty = serializeBundleDraft(bundleDraft) !== serializeBundleDraft(activeBundleSource);
+  const scaleDirty = useMemo(
+    () => serializeScaleDraft(scaleDraft) !== serializeScaleDraft(activeScaleSource),
+    [activeScaleSource, scaleDraft]
+  );
+  const bundleDirty = useMemo(
+    () => serializeBundleDraft(bundleDraft) !== serializeBundleDraft(activeBundleSource),
+    [activeBundleSource, bundleDraft]
+  );
+  const assignmentPanel = useMemo(
+    () => renderAssignmentPanel(bundleDraft.bundleId),
+    [bundleDraft.bundleId, renderAssignmentPanel]
+  );
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -182,7 +192,7 @@ export function ReportCardBundlesScreen({
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <BundlePreview draft={bundleDraft} scaleTemplates={scaleTemplates} />
-            {renderAssignmentPanel(bundleDraft.bundleId)}
+            {assignmentPanel}
           </div>
         </div>
       )}

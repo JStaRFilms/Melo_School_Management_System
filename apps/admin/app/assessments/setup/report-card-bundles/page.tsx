@@ -77,15 +77,23 @@ export default function ReportCardBundlesPage() {
 }
 
 function LiveReportCardBundlesPage() {
-  const scaleTemplates = (useQuery(
+  const scaleTemplateQuery = useQuery(
     "functions/academic/reportCardExtras:listReportCardExtraScaleTemplates" as never
-  ) as ScaleTemplateRecord[] | undefined) ?? [];
-  const bundles = (useQuery(
+  ) as ScaleTemplateRecord[] | undefined;
+  const bundleQuery = useQuery(
     "functions/academic/reportCardExtras:listReportCardExtraBundles" as never
-  ) as BundleRecord[] | undefined) ?? [];
-  const classes = (useQuery(
+  ) as BundleRecord[] | undefined;
+  const classQuery = useQuery(
     "functions/academic/adminSelectors:getAllClasses" as never
-  ) as ClassSummary[] | undefined) ?? [];
+  ) as ClassSummary[] | undefined;
+  const assignmentQuery = useQuery(
+    "functions/academic/reportCardExtras:listSchoolReportCardExtraBundleAssignments" as never
+  ) as ClassAssignmentRecord[] | undefined;
+  const scaleTemplates = useMemo(() => scaleTemplateQuery ?? [], [scaleTemplateQuery]);
+  const bundles = useMemo(() => bundleQuery ?? [], [bundleQuery]);
+  const classes = useMemo(() => classQuery ?? [], [classQuery]);
+  const assignments = useMemo(() => assignmentQuery ?? [], [assignmentQuery]);
+  const initialAssignments = useMemo(() => buildAssignmentMap(assignments), [assignments]);
 
   const saveScaleTemplate = useMutation(
     "functions/academic/reportCardExtras:saveReportCardExtraScaleTemplate" as never
@@ -134,6 +142,7 @@ function LiveReportCardBundlesPage() {
         <LiveClassAssignmentPanel
           bundles={bundles}
           classes={classes}
+          initialAssignments={initialAssignments}
           onSetClassBundles={(classId, bundleIds) =>
             setClassBundles({ classId, bundleIds } as never)
           }
