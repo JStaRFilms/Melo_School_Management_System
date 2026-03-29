@@ -81,6 +81,19 @@ function getStoredClassLabel(classDoc: {
   return classDoc.classLabel ? normalizeClassLabel(classDoc.classLabel) : undefined;
 }
 
+function isEligibleFormTeacher(user: {
+  schoolId: Id<"schools">;
+  role: string;
+  isArchived?: boolean;
+  isSchoolAdmin?: boolean;
+} | null, schoolId: Id<"schools">) {
+  if (!user || user.schoolId !== schoolId || user.isArchived) {
+    return false;
+  }
+
+  return user.role === "teacher" || user.role === "admin" || user.isSchoolAdmin === true;
+}
+
 export const createTeacherRecordInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
@@ -996,12 +1009,7 @@ export const createClass = mutation({
 
     if (args.formTeacherId) {
       const teacher = await ctx.db.get(args.formTeacherId);
-      if (
-        !teacher ||
-        teacher.schoolId !== schoolId ||
-        teacher.role !== "teacher" ||
-        teacher.isArchived
-      ) {
+      if (!isEligibleFormTeacher(teacher, schoolId)) {
         throw new ConvexError("Invalid form teacher");
       }
     }
@@ -1187,12 +1195,7 @@ export const updateClass = mutation({
 
     if (args.formTeacherId) {
       const teacher = await ctx.db.get(args.formTeacherId);
-      if (
-        !teacher ||
-        teacher.schoolId !== schoolId ||
-        teacher.role !== "teacher" ||
-        teacher.isArchived
-      ) {
+      if (!isEligibleFormTeacher(teacher, schoolId)) {
         throw new ConvexError("Invalid form teacher");
       }
     }

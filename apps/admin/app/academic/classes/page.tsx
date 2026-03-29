@@ -782,6 +782,20 @@ function ClassCard({
   isSavingClassConfig: boolean;
 }) {
   const previewBadges = classDoc.subjectNames.slice(0, 4);
+  const availableFormTeachers =
+    selectedFormTeacherId &&
+    !teachers.some((teacher) => teacher._id === selectedFormTeacherId) &&
+    classDoc.formTeacherId === selectedFormTeacherId &&
+    classDoc.formTeacherName
+      ? [
+          {
+            _id: selectedFormTeacherId,
+            name: `${classDoc.formTeacherName} (Current Assignment)`,
+            email: "",
+          },
+          ...teachers,
+        ]
+      : teachers;
 
   return (
     <div className="space-y-5 rounded-xl border border-[#e2e8f0] bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-[#cbd5e1] hover:shadow-lg">
@@ -838,7 +852,7 @@ function ClassCard({
                 className="h-10 w-full appearance-none rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 pr-10 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
               >
                 <option value="">No Form Teacher Assigned</option>
-                {teachers.map((teacher) => (
+                {availableFormTeachers.map((teacher) => (
                   <option key={teacher._id} value={teacher._id}>
                     {teacher.name}
                   </option>

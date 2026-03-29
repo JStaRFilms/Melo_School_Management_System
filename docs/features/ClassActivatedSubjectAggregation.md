@@ -97,6 +97,7 @@ This feature is now implemented with the following production behavior:
 - direct score entry against an umbrella subject is blocked server-side
 - admin and teacher score-entry selectors both use class-scoped subject offerings, so derived umbrella subjects do not appear as selectable raw sheets
 - stale derived-subject selections in score-entry URLs are ignored safely instead of crashing the page
+- class configuration saves no longer fail just because the currently assigned form teacher was later promoted from teacher to admin
 - when an aggregation is saved, the system auto-syncs the umbrella subject into existing student selections for class/session combinations that already have all component subjects selected
 - staff can still manually deselect the umbrella subject in the subject grid; that explicit opt-out is stored and prevents future silent re-injection
 - report cards derive umbrella rows live from component `assessmentRecords`
