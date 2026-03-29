@@ -97,7 +97,11 @@ This feature is now implemented with the following production behavior:
 - direct score entry against an umbrella subject is blocked server-side
 - admin and teacher score-entry selectors both use class-scoped subject offerings, so derived umbrella subjects do not appear as selectable raw sheets
 - stale derived-subject selections in score-entry URLs are ignored safely instead of crashing the page
+- when an aggregation is saved, the system auto-syncs the umbrella subject into existing student selections for class/session combinations that already have all component subjects selected
+- staff can still manually deselect the umbrella subject in the subject grid; that explicit opt-out is stored and prevents future silent re-injection
 - report cards derive umbrella rows live from component `assessmentRecords`
+- report cards inject effective umbrella subjects even when the umbrella was not manually ticked, as long as all component subjects are selected and there is no explicit opt-out
+- when a student explicitly opts out of an umbrella subject, the component subjects remain stand-alone on that student’s report card instead of being hidden
 - component rows are hidden by default on report cards
 - aggregated rows show normalized merged `CA1`, `CA2`, `CA3`, `Exam`, and final `0-100` total
 - merged assessment columns are derived from the component sheets using the same class aggregation strategy, so the displayed parts add up to the displayed umbrella total
@@ -208,6 +212,7 @@ For every aggregated umbrella result, the engine should produce:
    - component list has at least one subject
    - contribution rules fully define the final score
 6. System saves the configuration as class-scoped metadata.
+7. The system auto-syncs the umbrella subject into existing student subject selections for eligible class/session rows, while preserving any previously stored manual umbrella opt-outs.
 
 ### Teacher Score Entry Flow
 
@@ -229,10 +234,12 @@ For every aggregated umbrella result, the engine should produce:
 2. For classes without aggregation config:
    - behavior stays exactly as it is today
 3. For classes with aggregation config:
-   - component records are grouped under their umbrella subject
+   - the system derives each student's effective subject selection set
+   - if all component subjects are selected and there is no explicit umbrella opt-out, the umbrella subject is injected even if it was not manually ticked
+   - component records are grouped under their umbrella subject only when that umbrella is effective for the student
    - umbrella totals are calculated or loaded
    - the report uses the umbrella subject row as the official reported result
-   - component rows are either hidden or shown as breakdown based on config
+   - component rows remain stand-alone for students who explicitly opted out of the umbrella subject
 4. Summary values such as total recorded subjects and average score use the umbrella result, not double-counted component rows.
 
 ## Database Schema
@@ -284,6 +291,31 @@ Suggested indexes:
 - `by_aggregation`
 - `by_component_subject`
 - `by_school`
+
+### New Table: `studentSubjectAggregationOptOuts`
+
+Stores explicit student/session umbrella deselections so automatic injection and sync do not override intentional staff choices.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `_id` | id | Convex document id |
+| `schoolId` | id | Tenant boundary |
+| `studentId` | id | Student owner |
+| `classId` | id | Class context |
+| `sessionId` | id | Session context |
+| `aggregationId` | id | Aggregation being opted out of |
+| `umbrellaSubjectId` | id | The umbrella subject being suppressed |
+| `createdAt` | number | Timestamp |
+| `updatedAt` | number | Timestamp |
+| `updatedBy` | id | Staff user who triggered the opt-out |
+
+Suggested indexes:
+
+- `by_school`
+- `by_student`
+- `by_student_class_session`
+- `by_class_and_session`
+- `by_aggregation`
 
 ### Derived Result Strategy
 

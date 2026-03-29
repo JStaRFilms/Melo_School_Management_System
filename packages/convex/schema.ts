@@ -196,6 +196,23 @@ export default defineSchema({
     .index("by_class_and_session", ["classId", "sessionId"])
     .index("by_student_and_class_and_session", ["studentId", "classId", "sessionId"]),
 
+  studentSubjectAggregationOptOuts: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    aggregationId: v.id("classSubjectAggregations"),
+    umbrellaSubjectId: v.id("subjects"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_student_class_session", ["studentId", "classId", "sessionId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_aggregation", ["aggregationId"]),
+
   academicSessions: defineTable({
     schoolId: v.id("schools"),
     name: v.string(),

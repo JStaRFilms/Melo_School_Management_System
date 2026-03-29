@@ -12,6 +12,12 @@ import {
   getReadableUserName,
   resolveStoredUserNameFields,
 } from "./studentNameCompat";
+import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
+import {
+  deriveEffectiveSubjectSelectionIds,
+  listClassAggregationOptOuts,
+  listStudentAggregationOptOuts,
+} from "./subjectAggregationSelectionHelpers";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -532,6 +538,15 @@ export const deleteStudent = mutation({
       await ctx.db.delete(selection._id);
     }
 
+    const optOuts = await ctx.db
+      .query("studentSubjectAggregationOptOuts")
+      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
+      .collect();
+
+    for (const optOut of optOuts) {
+      await ctx.db.delete(optOut._id);
+    }
+
     await ctx.db.delete(args.studentId);
     await ctx.db.delete(student.userId);
     return null;
@@ -597,15 +612,26 @@ export const setStudentSubjectSelections = mutation({
       classOfferings.map((o) => String(o.subjectId))
     );
 
-    const existingSelections = await ctx.db
-      .query("studentSubjectSelections")
-      .withIndex("by_student_and_class_and_session", (q) =>
-        q
-          .eq("studentId", args.studentId)
-          .eq("classId", args.classId)
-          .eq("sessionId", args.sessionId)
-      )
-      .collect();
+    const [existingSelections, aggregations, existingOptOuts] = await Promise.all([
+      ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_student_and_class_and_session", (q) =>
+          q
+            .eq("studentId", args.studentId)
+            .eq("classId", args.classId)
+            .eq("sessionId", args.sessionId)
+        )
+        .collect(),
+      listActiveClassSubjectAggregations(ctx, {
+        schoolId,
+        classId: args.classId,
+      }),
+      listStudentAggregationOptOuts(ctx, {
+        studentId: args.studentId,
+        classId: args.classId,
+        sessionId: args.sessionId,
+      }),
+    ]);
 
     const existingSubjectIds = new Set(
       existingSelections.map((selection) => String(selection.subjectId))
@@ -644,9 +670,64 @@ export const setStudentSubjectSelections = mutation({
       await ctx.db.delete(selection._id);
     }
 
-    // Insert new selections
+    const selectedSubjectIdSet = new Set(
+      subjectIdsToSave.map((subjectId) => String(subjectId))
+    );
+    const existingOptOutByAggregationId = new Map<string, any>(
+      existingOptOuts.map((optOut: any) => [
+        String(optOut.aggregationId),
+        optOut,
+      ] as const)
+    );
+    const sanitizedSubjectIdsToSave = [...subjectIdsToSave];
+
     const now = Date.now();
-    for (const subjectId of subjectIdsToSave) {
+
+    for (const aggregation of aggregations) {
+      const aggregationId = String(aggregation._id);
+      const umbrellaSubjectId = String(aggregation.umbrellaSubjectId);
+      const allComponentsSelected = aggregation.components.every((component) =>
+        selectedSubjectIdSet.has(String(component.componentSubjectId))
+      );
+      const umbrellaSelected = selectedSubjectIdSet.has(umbrellaSubjectId);
+      const existingOptOut = existingOptOutByAggregationId.get(aggregationId);
+
+      if (!allComponentsSelected && umbrellaSelected) {
+        selectedSubjectIdSet.delete(umbrellaSubjectId);
+        const index = sanitizedSubjectIdsToSave.findIndex(
+          (subjectId) => String(subjectId) === umbrellaSubjectId
+        );
+        if (index >= 0) {
+          sanitizedSubjectIdsToSave.splice(index, 1);
+        }
+      }
+
+      if (allComponentsSelected && selectedSubjectIdSet.has(umbrellaSubjectId)) {
+        if (existingOptOut) {
+          await ctx.db.delete(existingOptOut._id);
+        }
+        continue;
+      }
+
+      if (allComponentsSelected) {
+        if (!existingOptOut) {
+          await ctx.db.insert("studentSubjectAggregationOptOuts", {
+            schoolId,
+            studentId: args.studentId,
+            classId: args.classId,
+            sessionId: args.sessionId,
+            aggregationId: aggregation._id,
+            umbrellaSubjectId: aggregation.umbrellaSubjectId,
+            createdAt: now,
+            updatedAt: now,
+            updatedBy: userId,
+          });
+        }
+      }
+    }
+
+    // Insert new selections
+    for (const subjectId of sanitizedSubjectIdsToSave) {
       await ctx.db.insert("studentSubjectSelections", {
         schoolId,
         studentId: args.studentId,
@@ -789,13 +870,22 @@ export const getClassStudentSubjectMatrix = query({
       )
       .collect();
 
-    // Get all selections for this class/session
-    const allSelections = await ctx.db
-      .query("studentSubjectSelections")
-      .withIndex("by_class_and_session", (q) =>
-        q.eq("classId", args.classId).eq("sessionId", args.sessionId)
-      )
-      .collect();
+    const [allSelections, aggregations, optOuts] = await Promise.all([
+      ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_class_and_session", (q) =>
+          q.eq("classId", args.classId).eq("sessionId", args.sessionId)
+        )
+        .collect(),
+      listActiveClassSubjectAggregations(ctx, {
+        schoolId,
+        classId: args.classId,
+      }),
+      listClassAggregationOptOuts(ctx, {
+        classId: args.classId,
+        sessionId: args.sessionId,
+      }),
+    ]);
 
     // Build selection map
     const selectionMap = new Map<string, string[]>();
@@ -810,19 +900,32 @@ export const getClassStudentSubjectMatrix = query({
       }
       selectionMap.get(key)!.push(String(selection.subjectId));
     }
+    const optOutMap = new Map<string, Set<string>>();
+    for (const optOut of optOuts) {
+      const studentKey = String(optOut.studentId);
+      if (!optOutMap.has(studentKey)) {
+        optOutMap.set(studentKey, new Set());
+      }
+      optOutMap.get(studentKey)!.add(String(optOut.aggregationId));
+    }
 
     const studentResults = students
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
           const studentUser = await ctx.db.get(student.userId);
           const studentName = getReadableUserName(studentUser);
+          const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
+            explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
+            aggregations,
+            optOutAggregationIds: optOutMap.get(String(student._id)) ?? new Set(),
+          });
           return {
             _id: student._id,
             studentName: studentName.displayName || "Unnamed Student",
             admissionNumber: student.admissionNumber,
-            selectedSubjectIds: (selectionMap.get(String(student._id)) ?? []).map(
-            (id) => id as any
-          ),
+            selectedSubjectIds: Array.from(effectiveSubjectIds)
+              .filter((id) => visibleSubjectIds.has(id))
+              .map((id) => id as any),
         };
       });
 

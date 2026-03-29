@@ -20,6 +20,10 @@ import {
   reportCardExtraPrintableValidator,
 } from "./reportCardExtrasModel";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
+import {
+  deriveEffectiveSubjectSelectionIds,
+  listStudentAggregationOptOuts,
+} from "./subjectAggregationSelectionHelpers";
 
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
@@ -346,6 +350,7 @@ async function buildStudentReportCard(
     reportCardComment,
     extrasView,
     aggregations,
+    aggregationOptOuts,
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
@@ -393,6 +398,11 @@ async function buildStudentReportCard(
       schoolId: args.schoolId,
       classId: reportCardClassId,
     }),
+    listStudentAggregationOptOuts(ctx, {
+      studentId: args.studentId,
+      classId: reportCardClassId,
+      sessionId: args.sessionId,
+    }),
   ]);
 
   if (!classDoc || classDoc.schoolId !== args.schoolId) {
@@ -407,13 +417,21 @@ async function buildStudentReportCard(
   const studentName = getReadableUserName(studentUser);
   const classTeacherName = getReadableUserName(classTeacher);
 
-  const subjectIds = new Set(
-    (
-      selectionDocs.length > 0
-        ? selectionDocs.map((selection: any) => selection.subjectId)
-        : classSubjectDocs.map((classSubject: any) => classSubject.subjectId)
-    ).concat(records.map((record: any) => record.subjectId))
-  );
+  const explicitSubjectIds =
+    selectionDocs.length > 0
+      ? selectionDocs.map((selection: any) => String(selection.subjectId))
+      : classSubjectDocs.map((classSubject: any) => String(classSubject.subjectId));
+  const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
+    explicitSubjectIds,
+    aggregations,
+    optOutAggregationIds: aggregationOptOuts.map((optOut: any) =>
+      String(optOut.aggregationId)
+    ),
+  });
+  const subjectIds = new Set<string>([
+    ...Array.from(effectiveSubjectIds),
+    ...records.map((record: any) => String(record.subjectId)),
+  ]);
 
   if (subjectIds.size === 0) {
     throw new ConvexError(
@@ -423,7 +441,7 @@ async function buildStudentReportCard(
 
   const subjects = (
     await Promise.all(
-      Array.from(subjectIds).map((subjectId) => ctx.db.get(subjectId))
+      Array.from(subjectIds).map((subjectId) => ctx.db.get(subjectId as Id<"subjects">))
     )
   ).filter(
     (
@@ -461,11 +479,14 @@ async function buildStudentReportCard(
     ca3Max: settings?.ca3Max ?? DEFAULT_CA_MAX,
     examMax: settings?.examContributionMax ?? DEFAULT_EXAM_MAX,
   };
+  const effectiveAggregations = aggregations.filter((aggregation) =>
+    effectiveSubjectIds.has(String(aggregation.umbrellaSubjectId))
+  );
   const aggregatedUmbrellaIds = new Set(
-    aggregations.map((aggregation) => String(aggregation.umbrellaSubjectId))
+    effectiveAggregations.map((aggregation) => String(aggregation.umbrellaSubjectId))
   );
   const aggregatedComponentIds = new Set(
-    aggregations.flatMap((aggregation) =>
+    effectiveAggregations.flatMap((aggregation) =>
       aggregation.components.map((component) =>
         String(component.componentSubjectId)
       )
@@ -485,7 +506,7 @@ async function buildStudentReportCard(
         : buildPendingResult(subject);
     });
 
-  const aggregatedResults = aggregations
+  const aggregatedResults = effectiveAggregations
     .map((aggregation) => {
       const umbrellaSubject = subjectsById.get(aggregation.umbrellaSubjectId);
       if (!umbrellaSubject) {

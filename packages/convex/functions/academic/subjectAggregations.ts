@@ -8,6 +8,105 @@ import {
   assertAggregationContributionTotals,
   listActiveClassSubjectAggregations,
 } from "./subjectAggregationHelpers";
+import { listClassAggregationOptOuts } from "./subjectAggregationSelectionHelpers";
+
+async function syncUmbrellaSelectionsForAggregation(
+  ctx: any,
+  args: {
+    schoolId: any;
+    classId: any;
+    aggregationId: any;
+    umbrellaSubjectId: any;
+    componentSubjectIds: string[];
+  }
+) {
+  const classSelections = await ctx.db
+    .query("studentSubjectSelections")
+    .withIndex("by_class", (q: any) => q.eq("classId", args.classId))
+    .collect();
+
+  const selectionsByStudentAndSession = new Map<
+    string,
+    {
+      studentId: any;
+      sessionId: any;
+      subjectIds: Set<string>;
+    }
+  >();
+
+  for (const selection of classSelections) {
+    if (String(selection.schoolId) !== String(args.schoolId)) {
+      continue;
+    }
+
+    const key = `${String(selection.studentId)}:${String(selection.sessionId)}`;
+    if (!selectionsByStudentAndSession.has(key)) {
+      selectionsByStudentAndSession.set(key, {
+        studentId: selection.studentId,
+        sessionId: selection.sessionId,
+        subjectIds: new Set<string>(),
+      });
+    }
+    selectionsByStudentAndSession
+      .get(key)!
+      .subjectIds.add(String(selection.subjectId));
+  }
+
+  const sessionIds = Array.from(
+    new Set(
+      Array.from(selectionsByStudentAndSession.values()).map((entry) =>
+        String(entry.sessionId)
+      )
+    )
+  );
+
+  const optOutsBySession = new Map<string, Set<string>>();
+  for (const sessionId of sessionIds) {
+    const optOuts = await listClassAggregationOptOuts(ctx, {
+      classId: args.classId,
+      sessionId: sessionId as any,
+    });
+    optOutsBySession.set(
+      sessionId,
+      new Set(
+        optOuts
+          .filter((optOut: any) => String(optOut.aggregationId) === String(args.aggregationId))
+          .map((optOut: any) => `${String(optOut.studentId)}:${String(optOut.sessionId)}`)
+      )
+    );
+  }
+
+  for (const entry of selectionsByStudentAndSession.values()) {
+    const sessionKey = String(entry.sessionId);
+    const studentSessionKey = `${String(entry.studentId)}:${sessionKey}`;
+    const sessionOptOuts = optOutsBySession.get(sessionKey) ?? new Set<string>();
+
+    if (sessionOptOuts.has(studentSessionKey)) {
+      continue;
+    }
+
+    if (entry.subjectIds.has(String(args.umbrellaSubjectId))) {
+      continue;
+    }
+
+    const allComponentsSelected = args.componentSubjectIds.every((componentSubjectId) =>
+      entry.subjectIds.has(componentSubjectId)
+    );
+    if (!allComponentsSelected) {
+      continue;
+    }
+
+    await ctx.db.insert("studentSubjectSelections", {
+      schoolId: args.schoolId,
+      studentId: entry.studentId,
+      classId: args.classId,
+      subjectId: args.umbrellaSubjectId,
+      sessionId: entry.sessionId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+}
 
 export const getClassSubjectAggregations = query({
   args: {
@@ -255,6 +354,16 @@ export const saveClassSubjectAggregation = mutation({
       });
     }
 
+    await syncUmbrellaSelectionsForAggregation(ctx, {
+      schoolId,
+      classId: args.classId,
+      aggregationId,
+      umbrellaSubjectId: args.umbrellaSubjectId,
+      componentSubjectIds: args.components.map((component) =>
+        String(component.componentSubjectId)
+      ),
+    });
+
     return aggregationId;
   },
 });
@@ -289,6 +398,15 @@ export const removeClassSubjectAggregation = mutation({
       updatedAt: Date.now(),
       updatedBy: userId,
     });
+
+    const optOuts = await ctx.db
+      .query("studentSubjectAggregationOptOuts")
+      .withIndex("by_aggregation", (q) => q.eq("aggregationId", args.aggregationId))
+      .collect();
+
+    for (const optOut of optOuts) {
+      await ctx.db.delete(optOut._id);
+    }
 
     return null;
   },

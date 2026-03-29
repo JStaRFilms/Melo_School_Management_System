@@ -29,6 +29,7 @@ import type * as functions_academic_settings from "../functions/academic/setting
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
 import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
+import type * as functions_academic_subjectAggregationSelectionHelpers from "../functions/academic/subjectAggregationSelectionHelpers.js";
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
   "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;
+  "functions/academic/subjectAggregationSelectionHelpers": typeof functions_academic_subjectAggregationSelectionHelpers;
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
