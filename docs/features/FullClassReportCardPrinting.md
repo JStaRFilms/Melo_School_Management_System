@@ -110,6 +110,7 @@ That is much better than reopening report cards individually, but it still falls
 - `ReportCardBatchNavigator` now includes a clear `Print Full Class` action
 - `ReportCardSheet` now supports `hideToolbar` so stacked print runs do not repeat the screen toolbar on every sheet
 - `ReportCardPrintStack` now renders one report card per page using print page breaks
+- `ReportCardSheet` now uses the same fit-to-A4 scale in print that it uses on screen, which keeps stacked pages consistent with the single-student export layout
 
 ### Admin And Teacher Pages
 

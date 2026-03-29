@@ -114,6 +114,16 @@ function gradeColor(grade: string): string {
 
 /* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Inline print styles (injected once) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */
 const PRINT_STYLE_ID = "report-card-print-styles";
+const A4_PAGE_WIDTH_MM = 210;
+const A4_PAGE_HEIGHT_MM = 297;
+const PRINT_PAGE_MARGIN_MM = 10;
+const PX_PER_MM = 96 / 25.4;
+const PRINT_TARGET_WIDTH_PX = Math.round(
+  (A4_PAGE_WIDTH_MM - PRINT_PAGE_MARGIN_MM * 2) * PX_PER_MM
+);
+const PRINT_TARGET_HEIGHT_PX = Math.round(
+  (A4_PAGE_HEIGHT_MM - PRINT_PAGE_MARGIN_MM * 2) * PX_PER_MM
+);
 
 function ensurePrintStyles() {
   if (typeof document === "undefined") return;
@@ -158,14 +168,17 @@ function ensurePrintStyles() {
         width: 100% !important; 
         max-width: 100% !important; 
         margin: 0 !important; 
-        border-width: 1.5px !important; 
+        border: none !important; 
         box-shadow: none !important; 
-        transform: scale(1) !important;
-        transform-origin: top left !important;
       }
       .rc-sheet * { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
+      }
+      .rc-sheet,
+      .rc-sheet-wrapper {
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
       .rc-stack-item { 
         break-after: page; 
@@ -201,26 +214,46 @@ export function ReportCardSheet({
 
   useEffect(() => {
     const updateScale = () => {
-      if (contentRef.current) {
-        // Reset scale to measure true height
-        contentRef.current.style.transform = "scale(1)";
-        const scrollHeight = contentRef.current.scrollHeight;
-        
-        // Target height: A4 (297mm) - padding (8mm total) = 289mm
-        // 289mm is approx 1092px at 96dpi
-        const targetHeight = 1092; 
-        
-        if (scrollHeight > targetHeight) {
-          setScale(targetHeight / scrollHeight);
-        } else {
-          setScale(1);
-        }
-      }
+      const element = contentRef.current;
+      if (!element) return;
+
+      const scrollHeight = element.scrollHeight;
+      const scrollWidth = element.scrollWidth;
+      if (!scrollHeight || !scrollWidth) return;
+
+      const heightScale = PRINT_TARGET_HEIGHT_PX / scrollHeight;
+      const widthScale = PRINT_TARGET_WIDTH_PX / scrollWidth;
+      const nextScale = Math.min(1, heightScale, widthScale);
+
+      setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1);
     };
 
     updateScale();
-    const timer = setTimeout(updateScale, 100);
-    return () => clearTimeout(timer);
+
+    const timer = window.setTimeout(updateScale, 120);
+    const handleBeforePrint = () => updateScale();
+    const handleResize = () => updateScale();
+
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("resize", handleResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && contentRef.current) {
+      resizeObserver = new ResizeObserver(() => updateScale());
+      resizeObserver.observe(contentRef.current);
+    }
+
+    const fonts = document.fonts;
+    if (fonts?.ready) {
+      void fonts.ready.then(updateScale).catch(() => undefined);
+    }
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
+    };
   }, [reportCard]);
 
   const schoolInitials = buildInitials(reportCard.schoolName);
@@ -352,7 +385,7 @@ export function ReportCardSheet({
           width: "210mm",
           height: "297mm",
           margin: "0 auto 40px",
-          padding: "5mm 5mm",
+          padding: "10mm",
           background: "white",
           boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
           boxSizing: "border-box",
@@ -361,7 +394,7 @@ export function ReportCardSheet({
           alignItems: "center",
           justifyContent: "flex-start",
           overflow: "hidden",
-          border: "1px solid #e2e8f0",
+          border: "none",
           position: "relative",
         }}
       >
@@ -370,12 +403,14 @@ export function ReportCardSheet({
           className="rc-sheet"
           style={{
             width: "100%",
+            minHeight: "100%",
             background: "white",
-            border: "1.5px solid #1e293b",
-            borderRadius: 2,
+            border: "none",
+            borderRadius: 0,
             overflow: "hidden",
             transform: `scale(${scale})`,
             transformOrigin: "top center",
+            boxSizing: "border-box",
           }}
         >
         {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ HEADER: Logo | School Info | Student Photo ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */}
@@ -384,6 +419,7 @@ export function ReportCardSheet({
             display: "grid",
             gridTemplateColumns: "110px 1fr 120px",
             borderBottom: "2px solid #1e293b",
+            breakInside: "avoid",
           }}
         >
           {/* School Logo */}
@@ -392,7 +428,7 @@ export function ReportCardSheet({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: 12,
+              padding: 10,
               borderRight: "1px solid #cbd5e1",
               background: "#f8fafc",
             }}
@@ -402,22 +438,22 @@ export function ReportCardSheet({
                 src={reportCard.schoolLogoUrl}
                 alt="School Logo"
                 style={{
-                  width: 76,
-                  height: 76,
+                  width: 68,
+                  height: 68,
                   objectFit: "contain",
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: 76,
-                  height: 76,
+                  width: 68,
+                  height: 68,
                   borderRadius: "50%",
                   border: "3px solid #1e40af",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: 900,
                   color: "#1e40af",
                   background: "white",
@@ -436,14 +472,14 @@ export function ReportCardSheet({
               flexDirection: "column",
               justifyContent: "center",
               alignItems: "center",
-              padding: "12px 16px",
+              padding: "10px 14px",
               textAlign: "center",
               gap: 3,
             }}
           >
             <h2
               style={{
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: 900,
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
@@ -485,7 +521,7 @@ export function ReportCardSheet({
             {reportCard.schoolMotto && (
               <p
                 style={{
-                  fontSize: 9,
+                  fontSize: 8,
                   fontWeight: 800,
                   fontStyle: "italic",
                   textTransform: "uppercase",
@@ -500,14 +536,14 @@ export function ReportCardSheet({
             <div
               style={{
                 marginTop: 4,
-                padding: "3px 14px",
+                padding: "3px 12px",
                 background: "#0f172a",
                 borderRadius: 3,
               }}
             >
               <span
                 style={{
-                  fontSize: 9,
+                  fontSize: 8,
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.14em",
@@ -525,7 +561,7 @@ export function ReportCardSheet({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: 12,
+              padding: 10,
               borderLeft: "1px solid #cbd5e1",
               background: "#f8fafc",
             }}
@@ -535,8 +571,8 @@ export function ReportCardSheet({
                 src={reportCard.student.photoUrl}
                 alt={reportCard.student.name}
                 style={{
-                  width: 88,
-                  height: 100,
+                  width: 82,
+                  height: 94,
                   objectFit: "cover",
                   border: "2px solid #1e293b",
                   borderRadius: 2,
@@ -545,8 +581,8 @@ export function ReportCardSheet({
             ) : (
               <div
                 style={{
-                  width: 88,
-                  height: 100,
+                  width: 82,
+                  height: 94,
                   border: "1.5px dashed #94a3b8",
                   borderRadius: 2,
                   display: "flex",
@@ -590,6 +626,7 @@ export function ReportCardSheet({
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             borderBottom: "2px solid #1e293b",
+            breakInside: "avoid",
           }}
         >
           {/* Left column */}
@@ -610,13 +647,13 @@ export function ReportCardSheet({
         {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ SECTION HEADER ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */}
         <div
           style={{
-            padding: "8px 14px",
+            padding: "7px 12px",
             background: "#0f172a",
           }}
         >
           <span
             style={{
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 800,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
@@ -633,8 +670,9 @@ export function ReportCardSheet({
             style={{
               width: "100%",
               borderCollapse: "collapse",
-              fontSize: 12,
+              fontSize: 11,
               tableLayout: "fixed",
+              breakInside: "avoid",
             }}
           >
             <thead>
@@ -708,14 +746,14 @@ export function ReportCardSheet({
           <>
             <div
               style={{
-                padding: "8px 14px",
+                padding: "7px 12px",
                 background: "#0f172a",
                 borderTop: "2px solid #1e293b",
               }}
             >
               <span
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.14em",
@@ -768,13 +806,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
         display: "grid",
         gridTemplateColumns: "130px 1fr",
         borderBottom: "1px solid #e2e8f0",
-        fontSize: 12,
-        lineHeight: 1.4,
+        fontSize: 11,
+        lineHeight: 1.35,
       }}
     >
       <div
         style={{
-          padding: "5px 10px",
+          padding: "4px 8px",
           fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
@@ -788,7 +826,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       </div>
       <div
         style={{
-          padding: "5px 10px",
+          padding: "4px 8px",
           fontWeight: 600,
           color: "#0f172a",
         }}
@@ -812,9 +850,9 @@ function Th({
     <th
       style={{
         width: width ?? "auto",
-        padding: "7px 8px",
+        padding: "5px 6px",
         textAlign: align,
-        fontSize: 10,
+        fontSize: 9.5,
         fontWeight: 800,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
@@ -847,14 +885,14 @@ function Td({
   return (
     <td
       style={{
-        padding: "5px 8px",
+        padding: "4px 6px",
         textAlign: align,
         fontWeight: bold ? 700 : 500,
         fontFamily: mono ? "'JetBrains Mono', monospace" : "inherit",
         color: color ?? "#0f172a",
         borderBottom: "1px solid #e2e8f0",
         borderRight: "1px solid #f1f5f9",
-        fontSize: fs ?? 12,
+        fontSize: fs ?? 11,
         whiteSpace: "nowrap",
       }}
     >
@@ -876,15 +914,15 @@ function CommentRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "180px 1fr",
+        gridTemplateColumns: "170px 1fr",
         borderBottom: last ? undefined : "1px solid #e2e8f0",
-        fontSize: 12,
-        lineHeight: 1.5,
+        fontSize: 11,
+        lineHeight: 1.35,
       }}
     >
       <div
         style={{
-          padding: "6px 10px",
+          padding: "4px 8px",
           fontWeight: 700,
           color: "#475569",
           borderRight: "1px solid #e2e8f0",
@@ -896,7 +934,7 @@ function CommentRow({
       </div>
       <div
         style={{
-          padding: "6px 10px",
+          padding: "4px 8px",
           fontWeight: 500,
           color: "#0f172a",
         }}
@@ -931,13 +969,14 @@ function ExtraBundleBlock({
     <div
       style={{
         borderBottom: lastBundle ? undefined : "1px solid #cbd5e1",
+        breakInside: "avoid",
       }}
     >
       {showBundleHeading ? (
         <div
           style={{
-            padding: "8px 10px",
-            fontSize: 11,
+            padding: "6px 8px",
+            fontSize: 10,
             fontWeight: 800,
             textTransform: "uppercase",
             letterSpacing: "0.1em",
@@ -955,6 +994,7 @@ function ExtraBundleBlock({
           columnCount: 2,
           columnGap: 1,
           columnRule: "1px solid #e2e8f0",
+          breakInside: "avoid",
         }}
       >
         {sections.map((section) => (
@@ -989,7 +1029,7 @@ function ExtraSectionCard({
     >
       <div
         style={{
-          padding: "7px 10px",
+          padding: "6px 8px",
           fontSize: 10,
           fontWeight: 800,
           textTransform: "uppercase",
@@ -1027,13 +1067,13 @@ function ExtraItemRow({
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
         borderBottom: last ? undefined : "1px solid #e2e8f0",
-        fontSize: 12,
-        lineHeight: 1.5,
+        fontSize: 11,
+        lineHeight: 1.35,
       }}
     >
       <div
         style={{
-          padding: "6px 10px",
+          padding: "4px 8px",
           fontWeight: 700,
           color: "#475569",
           borderRight: "1px solid #e2e8f0",
@@ -1044,7 +1084,7 @@ function ExtraItemRow({
       </div>
       <div
         style={{
-          padding: "6px 10px",
+          padding: "4px 8px",
           fontWeight: 500,
           color: "#0f172a",
           whiteSpace: "pre-wrap",

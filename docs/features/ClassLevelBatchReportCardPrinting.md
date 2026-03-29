@@ -72,6 +72,7 @@ This pass must not break:
   - query-param aware student navigation
   - school-logo preview/fallback handling
   - batch-print-safe rendering if we support print-all in one pass
+- the shared sheet now fits against the real A4 printable area in both screen and print, so admin and teacher exports use the same scale and the outer side chrome stays out of the way
 
 ### Server: Convex
 
