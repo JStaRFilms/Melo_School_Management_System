@@ -14,11 +14,15 @@ function formatDateTime(timestamp: number) {
 interface ArchivedRecordDrawerProps {
   record: ArchivedRecordItem | null;
   onClose: () => void;
+  onRestore?: () => void;
+  isRestoring?: boolean;
 }
 
 export function ArchivedRecordDrawer({
   record,
   onClose,
+  onRestore,
+  isRestoring = false,
 }: ArchivedRecordDrawerProps) {
   if (!record) {
     return null;
@@ -52,11 +56,11 @@ export function ArchivedRecordDrawer({
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
           <section className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-700">
-              Audit Only
+              Restorable Archive
             </p>
             <p className="mt-1 text-sm text-blue-900">
               This record remains available for history, report cards, and admin
-              audit. Restore behavior is intentionally not part of this view.
+              audit. You can restore it to return it to active setup.
             </p>
           </section>
 
@@ -118,10 +122,23 @@ export function ArchivedRecordDrawer({
               Blocker Snapshot
             </p>
             <p className="mt-2 text-sm text-slate-600">
-              Archive blocker snapshots are not stored yet. This panel shows the
-              surviving record metadata and linked historical usage instead.
+              If restoration fails, the server will explain which active record
+              still needs to be resolved first.
             </p>
           </section>
+
+          {onRestore ? (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onRestore}
+                disabled={isRestoring}
+                className="inline-flex h-11 w-full items-center justify-center rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isRestoring ? "Restoring..." : "Restore Record"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
     </div>

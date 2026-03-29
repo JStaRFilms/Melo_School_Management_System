@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   Archive,
   BookMarked,
@@ -10,6 +10,7 @@ import {
   FolderArchive,
   Users,
 } from "lucide-react";
+import { getUserFacingErrorMessage } from "@school/shared";
 
 import { ArchivedRecordDrawer } from "./components/ArchivedRecordDrawer";
 import {
@@ -43,6 +44,18 @@ export default function ArchivedRecordsPage() {
   const archiveData = useQuery(
     "functions/academic/archiveRecords:listArchivedRecords" as never
   ) as ArchivedRecordsQueryResult | undefined;
+  const restoreTeacher = useMutation(
+    "functions/academic/academicSetup:restoreTeacher" as never
+  );
+  const restoreSession = useMutation(
+    "functions/academic/academicSetup:restoreSession" as never
+  );
+  const restoreClass = useMutation(
+    "functions/academic/academicSetup:restoreClass" as never
+  );
+  const restoreSubject = useMutation(
+    "functions/academic/academicSetup:restoreSubject" as never
+  );
 
   const [activeType, setActiveType] = useState<ArchiveFilterType>("all");
   const [searchValue, setSearchValue] = useState("");
@@ -52,9 +65,46 @@ export default function ArchivedRecordsPage() {
   const [selectedRecord, setSelectedRecord] = useState<ArchivedRecordItem | null>(
     null
   );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const normalizedSearch = deferredSearch.trim().toLowerCase();
   const hasInvalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+
+  const handleRestoreRecord = async () => {
+    if (!selectedRecord) {
+      return;
+    }
+
+    setStatusMessage(null);
+    setIsRestoring(true);
+
+    try {
+      switch (selectedRecord.type) {
+        case "teacher":
+          await restoreTeacher({ teacherId: selectedRecord.recordId as never });
+          break;
+        case "session":
+          await restoreSession({ sessionId: selectedRecord.recordId as never });
+          break;
+        case "class":
+          await restoreClass({ classId: selectedRecord.recordId as never });
+          break;
+        case "subject":
+          await restoreSubject({ subjectId: selectedRecord.recordId as never });
+          break;
+        default:
+          throw new Error("Unsupported archived record type");
+      }
+
+      setSelectedRecord(null);
+      setStatusMessage(`${selectedRecord.typeLabel} restored and returned to active setup.`);
+    } catch (err) {
+      setStatusMessage(getUserFacingErrorMessage(err, "Failed to restore archived record"));
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   const filteredRecords = useMemo(
     () =>
@@ -126,15 +176,21 @@ export default function ArchivedRecordsPage() {
             Archived Records
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-            Browse archived academic history without restoring delete behavior
+            Browse archived academic history and restore records when needed
           </h1>
           <p className="mt-3 max-w-3xl text-sm text-slate-600">
             Archived sessions, classes, teachers, and subjects stay available for
-            audit, report history, and compliance review. This area is intentionally
-            read-only.
+            audit, report history, and compliance review. Use restore when an
+            archived record should return to active setup.
           </p>
         </div>
       </section>
+
+      {statusMessage ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+          {statusMessage}
+        </div>
+      ) : null}
 
       {archiveData ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -204,6 +260,8 @@ export default function ArchivedRecordsPage() {
       <ArchivedRecordDrawer
         record={selectedRecord}
         onClose={() => setSelectedRecord(null)}
+        onRestore={() => void handleRestoreRecord()}
+        isRestoring={isRestoring}
       />
     </div>
   );

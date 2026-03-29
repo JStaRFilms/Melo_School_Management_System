@@ -36,6 +36,37 @@ function normalizeTeacherEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function archivedRecordNotice(recordType: string) {
+  return `This failed because the ${recordType} was previously archived. Check the archives.`;
+}
+
+async function findSubjectsByCode(
+  ctx: any,
+  schoolId: Id<"schools">,
+  code: string
+) {
+  return await ctx.db
+    .query("subjects")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .filter((q: any) => q.eq(q.field("code"), code))
+    .collect();
+}
+
+async function findTeacherByEmailRecords(
+  ctx: any,
+  schoolId: Id<"schools">,
+  email: string
+) {
+  const normalizedEmail = normalizeTeacherEmail(email);
+  return await ctx.db
+    .query("users")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .filter((q: any) =>
+      q.and(q.eq(q.field("role"), "teacher"), q.eq(q.field("email"), normalizedEmail))
+    )
+    .collect();
+}
+
 function normalizeClassLevel(level: string) {
   const normalized = normalizeHumanName(level);
   if (!normalized) {
@@ -108,14 +139,24 @@ export const createTeacherRecordInternal = internalMutation({
       name: args.name,
       requiredMessage: "Teacher name is required",
     });
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .filter((q) => q.eq(q.field("email"), normalizedEmail))
-      .unique();
+    const existingUsers = await findTeacherByEmailRecords(
+      ctx,
+      args.schoolId,
+      normalizedEmail
+    );
+    const activeDuplicate = existingUsers.find(
+      (user: any) => !user.isArchived
+    );
+    const archivedDuplicate = existingUsers.find(
+      (user: any) => user.isArchived
+    );
 
-    if (existingUser) {
+    if (activeDuplicate) {
       throw new ConvexError("A user with this email already exists");
+    }
+
+    if (archivedDuplicate) {
+      throw new ConvexError(archivedRecordNotice("teacher"));
     }
 
     const now = Date.now();
@@ -165,6 +206,22 @@ export const createTeacher = action({
 
     const schoolId = viewer.schoolId;
     const normalizedEmail = normalizeTeacherEmail(args.email);
+
+    const duplicateTeacher = await ctx.runQuery(
+      (internal as any).functions.academic.academicSetup.findTeacherByEmailInternal,
+      {
+        schoolId,
+        email: normalizedEmail,
+      }
+    );
+
+    if (duplicateTeacher) {
+      throw new ConvexError(
+        duplicateTeacher.isArchived
+          ? archivedRecordNotice("teacher")
+          : "A teacher with this email already exists"
+      );
+    }
 
     const authBaseUrl = process.env.CONVEX_SITE_URL?.trim();
     if (!authBaseUrl) {
@@ -288,22 +345,20 @@ export const findTeacherByEmailInternal = internalQuery({
     v.object({
       _id: v.id("users"),
       email: v.string(),
+      isArchived: v.boolean(),
     }),
     v.null()
   ),
   handler: async (ctx, args) => {
-    const normalizedEmail = normalizeTeacherEmail(args.email);
-    const teacher = await ctx.db
-      .query("users")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("role"), "teacher"),
-          q.neq(q.field("isArchived"), true),
-          q.eq(q.field("email"), normalizedEmail)
-        )
-      )
-      .unique();
+    const teachers = await findTeacherByEmailRecords(
+      ctx,
+      args.schoolId,
+      args.email
+    );
+    const teacher =
+      teachers.find((candidate: any) => !candidate.isArchived) ??
+      teachers[0] ??
+      null;
 
     if (!teacher) {
       return null;
@@ -312,6 +367,7 @@ export const findTeacherByEmailInternal = internalQuery({
     return {
       _id: teacher._id,
       email: teacher.email,
+      isArchived: teacher.isArchived === true,
     };
   },
 });
@@ -385,7 +441,11 @@ export const updateTeacherProfile = action({
     );
 
     if (duplicateTeacher && duplicateTeacher._id !== args.teacherId) {
-      throw new ConvexError("A teacher with this email already exists");
+      throw new ConvexError(
+        duplicateTeacher.isArchived
+          ? archivedRecordNotice("teacher")
+          : "A teacher with this email already exists"
+      );
     }
 
     const auth = createAuth(ctx);
@@ -493,6 +553,51 @@ export const archiveTeacher = mutation({
       isArchived: true,
       archivedAt: Date.now(),
       archivedBy: userId,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
+export const restoreTeacher = mutation({
+  args: { teacherId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const teacher = await ctx.db.get(args.teacherId);
+    if (
+      !teacher ||
+      teacher.schoolId !== schoolId ||
+      teacher.role !== "teacher"
+    ) {
+      throw new ConvexError("Teacher not found");
+    }
+
+    if (!teacher.isArchived) {
+      throw new ConvexError("Teacher is not archived");
+    }
+
+    const duplicateTeachers = await findTeacherByEmailRecords(
+      ctx,
+      schoolId,
+      teacher.email
+    );
+    const activeDuplicate = duplicateTeachers.find(
+      (candidate: any) =>
+        !candidate.isArchived && candidate._id !== args.teacherId
+    );
+    if (activeDuplicate) {
+      throw new ConvexError(
+        "Restore blocked because an active teacher already uses this email."
+      );
+    }
+
+    await ctx.db.patch(args.teacherId, {
+      isArchived: false,
       updatedAt: Date.now(),
     });
 
@@ -753,6 +858,52 @@ export const archiveSession = mutation({
   },
 });
 
+export const restoreSession = mutation({
+  args: { sessionId: v.id("academicSessions") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    if (!session.isArchived) {
+      throw new ConvexError("Session is not archived");
+    }
+
+    if (session.isActive) {
+      const activeSessions = await ctx.db
+        .query("academicSessions")
+        .withIndex("by_school_active", (q) =>
+          q.eq("schoolId", schoolId).eq("isActive", true)
+        )
+        .collect();
+
+      for (const activeSession of activeSessions) {
+        if (activeSession._id === args.sessionId) {
+          continue;
+        }
+
+        await ctx.db.patch(activeSession._id, {
+          isActive: false,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    await ctx.db.patch(args.sessionId, {
+      isArchived: false,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
 // ==================== TERM MANAGEMENT ====================
 
 export const createTerm = mutation({
@@ -862,15 +1013,20 @@ export const createSubject = mutation({
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    // Check for duplicate code within school
-    const existing = await ctx.db
-      .query("subjects")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.eq(q.field("code"), args.code))
-      .unique();
+    const existingSubjects = await findSubjectsByCode(ctx, schoolId, args.code);
+    const activeDuplicate = existingSubjects.find(
+      (subject: any) => !subject.isArchived
+    );
+    const archivedDuplicate = existingSubjects.find(
+      (subject: any) => subject.isArchived
+    );
 
-    if (existing) {
+    if (activeDuplicate) {
       throw new ConvexError("A subject with this code already exists");
+    }
+
+    if (archivedDuplicate) {
+      throw new ConvexError(archivedRecordNotice("subject"));
     }
 
     const now = Date.now();
@@ -936,14 +1092,21 @@ export const updateSubject = mutation({
 
     // Check for duplicate code if changing
     if (args.code && args.code !== subject.code) {
-      const existing = await ctx.db
-        .query("subjects")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .filter((q) => q.eq(q.field("code"), args.code))
-        .unique();
+      const existingSubjects = await findSubjectsByCode(ctx, schoolId, args.code);
+      const activeDuplicate = existingSubjects.find(
+        (candidate: any) =>
+          !candidate.isArchived && candidate._id !== args.subjectId
+      );
+      const archivedDuplicate = existingSubjects.find(
+        (candidate: any) => candidate.isArchived
+      );
 
-      if (existing) {
+      if (activeDuplicate) {
         throw new ConvexError("A subject with this code already exists");
+      }
+
+      if (archivedDuplicate) {
+        throw new ConvexError(archivedRecordNotice("subject"));
       }
     }
 
@@ -985,6 +1148,48 @@ export const archiveSubject = mutation({
       archivedBy: userId,
       updatedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+export const restoreSubject = mutation({
+  args: { subjectId: v.id("subjects") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const subject = await ctx.db.get(args.subjectId);
+    if (!subject || subject.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    if (!subject.isArchived) {
+      throw new ConvexError("Subject is not archived");
+    }
+
+    const subjectDuplicates = await findSubjectsByCode(
+      ctx,
+      schoolId,
+      subject.code
+    );
+    const activeDuplicate = subjectDuplicates.find(
+      (candidate: any) =>
+        !candidate.isArchived && candidate._id !== args.subjectId
+    );
+
+    if (activeDuplicate) {
+      throw new ConvexError(
+        "Restore blocked because an active subject already uses this code."
+      );
+    }
+
+    await ctx.db.patch(args.subjectId, {
+      isArchived: false,
+      updatedAt: Date.now(),
+    });
+
     return null;
   },
 });
@@ -1296,6 +1501,32 @@ export const archiveClass = mutation({
       archivedBy: userId,
       updatedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+export const restoreClass = mutation({
+  args: { classId: v.id("classes") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const classDoc = await ctx.db.get(args.classId);
+    if (!classDoc || classDoc.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    if (!classDoc.isArchived) {
+      throw new ConvexError("Class is not archived");
+    }
+
+    await ctx.db.patch(args.classId, {
+      isArchived: false,
+      updatedAt: Date.now(),
+    });
+
     return null;
   },
 });

@@ -30,7 +30,7 @@ The current exam-recording slice also stops before report-card generation. This 
   - classes
 - Hardening pass for archive behavior so archival never strips linked academic history as a side effect
 - Explicit archive blockers and user-facing errors when a record is still tied to active workflows
-- Guardrails so archived records disappear from active setup and selection flows, but remain available for historical audit and report cards
+- Guardrails so archived records disappear from active setup and selection flows, but remain available for historical audit, report cards, and restoration
 - Student profile editing from admin workflows, not only subject selection
 - Student photo upload and replacement
 - Student report-card viewing
@@ -45,7 +45,7 @@ The current exam-recording slice also stops before report-card generation. This 
 ### Out Of Scope
 
 - Permanent delete / purge UI
-- Archived-records admin browser UI (this can ship as the next slice once archive-only behavior is stable)
+- Archived-records admin browser UI with restore action
 - Parent portal report-card delivery
 - Multi-term cumulative report books
 - Ranking / positions / psychomotor / affective domains unless already present elsewhere
@@ -74,6 +74,7 @@ Specifically:
 - `apps/admin/app/academic/subjects/page.tsx`
   - add archive action
   - show archived status / archive errors cleanly
+  - allow restoring archived records from the archive browser
 - `apps/admin/app/academic/sessions/page.tsx`
   - add archive action for non-active sessions
   - show blockers when a session cannot be archived
@@ -159,13 +160,14 @@ Specifically:
 
 - Archive buttons replace destructive delete language
 - Active lists default to non-archived records
-- Archived records can optionally be surfaced in a secondary filtered view later, but v1 can keep them hidden from main setup screens
+- Archived records can be restored from the archive browser when needed
 
 #### Server
 
 - Archive mutations patch records instead of deleting them
 - Archive mutations must not silently delete linked assignments or historical relationships
 - Archive queries exclude archived records by default
+- Restore mutations re-enable archived records when no active conflict blocks them
 - Historical report-card queries may still resolve archived entities for already-saved records
 
 ### Report Cards
@@ -208,7 +210,17 @@ Specifically:
    - record is eligible for archival
 5. Server patches archive metadata instead of deleting data.
 6. Active selectors and list queries stop returning archived records.
-7. Historical records still resolve archived names/details for read-only usage.
+7. Historical records still resolve archived names/details for historical usage.
+
+### 1b. Restore Subject / Session / Teacher / Class
+
+1. Admin opens the archived-records page.
+2. Client selects an archived record and clicks `Restore`.
+3. Client calls the matching restore mutation for the record type.
+4. Server validates school ownership and checks for active conflicts.
+5. If restore is allowed, server clears `isArchived`.
+6. The record returns to active setup flows and disappears from the archive list.
+7. If a live conflict exists, the server returns a restore-first error that points the admin back to the archives.
 
 ### 2. Edit Student Details
 
@@ -383,6 +395,7 @@ All new flows must return user-facing errors that are specific, school-safe, and
 - record not found
 - cross-school access denied
 - record already archived
+- restore blocked because of an active duplicate
 - cannot archive active session
 - cannot archive teacher while still assigned to active classes or subjects
 - cannot archive subject while it is still attached to active class setups or live student selections
@@ -446,6 +459,7 @@ All new flows must return user-facing errors that are specific, school-safe, and
   - replace
   - missing-photo fallback
 - archive buttons should use destructive color styling but say `Archive`, not `Delete`
+- archived-records drawer should include a `Restore` button for each record type
 
 ## File Shape / Modularity Plan
 
@@ -462,6 +476,7 @@ This keeps us aligned with the project 200-line modularity rule.
 ## Acceptance Targets
 
 - Admin can archive a subject, session, teacher, or class without losing underlying data
+- Admin can restore archived subjects, sessions, teachers, and classes from the archive browser
 - Archived records no longer appear in active setup selectors
 - Admin can edit student profile details beyond subjects
 - Admin can upload and replace a student photo
@@ -477,6 +492,7 @@ This keeps us aligned with the project 200-line modularity rule.
 - `subjects`, `classes`, `academicSessions`, and teacher `users` rows now carry archive metadata
 - active setup selectors and access checks filter archived records out by default
 - class, subject, session, and teacher archive mutations now preserve data instead of deleting it
+- restore mutations now return archived records to active setup when no live conflict blocks them
 - archiving an already-inactive session now automatically marks any still-active terms in that session inactive before archiving, so the admin flow does not dead-end
 - archiving a teacher now fails with a clear blocker message until active assignments are reassigned, rather than stripping those links automatically
 - class archival now fails while students are still enrolled so student editing access is not orphaned
