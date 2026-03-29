@@ -266,6 +266,7 @@ To stay aligned with the 200-line modularity rule, split the work into:
   - next button
 - the admin controls panel now includes a school-logo upload card for report-card branding
 - admin score-entry links now pass `classId` into the report-card route so the batch context is ready immediately
+- admin and teacher student/report-card links now use the shared route builders from `packages/shared` so export and print entry points stay aligned
 
 ### Teacher App
 

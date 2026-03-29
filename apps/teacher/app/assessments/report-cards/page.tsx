@@ -7,6 +7,7 @@ import {
   ReportCardBatchNavigator,
   ReportCardPrintStack,
   ReportCardSheet,
+  buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
 } from "@school/shared";
@@ -38,9 +39,12 @@ function TeacherReportCardPageContent() {
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
-  const extrasHref = studentId
-    ? `/assessments/report-card-workbench?studentId=${studentId}&sessionId=${sessionId}&termId=${termId}${resolvedClassId ? `&classId=${resolvedClassId}` : ""}`
-    : undefined;
+  const extrasHref = buildReportCardExtrasHref({
+    studentId,
+    sessionId,
+    termId,
+    classId: resolvedClassId,
+  });
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     sessionId && termId && resolvedClassId

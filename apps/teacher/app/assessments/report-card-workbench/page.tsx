@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { buildReportCardHref } from "@school/shared";
 import type { ReportCardSheetData } from "@school/shared";
 import { useAuth } from "@/lib/AuthProvider";
 
@@ -183,10 +184,12 @@ export default function TeacherReportCardWorkbenchPage() {
   ) as ReportCardSheetData | undefined;
 
   const resolvedClassId = selection.classId ?? reportCard?.classId ?? null;
-  const printHref =
-    selection.studentId && selection.sessionId && selection.termId
-      ? `/assessments/report-cards?studentId=${selection.studentId}&sessionId=${selection.sessionId}&termId=${selection.termId}${resolvedClassId ? `&classId=${resolvedClassId}` : ""}`
-      : undefined;
+  const printHref = buildReportCardHref({
+    studentId: selection.studentId,
+    sessionId: selection.sessionId,
+    termId: selection.termId,
+    classId: resolvedClassId,
+  });
 
   // â”€â”€ Subject matrix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useSearchParams } from "next/navigation";
+import { buildReportCardHref } from "@school/shared";
 import { ExtrasSelectionBar } from "./components/ExtrasSelectionBar";
 import { ExtrasWorkspace } from "./components/ExtrasWorkspace";
 import type { ExtrasEntry, ExtrasSelection, SelectorOption } from "./components/types";
@@ -33,7 +34,12 @@ export default function AdminReportCardExtrasPage() {
   const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
   const saveEntry = useMutation("functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never);
 
-  const reportCardHref = selection.sessionId && selection.termId && selection.studentId ? `/assessments/report-cards?studentId=${selection.studentId}&sessionId=${selection.sessionId}&termId=${selection.termId}${selection.classId ? `&classId=${selection.classId}` : ""}` : undefined;
+  const reportCardHref = buildReportCardHref({
+    studentId: selection.studentId,
+    sessionId: selection.sessionId,
+    termId: selection.termId,
+    classId: selection.classId,
+  });
   const hasSelection = Boolean(selection.sessionId && selection.termId && selection.classId && selection.studentId);
 
   return (

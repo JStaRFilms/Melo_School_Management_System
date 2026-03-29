@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
+import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
 import type {
   StudentRosterEntry,
   ScoreField,
@@ -54,6 +55,18 @@ export function AdminRosterGridRow({
     draftScores,
     [student]
   );
+  const reportCardHref = buildReportCardHref({
+    studentId: student.studentId,
+    sessionId,
+    termId,
+    classId,
+  });
+  const reportCardExtrasHref = buildReportCardExtrasHref({
+    studentId: student.studentId,
+    sessionId,
+    termId,
+    classId,
+  });
 
   const derived = computeDerivedValues(
     ca1,
@@ -73,18 +86,22 @@ export function AdminRosterGridRow({
           {displayStudentName}
         </span>
         <div className="mt-1">
-          <Link
-            href={`/assessments/report-cards?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
-            className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-600"
-          >
-            View Report Card
-          </Link>
-          <Link
-            href={`/assessments/report-card-extras?studentId=${student.studentId}&sessionId=${sessionId}&termId=${termId}&classId=${classId}`}
-            className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
-          >
-            Report Extras
-          </Link>
+          {reportCardHref ? (
+            <Link
+              href={reportCardHref}
+              className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-600"
+            >
+              View Report Card
+            </Link>
+          ) : null}
+          {reportCardExtrasHref ? (
+            <Link
+              href={reportCardExtrasHref}
+              className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
+            >
+              Report Extras
+            </Link>
+          ) : null}
         </div>
         <p className="text-[8px] font-medium text-slate-400 uppercase mt-0.5 tracking-tighter">
           {student.assessmentRecord
