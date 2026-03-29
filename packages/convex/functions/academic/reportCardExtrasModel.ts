@@ -9,6 +9,21 @@ export const reportCardExtraFieldTypeValidator = v.union(
   v.literal("scale")
 );
 
+export const reportCardExtraFieldSourceValidator = v.union(
+  v.literal("teacher_manual"),
+  v.literal("admin_manual"),
+  v.literal("system_term"),
+  v.literal("system_attendance")
+);
+
+export const reportCardExtraSystemKeyValidator = v.union(
+  v.literal("next_term_begins"),
+  v.literal("attendance_code"),
+  v.literal("times_school_opened"),
+  v.literal("times_present"),
+  v.literal("times_absent")
+);
+
 export const reportCardExtraScaleOptionInputValidator = v.object({
   id: v.optional(v.union(v.string(), v.null())),
   label: v.string(),
@@ -21,6 +36,8 @@ export const reportCardExtraBundleFieldInputValidator = v.object({
   type: reportCardExtraFieldTypeValidator,
   scaleTemplateId: v.optional(v.union(v.id("reportCardExtraScaleTemplates"), v.null())),
   printable: v.optional(v.union(v.boolean(), v.null())),
+  source: v.optional(v.union(reportCardExtraFieldSourceValidator, v.null())),
+  systemKey: v.optional(v.union(reportCardExtraSystemKeyValidator, v.null())),
 });
 
 export const reportCardExtraBundleSectionInputValidator = v.object({
@@ -42,6 +59,10 @@ export const reportCardExtraEditorFieldValidator = v.object({
   label: v.string(),
   type: reportCardExtraFieldTypeValidator,
   printable: v.boolean(),
+  source: reportCardExtraFieldSourceValidator,
+  systemKey: v.union(reportCardExtraSystemKeyValidator, v.null()),
+  canEdit: v.boolean(),
+  helperText: v.union(v.string(), v.null()),
   scaleTemplateId: v.union(v.id("reportCardExtraScaleTemplates"), v.null()),
   scaleOptions: v.array(
     v.object({
@@ -101,12 +122,27 @@ type StoredFieldValue = {
   scaleOptionId?: string;
 };
 
+export type ReportCardExtraFieldSource =
+  | "teacher_manual"
+  | "admin_manual"
+  | "system_term"
+  | "system_attendance";
+
+export type ReportCardExtraSystemKey =
+  | "next_term_begins"
+  | "attendance_code"
+  | "times_school_opened"
+  | "times_present"
+  | "times_absent";
+
 type BundleField = {
   id: string;
   label: string;
   type: "text" | "number" | "boolean" | "scale";
   scaleTemplateId?: Id<"reportCardExtraScaleTemplates">;
   printable: boolean;
+  source: ReportCardExtraFieldSource;
+  systemKey?: ReportCardExtraSystemKey;
   order: number;
 };
 
@@ -124,6 +160,194 @@ type BundleDoc = {
   description?: string;
   sections: BundleSection[];
 };
+
+type CanonicalFieldValue = {
+  textValue?: string | null;
+  numberValue?: number | null;
+  printValue: string | null;
+};
+
+const legacySystemFieldAliases: Record<
+  ReportCardExtraSystemKey,
+  string[]
+> = {
+  next_term_begins: ["next term begins", "next time begins"],
+  attendance_code: ["attendance code", "code attendance"],
+  times_school_opened: [
+    "number of times opened",
+    "times opened",
+    "number of times school opened",
+    "times school opened",
+  ],
+  times_present: ["number of times present", "times present"],
+  times_absent: ["number of times absent", "times absent"],
+};
+
+export function isManualFieldSource(source: ReportCardExtraFieldSource) {
+  return source === "teacher_manual" || source === "admin_manual";
+}
+
+function inferLegacySystemKey(label: string): ReportCardExtraSystemKey | null {
+  const normalizedLabel = slugifyId(label)?.replace(/-/g, " ") ?? "";
+  if (!normalizedLabel) return null;
+
+  for (const [systemKey, aliases] of Object.entries(legacySystemFieldAliases) as Array<
+    [ReportCardExtraSystemKey, string[]]
+  >) {
+    if (aliases.includes(normalizedLabel)) {
+      return systemKey;
+    }
+  }
+
+  return null;
+}
+
+export function resolveFieldSourceConfig(input: {
+  label: string;
+  type: BundleField["type"];
+  source?: ReportCardExtraFieldSource | null;
+  systemKey?: ReportCardExtraSystemKey | null;
+}) {
+  const inferredSystemKey = input.systemKey ?? inferLegacySystemKey(input.label);
+  const inferredSource =
+    input.source ??
+    (inferredSystemKey === "next_term_begins"
+      ? "system_term"
+      : inferredSystemKey
+        ? "system_attendance"
+        : "teacher_manual");
+
+  let systemKey: ReportCardExtraSystemKey | undefined;
+  let type = input.type;
+
+  if (inferredSource === "system_term") {
+    systemKey = "next_term_begins";
+    type = "text";
+  } else if (inferredSource === "system_attendance") {
+    if (
+      !inferredSystemKey ||
+      inferredSystemKey === "next_term_begins"
+    ) {
+      throw new ConvexError(
+        `System attendance field "${input.label}" requires a canonical attendance key`
+      );
+    }
+    systemKey = inferredSystemKey;
+    type =
+      systemKey === "attendance_code"
+        ? "text"
+        : "number";
+  } else if (inferredSource === "teacher_manual" || inferredSource === "admin_manual") {
+    systemKey = undefined;
+  } else {
+    throw new ConvexError(`Unsupported field source for "${input.label}"`);
+  }
+
+  return {
+    source: inferredSource,
+    systemKey,
+    type,
+  };
+}
+
+function formatDatePrintValue(value: number | null | undefined) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatCanonicalNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  return String(value);
+}
+
+function getFieldHelperText(field: Pick<BundleField, "source" | "systemKey">) {
+  if (field.source === "teacher_manual") {
+    return "Form teacher entry";
+  }
+  if (field.source === "admin_manual") {
+    return "Admin-managed entry";
+  }
+  if (field.systemKey === "next_term_begins") {
+    return "Managed from the report-card header.";
+  }
+  if (field.systemKey === "times_absent") {
+    return "Calculated automatically from times opened and times present.";
+  }
+  if (field.systemKey === "times_school_opened") {
+    return "Class-wide attendance total set by admin.";
+  }
+  if (field.systemKey === "times_present") {
+    return "Student attendance total set by admin.";
+  }
+  if (field.systemKey === "attendance_code") {
+    return "Attendance code set by admin.";
+  }
+  return null;
+}
+
+function getCanonicalFieldValue(args: {
+  field: Pick<BundleField, "systemKey" | "type">;
+  term?: { nextTermBegins?: number | null } | null;
+  classAttendance?: { timesSchoolOpened?: number | null } | null;
+  studentAttendance?: {
+    timesPresent?: number | null;
+    attendanceCode?: string | null;
+  } | null;
+}): CanonicalFieldValue | null {
+  const { systemKey } = args.field;
+  if (!systemKey) return null;
+
+  if (systemKey === "next_term_begins") {
+    const nextTermBegins = args.term?.nextTermBegins ?? null;
+    return {
+      textValue: formatDatePrintValue(nextTermBegins),
+      printValue: formatDatePrintValue(nextTermBegins),
+    };
+  }
+
+  if (systemKey === "attendance_code") {
+    const attendanceCode = normalizeOptionalText(args.studentAttendance?.attendanceCode ?? null) ?? null;
+    return {
+      textValue: attendanceCode,
+      printValue: attendanceCode,
+    };
+  }
+
+  if (systemKey === "times_school_opened") {
+    const timesSchoolOpened = args.classAttendance?.timesSchoolOpened ?? null;
+    return {
+      numberValue: timesSchoolOpened,
+      printValue: formatCanonicalNumber(timesSchoolOpened),
+    };
+  }
+
+  if (systemKey === "times_present") {
+    const timesPresent = args.studentAttendance?.timesPresent ?? null;
+    return {
+      numberValue: timesPresent,
+      printValue: formatCanonicalNumber(timesPresent),
+    };
+  }
+
+  const timesSchoolOpened = args.classAttendance?.timesSchoolOpened ?? null;
+  const timesPresent = args.studentAttendance?.timesPresent ?? null;
+  const timesAbsent =
+    timesSchoolOpened === null || timesPresent === null
+      ? null
+      : Math.max(timesSchoolOpened - timesPresent, 0);
+  return {
+    numberValue: timesAbsent,
+    printValue: formatCanonicalNumber(timesAbsent),
+  };
+}
+
+function shouldHideFieldFromPrintable(field: { systemKey?: ReportCardExtraSystemKey | null }) {
+  return field.systemKey === "next_term_begins";
+}
 
 export function normalizeScaleTemplateOptions(
   options: Array<{ id?: string | null; label: string; shortLabel?: string | null }>
@@ -157,6 +381,8 @@ export async function normalizeBundleSections(
       type: "text" | "number" | "boolean" | "scale";
       scaleTemplateId?: Id<"reportCardExtraScaleTemplates"> | null;
       printable?: boolean | null;
+      source?: ReportCardExtraFieldSource | null;
+      systemKey?: ReportCardExtraSystemKey | null;
     }>;
   }>
 ) {
@@ -179,9 +405,15 @@ export async function normalizeBundleSections(
     for (let fieldIndex = 0; fieldIndex < section.fields.length; fieldIndex += 1) {
       const field = section.fields[fieldIndex];
       const fieldLabel = normalizeRequiredText(field.label, "Extra field label is required");
+      const fieldConfig = resolveFieldSourceConfig({
+        label: fieldLabel,
+        type: field.type,
+        source: field.source ?? null,
+        systemKey: field.systemKey ?? null,
+      });
       let scaleTemplateId: Id<"reportCardExtraScaleTemplates"> | undefined;
 
-      if (field.type === "scale") {
+      if (fieldConfig.type === "scale") {
         if (!field.scaleTemplateId) {
           throw new ConvexError(`Scale field \"${fieldLabel}\" requires a scale template`);
         }
@@ -195,9 +427,11 @@ export async function normalizeBundleSections(
       normalizedFields.push({
         id: getStableId(field.id, fieldLabel, fieldIndex, usedFieldIds, "field"),
         label: fieldLabel,
-        type: field.type,
+        type: fieldConfig.type,
         ...(scaleTemplateId ? { scaleTemplateId } : {}),
         printable: field.printable ?? true,
+        source: fieldConfig.source,
+        ...(fieldConfig.systemKey ? { systemKey: fieldConfig.systemKey } : {}),
         order: fieldIndex,
       });
     }
@@ -238,14 +472,63 @@ export async function buildExtrasCollectionView(
 
   const bundleDocs = (
     await Promise.all(scopedAssignments.map((assignment: any) => ctx.db.get(assignment.bundleId)))
-  ).filter((bundle): bundle is BundleDoc => Boolean(bundle && bundle.schoolId === args.schoolId));
+  )
+    .filter((bundle): bundle is NonNullable<typeof bundle> => Boolean(bundle && bundle.schoolId === args.schoolId))
+    .map((bundle) => ({
+      ...bundle,
+      sections: bundle.sections.map((section: any) => ({
+        ...section,
+        fields: section.fields.map((field: any) => {
+          const fieldConfig = resolveFieldSourceConfig({
+            label: field.label,
+            type: field.type,
+            source: field.source ?? null,
+            systemKey: field.systemKey ?? null,
+          });
+          return {
+            ...field,
+            type: fieldConfig.type,
+            source: fieldConfig.source,
+            ...(fieldConfig.systemKey ? { systemKey: fieldConfig.systemKey } : {}),
+          };
+        }),
+      })),
+    })) as BundleDoc[];
 
-  const storedValues = await ctx.db
-    .query("reportCardExtraStudentValues")
-    .withIndex("by_student_session_term", (q: any) =>
-      q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
-    )
-    .collect();
+  const [storedValues, term, classAttendanceDocs, studentAttendanceDocs] = await Promise.all([
+    ctx.db
+      .query("reportCardExtraStudentValues")
+      .withIndex("by_student_session_term", (q: any) =>
+        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+      )
+      .collect(),
+    ctx.db.get(args.termId),
+    ctx.db
+      .query("reportCardAttendanceClassValues")
+      .withIndex("by_class_session_term", (q: any) =>
+        q.eq("classId", args.classId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+      )
+      .collect(),
+    ctx.db
+      .query("reportCardAttendanceStudentValues")
+      .withIndex("by_student_session_term", (q: any) =>
+        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+      )
+      .collect(),
+  ]);
+
+  const classAttendance =
+    classAttendanceDocs.find(
+      (doc: any) =>
+        String(doc.schoolId) === String(args.schoolId) &&
+        String(doc.classId) === String(args.classId)
+    ) ?? null;
+  const studentAttendance =
+    studentAttendanceDocs.find(
+      (doc: any) =>
+        String(doc.schoolId) === String(args.schoolId) &&
+        String(doc.classId) === String(args.classId)
+    ) ?? null;
 
   const valueDocsByBundleId = new Map<string, { values: StoredFieldValue[] }>();
   for (const doc of storedValues) {
@@ -296,11 +579,31 @@ export async function buildExtrasCollectionView(
               ? templateMap.get(String(field.scaleTemplateId))
               : null;
             const value = valueMap.get(field.id);
+            const canonicalValue = getCanonicalFieldValue({
+              field,
+              term:
+                term && term.schoolId === args.schoolId
+                  ? { nextTermBegins: term.nextTermBegins ?? null }
+                  : null,
+              classAttendance: classAttendance
+                ? { timesSchoolOpened: classAttendance.timesSchoolOpened ?? null }
+                : null,
+              studentAttendance: studentAttendance
+                ? {
+                    timesPresent: studentAttendance.timesPresent ?? null,
+                    attendanceCode: studentAttendance.attendanceCode ?? null,
+                  }
+                : null,
+            });
             return {
               id: field.id,
               label: field.label,
               type: field.type,
               printable: field.printable,
+              source: field.source,
+              systemKey: field.systemKey ?? null,
+              canEdit: false,
+              helperText: getFieldHelperText(field),
               scaleTemplateId: field.scaleTemplateId ?? null,
               scaleOptions: (template?.options ?? [])
                 .slice()
@@ -311,11 +614,13 @@ export async function buildExtrasCollectionView(
                   shortLabel: option.shortLabel ?? null,
                 })),
               value: {
-                textValue: value?.textValue ?? null,
-                numberValue: value?.numberValue ?? null,
+                textValue: canonicalValue?.textValue ?? value?.textValue ?? null,
+                numberValue: canonicalValue?.numberValue ?? value?.numberValue ?? null,
                 booleanValue: value?.booleanValue ?? null,
                 scaleOptionId: value?.scaleOptionId ?? null,
-                printValue: formatExtraPrintValue(field.type, value, template),
+                printValue:
+                  canonicalValue?.printValue ??
+                  formatExtraPrintValue(field.type, value, template),
               },
             };
           }),
@@ -336,7 +641,7 @@ export async function buildExtrasCollectionView(
       sectionId: section.id,
       sectionLabel: section.label,
       items: section.fields
-        .filter((field) => field.printable)
+        .filter((field) => field.printable && !shouldHideFieldFromPrintable(field))
         .map((field) => ({
           fieldId: field.id,
           label: field.label,
@@ -371,6 +676,7 @@ export function normalizeStoredExtraValues(
   for (const rawValue of values) {
     const field = fieldMap.get(rawValue.fieldId);
     if (!field) continue;
+    if (!isManualFieldSource(field.source)) continue;
 
     const nextValue: StoredFieldValue = { fieldId: field.id };
     if (field.type === "text") {

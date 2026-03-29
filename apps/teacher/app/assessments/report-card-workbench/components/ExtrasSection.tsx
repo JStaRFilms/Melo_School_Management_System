@@ -8,6 +8,16 @@ type ExtrasField = {
   label: string;
   type: "text" | "number" | "boolean" | "scale";
   printable: boolean;
+  source: "teacher_manual" | "admin_manual" | "system_term" | "system_attendance";
+  systemKey:
+    | "next_term_begins"
+    | "attendance_code"
+    | "times_school_opened"
+    | "times_present"
+    | "times_absent"
+    | null;
+  canEdit: boolean;
+  helperText: string | null;
   scaleOptions: Array<{
     id: string;
     label: string;
@@ -83,8 +93,17 @@ export function ExtrasSection({
     setStatus({ type: "idle" });
   }, [entry]);
 
-  const bundles = entry?.bundles ?? [];
+  const bundles = useMemo(() => entry?.bundles ?? [], [entry]);
   const canEdit = entry?.canEdit ?? false;
+  const hasEditableFields = useMemo(
+    () =>
+      bundles.some((bundle) =>
+        bundle.sections.some((section) =>
+          section.fields.some((field) => field.canEdit)
+        )
+      ),
+    [bundles]
+  );
   const savePayload = useMemo<ExtrasBundleValueInput[]>(
     () =>
       bundles.map((bundle) => ({
@@ -111,7 +130,7 @@ export function ExtrasSection({
   );
 
   const handleSave = async () => {
-    if (!canEdit || bundles.length === 0) {
+    if (!hasEditableFields || bundles.length === 0) {
       return;
     }
 
@@ -215,10 +234,15 @@ export function ExtrasSection({
                                 </span>
                               ) : null}
                             </div>
+                            {field.helperText ? (
+                              <div className="mb-1.5 text-[11px] text-slate-500">
+                                {field.helperText}
+                              </div>
+                            ) : null}
                             <ExtrasInput
                               field={field}
                               draft={draft[bundle._id]?.[field.id]}
-                              disabled={!canEdit || status.type === "saving"}
+                              disabled={!field.canEdit || status.type === "saving"}
                               onChange={(value) =>
                                 setDraft((current) => ({
                                   ...current,
@@ -250,6 +274,8 @@ export function ExtrasSection({
                 <span className="text-rose-600">{status.message}</span>
               ) : !canEdit ? (
                 <span className="text-amber-700">Only the form teacher can edit extras for this class.</span>
+              ) : !hasEditableFields ? (
+                <span className="text-slate-500">These fields are admin-managed or calculated automatically.</span>
               ) : (
                 <span className="text-slate-500">Unsaved changes will be lost if not saved.</span>
               )}
@@ -268,7 +294,7 @@ export function ExtrasSection({
               <button
                 type="button"
                 onClick={() => void handleSave()}
-                disabled={!canEdit || status.type === "saving"}
+                disabled={!hasEditableFields || status.type === "saving"}
                 className="bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-md transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {status.type === "saving" ? "Saving..." : "Save Extras"}
@@ -294,6 +320,14 @@ function ExtrasInput({
 }) {
   const inputClass =
     "w-full text-sm font-medium bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all placeholder:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50";
+
+  if (!field.canEdit) {
+    return (
+      <div className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700">
+        {field.value.printValue ?? "Not set"}
+      </div>
+    );
+  }
 
   if (field.type === "text") {
     return (

@@ -8,14 +8,20 @@ import {
 } from "./auth";
 import {
   buildExtrasCollectionView,
+  isManualFieldSource,
   normalizeBundleSections,
   normalizeScaleTemplateOptions,
   normalizeStoredExtraValues,
   reportCardExtraBundleFieldInputValidator,
   reportCardExtraBundleSectionInputValidator,
   reportCardExtraEditorBundleValidator,
+  reportCardExtraFieldSourceValidator,
   reportCardExtraScaleOptionInputValidator,
+  reportCardExtraSystemKeyValidator,
   reportCardExtraValueInputValidator,
+  resolveFieldSourceConfig,
+  type ReportCardExtraFieldSource,
+  type ReportCardExtraSystemKey,
 } from "./reportCardExtrasModel";
 import { getReadableUserName } from "./studentNameCompat";
 
@@ -54,6 +60,8 @@ const bundleValidator = v.object({
           ),
           scaleTemplateId: v.union(v.id("reportCardExtraScaleTemplates"), v.null()),
           printable: v.boolean(),
+          source: reportCardExtraFieldSourceValidator,
+          systemKey: v.union(reportCardExtraSystemKeyValidator, v.null()),
           order: v.number(),
         })
       ),
@@ -89,7 +97,7 @@ async function getExtrasWorkspaceAccess(
 ) {
   if (args.isSchoolAdmin || args.role === "admin") {
     await assertAdminForSchool(ctx, args.userId, args.schoolId, args.role);
-    return { canEdit: true };
+    return { canEdit: true, isAdmin: true };
   }
   if (args.role !== "teacher") {
     throw new ConvexError("Admin or form teacher access required");
@@ -113,7 +121,7 @@ async function getExtrasWorkspaceAccess(
   const isLinkedFormTeacher =
     viewer?.email && formTeacher?.email && viewer.email.toLowerCase() === formTeacher.email.toLowerCase();
 
-  return { canEdit: isExactFormTeacher || isLinkedFormTeacher };
+  return { canEdit: isExactFormTeacher || isLinkedFormTeacher, isAdmin: false };
 }
 
 async function assertExtrasEditorAccess(
@@ -130,6 +138,38 @@ async function assertExtrasEditorAccess(
   if (!access.canEdit) {
     throw new ConvexError("Form teacher access required");
   }
+}
+
+function canEditExtrasField(
+  source: ReportCardExtraFieldSource,
+  systemKey: ReportCardExtraSystemKey | null,
+  access: { canEdit: boolean; isAdmin: boolean }
+) {
+  if (!access.canEdit) return false;
+  if (source === "teacher_manual") return true;
+  if (source === "admin_manual") return access.isAdmin;
+  if (source === "system_term") return false;
+  if (!access.isAdmin) return false;
+  return systemKey !== "times_absent";
+}
+
+function normalizeAttendanceNumber(
+  value: number | null | undefined,
+  label: string
+) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+    throw new ConvexError(`${label} must be a whole number zero or higher`);
+  }
+  return value;
+}
+
+function normalizeAttendanceText(value: string | null | undefined) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 export const listReportCardExtraScaleTemplates = query({
@@ -230,14 +270,24 @@ export const listReportCardExtraBundles = query({
           id: section.id,
           label: section.label,
           order: section.order,
-          fields: section.fields.slice().sort((a, b) => a.order - b.order).map((field) => ({
-            id: field.id,
-            label: field.label,
-            type: field.type,
-            scaleTemplateId: field.scaleTemplateId ?? null,
-            printable: field.printable,
-            order: field.order,
-          })),
+          fields: section.fields.slice().sort((a, b) => a.order - b.order).map((field) => {
+            const fieldConfig = resolveFieldSourceConfig({
+              label: field.label,
+              type: field.type,
+              source: (field as any).source ?? null,
+              systemKey: (field as any).systemKey ?? null,
+            });
+            return {
+              id: field.id,
+              label: field.label,
+              type: fieldConfig.type,
+              scaleTemplateId: field.scaleTemplateId ?? null,
+              printable: field.printable,
+              source: fieldConfig.source,
+              systemKey: fieldConfig.systemKey ?? null,
+              order: field.order,
+            };
+          }),
         })),
       }));
   },
@@ -494,7 +544,16 @@ export const getStudentReportCardExtrasEntry = query({
       sessionId: args.sessionId,
       termId: args.termId,
       canEdit: access.canEdit,
-      bundles,
+      bundles: bundles.map((bundle) => ({
+        ...bundle,
+        sections: bundle.sections.map((section) => ({
+          ...section,
+          fields: section.fields.map((field) => ({
+            ...field,
+            canEdit: canEditExtrasField(field.source, field.systemKey, access),
+          })),
+        })),
+      })),
     };
   },
 });
@@ -510,19 +569,53 @@ export const saveStudentReportCardExtrasEntry = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
-    await assertExtrasEditorAccess(ctx, { userId, schoolId, role, isSchoolAdmin, classId: args.classId });
+    const access = await getExtrasWorkspaceAccess(ctx, {
+      userId,
+      schoolId,
+      role,
+      isSchoolAdmin,
+      classId: args.classId,
+    });
+    if (!access.canEdit) {
+      throw new ConvexError("Form teacher access required");
+    }
 
-    const [student, classDoc, session, term] = await Promise.all([
+    const [student, classDoc, session, term, existingClassAttendanceDocs, existingStudentAttendanceDocs] = await Promise.all([
       ctx.db.get(args.studentId),
       ctx.db.get(args.classId),
       ctx.db.get(args.sessionId),
       ctx.db.get(args.termId),
+      ctx.db
+        .query("reportCardAttendanceClassValues")
+        .withIndex("by_class_session_term", (q) =>
+          q.eq("classId", args.classId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+        )
+        .collect(),
+      ctx.db
+        .query("reportCardAttendanceStudentValues")
+        .withIndex("by_student_session_term", (q) =>
+          q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+        )
+        .collect(),
     ]);
     if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
     if (student.classId !== args.classId) throw new ConvexError("Student is not enrolled in this class");
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Class not found");
     if (!session || session.schoolId !== schoolId || session.isArchived) throw new ConvexError("Session not found");
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) throw new ConvexError("Term not found");
+
+    const existingClassAttendance =
+      existingClassAttendanceDocs.find(
+        (doc) =>
+          String(doc.schoolId) === String(schoolId) &&
+          String(doc.classId) === String(args.classId)
+      ) ?? null;
+    const existingStudentAttendance =
+      existingStudentAttendanceDocs.find(
+        (doc) =>
+          String(doc.schoolId) === String(schoolId) &&
+          String(doc.classId) === String(args.classId)
+      ) ?? null;
 
     const assignments = await ctx.db
       .query("reportCardExtraClassAssignments")
@@ -547,10 +640,107 @@ export const saveStudentReportCardExtrasEntry = mutation({
     }
 
     const now = Date.now();
+    const attendanceUpdates: {
+      timesSchoolOpened?: number | null;
+      timesPresent?: number | null;
+      attendanceCode?: string | null;
+    } = {};
+
     for (const bundleEntry of dedupedBundleValues) {
-      const bundle = await ctx.db.get(bundleEntry.bundleId);
-      if (!bundle || bundle.schoolId !== schoolId) {
+      const storedBundle = await ctx.db.get(bundleEntry.bundleId);
+      if (!storedBundle || storedBundle.schoolId !== schoolId) {
         throw new ConvexError("Assigned extras bundle not found");
+      }
+
+      const bundle = {
+        ...storedBundle,
+        sections: storedBundle.sections.map((section) => ({
+          ...section,
+          fields: section.fields.map((field) => {
+            const fieldConfig = resolveFieldSourceConfig({
+              label: field.label,
+              type: field.type,
+              source: (field as any).source ?? null,
+              systemKey: (field as any).systemKey ?? null,
+            });
+            return {
+              ...field,
+              type: fieldConfig.type,
+              source: fieldConfig.source,
+              ...(fieldConfig.systemKey ? { systemKey: fieldConfig.systemKey } : {}),
+            };
+          }),
+        })),
+      };
+
+      const fieldMap = new Map(
+        bundle.sections.flatMap((section) =>
+          section.fields.map((field) => [field.id, field] as const)
+        )
+      );
+
+      const editableManualValues = [] as typeof bundleEntry.values;
+      for (const rawValue of bundleEntry.values) {
+        const field = fieldMap.get(rawValue.fieldId);
+        if (!field) continue;
+
+        const canEditField = canEditExtrasField(
+          field.source,
+          field.systemKey ?? null,
+          access
+        );
+
+        if (isManualFieldSource(field.source)) {
+          if (canEditField) {
+            editableManualValues.push(rawValue);
+          }
+          continue;
+        }
+
+        if (!canEditField) {
+          continue;
+        }
+
+        if (field.systemKey === "times_school_opened") {
+          const nextValue = normalizeAttendanceNumber(
+            rawValue.numberValue ?? null,
+            field.label
+          );
+          if (
+            attendanceUpdates.timesSchoolOpened !== undefined &&
+            attendanceUpdates.timesSchoolOpened !== nextValue
+          ) {
+            throw new ConvexError("Times school opened was submitted with conflicting values");
+          }
+          attendanceUpdates.timesSchoolOpened = nextValue;
+          continue;
+        }
+
+        if (field.systemKey === "times_present") {
+          const nextValue = normalizeAttendanceNumber(
+            rawValue.numberValue ?? null,
+            field.label
+          );
+          if (
+            attendanceUpdates.timesPresent !== undefined &&
+            attendanceUpdates.timesPresent !== nextValue
+          ) {
+            throw new ConvexError("Times present was submitted with conflicting values");
+          }
+          attendanceUpdates.timesPresent = nextValue;
+          continue;
+        }
+
+        if (field.systemKey === "attendance_code") {
+          const nextValue = normalizeAttendanceText(rawValue.textValue ?? null);
+          if (
+            attendanceUpdates.attendanceCode !== undefined &&
+            attendanceUpdates.attendanceCode !== nextValue
+          ) {
+            throw new ConvexError("Attendance code was submitted with conflicting values");
+          }
+          attendanceUpdates.attendanceCode = nextValue;
+        }
       }
 
       const templateIds = bundle.sections.flatMap((section) =>
@@ -564,12 +754,18 @@ export const saveStudentReportCardExtrasEntry = mutation({
           .filter((template): template is NonNullable<typeof template> => Boolean(template && template.schoolId === schoolId))
           .map((template) => [String(template._id), template] as const)
       );
-      const values = normalizeStoredExtraValues(bundleEntry.values as any, bundle as any, templateMap as any);
+      const values = normalizeStoredExtraValues(
+        editableManualValues as any,
+        bundle as any,
+        templateMap as any
+      );
 
       const existingDoc = existingDocs.find(
         (doc) => String(doc.classId) === String(args.classId) && String(doc.bundleId) === String(bundle._id)
       );
-      if (existingDoc) {
+      if (existingDoc && values.length === 0) {
+        await ctx.db.delete(existingDoc._id);
+      } else if (existingDoc) {
         await ctx.db.replace(existingDoc._id, {
           schoolId,
           classId: args.classId,
@@ -582,7 +778,7 @@ export const saveStudentReportCardExtrasEntry = mutation({
           updatedAt: now,
           updatedBy: userId,
         });
-      } else {
+      } else if (values.length > 0) {
         await ctx.db.insert("reportCardExtraStudentValues", {
           schoolId,
           classId: args.classId,
@@ -595,6 +791,114 @@ export const saveStudentReportCardExtrasEntry = mutation({
           updatedAt: now,
           updatedBy: userId,
         });
+      }
+    }
+
+    const effectiveTimesSchoolOpened =
+      attendanceUpdates.timesSchoolOpened !== undefined
+        ? attendanceUpdates.timesSchoolOpened
+        : existingClassAttendance?.timesSchoolOpened ?? null;
+    const effectiveTimesPresent =
+      attendanceUpdates.timesPresent !== undefined
+        ? attendanceUpdates.timesPresent
+        : existingStudentAttendance?.timesPresent ?? null;
+
+    if (
+      effectiveTimesSchoolOpened !== null &&
+      effectiveTimesPresent !== null &&
+      effectiveTimesSchoolOpened !== undefined &&
+      effectiveTimesPresent !== undefined &&
+      effectiveTimesPresent > effectiveTimesSchoolOpened
+    ) {
+      throw new ConvexError("Times present cannot be greater than times school opened");
+    }
+
+    if (attendanceUpdates.timesSchoolOpened !== undefined) {
+      if (attendanceUpdates.timesSchoolOpened === null) {
+        if (existingClassAttendance) {
+          await ctx.db.delete(existingClassAttendance._id);
+        }
+      } else if (existingClassAttendance) {
+        await ctx.db.replace(existingClassAttendance._id, {
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+          termId: args.termId,
+          timesSchoolOpened: attendanceUpdates.timesSchoolOpened,
+          createdAt: existingClassAttendance.createdAt,
+          updatedAt: now,
+          updatedBy: userId,
+        });
+      } else {
+        await ctx.db.insert("reportCardAttendanceClassValues", {
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+          termId: args.termId,
+          timesSchoolOpened: attendanceUpdates.timesSchoolOpened,
+          createdAt: now,
+          updatedAt: now,
+          updatedBy: userId,
+        });
+      }
+    }
+
+    if (
+      attendanceUpdates.timesPresent !== undefined ||
+      attendanceUpdates.attendanceCode !== undefined
+    ) {
+      const nextTimesPresent =
+        attendanceUpdates.timesPresent !== undefined
+          ? attendanceUpdates.timesPresent
+          : existingStudentAttendance?.timesPresent ?? undefined;
+      const nextAttendanceCode =
+        attendanceUpdates.attendanceCode !== undefined
+          ? attendanceUpdates.attendanceCode
+          : existingStudentAttendance?.attendanceCode ?? undefined;
+
+      if (
+        (nextTimesPresent === undefined || nextTimesPresent === null) &&
+        (nextAttendanceCode === undefined || nextAttendanceCode === null)
+      ) {
+        if (existingStudentAttendance) {
+          await ctx.db.delete(existingStudentAttendance._id);
+        }
+      } else if (existingStudentAttendance) {
+        const replacement: Record<string, unknown> = {
+          schoolId,
+          classId: args.classId,
+          studentId: args.studentId,
+          sessionId: args.sessionId,
+          termId: args.termId,
+          createdAt: existingStudentAttendance.createdAt,
+          updatedAt: now,
+          updatedBy: userId,
+        };
+        if (nextTimesPresent !== undefined && nextTimesPresent !== null) {
+          replacement.timesPresent = nextTimesPresent;
+        }
+        if (nextAttendanceCode !== undefined && nextAttendanceCode !== null) {
+          replacement.attendanceCode = nextAttendanceCode;
+        }
+        await ctx.db.replace(existingStudentAttendance._id, replacement as any);
+      } else {
+        const record: Record<string, unknown> = {
+          schoolId,
+          classId: args.classId,
+          studentId: args.studentId,
+          sessionId: args.sessionId,
+          termId: args.termId,
+          createdAt: now,
+          updatedAt: now,
+          updatedBy: userId,
+        };
+        if (nextTimesPresent !== undefined && nextTimesPresent !== null) {
+          record.timesPresent = nextTimesPresent;
+        }
+        if (nextAttendanceCode !== undefined && nextAttendanceCode !== null) {
+          record.attendanceCode = nextAttendanceCode;
+        }
+        await ctx.db.insert("reportCardAttendanceStudentValues", record as any);
       }
     }
 

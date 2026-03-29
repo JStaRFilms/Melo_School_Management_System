@@ -5,10 +5,12 @@ import type {
   BundleRecord,
   BundleSectionDraft,
   ClassAssignmentRecord,
+  FieldSource,
   FieldType,
   ScaleOptionDraft,
   ScaleTemplateDraft,
   ScaleTemplateRecord,
+  SystemKey,
 } from "./types";
 
 let localCounter = 0;
@@ -19,6 +21,32 @@ export const fieldTypeOptions: Array<{ value: FieldType; label: string }> = [
   { value: "boolean", label: "Yes / No" },
   { value: "scale", label: "Reusable scale" },
 ];
+
+export const fieldSourceOptions: Array<{ value: FieldSource; label: string }> = [
+  { value: "teacher_manual", label: "Teacher entered" },
+  { value: "admin_manual", label: "Admin entered" },
+  { value: "system_term", label: "Term value" },
+  { value: "system_attendance", label: "Attendance value" },
+];
+
+export const systemTermFieldOptions: Array<{ value: SystemKey; label: string }> = [
+  { value: "next_term_begins", label: "Next term begins" },
+];
+
+export const systemAttendanceFieldOptions: Array<{ value: SystemKey; label: string }> = [
+  { value: "attendance_code", label: "Attendance code" },
+  { value: "times_school_opened", label: "Number of times opened" },
+  { value: "times_present", label: "Number of times present" },
+  { value: "times_absent", label: "Number of times absent" },
+];
+
+const canonicalFieldConfig: Record<SystemKey, { label: string; type: FieldType }> = {
+  next_term_begins: { label: "Next Term Begins", type: "text" },
+  attendance_code: { label: "Attendance Code", type: "text" },
+  times_school_opened: { label: "Number Of Times Opened", type: "number" },
+  times_present: { label: "Number Of Times Present", type: "number" },
+  times_absent: { label: "Number Of Times Absent", type: "number" },
+};
 
 export function createEmptyScaleDraft(): ScaleTemplateDraft {
   return {
@@ -85,6 +113,8 @@ export function createBundleDraft(bundle?: BundleRecord | null): BundleDraft {
             type: field.type,
             scaleTemplateId: field.scaleTemplateId ?? null,
             printable: field.printable,
+            source: field.source,
+            systemKey: field.systemKey ?? null,
           })),
       })),
   };
@@ -107,6 +137,8 @@ export function createEmptyField(type: FieldType = "text"): BundleFieldDraft {
     type,
     scaleTemplateId: null,
     printable: true,
+    source: "teacher_manual",
+    systemKey: null,
   };
 }
 
@@ -204,6 +236,13 @@ export function validateBundleDraft(
           return `The reusable scale for \"${label}\" is no longer available.`;
         }
       }
+
+      if (
+        (field.source === "system_term" || field.source === "system_attendance") &&
+        !field.systemKey
+      ) {
+        return `Choose a canonical value for "${label}".`;
+      }
     }
   }
 
@@ -237,6 +276,8 @@ export function serializeBundleDraft(draft: BundleDraft) {
         type: field.type,
         scaleTemplateId: field.type === "scale" ? field.scaleTemplateId : null,
         printable: field.printable,
+        source: field.source,
+        systemKey: field.systemKey,
       })),
     })),
   });
@@ -246,6 +287,12 @@ export function getBundlePreviewValue(
   field: BundleFieldDraft,
   templates: ScaleTemplateRecord[]
 ) {
+  if (
+    field.source === "system_term" ||
+    field.source === "system_attendance"
+  ) {
+    return field.systemKey ? canonicalFieldConfig[field.systemKey].label : "System value";
+  }
   if (field.type === "text") {
     return "Example narrative entry";
   }
@@ -258,6 +305,10 @@ export function getBundlePreviewValue(
 
   const template = templates.find((entry) => entry._id === field.scaleTemplateId);
   return template?.options[0]?.label ?? "Select an option";
+}
+
+export function getCanonicalFieldConfig(systemKey: SystemKey | null) {
+  return systemKey ? canonicalFieldConfig[systemKey] : null;
 }
 
 export function buildAssignmentMap(

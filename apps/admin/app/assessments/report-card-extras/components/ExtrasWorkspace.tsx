@@ -38,6 +38,15 @@ export function ExtrasWorkspace({
 
   const bundles = useMemo(() => entry?.bundles ?? [], [entry]);
   const canEdit = entry?.canEdit ?? false;
+  const hasEditableFields = useMemo(
+    () =>
+      bundles.some((bundle) =>
+        bundle.sections.some((section) =>
+          section.fields.some((field) => field.canEdit)
+        )
+      ),
+    [bundles]
+  );
   const savePayload = useMemo(
     () =>
       bundles.map((bundle) => ({
@@ -64,7 +73,7 @@ export function ExtrasWorkspace({
   );
 
   const handleSave = async () => {
-    if (bundles.length === 0 || !canEdit) return;
+    if (bundles.length === 0 || !hasEditableFields) return;
     setIsSaving(true);
     setError(null);
     setSuccess(null);
@@ -120,7 +129,8 @@ export function ExtrasWorkspace({
                       {section.fields.map((field) => (
                         <label key={field.id} className="block rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                           <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-slate-900"><span>{field.label}</span>{field.printable ? <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-700">Printable</span> : null}</span>
-                          <ExtrasInput field={field} draft={draft[bundle._id]?.[field.id]} disabled={!canEdit || isSaving} onChange={(value) => { setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } })); setError(null); setSuccess(null); }} />
+                          {field.helperText ? <span className="mb-2 block text-xs text-slate-500">{field.helperText}</span> : null}
+                          <ExtrasInput field={field} draft={draft[bundle._id]?.[field.id]} disabled={!field.canEdit || isSaving} onChange={(value) => { setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } })); setError(null); setSuccess(null); }} />
                         </label>
                       ))}
                     </div>
@@ -132,10 +142,11 @@ export function ExtrasWorkspace({
 
           {error ? <Banner tone="error" message={error} /> : null}
           {success ? <Banner tone="success" message={success} /> : null}
+          {!hasEditableFields ? <Banner tone="success" message="These fields are system-managed or read-only in this workspace." /> : null}
 
           <div className="flex flex-wrap justify-end gap-3">
             <button type="button" onClick={() => setDraft(buildDraft(entry))} disabled={isSaving} className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-60">Reset</button>
-            <button type="button" onClick={handleSave} disabled={!canEdit || isSaving} className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{isSaving ? "Saving..." : "Save extras"}</button>
+            <button type="button" onClick={handleSave} disabled={!hasEditableFields || isSaving} className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{isSaving ? "Saving..." : "Save extras"}</button>
           </div>
         </div>
       )}
@@ -145,6 +156,7 @@ export function ExtrasWorkspace({
 
 function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField; draft?: DraftValue; disabled: boolean; onChange: (value: Partial<DraftValue>) => void }) {
   const className = "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60";
+  if (!field.canEdit) return <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">{field.value.printValue ?? "Not set"}</div>;
   if (field.type === "text") return <textarea rows={4} value={draft?.textValue ?? ""} onChange={(event) => onChange({ textValue: event.target.value })} disabled={disabled} className={className} />;
   if (field.type === "number") return <input type="number" value={draft?.numberValue ?? ""} onChange={(event) => onChange({ numberValue: event.target.value })} disabled={disabled} className={className} />;
   if (field.type === "boolean") return <select value={draft?.booleanValue ?? ""} onChange={(event) => onChange({ booleanValue: event.target.value as DraftValue["booleanValue"] })} disabled={disabled} className={`${className} h-11 py-0`}><option value="">Not set</option><option value="true">Yes</option><option value="false">No</option></select>;

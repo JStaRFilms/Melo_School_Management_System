@@ -1,6 +1,17 @@
 import type { ReactNode } from "react";
 
 export type FieldType = "text" | "number" | "boolean" | "scale";
+export type FieldSource =
+  | "teacher_manual"
+  | "admin_manual"
+  | "system_term"
+  | "system_attendance";
+export type SystemKey =
+  | "next_term_begins"
+  | "attendance_code"
+  | "times_school_opened"
+  | "times_present"
+  | "times_absent";
 
 export interface ScaleOptionRecord {
   id: string;
@@ -22,6 +33,8 @@ export interface BundleFieldRecord {
   type: FieldType;
   scaleTemplateId: string | null;
   printable: boolean;
+  source: FieldSource;
+  systemKey: SystemKey | null;
   order: number;
 }
 
@@ -74,6 +87,8 @@ export interface BundleFieldDraft {
   type: FieldType;
   scaleTemplateId: string | null;
   printable: boolean;
+  source: FieldSource;
+  systemKey: SystemKey | null;
 }
 
 export interface BundleSectionDraft {

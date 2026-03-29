@@ -397,6 +397,23 @@ export default defineSchema({
             ),
             scaleTemplateId: v.optional(v.id("reportCardExtraScaleTemplates")),
             printable: v.boolean(),
+            source: v.optional(
+              v.union(
+                v.literal("teacher_manual"),
+                v.literal("admin_manual"),
+                v.literal("system_term"),
+                v.literal("system_attendance")
+              )
+            ),
+            systemKey: v.optional(
+              v.union(
+                v.literal("next_term_begins"),
+                v.literal("attendance_code"),
+                v.literal("times_school_opened"),
+                v.literal("times_present"),
+                v.literal("times_absent")
+              )
+            ),
             order: v.number(),
           })
         ),
@@ -439,6 +456,36 @@ export default defineSchema({
         scaleOptionId: v.optional(v.string()),
       })
     ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_session_term", ["studentId", "sessionId", "termId"])
+    .index("by_class_session_term", ["classId", "sessionId", "termId"]),
+
+  reportCardAttendanceClassValues: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    timesSchoolOpened: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class_session_term", ["classId", "sessionId", "termId"])
+    .index("by_school_and_term", ["schoolId", "termId"]),
+
+  reportCardAttendanceStudentValues: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    timesPresent: v.optional(v.number()),
+    attendanceCode: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedBy: v.id("users"),

@@ -2,7 +2,16 @@
 
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import type { BundleDraft, ScaleTemplateRecord } from "../types";
-import { createEmptyField, createEmptySection, fieldTypeOptions, moveItem } from "../utils";
+import {
+  createEmptyField,
+  createEmptySection,
+  fieldSourceOptions,
+  fieldTypeOptions,
+  getCanonicalFieldConfig,
+  moveItem,
+  systemAttendanceFieldOptions,
+  systemTermFieldOptions,
+} from "../utils";
 
 interface BundleEditorProps {
   draft: BundleDraft;
@@ -107,6 +116,16 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
             <div className="space-y-3">
               {section.fields.map((field, fieldIndex) => (
                 <div key={field.key} className="space-y-4 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                  {(() => {
+                    const canonicalConfig = getCanonicalFieldConfig(field.systemKey);
+                    const canonicalOptions =
+                      field.source === "system_term"
+                        ? systemTermFieldOptions
+                        : field.source === "system_attendance"
+                          ? systemAttendanceFieldOptions
+                          : [];
+                    return (
+                      <>
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Field {fieldIndex + 1}</div>
@@ -177,7 +196,60 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                         }}
                         placeholder="Punctuality"
                         value={field.label}
+                        disabled={field.source === "system_term" || field.source === "system_attendance"}
                       />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Source</span>
+                      <select
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+                        onChange={(event) => {
+                          const nextSource = event.target.value as BundleDraft["sections"][number]["fields"][number]["source"];
+                          const sections = draft.sections.slice();
+                          const fields = section.fields.slice();
+                          const nextField = { ...field, source: nextSource };
+
+                          if (nextSource === "system_term") {
+                            const nextSystemKey = "next_term_begins";
+                            const canonical = getCanonicalFieldConfig(nextSystemKey);
+                            fields[fieldIndex] = {
+                              ...nextField,
+                              systemKey: nextSystemKey,
+                              label: canonical?.label ?? field.label,
+                              type: canonical?.type ?? "text",
+                              scaleTemplateId: null,
+                            };
+                          } else if (nextSource === "system_attendance") {
+                            const nextSystemKey = field.systemKey && field.systemKey !== "next_term_begins"
+                              ? field.systemKey
+                              : "times_present";
+                            const canonical = getCanonicalFieldConfig(nextSystemKey);
+                            fields[fieldIndex] = {
+                              ...nextField,
+                              systemKey: nextSystemKey,
+                              label: canonical?.label ?? field.label,
+                              type: canonical?.type ?? "number",
+                              scaleTemplateId: null,
+                            };
+                          } else {
+                            fields[fieldIndex] = {
+                              ...nextField,
+                              systemKey: null,
+                            };
+                          }
+
+                          sections[sectionIndex] = { ...section, fields };
+                          onChange({ ...draft, sections });
+                        }}
+                        value={field.source}
+                      >
+                        {fieldSourceOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
 
                     <label className="space-y-2">
@@ -197,6 +269,7 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                           onChange({ ...draft, sections });
                         }}
                         value={field.type}
+                        disabled={field.source === "system_term" || field.source === "system_attendance"}
                       >
                         {fieldTypeOptions.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -228,6 +301,38 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                     </label>
                   </div>
 
+                  {field.source === "system_term" || field.source === "system_attendance" ? (
+                    <label className="block space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Canonical value</span>
+                      <select
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+                        onChange={(event) => {
+                          const nextSystemKey = event.target.value as NonNullable<typeof field.systemKey>;
+                          const canonical = getCanonicalFieldConfig(nextSystemKey);
+                          const sections = draft.sections.slice();
+                          const fields = section.fields.slice();
+                          fields[fieldIndex] = {
+                            ...field,
+                            systemKey: nextSystemKey,
+                            label: canonical?.label ?? field.label,
+                            type: canonical?.type ?? field.type,
+                            scaleTemplateId: null,
+                          };
+                          sections[sectionIndex] = { ...section, fields };
+                          onChange({ ...draft, sections });
+                        }}
+                        value={field.systemKey ?? ""}
+                      >
+                        <option value="">Select a value</option>
+                        {canonicalOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
                   {field.type === "scale" ? (
                     <label className="block space-y-2">
                       <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Reusable scale</span>
@@ -251,6 +356,14 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                       </select>
                     </label>
                   ) : null}
+                  {canonicalConfig ? (
+                    <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                      This field uses a canonical system value. Teachers will not override it manually.
+                    </div>
+                  ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
 

@@ -43,8 +43,8 @@ const mockBundles: BundleRecord[] = [
         label: "Remarks",
         order: 0,
         fields: [
-          { id: "teacher-remark", label: "Class Teacher Remark", type: "text", scaleTemplateId: null, printable: true, order: 0 },
-          { id: "conduct", label: "Conduct", type: "scale", scaleTemplateId: "scale-conduct", printable: true, order: 1 },
+          { id: "teacher-remark", label: "Class Teacher Remark", type: "text", scaleTemplateId: null, printable: true, source: "teacher_manual", systemKey: null, order: 0 },
+          { id: "conduct", label: "Conduct", type: "scale", scaleTemplateId: "scale-conduct", printable: true, source: "teacher_manual", systemKey: null, order: 1 },
         ],
       },
       {
@@ -52,7 +52,7 @@ const mockBundles: BundleRecord[] = [
         label: "Promotion",
         order: 1,
         fields: [
-          { id: "promotion", label: "Eligible for Promotion", type: "boolean", scaleTemplateId: null, printable: false, order: 0 },
+          { id: "promotion", label: "Eligible for Promotion", type: "boolean", scaleTemplateId: null, printable: false, source: "admin_manual", systemKey: null, order: 0 },
         ],
       },
     ],
@@ -122,6 +122,8 @@ function LiveReportCardBundlesPage() {
               type: field.type,
               scaleTemplateId: field.type === "scale" ? field.scaleTemplateId : null,
               printable: field.printable,
+              source: field.source,
+              systemKey: field.systemKey,
             })),
           })),
         } as never)) as string
@@ -179,6 +181,8 @@ function MockReportCardBundlesPage() {
               type: field.type,
               scaleTemplateId: field.type === "scale" ? field.scaleTemplateId : null,
               printable: field.printable,
+              source: field.source,
+              systemKey: field.systemKey,
               order: fieldIndex,
             })),
           })),

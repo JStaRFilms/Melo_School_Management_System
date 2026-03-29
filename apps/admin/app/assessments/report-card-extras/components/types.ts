@@ -15,6 +15,16 @@ export type ExtrasField = {
   label: string;
   type: "text" | "number" | "boolean" | "scale";
   printable: boolean;
+  source: "teacher_manual" | "admin_manual" | "system_term" | "system_attendance";
+  systemKey:
+    | "next_term_begins"
+    | "attendance_code"
+    | "times_school_opened"
+    | "times_present"
+    | "times_absent"
+    | null;
+  canEdit: boolean;
+  helperText: string | null;
   scaleOptions: Array<{
     id: string;
     label: string;
