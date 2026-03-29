@@ -119,7 +119,7 @@ function TeacherReportCardPageContent() {
 
   if (!studentId || !sessionId || !termId) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+      <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           Select a student, session, and term before opening a report card.
         </div>
@@ -129,7 +129,7 @@ function TeacherReportCardPageContent() {
 
   if (reportCard === undefined) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+      <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
         <div className="text-slate-500">Loading report card...</div>
       </div>
     );
@@ -138,7 +138,7 @@ function TeacherReportCardPageContent() {
   if (isPrintClassMode) {
     return (
       <>
-        <div className="rc-no-print mx-auto max-w-5xl px-4 py-6 md:px-6">
+        <div className="rc-no-print mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
           <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
@@ -196,7 +196,7 @@ function TeacherReportCardPageContent() {
 
 function ReportCardPageFallback({ message }: { message: string }) {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+    <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
       <div className="text-slate-500">{message}</div>
     </div>
   );

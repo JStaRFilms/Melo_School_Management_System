@@ -81,6 +81,7 @@ export function WorkspaceNavbar({
 
   return (
     <header
+      className="rc-no-print"
       style={{
         position: "sticky",
         top: 0,

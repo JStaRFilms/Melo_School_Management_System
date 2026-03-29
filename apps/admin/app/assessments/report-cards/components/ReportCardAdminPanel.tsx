@@ -256,8 +256,8 @@ export function ReportCardAdminPanel({
 
   return (
     <div
-      className="rc-no-print mx-auto mb-5 max-w-5xl px-4 pt-6 md:px-6"
-      style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}
+      className="rc-no-print mx-auto mb-5 px-4 pt-6 md:px-6"
+      style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif", maxWidth: '210mm' }}
     >
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">

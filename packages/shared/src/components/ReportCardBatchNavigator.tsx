@@ -40,7 +40,7 @@ export function ReportCardBatchNavigator({
       : null;
 
   return (
-    <div className="rc-no-print mx-auto max-w-5xl px-4 pt-6 md:px-6">
+    <div className="rc-no-print mx-auto px-4 pt-6 md:px-6" style={{ maxWidth: "210mm" }}>
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

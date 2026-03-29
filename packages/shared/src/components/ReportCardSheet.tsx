@@ -125,16 +125,57 @@ function ensurePrintStyles() {
     @media print {
       @page {
         size: A4 portrait;
-        margin: 0;
+        margin: 10mm;
       }
-      html, body { flex: 1; min-height: 100vh; overflow: visible; padding: 0 !important; width: 210mm !important; height: auto !important; margin: 0 !important; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      html, body { 
+        margin: 0 !important; 
+        padding: 0 !important; 
+        background: white !important; 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+      }
       .rc-no-print { display: none !important; }
-      .rc-print-root { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; display: block !important; }
-      .rc-sheet-wrapper { width: 210mm !important; height: 297mm !important; margin: 0 auto !important; padding: 10mm 8mm !important; box-sizing: border-box !important; page-break-after: always; break-after: page; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: flex-start !important; overflow: hidden !important; background: white !important; }
-      .rc-sheet { width: 100% !important; max-width: 100% !important; margin: 0 !important; border-width: 2px !important; box-shadow: none !important; }
-      .rc-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .rc-stack-item { break-after: page; page-break-after: always; margin: 0 !important; }
-      .rc-stack-item:last-child { break-after: auto; page-break-after: auto; }
+      .rc-print-root { 
+        width: 100% !important; 
+        margin: 0 !important; 
+        padding: 0 !important; 
+        display: block !important; 
+      }
+      /* Reset wrapper for print */
+      .rc-sheet-wrapper { 
+        width: 100% !important; 
+        height: auto !important; 
+        margin: 0 !important; 
+        padding: 0 !important; 
+        background: white !important; 
+        border: none !important;
+        box-shadow: none !important;
+        display: block !important;
+        overflow: visible !important;
+      }
+      /* Reset sheet for print */
+      .rc-sheet { 
+        width: 100% !important; 
+        max-width: 100% !important; 
+        margin: 0 !important; 
+        border-width: 1.5px !important; 
+        box-shadow: none !important; 
+        transform: scale(1) !important;
+        transform-origin: top left !important;
+      }
+      .rc-sheet * { 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+      }
+      .rc-stack-item { 
+        break-after: page; 
+        page-break-after: always; 
+        margin: 0 !important; 
+      }
+      .rc-stack-item:last-child { 
+        break-after: auto; 
+        page-break-after: auto; 
+      }
     }
   `;
   document.head.appendChild(style);
@@ -159,22 +200,33 @@ export function ReportCardSheet({
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (contentRef.current) {
-      const scrollHeight = contentRef.current.scrollHeight;
-      // 297mm - 16mm padding = 281mm ≈ 1062px max height
-      const targetHeight = 1062;
-      if (scrollHeight > targetHeight) {
-        setScale(targetHeight / scrollHeight);
-      } else {
-        setScale(1);
+    const updateScale = () => {
+      if (contentRef.current) {
+        // Reset scale to measure true height
+        contentRef.current.style.transform = "scale(1)";
+        const scrollHeight = contentRef.current.scrollHeight;
+        
+        // Target height: A4 (297mm) - padding (8mm total) = 289mm
+        // 289mm is approx 1092px at 96dpi
+        const targetHeight = 1092; 
+        
+        if (scrollHeight > targetHeight) {
+          setScale(targetHeight / scrollHeight);
+        } else {
+          setScale(1);
+        }
       }
-    }
+    };
+
+    updateScale();
+    const timer = setTimeout(updateScale, 100);
+    return () => clearTimeout(timer);
   }, [reportCard]);
 
   const schoolInitials = buildInitials(reportCard.schoolName);
   const ac = reportCard.assessmentConfig;
 
-  /* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Info rows data ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */
+  /* ─── Info rows data ─── */
   const leftFields = [
     { label: "Name", value: reportCard.student.name },
     { label: "Reg. No.", value: reportCard.student.admissionNumber },
@@ -212,14 +264,14 @@ export function ReportCardSheet({
 
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
-      {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Toolbar (hidden during print) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */}
+      {/* ─── Toolbar (hidden during print) ─── */}
       {hideToolbar ? null : (
       <div
         className="rc-no-print"
         style={{
-          maxWidth: 900,
+          maxWidth: "210mm",
           margin: "0 auto",
-          padding: "16px 16px 12px",
+          padding: "16px 8px 12px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -241,7 +293,7 @@ export function ReportCardSheet({
           </p>
           <h1
             style={{
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: 800,
               color: "#0f172a",
               margin: "2px 0 0",
@@ -293,20 +345,35 @@ export function ReportCardSheet({
       </div>
       )}
 
-      {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Report Card Sheet ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */}
-      <div className="rc-sheet-wrapper">
+      {/* ─── Report Card Sheet ─── */}
+      <div 
+        className="rc-sheet-wrapper"
+        style={{
+          width: "210mm",
+          height: "297mm",
+          margin: "0 auto 40px",
+          padding: "5mm 5mm",
+          background: "white",
+          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          overflow: "hidden",
+          border: "1px solid #e2e8f0",
+          position: "relative",
+        }}
+      >
         <div
           ref={contentRef}
           className="rc-sheet"
           style={{
-            maxWidth: 900,
             width: "100%",
-            margin: "0 auto 40px",
             background: "white",
-            border: "2px solid #1e293b",
-            borderRadius: 4,
+            border: "1.5px solid #1e293b",
+            borderRadius: 2,
             overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
             transform: `scale(${scale})`,
             transformOrigin: "top center",
           }}
