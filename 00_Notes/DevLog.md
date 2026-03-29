@@ -51,7 +51,7 @@
 
   We need to map this out properly so the UX stays sane on both the admin and teacher sides, and anywhere else it touches.
 
-- [ ] We need to work on debloadting all the pages and working on UI generally
+- [-] We need to work on debloadting all the pages and working on UI generally
 
 - [ ] We need to add photo editor
 

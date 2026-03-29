@@ -47,21 +47,19 @@ export default function AcademicLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] pb-24">
-      <WorkspaceNavbar
-        workspace="admin"
-        currentPath={pathname}
-        userName={session?.user?.name}
-        userRole={session?.user?.role}
-        onSignOut={handleSignOut}
-        renderLink={(props) => (
-          <Link key={props.href} href={props.href} className={props.className}>
-            {props.children}
-          </Link>
-        )}
-      />
-
-      <main>{children}</main>
-    </div>
+    <WorkspaceNavbar
+      workspace="admin"
+      currentPath={pathname}
+      userName={session?.user?.name}
+      userRole={session?.user?.role}
+      onSignOut={handleSignOut}
+      renderLink={(props) => (
+        <Link key={props.href} href={props.href} className={props.className}>
+          {props.children}
+        </Link>
+      )}
+    >
+      {children}
+    </WorkspaceNavbar>
   );
 }
