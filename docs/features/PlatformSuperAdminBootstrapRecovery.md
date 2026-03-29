@@ -52,3 +52,4 @@ The recovery screen only exercises the existing platform bootstrap path and does
 - The route is meant for emergency recovery and first-time production bootstrap only.
 - The bootstrap token remains the server-side guard for the action.
 - After recovery, the operator should sign in normally and treat the screen as an emergency-only tool.
+- The auth helper now normalizes the Convex site URL so a mistaken `NEXT_PUBLIC_CONVEX_SITE_URL` value that points at `convex.cloud` cannot crash the production sign-in proxy.

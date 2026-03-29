@@ -15,6 +15,16 @@ function deriveConvexSiteUrl(convexUrl: string): string {
   }
 }
 
+function normalizeConvexSiteUrl(convexUrl: string, convexSiteUrl: string): string {
+  const trimmedSiteUrl = convexSiteUrl.trim().replace(/\/$/, "");
+
+  if (trimmedSiteUrl.endsWith(".convex.site")) {
+    return trimmedSiteUrl;
+  }
+
+  return deriveConvexSiteUrl(convexUrl);
+}
+
 export function getConvexAuthEnv(
   env: NodeJS.ProcessEnv = process.env
 ): ConvexAuthEnv | null {
@@ -23,8 +33,9 @@ export function getConvexAuthEnv(
     return null;
   }
 
-  const convexSiteUrl =
-    env.NEXT_PUBLIC_CONVEX_SITE_URL?.trim() ?? deriveConvexSiteUrl(convexUrl);
+  const convexSiteUrl = env.NEXT_PUBLIC_CONVEX_SITE_URL
+    ? normalizeConvexSiteUrl(convexUrl, env.NEXT_PUBLIC_CONVEX_SITE_URL)
+    : deriveConvexSiteUrl(convexUrl);
 
   return {
     convexUrl,
