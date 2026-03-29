@@ -16,6 +16,11 @@ import {
   normalizePersonName,
 } from "@school/shared/name-format";
 import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
+import {
+  assessmentEditingStateReturnValidator,
+  getAssessmentEditingPolicy,
+  getAssessmentEditingState,
+} from "./assessmentEditingPolicyHelpers";
 
 /**
  * Get exam entry sheet with roster, existing scores, settings, and bands
@@ -101,6 +106,7 @@ export const getExamEntrySheet = query({
         updatedBy: v.id("users"),
       })
     ),
+    editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any }) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
@@ -149,13 +155,20 @@ export const getExamEntrySheet = query({
       );
     }
 
-    // Fetch school assessment settings
-    const settings = await ctx.db
-      .query("schoolAssessmentSettings")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .unique();
+    const [settings, editingPolicy] = await Promise.all([
+      ctx.db
+        .query("schoolAssessmentSettings")
+        .withIndex("by_school_active", (q: any) =>
+          q.eq("schoolId", schoolId).eq("isActive", true)
+        )
+        .unique(),
+      getAssessmentEditingPolicy(ctx, {
+        schoolId,
+        sessionId: args.sessionId,
+        termId: args.termId,
+      }),
+    ]);
+    const editingState = getAssessmentEditingState(editingPolicy, Date.now());
 
     // Fetch active grading bands
     const gradingBandsResult = await ctx.db
@@ -215,6 +228,7 @@ export const getExamEntrySheet = query({
       roster,
       settings,
       gradingBands: sortedBands,
+      editingState,
     };
   },
 });
@@ -307,6 +321,16 @@ export const upsertAssessmentRecordsBulk = mutation({
       throw new ConvexError(
         "This subject is derived from component subjects and cannot be entered directly."
       );
+    }
+
+    const editingPolicy = await getAssessmentEditingPolicy(ctx, {
+      schoolId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+    });
+    const editingState = getAssessmentEditingState(editingPolicy, Date.now());
+    if (!editingState.canEdit) {
+      throw new ConvexError(editingState.message);
     }
 
     // Fetch school assessment settings

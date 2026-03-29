@@ -29,6 +29,7 @@ interface AdminRosterGridProps {
   sessionId: string;
   termId: string;
   classId: string;
+  isEditable?: boolean;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -46,6 +47,7 @@ export function AdminRosterGrid({
   sessionId,
   termId,
   classId,
+  isEditable = true,
   onScoreChange,
 }: AdminRosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -135,6 +137,7 @@ export function AdminRosterGrid({
                 sessionId={sessionId}
                 termId={termId}
                 classId={classId}
+                isEditable={isEditable}
                 onScoreChange={onScoreChange}
               />
             ))}
@@ -236,6 +239,7 @@ export function AdminRosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -248,7 +252,9 @@ export function AdminRosterGrid({
                       );
                     }}
                     placeholder="--"
-                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 transition-all ${studentErrors.ca1 ? "error-border" : ""}`}
+                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 transition-all ${studentErrors.ca1 ? "error-border" : ""} ${
+                      !isEditable ? "cursor-not-allowed opacity-60" : ""
+                    }`}
                   />
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
@@ -259,6 +265,7 @@ export function AdminRosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -271,7 +278,9 @@ export function AdminRosterGrid({
                       );
                     }}
                     placeholder="--"
-                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none ${studentErrors.ca2 ? "error-border" : ""}`}
+                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none ${studentErrors.ca2 ? "error-border" : ""} ${
+                      !isEditable ? "cursor-not-allowed opacity-60" : ""
+                    }`}
                   />
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
@@ -282,6 +291,7 @@ export function AdminRosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -294,7 +304,9 @@ export function AdminRosterGrid({
                       );
                     }}
                     placeholder="--"
-                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none ${studentErrors.ca3 ? "error-border" : ""}`}
+                    className={`w-full h-12 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg text-slate-900 outline-none ${studentErrors.ca3 ? "error-border" : ""} ${
+                      !isEditable ? "cursor-not-allowed opacity-60" : ""
+                    }`}
                   />
                 </div>
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-2">
@@ -307,6 +319,7 @@ export function AdminRosterGrid({
                     min={0}
                     max={examInputMode === "raw40" ? 40 : 60}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -319,7 +332,9 @@ export function AdminRosterGrid({
                       );
                     }}
                     placeholder="--"
-                    className={`w-full h-12 bg-white border-2 border-blue-200 rounded-lg text-center font-black text-lg text-blue-600 outline-none focus:border-blue-600 transition-all ${studentErrors.examRawScore ? "error-border" : ""}`}
+                    className={`w-full h-12 bg-white border-2 border-blue-200 rounded-lg text-center font-black text-lg text-blue-600 outline-none focus:border-blue-600 transition-all ${studentErrors.examRawScore ? "error-border" : ""} ${
+                      !isEditable ? "cursor-not-allowed opacity-60" : ""
+                    }`}
                   />
                 </div>
               </div>

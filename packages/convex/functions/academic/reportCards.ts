@@ -19,6 +19,7 @@ import {
   buildExtrasCollectionView,
   reportCardExtraPrintableValidator,
 } from "./reportCardExtrasModel";
+import { resolveEffectiveReportCardTermSettings } from "./reportCardTermSettings";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 import {
   deriveEffectiveSubjectSelectionIds,
@@ -349,6 +350,7 @@ async function buildStudentReportCard(
     gradingBands,
     reportCardComment,
     extrasView,
+    effectiveTermSettings,
     aggregations,
     aggregationOptOuts,
   ] = await Promise.all([
@@ -392,6 +394,11 @@ async function buildStudentReportCard(
       classId: reportCardClassId,
       studentId: args.studentId,
       sessionId: args.sessionId,
+      termId: args.termId,
+    }),
+    resolveEffectiveReportCardTermSettings(ctx, {
+      schoolId: args.schoolId,
+      classId: reportCardClassId,
       termId: args.termId,
     }),
     listActiveClassSubjectAggregations(ctx, {
@@ -581,7 +588,7 @@ async function buildStudentReportCard(
       houseName: student.houseName
         ? normalizeHumanName(student.houseName)
         : null,
-      nextTermBegins: term.nextTermBegins ?? null,
+      nextTermBegins: effectiveTermSettings.nextTermBegins,
       photoUrl,
     },
     summary: {
@@ -851,6 +858,7 @@ export const saveTermNextTermBegins = mutation({
       startDate: number;
       endDate: number;
       nextTermBegins?: number;
+      defaultTimesSchoolOpened?: number;
       isActive: boolean;
       createdAt: number;
       updatedAt: number;
@@ -867,6 +875,9 @@ export const saveTermNextTermBegins = mutation({
 
     if (args.nextTermBegins !== null) {
       replacement.nextTermBegins = args.nextTermBegins;
+    }
+    if (term.defaultTimesSchoolOpened !== undefined) {
+      replacement.defaultTimesSchoolOpened = term.defaultTimesSchoolOpened;
     }
 
     await ctx.db.replace(args.termId, replacement);

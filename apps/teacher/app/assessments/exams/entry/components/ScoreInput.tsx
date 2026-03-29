@@ -9,6 +9,7 @@ interface ScoreInputProps {
   onChange: (value: number | null) => void;
   isExamField?: boolean;
   validationError?: string | null;
+  disabled?: boolean;
 }
 
 export function ScoreInput({
@@ -18,6 +19,7 @@ export function ScoreInput({
   onChange,
   isExamField = false,
   validationError = null,
+  disabled = false,
 }: ScoreInputProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
@@ -45,13 +47,14 @@ export function ScoreInput({
         max={max}
         step={1}
         onChange={handleChange}
+        disabled={disabled}
         placeholder="--"
         aria-label={`${field} score`}
         aria-invalid={hasError}
         title={validationError ?? undefined}
         className={`hidden md:block score-input ${hasError ? "error" : ""} ${
           isExamField ? "bg-amber-50/20 border-amber-200" : ""
-        }`}
+        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
       {/* Mobile: exact mockup score-input-mobile */}
       <input
@@ -61,13 +64,14 @@ export function ScoreInput({
         max={max}
         step={1}
         onChange={handleChange}
+        disabled={disabled}
         placeholder="--"
         aria-label={`${field} score`}
         aria-invalid={hasError}
         title={validationError ?? undefined}
         className={`md:hidden score-input-mobile ${hasError ? "error" : ""} ${
           isExamField ? "bg-amber-50/20 border-amber-200" : ""
-        }`}
+        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
       {hasError && (
         <span className="text-[9px] font-bold text-red-500 max-w-[120px] text-center leading-tight">

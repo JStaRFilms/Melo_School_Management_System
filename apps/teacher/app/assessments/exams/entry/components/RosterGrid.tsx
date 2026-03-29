@@ -27,6 +27,7 @@ interface RosterGridProps {
   sessionId?: string;
   termId?: string;
   classId?: string;
+  isEditable?: boolean;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -52,6 +53,7 @@ export function RosterGrid({
   sessionId = "",
   termId = "",
   classId = "",
+  isEditable = true,
   onScoreChange,
 }: RosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -152,6 +154,7 @@ export function RosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -177,6 +180,7 @@ export function RosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -202,6 +206,7 @@ export function RosterGrid({
                     min={0}
                     max={20}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -227,6 +232,7 @@ export function RosterGrid({
                     min={0}
                     max={examInputMode === "raw40" ? 40 : 60}
                     step={1}
+                    disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
@@ -350,6 +356,7 @@ export function RosterGrid({
                 sessionId={sessionId}
                 termId={termId}
                 classId={classId}
+                isEditable={isEditable}
                 onScoreChange={onScoreChange}
               />
             ))}

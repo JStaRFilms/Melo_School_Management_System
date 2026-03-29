@@ -10,6 +10,8 @@ interface AdminSaveActionBarProps {
   onSave: () => Promise<unknown>;
   onCancel: () => void;
   dirtyCount: number;
+  isEditingLocked?: boolean;
+  lockMessage?: string;
 }
 
 export function AdminSaveActionBar({
@@ -19,6 +21,8 @@ export function AdminSaveActionBar({
   onSave,
   onCancel,
   dirtyCount,
+  isEditingLocked = false,
+  lockMessage,
 }: AdminSaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{
@@ -28,7 +32,7 @@ export function AdminSaveActionBar({
   } | null>(null);
 
   const handleSave = useCallback(async () => {
-    if (hasValidationErrors || !hasUnsavedChanges) return;
+    if (isEditingLocked || hasValidationErrors || !hasUnsavedChanges) return;
 
     setIsSaving(true);
     setSaveResult(null);
@@ -49,9 +53,10 @@ export function AdminSaveActionBar({
     } finally {
       setIsSaving(false);
     }
-  }, [hasValidationErrors, hasUnsavedChanges, onSave, dirtyCount]);
+  }, [dirtyCount, hasUnsavedChanges, hasValidationErrors, isEditingLocked, onSave]);
 
-  const isDisabled = !hasUnsavedChanges || hasValidationErrors || isSaving;
+  const isDisabled =
+    isEditingLocked || !hasUnsavedChanges || hasValidationErrors || isSaving;
 
   return (
     <>
@@ -96,6 +101,11 @@ export function AdminSaveActionBar({
 
       {/* Mobile: Fixed bottom bar */}
       <div className="fixed bottom-0 left-0 right-0 p-4 md:hidden bg-white/95 border-t border-slate-100 z-50">
+        {isEditingLocked && lockMessage ? (
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+            {lockMessage}
+          </p>
+        ) : null}
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col">
             <span className="text-[9px] font-bold text-slate-900 uppercase tracking-tighter">
@@ -113,13 +123,18 @@ export function AdminSaveActionBar({
             {isSaving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : null}
-            Commit Batch
+            {isEditingLocked ? "Editing Locked" : "Commit Batch"}
           </button>
         </div>
       </div>
 
       {/* Desktop: Floating action bar */}
       <div className="fixed bottom-8 right-8 hidden md:flex items-center gap-3 z-50">
+        {isEditingLocked && lockMessage ? (
+          <div className="max-w-xs rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 shadow-sm">
+            {lockMessage}
+          </div>
+        ) : null}
         <button
           onClick={onCancel}
           disabled={isSaving}
@@ -137,6 +152,8 @@ export function AdminSaveActionBar({
           ) : null}
           {isSaving
             ? "Saving..."
+            : isEditingLocked
+              ? "Editing Locked"
             : hasValidationErrors
               ? "Fix Errors First"
               : "Commit Batch"}

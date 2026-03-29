@@ -102,6 +102,10 @@ export function ExamEntryWorkspace({
 
   const handleScoreChange = useCallback(
     (studentId: Id<"students">, field: ScoreField, value: number | null) => {
+      if (sheetData && !sheetData.editingState.canEdit) {
+        return;
+      }
+
       setDraftScores((prev) => {
         const next = new Map(prev);
         const existing = next.get(studentId) ?? {};
@@ -141,6 +145,10 @@ export function ExamEntryWorkspace({
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
       throw new Error("Complete the selectors before saving.");
+    }
+
+    if (!sheetData.editingState.canEdit) {
+      throw new Error(sheetData.editingState.message);
     }
 
     const examInputMode: ExamInputMode =
@@ -305,6 +313,7 @@ export function ExamEntryWorkspace({
   const roster = useMemo(() => sheetData?.roster ?? [], [sheetData?.roster]);
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
+  const editingState = sheetData?.editingState;
   const errorSummaries = useMemo(
     () => [
       ...buildErrorSummaries(validationErrors, roster),
@@ -343,6 +352,18 @@ export function ExamEntryWorkspace({
         onBeforeSelectionChange={handleBeforeSelectionChange}
       />
 
+      {editingState?.hasPolicy ? (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+            editingState.canEdit
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {editingState.message}
+        </div>
+      ) : null}
+
       {showErrorBanner && errorSummaries.length > 0 ? (
         <ValidationErrorBanner
           errorSummaries={errorSummaries}
@@ -369,6 +390,7 @@ export function ExamEntryWorkspace({
           sessionId={selection.sessionId ?? ""}
           termId={selection.termId ?? ""}
           classId={selection.classId ?? ""}
+          isEditable={editingState?.canEdit ?? true}
           onScoreChange={handleScoreChange}
         />
       )}
@@ -381,6 +403,8 @@ export function ExamEntryWorkspace({
           onSave={handleSave}
           onCancel={handleCancel}
           dirtyCount={draftScores.size}
+          isEditingLocked={!(editingState?.canEdit ?? true)}
+          lockMessage={editingState?.message}
         />
       ) : null}
     </div>

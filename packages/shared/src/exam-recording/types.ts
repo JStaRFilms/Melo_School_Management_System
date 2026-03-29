@@ -14,6 +14,35 @@ export interface SchoolAssessmentSettings {
   updatedBy: string;
 }
 
+export interface AssessmentEditingPolicy {
+  schoolId: string;
+  sessionId: string;
+  termId: string;
+  editingWindowEnabled: boolean;
+  editingWindowStartsAt: number | null;
+  editingWindowEndsAt: number | null;
+  finalizationEnabled: boolean;
+  finalizeAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+export type AssessmentEditLockReason =
+  | "window_not_started"
+  | "window_closed"
+  | "finalized";
+
+export interface AssessmentEditingState {
+  hasPolicy: boolean;
+  canEdit: boolean;
+  lockReason: AssessmentEditLockReason | null;
+  message: string;
+  isWithinEditingWindow: boolean;
+  isFinalized: boolean;
+  evaluatedAt: number;
+}
+
 export interface GradingBand {
   schoolId: string;
   minScore: number;

@@ -47,7 +47,7 @@ export default function ExamEntryPage() {
     [searchParams]
   );
 
-  if (!isConvexConfigured) {
+  if (!isConvexConfigured()) {
     return <MockExamEntryPage selection={selection} />;
   }
 

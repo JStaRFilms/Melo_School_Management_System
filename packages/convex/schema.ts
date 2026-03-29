@@ -256,6 +256,7 @@ export default defineSchema({
     startDate: v.number(),
     endDate: v.number(),
     nextTermBegins: v.optional(v.number()),
+    defaultTimesSchoolOpened: v.optional(v.number()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -282,6 +283,22 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
+
+  assessmentEditingPolicies: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    editingWindowEnabled: v.boolean(),
+    editingWindowStartsAt: v.optional(v.number()),
+    editingWindowEndsAt: v.optional(v.number()),
+    finalizationEnabled: v.boolean(),
+    finalizeAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
 
   gradingBands: defineTable({
     schoolId: v.id("schools"),
@@ -493,4 +510,21 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_class_session_term", ["classId", "sessionId", "termId"]),
+
+  reportCardTermSettingGroups: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    name: v.string(),
+    classIds: v.array(v.id("classes")),
+    nextTermBegins: v.optional(v.number()),
+    timesSchoolOpened: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_term", ["termId"])
+    .index("by_session", ["sessionId"])
+    .index("by_school_and_term", ["schoolId", "termId"]),
 });

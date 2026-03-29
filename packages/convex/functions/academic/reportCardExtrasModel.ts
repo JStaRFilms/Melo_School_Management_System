@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { resolveEffectiveReportCardTermSettings } from "./reportCardTermSettings";
 
 export const reportCardExtraFieldTypeValidator = v.union(
   v.literal("text"),
@@ -278,10 +279,10 @@ function getFieldHelperText(field: Pick<BundleField, "source" | "systemKey">) {
     return "Calculated automatically from times opened and times present.";
   }
   if (field.systemKey === "times_school_opened") {
-    return "Class-wide attendance total set by admin.";
+    return "Shared by term default or class group, managed by admin.";
   }
   if (field.systemKey === "times_present") {
-    return "Student attendance total set by admin.";
+    return "Entered per student by the class teacher.";
   }
   if (field.systemKey === "attendance_code") {
     return "Attendance code set by admin.";
@@ -495,20 +496,18 @@ export async function buildExtrasCollectionView(
       })),
     })) as BundleDoc[];
 
-  const [storedValues, term, classAttendanceDocs, studentAttendanceDocs] = await Promise.all([
+  const [storedValues, effectiveTermSettings, studentAttendanceDocs] = await Promise.all([
     ctx.db
       .query("reportCardExtraStudentValues")
       .withIndex("by_student_session_term", (q: any) =>
         q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
       )
       .collect(),
-    ctx.db.get(args.termId),
-    ctx.db
-      .query("reportCardAttendanceClassValues")
-      .withIndex("by_class_session_term", (q: any) =>
-        q.eq("classId", args.classId).eq("sessionId", args.sessionId).eq("termId", args.termId)
-      )
-      .collect(),
+    resolveEffectiveReportCardTermSettings(ctx, {
+      schoolId: args.schoolId,
+      classId: args.classId,
+      termId: args.termId,
+    }),
     ctx.db
       .query("reportCardAttendanceStudentValues")
       .withIndex("by_student_session_term", (q: any) =>
@@ -516,13 +515,6 @@ export async function buildExtrasCollectionView(
       )
       .collect(),
   ]);
-
-  const classAttendance =
-    classAttendanceDocs.find(
-      (doc: any) =>
-        String(doc.schoolId) === String(args.schoolId) &&
-        String(doc.classId) === String(args.classId)
-    ) ?? null;
   const studentAttendance =
     studentAttendanceDocs.find(
       (doc: any) =>
@@ -581,13 +573,10 @@ export async function buildExtrasCollectionView(
             const value = valueMap.get(field.id);
             const canonicalValue = getCanonicalFieldValue({
               field,
-              term:
-                term && term.schoolId === args.schoolId
-                  ? { nextTermBegins: term.nextTermBegins ?? null }
-                  : null,
-              classAttendance: classAttendance
-                ? { timesSchoolOpened: classAttendance.timesSchoolOpened ?? null }
-                : null,
+              term: { nextTermBegins: effectiveTermSettings.nextTermBegins },
+              classAttendance: {
+                timesSchoolOpened: effectiveTermSettings.timesSchoolOpened,
+              },
               studentAttendance: studentAttendance
                 ? {
                     timesPresent: studentAttendance.timesPresent ?? null,

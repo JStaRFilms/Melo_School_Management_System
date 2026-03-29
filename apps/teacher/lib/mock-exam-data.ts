@@ -4,6 +4,7 @@ import type {
   Id,
   SelectorOption,
   StudentRosterEntry,
+  AssessmentEditingStateResponse,
 } from "@/lib/types";
 
 const baseBands: GradingBandResponse[] = [
@@ -62,6 +63,7 @@ const mockSheets: Record<string, ExamEntrySheetResponse> = {
     ],
     settings: createSettings("raw40"),
     gradingBands: baseBands,
+    editingState: createEditingState(),
   },
   [buildSheetKey(
     "session_2025_2026",
@@ -81,6 +83,7 @@ const mockSheets: Record<string, ExamEntrySheetResponse> = {
     ],
     settings: createSettings("raw60_scaled_to_40"),
     gradingBands: baseBands,
+    editingState: createEditingState(),
   },
   [buildSheetKey(
     "session_2025_2026",
@@ -94,6 +97,7 @@ const mockSheets: Record<string, ExamEntrySheetResponse> = {
     ],
     settings: createSettings("raw40"),
     gradingBands: baseBands,
+    editingState: createEditingState(),
   },
 };
 
@@ -108,6 +112,7 @@ export function getMockSheet(
       roster: [],
       settings: createSettings("raw40"),
       gradingBands: baseBands,
+      editingState: createEditingState(),
     }
   );
 }
@@ -195,5 +200,17 @@ function createBand(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     updatedBy: "user_demo" as Id<"users">,
+  };
+}
+
+function createEditingState(): AssessmentEditingStateResponse {
+  return {
+    hasPolicy: false,
+    canEdit: true,
+    lockReason: null,
+    message: "Editing is open because no exam access policy has been set.",
+    isWithinEditingWindow: true,
+    isFinalized: false,
+    evaluatedAt: Date.now(),
   };
 }

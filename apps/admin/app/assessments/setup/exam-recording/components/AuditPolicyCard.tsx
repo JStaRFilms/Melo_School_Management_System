@@ -13,9 +13,9 @@ export function AuditPolicyCard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
         <div className="space-y-2">
           <p className="text-[11px] text-white/60 leading-relaxed">
-            Changes are logged per administrator. Mode updates apply to{" "}
-            <span className="text-white font-bold">Incomplete</span> recordings
-            only. Published results are never affected by mode changes.
+            Changes are logged per administrator. Edit restriction rules are
+            enforced on the server, so teachers and admins cannot bypass them
+            from the browser once a cutoff is active.
           </p>
         </div>
         <div className="flex gap-4 sm:justify-end">

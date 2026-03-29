@@ -22,6 +22,7 @@ interface AdminRosterGridRowProps {
   sessionId: string;
   termId: string;
   classId: string;
+  isEditable: boolean;
   onScoreChange: (
     studentId: Id<"students">,
     field: ScoreField,
@@ -38,6 +39,7 @@ export function AdminRosterGridRow({
   sessionId,
   termId,
   classId,
+  isEditable,
   onScoreChange,
 }: AdminRosterGridRowProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
@@ -97,6 +99,7 @@ export function AdminRosterGridRow({
           min={0}
           max={20}
           step={1}
+          disabled={!isEditable}
           onChange={(e) => {
             const v =
               e.target.value === "" ? null : parseInt(e.target.value, 10);
@@ -107,7 +110,9 @@ export function AdminRosterGridRow({
             );
           }}
           placeholder="--"
-          className={`score-input ${studentErrors.ca1 ? "error" : ""}`}
+          className={`score-input ${studentErrors.ca1 ? "error" : ""} ${
+            !isEditable ? "cursor-not-allowed opacity-60" : ""
+          }`}
         />
       </td>
       <td>
@@ -117,6 +122,7 @@ export function AdminRosterGridRow({
           min={0}
           max={20}
           step={1}
+          disabled={!isEditable}
           onChange={(e) => {
             const v =
               e.target.value === "" ? null : parseInt(e.target.value, 10);
@@ -127,7 +133,9 @@ export function AdminRosterGridRow({
             );
           }}
           placeholder="--"
-          className={`score-input ${studentErrors.ca2 ? "error" : ""}`}
+          className={`score-input ${studentErrors.ca2 ? "error" : ""} ${
+            !isEditable ? "cursor-not-allowed opacity-60" : ""
+          }`}
         />
       </td>
       <td>
@@ -137,6 +145,7 @@ export function AdminRosterGridRow({
           min={0}
           max={20}
           step={1}
+          disabled={!isEditable}
           onChange={(e) => {
             const v =
               e.target.value === "" ? null : parseInt(e.target.value, 10);
@@ -147,7 +156,9 @@ export function AdminRosterGridRow({
             );
           }}
           placeholder="--"
-          className={`score-input ${studentErrors.ca3 ? "error" : ""}`}
+          className={`score-input ${studentErrors.ca3 ? "error" : ""} ${
+            !isEditable ? "cursor-not-allowed opacity-60" : ""
+          }`}
         />
       </td>
       <td>
@@ -157,6 +168,7 @@ export function AdminRosterGridRow({
           min={0}
           max={examInputMode === "raw40" ? 40 : 60}
           step={1}
+          disabled={!isEditable}
           onChange={(e) => {
             const v =
               e.target.value === "" ? null : parseInt(e.target.value, 10);
@@ -167,7 +179,9 @@ export function AdminRosterGridRow({
             );
           }}
           placeholder="--"
-          className={`score-input border-blue-100 bg-blue-50/10 ${studentErrors.examRawScore ? "error" : ""}`}
+          className={`score-input border-blue-100 bg-blue-50/10 ${studentErrors.examRawScore ? "error" : ""} ${
+            !isEditable ? "cursor-not-allowed opacity-60" : ""
+          }`}
         />
       </td>
       {showScaledColumn && (

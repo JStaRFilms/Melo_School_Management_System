@@ -4,6 +4,9 @@
 export type {
   ExamInputMode,
   SchoolAssessmentSettings,
+  AssessmentEditingPolicy,
+  AssessmentEditLockReason,
+  AssessmentEditingState,
   GradingBand,
   AssessmentRecord,
   ScoreInput,
@@ -24,3 +27,6 @@ export {
 
 // Validation functions
 export { validateScoreRanges, validateGradingBands } from "./validation";
+
+// Editing policy helpers
+export { resolveAssessmentEditingState } from "./editing-policy";

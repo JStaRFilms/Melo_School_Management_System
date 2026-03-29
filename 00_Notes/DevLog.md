@@ -39,7 +39,7 @@
 
 ## Pending Notes
 
-- [ ] You can set a finalizing date. Once it's set, nobody can edit after that point. You could also set it so people can only edit the exams between certain dates. The admin controls that, so it's secure. Nobody can just edit it. It's an option they can turn on or off.
+- [x] You can set a finalizing date. Once it's set, nobody can edit after that point. You could also set it so people can only edit the exams between certain dates. The admin controls that, so it's secure. Nobody can just edit it. It's an option they can turn on or off.
 
 - [x] All right, here's the thing. We've already done the heavy lifting on how the results work: examinations, grades, the lot. But every school tacks on its own extras. One school might want three extra sections: attendance counts, an affective-domain rubric (punctuality, neatness, honesty... A, E scale), Sakamoto skills, creative activities. Another school will want five completely different blocks.
 

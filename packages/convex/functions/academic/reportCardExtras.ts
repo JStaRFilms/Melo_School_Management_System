@@ -149,8 +149,11 @@ function canEditExtrasField(
   if (source === "teacher_manual") return true;
   if (source === "admin_manual") return access.isAdmin;
   if (source === "system_term") return false;
-  if (!access.isAdmin) return false;
-  return systemKey !== "times_absent";
+  if (systemKey === "times_present") return true;
+  if (systemKey === "times_absent") return false;
+  if (systemKey === "times_school_opened") return false;
+  if (systemKey === "attendance_code") return access.isAdmin;
+  return false;
 }
 
 function normalizeAttendanceNumber(

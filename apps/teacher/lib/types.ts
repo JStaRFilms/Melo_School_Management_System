@@ -72,6 +72,32 @@ export interface SchoolSettingsResponse {
   updatedBy: Id<"users">;
 }
 
+export interface AssessmentEditingPolicyResponse {
+  _id: Id<"assessmentEditingPolicies">;
+  _creationTime: number;
+  schoolId: Id<"schools">;
+  sessionId: Id<"academicSessions">;
+  termId: Id<"academicTerms">;
+  editingWindowEnabled: boolean;
+  editingWindowStartsAt: number | null;
+  editingWindowEndsAt: number | null;
+  finalizationEnabled: boolean;
+  finalizeAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  updatedBy: Id<"users">;
+}
+
+export interface AssessmentEditingStateResponse {
+  hasPolicy: boolean;
+  canEdit: boolean;
+  lockReason: "window_not_started" | "window_closed" | "finalized" | null;
+  message: string;
+  isWithinEditingWindow: boolean;
+  isFinalized: boolean;
+  evaluatedAt: number;
+}
+
 // Grading band from the query response
 export interface GradingBandResponse {
   _id: Id<"gradingBands">;
@@ -92,6 +118,7 @@ export interface ExamEntrySheetResponse {
   roster: StudentRosterEntry[];
   settings: SchoolSettingsResponse | null;
   gradingBands: GradingBandResponse[];
+  editingState: AssessmentEditingStateResponse;
 }
 
 // Upsert mutation response
