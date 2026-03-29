@@ -286,6 +286,10 @@ Because the very first platform admin cannot be created from inside a dashboard 
 
 This is not the normal school-provisioning workflow and should not be used for day-to-day operations once the first platform admin exists.
 
+For operator recovery and first-production bootstrap, see:
+
+- `docs/features/PlatformSuperAdminBootstrapRecovery.md`
+
 ---
 
 ## Related Future Scope
