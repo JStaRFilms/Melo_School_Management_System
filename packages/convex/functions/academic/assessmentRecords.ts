@@ -15,6 +15,7 @@ import {
   normalizeHumanName,
   normalizePersonName,
 } from "@school/shared/name-format";
+import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
 
 /**
  * Get exam entry sheet with roster, existing scores, settings, and bands
@@ -102,7 +103,7 @@ export const getExamEntrySheet = query({
     ),
   }),
   handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
       ctx
     );
 
@@ -133,8 +134,19 @@ export const getExamEntrySheet = query({
     // Authorization check
     if (role === "teacher") {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
-    } else if (role !== "admin") {
+    } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Unauthorized");
+    }
+
+    const aggregation = await getActiveAggregationByUmbrellaSubject(ctx, {
+      schoolId,
+      classId: args.classId,
+      umbrellaSubjectId: args.subjectId,
+    });
+    if (aggregation) {
+      throw new ConvexError(
+        "This subject is derived from component subjects and cannot be entered directly."
+      );
     }
 
     // Fetch school assessment settings
@@ -249,7 +261,7 @@ export const upsertAssessmentRecordsBulk = mutation({
     ),
   }),
   handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
       ctx
     );
 
@@ -280,8 +292,19 @@ export const upsertAssessmentRecordsBulk = mutation({
     // Authorization check
     if (role === "teacher") {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
-    } else if (role !== "admin") {
+    } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Unauthorized");
+    }
+
+    const aggregation = await getActiveAggregationByUmbrellaSubject(ctx, {
+      schoolId,
+      classId: args.classId,
+      umbrellaSubjectId: args.subjectId,
+    });
+    if (aggregation) {
+      throw new ConvexError(
+        "This subject is derived from component subjects and cannot be entered directly."
+      );
     }
 
     // Fetch school assessment settings

@@ -146,7 +146,7 @@ export const createTeacher = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    if (viewer.role !== "admin") {
+    if (viewer.isSchoolAdmin !== true) {
       throw new ConvexError("Admin access required");
     }
 
@@ -348,7 +348,7 @@ export const updateTeacherProfile = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    if (viewer.role !== "admin") {
+    if (viewer.isSchoolAdmin !== true) {
       throw new ConvexError("Admin access required");
     }
 
@@ -415,7 +415,7 @@ export const resetTeacherPassword = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    if (viewer.role !== "admin") {
+    if (viewer.isSchoolAdmin !== true) {
       throw new ConvexError("Admin access required");
     }
 
@@ -1372,6 +1372,42 @@ export const setClassSubjects = mutation({
           }
         }
       }
+    }
+
+    const existingAggregations = await ctx.db
+      .query("classSubjectAggregations")
+      .withIndex("by_class", (q) => q.eq("classId", args.classId))
+      .collect();
+
+    for (const aggregation of existingAggregations) {
+      if (!aggregation.isActive) {
+        continue;
+      }
+
+      const components = await ctx.db
+        .query("classSubjectAggregationComponents")
+        .withIndex("by_aggregation", (q) => q.eq("aggregationId", aggregation._id))
+        .collect();
+
+      const aggregationStillValid =
+        nextSubjectIds.has(String(aggregation.umbrellaSubjectId)) &&
+        components.every((component) =>
+          nextSubjectIds.has(String(component.componentSubjectId))
+        );
+
+      if (aggregationStillValid) {
+        continue;
+      }
+
+      for (const component of components) {
+        await ctx.db.delete(component._id);
+      }
+
+      await ctx.db.patch(aggregation._id, {
+        isActive: false,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      });
     }
 
     // Insert new offerings

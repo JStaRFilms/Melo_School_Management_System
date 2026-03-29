@@ -2,7 +2,7 @@
 
 ## Goal
 
-Give each school a single "supreme" or lead admin who can create sub-admins, and transfer that leadership to one of those sub-admins when staff changes happen.
+Give each school a single "supreme" or lead admin who can create sub-admins, transfer that leadership to one of those sub-admins when staff changes happen, and optionally upgrade existing teachers without removing their teaching role.
 
 This feature keeps the current school-scoped admin model intact:
 
@@ -31,6 +31,7 @@ This feature is the detailed school-side counterpart to the future "school admin
 - first school admin is marked as the school lead admin
 - active school admins can create additional admins within the school
 - active school admins can promote other admins within the school
+- teachers promoted into school admin access keep their teacher role
 - only the current lead admin can transfer leadership to one of their own sub-admins
 - the current lead admin cannot be archived or deleted by another admin
 - archived admins lose access without being hard-deleted
@@ -103,9 +104,9 @@ This feature is the detailed school-side counterpart to the future "school admin
 1. Lead admin opens the admin management screen.
 2. Lead admin submits the new admin's name, email, and onboarding details.
 3. Server verifies the actor belongs to the same school and is an active admin.
-4. Server provisions or reconciles the Better Auth identity.
-5. Server creates the school-scoped `users` row with `role = "admin"` and non-lead status.
-6. New admin can sign in and operate inside the same school.
+4. If the email belongs to an existing teacher, server upgrades that existing user in place, keeps the teacher role, and adds school-admin access.
+5. Otherwise, server provisions or reconciles the Better Auth identity and creates the school-scoped `users` row with `role = "admin"` and non-lead status.
+6. New or upgraded admin can sign in and operate inside the same school.
 
 ### 3. Admin Creates a Sub-Admin
 
@@ -141,7 +142,9 @@ This feature is the detailed school-side counterpart to the future "school admin
 
 Keep the existing school-scoped `users` table and extend it with leadership-aware metadata if needed for quick reads:
 
-- `role: "admin"` remains the base role for all school admins
+- `role: "teacher"` can remain in place when a teacher is promoted into school-admin access
+- `role: "admin"` is still used for directly created school admins
+- `isSchoolAdmin?: boolean` marks school-admin access without removing teaching rights
 - `isArchived?: boolean`
 - `archivedAt?: number`
 - `archivedBy?: id("users")`
@@ -201,6 +204,7 @@ The lead-admin distinction lives in the app data model, not in the global auth p
 - no admin can archive the lead admin without first transferring leadership
 - archived admins cannot create, archive, or transfer anything
 - active non-lead admins can create and promote other admins inside the school
+- teachers who are promoted into admin access keep their teaching identity
 - leadership can only transfer to a direct sub-admin of the current lead
 
 ## Regression Guardrails

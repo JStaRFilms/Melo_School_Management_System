@@ -7,6 +7,8 @@ type SchoolAdminRow = {
   _id: Id<"users">;
   name: string;
   email: string;
+  role: "teacher" | "admin";
+  isSchoolAdmin?: boolean;
   managerUserId?: Id<"users"> | null;
   isArchived?: boolean;
   createdAt: number;
@@ -23,7 +25,9 @@ export async function getSchoolAdminRows(ctx: any, schoolId: Id<"schools">) {
   return (await ctx.db
     .query("users")
     .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .filter((q: any) => q.eq(q.field("role"), "admin"))
+    .filter((q: any) =>
+      q.or(q.eq(q.field("role"), "admin"), q.eq(q.field("isSchoolAdmin"), true))
+    )
     .collect()) as SchoolAdminRow[];
 }
 
@@ -168,6 +172,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
         name: normalizedName,
         email: normalizedEmail,
         role: "admin",
+        isSchoolAdmin: true,
         managerUserId: args.makeLead || existingAdminIsLead ? null : args.managerUserId,
         isArchived: false,
         updatedAt: now,
@@ -190,6 +195,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
       name: normalizedName,
       email: normalizedEmail,
       role: "admin",
+      isSchoolAdmin: true,
       managerUserId: args.makeLead ? null : args.managerUserId,
       isArchived: false,
       createdAt: now,
@@ -232,7 +238,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
     }
 
     await ctx.db.patch(teacher._id, {
-      role: "admin",
+      isSchoolAdmin: true,
       managerUserId: args.managerUserId,
       updatedAt: Date.now(),
     });

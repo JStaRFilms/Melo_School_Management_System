@@ -10,11 +10,16 @@ import {
   formatClassDisplayName,
   normalizeHumanName,
 } from "@school/shared/name-format";
+import {
+  deriveAggregatedSubjectResult,
+} from "@school/shared/subject-aggregation";
+import type { GradingBand } from "@school/shared/exam-recording";
 import { getReadableUserName } from "./studentNameCompat";
 import {
   buildExtrasCollectionView,
   reportCardExtraPrintableValidator,
 } from "./reportCardExtrasModel";
+import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
@@ -92,10 +97,10 @@ const reportCardResultValidator = v.object({
       subjectId: v.id("subjects"),
       subjectName: v.string(),
       subjectCode: v.string(),
-      ca1: v.number(),
-      ca2: v.number(),
-      ca3: v.number(),
-      examScore: v.number(),
+      ca1: v.union(v.number(), v.null()),
+      ca2: v.union(v.number(), v.null()),
+      ca3: v.union(v.number(), v.null()),
+      examScore: v.union(v.number(), v.null()),
       total: v.number(),
       gradeLetter: v.string(),
       remark: v.string(),
@@ -107,6 +112,54 @@ const reportCardResultValidator = v.object({
   classTeacherComment: v.union(v.string(), v.null()),
   headTeacherComment: v.union(v.string(), v.null()),
 });
+
+function buildPendingResult(subject: {
+  _id: Id<"subjects">;
+  name: string;
+  code: string;
+}) {
+  return {
+    subjectId: subject._id,
+    subjectName: normalizeHumanName(subject.name),
+    subjectCode: subject.code,
+    ca1: 0,
+    ca2: 0,
+    ca3: 0,
+    examScore: 0,
+    total: 0,
+    gradeLetter: "-",
+    remark: "Pending",
+    isRecorded: false,
+  };
+}
+
+function buildRecordedResult(subject: {
+  _id: Id<"subjects">;
+  name: string;
+  code: string;
+}, record: {
+  ca1: number;
+  ca2: number;
+  ca3: number;
+  examScaledScore: number;
+  total: number;
+  gradeLetter: string;
+  remark: string;
+}) {
+  return {
+    subjectId: subject._id,
+    subjectName: normalizeHumanName(subject.name),
+    subjectCode: subject.code,
+    ca1: record.ca1,
+    ca2: record.ca2,
+    ca3: record.ca3,
+    examScore: record.examScaledScore,
+    total: record.total,
+    gradeLetter: record.gradeLetter,
+    remark: record.remark,
+    isRecorded: true,
+  };
+}
 
 async function assertClassReportCardAccess(
   ctx: any,
@@ -289,8 +342,10 @@ async function buildStudentReportCard(
     selectionDocs,
     classSubjectDocs,
     settings,
+    gradingBands,
     reportCardComment,
     extrasView,
+    aggregations,
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
@@ -313,6 +368,12 @@ async function buildStudentReportCard(
       )
       .first(),
     ctx.db
+      .query("gradingBands")
+      .withIndex("by_school_active", (q: any) =>
+        q.eq("schoolId", args.schoolId).eq("isActive", true)
+      )
+      .collect(),
+    ctx.db
       .query("reportCardComments")
       .withIndex("by_student_session_term", (q: any) =>
         q
@@ -327,6 +388,10 @@ async function buildStudentReportCard(
       studentId: args.studentId,
       sessionId: args.sessionId,
       termId: args.termId,
+    }),
+    listActiveClassSubjectAggregations(ctx, {
+      schoolId: args.schoolId,
+      classId: reportCardClassId,
     }),
   ]);
 
@@ -374,42 +439,99 @@ async function buildStudentReportCard(
   const recordsBySubjectId = new Map<Id<"subjects">, any>(
     records.map((record: any) => [record.subjectId, record] as const)
   );
+  const subjectsById = new Map<Id<"subjects">, (typeof subjects)[number]>(
+    subjects.map((subject) => [subject._id, subject] as const)
+  );
+  const activeGradingBands: GradingBand[] = gradingBands
+    .sort((a: any, b: any) => a.minScore - b.minScore)
+    .map((band: any) => ({
+      schoolId: String(band.schoolId),
+      minScore: band.minScore,
+      maxScore: band.maxScore,
+      gradeLetter: band.gradeLetter,
+      remark: band.remark,
+      isActive: band.isActive,
+      createdAt: band.createdAt,
+      updatedAt: band.updatedAt,
+      updatedBy: String(band.updatedBy),
+    }));
+  const assessmentConfig = {
+    ca1Max: settings?.ca1Max ?? DEFAULT_CA_MAX,
+    ca2Max: settings?.ca2Max ?? DEFAULT_CA_MAX,
+    ca3Max: settings?.ca3Max ?? DEFAULT_CA_MAX,
+    examMax: settings?.examContributionMax ?? DEFAULT_EXAM_MAX,
+  };
+  const aggregatedUmbrellaIds = new Set(
+    aggregations.map((aggregation) => String(aggregation.umbrellaSubjectId))
+  );
+  const aggregatedComponentIds = new Set(
+    aggregations.flatMap((aggregation) =>
+      aggregation.components.map((component) =>
+        String(component.componentSubjectId)
+      )
+    )
+  );
 
-  const results = subjects
+  const standaloneResults = subjects
+    .filter(
+      (subject) =>
+        !aggregatedUmbrellaIds.has(String(subject._id)) &&
+        !aggregatedComponentIds.has(String(subject._id))
+    )
     .map((subject) => {
       const record = recordsBySubjectId.get(subject._id);
+      return record
+        ? buildRecordedResult(subject, record)
+        : buildPendingResult(subject);
+    });
 
-      if (!record) {
-        return {
-          subjectId: subject._id,
-          subjectName: normalizeHumanName(subject.name),
-          subjectCode: subject.code,
-          ca1: 0,
-          ca2: 0,
-          ca3: 0,
-          examScore: 0,
-          total: 0,
-          gradeLetter: "-",
-          remark: "Pending",
-          isRecorded: false,
-        };
+  const aggregatedResults = aggregations
+    .map((aggregation) => {
+      const umbrellaSubject = subjectsById.get(aggregation.umbrellaSubjectId);
+      if (!umbrellaSubject) {
+        return null;
       }
 
+      const derived = deriveAggregatedSubjectResult({
+        strategy: aggregation.strategy,
+        assessmentConfig,
+        gradingBands: activeGradingBands,
+        components: aggregation.components.map((component) => ({
+          subjectId: String(component.componentSubjectId),
+          ca1: recordsBySubjectId.get(component.componentSubjectId)?.ca1 ?? null,
+          ca2: recordsBySubjectId.get(component.componentSubjectId)?.ca2 ?? null,
+          ca3: recordsBySubjectId.get(component.componentSubjectId)?.ca3 ?? null,
+          examScore:
+            recordsBySubjectId.get(component.componentSubjectId)
+              ?.examScaledScore ?? null,
+          total:
+            recordsBySubjectId.get(component.componentSubjectId)?.total ?? null,
+          rawMax: component.rawMaxOverride ?? 100,
+          contributionMax: component.contributionMax,
+        })),
+      });
+
       return {
-        subjectId: subject._id,
-        subjectName: normalizeHumanName(subject.name),
-        subjectCode: subject.code,
-        ca1: record.ca1,
-        ca2: record.ca2,
-        ca3: record.ca3,
-        examScore: record.examScaledScore,
-        total: record.total,
-        gradeLetter: record.gradeLetter,
-        remark: record.remark,
-        isRecorded: true,
+        subjectId: umbrellaSubject._id,
+        subjectName: normalizeHumanName(umbrellaSubject.name),
+        subjectCode: umbrellaSubject.code,
+        ca1: derived.ca1,
+        ca2: derived.ca2,
+        ca3: derived.ca3,
+        examScore: derived.examScore,
+        total: derived.total,
+        gradeLetter: derived.gradeLetter,
+        remark: derived.remark,
+        isRecorded: derived.isRecorded,
       };
     })
-    .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+    .filter(
+      (result): result is NonNullable<typeof result> => result !== null
+    );
+
+  const results = [...standaloneResults, ...aggregatedResults].sort((a, b) =>
+    a.subjectName.localeCompare(b.subjectName)
+  );
 
   const totalScore = results.reduce((sum, result) => sum + result.total, 0);
   const recordedSubjects = results.filter((result) => result.isRecorded).length;
@@ -422,12 +544,7 @@ async function buildStudentReportCard(
     classId: reportCardClassId,
     className: buildClassName(classDoc),
     generatedAt: Date.now(),
-    assessmentConfig: {
-      ca1Max: settings?.ca1Max ?? DEFAULT_CA_MAX,
-      ca2Max: settings?.ca2Max ?? DEFAULT_CA_MAX,
-      ca3Max: settings?.ca3Max ?? DEFAULT_CA_MAX,
-      examMax: settings?.examContributionMax ?? DEFAULT_EXAM_MAX,
-    },
+    assessmentConfig,
     student: {
       _id: student._id,
       name: studentName.displayName || "Unnamed Student",

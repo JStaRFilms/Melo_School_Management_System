@@ -79,9 +79,15 @@ const bundleValueInputValidator = v.object({
 
 async function getExtrasWorkspaceAccess(
   ctx: any,
-  args: { userId: Id<"users">; schoolId: Id<"schools">; role: string; classId: Id<"classes"> }
+  args: {
+    userId: Id<"users">;
+    schoolId: Id<"schools">;
+    role: string;
+    isSchoolAdmin: boolean;
+    classId: Id<"classes">;
+  }
 ) {
-  if (args.role === "admin") {
+  if (args.isSchoolAdmin || args.role === "admin") {
     await assertAdminForSchool(ctx, args.userId, args.schoolId, args.role);
     return { canEdit: true };
   }
@@ -112,7 +118,13 @@ async function getExtrasWorkspaceAccess(
 
 async function assertExtrasEditorAccess(
   ctx: any,
-  args: { userId: Id<"users">; schoolId: Id<"schools">; role: string; classId: Id<"classes"> }
+  args: {
+    userId: Id<"users">;
+    schoolId: Id<"schools">;
+    role: string;
+    isSchoolAdmin: boolean;
+    classId: Id<"classes">;
+  }
 ) {
   const access = await getExtrasWorkspaceAccess(ctx, args);
   if (!access.canEdit) {
@@ -124,7 +136,7 @@ export const listReportCardExtraScaleTemplates = query({
   args: {},
   returns: v.array(scaleTemplateValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const templates = await ctx.db
       .query("reportCardExtraScaleTemplates")
@@ -156,7 +168,7 @@ export const saveReportCardExtraScaleTemplate = mutation({
   },
   returns: v.id("reportCardExtraScaleTemplates"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const name = args.name.trim();
@@ -200,7 +212,7 @@ export const listReportCardExtraBundles = query({
   args: {},
   returns: v.array(bundleValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const bundles = await ctx.db
@@ -240,7 +252,7 @@ export const saveReportCardExtraBundle = mutation({
   },
   returns: v.id("reportCardExtraBundles"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const name = args.name.trim();
@@ -287,7 +299,7 @@ export const setClassReportCardExtraBundles = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -384,11 +396,12 @@ export const getStudentReportCardExtrasEntry = query({
     bundles: v.array(reportCardExtraEditorBundleValidator),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     const access = await getExtrasWorkspaceAccess(ctx, {
       userId,
       schoolId,
       role,
+      isSchoolAdmin,
       classId: args.classId,
     });
 
@@ -433,8 +446,8 @@ export const saveStudentReportCardExtrasEntry = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
-    await assertExtrasEditorAccess(ctx, { userId, schoolId, role, classId: args.classId });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    await assertExtrasEditorAccess(ctx, { userId, schoolId, role, isSchoolAdmin, classId: args.classId });
 
     const [student, classDoc, session, term] = await Promise.all([
       ctx.db.get(args.studentId),

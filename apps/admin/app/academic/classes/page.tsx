@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
+import { ClassAggregationManager } from "./components/ClassAggregationManager";
 
 type ClassSummary = {
   _id: string;
@@ -943,6 +944,11 @@ function ClassCard({
               </div>
             </div>
           ) : null}
+
+          <ClassAggregationManager
+            classId={classDoc._id}
+            offerings={currentOfferings}
+          />
         </div>
       ) : (
         <div className="space-y-3">

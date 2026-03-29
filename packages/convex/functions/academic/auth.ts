@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 import { Id } from "../../_generated/dataModel";
+import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
 
 /**
  * Get authenticated user and their school membership
@@ -9,7 +10,12 @@ import { Id } from "../../_generated/dataModel";
  */
 export async function getAuthenticatedSchoolMembership(
   ctx: any
-): Promise<{ userId: Id<"users">; schoolId: Id<"schools">; role: string }> {
+): Promise<{
+  userId: Id<"users">;
+  schoolId: Id<"schools">;
+  role: string;
+  isSchoolAdmin: boolean;
+}> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new ConvexError("Unauthorized");
@@ -33,6 +39,7 @@ export async function getAuthenticatedSchoolMembership(
     userId: user._id,
     schoolId: user.schoolId,
     role: user.role,
+    isSchoolAdmin: user.role === "admin" || user.isSchoolAdmin === true,
   };
 }
 
@@ -202,7 +209,14 @@ export async function getTeacherAssignableSubjectIds(
     }
   }
 
-  return [...subjectIds] as Array<Id<"subjects">>;
+  const derivedUmbrellaIds = await getDerivedUmbrellaSubjectIdsForClass(ctx, {
+    schoolId,
+    classId,
+  });
+
+  return [...subjectIds].filter(
+    (subjectId) => !derivedUmbrellaIds.has(String(subjectId))
+  ) as Array<Id<"subjects">>;
 }
 
 export async function teacherHasClassAccess(
@@ -325,13 +339,13 @@ export async function assertAdminForSchool(
   schoolId: Id<"schools">,
   role: string
 ): Promise<void> {
-  if (role !== "admin") {
-    throw new ConvexError("Admin access required");
-  }
-
   const user = await ctx.db.get(userId);
   if (!user || user.schoolId !== schoolId) {
     throw new ConvexError("Cross-school access denied");
+  }
+
+  if (user.role !== "admin" && user.isSchoolAdmin !== true) {
+    throw new ConvexError("Admin access required");
   }
 }
 

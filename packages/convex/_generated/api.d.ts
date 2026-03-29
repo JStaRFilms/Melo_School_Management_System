@@ -28,6 +28,8 @@ import type * as functions_academic_seedRunner from "../functions/academic/seedR
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
+import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
+import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
@@ -63,6 +65,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
+  "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;
+  "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
   "functions/platform/auth": typeof functions_platform_auth;

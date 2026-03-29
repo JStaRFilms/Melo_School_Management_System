@@ -135,6 +135,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        isSchoolAdmin: true,
         managerUserId: null,
         updatedAt: now,
       });
@@ -145,6 +146,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
+        isSchoolAdmin: true,
         managerUserId: null,
         createdAt: now,
         updatedAt: now,

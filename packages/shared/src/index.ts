@@ -15,3 +15,4 @@ export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 
 // Exam Recording Domain
 export * from "./exam-recording";
+export * from "./subject-aggregation";

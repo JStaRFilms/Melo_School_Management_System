@@ -21,7 +21,8 @@ function gradeColor(grade: string): string {
   }
 }
 
-function fmtScore(v: number) {
+function fmtScore(v: number | null) {
+  if (v === null) return "-";
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 

@@ -7,6 +7,7 @@ import {
   getTeacherAssignableSubjectIds,
 } from "./auth";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
+import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
 
 export const getTeacherSessions = query({
   args: {},
@@ -58,9 +59,9 @@ export const getTeacherAssignableClasses = query({
   args: {},
   returns: v.array(v.object({ _id: v.id("classes"), name: v.string() })),
   handler: async (ctx: any) => {
-    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
 
-    if (role === "admin") {
+    if (isSchoolAdmin || role === "admin") {
       const classes = await ctx.db
         .query("classes")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
@@ -111,21 +112,37 @@ export const getTeacherAssignableSubjectsByClass = query({
   args: { classId: v.id("classes") },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any, args: { classId: any }) => {
-    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     const classDoc = await ctx.db.get(args.classId);
 
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
     }
 
-    if (role === "admin") {
-      const subjects = await ctx.db
-        .query("subjects")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-        .collect();
+    if (isSchoolAdmin || role === "admin") {
+      const [classOfferings, derivedUmbrellaIds] = await Promise.all([
+        ctx.db
+          .query("classSubjects")
+          .withIndex("by_class", (q: any) => q.eq("classId", args.classId))
+          .collect(),
+        getDerivedUmbrellaSubjectIdsForClass(ctx, {
+          schoolId,
+          classId: args.classId,
+        }),
+      ]);
+
+      const subjects = await Promise.all(
+        classOfferings.map((offering: any) => ctx.db.get(offering.subjectId))
+      );
 
       return subjects
-        .filter((subject: any) => !subject.isArchived)
+        .filter(
+          (subject: any) =>
+            subject &&
+            subject.schoolId === schoolId &&
+            !subject.isArchived &&
+            !derivedUmbrellaIds.has(String(subject._id))
+        )
         .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((subject: any) => ({
           id: subject._id,
@@ -143,6 +160,10 @@ export const getTeacherAssignableSubjectsByClass = query({
       schoolId,
       args.classId
     );
+    const derivedUmbrellaIds = await getDerivedUmbrellaSubjectIdsForClass(ctx, {
+      schoolId,
+      classId: args.classId,
+    });
 
     const subjects = await Promise.all(
       subjectIds.map((subjectId) => ctx.db.get(subjectId))
@@ -153,7 +174,8 @@ export const getTeacherAssignableSubjectsByClass = query({
         (subject: any) =>
           subject &&
           subject.schoolId === schoolId &&
-          !subject.isArchived
+          !subject.isArchived &&
+          !derivedUmbrellaIds.has(String(subject._id))
       )
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((subject: any) => ({

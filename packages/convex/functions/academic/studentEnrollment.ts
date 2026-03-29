@@ -131,7 +131,7 @@ export const createStudent = mutation({
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -227,7 +227,7 @@ export const listStudentsByClass = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -283,7 +283,7 @@ export const updateStudent = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -454,7 +454,7 @@ export const getStudentProfile = query({
     photoContentType: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -501,7 +501,7 @@ export const generateStudentPhotoUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -513,7 +513,7 @@ export const deleteStudent = mutation({
   args: { studentId: v.id("students") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -549,7 +549,7 @@ export const setStudentSubjectSelections = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
 
     // Teachers can edit subject selections for their assigned classes
@@ -564,7 +564,7 @@ export const setStudentSubjectSelections = mutation({
       if (!hasAccess) {
         throw new ConvexError("Not assigned to this class");
       }
-    } else if (role !== "admin") {
+    } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Admin or teacher access required");
     }
 
@@ -677,7 +677,7 @@ export const getStudentSubjectSelections = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
 
     const student = await ctx.db.get(args.studentId);
@@ -738,7 +738,7 @@ export const getClassStudentSubjectMatrix = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx);
 
     // Teachers can view their assigned classes
@@ -753,7 +753,7 @@ export const getClassStudentSubjectMatrix = query({
       if (!hasAccess) {
         throw new ConvexError("Not assigned to this class");
       }
-    } else if (role !== "admin") {
+    } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Admin or teacher access required");
     }
 

@@ -3,6 +3,7 @@ import type { Id } from "../../_generated/dataModel";
 import { action, mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
+import { createAuth } from "../../betterAuth";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
 import { provisionSchoolAdminAuthUser } from "../platform/provisioningHelpers";
 import {
@@ -123,7 +124,7 @@ export const createSchoolAdmin = action({
     temporaryPassword: string;
   }> => {
     const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
-    if (!viewer || viewer.role !== "admin") {
+    if (!viewer || viewer.isSchoolAdmin !== true) {
       throw new ConvexError("Admin access required");
     }
 
@@ -136,6 +137,60 @@ export const createSchoolAdmin = action({
         updatedBy: viewer.appUserId,
       }
     );
+
+    const existingTeacher = await ctx.runQuery(
+      (internal as any).functions.academic.academicSetup.findTeacherByEmailInternal,
+      {
+        schoolId: viewer.schoolId,
+        email: normalizedEmail,
+      }
+    );
+
+    if (existingTeacher) {
+      const teacher = await ctx.runQuery(
+        (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
+        {
+          teacherId: existingTeacher._id,
+          schoolId: viewer.schoolId,
+        }
+      );
+      const auth = createAuth(ctx);
+      const authContext = await auth.$context;
+      const passwordHash = await authContext.password.hash(args.temporaryPassword);
+
+      await authContext.internalAdapter.updateUser(teacher.authId, {
+        name: normalizedName,
+        email: normalizedEmail,
+      });
+      await authContext.internalAdapter.updatePassword(teacher.authId, passwordHash);
+      await authContext.internalAdapter.deleteSessions(teacher.authId);
+
+      await ctx.runMutation(
+        internal.functions.academic.academicSetup.updateTeacherRecordInternal,
+        {
+          teacherId: teacher._id,
+          schoolId: viewer.schoolId,
+          name: normalizedName,
+          email: normalizedEmail,
+        }
+      );
+
+      await ctx.runMutation(
+        internal.functions.academic.adminLeadershipHelpers.promoteTeacherToAdminInternal,
+        {
+          schoolId: viewer.schoolId,
+          teacherUserId: teacher._id,
+          managerUserId: viewer.appUserId,
+        }
+      );
+
+      return {
+        adminId: teacher._id,
+        email: normalizedEmail,
+        temporaryPassword: args.temporaryPassword,
+      };
+    }
+
     const authId = await provisionSchoolAdminAuthUser(ctx, {
       adminName: normalizedName,
       adminEmail: normalizedEmail,
@@ -214,7 +269,11 @@ export const promoteSchoolAdmin = mutation({
     });
 
     const target = await ctx.db.get(args.adminId);
-    if (!target || target.schoolId !== schoolId || target.role !== "admin") {
+    if (
+      !target ||
+      target.schoolId !== schoolId ||
+      (target.role !== "admin" && target.isSchoolAdmin !== true)
+    ) {
       throw new ConvexError("Admin not found");
     }
 
@@ -254,7 +313,11 @@ export const archiveSchoolAdmin = mutation({
     });
 
     const target = await ctx.db.get(args.adminId);
-    if (!target || target.schoolId !== schoolId || target.role !== "admin") {
+    if (
+      !target ||
+      target.schoolId !== schoolId ||
+      (target.role !== "admin" && target.isSchoolAdmin !== true)
+    ) {
       throw new ConvexError("Admin not found");
     }
 
@@ -312,7 +375,11 @@ export const transferSchoolAdminLeadership = mutation({
     }
 
     const target = await ctx.db.get(args.adminId);
-    if (!target || target.schoolId !== schoolId || target.role !== "admin") {
+    if (
+      !target ||
+      target.schoolId !== schoolId ||
+      (target.role !== "admin" && target.isSchoolAdmin !== true)
+    ) {
       throw new ConvexError("Admin not found");
     }
 

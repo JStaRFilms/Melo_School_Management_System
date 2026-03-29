@@ -42,6 +42,7 @@ export default defineSchema({
       v.literal("teacher"),
       v.literal("admin")
     ),
+    isSchoolAdmin: v.optional(v.boolean()),
     managerUserId: v.optional(v.union(v.id("users"), v.null())),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
@@ -138,6 +139,44 @@ export default defineSchema({
     .index("by_class", ["classId"])
     .index("by_subject", ["subjectId"])
     .index("by_class_and_subject", ["classId", "subjectId"]),
+
+  classSubjectAggregations: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    umbrellaSubjectId: v.id("subjects"),
+    strategy: v.union(
+      v.literal("fixed_contribution"),
+      v.literal("raw_combined_normalized")
+    ),
+    reportDisplayMode: v.union(
+      v.literal("umbrella_only"),
+      v.literal("umbrella_with_breakdown")
+    ),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class", ["classId"])
+    .index("by_class_and_umbrella", ["classId", "umbrellaSubjectId"])
+    .index("by_school_active", ["schoolId", "isActive"]),
+
+  classSubjectAggregationComponents: defineTable({
+    schoolId: v.id("schools"),
+    aggregationId: v.id("classSubjectAggregations"),
+    componentSubjectId: v.id("subjects"),
+    order: v.number(),
+    contributionMax: v.optional(v.number()),
+    rawMaxOverride: v.optional(v.number()),
+    includeCA: v.boolean(),
+    includeExam: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_aggregation", ["aggregationId"])
+    .index("by_component_subject", ["componentSubjectId"]),
 
   studentSubjectSelections: defineTable({
     schoolId: v.id("schools"),

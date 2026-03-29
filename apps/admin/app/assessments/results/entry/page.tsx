@@ -74,13 +74,6 @@ function LiveAdminScoreEntryPage({
 }: {
   selection: SelectionState;
 }) {
-  const isSheetReady = Boolean(
-    selection.sessionId &&
-      selection.termId &&
-      selection.classId &&
-      selection.subjectId
-  );
-
   const sessions = useQuery(
     "functions/academic/adminSelectors:getAdminSessions" as never
   ) as SelectorOption[] | undefined;
@@ -99,6 +92,17 @@ function LiveAdminScoreEntryPage({
       ? ({ classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
+  const isSelectedSubjectAvailable =
+    !selection.subjectId ||
+    subjects === undefined ||
+    subjects.some((subject) => subject.id === selection.subjectId);
+  const isSheetReady = Boolean(
+    selection.sessionId &&
+      selection.termId &&
+      selection.classId &&
+      selection.subjectId &&
+      isSelectedSubjectAvailable
+  );
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
     isSheetReady

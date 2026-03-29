@@ -162,7 +162,7 @@ export default function AdminManagementPage() {
       setNotice({
         tone: "success",
         title: "Teacher promoted",
-        message: "The teacher row was upgraded in place to an admin.",
+        message: "The teacher kept teaching access and gained school-admin access.",
       });
     } catch (error) {
       setNotice({
@@ -264,7 +264,7 @@ export default function AdminManagementPage() {
                 Create Admin
               </h2>
               <p className="mt-1 text-xs font-medium text-slate-500">
-                New admins are created under the signed-in admin.
+                New admins are created under the signed-in admin. If the email already belongs to a teacher, we upgrade that same person in place.
               </p>
             </div>
             <UserPlus className="h-5 w-5 text-slate-400" />
@@ -352,9 +352,9 @@ export default function AdminManagementPage() {
             <h2 className="text-sm font-black uppercase tracking-[0.16em] text-slate-950">
               Promote Existing Teacher
             </h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              Upgrade a teacher row directly instead of creating a duplicate admin account.
-            </p>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Upgrade a teacher row directly so they keep teaching access and gain admin access.
+              </p>
           </div>
           <Crown className="h-5 w-5 text-slate-400" />
         </div>
@@ -394,7 +394,7 @@ export default function AdminManagementPage() {
           {selectedTeacher ? (
             <>
               <span className="font-bold text-slate-900">{selectedTeacher.name}</span>{" "}
-              will keep the same email and auth identity. We only switch the row&apos;s role from teacher to admin.
+              will keep the same email and auth identity. We add school-admin access without revoking the teacher role.
             </>
           ) : (
             "Pick an existing teacher to upgrade them in place."

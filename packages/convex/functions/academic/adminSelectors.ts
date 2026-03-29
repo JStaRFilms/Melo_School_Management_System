@@ -6,6 +6,7 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
+import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
 
 export const getAdminSessions = query({
   args: {},
@@ -94,13 +95,29 @@ export const getSubjectsByClass = query({
       throw new ConvexError("Cross-school access denied");
     }
 
-    const subjects = await ctx.db
-      .query("subjects")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-      .collect();
+    const [offerings, derivedUmbrellaIds] = await Promise.all([
+      ctx.db
+        .query("classSubjects")
+        .withIndex("by_class", (q: any) => q.eq("classId", args.classId))
+        .collect(),
+      getDerivedUmbrellaSubjectIdsForClass(ctx, {
+        schoolId,
+        classId: args.classId,
+      }),
+    ]);
+
+    const subjects = await Promise.all(
+      offerings.map((offering: any) => ctx.db.get(offering.subjectId))
+    );
 
     return subjects
-      .filter((subject: any) => !subject.isArchived)
+      .filter(
+        (subject: any) =>
+          subject &&
+          subject.schoolId === schoolId &&
+          !subject.isArchived &&
+          !derivedUmbrellaIds.has(String(subject._id))
+      )
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((subject: any) => ({
         id: subject._id,

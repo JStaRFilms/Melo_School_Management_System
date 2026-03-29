@@ -143,6 +143,7 @@ export const assignSchoolAdminInternal = internalMutation({
       name: args.adminName,
       email: args.adminEmail,
       role: "admin",
+      isSchoolAdmin: true,
       managerUserId: null,
       createdAt: now,
       updatedAt: now,

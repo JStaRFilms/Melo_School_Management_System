@@ -28,6 +28,7 @@ export const getViewerContext = query({
       email: authUser.email,
       name: authUser.name,
       role: appUser.role,
+      isSchoolAdmin: appUser.role === "admin" || appUser.isSchoolAdmin === true,
       schoolId: appUser.schoolId,
     };
   },

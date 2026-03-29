@@ -44,10 +44,10 @@ export type ReportCardSheetData = {
     subjectId: string;
     subjectName: string;
     subjectCode: string;
-    ca1: number;
-    ca2: number;
-    ca3: number;
-    examScore: number;
+    ca1: number | null;
+    ca2: number | null;
+    ca3: number | null;
+    examScore: number | null;
     total: number;
     gradeLetter: string;
     remark: string;
@@ -80,7 +80,8 @@ function formatDate(
   return new Intl.DateTimeFormat("en-GB", options).format(new Date(value));
 }
 
-function formatScore(value: number) {
+function formatScore(value: number | null) {
+  if (value === null) return "-";
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
