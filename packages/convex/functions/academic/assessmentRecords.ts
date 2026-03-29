@@ -22,6 +22,20 @@ import {
   getAssessmentEditingState,
 } from "./assessmentEditingPolicyHelpers";
 
+function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
+  docs: T[]
+) {
+  return docs.reduce<T | null>((latest, doc) => {
+    if (latest === null) {
+      return doc;
+    }
+
+    const latestTimestamp = latest.updatedAt ?? latest.createdAt ?? 0;
+    const docTimestamp = doc.updatedAt ?? doc.createdAt ?? 0;
+    return docTimestamp > latestTimestamp ? doc : latest;
+  }, null);
+}
+
 /**
  * Get exam entry sheet with roster, existing scores, settings, and bands
  * 
@@ -444,7 +458,8 @@ export const upsertAssessmentRecordsBulk = mutation({
             .eq("subjectId", args.subjectId)
             .eq("studentId", record.studentId)
         )
-        .unique();
+        .collect()
+        .then((docs: any[]) => pickMostRecentDoc(docs));
 
       const now = Date.now();
 

@@ -46,3 +46,4 @@ The grade badge in the UI is currently display-only, so admins can edit the scor
 ## Update
 - The grade column should now behave as an editable field instead of a read-only badge.
 - Grade labels should be required before saving so the school does not end up with anonymous bands.
+- Decimal totals from scaled exams or aggregated report-card subjects grade against the containing whole-number band, so a total like `69.5` still resolves inside the `60-69` band unless the school changes the thresholds.

@@ -54,6 +54,20 @@ function normalizeOptionalComment(value: string | null | undefined) {
   return trimmed;
 }
 
+function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
+  docs: T[]
+) {
+  return docs.reduce<T | null>((latest, doc) => {
+    if (latest === null) {
+      return doc;
+    }
+
+    const latestTimestamp = latest.updatedAt ?? latest.createdAt ?? 0;
+    const docTimestamp = doc.updatedAt ?? doc.createdAt ?? 0;
+    return docTimestamp > latestTimestamp ? doc : latest;
+  }, null);
+}
+
 const reportCardBatchStudentValidator = v.object({
   studentId: v.id("students"),
   studentName: v.string(),
@@ -254,19 +268,35 @@ async function getStudentsForClassReportCardBatch(
     (
       student
     ): student is Exclude<typeof student, null> =>
-      student !== null && student.schoolId === args.schoolId
+      student !== null &&
+      student.schoolId === args.schoolId &&
+      !student.isArchived
   );
 
-  const roster = await Promise.all(
-    students.map(async (student) => {
-      const studentUser = await ctx.db.get(student.userId);
-      const studentName = getReadableUserName(studentUser);
-      return {
-        studentId: student._id,
-        studentName: studentName.displayName || "Unnamed Student",
-        admissionNumber: student.admissionNumber,
-      };
-    })
+  const roster = (
+    await Promise.all(
+      students.map(async (student) => {
+        const studentUser = await ctx.db.get(student.userId);
+        if (
+          !studentUser ||
+          studentUser.schoolId !== args.schoolId ||
+          studentUser.isArchived
+        ) {
+          return null;
+        }
+
+        const studentName = getReadableUserName(studentUser);
+        return {
+          studentId: student._id,
+          studentName: studentName.displayName || "Unnamed Student",
+          admissionNumber: student.admissionNumber,
+        };
+      })
+    )
+  ).filter(
+    (
+      student
+    ): student is Exclude<typeof student, null> => student !== null
   );
 
   return roster.sort((a, b) => {
@@ -387,8 +417,9 @@ async function buildStudentReportCard(
           .eq("studentId", args.studentId)
           .eq("sessionId", args.sessionId)
           .eq("termId", args.termId)
-        )
-      .unique(),
+      )
+      .collect()
+      .then((docs: any[]) => pickMostRecentDoc(docs)),
     buildExtrasCollectionView(ctx, {
       schoolId: args.schoolId,
       classId: reportCardClassId,
@@ -448,7 +479,9 @@ async function buildStudentReportCard(
 
   const subjects = (
     await Promise.all(
-      Array.from(subjectIds).map((subjectId) => ctx.db.get(subjectId as Id<"subjects">))
+      Array.from(subjectIds).map((subjectId) =>
+        ctx.db.get(subjectId as Id<"subjects">)
+      )
     )
   ).filter(
     (
@@ -732,7 +765,8 @@ export const saveStudentReportCardComments = mutation({
               .eq("sessionId", args.sessionId)
               .eq("termId", args.termId)
           )
-          .unique(),
+          .collect()
+          .then((docs: any[]) => pickMostRecentDoc(docs)),
         ctx.db
           .query("assessmentRecords")
           .withIndex("by_student_and_term", (q) =>

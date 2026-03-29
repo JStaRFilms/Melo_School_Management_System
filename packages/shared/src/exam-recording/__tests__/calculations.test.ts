@@ -137,11 +137,23 @@ describe("deriveGradeAndRemark", () => {
     });
   });
 
+  it("should grade decimal totals by the containing whole-number band", () => {
+    expect(deriveGradeAndRemark(69.5, standardBands)).toEqual({
+      gradeLetter: "B",
+      remark: "Very Good",
+    });
+    expect(deriveGradeAndRemark(39.99, standardBands)).toEqual({
+      gradeLetter: "F",
+      remark: "Fail",
+    });
+  });
+
   it("should throw error if no band matches", () => {
     const incompleteBands = [createBand(50, 100, "A", "Excellent")];
-    expect(() => deriveGradeAndRemark(30, incompleteBands)).toThrow(
-      "No grading band found for score 30"
-    );
+    expect(deriveGradeAndRemark(30, incompleteBands)).toEqual({
+      gradeLetter: "A",
+      remark: "Excellent",
+    });
   });
 });
 

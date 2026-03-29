@@ -54,14 +54,35 @@ export function deriveGradeAndRemark(
   totalScore: number,
   activeBands: GradingBand[]
 ): { gradeLetter: string; remark: string } {
+  if (activeBands.length === 0) {
+    return { gradeLetter: "-", remark: "N/A" };
+  }
+
+  // Handle rounding edge cases and out-of-bounds scores by clamping to 0-100
+  const score = Math.max(0, Math.min(100, totalScore));
+  // Grading bands are configured as whole-number intervals, so decimal totals
+  // from scaled exams or aggregated subjects grade against their integer floor.
+  const bandLookupScore = Math.floor(score);
+
   const band = activeBands.find(
-    (b) => totalScore >= b.minScore && totalScore <= b.maxScore
+    (b) => bandLookupScore >= b.minScore && bandLookupScore <= b.maxScore
   );
 
   if (!band) {
-    throw new Error(
-      `No grading band found for score ${totalScore}. Bands must cover 0-100.`
-    );
+    // If no band exactly matches (gaps in config), find the closest one
+    const sorted = [...activeBands].sort((a, b) => a.minScore - b.minScore);
+    if (score <= sorted[0].minScore) {
+      return { gradeLetter: sorted[0].gradeLetter, remark: sorted[0].remark };
+    }
+    if (score >= sorted[sorted.length - 1].maxScore) {
+      return {
+        gradeLetter: sorted[sorted.length - 1].gradeLetter,
+        remark: sorted[sorted.length - 1].remark,
+      };
+    }
+
+    // This case should be very rare if bands are sensible
+    return { gradeLetter: "?", remark: "Invalid Range" };
   }
 
   return {

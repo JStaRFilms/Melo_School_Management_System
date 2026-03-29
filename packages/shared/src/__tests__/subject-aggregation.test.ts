@@ -97,6 +97,22 @@ describe("deriveAggregatedSubjectResult", () => {
     expect(result.gradeLetter).toBe("A");
   });
 
+  it("grades decimal normalized totals against whole-number grading bands", () => {
+    const result = deriveAggregatedSubjectResult({
+      strategy: "raw_combined_normalized",
+      gradingBands: standardBands,
+      components: [
+        { subjectId: "agric", ca1: 7, ca2: 10, ca3: 18, examScore: 20, total: 55 },
+        { subjectId: "home-econ", ca1: 19, ca2: 20, ca3: 18, examScore: 27, total: 84 },
+      ],
+    });
+
+    expect(result.isRecorded).toBe(true);
+    expect(result.total).toBe(69.5);
+    expect(result.gradeLetter).toBe("B");
+    expect(result.remark).toBe("Very Good");
+  });
+
   it("returns a pending aggregate when any component is missing", () => {
     const result = deriveAggregatedSubjectResult({
       strategy: "raw_combined_normalized",
