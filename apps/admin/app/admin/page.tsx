@@ -116,58 +116,8 @@ export default function AdminManagementPage() {
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
       
       <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
-        <AdminHeader
-          title="Admins"
-          actions={
-            <StatGroup
-              stats={[
-                {
-                  label: "Total",
-                  value: data.admins.length,
-                  icon: <ShieldAlert />,
-                },
-                {
-                  label: "Active",
-                  value: activeAdmins.length,
-                  icon: <Sparkles />,
-                },
-                {
-                  label: "Reports",
-                  value: viewerDirectReports,
-                  icon: <ArrowRightLeft />,
-                },
-              ]}
-            />
-          }
-        />
-
-        {notice && (
-          <div
-            className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg shadow-slate-200/5 transition-all duration-500 animate-in fade-in slide-in-from-top-4 ${
-              notice.tone === "success"
-                ? "border-emerald-500 bg-white text-emerald-950"
-                : "border-rose-500 bg-white text-rose-950"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-6">
-              <div className="space-y-0.5">
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
-                  {notice.title}
-                </p>
-                <p className="text-xs font-bold tracking-tight">{notice.message}</p>
-              </div>
-              <button
-                onClick={() => setNotice(null)}
-                className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-              >
-                <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-80 lg:shrink-0 space-y-4 md:space-y-6">
+          <aside className="w-full lg:w-80 lg:shrink-0 space-y-4 md:space-y-6 lg:sticky lg:top-8 h-fit">
             <AdminCreationForm
               onSuccess={(msg) =>
                 setNotice({ tone: "success", title: "Success", message: msg })
@@ -202,6 +152,56 @@ export default function AdminManagementPage() {
           </aside>
 
           <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+            <AdminHeader
+              title="Admins"
+              actions={
+                <StatGroup
+                  stats={[
+                    {
+                      label: "Total",
+                      value: data.admins.length,
+                      icon: <ShieldAlert />,
+                    },
+                    {
+                      label: "Active",
+                      value: activeAdmins.length,
+                      icon: <Sparkles />,
+                    },
+                    {
+                      label: "Reports",
+                      value: viewerDirectReports,
+                      icon: <ArrowRightLeft />,
+                    },
+                  ]}
+                />
+              }
+            />
+
+            {notice && (
+              <div
+                className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg shadow-slate-200/5 transition-all duration-500 animate-in fade-in slide-in-from-top-4 ${
+                  notice.tone === "success"
+                    ? "border-emerald-500 bg-white text-emerald-950"
+                    : "border-rose-500 bg-white text-rose-950"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
+                      {notice.title}
+                    </p>
+                    <p className="text-xs font-bold tracking-tight">{notice.message}</p>
+                  </div>
+                  <button
+                    onClick={() => setNotice(null)}
+                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <AdminDirectorySection
               admins={data.admins}
               viewerUserId={viewerUserId}

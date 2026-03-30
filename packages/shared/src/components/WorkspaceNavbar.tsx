@@ -232,7 +232,7 @@ export function WorkspaceNavbar({
 
         {/* ── MAIN SCROLL AREA ── */}
         <main className="flex-1 overflow-y-auto w-full relative p-4 sm:p-6 lg:p-8 custom-scrollbar scrollbar-hide">
-          <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-[1600px]">
             {children}
           </div>
         </main>

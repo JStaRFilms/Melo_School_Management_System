@@ -1,11 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { CalendarPlus, Hash, Plus, PlusSquare } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { humanNameFinal, humanNameTyping } from "@/human-name";
+import {
+  CalendarDays,
+  Sparkles,
+  Layers,
+  X,
+  Hash,
+  ArrowRight,
+} from "lucide-react";
+import Link from "next/link";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { StatGroup } from "@/components/ui/StatGroup";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+import { SessionCreationForm } from "./components/SessionCreationForm";
+import { TermCreationForm } from "./components/TermCreationForm";
+import { SessionDirectory } from "./components/SessionDirectory";
 
 type SessionRecord = {
   _id: string;
@@ -16,703 +28,209 @@ type SessionRecord = {
   createdAt: number;
 };
 
-type TermRecord = {
+type SubjectRecord = {
   _id: string;
   name: string;
-  startDate: number;
-  endDate: number;
-  isActive: boolean;
-  createdAt: number;
+  code: string;
 };
-
-function toDateInput(timestamp: number) {
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
 
 export default function SessionsPage() {
   const sessions = useQuery(
     "functions/academic/academicSetup:listSessions" as never
   ) as SessionRecord[] | undefined;
+  
   const subjects = useQuery(
     "functions/academic/academicSetup:listSubjects" as never
-  ) as Array<{ _id: string; name: string; code: string }> | undefined;
-  const createSession = useMutation(
-    "functions/academic/academicSetup:createSession" as never
-  );
+  ) as SubjectRecord[] | undefined;
+
   const updateSession = useMutation(
     "functions/academic/academicSetup:updateSession" as never
   );
   const archiveSession = useMutation(
     "functions/academic/academicSetup:archiveSession" as never
   );
-  const createTerm = useMutation(
-    "functions/academic/academicSetup:createTerm" as never
-  );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [sessionName, setSessionName] = useState("");
-  const [sessionStartDate, setSessionStartDate] = useState("");
-  const [sessionEndDate, setSessionEndDate] = useState("");
-  const [activateSession, setActivateSession] = useState(true);
-  const [editSessionName, setEditSessionName] = useState("");
-  const [editSessionStartDate, setEditSessionStartDate] = useState("");
-  const [editSessionEndDate, setEditSessionEndDate] = useState("");
-  const [termName, setTermName] = useState("First Term");
-  const [termStartDate, setTermStartDate] = useState("");
-  const [termEndDate, setTermEndDate] = useState("");
-  const [activateTerm, setActivateTerm] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isSavingSession, setIsSavingSession] = useState(false);
-  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
-  const [isSavingTerm, setIsSavingTerm] = useState(false);
+  const [notice, setNotice] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
-  useEffect(() => {
-    if (!sessions || sessions.length === 0) {
-      return;
-    }
-
-    const activeSession = sessions.find((session) => session.isActive);
-    setSelectedSessionId((current) => current ?? activeSession?._id ?? sessions[0]._id);
-  }, [sessions]);
-
-  const selectedSession = useMemo(
-    () => sessions?.find((session) => session._id === selectedSessionId) ?? null,
-    [selectedSessionId, sessions]
-  );
   const activeSession = useMemo(
-    () => sessions?.find((session) => session.isActive) ?? null,
+    () => sessions?.find((s) => s.isActive) ?? null,
     [sessions]
   );
-  const activationWarningMessage = useMemo(() => {
-    if (!activeSession) {
-      return null;
-    }
 
-    return `Changing the active session will keep ${activeSession.name} as history. Existing enrollment and assessment records stay attached to the session where they were originally saved.`;
-  }, [activeSession]);
-
-  useEffect(() => {
-    if (!selectedSession) {
-      return;
-    }
-
-    setEditSessionName(selectedSession.name);
-    setEditSessionStartDate(toDateInput(selectedSession.startDate));
-    setEditSessionEndDate(toDateInput(selectedSession.endDate));
-  }, [selectedSession]);
-
-  const terms = useQuery(
-    "functions/academic/academicSetup:listTermsBySession" as never,
-    selectedSessionId ? ({ sessionId: selectedSessionId } as never) : ("skip" as never)
-  ) as TermRecord[] | undefined;
-  const activeTermsForSelectedSession = useMemo(
-    () => (terms ?? []).filter((term) => term.isActive),
-    [terms]
+  const selectedSession = useMemo(
+    () => sessions?.find((s) => s._id === selectedSessionId) ?? activeSession ?? null,
+    [selectedSessionId, sessions, activeSession]
   );
 
-  const handleCreateSession = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedSessionName = humanNameFinal(sessionName);
-    if (!normalizedSessionName || !sessionStartDate || !sessionEndDate) {
-      return;
-    }
-
-    setIsSavingSession(true);
-    setError(null);
-
-    try {
-      await createSession({
-        name: normalizedSessionName,
-        startDate: new Date(sessionStartDate).getTime(),
-        endDate: new Date(sessionEndDate).getTime(),
-        isActive: activateSession,
-      } as never);
-      setSessionName("");
-      setSessionStartDate("");
-      setSessionEndDate("");
-      setActivateSession(true);
-      setSuccessMessage("Session created.");
-    } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to create session"));
-    } finally {
-      setIsSavingSession(false);
-    }
-  };
-
-  const handleCreateTerm = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedTermName = humanNameFinal(termName);
-    if (!selectedSessionId || !normalizedTermName || !termStartDate || !termEndDate) {
-      return;
-    }
-
-    setIsSavingTerm(true);
-    setError(null);
-
-    try {
-      await createTerm({
-        sessionId: selectedSessionId,
-        name: normalizedTermName,
-        startDate: new Date(termStartDate).getTime(),
-        endDate: new Date(termEndDate).getTime(),
-        isActive: activateTerm,
-      } as never);
-      setTermName("First Term");
-      setTermStartDate("");
-      setTermEndDate("");
-      setActivateTerm(true);
-      setSuccessMessage("Term created.");
-    } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to create term"));
-    } finally {
-      setIsSavingTerm(false);
-    }
-  };
-
-  const confirmActivationIfNeeded = (targetSessionId: string) => {
-    if (!activeSession || activeSession._id === targetSessionId) {
-      return true;
-    }
-
-    return window.confirm(
-      `${activationWarningMessage}\n\nContinue and make the selected session active?`
-    );
-  };
-
-  const handleUpdateSelectedSession = async (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
-    if (!selectedSession) {
-      return;
-    }
-
-    const normalizedName = humanNameFinal(editSessionName);
-    if (!normalizedName || !editSessionStartDate || !editSessionEndDate) {
-      return;
-    }
-
-    setIsUpdatingSession(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      await updateSession({
-        sessionId: selectedSession._id,
-        name: normalizedName,
-        startDate: new Date(editSessionStartDate).getTime(),
-        endDate: new Date(editSessionEndDate).getTime(),
-      } as never);
-      setSuccessMessage("Session updated.");
-    } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to update session"));
-    } finally {
-      setIsUpdatingSession(false);
-    }
-  };
-
   const handleMakeActive = async (sessionId: string) => {
-    if (!confirmActivationIfNeeded(sessionId)) {
-      return;
-    }
-
-    setIsUpdatingSession(true);
-    setError(null);
-    setSuccessMessage(null);
-
+    setNotice(null);
     try {
-      await updateSession({
-        sessionId,
-        isActive: true,
-      } as never);
-      setSuccessMessage("Active session updated.");
+      await updateSession({ sessionId, isActive: true } as never);
+      setNotice({ tone: "success", title: "Activation Successful", message: "Academic session is now active." });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to activate session"));
-    } finally {
-      setIsUpdatingSession(false);
+      setNotice({ tone: "error", title: "Activation Failed", message: getUserFacingErrorMessage(err, "Failed to activate session") });
     }
   };
 
-  const handleArchiveSelectedSession = async () => {
-    if (!selectedSession) {
-      return;
-    }
-
-    const archiveMessage =
-      activeTermsForSelectedSession.length > 0
-        ? `Archive ${selectedSession.name}? This keeps the session for history, removes it from active setup lists, and automatically marks ${activeTermsForSelectedSession
-            .map((term) => term.name)
-            .join(", ")} inactive.`
-        : `Archive ${selectedSession.name}? This keeps the record for history and removes it from active setup lists.`;
-
-    if (!window.confirm(archiveMessage)) {
-      return;
-    }
-
-    setIsUpdatingSession(true);
-    setError(null);
-    setSuccessMessage(null);
-
+  const handleArchive = async (sessionId: string) => {
+    if (!window.confirm("Archive this session? History is preserved, but it will be removed from setup lists.")) return;
+    setNotice(null);
     try {
-      await archiveSession({ sessionId: selectedSession._id } as never);
-      setSelectedSessionId(null);
-      setSuccessMessage(
-        activeTermsForSelectedSession.length > 0
-          ? "Session archived. Its current term status was cleared automatically."
-          : "Session archived."
-      );
+      await archiveSession({ sessionId } as never);
+      if (selectedSessionId === sessionId) setSelectedSessionId(null);
+      setNotice({ tone: "success", title: "Archive Successful", message: "Session moved to history." });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to archive session"));
-    } finally {
-      setIsUpdatingSession(false);
+      setNotice({ tone: "error", title: "Archive Failed", message: getUserFacingErrorMessage(err, "Failed to archive session") });
     }
   };
 
   if (sessions === undefined || subjects === undefined) {
     return (
-      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
-        <div className="text-[#64748b]">Loading academic config...</div>
+      <div className="mx-auto max-w-[1600px] px-3 py-4 md:px-8 md:py-10">
+        <div className="animate-pulse space-y-12">
+          <div className="h-10 w-48 rounded-lg bg-slate-100" />
+          <div className="grid gap-10 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-12">
+              <div className="h-64 rounded-xl bg-slate-50" />
+            </div>
+            <div className="space-y-10">
+              <div className="h-48 rounded-xl bg-slate-50" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-8 pb-28">
-      {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
+    <div className="relative min-h-screen">
+      <div className="absolute inset-0 bg-[#f8fafc] pointer-events-none" />
+      
+      <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
+        <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start">
+          <aside className="w-full lg:w-80 lg:shrink-0 space-y-4 md:space-y-6 lg:sticky lg:top-8 h-fit">
+            <SessionCreationForm
+              onSuccess={(msg) => setNotice({ tone: "success", title: "Success", message: msg })}
+              onError={(title, msg) => setNotice({ tone: "error", title, message: msg })}
+            />
 
-      {successMessage ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {successMessage}
-        </div>
-      ) : null}
+            <TermCreationForm
+              selectedSessionId={selectedSession?._id ?? null}
+              selectedSessionName={selectedSession?.name ?? null}
+              onSuccess={(msg) => setNotice({ tone: "success", title: "Success", message: msg })}
+              onError={(title, msg) => setNotice({ tone: "error", title, message: msg })}
+            />
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-              1. Academic Calendar
-            </h2>
-            <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-              Define your sessions and terms
-            </p>
-          </div>
-          <div className="h-11 px-5 rounded-xl bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.025em]">
-            <Plus className="w-4 h-4 text-white/50" />
-            Add Session
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {sessions.length === 0 ? (
-            <div className="bg-white border border-dashed border-[#e2e8f0] rounded-2xl p-8 text-center text-[#94a3b8]">
-              No academic sessions yet.
+            <div className="pt-4 border-t border-slate-200/60 p-1">
+              <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                Setup Protocol
+              </h4>
+              <p className="mt-1 text-[10px] leading-relaxed font-medium text-slate-400">
+                Academic records are immutable and pinned to their creation session.
+              </p>
             </div>
-          ) : (
-            sessions.map((session) => (
-              <button
-                key={session._id}
-                type="button"
-                onClick={() => setSelectedSessionId(session._id)}
-                className={`w-full text-left rounded-2xl overflow-hidden transition-all ${
-                  session._id === selectedSessionId
-                    ? "bg-white border-2 border-[#4f46e5]/30 shadow-sm"
-                    : "bg-white border border-[#e2e8f0]"
-                }`}
-              >
-                <div className="p-4 sm:p-5 flex items-center justify-between border-b border-[#f1f5f9]">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        session.isActive ? "bg-emerald-500" : "bg-[#cbd5e1]"
-                      }`}
-                    />
-                    <h3 className="font-bold text-[#0f172a] tracking-tight">
-                      {session.name}
-                    </h3>
-                    <span
-                      className={`text-[8px] font-extrabold uppercase px-2 py-1 rounded-full tracking-[0.05em] border ${
-                        session.isActive
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-[#f1f5f9] text-[#64748b] border-[#e2e8f0]"
-                      }`}
-                    >
-                      {session.isActive ? "Active" : "Saved"}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold text-[#94a3b8]">
-                    {toDateInput(session.startDate)} - {toDateInput(session.endDate)}
-                  </span>
-                </div>
+          </aside>
 
-                {session._id === selectedSessionId ? (
-                  <div className="bg-[#f8fafc] p-4 sm:p-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {(terms ?? []).map((term) => (
-                        <div
-                          key={term._id}
-                          className={`p-3 bg-white rounded-lg flex items-center justify-between ${
-                            term.isActive
-                              ? "border-2 border-[#4f46e5]"
-                              : "border border-[#e2e8f0]"
-                          }`}
-                        >
-                          <div className="space-y-0.5">
-                            <span
-                              className={`text-[9px] font-bold uppercase tracking-[0.05em] block ${
-                                term.isActive ? "text-[#4f46e5]" : "text-[#64748b]"
-                              }`}
-                            >
-                              {term.name}
-                            </span>
-                            <span className="text-xs font-bold text-[#0f172a]">
-                              {toDateInput(term.startDate)} - {toDateInput(term.endDate)}
-                            </span>
-                          </div>
-                          <span
-                            className={`text-[8px] font-extrabold uppercase px-2 py-1 rounded-full tracking-[0.05em] ${
-                              term.isActive
-                                ? "bg-[#4f46e5] text-white"
-                                : "bg-[#f1f5f9] text-[#64748b]"
-                            }`}
-                          >
-                            {term.isActive ? "Current" : "Saved"}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="p-3 bg-white border border-dashed border-[#e2e8f0] rounded-lg flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <Plus className="w-3 h-3 text-[#cbd5e1]" />
-                          <span className="text-[9px] font-bold text-[#94a3b8] uppercase">
-                            Add Term
-                          </span>
-                        </div>
-                      </div>
+          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+            <AdminHeader
+              title="Sessions"
+              actions={
+                <StatGroup
+                  stats={[
+                    {
+                      label: "Sessions",
+                      value: sessions.length,
+                      icon: <CalendarDays />,
+                    },
+                    {
+                      label: "Current",
+                      value: activeSession?.name.split(" ")[0] ?? "None",
+                      icon: <Sparkles />,
+                    },
+                    {
+                      label: "Subjects",
+                      value: subjects.length,
+                      icon: <Layers />,
+                    },
+                  ]}
+                />
+              }
+            />
+
+            {notice && (
+              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all duration-500 bg-white ${
+                notice.tone === "success" ? "border-emerald-500" : "border-rose-500"
+              }`}>
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
+                      {notice.title}
+                    </p>
+                    <p className="text-xs font-bold tracking-tight">{notice.message}</p>
+                  </div>
+                  <button
+                    onClick={() => setNotice(null)}
+                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <SessionDirectory
+              sessions={sessions}
+              selectedSessionId={selectedSessionId}
+              onSelectSession={setSelectedSessionId}
+              onMakeActive={handleMakeActive}
+              onArchive={handleArchive}
+            />
+
+            <div className="pt-12 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Subject Catalog
+                  </h4>
+                </div>
+                <Link
+                  href="/academic/subjects"
+                  className="group flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                >
+                  Manage All <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {subjects.slice(0, 9).map((subject, index) => (
+                  <AdminSurface 
+                    key={subject._id} 
+                    intensity="low" 
+                    className={`p-4 space-y-3 ${index >= 4 ? "hidden md:block" : ""}`}
+                  >
+                    <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px]">
+                      {subject.code.slice(0, 2)}
                     </div>
-                    {!session.isActive && activeTermsForSelectedSession.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Archiving this inactive session will automatically mark{" "}
-                        <span className="font-semibold">
-                          {activeTermsForSelectedSession
-                            .map((term) => term.name)
-                            .join(", ")}
-                        </span>{" "}
-                        inactive first. No academic records will be deleted.
-                      </div>
-                    ) : null}
-                    {!session.isActive ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleMakeActive(session._id)}
-                        disabled={isUpdatingSession}
-                        className="mt-4 h-10 rounded-xl bg-emerald-600 px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-lg shadow-emerald-100 disabled:opacity-50"
-                      >
-                        {isUpdatingSession ? "Switching..." : "Make Active Session"}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </button>
-            ))
-          )}
-        </div>
-
-        {activationWarningMessage ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {activationWarningMessage}
+                    <div>
+                      <h5 className="text-xs font-bold text-slate-900 leading-tight">
+                        {subject.name}
+                      </h5>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block">
+                        {subject.code}
+                      </span>
+                    </div>
+                  </AdminSurface>
+                ))}
+              </div>
+            </div>
           </div>
-        ) : null}
-
-        {selectedSession ? (
-          <form
-            onSubmit={handleUpdateSelectedSession}
-            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-3"
-          >
-            <div>
-              <h3 className="text-xs font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-                Edit Selected Session
-              </h3>
-              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-                Update label and dates, or switch it active later.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Session Label
-                </label>
-                <input
-                  type="text"
-                  value={editSessionName}
-                  onChange={(event) => setEditSessionName(humanNameTyping(event.target.value))}
-                  onBlur={(event) => setEditSessionName(humanNameFinal(event.target.value))}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={editSessionStartDate}
-                  onChange={(event) => setEditSessionStartDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  value={editSessionEndDate}
-                  onChange={(event) => setEditSessionEndDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                  required
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="submit"
-                disabled={isUpdatingSession}
-                className="h-11 flex-1 rounded-xl bg-[#0f172a] text-white font-bold text-xs uppercase tracking-[0.025em] shadow-xl disabled:opacity-50"
-              >
-                {isUpdatingSession ? "Saving Changes" : "Save Session Changes"}
-              </button>
-              {!selectedSession.isActive ? (
-                <button
-                  type="button"
-                  onClick={() => void handleMakeActive(selectedSession._id)}
-                  disabled={isUpdatingSession}
-                  className="h-11 flex-1 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-[0.025em] shadow-lg shadow-emerald-100 disabled:opacity-50"
-                >
-                  {isUpdatingSession ? "Switching Active Session" : "Make This Session Active"}
-                </button>
-              ) : null}
-            </div>
-
-            {!selectedSession.isActive ? (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => void handleArchiveSelectedSession()}
-                  disabled={isUpdatingSession}
-                  className="h-11 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
-                >
-                  Archive Session
-                </button>
-              </div>
-            ) : null}
-          </form>
-        ) : null}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <form
-            onSubmit={handleCreateSession}
-            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-3"
-          >
-            <div>
-              <h3 className="text-xs font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-                Create Session
-              </h3>
-              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-                Bootstrap the school year first
-              </p>
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                Session Label
-              </label>
-              <input
-                type="text"
-                value={sessionName}
-                onChange={(event) => setSessionName(humanNameTyping(event.target.value))}
-                onBlur={(event) => setSessionName(humanNameFinal(event.target.value))}
-                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                placeholder="2026/2027 Academic Session"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={sessionStartDate}
-                  onChange={(event) => setSessionStartDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  value={sessionEndDate}
-                  onChange={(event) => setSessionEndDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-xs font-medium text-[#475569]">
-              <input
-                type="checkbox"
-                checked={activateSession}
-                onChange={(event) => setActivateSession(event.target.checked)}
-                className="rounded border-[#cbd5e1]"
-              />
-              Set as active session
-            </label>
-            <button
-              type="submit"
-              disabled={isSavingSession}
-              className="h-11 w-full rounded-xl bg-[#4f46e5] text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-lg shadow-[#4f46e5]/10 disabled:opacity-50"
-            >
-              <CalendarPlus className="w-4 h-4 text-white/50" />
-              {isSavingSession ? "Saving Session" : "Save Session"}
-            </button>
-          </form>
-
-          <form
-            onSubmit={handleCreateTerm}
-            className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-3"
-          >
-            <div>
-              <h3 className="text-xs font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-                Add Term To Active Session
-              </h3>
-              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-                Terms sit inside one school session
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Session
-                </label>
-                <div className="h-11 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] flex items-center">
-                  {selectedSession?.name ?? "Select a session"}
-                </div>
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Term Name
-                </label>
-                <input
-                  type="text"
-                  value={termName}
-                  onChange={(event) => setTermName(humanNameTyping(event.target.value))}
-                  onBlur={(event) => setTermName(humanNameFinal(event.target.value))}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-xs font-medium text-[#475569]">
-                  <input
-                    type="checkbox"
-                    checked={activateTerm}
-                    onChange={(event) => setActivateTerm(event.target.checked)}
-                    className="rounded border-[#cbd5e1]"
-                  />
-                  Set active
-                </label>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  Start
-                </label>
-                <input
-                  type="date"
-                  value={termStartDate}
-                  onChange={(event) => setTermStartDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] block mb-1.5">
-                  End
-                </label>
-                <input
-                  type="date"
-                  value={termEndDate}
-                  onChange={(event) => setTermEndDate(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                />
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={isSavingTerm || !selectedSessionId}
-              className="h-11 w-full rounded-xl bg-[#0f172a] text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-xl disabled:opacity-50"
-            >
-              <PlusSquare className="w-4 h-4 text-white/50" />
-              {isSavingTerm ? "Adding Term" : "Add Term"}
-            </button>
-          </form>
         </div>
-      </section>
-
-      <section className="space-y-4 border-t border-[#f1f5f9] pt-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-              2. Subject Catalog
-            </h2>
-            <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-              Manage master list of subjects
-            </p>
-          </div>
-          <Link
-            href="/academic/subjects"
-            className="h-11 px-5 rounded-xl bg-[#0f172a] text-white shadow-xl flex items-center gap-2 text-xs font-bold uppercase tracking-[0.025em]"
-          >
-            <Hash className="w-4 h-4 text-white/40" />
-            Manage Subjects
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {subjects.slice(0, 5).map((subject) => (
-            <div
-              key={subject._id}
-              className="p-4 bg-white border border-[#e2e8f0] rounded-xl flex flex-col gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-[#4f46e5]/10 text-[#4f46e5] flex items-center justify-center font-bold text-xs">
-                {subject.code.slice(0, 2)}
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-[#0f172a] leading-tight">
-                  {subject.name}
-                </h4>
-                <p className="text-[9px] font-bold text-[#94a3b8] uppercase tracking-[0.15em] mt-0.5">
-                  Code: {subject.code}
-                </p>
-              </div>
-            </div>
-          ))}
-          <Link
-            href="/academic/subjects"
-            className="p-4 bg-[#f8fafc] border border-dashed border-[#e2e8f0] rounded-xl flex flex-col gap-3 items-center justify-center min-h-[110px]"
-          >
-            <Plus className="w-5 h-5 text-[#cbd5e1]" />
-            <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-[0.15em]">
-              Add Entry
-            </span>
-          </Link>
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

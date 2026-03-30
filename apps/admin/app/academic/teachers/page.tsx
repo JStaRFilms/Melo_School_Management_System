@@ -156,49 +156,8 @@ export default function TeachersPage() {
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
       
       <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
-        <AdminHeader
-          title="Teaching Staff"
-          actions={
-            <StatGroup
-              stats={[
-                {
-                  label: "Registered",
-                  value: teachers.length,
-                  icon: <GraduationCap className="h-4 w-4" />,
-                },
-                {
-                  label: "Active Access",
-                  value: teachers.length,
-                  icon: <Sparkles className="h-4 w-4" />,
-                },
-              ]}
-            />
-          }
-        />
-
-        {notice && (
-          <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
-            notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-          }`}>
-            <div className="flex items-center justify-between gap-6">
-              <div className="space-y-0.5">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
-                  {notice.title}
-                </p>
-                <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-              </div>
-              <button 
-                onClick={() => setNotice(null)}
-                className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-              >
-                <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6">
+          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit">
             {selectedTeacher ? (
               <TeacherEditForm
                 teacher={selectedTeacher}
@@ -224,7 +183,48 @@ export default function TeachersPage() {
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 space-y-6 md:space-y-8">
+          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+            <AdminHeader
+              title="Teaching Staff"
+              actions={
+                <StatGroup
+                  stats={[
+                    {
+                      label: "Registered",
+                      value: teachers.length,
+                      icon: <GraduationCap className="h-4 w-4" />,
+                    },
+                    {
+                      label: "Active Access",
+                      value: teachers.length,
+                      icon: <Sparkles className="h-4 w-4" />,
+                    },
+                  ]}
+                />
+              }
+            />
+
+            {notice && (
+              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
+                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
+              }`}>
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
+                      {notice.title}
+                    </p>
+                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
+                  </div>
+                  <button 
+                    onClick={() => setNotice(null)}
+                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
                 <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Records</h3>
@@ -264,7 +264,7 @@ export default function TeachersPage() {
                 </div>
               )}
             </div>
-          </main>
+          </div>
         </div>
       </div>
     </div>
