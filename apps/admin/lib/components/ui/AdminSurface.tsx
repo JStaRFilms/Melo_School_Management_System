@@ -1,6 +1,6 @@
-import { ReactNode } from "react";
+import { ReactNode, HTMLAttributes } from "react";
 
-interface AdminSurfaceProps {
+interface AdminSurfaceProps extends HTMLAttributes<HTMLElement> {
   children: ReactNode;
   intensity?: "none" | "low" | "medium" | "high";
   rounded?: "none" | "sm" | "md" | "lg" | "xl" | "2xl" | "full";
@@ -14,6 +14,7 @@ export function AdminSurface({
   rounded = "xl",
   className = "",
   as: Tag = "div",
+  ...props
 }: AdminSurfaceProps) {
   const intensityStyles = {
     none: "bg-transparent border-transparent",
@@ -34,6 +35,7 @@ export function AdminSurface({
 
   return (
     <Tag
+      {...props}
       className={`
         border transition-all duration-300
         ${intensityStyles[intensity]}

@@ -1,10 +1,14 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { KeyRound, Mail, Search, Send, UserPlus } from "lucide-react";
+import { Search, GraduationCap, Sparkles, X, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { StatGroup } from "@/components/ui/StatGroup";
+import { TeacherCard } from "./components/TeacherCard";
+import { TeacherCreationForm } from "./components/TeacherCreationForm";
+import { TeacherEditForm } from "./components/TeacherEditForm";
 
 type TeacherRecord = {
   _id: string;
@@ -19,565 +23,249 @@ type ProvisionResult = {
   temporaryPassword: string;
 };
 
-type TeacherActionErrorState = {
-  title: string;
-  message: string;
-} | null;
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
-
-function getTeacherProvisionErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    if (/already exists|use another email/i.test(error.message)) {
-      return "A teacher with this email already exists.";
-    }
-  }
-
-  return "Teacher could not be created. Check the browser console for details.";
-}
-
 export default function TeachersPage() {
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
-  const createTeacher = useAction(
-    "functions/academic/academicSetup:createTeacher" as never
-  );
-  const updateTeacherProfile = useAction(
-    "functions/academic/academicSetup:updateTeacherProfile" as never
-  );
-  const resetTeacherPassword = useAction(
-    "functions/academic/academicSetup:resetTeacherPassword" as never
-  );
-  const archiveTeacher = useMutation(
-    "functions/academic/academicSetup:archiveTeacher" as never
-  );
+  
+  const createTeacher = useAction("functions/academic/academicSetup:createTeacher" as never);
+  const updateTeacherProfile = useAction("functions/academic/academicSetup:updateTeacherProfile" as never);
+  const resetTeacherPassword = useAction("functions/academic/academicSetup:resetTeacherPassword" as never);
+  const archiveTeacher = useMutation("functions/academic/academicSetup:archiveTeacher" as never);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [search, setSearch] = useState("");
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [resetPasswordValue, setResetPasswordValue] = useState("Teacher123!Pass");
-  const [errorState, setErrorState] = useState<TeacherActionErrorState>(null);
-  const [result, setResult] = useState<ProvisionResult | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  
+  const [notice, setNotice] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
 
   const deferredSearch = useDeferredValue(search);
-  const selectedTeacher =
-    teachers?.find((teacher) => teacher._id === selectedTeacherId) ?? null;
-
-  useEffect(() => {
-    if (!selectedTeacher) {
-      return;
-    }
-
-    setEditName(selectedTeacher.name);
-    setEditEmail(selectedTeacher.email);
-  }, [selectedTeacher]);
+  const selectedTeacher = useMemo(() => 
+    teachers?.find((t) => t._id === selectedTeacherId) ?? null,
+  [teachers, selectedTeacherId]);
 
   const filteredTeachers = useMemo(() => {
-    if (!teachers) {
-      return [];
-    }
-
+    if (!teachers) return [];
     const query = deferredSearch.trim().toLowerCase();
-    if (!query) {
-      return teachers;
-    }
-
+    if (!query) return teachers;
     return teachers.filter(
-      (teacher) =>
-        teacher.name.toLowerCase().includes(query) ||
-        teacher.email.toLowerCase().includes(query)
+      (t) => t.name.toLowerCase().includes(query) || t.email.toLowerCase().includes(query)
     );
   }, [deferredSearch, teachers]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedName = humanNameFinalStrict(name);
-    if (!normalizedName || !email.trim() || !temporaryPassword.trim()) {
-      return;
-    }
-
+  const handleProvision = async (name: string, email: string, password: string): Promise<ProvisionResult> => {
     setIsSubmitting(true);
-    setErrorState(null);
-    setResult(null);
-    setSuccessMessage(null);
-
+    setNotice(null);
     try {
-      const response = (await createTeacher({
-        name: normalizedName,
+      const response = await createTeacher({
+        name,
         email: email.trim().toLowerCase(),
-        temporaryPassword: temporaryPassword.trim(),
+        temporaryPassword: password.trim(),
         origin: window.location.origin,
-      } as never)) as ProvisionResult;
-
-      setResult(response);
-      setName("");
-      setEmail("");
-      setTemporaryPassword("Teacher123!Pass");
-      setSuccessMessage("Teacher account created.");
+      } as never) as ProvisionResult;
+      
+      setNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
+      return response;
     } catch (err) {
-      console.error("Teacher provisioning failed", err);
-      setErrorState({
-        title: "Teacher not created",
-        message: getTeacherProvisionErrorMessage(err),
+      setNotice({
+        tone: "error",
+        title: "Provisioning Failed",
+        message: getUserFacingErrorMessage(err, "Account creation failed.")
       });
+      throw err;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateTeacher = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedTeacher) {
-      return;
-    }
-
-    const normalizedName = humanNameFinalStrict(editName);
-    const normalizedEmail = editEmail.trim().toLowerCase();
-    if (!normalizedName || !normalizedEmail) {
-      return;
-    }
-
-    setIsSavingProfile(true);
-    setErrorState(null);
-    setResult(null);
-    setSuccessMessage(null);
-
+  const handleUpdate = async (id: string, name: string, email: string) => {
+    setIsSaving(true);
+    setNotice(null);
     try {
-      await updateTeacherProfile({
-        teacherId: selectedTeacher._id,
-        name: normalizedName,
-        email: normalizedEmail,
-      } as never);
-      setSuccessMessage("Teacher profile updated.");
+      await updateTeacherProfile({ teacherId: id, name, email } as never);
+      setNotice({ tone: "success", title: "Record Updated", message: "Teacher information saved." });
     } catch (err) {
-      setErrorState({
-        title: "Teacher update failed",
-        message: getUserFacingErrorMessage(err, "Failed to update teacher"),
+      setNotice({
+        tone: "error",
+        title: "Update Failed",
+        message: getUserFacingErrorMessage(err, "Failed to save changes.")
       });
     } finally {
-      setIsSavingProfile(false);
+      setIsSaving(false);
     }
   };
 
-  const handleResetTeacherPassword = async () => {
-    if (!selectedTeacher || !resetPasswordValue.trim()) {
-      return;
-    }
-
-    setIsResettingPassword(true);
-    setErrorState(null);
-    setResult(null);
-    setSuccessMessage(null);
-
+  const handleResetPassword = async (id: string, password: string) => {
+    setIsResetting(true);
+    setNotice(null);
     try {
-      await resetTeacherPassword({
-        teacherId: selectedTeacher._id,
-        temporaryPassword: resetPasswordValue.trim(),
-      } as never);
-      setSuccessMessage(
-        `Password reset for ${selectedTeacher.email}. Existing sessions were revoked.`
-      );
+      await resetTeacherPassword({ teacherId: id, temporaryPassword: password } as never);
+      setNotice({ tone: "success", title: "Password Updated", message: "New temporary password set." });
     } catch (err) {
-      setErrorState({
-        title: "Password reset failed",
-        message: getUserFacingErrorMessage(err, "Failed to reset password"),
+      setNotice({
+        tone: "error",
+        title: "Update Failed",
+        message: getUserFacingErrorMessage(err, "Failed to update password.")
       });
     } finally {
-      setIsResettingPassword(false);
+      setIsResetting(false);
     }
   };
 
-  const handleArchiveTeacher = async () => {
-    if (!selectedTeacher) {
-      return;
-    }
+  const handleArchive = async (id: string) => {
+    const teacher = teachers?.find(t => t._id === id);
+    if (!teacher) return;
+    if (!window.confirm(`Archive ${teacher.name}? This will revoke their teaching access permanently.`)) return;
 
-    if (!window.confirm(`Archive ${selectedTeacher.name}? This preserves the record for history and removes active teaching access.`)) {
-      return;
-    }
-
-    setIsSavingProfile(true);
-    setErrorState(null);
-    setResult(null);
-    setSuccessMessage(null);
-
+    setNotice(null);
     try {
-      await archiveTeacher({ teacherId: selectedTeacher._id } as never);
+      await archiveTeacher({ teacherId: id } as never);
       setSelectedTeacherId(null);
-      setSuccessMessage("Teacher archived.");
+      setNotice({ tone: "success", title: "Teacher Archived", message: "Access and records deactivated." });
     } catch (err) {
-      setErrorState({
-        title: "Teacher archive failed",
-        message: getUserFacingErrorMessage(err, "Failed to archive teacher"),
+      setNotice({
+        tone: "error",
+        title: "Archive Failed",
+        message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
       });
-    } finally {
-      setIsSavingProfile(false);
     }
   };
 
   if (teachers === undefined) {
     return (
-      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
-        <div className="text-[#64748b]">Loading staff directory...</div>
+      <div className="mx-auto max-w-[1600px] px-3 py-10 md:px-8">
+        <div className="animate-pulse space-y-10">
+          <div className="h-10 w-48 rounded-lg bg-slate-100" />
+          <div className="grid gap-10 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-10 h-96 rounded-xl bg-slate-50" />
+            <div className="h-96 rounded-xl bg-slate-50" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-28">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="p-4 bg-white border border-[#e2e8f0] rounded-xl shadow-sm">
-          <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.08em] block mb-1">
-            Total Staff
-          </span>
-          <span className="text-2xl font-black text-[#0f172a]">{teachers.length}</span>
-        </div>
-        <div className="p-4 bg-white border border-[#e2e8f0] rounded-xl shadow-sm">
-          <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.08em] block mb-1">
-            Live Access
-          </span>
-          <span className="text-2xl font-black text-emerald-600">{teachers.length}</span>
-        </div>
-        <div className="relative sm:col-span-1">
-          <Search className="w-4 h-4 text-[#94a3b8] absolute left-3.5 top-3.5" />
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find teacher by name..."
-            className="h-11 w-full rounded-xl border border-[#e2e8f0] bg-white pl-10 pr-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-          />
-        </div>
-      </div>
+    <div className="relative min-h-screen">
+      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+      
+      <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
+        <AdminHeader
+          title="Teaching Staff"
+          actions={
+            <StatGroup
+              stats={[
+                {
+                  label: "Registered",
+                  value: teachers.length,
+                  icon: <GraduationCap className="h-4 w-4" />,
+                },
+                {
+                  label: "Active Access",
+                  value: teachers.length,
+                  icon: <Sparkles className="h-4 w-4" />,
+                },
+              ]}
+            />
+          }
+        />
 
-      <div className="flex items-center justify-between border-t border-[#f1f5f9] pt-6">
-        <h2 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-          Faculty List
-        </h2>
-        <div className="h-11 px-4 rounded-xl bg-[#0f172a] text-white shadow-xl shadow-[#e2e8f0] flex items-center gap-2 text-xs font-bold uppercase tracking-[0.025em]">
-          <UserPlus className="w-4 h-4 text-white/50" />
-          New Faculty
-        </div>
-      </div>
-
-      <section className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-              Create Teacher
-            </h3>
-            <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-              Admin-only provisioning
-            </p>
-          </div>
-          <span className="text-[8px] font-extrabold uppercase tracking-[0.15em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0]">
-            Step 1 of Setup
-          </span>
-        </div>
-
-        {errorState ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-amber-800">
-              {errorState.title}
-            </p>
-            <p className="mt-1 text-sm font-medium text-amber-900">
-              {errorState.message}
-            </p>
-          </div>
-        ) : null}
-
-        {successMessage && !result ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-            <p className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-[0.15em]">
-              Update saved
-            </p>
-            <p className="mt-1 text-sm font-medium text-emerald-900">
-              {successMessage}
-            </p>
-          </div>
-        ) : null}
-
-        {result ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 flex flex-col gap-2">
-            <p className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-[0.15em]">
-              Provisioned Successfully
-            </p>
-            <p className="text-sm font-semibold text-emerald-900">
-              {result.email}
-            </p>
-            <p className="text-xs font-medium text-emerald-800">
-              Temporary password:{" "}
-              <span className="font-bold">{result.temporaryPassword}</span>
-            </p>
-          </div>
-        ) : null}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
-                Teacher Name
-              </label>
-              <input
-                type="text"
-                value={name}
-            onChange={(event) =>
-              setName(humanNameTypingStrict(event.target.value))
-            }
-            onBlur={(event) =>
-              setName(humanNameFinalStrict(event.target.value))
-            }
-                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                placeholder="Temitope Yusuf"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                placeholder="teacher@school.edu"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
-                Temporary Password
-              </label>
-              <input
-                type="text"
-                value={temporaryPassword}
-                onChange={(event) => setTemporaryPassword(event.target.value)}
-                className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-[1.2fr_0.8fr] gap-3">
-            <div className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 space-y-2">
-              <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em]">
-                Assignment Preview
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-white text-[#475569] border border-[#e2e8f0]">
-                  Added to school staff directory
-                </span>
-                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-white text-[#475569] border border-[#e2e8f0]">
-                  Subject assignments happen in class setup
-                </span>
-              </div>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-[0.05em] block mb-1">
-                  Provisioning
-                </span>
-                <p className="text-xs font-bold text-emerald-900">
-                  Creates the teacher sign-in account and school membership immediately.
+        {notice && (
+          <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
+            notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
+          }`}>
+            <div className="flex items-center justify-between gap-6">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
+                  {notice.title}
                 </p>
+                <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
               </div>
-              <button
-                type="submit"
-                disabled={
-                  isSubmitting ||
-                  !name.trim() ||
-                  !email.trim() ||
-                  !temporaryPassword.trim()
-                }
-                className="mt-4 h-11 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 disabled:opacity-50"
+              <button 
+                onClick={() => setNotice(null)}
+                className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
               >
-                <Send className="w-4 h-4 text-white/50" />
-                {isSubmitting ? "Creating Teacher" : "Create Teacher"}
+                <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
               </button>
             </div>
           </div>
-        </form>
-      </section>
+        )}
 
-      {selectedTeacher ? (
-        <section className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-extrabold text-[#0f172a] uppercase tracking-[0.15em]">
-                Edit Teacher
-              </h3>
-              <p className="text-[10px] font-medium text-[#94a3b8] uppercase tracking-tight mt-0.5">
-                Update login email, display name, or reset access
+        <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
+          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6">
+            {selectedTeacher ? (
+              <TeacherEditForm
+                teacher={selectedTeacher}
+                onUpdate={handleUpdate}
+                onResetPassword={handleResetPassword}
+                onArchive={handleArchive}
+                onClose={() => setSelectedTeacherId(null)}
+                isSaving={isSaving}
+                isResetting={isResetting}
+              />
+            ) : (
+              <TeacherCreationForm
+                onProvision={handleProvision}
+                isSubmitting={isSubmitting}
+              />
+            )}
+            
+            <div className="pt-4 border-t border-slate-200/60">
+              <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">System Notification</h4>
+              <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
+                Staff accounts are linked to school email addresses. Deactivation is permanent and irreversible.
               </p>
             </div>
-            <span className="text-[8px] font-extrabold uppercase tracking-[0.15em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0]">
-              {selectedTeacher.email}
-            </span>
-          </div>
+          </aside>
 
-          <form onSubmit={handleUpdateTeacher} className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-4">
-            <div className="space-y-3">
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
-                  Teacher Name
-                </label>
-                <input
-                  type="text"
-                  value={editName}
-            onChange={(event) =>
-              setEditName(humanNameTypingStrict(event.target.value))
-            }
-            onBlur={(event) =>
-              setEditName(humanNameFinalStrict(event.target.value))
-            }
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em] mb-1.5 block">
-                  Login Email
-                </label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(event) => setEditEmail(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isSavingProfile || !editName.trim() || !editEmail.trim()}
-                className="h-11 rounded-xl bg-[#0f172a] text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 px-4"
-              >
-                <Send className="w-4 h-4 text-white/50" />
-                {isSavingProfile ? "Saving Changes" : "Save Teacher Changes"}
-              </button>
-            </div>
-
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-700" />
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-amber-900">
-                  Reset Password
-                </span>
-              </div>
-              <p className="text-xs font-medium text-amber-900">
-                This sets a new temporary password and signs the teacher out of all current sessions.
-              </p>
-              <input
-                type="text"
-                value={resetPasswordValue}
-                onChange={(event) => setResetPasswordValue(event.target.value)}
-                className="h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-medium text-[#0f172a] outline-none transition-all focus:border-amber-400"
-              />
-              <button
-                type="button"
-                onClick={handleResetTeacherPassword}
-                disabled={isResettingPassword || !resetPasswordValue.trim()}
-                className="h-11 w-full rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-[0.025em] flex items-center justify-center gap-2 shadow-lg shadow-amber-100 disabled:opacity-50"
-              >
-                <KeyRound className="w-4 h-4 text-white/60" />
-                {isResettingPassword ? "Resetting Password" : "Reset Password"}
-              </button>
-            </div>
-          </form>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => void handleArchiveTeacher()}
-              disabled={isSavingProfile}
-              className="h-11 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
-            >
-              Archive Teacher
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredTeachers.map((teacher) => (
-          <div
-            key={teacher._id}
-            onClick={() => setSelectedTeacherId(teacher._id)}
-            className={`cursor-pointer bg-white border rounded-2xl p-4 space-y-4 transition-all ${
-              selectedTeacherId === teacher._id
-                ? "border-[#4f46e5] shadow-lg shadow-[#e0e7ff]"
-                : "border-[#e2e8f0] hover:border-[#cbd5e1] hover:shadow-lg"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-[#0f172a] flex items-center justify-center text-white font-bold text-sm">
-                {getInitials(teacher.name)}
-              </div>
-              <div className="space-y-0.5 min-w-0">
-                <h4 className="font-bold text-[#0f172a] text-sm truncate">
-                  {teacher.name}
-                </h4>
-                <p className="text-[9px] font-bold text-[#94a3b8] uppercase tracking-[0.15em]">
-                  Staff Record
+          <main className="flex-1 min-w-0 space-y-6 md:space-y-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
+              <div className="space-y-0.5">
+                <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Records</h3>
+                <p className="text-xs font-medium text-slate-500">
+                  Manage teaching credentials and access levels.
                 </p>
               </div>
-              <div className="ml-auto">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 block" />
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Find record..."
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+                />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.05em]">
-                Account Status
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569]">
-                  Teacher
-                </span>
-                <span className="text-[8px] font-extrabold uppercase tracking-[0.05em] px-2 py-1 rounded-full bg-[#f1f5f9] text-[#475569]">
-                  Ready for assignment
-                </span>
-              </div>
-            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredTeachers.map((teacher) => (
+                <TeacherCard
+                  key={teacher._id}
+                  teacher={teacher}
+                  isSelected={selectedTeacherId === teacher._id}
+                  onSelect={() => setSelectedTeacherId(teacher._id)}
+                  onArchive={() => handleArchive(teacher._id)}
+                />
+              ))}
 
-            <div className="flex items-center justify-between pt-2 border-t border-[#f8fafc]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Mail className="w-3 h-3 text-[#cbd5e1]" />
-                <span className="text-[10px] font-medium text-[#64748b] truncate">
-                  {teacher.email}
-                </span>
-              </div>
-              <span className="text-[9px] font-medium text-[#94a3b8]">
-                {new Date(teacher.createdAt).toLocaleDateString()}
-              </span>
+              {filteredTeachers.length === 0 && (
+                <div className="sm:col-span-2 xl:col-span-3 py-12 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 p-12 text-center">
+                  <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-sm ring-1 ring-slate-950/5">
+                    <UserPlus className="h-6 w-6" />
+                  </div>
+                  <p className="mt-6 text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Record Not Found</p>
+                  <p className="mt-2 text-sm font-medium text-slate-400 max-w-[200px]">Refine your search parameters or add a new teacher.</p>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
-
-        {filteredTeachers.length === 0 ? (
-          <div className="bg-[#f8fafc] border-2 border-dashed border-[#e2e8f0] rounded-2xl p-4 flex flex-col items-center justify-center min-h-[160px] text-center">
-            <UserPlus className="w-6 h-6 text-[#cbd5e1] mb-3" />
-            <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-[0.15em]">
-              No Staff Match
-            </span>
-          </div>
-        ) : null}
+          </main>
+        </div>
       </div>
     </div>
   );

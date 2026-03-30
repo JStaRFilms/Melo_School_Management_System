@@ -19,11 +19,11 @@ export function AdminHeader({
     <header className={`flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between ${className}`}>
       <div className="space-y-1">
         {label && (
-          <p className="font-display text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400/80">
+          <p className="font-display text-xs font-bold uppercase tracking-[0.25em] text-slate-400/80">
             {label}
           </p>
         )}
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-slate-950 lg:text-4xl">
+        <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-950 lg:text-4xl">
           {title}
         </h1>
         {description && (

@@ -22,11 +22,11 @@ export function Stat({ label, value, icon, description }: StatProps) {
         </div>
       )}
       <div className="flex min-w-0 flex-col gap-0 sm:flex-row sm:items-baseline sm:gap-2">
-        <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-slate-400 truncate sm:text-[9px] sm:tracking-[0.2em]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 truncate sm:text-[11px] sm:tracking-[0.2em]">
           {label}
         </p>
         <div className="flex items-baseline gap-1">
-          <span className="font-display text-[13px] font-extrabold tracking-tight text-slate-900 sm:text-[15px]">
+          <span className="font-display text-[14px] font-extrabold tracking-tight text-slate-900 sm:text-base">
             {value}
           </span>
           {description && (
@@ -47,9 +47,15 @@ interface StatGroupProps {
 
 export function StatGroup({ stats, className = "" }: StatGroupProps) {
   return (
-    <div className={`grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3 ${className}`}>
+    <div className={`
+      flex w-full items-center gap-2 overflow-x-auto px-1 pb-1
+      snap-x snap-mandatory 
+      [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+      sm:w-auto sm:overflow-visible sm:px-0 sm:pb-0 
+      sm:gap-3 ${className}
+    `}>
       {stats.map((stat, idx) => (
-        <div key={idx} className="min-w-0">
+        <div key={idx} className="min-w-[120px] shrink-0 snap-start sm:min-w-0 sm:shrink">
           <Stat {...stat} />
         </div>
       ))}
