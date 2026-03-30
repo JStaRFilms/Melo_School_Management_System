@@ -114,6 +114,16 @@ h6 {
   border-radius: 99px;
 }
 
+/* Hide scrollbars Utility */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
 /* Skeleton Animation (from states mockup) */
 @keyframes shimmer {
   0% {

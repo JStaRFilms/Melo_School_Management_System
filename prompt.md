@@ -1,0 +1,1 @@
+I need you to work on this page. The problems include spacing, overuse of cards, and potential overuse of typography, explaining things that aren't meant to be explained for some weird reason. So please fix the route entirely and make sure it matches the admin routes closely if possible. Or you can propose another design if you think it's better.

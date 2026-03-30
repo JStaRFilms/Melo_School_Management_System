@@ -130,27 +130,29 @@ export function WorkspaceNavbar({
           </div>
         </div>
 
-        <nav className="flex-1 space-y-7 overflow-y-auto px-4 py-6 custom-scrollbar">
-          {Object.entries(groups).map(([key, group]) => (
-            <div key={key} className="space-y-2.5">
-              <h3 className="px-3 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
-                {group.label}
-              </h3>
-              <div className="grid gap-0.5">
-                {group.links.map((s) => (
-                  <SidebarLink 
-                    key={s.href} 
-                    section={s} 
-                    active={isWorkspaceSectionActive(s, currentPath)} 
-                    renderLink={renderLink} 
-                  />
-                ))}
+        <nav className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
+          <div className="space-y-7 py-3">
+            {Object.entries(groups).map(([key, group]) => (
+              <div key={key} className="space-y-2.5">
+                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                  {group.label}
+                </h3>
+                <div className="grid gap-0.5">
+                  {group.links.map((s) => (
+                    <SidebarLink 
+                      key={s.href} 
+                      section={s} 
+                      active={isWorkspaceSectionActive(s, currentPath)} 
+                      renderLink={renderLink} 
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 shrink-0">
            <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-slate-400">
                 <ShieldCheck className="h-4 w-4" />
@@ -166,8 +168,8 @@ export function WorkspaceNavbar({
       {/* ═══ RIGHT SIDE (Header + Main) ════════════════════════ */}
       <div className="flex flex-col flex-1 min-w-0 relative">
         
-        {/* ── TOP HEADER (Fixed height, flex item) ── */}
-        <header className="rc-no-print z-40 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+        {/* ── TOP HEADER (Pinned) ── */}
+        <header className="rc-no-print sticky top-0 z-40 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           
           <div className="flex items-center gap-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-black tracking-tighter text-white xl:hidden shadow-lg shadow-slate-950/20">
@@ -229,7 +231,7 @@ export function WorkspaceNavbar({
         </header>
 
         {/* ── MAIN SCROLL AREA ── */}
-        <main className="flex-1 overflow-y-auto w-full relative p-4 sm:p-6 lg:p-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto w-full relative p-4 sm:p-6 lg:p-8 custom-scrollbar scrollbar-hide">
           <div className="mx-auto max-w-7xl">
             {children}
           </div>

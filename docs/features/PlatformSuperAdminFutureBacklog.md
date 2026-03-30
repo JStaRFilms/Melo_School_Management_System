@@ -257,11 +257,37 @@ Add platform tools to manage:
 - DNS verification state
 - SSL readiness
 - default theme/branding pack
+- authenticated workspace branding packs for `admin`, `teacher`, and `portal` after school context is resolved
 
 Why this matters:
 
 - white-label is part of the product promise
 - platform admin needs visibility into domain status across schools
+- branded authenticated surfaces should come from the resolved school context, not require school-specific role URLs
+
+---
+
+### 7A. Cross-School Parent Context and Portal Selection
+
+Add support for the worst-case parent identity model:
+
+- one parent account linked to children in multiple schools
+- one portal sign-in that can return more than one valid school/student context
+- a post-login chooser such as "Which child do you want to manage?"
+- clear school name, child name, and role labels on each choice card
+- a remembered last-used context with an easy switcher inside the portal
+
+Why this matters:
+
+- this is the edge case most likely to break naive school-from-email routing
+- parents think in terms of children first, not tenant IDs or school codes
+- the product can keep canonical role subdomains while still handling multi-school households cleanly
+
+Recommended architecture note:
+
+- keep `admin.meloschool.com`, `teacher.meloschool.com`, and `portal.meloschool.com` as the canonical authenticated hosts
+- keep school slug/domain mapping primarily for public sites and school discovery
+- for authenticated apps, resolve school branding and data scope from the selected membership context after sign-in
 
 ---
 
@@ -346,7 +372,8 @@ When you return to platform work later, a sensible order is:
 5. platform audit trail
 6. support access tooling
 7. custom domains
-8. cross-school metrics
+8. cross-school parent context + portal chooser
+9. cross-school metrics
 
 ---
 

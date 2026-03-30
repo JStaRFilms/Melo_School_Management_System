@@ -1,71 +1,50 @@
 # Feature: Admin Portal UI/UX Overhaul
 
-## Status: Planning & Research phase
+## Status: Phase 2 (Core Layout & Component Language) - COMPLETE
+**Current Date:** March 29, 2026
 **Lead Agent:** Gemini (Principal Full-Stack Architect)
-**Core Skill:** `frontend-design`
 
 ---
 
-## 🎯 Goal
-Transform the Admin Portal from a repetitive, "bubbly" desktop-first interface into a high-end, mobile-intentional, and refined management system. We are moving away from "AI-generated default" aesthetics toward a custom, distinctive visual language.
+## ✅ Progress Update
 
-## 🔍 Audit Findings (Current State)
-
-### 1. "The Monotonous Bubble" Effect
-- Every section (Header, Stats, Forms, Directory items) is trapped in identical `rounded-3xl` white cards with `p-5` padding.
-- **Problem:** Zero visual hierarchy. The user is visually "shouted at" by every component simultaneously.
-
-### 2. Typography Exhaustion
-- Over-reliance on `font-black` and heavily tracked-out uppercase labels (`tracking-[0.14em]`).
-- **Problem:** Visual noise. High-weight fonts should be used for impact, not for every label and title.
-
-### 3. Poor Space Management
-- Desktop headers and redundant stats consume ~40% of the initial viewport.
-- Mobile experience is purely reactive (stacking) rather than intentional. It results in "infinite scrolling" with low information density.
-
-### 4. Navigation (WorkspaceNavbar)
-- Uses basic inline styles and hardcoded hex values.
-- Mobile drawer feels like a generic template rather than a modern app navigation.
-
----
-
-## 🎨 Aesthetic Direction (The Vision)
-
-- **Style:** **Refined Utility / Editorial Minimalist.**
-- **Typography:** Move away from generic Inter/System fonts. Pair a characterful display font (e.g., *Sora* or *Space Grotesk*) with a clean, high-legibility body font (e.g., *Public Sans*).
-- **Spatial Composition:**
-    - Use subtle depth (layered backgrounds) instead of heavy borders.
-    - Vary border radiuses (sharper for utility, softer for interactive elements).
-    - Introduce "Surface Level" hierarchy (e.g., `#f8fafc` background with pure white active surfaces).
-- **Mobile First:** Custom mobile navigation (perhaps a floating dock or a high-end full-screen overlay) and dense, but readable, mobile list views.
-
----
-
-## 🛠️ Implementation Roadmap
-
-### Phase 1: Global Navigation & Shell (`WorkspaceNavbar`)
-- [ ] **1.1 Tokenization:** Move from hardcoded styles to CSS variables/Tailwind theme extensions.
-- [ ] **1.2 Desktop Refinement:** Slim down the navbar height and refine the logo/user-profile lockup.
-- [ ] **1.3 Mobile Overhaul:** Rebuild the mobile navigation to feel like a native app (better transitions, haptic-style feedback, intentional layout).
+### Phase 1: Global Navigation & Shell
+- [x] **1.1 Tokenization:** Moved to CSS variables and Tailwind extensions.
+- [x] **1.2 Desktop Refinement:** Slimmed navbar and refined profile lockup.
+- [x] **1.3 Mobile Overhaul:** Native-feel transitions and haptic-style feedback implemented.
 
 ### Phase 2: Core Layout & Component Language
-- [ ] **2.1 Shared Layouts:** Refactor `app/admin/layout.tsx` to handle responsive padding and background layering.
-- [ ] **2.2 New Component Primitives:**
-    - `AdminSurface`: A smarter replacement for `AdminCard` with varying "intensities."
-    - `AdminHeader`: A more compact, utility-focused header component.
-    - `StatGroup`: A refined, grid-adaptive stat display.
-
-### Phase 3: Route-by-Route Refactor
-- [ ] **3.1 Admin Management (`/admin`):**
-    - Split "Creation/Actions" into a collapsible or drawer-based system.
-    - Transform the Directory into a high-density, searchable list (Data Table style).
-- [ ] **3.2 Academic Setup:** Streamline enrollment and school provisioning flows.
-- [ ] **3.3 Assessments:** Data-heavy view optimization for mobile.
+- [x] **2.1 Shared Layouts:** Refactored `app/admin/page.tsx` with high-density spacing (`px-4` on mobile).
+- [x] **2.2 New Component Primitives:**
+    - `AdminSurface`: Replaced "bubbly" cards with refined, intensity-based layering.
+    - `AdminHeader`: Compact, Space Grotesk-driven typography.
+    - `StatGroup`: High-density, row-based stat blocks with horizontal scrolling on mobile.
+- [x] **2.3 Mobile-First Action Hierarchy:** 
+    - Reordered layout: Creation/Promotion forms appear first on mobile for immediate action.
+    - Directory list moved to the bottom on mobile, side-by-side on desktop.
+- [x] **2.4 Anti-Slop Text Audit:** Stripped verbose "manual-style" copy across all admin components.
 
 ---
 
-## 📝 Guidelines for Future Agents
-1. **Never guess the aesthetic:** Always activate the `frontend-design` skill and refer to this document.
-2. **Kill the cards:** If you are adding a card, ask: "Can this be a surface, a list item, or just negative space?"
-3. **Mobile is not an afterthought:** If a feature doesn't feel "good" on a phone, it's not finished.
-4. **Precision over Weight:** Use `font-semibold` or `medium` with better tracking/color instead of defaulting to `font-black`.
+## 🎨 Design System State
+
+- **Mobile Pattern:** **The High-Density List.** Cards on mobile should have minimal padding (`p-3`), smaller text (`text-sm/xs`), and compact button layouts. Avoid vertical dead space at all costs.
+- **Hierarchy:** Primary actions (Forms) should be at the top on mobile, Sidebar on desktop.
+- **Typography:** Space Grotesk (Bold) for headings, Public Sans (Medium/Bold) for data. Labels should be `text-[9px]` uppercase with `tracking-[0.2em]`.
+
+---
+
+## 🚀 Handover: Phase 3 (Route-by-Route Refactor)
+
+The visual language is now established in `apps/admin/app/admin/`. The next agent should propagate this to the **Academic Setup** routes.
+
+### Immediate Task: Refactor Academic Setup (`/sessions`, `/events`, `/subjects`)
+1. **Kill the Cards:** Transition from standard cards to `AdminSurface`.
+2. **Apply Hierarchy:** Use the mobile-first reordering (Actions at top, Lists at bottom).
+3. **Density Check:** Use the new `px-4` mobile padding and high-density list items.
+4. **No Slop:** Keep copy direct and utility-focused.
+
+### Files to use as Reference:
+- `apps/admin/app/admin/page.tsx` (Layout & Hierarchy)
+- `apps/admin/app/admin/components/AdminCard.tsx` (List Item Pattern)
+- `apps/admin/lib/components/ui/StatGroup.tsx` (Compact Stats)
