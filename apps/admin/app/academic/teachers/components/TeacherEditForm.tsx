@@ -19,6 +19,7 @@ interface TeacherEditFormProps {
   onClose: () => void;
   isSaving: boolean;
   isResetting: boolean;
+  variant?: "default" | "sheet";
 }
 
 export function TeacherEditForm({
@@ -29,6 +30,7 @@ export function TeacherEditForm({
   onClose,
   isSaving,
   isResetting,
+  variant = "default",
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -45,9 +47,11 @@ export function TeacherEditForm({
     await onUpdate(teacher._id, name, email);
   };
 
-  return (
-    <div className="space-y-4">
-      <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4 border-slate-950/10 ring-1 ring-slate-950/5 shadow-2xl">
+  const isSheet = variant === "sheet";
+
+  const FormContent = (
+    <>
+      {!isSheet && (
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5">
             <h4 className="text-[9px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Manage Identity</h4>
@@ -60,8 +64,9 @@ export function TeacherEditForm({
             <X className="h-3 w-3 opacity-30" />
           </button>
         </div>
+      )}
 
-        <form onSubmit={handleUpdate} className="space-y-3">
+      <form onSubmit={handleUpdate} className="space-y-3">
           <FormField label="Full Name">
             <input
               type="text"
@@ -127,7 +132,18 @@ export function TeacherEditForm({
               Archive
             </button>
           </div>
-        </div>
+      </div>
+    </>
+  );
+
+  if (isSheet) {
+    return <div className="space-y-4">{FormContent}</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4 border-slate-950/10 ring-1 ring-slate-950/5 shadow-2xl">
+        {FormContent}
       </AdminSurface>
     </div>
   );

@@ -86,6 +86,7 @@ export function SessionDirectory({
           return (
             <div key={session._id} className="group relative">
               <AdminSurface
+                id={`session-${session._id}`}
                 intensity={isSelected ? "high" : "medium"}
                 className={`overflow-hidden transition-all duration-500 ${
                   isSelected ? "ring-2 ring-indigo-500/20" : "hover:border-slate-300"

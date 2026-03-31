@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import {
@@ -51,11 +51,35 @@ export default function SessionsPage() {
   );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     title: string;
     message: string;
   } | null>(null);
+
+  // Handle auto-scroll to selected session on mobile
+  useEffect(() => {
+    if (selectedSessionId && typeof window !== "undefined" && window.innerWidth < 1024) {
+      const scrollTimer = setTimeout(() => {
+        const element = document.getElementById(`session-${selectedSessionId}`);
+        if (element) {
+          const yOffset = -120; // Positions the card comfortably above the fold
+          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }
+      }, 100);
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [selectedSessionId]);
 
   const activeSession = useMemo(
     () => sessions?.find((s) => s.isActive) ?? null,

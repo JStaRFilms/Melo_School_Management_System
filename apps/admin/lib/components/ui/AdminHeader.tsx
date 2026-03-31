@@ -33,7 +33,7 @@ export function AdminHeader({
         )}
       </div>
       {actions && (
-        <div className="flex shrink-0 flex-wrap items-center gap-3 lg:pb-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-3 lg:shrink-0 lg:pb-1">
           {actions}
         </div>
       )}

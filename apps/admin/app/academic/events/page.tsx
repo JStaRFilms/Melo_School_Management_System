@@ -1,11 +1,12 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CalendarRange, Sparkles, Search, PlusCircle, X } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
+import { AdminSheet } from "@/components/ui/AdminSheet";
 import { EventCard } from "./components/EventCard";
 import { EventCreationForm } from "./components/EventCreationForm";
 import { EventEditForm } from "./components/EventEditForm";
@@ -40,7 +41,16 @@ export default function EventsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const [busyState, setBusyState] = useState<"create" | "update" | "archive" | null>(null);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     title: string;
@@ -52,6 +62,29 @@ export default function EventsPage() {
   const selectedEvent = useMemo(() => 
     events?.find((e) => e._id === selectedEventId) ?? null,
   [events, selectedEventId]);
+
+  const [activeEvent, setActiveEvent] = useState<EventRecord | null>(null);
+
+  useEffect(() => {
+    if (selectedEvent) {
+      setActiveEvent(selectedEvent);
+    }
+  }, [selectedEvent]);
+
+  // Handle auto-scroll to selected card on mobile
+  useEffect(() => {
+    if (selectedEventId && typeof window !== "undefined" && window.innerWidth < 1024) {
+      const scrollTimer = setTimeout(() => {
+        const element = document.getElementById(`event-${selectedEventId}`);
+        if (element) {
+          const yOffset = -120; // Positions the card comfortably above the sheet
+          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }
+      }, 100);
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [selectedEventId]);
 
   const filteredEvents = useMemo(() => {
     if (!events) return [];
@@ -174,39 +207,63 @@ export default function EventsPage() {
   }
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-x-hidden">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
       
+      {/* Mobile Editor Sheet */}
+      <AdminSheet
+        isOpen={Boolean(selectedEventId) && isMobile}
+        onClose={() => setSelectedEventId(null)}
+        title="Edit Event"
+        description="Update schedule record."
+      >
+        {activeEvent && (
+          <EventEditForm
+            event={activeEvent}
+            onUpdate={handleUpdate}
+            onArchive={handleArchive}
+            onClose={() => setSelectedEventId(null)}
+            isSaving={busyState === "update"}
+            isArchiving={busyState === "archive"}
+            variant="sheet"
+          />
+        )}
+      </AdminSheet>
+
       <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
         <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit">
-            {selectedEvent ? (
-              <EventEditForm
-                event={selectedEvent}
-                onUpdate={handleUpdate}
-                onArchive={handleArchive}
-                onClose={() => setSelectedEventId(null)}
-                isSaving={busyState === "update"}
-                isArchiving={busyState === "archive"}
-              />
-            ) : (
-              <EventCreationForm
-                onProvision={handleCreate}
-                isSubmitting={busyState === "create"}
-              />
-            )}
-            
-            <div className="pt-4 border-t border-slate-200/60">
-              <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Calendar Policy</h4>
-              <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
-                School events are visible to all staff. Past events are automatically moved to history but can be archived for audit compliance.
-              </p>
+          <aside className="w-full lg:w-[320px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit pb-12">
+            <div className="hidden lg:block">
+              {selectedEvent ? (
+                <EventEditForm
+                  event={selectedEvent}
+                  onUpdate={handleUpdate}
+                  onArchive={handleArchive}
+                  onClose={() => setSelectedEventId(null)}
+                  isSaving={busyState === "update"}
+                  isArchiving={busyState === "archive"}
+                />
+              ) : (
+                <EventCreationForm
+                  onProvision={handleCreate}
+                  isSubmitting={busyState === "create"}
+                />
+              )}
+            </div>
+
+            <div className="lg:hidden">
+              {!selectedEvent && (
+                <EventCreationForm
+                  onProvision={handleCreate}
+                  isSubmitting={busyState === "create"}
+                />
+              )}
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+          <div className="flex-1 min-w-0 space-y-4 md:space-y-6">
             <AdminHeader
-              title="School Calendar"
+              title="Events"
               actions={
                 <StatGroup
                   stats={[
@@ -226,12 +283,12 @@ export default function EventsPage() {
             />
 
             {notice && (
-              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
+              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all border-white bg-white ${
                 notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
               }`}>
                 <div className="flex items-center justify-between gap-6">
                   <div className="space-y-0.5">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-40 leading-none">
                       {notice.title}
                     </p>
                     <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
@@ -240,31 +297,25 @@ export default function EventsPage() {
                     onClick={() => setNotice(null)}
                     className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
                   >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                    <X className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />
                   </button>
                 </div>
               </div>
             )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
-              <div className="space-y-0.5">
-                <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Schedule</h3>
-                <p className="text-xs font-medium text-slate-500">
-                  Manage upcoming academic and extracurricular activities.
-                </p>
-              </div>
               <div className="relative w-full sm:max-w-xs">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Find event..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+                  placeholder="Filter schedule..."
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300 uppercase tracking-widest"
                 />
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {filteredEvents.map((event) => (
                 <EventCard
                   key={event._id}
@@ -276,12 +327,11 @@ export default function EventsPage() {
               ))}
 
               {filteredEvents.length === 0 && (
-                <div className="sm:col-span-2 xl:col-span-3 py-12 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 p-12 text-center">
-                  <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-sm ring-1 ring-slate-950/5">
-                    <PlusCircle className="h-6 w-6" />
+                <div className="sm:col-span-2 xl:col-span-3 py-20 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-100 bg-slate-50/30 p-12 text-center">
+                  <div className="rounded-full bg-white p-4 text-slate-200 shadow-sm ring-1 ring-slate-950/5">
+                    <PlusCircle className="h-5 w-5" />
                   </div>
-                  <p className="mt-6 text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">No Events Found</p>
-                  <p className="mt-2 text-sm font-medium text-slate-400 max-w-[200px]">Refine your search or schedule a new event in the sidebar.</p>
+                  <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">No Matches</p>
                 </div>
               )}
             </div>

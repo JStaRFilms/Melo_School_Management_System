@@ -39,6 +39,7 @@ interface EventEditFormProps {
   onClose: () => void;
   isSaving: boolean;
   isArchiving: boolean;
+  variant?: "default" | "sheet";
 }
 
 export function EventEditForm({
@@ -48,6 +49,7 @@ export function EventEditForm({
   onClose,
   isSaving,
   isArchiving,
+  variant = "default",
 }: EventEditFormProps) {
   const [title, setTitle] = useState(event.title);
   const [location, setLocation] = useState(event.location ?? "");
@@ -79,24 +81,25 @@ export function EventEditForm({
     });
   };
 
-  return (
-    <AdminSurface intensity="high" rounded="xl" className="border-slate-950 p-5 shadow-xl">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div className="space-y-0.5">
-          <h3 className="font-display text-sm font-black uppercase tracking-[0.2em] text-slate-950">
-            Edit Event
-          </h3>
-          <p className="text-[10px] font-bold text-slate-400">
-            Modify record parameters.
-          </p>
+  const isSheet = variant === "sheet";
+
+  const FormContent = (
+    <div className="space-y-4">
+      {!isSheet && (
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-950">
+              Edit Event
+            </h3>
+          </div>
+          <button 
+            onClick={onClose}
+            className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
+          >
+            <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+          </button>
         </div>
-        <button 
-          onClick={onClose}
-          className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-        >
-          <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-        </button>
-      </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5 focus-within:ring-2 focus-within:ring-slate-950/5">
@@ -122,12 +125,13 @@ export function EventEditForm({
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm font-bold text-slate-950 outline-none placeholder:font-medium placeholder:text-slate-300 focus:border-slate-400"
+              placeholder="Room or Venue"
               disabled={isSaving}
             />
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Starts
@@ -163,7 +167,7 @@ export function EventEditForm({
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={3}
+            rows={2}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 outline-none placeholder:font-medium placeholder:text-slate-300 focus:border-slate-400"
             disabled={isSaving}
           />
@@ -180,7 +184,7 @@ export function EventEditForm({
             />
             <div className="flex items-center gap-2">
                <Clock className="h-3 w-3 text-slate-400" />
-               <span className="text-xs font-bold text-slate-600">All-day event</span>
+               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">All-day event</span>
             </div>
           </label>
         </div>
@@ -192,14 +196,14 @@ export function EventEditForm({
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition-all hover:shadow-lg disabled:opacity-50"
           >
             {isSaving ? (
-               <span className="flex items-center gap-2">
+               <span className="flex items-center gap-2 text-xs uppercase tracking-widest">
                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                 Saving Changes...
+                 Saving...
                </span>
             ) : (
               <>
                 <Save className="h-4 w-4 text-white/70" />
-                Commit Record
+                <span className="text-xs uppercase tracking-widest">Commit Record</span>
               </>
             )}
           </button>
@@ -211,19 +215,29 @@ export function EventEditForm({
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-100 bg-white px-4 text-sm font-bold text-rose-500 transition-all hover:bg-rose-50 disabled:opacity-50"
           >
             {isArchiving ? (
-               <span className="flex items-center gap-2">
+               <span className="flex items-center gap-2 text-xs uppercase tracking-widest">
                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-rose-500/20 border-t-rose-500" />
                  Archiving...
                </span>
             ) : (
               <>
                 <Archive className="h-4 w-4" />
-                Archive Event
+                <span className="text-xs uppercase tracking-widest">Archive Event</span>
               </>
             )}
           </button>
         </div>
       </form>
+    </div>
+  );
+
+  if (isSheet) {
+    return FormContent;
+  }
+
+  return (
+    <AdminSurface intensity="high" rounded="xl" className="border-slate-950 p-5 shadow-xl">
+      {FormContent}
     </AdminSurface>
   );
 }

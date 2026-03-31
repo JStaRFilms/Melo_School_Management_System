@@ -48,14 +48,14 @@ interface StatGroupProps {
 export function StatGroup({ stats, className = "" }: StatGroupProps) {
   return (
     <div className={`
-      flex w-full items-center gap-2 overflow-x-auto px-1 pb-1
+      flex items-center gap-2 overflow-x-auto px-1 pb-1
       snap-x snap-mandatory 
       [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
-      sm:w-auto sm:overflow-visible sm:px-0 sm:pb-0 
+      sm:overflow-visible sm:px-0 sm:pb-0 
       sm:gap-3 ${className}
     `}>
       {stats.map((stat, idx) => (
-        <div key={idx} className="min-w-[120px] shrink-0 snap-start sm:min-w-0 sm:shrink">
+        <div key={idx} className="min-w-[120px] shrink snap-start sm:min-w-0 sm:shrink">
           <Stat {...stat} />
         </div>
       ))}

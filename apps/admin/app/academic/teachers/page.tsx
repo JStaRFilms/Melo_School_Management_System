@@ -1,11 +1,12 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Search, GraduationCap, Sparkles, X, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
+import { AdminSheet } from "@/components/ui/AdminSheet";
 import { TeacherCard } from "./components/TeacherCard";
 import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
@@ -39,6 +40,15 @@ export default function TeachersPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     title: string;
@@ -49,6 +59,28 @@ export default function TeachersPage() {
   const selectedTeacher = useMemo(() => 
     teachers?.find((t) => t._id === selectedTeacherId) ?? null,
   [teachers, selectedTeacherId]);
+
+  const [activeTeacher, setActiveTeacher] = useState<TeacherRecord | null>(null);
+
+  useEffect(() => {
+    if (selectedTeacher) {
+      setActiveTeacher(selectedTeacher);
+    }
+  }, [selectedTeacher]);
+
+  useEffect(() => {
+    if (selectedTeacherId && typeof window !== "undefined" && window.innerWidth < 1024) {
+      const scrollTimer = setTimeout(() => {
+        const element = document.getElementById(`teacher-${selectedTeacherId}`);
+        if (element) {
+          const yOffset = -120;
+          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }
+      }, 100);
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [selectedTeacherId]);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) return [];
@@ -152,28 +184,60 @@ export default function TeachersPage() {
   }
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-x-hidden">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
       
+      {/* Mobile Editor Sheet */}
+      <AdminSheet
+        isOpen={Boolean(selectedTeacherId) && isMobile}
+        onClose={() => setSelectedTeacherId(null)}
+        title="Edit Staff Member"
+        description="Update faculty credentials."
+      >
+        {activeTeacher && (
+           <TeacherEditForm
+             teacher={activeTeacher}
+             onUpdate={handleUpdate}
+             onResetPassword={handleResetPassword}
+             onArchive={handleArchive}
+             onClose={() => setSelectedTeacherId(null)}
+             isSaving={isSaving}
+             isResetting={isResetting}
+             variant="sheet"
+           />
+        )}
+      </AdminSheet>
+
       <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
         <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
           <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit">
-            {selectedTeacher ? (
-              <TeacherEditForm
-                teacher={selectedTeacher}
-                onUpdate={handleUpdate}
-                onResetPassword={handleResetPassword}
-                onArchive={handleArchive}
-                onClose={() => setSelectedTeacherId(null)}
-                isSaving={isSaving}
-                isResetting={isResetting}
-              />
-            ) : (
-              <TeacherCreationForm
-                onProvision={handleProvision}
-                isSubmitting={isSubmitting}
-              />
-            )}
+            <div className="hidden lg:block">
+              {selectedTeacher ? (
+                <TeacherEditForm
+                  teacher={selectedTeacher}
+                  onUpdate={handleUpdate}
+                  onResetPassword={handleResetPassword}
+                  onArchive={handleArchive}
+                  onClose={() => setSelectedTeacherId(null)}
+                  isSaving={isSaving}
+                  isResetting={isResetting}
+                />
+              ) : (
+                <TeacherCreationForm
+                  onProvision={handleProvision}
+                  isSubmitting={isSubmitting}
+                />
+              )}
+            </div>
+
+            <div className="lg:hidden">
+              {!selectedTeacher && (
+                 <TeacherCreationForm
+                   onProvision={handleProvision}
+                   isSubmitting={isSubmitting}
+                 />
+              )}
+            </div>
             
             <div className="pt-4 border-t border-slate-200/60">
               <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">System Notification</h4>
@@ -245,13 +309,14 @@ export default function TeachersPage() {
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredTeachers.map((teacher) => (
-                <TeacherCard
-                  key={teacher._id}
-                  teacher={teacher}
-                  isSelected={selectedTeacherId === teacher._id}
-                  onSelect={() => setSelectedTeacherId(teacher._id)}
-                  onArchive={() => handleArchive(teacher._id)}
-                />
+                <div key={teacher._id} id={"teacher-" + teacher._id}>
+                  <TeacherCard
+                    teacher={teacher}
+                    isSelected={selectedTeacherId === teacher._id}
+                    onSelect={() => setSelectedTeacherId(teacher._id)}
+                    onArchive={() => handleArchive(teacher._id)}
+                  />
+                </div>
               ))}
 
               {filteredTeachers.length === 0 && (

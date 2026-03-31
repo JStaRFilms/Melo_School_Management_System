@@ -52,12 +52,9 @@ export function EventCreationForm({
     <AdminSurface intensity="high" rounded="xl" className="border-slate-950 p-5 shadow-xl">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="space-y-0.5">
-          <h3 className="font-display text-sm font-black uppercase tracking-[0.2em] text-slate-950">
+          <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-950">
             Schedule Event
           </h3>
-          <p className="text-[10px] font-bold text-slate-400">
-            Provision new calendar entries.
-          </p>
         </div>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
           <CalendarPlus2 size={16} />
@@ -73,7 +70,6 @@ export function EventCreationForm({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none placeholder:font-medium placeholder:text-slate-300 focus:border-slate-400"
-            placeholder="e.g. Inter-house sports"
             required
             disabled={isSubmitting}
           />
@@ -89,13 +85,13 @@ export function EventCreationForm({
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm font-bold text-slate-950 outline-none placeholder:font-medium placeholder:text-slate-300 focus:border-slate-400"
-              placeholder="Main Field"
+              placeholder="Room or Venue"
               disabled={isSubmitting}
             />
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Starts
@@ -131,9 +127,8 @@ export function EventCreationForm({
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={3}
+            rows={2}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 outline-none placeholder:font-medium placeholder:text-slate-300 focus:border-slate-400"
-            placeholder="Add a brief summary..."
             disabled={isSubmitting}
           />
         </div>
@@ -149,7 +144,7 @@ export function EventCreationForm({
             />
             <div className="flex items-center gap-2">
                <Clock className="h-3 w-3 text-slate-400" />
-               <span className="text-xs font-bold text-slate-600">All-day event</span>
+               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">All-day event</span>
             </div>
           </label>
         </div>
@@ -160,14 +155,14 @@ export function EventCreationForm({
           className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition-all hover:shadow-lg disabled:opacity-50"
         >
           {isSubmitting ? (
-             <span className="flex items-center gap-2">
+             <span className="flex items-center gap-2 text-xs uppercase tracking-widest">
                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-               Provisioning...
+               Processing...
              </span>
           ) : (
             <>
               <CalendarPlus2 className="h-4 w-4 text-white/70" />
-              Confirm Entry
+              <span className="text-xs uppercase tracking-widest">Confirm Entry</span>
             </>
           )}
         </button>
