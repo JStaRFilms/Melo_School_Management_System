@@ -152,21 +152,47 @@ export default function SubjectsPage() {
 
   if (subjects === undefined) {
     return (
-      <div className="mx-auto max-w-[1600px] px-3 py-10 md:px-8">
-        <div className="animate-pulse space-y-10">
-          <div className="h-10 w-48 rounded-lg bg-slate-100" />
-          <div className="grid gap-10 lg:grid-cols-3">
-            <div className="lg:col-span-2 h-96 rounded-xl bg-slate-50" />
-            <div className="h-96 rounded-xl bg-slate-50" />
-          </div>
+      <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+        <div className="flex flex-col lg:flex-row-reverse flex-1 min-h-0">
+          <aside className="w-full lg:w-[400px] lg:h-full border-l bg-white/40 backdrop-blur-xl shrink-0 p-4 md:p-8">
+            <div className="animate-pulse space-y-6">
+              <div className="h-64 rounded-xl bg-slate-100/50" />
+              <div className="h-20 rounded-xl bg-slate-100/50" />
+            </div>
+          </aside>
+          <main className="flex-1 lg:h-full p-4 md:p-8">
+            <div className="max-w-[1200px] mx-auto animate-pulse space-y-10">
+              <div className="h-10 w-48 rounded-lg bg-slate-100/50" />
+              <div className="h-32 rounded-xl bg-slate-100/50" />
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="h-40 rounded-xl bg-slate-100/50" />
+                ))}
+              </div>
+            </div>
+          </main>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden">
-      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+        }
+      `}</style>
       
       {/* Mobile Editor Sheet */}
       <AdminSheet
@@ -187,9 +213,10 @@ export default function SubjectsPage() {
         )}
       </AdminSheet>
 
-      <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
-        <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit">
+      <div className="flex flex-col lg:flex-row-reverse flex-1 min-h-0">
+        {/* Sidebar Bucket */}
+        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
+          <div className="p-4 md:p-6 lg:p-8 space-y-8">
             <div className="hidden lg:block">
               {selectedSubject ? (
                 <SubjectEditForm
@@ -216,15 +243,18 @@ export default function SubjectsPage() {
               )}
             </div>
             
-            <div className="pt-4 border-t border-slate-200/60">
+            <div className="pt-6 border-t border-slate-200/60">
               <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Inventory Status</h4>
-              <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
+              <p className="mt-2 text-xs leading-relaxed font-medium text-slate-400">
                 Subjects defined here are available school-wide for class setup and result collation.
               </p>
             </div>
-          </aside>
+          </div>
+        </aside>
 
-          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+        {/* Main Bucket */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-10 space-y-6 md:space-y-8">
             <AdminHeader
               title="Subject Catalog"
               actions={
@@ -268,7 +298,7 @@ export default function SubjectsPage() {
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
-                <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Live Catalog</h3>
+                <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase text-xs lg:text-xl">Live Catalog</h3>
                 <p className="text-xs font-medium text-slate-500">
                   Global list of subjects available for academic operations.
                 </p>
@@ -306,7 +336,7 @@ export default function SubjectsPage() {
               )}
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

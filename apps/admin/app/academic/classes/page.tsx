@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useDeferredValue } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import {
-  ChevronDown,
-  Layers3,
-  LayoutGrid,
-  Plus,
-  Users2,
+import { 
+  Search, 
+  Layers3, 
+  X, 
+  LayoutGrid, 
+  ChevronRight, 
+  Sparkles,
+  Database
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { humanNameFinal, humanNameTyping } from "@/human-name";
-import { ClassAggregationManager } from "./components/ClassAggregationManager";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { StatGroup } from "@/components/ui/StatGroup";
+import { AdminSheet } from "@/components/ui/AdminSheet";
+import { ClassCreationForm } from "./components/ClassCreationForm";
+import { ClassEditForm } from "./components/ClassEditForm";
+import { ClassSection } from "./components/ClassSection";
 
 type ClassSummary = {
   _id: string;
@@ -50,55 +56,59 @@ type ClassOffering = {
 
 export default function ClassesPage() {
   const router = useRouter();
-  const classes = useQuery(
-    "functions/academic/academicSetup:listClasses" as never
-  ) as ClassSummary[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassSummary[] | undefined;
+  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
+  const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as Teacher[] | undefined;
 
-  const subjects = useQuery(
-    "functions/academic/academicSetup:listSubjects" as never
-  ) as Subject[] | undefined;
+  const createClass = useMutation("functions/academic/academicSetup:createClass" as never);
+  const backfillClassNaming = useMutation("functions/academic/academicSetup:backfillClassNaming" as never);
+  const updateClass = useMutation("functions/academic/academicSetup:updateClass" as never);
+  const archiveClass = useMutation("functions/academic/academicSetup:archiveClass" as never);
+  const setClassSubjects = useMutation("functions/academic/academicSetup:setClassSubjects" as never);
+  const assignTeacherToClassSubject = useMutation("functions/academic/academicSetup:assignTeacherToClassSubject" as never);
 
-  const teachers = useQuery(
-    "functions/academic/academicSetup:listTeachers" as never
-  ) as Teacher[] | undefined;
-
-  const createClass = useMutation(
-    "functions/academic/academicSetup:createClass" as never
-  );
-  const backfillClassNaming = useMutation(
-    "functions/academic/academicSetup:backfillClassNaming" as never
-  );
-  const updateClass = useMutation(
-    "functions/academic/academicSetup:updateClass" as never
-  );
-  const archiveClass = useMutation(
-    "functions/academic/academicSetup:archiveClass" as never
-  );
-  const setClassSubjects = useMutation(
-    "functions/academic/academicSetup:setClassSubjects" as never
-  );
-  const assignTeacherToClassSubject = useMutation(
-    "functions/academic/academicSetup:assignTeacherToClassSubject" as never
-  );
-
-  const [builderGradeName, setBuilderGradeName] = useState("");
-  const [builderClassLabel, setBuilderClassLabel] = useState("");
-  const [level, setLevel] = useState("Primary");
-  const [builderFormTeacherId, setBuilderFormTeacherId] = useState("");
-  const [builderSubjectIds, setBuilderSubjectIds] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [selectedGradeName, setSelectedGradeName] = useState("");
-  const [selectedClassLabel, setSelectedClassLabel] = useState("");
-  const [selectedFormTeacherId, setSelectedFormTeacherId] = useState("");
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSavingClassConfig, setIsSavingClassConfig] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [hasRequestedBackfill, setHasRequestedBackfill] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  const [notice, setNotice] = useState<{
+    tone: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (!classes || classes.length === 0 || hasRequestedBackfill) return;
+    void backfillClassNaming({} as never);
+    setHasRequestedBackfill(true);
+  }, [backfillClassNaming, classes, hasRequestedBackfill]);
+
+  const deferredSearch = useDeferredValue(search);
+  const filteredClasses = useMemo(() => {
+    if (!classes) return [];
+    const query = deferredSearch.trim().toLowerCase();
+    if (!query) return classes;
+    return classes.filter(
+      (c) => 
+        c.name.toLowerCase().includes(query) || 
+        c.gradeName?.toLowerCase().includes(query) ||
+        c.classLabel?.toLowerCase().includes(query) ||
+        c.formTeacherName?.toLowerCase().includes(query)
+    );
+  }, [deferredSearch, classes]);
 
   const currentClass = useMemo(
-    () => classes?.find((classDoc) => classDoc._id === selectedClassId) ?? null,
+    () => classes?.find((c) => c._id === selectedClassId) ?? null,
     [classes, selectedClassId]
   );
 
@@ -107,933 +117,348 @@ export default function ClassesPage() {
     selectedClassId ? ({ classId: selectedClassId } as never) : ("skip" as never)
   ) as ClassOffering[] | undefined;
 
+  const [activeClass, setActiveClass] = useState<ClassSummary | null>(null);
   useEffect(() => {
-    if (!currentClass) {
-      setSelectedGradeName("");
-      setSelectedClassLabel("");
-      setSelectedFormTeacherId("");
-      setSelectedSubjectIds([]);
-      return;
-    }
-
-    setSelectedGradeName(currentClass.gradeName ?? currentClass.name);
-    setSelectedClassLabel(currentClass.classLabel ?? "");
-    setSelectedFormTeacherId(currentClass.formTeacherId ?? "");
+    if (currentClass) setActiveClass(currentClass);
   }, [currentClass]);
 
   useEffect(() => {
-    if (!classes || classes.length === 0 || hasRequestedBackfill) {
-      return;
+    if (selectedClassId && typeof window !== "undefined" && window.innerWidth < 1024) {
+      const scrollTimer = setTimeout(() => {
+        const element = document.getElementById(`class-${selectedClassId}`);
+        if (element) {
+          const yOffset = -120;
+          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }
+      }, 100);
+      return () => clearTimeout(scrollTimer);
     }
+  }, [selectedClassId]);
 
-    void backfillClassNaming({} as never);
-    setHasRequestedBackfill(true);
-  }, [backfillClassNaming, classes, hasRequestedBackfill]);
-
-  useEffect(() => {
-    if (!currentOfferings) {
-      return;
-    }
-
-    setSelectedSubjectIds(currentOfferings.map((offering) => offering.subjectId));
-  }, [currentOfferings]);
-
-  const primaryClasses =
-    classes?.filter((classDoc) => classDoc.level === "Primary") ?? [];
-  const nurseryClasses =
-    classes?.filter((classDoc) => classDoc.level === "Nursery") ?? [];
-  const secondaryClasses =
-    classes?.filter((classDoc) => classDoc.level === "Secondary") ?? [];
-
-  const handleBuilderSubjectToggle = (subjectId: string) => {
-    setBuilderSubjectIds((current) =>
-      current.includes(subjectId)
-        ? current.filter((id) => id !== subjectId)
-        : [...current, subjectId]
-    );
-  };
-
-  const handleSelectedSubjectToggle = (subjectId: string) => {
-    setSelectedSubjectIds((current) =>
-      current.includes(subjectId)
-        ? current.filter((id) => id !== subjectId)
-        : [...current, subjectId]
-    );
-  };
-
-  const resetFlash = () => {
-    setError(null);
-    setSuccessMessage(null);
-  };
-
-  const handleCreateClass = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const normalizedGradeName = humanNameFinal(builderGradeName);
-    const normalizedClassLabel = humanNameFinal(builderClassLabel);
-    if (!normalizedGradeName) {
-      return;
-    }
-
-    resetFlash();
+  const handleProvision = async (data: {
+    gradeName: string;
+    classLabel?: string;
+    level: string;
+    formTeacherId: string | null;
+    subjectIds: string[];
+  }) => {
     setIsSubmitting(true);
-
+    setNotice(null);
     try {
       const classId = (await createClass({
-        gradeName: normalizedGradeName,
-        classLabel: normalizedClassLabel || undefined,
-        level,
-        formTeacherId: builderFormTeacherId || null,
+        gradeName: data.gradeName,
+        classLabel: data.classLabel || undefined,
+        level: data.level,
+        formTeacherId: data.formTeacherId || null,
       } as never)) as string;
 
-      if (builderSubjectIds.length > 0) {
+      if (data.subjectIds.length > 0) {
         await setClassSubjects({
           classId,
-          subjectIds: builderSubjectIds,
+          subjectIds: data.subjectIds,
         } as never);
       }
-
-      setBuilderGradeName("");
-      setBuilderClassLabel("");
-      setLevel("Primary");
-      setBuilderFormTeacherId("");
-      setBuilderSubjectIds([]);
-      setSuccessMessage("Class blueprint saved.");
+      setNotice({ tone: "success", title: "Class Records Initialized", message: `New blueprint created for ${data.gradeName}.` });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to create class"));
+      setNotice({
+        tone: "error",
+        title: "Provisioning Failed",
+        message: getUserFacingErrorMessage(err, "Failed to create class.")
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSaveClassConfig = async () => {
-    if (!selectedClassId || !currentClass) {
-      return;
-    }
-
-    const normalizedGradeName = humanNameFinal(
-      selectedGradeName ?? currentClass.gradeName ?? currentClass.name
-    );
-    const normalizedClassLabel = humanNameFinal(selectedClassLabel ?? "");
-    if (!normalizedGradeName) {
-      setError("Class grade name is required");
-      return;
-    }
-
-    resetFlash();
-    setIsSavingClassConfig(true);
-
+  const handleUpdate = async (data: {
+    gradeName: string;
+    classLabel?: string;
+    formTeacherId: string | null;
+    subjectIds: string[];
+  }) => {
+    if (!selectedClassId) return;
+    setIsSaving(true);
+    setNotice(null);
     try {
-      try {
-        await updateClass({
-          classId: selectedClassId,
-          gradeName: normalizedGradeName,
-          classLabel: normalizedClassLabel || null,
-          formTeacherId: selectedFormTeacherId || null,
-        } as never);
-      } catch (err) {
-        throw new Error(
-          getUserFacingErrorMessage(err, "Failed to update class details")
-        );
-      }
+      await updateClass({
+        classId: selectedClassId,
+        gradeName: data.gradeName,
+        classLabel: data.classLabel || null,
+        formTeacherId: data.formTeacherId || null,
+      } as never);
 
-      try {
-        await setClassSubjects({
-          classId: selectedClassId,
-          subjectIds: selectedSubjectIds,
-        } as never);
-      } catch (err) {
-        throw new Error(
-          getUserFacingErrorMessage(err, "Failed to update class subject offerings")
-        );
-      }
+      await setClassSubjects({
+        classId: selectedClassId,
+        subjectIds: data.subjectIds,
+      } as never);
 
-      setSuccessMessage("Class configuration updated.");
+      setNotice({ tone: "success", title: "Class Records Updated", message: "Blueprint modifications saved successfully." });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to save class blueprint"));
+      setNotice({
+        tone: "error",
+        title: "Update Failed",
+        message: getUserFacingErrorMessage(err, "Failed to save modifications.")
+      });
     } finally {
-      setIsSavingClassConfig(false);
+      setIsSaving(false);
     }
   };
 
-  const handleArchiveSelectedClass = async () => {
-    if (!selectedClassId || !currentClass) {
-      return;
-    }
+  const handleArchive = async (id: string) => {
+    const classDoc = classes?.find(c => c._id === id);
+    if (!classDoc) return;
+    if (!window.confirm(`Archive ${classDoc.name}? Historical performance and existing student enrollments will be preserved, but the class blueprint will be removed from active setup.`)) return;
 
-    if (!window.confirm(`Archive ${currentClass.name}? This preserves the class for history and removes it from active setup lists.`)) {
-      return;
-    }
-
-    resetFlash();
-    setIsSavingClassConfig(true);
-
+    setNotice(null);
     try {
-      await archiveClass({ classId: selectedClassId } as never);
+      await archiveClass({ classId: id } as never);
       setSelectedClassId(null);
-      setSuccessMessage("Class archived.");
+      setNotice({ tone: "success", title: "Class Archived", message: "Record moved to historical database." });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to archive class"));
-    } finally {
-      setIsSavingClassConfig(false);
+      setNotice({
+        tone: "error",
+        title: "Archive Failed",
+        message: getUserFacingErrorMessage(err, "Failed to archive record.")
+      });
     }
   };
 
   const handleAssignTeacher = async (classId: string, subjectId: string, teacherId: string) => {
-    if (!teacherId) {
-      return;
-    }
-
-    resetFlash();
-
+    if (!teacherId || !classId) return;
+    setNotice(null);
     try {
       await assignTeacherToClassSubject({
         classId,
         subjectId,
         teacherId,
       } as never);
-      setSuccessMessage("Subject teacher assignment saved.");
+      setNotice({ tone: "success", title: "Assignment Saved", message: "Subject instructor updated." });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Failed to assign subject teacher"));
+      setNotice({
+        tone: "error",
+        title: "Assignment Failed",
+        message: getUserFacingErrorMessage(err, "Failed to update instructor.")
+      });
     }
   };
 
-  const scrollToBuilder = () => {
-    document.getElementById("class-builder")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
+  const nurseryClasses = useMemo(() => filteredClasses.filter(c => c.level === "Nursery"), [filteredClasses]);
+  const primaryClasses = useMemo(() => filteredClasses.filter(c => c.level === "Primary"), [filteredClasses]);
+  const secondaryClasses = useMemo(() => filteredClasses.filter(c => c.level === "Secondary"), [filteredClasses]);
 
   if (classes === undefined || subjects === undefined || teachers === undefined) {
     return (
-      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
-        <div className="text-[#64748b]">Loading...</div>
+      <div className="mx-auto max-w-[1600px] px-3 py-10 md:px-8">
+        <div className="animate-pulse space-y-10">
+          <div className="h-10 w-48 rounded-lg bg-slate-100" />
+          <div className="grid gap-10 lg:grid-cols-3">
+             <div className="lg:col-span-2 space-y-8 h-96 rounded-xl bg-slate-50" />
+             <div className="h-96 rounded-xl bg-slate-50" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-8 pb-32">
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
+    <div className="relative min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200/50">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+        }
+      `}} />
+      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
-      {successMessage ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {successMessage}
-        </div>
-      ) : null}
-
-      <section
-        id="class-builder"
-        className="space-y-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5"
+      {/* Mobile Editor Sheet */}
+      <AdminSheet
+        isOpen={Boolean(selectedClassId) && isMobile}
+        onClose={() => setSelectedClassId(null)}
+        title="Edit Class Record"
+        description="Modify blueprints and subject mappings."
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-extrabold uppercase tracking-[0.15em] text-[#0f172a]">
-              Class Builder
-            </h2>
-            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-tight text-[#94a3b8]">
-              Create class and define subject offerings
-            </p>
-          </div>
-          <span className="rounded-full border border-[#4f46e5]/20 bg-[#4f46e5]/10 px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.15em] text-[#4f46e5]">
-            Step 2 of Setup
-          </span>
-        </div>
+        {activeClass && (
+           <ClassEditForm
+             classDoc={activeClass}
+             allSubjects={subjects}
+             allTeachers={teachers}
+             currentOfferings={currentOfferings}
+             onUpdate={handleUpdate}
+             onArchive={() => handleArchive(activeClass._id)}
+             onClose={() => setSelectedClassId(null)}
+             onAssignTeacher={(subId, teachId) => handleAssignTeacher(activeClass._id, subId, teachId)}
+             isSaving={isSaving}
+             variant="sheet"
+           />
+        )}
+      </AdminSheet>
 
-        <form onSubmit={handleCreateClass} className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <LabeledInput
-              label="Grade Name"
-              value={builderGradeName}
-              onChange={(value) => setBuilderGradeName(humanNameTyping(value))}
-              onBlur={(value) => setBuilderGradeName(humanNameFinal(value))}
-              placeholder="Primary 4"
-            />
-
-            <LabeledInput
-              label="Class Label"
-              value={builderClassLabel}
-              onChange={(value) => setBuilderClassLabel(humanNameTyping(value))}
-              onBlur={(value) => setBuilderClassLabel(humanNameFinal(value))}
-              placeholder="Olive Blossom"
-              required={false}
-            />
-
-            <div>
-              <label className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-                Section
-              </label>
-              <select
-                value={level}
-                onChange={(event) => setLevel(event.target.value)}
-                className="h-10 w-full rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-              >
-                <option value="Nursery">Nursery</option>
-                <option value="Primary">Primary</option>
-                <option value="Secondary">Secondary</option>
-              </select>
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
+        {/* Sidebar Bucket - Independent Scroll */}
+        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl px-4 py-6 md:px-8 md:py-10 custom-scrollbar z-10">
+          <div className="space-y-6">
+            <div className="hidden lg:block">
+              {selectedClassId && currentClass ? (
+                <ClassEditForm
+                  classDoc={currentClass}
+                  allSubjects={subjects}
+                  allTeachers={teachers}
+                  currentOfferings={currentOfferings}
+                  onUpdate={handleUpdate}
+                  onArchive={() => handleArchive(selectedClassId)}
+                  onClose={() => setSelectedClassId(null)}
+                  onAssignTeacher={(subId, teachId) => handleAssignTeacher(selectedClassId, subId, teachId)}
+                  isSaving={isSaving}
+                />
+              ) : (
+                <ClassCreationForm
+                  onProvision={handleProvision}
+                  isSubmitting={isSubmitting}
+                  teachers={teachers}
+                  subjects={subjects}
+                />
+              )}
             </div>
 
-            <div>
-              <label className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-                Form Teacher
-              </label>
-              <div className="relative">
-                <select
-                  value={builderFormTeacherId}
-                  onChange={(event) => setBuilderFormTeacherId(event.target.value)}
-                  className="h-10 w-full appearance-none rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 pr-10 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
+            <div className="lg:hidden">
+              {!selectedClassId && (
+                 <ClassCreationForm
+                   onProvision={handleProvision}
+                   isSubmitting={isSubmitting}
+                   teachers={teachers}
+                   subjects={subjects}
+                 />
+              )}
+            </div>
+
+            <div className="pt-6 border-t border-slate-200/60">
+                <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Class Lifecycle</h4>
+                <p className="mt-2 text-[11px] leading-relaxed font-bold text-slate-400">
+                  Classes define the structure of reports and faculty access. Archiving preserves enrollment history.
+                </p>
+                <button
+                  onClick={() => router.push("/academic/archived-records")}
+                  className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-950 transition-colors bg-slate-100/50 p-2 rounded-lg border border-slate-200/50"
                 >
-                  <option value="">Assign Later</option>
-                  {teachers.map((teacher) => (
-                    <option key={teacher._id} value={teacher._id}>
-                      {teacher.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#cbd5e1]" />
-              </div>
+                  <Database className="h-3 w-3" />
+                  View Historical Archives
+                </button>
             </div>
           </div>
+        </aside>
 
-          <div className="space-y-2">
-            <span className="block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-              Subject Offerings
-            </span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-              {subjects.map((subject) => {
-                const isSelected = builderSubjectIds.includes(subject._id);
-                return (
-                  <button
-                    key={subject._id}
-                    type="button"
-                    onClick={() => handleBuilderSubjectToggle(subject._id)}
-                    className={`rounded-lg px-3 py-2 text-left text-xs font-bold transition-all ${
-                      isSelected
-                        ? "border-2 border-[#4f46e5] bg-[#4f46e5]/10 text-[#4f46e5]"
-                        : "border border-[#e2e8f0] bg-white text-[#64748b] hover:border-[#cbd5e1]"
-                    }`}
-                  >
-                    {subject.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isSubmitting || !builderGradeName.trim()}
-              className="flex h-10 items-center gap-2 rounded-lg bg-[#4f46e5] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-lg shadow-[#4f46e5]/10 transition-all hover:bg-[#4338ca] disabled:opacity-50"
-            >
-              <Layers3 className="h-3.5 w-3.5 text-white/50" />
-              {isSubmitting ? "Creating..." : "Save Class Blueprint"}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <ClassSection
-        title="Nursery Section"
-        accent="N"
-        accentClass="bg-amber-100 text-amber-700"
-        emptyLabel="Initialize Nursery Classes"
-        classes={nurseryClasses}
-        subjects={subjects}
-        teachers={teachers}
-        selectedClassId={selectedClassId}
-        selectedGradeName={selectedGradeName}
-        selectedClassLabel={selectedClassLabel}
-        selectedSubjectIds={selectedSubjectIds}
-        selectedFormTeacherId={selectedFormTeacherId}
-        currentOfferings={currentOfferings}
-        setSelectedClassId={setSelectedClassId}
-        setSelectedGradeName={setSelectedGradeName}
-        setSelectedClassLabel={setSelectedClassLabel}
-        setSelectedFormTeacherId={setSelectedFormTeacherId}
-        onToggleSubject={handleSelectedSubjectToggle}
-        onSaveClassConfig={handleSaveClassConfig}
-        onArchiveClass={handleArchiveSelectedClass}
-        onAssignTeacher={handleAssignTeacher}
-        onRequestCreate={scrollToBuilder}
-        isSavingClassConfig={isSavingClassConfig}
-      />
-
-      <ClassSection
-        title="Primary Section"
-        accent="P"
-        accentClass="bg-blue-100 text-blue-600"
-        emptyLabel="Initialize Primary Classes"
-        classes={primaryClasses}
-        subjects={subjects}
-        teachers={teachers}
-        selectedClassId={selectedClassId}
-        selectedGradeName={selectedGradeName}
-        selectedClassLabel={selectedClassLabel}
-        selectedSubjectIds={selectedSubjectIds}
-        selectedFormTeacherId={selectedFormTeacherId}
-        currentOfferings={currentOfferings}
-        setSelectedClassId={setSelectedClassId}
-        setSelectedGradeName={setSelectedGradeName}
-        setSelectedClassLabel={setSelectedClassLabel}
-        setSelectedFormTeacherId={setSelectedFormTeacherId}
-        onToggleSubject={handleSelectedSubjectToggle}
-        onSaveClassConfig={handleSaveClassConfig}
-        onArchiveClass={handleArchiveSelectedClass}
-        onAssignTeacher={handleAssignTeacher}
-        onRequestCreate={scrollToBuilder}
-        isSavingClassConfig={isSavingClassConfig}
-      />
-
-      <section className="space-y-4 pt-4">
-        <div className="flex items-center justify-between border-t border-[#f1f5f9] pt-8">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-[#4f46e5]/10 text-[10px] font-bold text-[#4f46e5]">
-              S
-            </span>
-            <h2 className="text-xs font-black uppercase tracking-[0.15em] text-[#0f172a]">
-              Secondary Section
-            </h2>
-          </div>
-        </div>
-
-        <ClassGrid
-          emptyLabel="Initialize Secondary Classes"
-          classes={secondaryClasses}
-          subjects={subjects}
-          teachers={teachers}
-          selectedClassId={selectedClassId}
-          selectedGradeName={selectedGradeName}
-          selectedClassLabel={selectedClassLabel}
-          selectedSubjectIds={selectedSubjectIds}
-          selectedFormTeacherId={selectedFormTeacherId}
-          currentOfferings={currentOfferings}
-          setSelectedClassId={setSelectedClassId}
-          setSelectedGradeName={setSelectedGradeName}
-          setSelectedClassLabel={setSelectedClassLabel}
-          setSelectedFormTeacherId={setSelectedFormTeacherId}
-        onToggleSubject={handleSelectedSubjectToggle}
-        onSaveClassConfig={handleSaveClassConfig}
-        onArchiveClass={handleArchiveSelectedClass}
-        onAssignTeacher={handleAssignTeacher}
-          isSavingClassConfig={isSavingClassConfig}
-        />
-      </section>
-
-      <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 border-t border-[#f1f5f9] bg-white p-4 sm:justify-end sm:p-6">
-        <div className="flex flex-col">
-          <span className="text-[10px] font-black uppercase tracking-tighter text-[#0f172a] italic">
-            System/Structure v2.1
-          </span>
-          <span className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.15em] text-[#94a3b8] italic">
-            {classes.length} Classes • {subjects.length} Subjects
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => router.push("/academic/archived-records")}
-          className="h-12 rounded-xl bg-[#0f172a] px-10 text-[11px] font-bold uppercase tracking-[0.15em] text-white shadow-xl transition-all hover:bg-[#1e293b]"
-        >
-          Audit Archive
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LabeledInput({
-  label,
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  required = true,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onBlur?: (value: string) => void;
-  placeholder: string;
-  required?: boolean;
-}) {
-  return (
-    <div>
-      <label className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-        {label}
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={(event) => onBlur?.(event.target.value)}
-        className="h-10 w-full rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5] focus:shadow-[0_0_0_4px_rgba(79,70,229,0.05)]"
-        placeholder={placeholder}
-        required={required}
-      />
-    </div>
-  );
-}
-
-function ClassSection({
-  title,
-  accent,
-  accentClass,
-  emptyLabel,
-  classes,
-  subjects,
-  teachers,
-  selectedClassId,
-  selectedGradeName,
-  selectedClassLabel,
-  selectedSubjectIds,
-  selectedFormTeacherId,
-  currentOfferings,
-  setSelectedClassId,
-  setSelectedGradeName,
-  setSelectedClassLabel,
-  setSelectedFormTeacherId,
-  onToggleSubject,
-  onSaveClassConfig,
-  onArchiveClass,
-  onAssignTeacher,
-  onRequestCreate,
-  isSavingClassConfig,
-}: {
-  title: string;
-  accent: string;
-  accentClass: string;
-  emptyLabel: string;
-  classes: ClassSummary[];
-  subjects: Subject[];
-  teachers: Teacher[];
-  selectedClassId: string | null;
-  selectedGradeName: string;
-  selectedClassLabel: string;
-  selectedSubjectIds: string[];
-  selectedFormTeacherId: string;
-  currentOfferings: ClassOffering[] | undefined;
-  setSelectedClassId: (value: string | null) => void;
-  setSelectedGradeName: (value: string) => void;
-  setSelectedClassLabel: (value: string) => void;
-  setSelectedFormTeacherId: (value: string) => void;
-  onToggleSubject: (subjectId: string) => void;
-  onSaveClassConfig: () => Promise<void>;
-  onArchiveClass: () => Promise<void>;
-  onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
-  onRequestCreate: () => void;
-  isSavingClassConfig: boolean;
-}) {
-  return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={`flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold ${accentClass}`}>
-            {accent}
-          </span>
-          <h2 className="text-xs font-black uppercase tracking-[0.15em] text-[#0f172a]">
-            {title}
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={onRequestCreate}
-          className="flex h-10 items-center gap-2 rounded-lg bg-[#0f172a] px-4 text-xs font-bold uppercase tracking-[0.025em] text-white shadow-xl shadow-[#e2e8f0] transition-all hover:bg-[#1e293b]"
-        >
-          <Plus className="h-3.5 w-3.5 text-white/40" />
-          New Class
-        </button>
-      </div>
-
-      <ClassGrid
-        emptyLabel={emptyLabel}
-        classes={classes}
-        subjects={subjects}
-        teachers={teachers}
-        selectedClassId={selectedClassId}
-        selectedGradeName={selectedGradeName}
-        selectedClassLabel={selectedClassLabel}
-        selectedSubjectIds={selectedSubjectIds}
-        selectedFormTeacherId={selectedFormTeacherId}
-        currentOfferings={currentOfferings}
-        setSelectedClassId={setSelectedClassId}
-        setSelectedGradeName={setSelectedGradeName}
-        setSelectedClassLabel={setSelectedClassLabel}
-        setSelectedFormTeacherId={setSelectedFormTeacherId}
-        onToggleSubject={onToggleSubject}
-        onSaveClassConfig={onSaveClassConfig}
-        onArchiveClass={onArchiveClass}
-        onAssignTeacher={onAssignTeacher}
-        isSavingClassConfig={isSavingClassConfig}
-      />
-    </section>
-  );
-}
-
-function ClassGrid({
-  emptyLabel,
-  classes,
-  subjects,
-  teachers,
-  selectedClassId,
-  selectedGradeName,
-  selectedClassLabel,
-  selectedSubjectIds,
-  selectedFormTeacherId,
-  currentOfferings,
-  setSelectedClassId,
-  setSelectedGradeName,
-  setSelectedClassLabel,
-  setSelectedFormTeacherId,
-  onToggleSubject,
-  onSaveClassConfig,
-  onArchiveClass,
-  onAssignTeacher,
-  isSavingClassConfig,
-}: {
-  emptyLabel: string;
-  classes: ClassSummary[];
-  subjects: Subject[];
-  teachers: Teacher[];
-  selectedClassId: string | null;
-  selectedGradeName: string;
-  selectedClassLabel: string;
-  selectedSubjectIds: string[];
-  selectedFormTeacherId: string;
-  currentOfferings: ClassOffering[] | undefined;
-  setSelectedClassId: (value: string | null) => void;
-  setSelectedGradeName: (value: string) => void;
-  setSelectedClassLabel: (value: string) => void;
-  setSelectedFormTeacherId: (value: string) => void;
-  onToggleSubject: (subjectId: string) => void;
-  onSaveClassConfig: () => Promise<void>;
-  onArchiveClass: () => Promise<void>;
-  onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
-  isSavingClassConfig: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {classes.length === 0 ? (
-        <div className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[#e2e8f0] bg-white p-5 opacity-40 transition-opacity hover:opacity-100">
-          <LayoutGrid className="mb-3 h-8 w-8 text-[#e2e8f0]" />
-          <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#94a3b8]">
-            {emptyLabel}
-          </span>
-        </div>
-      ) : null}
-
-      {classes.map((classDoc) => (
-        <ClassCard
-          key={classDoc._id}
-          classDoc={classDoc}
-          subjects={subjects}
-          teachers={teachers}
-          isSelected={selectedClassId === classDoc._id}
-          selectedGradeName={selectedGradeName}
-          selectedClassLabel={selectedClassLabel}
-          selectedSubjectIds={selectedSubjectIds}
-          selectedFormTeacherId={selectedFormTeacherId}
-          currentOfferings={selectedClassId === classDoc._id ? currentOfferings : undefined}
-          onSelect={() => setSelectedClassId(classDoc._id)}
-          onCancel={() => setSelectedClassId(null)}
-          onGradeNameChange={setSelectedGradeName}
-          onClassLabelChange={setSelectedClassLabel}
-          onFormTeacherChange={setSelectedFormTeacherId}
-          onToggleSubject={onToggleSubject}
-          onSaveClassConfig={onSaveClassConfig}
-          onArchiveClass={onArchiveClass}
-          onAssignTeacher={onAssignTeacher}
-          isSavingClassConfig={isSavingClassConfig}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ClassCard({
-  classDoc,
-  subjects,
-  teachers,
-  isSelected,
-  selectedGradeName,
-  selectedClassLabel,
-  selectedSubjectIds,
-  selectedFormTeacherId,
-  currentOfferings,
-  onSelect,
-  onCancel,
-  onGradeNameChange,
-  onClassLabelChange,
-  onFormTeacherChange,
-  onToggleSubject,
-  onSaveClassConfig,
-  onArchiveClass,
-  onAssignTeacher,
-  isSavingClassConfig,
-}: {
-  classDoc: ClassSummary;
-  subjects: Subject[];
-  teachers: Teacher[];
-  isSelected: boolean;
-  selectedGradeName: string;
-  selectedClassLabel: string;
-  selectedSubjectIds: string[];
-  selectedFormTeacherId: string;
-  currentOfferings: ClassOffering[] | undefined;
-  onSelect: () => void;
-  onCancel: () => void;
-  onGradeNameChange: (value: string) => void;
-  onClassLabelChange: (value: string) => void;
-  onFormTeacherChange: (value: string) => void;
-  onToggleSubject: (subjectId: string) => void;
-  onSaveClassConfig: () => Promise<void>;
-  onArchiveClass: () => Promise<void>;
-  onAssignTeacher: (classId: string, subjectId: string, teacherId: string) => Promise<void>;
-  isSavingClassConfig: boolean;
-}) {
-  const previewBadges = classDoc.subjectNames.slice(0, 4);
-  const availableFormTeachers =
-    selectedFormTeacherId &&
-    !teachers.some((teacher) => teacher._id === selectedFormTeacherId) &&
-    classDoc.formTeacherId === selectedFormTeacherId &&
-    classDoc.formTeacherName
-      ? [
-          {
-            _id: selectedFormTeacherId,
-            name: `${classDoc.formTeacherName} (Current Assignment)`,
-            email: "",
-          },
-          ...teachers,
-        ]
-      : teachers;
-
-  return (
-    <div className="space-y-5 rounded-xl border border-[#e2e8f0] bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-[#cbd5e1] hover:shadow-lg">
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <h3 className="text-xl font-black tracking-tight text-[#0f172a]">
-            {classDoc.name}
-          </h3>
-          <p
-            className={`text-[9px] font-bold uppercase tracking-[0.15em] ${
-              classDoc.formTeacherName
-                ? "text-emerald-600"
-                : "italic text-[#94a3b8]"
-            }`}
-          >
-            {classDoc.formTeacherName
-              ? `Form Teacher: ${classDoc.formTeacherName}`
-              : "No Form Teacher Assigned"}
-          </p>
-        </div>
-        <span className="rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#64748b]">
-          {isSelected ? "Editing" : "Saved"}
-        </span>
-      </div>
-
-      {isSelected ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <LabeledInput
-              label="Grade Name"
-              value={selectedGradeName}
-              onChange={(value) => onGradeNameChange(humanNameTyping(value))}
-              onBlur={(value) => onGradeNameChange(humanNameFinal(value))}
-              placeholder="Primary 4"
+        {/* Main Content Bucket - Independent Scroll */}
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-12 custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto space-y-10">
+            <AdminHeader
+              title="Class Management"
+              actions={
+                <StatGroup
+                  stats={[
+                    {
+                      label: "Active Units",
+                      value: classes.length,
+                      icon: <LayoutGrid className="h-4 w-4" />,
+                    },
+                    {
+                      label: "Curriculum Map",
+                      value: subjects.length,
+                      icon: <Sparkles className="h-4 w-4" />,
+                    },
+                  ]}
+                />
+              }
             />
-            <LabeledInput
-              label="Class Label"
-              value={selectedClassLabel}
-              onChange={(value) => onClassLabelChange(humanNameTyping(value))}
-              onBlur={(value) => onClassLabelChange(humanNameFinal(value))}
-              placeholder="Olive Blossom"
-              required={false}
-            />
-          </div>
 
-          <div>
-            <span className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-              Form Teacher
-            </span>
-            <div className="relative">
-              <select
-                value={selectedFormTeacherId}
-                onChange={(event) => onFormTeacherChange(event.target.value)}
-                className="h-10 w-full appearance-none rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 pr-10 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-              >
-                <option value="">No Form Teacher Assigned</option>
-                {availableFormTeachers.map((teacher) => (
-                  <option key={teacher._id} value={teacher._id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#cbd5e1]" />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <span className="block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-              Select Offerings
-            </span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {subjects.map((subject) => {
-                const isSubjectSelected = selectedSubjectIds.includes(subject._id);
-                return (
-                  <button
-                    key={subject._id}
-                    type="button"
-                    onClick={() => onToggleSubject(subject._id)}
-                    className={`rounded-lg px-3 py-2 text-left text-xs font-bold transition-all ${
-                      isSubjectSelected
-                        ? "border-2 border-[#4f46e5] bg-[#4f46e5]/10 text-[#4f46e5]"
-                        : "border border-[#e2e8f0] bg-white text-[#64748b] hover:border-[#cbd5e1]"
-                    }`}
-                  >
-                    {subject.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onSaveClassConfig}
-            disabled={isSavingClassConfig}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#4f46e5] text-xs font-bold uppercase tracking-[0.025em] text-white shadow-lg shadow-[#4f46e5]/10 transition-all hover:bg-[#4338ca] disabled:opacity-50"
-          >
-            <Layers3 className="h-3.5 w-3.5 text-white/50" />
-            {isSavingClassConfig ? "Saving..." : "Save Class Blueprint"}
-          </button>
-
-          <button
-            type="button"
-            onClick={onArchiveClass}
-            disabled={isSavingClassConfig}
-            className="flex h-10 w-full items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-xs font-bold uppercase tracking-[0.025em] text-rose-700 disabled:opacity-50"
-          >
-            Archive Class
-          </button>
-
-          {currentOfferings && currentOfferings.length > 0 ? (
-            <div className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
-              <div className="space-y-1">
-                <p className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-                  Subject Teacher Mapping
-                </p>
-                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#94a3b8]">
-                  Assign at least one teacher for class edit access.
-                </p>
-              </div>
-              <div className="space-y-3">
-                {currentOfferings.map((offering) => (
-                  <div
-                    key={offering._id}
-                    className="flex flex-col gap-2 rounded-lg border border-white bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-[#0f172a]">
-                        {offering.subjectName}
-                      </p>
-                      <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#94a3b8]">
-                        {offering.subjectCode}
-                      </p>
-                    </div>
-                    <div className="relative sm:w-[220px]">
-                      <select
-                        value={offering.teacherId ?? ""}
-                        onChange={(event) =>
-                          void onAssignTeacher(
-                            classDoc._id,
-                            offering.subjectId,
-                            event.target.value
-                          )
-                        }
-                        className="h-10 w-full appearance-none rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 pr-10 text-sm font-bold text-[#0f172a] outline-none transition-all focus:border-[#4f46e5]"
-                      >
-                        <option value="">
-                          {offering.teacherName ? "Reassign teacher" : "Assign teacher"}
-                        </option>
-                        {teachers.map((teacher) => (
-                          <option key={teacher._id} value={teacher._id}>
-                            {teacher.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#cbd5e1]" />
-                    </div>
+            {notice && (
+              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
+                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
+              }`}>
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
+                      {notice.title}
+                    </p>
+                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
                   </div>
-                ))}
+                  <button 
+                    onClick={() => setNotice(null)}
+                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-950/5 pb-4">
+              <div className="space-y-1">
+                 <div className="flex items-center gap-2">
+                    <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Academic Units</h3>
+                    <div className="px-2 py-0.5 rounded-full bg-slate-950 text-white text-[9px] font-bold tracking-widest uppercase italic">v2.4</div>
+                 </div>
+                <p className="text-xs font-medium text-slate-400">
+                  Search across grade names, class labels, and form teachers.
+                </p>
+              </div>
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter records..."
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+                />
               </div>
             </div>
-          ) : null}
 
-          <ClassAggregationManager
-            classId={classDoc._id}
-            offerings={currentOfferings}
-          />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <span className="block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-            Current Offerings
-          </span>
-          {previewBadges.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {previewBadges.map((subjectName) => (
-                <span
-                  key={`${classDoc._id}-${subjectName}`}
-                  className="rounded border border-[#e2e8f0] bg-[#f1f5f9] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.05em] text-[#475569]"
-                >
-                  {subjectName}
-                </span>
-              ))}
-              {classDoc.subjectNames.length > previewBadges.length ? (
-                <span className="rounded bg-[#f1f5f9] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.05em] text-[#475569]">
-                  + {classDoc.subjectNames.length - previewBadges.length} more
-                </span>
-              ) : null}
+            <div className="space-y-10">
+              <ClassSection
+                title="Primary Section"
+                accent="P"
+                accentClass="bg-blue-50 text-blue-500"
+                classes={primaryClasses}
+                selectedClassId={selectedClassId}
+                onSelect={setSelectedClassId}
+                onArchive={handleArchive}
+                onRequestCreate={() => setSelectedClassId(null)}
+              />
+
+              <ClassSection
+                title="Nursery Section"
+                accent="N"
+                accentClass="bg-amber-50 text-amber-500"
+                classes={nurseryClasses}
+                selectedClassId={selectedClassId}
+                onSelect={setSelectedClassId}
+                onArchive={handleArchive}
+                onRequestCreate={() => setSelectedClassId(null)}
+              />
+
+              <ClassSection
+                title="Secondary Section"
+                accent="S"
+                accentClass="bg-indigo-50 text-indigo-500"
+                classes={secondaryClasses}
+                selectedClassId={selectedClassId}
+                onSelect={setSelectedClassId}
+                onArchive={handleArchive}
+                onRequestCreate={() => setSelectedClassId(null)}
+              />
             </div>
-          ) : (
-            <span className="text-[10px] font-bold uppercase italic text-[#cbd5e1]">
-              Empty Set
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between border-t border-[#f8fafc] pt-4">
-        <div className="space-y-0.5">
-          <span className="block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-            Students
-          </span>
-          <span className="flex items-center gap-2 text-[11px] font-bold text-[#0f172a]">
-            <Users2 className="h-3.5 w-3.5 text-[#94a3b8]" />
-            {classDoc.studentCount} Registered
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={isSelected ? onCancel : onSelect}
-          className={`flex h-10 items-center gap-2 rounded-lg px-4 text-xs font-bold uppercase tracking-[0.025em] transition-all ${
-            isSelected
-              ? "border border-[#e2e8f0] bg-[#f1f5f9] text-[#475569]"
-              : classDoc.subjectNames.length > 0
-                ? "bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0]"
-                : "bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10 hover:bg-[#4338ca]"
-          }`}
-        >
-          {isSelected
-            ? "Cancel"
-            : classDoc.subjectNames.length > 0
-              ? "Configure Subjects"
-              : "Setup Offerings"}
-        </button>
+          </div>
+        </main>
       </div>
     </div>
   );

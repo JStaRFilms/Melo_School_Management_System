@@ -112,12 +112,27 @@ export default function AdminManagementPage() {
   }
 
   return (
-    <div className="relative min-h-screen">
-      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
-      
-      <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
-        <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-80 lg:shrink-0 space-y-4 md:space-y-6 lg:sticky lg:top-8 h-fit">
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-[#f8fafc]">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+          border-radius: 10px;
+        }
+      `}} />
+
+      <div className="flex-1 flex flex-col lg:flex-row-reverse lg:overflow-hidden">
+        {/* Sidebar Bucket */}
+        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
+          <div className="p-4 py-6 md:p-8 space-y-4 md:space-y-6">
             <AdminCreationForm
               onSuccess={(msg) =>
                 setNotice({ tone: "success", title: "Success", message: msg })
@@ -137,21 +152,22 @@ export default function AdminManagementPage() {
               }
             />
 
-            <div className="pt-4 border-t border-slate-200/60 space-y-4 md:space-y-6">
-              <LeadProtectionSection leadAdmin={leadAdmin} />
-
-              <div>
-                <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                  Audit Trail
-                </h4>
-                <p className="mt-1 text-[10px] leading-relaxed font-medium text-slate-400">
-                  Actions are logged and immutable.
-                </p>
-              </div>
+            <div className="pt-4 border-t border-slate-200/60 p-1">
+              <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                Audit Trail
+              </h4>
+              <p className="mt-1 text-[10px] leading-relaxed font-medium text-slate-400">
+                Actions are logged and immutable.
+              </p>
             </div>
-          </aside>
+            
+            <LeadProtectionSection leadAdmin={leadAdmin} />
+          </div>
+        </aside>
 
-          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+        {/* Main Bucket */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-10 space-y-6 md:space-y-8">
             <AdminHeader
               title="Admins"
               actions={
@@ -179,10 +195,10 @@ export default function AdminManagementPage() {
 
             {notice && (
               <div
-                className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg shadow-slate-200/5 transition-all duration-500 animate-in fade-in slide-in-from-top-4 ${
+                className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all duration-500 animate-in fade-in slide-in-from-top-4 bg-white ${
                   notice.tone === "success"
-                    ? "border-emerald-500 bg-white text-emerald-950"
-                    : "border-rose-500 bg-white text-rose-950"
+                    ? "border-emerald-500 text-emerald-950"
+                    : "border-rose-500 text-rose-950"
                 }`}
               >
                 <div className="flex items-center justify-between gap-6">
@@ -210,7 +226,7 @@ export default function AdminManagementPage() {
               onRunAction={runAdminAction}
             />
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

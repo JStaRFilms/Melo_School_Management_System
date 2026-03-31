@@ -184,9 +184,23 @@ export default function TeachersPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden">
-      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
-      
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+        }
+      `}} />
+
       {/* Mobile Editor Sheet */}
       <AdminSheet
         isOpen={Boolean(selectedTeacherId) && isMobile}
@@ -208,46 +222,48 @@ export default function TeachersPage() {
         )}
       </AdminSheet>
 
-      <div className="relative mx-auto max-w-[1600px] space-y-4 px-3 py-4 md:space-y-6 md:px-8 md:py-10">
-        <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start lg:justify-between">
-          <aside className="w-full lg:w-[340px] lg:shrink-0 space-y-6 lg:sticky lg:top-8 h-fit">
-            <div className="hidden lg:block">
-              {selectedTeacher ? (
-                <TeacherEditForm
-                  teacher={selectedTeacher}
-                  onUpdate={handleUpdate}
-                  onResetPassword={handleResetPassword}
-                  onArchive={handleArchive}
-                  onClose={() => setSelectedTeacherId(null)}
-                  isSaving={isSaving}
-                  isResetting={isResetting}
-                />
-              ) : (
-                <TeacherCreationForm
-                  onProvision={handleProvision}
-                  isSubmitting={isSubmitting}
-                />
-              )}
-            </div>
+      <div className="flex-1 flex flex-col lg:flex-row-reverse lg:overflow-hidden">
+        {/* Sidebar Bucket */}
+        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-4 md:p-8">
+          <div className="hidden lg:block">
+            {selectedTeacher ? (
+              <TeacherEditForm
+                teacher={selectedTeacher}
+                onUpdate={handleUpdate}
+                onResetPassword={handleResetPassword}
+                onArchive={handleArchive}
+                onClose={() => setSelectedTeacherId(null)}
+                isSaving={isSaving}
+                isResetting={isResetting}
+              />
+            ) : (
+              <TeacherCreationForm
+                onProvision={handleProvision}
+                isSubmitting={isSubmitting}
+              />
+            )}
+          </div>
 
-            <div className="lg:hidden">
-              {!selectedTeacher && (
-                 <TeacherCreationForm
-                   onProvision={handleProvision}
-                   isSubmitting={isSubmitting}
-                 />
-              )}
-            </div>
-            
-            <div className="pt-4 border-t border-slate-200/60">
-              <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">System Notification</h4>
-              <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
-                Staff accounts are linked to school email addresses. Deactivation is permanent and irreversible.
-              </p>
-            </div>
-          </aside>
+          <div className="lg:hidden">
+            {!selectedTeacher && (
+               <TeacherCreationForm
+                 onProvision={handleProvision}
+                 isSubmitting={isSubmitting}
+               />
+            )}
+          </div>
+          
+          <div className="mt-8 pt-8 border-t border-slate-200/60">
+            <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">System Notification</h4>
+            <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
+              Staff accounts are linked to school email addresses. Deactivation is permanent and irreversible.
+            </p>
+          </div>
+        </aside>
 
-          <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+        {/* Main Bucket */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8">
+          <div className="max-w-[1200px] mx-auto space-y-6 md:space-y-8">
             <AdminHeader
               title="Teaching Staff"
               actions={
@@ -330,7 +346,7 @@ export default function TeachersPage() {
               )}
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );
