@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { GradingBandDraft } from "@/types";
 import { getGradeBadgeColorClass } from "@/exam-helpers";
 
@@ -27,9 +27,9 @@ export function BandRow({
 
   return (
     <tr
-      className={`hover:bg-slate-50 transition-colors ${hasError ? "bg-red-50/10" : ""}`}
+      className={`group hover:bg-slate-50/50 transition-colors ${hasError ? "bg-rose-50/30" : ""}`}
     >
-      <td className="p-4 sm:p-6">
+      <td className="p-2.5 px-6">
         <input
           type="text"
           value={band.gradeLetter}
@@ -39,13 +39,12 @@ export function BandRow({
           }}
           placeholder="?"
           maxLength={4}
-          aria-label={`Grade letter for band ${index + 1}`}
           spellCheck={false}
-          className={`band-input w-10 px-0 uppercase tracking-[0.12em] ${badgeClass} ${hasError ? "error-border" : ""}`}
+          className={`w-12 h-9 px-0 text-center uppercase font-bold tracking-widest rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${badgeClass} ${hasError ? "border-rose-500 bg-rose-50" : ""}`}
         />
       </td>
-      <td className="p-4 sm:p-6">
-        <div className="flex items-center gap-1.5">
+      <td className="p-2.5">
+        <div className="flex items-center gap-1">
           <input
             type="number"
             value={band.minScore ?? ""}
@@ -55,11 +54,10 @@ export function BandRow({
             }}
             min={0}
             max={100}
-            step={1}
-            placeholder="--"
-            className={`band-input ${hasError ? "error-border" : ""}`}
+            placeholder="0"
+            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${hasError ? "border-rose-500" : ""}`}
           />
-          <span className="text-slate-300">-</span>
+          <span className="text-slate-200 font-bold px-0.5">&ndash;</span>
           <input
             type="number"
             value={band.maxScore ?? ""}
@@ -69,27 +67,26 @@ export function BandRow({
             }}
             min={0}
             max={100}
-            step={1}
-            placeholder="--"
-            className={`band-input ${hasError ? "error-border" : ""}`}
+            placeholder="100"
+            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${hasError ? "border-rose-500" : ""}`}
           />
         </div>
       </td>
-      <td className="p-4 sm:p-6">
+      <td className="p-2.5">
         <input
           type="text"
           value={band.remark}
           onChange={(e) => onChange(index, "remark", e.target.value)}
-          placeholder="Enter remark"
-          className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-none transition-all"
+          placeholder="Remark..."
+          className="w-full h-9 px-4 bg-slate-50/50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 focus:bg-white focus:border-blue-500/50 outline-none transition-all"
         />
       </td>
-      <td className="p-4 sm:p-6 text-right">
+      <td className="p-2.5 px-6 text-right">
         <button
           onClick={() => onDelete(index)}
-          className="text-slate-300 hover:text-red-500 p-2 transition-colors"
+          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 p-2 transition-all"
         >
-          <MoreVertical className="w-4 h-4" />
+          <Trash2 className="w-4 h-4" />
         </button>
       </td>
     </tr>
