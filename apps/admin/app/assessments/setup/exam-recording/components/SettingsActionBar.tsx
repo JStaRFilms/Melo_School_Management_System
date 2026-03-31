@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { UploadCloud, Loader2, X } from "lucide-react";
+import { Save, RotateCcw, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 interface SettingsActionBarProps {
   hasUnsavedChanges: boolean;
@@ -15,81 +15,43 @@ export function SettingsActionBar({
   onDiscard,
 }: SettingsActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
 
-  const handleSave = useCallback(async () => {
-    if (!hasUnsavedChanges) return;
-
+  const handleSave = async () => {
     setIsSaving(true);
-    setSaveResult(null);
-
     try {
       await onSave();
-      setSaveResult({ success: true, message: "Settings updated" });
-      setTimeout(() => setSaveResult(null), 5000);
-    } catch (err) {
-      setSaveResult({
-        success: false,
-        message: err instanceof Error ? err.message : "Save failed",
-      });
     } finally {
       setIsSaving(false);
     }
-  }, [hasUnsavedChanges, onSave]);
+  };
+
+  if (!hasUnsavedChanges && !isSaving) return null;
 
   return (
-    <>
-      {/* Success Toast */}
-      {saveResult?.success && (
-        <div className="fixed top-4 right-4 bg-emerald-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl z-50">
-          <p className="font-bold text-sm">{saveResult.message}</p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Error Toast */}
-      {saveResult && !saveResult.success && (
-        <div className="fixed top-4 right-4 bg-red-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl z-50">
-          <p className="font-bold text-sm">{saveResult.message}</p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Floating Action Bar - exact match from mockup */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between sm:justify-end bg-white border-t border-slate-200 lg:bg-transparent lg:border-none z-50">
+    <div className="sticky bottom-0 left-0 right-0 p-4 border-t border-slate-200/60 bg-white/80 backdrop-blur-md animate-in slide-in-from-bottom-4 duration-300 z-20">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex-1 h-10 flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-xl transition-all shadow-lg shadow-slate-200 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+        >
+          {isSaving ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Save className="w-3.5 h-3.5" />
+          )}
+          {isSaving ? "Saving..." : "Commit Changes"}
+        </button>
+        
         <button
           onClick={onDiscard}
           disabled={isSaving}
-          className="text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest px-4 py-3 disabled:opacity-40"
+          className="h-10 px-4 flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs font-bold rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+          title="Discard Changes"
         >
-          Discard
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={!hasUnsavedChanges || isSaving}
-          className="bg-slate-900 text-white px-8 py-3 rounded-xl text-xs font-bold shadow-xl active:scale-95 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isSaving ? (
-            <Loader2 className="w-4 h-4 text-white/50 animate-spin" />
-          ) : (
-            <UploadCloud className="w-4 h-4 text-white/50" />
-          )}
-          Commit Settings
+          <RotateCcw className="w-3.5 h-3.5" />
         </button>
       </div>
-    </>
+    </div>
   );
 }

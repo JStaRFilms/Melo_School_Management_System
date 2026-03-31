@@ -2,12 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { 
+  History, 
+  Settings2,
+  ChevronRight,
+  Calendar,
+  ShieldCheck
+} from "lucide-react";
 import type { ExamInputMode } from "@school/shared";
+
+import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ExamModeSelector } from "./components/ExamModeSelector";
 import { WeightDistribution } from "./components/WeightDistribution";
-import { AuditPolicyCard } from "./components/AuditPolicyCard";
+import { ProtocolBlueprint } from "./components/ProtocolBlueprint";
 import { SettingsActionBar } from "./components/SettingsActionBar";
-import { AssessmentEditingPolicyCard } from "./components/AssessmentEditingPolicyCard";
+import { AssessmentEditingPolicy } from "./components/AssessmentEditingPolicyCard";
+import { ProtocolTimeline } from "./components/ProtocolTimeline";
 import {
   buildAssessmentEditingPolicyMutationInput,
   createAssessmentEditingPolicyDraft,
@@ -389,51 +399,121 @@ function ExamSettingsContent({
   onDiscard,
 }: ExamSettingsContentProps) {
   return (
-    <div className="max-w-4xl mx-auto py-6 sm:py-10 px-4 sm:px-6 space-y-8 pb-24">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 breadcrumb-text">
-          <a href="#" className="hover:text-slate-900 transition-colors">
-            Assessments
-          </a>
-          <span className="text-slate-300">&rsaquo;</span>
-          <span className="text-slate-900">Recording Settings</span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
-            Exam Protocol
-          </h1>
-          <p className="text-slate-500 text-xs sm:text-sm leading-relaxed">
-            Configure scoring modes and secure exam editing windows for each
-            term.
-          </p>
-        </div>
-      </div>
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: transparent; }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.1); }
+      `}} />
 
-      <div className="space-y-8">
-        <ExamModeSelector
-          currentMode={currentMode}
-          onModeChange={onModeChange}
-        />
-        <AssessmentEditingPolicyCard
-          draft={policyDraft}
-          sessions={sessions}
-          terms={terms}
-          isLoadingSessions={isLoadingSessions}
-          isLoadingTerms={isLoadingTerms}
-          onSessionChange={onSessionChange}
-          onTermChange={onTermChange}
-          onToggleChange={onPolicyToggleChange}
-          onDateChange={onPolicyDateChange}
-        />
-        <WeightDistribution />
-        <AuditPolicyCard />
-      </div>
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
+        {/* Sidebar Bucket: Configuration & Protocol Switches */}
+        <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-l border-slate-200 bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0 flex flex-col">
+          <div className="flex-1 p-4 md:p-8 space-y-10 min-h-0 overflow-y-auto custom-scrollbar">
+            <div className="space-y-1.5 px-1">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em]">
+                <Settings2 size={10} />
+                Global Config
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Exam Recording</h3>
+            </div>
 
-      <SettingsActionBar
-        hasUnsavedChanges={hasUnsavedChanges}
-        onSave={onSave}
-        onDiscard={onDiscard}
-      />
+            <div className="space-y-12">
+              <ExamModeSelector
+                currentMode={currentMode}
+                onModeChange={onModeChange}
+              />
+              
+              <AssessmentEditingPolicy
+                draft={policyDraft}
+                onToggleChange={onPolicyToggleChange}
+                onDateChange={onPolicyDateChange}
+              />
+            </div>
+
+            <div className="pt-8 border-t border-slate-200/60 px-1">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+                <History size={10} />
+                Persistence
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed font-bold text-slate-400 uppercase tracking-widest">
+                Kernel Sync Enabled
+              </p>
+            </div>
+          </div>
+
+          <SettingsActionBar
+            hasUnsavedChanges={hasUnsavedChanges}
+            onSave={onSave}
+            onDiscard={onDiscard}
+          />
+        </aside>
+
+        {/* Main Workspace: Protocol Command Center */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-10 space-y-10">
+            {/* Context Navigation Bar */}
+            <div className="space-y-8">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+                <span>Assessments</span>
+                <ChevronRight size={10} />
+                <span className="text-slate-900">Command Center</span>
+              </div>
+              
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-4">
+                  <AdminHeader title="Protocol Dashboard" />
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100/50 rounded-full w-fit">
+                    <ShieldCheck size={10} className="text-blue-500" />
+                    <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Protocol Verified</span>
+                  </div>
+                </div>
+                
+                {/* Academic Context Selectors (Pills) */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/50 rounded-2xl border border-slate-200 shadow-sm self-start">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-400">
+                    <Calendar size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest leading-none tracking-tight">Scope</span>
+                  </div>
+                  
+                  <select
+                    value={policyDraft.sessionId ?? ""}
+                    onChange={(e) => onSessionChange(e.target.value)}
+                    disabled={isLoadingSessions}
+                    className="h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-900 outline-none hover:border-blue-500 transition focus:ring-4 focus:ring-blue-100"
+                  >
+                    <option value="">Select Session</option>
+                    {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+
+                  <select
+                    value={policyDraft.termId ?? ""}
+                    onChange={(e) => onTermChange(e.target.value)}
+                    disabled={!policyDraft.sessionId || isLoadingTerms}
+                    className="h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-900 outline-none hover:border-blue-500 transition focus:ring-4 focus:ring-blue-100"
+                  >
+                    <option value="">Select Term</option>
+                    {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Protocol Intelligence row header */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+               <ProtocolTimeline 
+                startsAt={policyDraft.editingStartsAt} 
+                endsAt={policyDraft.editingEndsAt} 
+                isEnabled={policyDraft.restrictionsEnabled}
+              />
+              <WeightDistribution />
+            </div>
+
+            {/* The Blueprint Projection Piece */}
+            <ProtocolBlueprint />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,48 +1,56 @@
+"use client";
+
+import { PieChart, ListChecks } from "lucide-react";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+
 export function WeightDistribution() {
+  const items = [
+    { label: "CA 1", value: "20", color: "bg-blue-100" },
+    { label: "CA 2", value: "20", color: "bg-blue-200" },
+    { label: "CA 3", value: "20", color: "bg-blue-300" },
+    { label: "Exam", value: "40", color: "bg-blue-600", highlight: true },
+  ];
+
   return (
-    <section className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h2 className="section-heading">2. Total Distribution</h2>
-        <div className="h-px flex-1 bg-slate-100" />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between px-1">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+            <PieChart size={10} />
+            Aggregation Structure
+          </div>
+          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Gradebook Weights</h3>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-900 uppercase tracking-[0.15em] bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
+          <ListChecks size={12} className="text-blue-600" />
+          Sum: 100%
+        </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 divide-y sm:divide-y-0">
-        <div className="p-4 sm:p-6 text-center">
-          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-            CA 1
-          </span>
-          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            20%
-          </span>
-        </div>
-        <div className="p-4 sm:p-6 text-center">
-          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-            CA 2
-          </span>
-          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            20%
-          </span>
-        </div>
-        <div className="p-4 sm:p-6 text-center">
-          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-            CA 3
-          </span>
-          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            20%
-          </span>
-        </div>
-        <div className="p-4 sm:p-6 text-center bg-blue-50/50">
-          <span className="text-[8px] font-bold text-blue-600 uppercase tracking-widest block mb-1 font-extrabold">
-            Exam
-          </span>
-          <span className="text-xl sm:text-2xl font-bold text-blue-600 tracking-tight">
-            40%
-          </span>
-        </div>
-      </div>
-      <p className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold text-center sm:text-left">
-        Snapshot: Session 2025/2026 Policy
-      </p>
-    </section>
+      <AdminSurface intensity="low" className="p-0 overflow-hidden divide-x divide-slate-100 grid grid-cols-4">
+        {items.map((item) => (
+          <div 
+            key={item.label} 
+            className={`p-4 md:p-6 transition-all duration-300 ${
+              item.highlight ? "bg-blue-600" : "bg-white hover:bg-slate-50/50"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                item.highlight ? "text-blue-100" : "text-slate-400"
+              }`}>
+                {item.label}
+              </span>
+              <div className={`h-1 w-8 rounded-full ${item.highlight ? "bg-blue-400" : item.color}`} />
+            </div>
+            <div className={`text-2xl font-black tracking-tight ${
+              item.highlight ? "text-white" : "text-slate-900"
+            }`}>
+              {item.value}<span className="text-[0.6em] font-medium opacity-60">%</span>
+            </div>
+          </div>
+        ))}
+      </AdminSurface>
+    </div>
   );
 }
