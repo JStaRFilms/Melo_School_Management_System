@@ -47,16 +47,20 @@ export function Stat({ label, value, icon, description, className = "" }: StatPr
 interface StatGroupProps {
   stats: StatProps[];
   className?: string;
-  variant?: "scroll" | "wrap";
+  variant?: "scroll" | "wrap" | "double-row";
 }
 
 export function StatGroup({ stats, className = "", variant = "scroll" }: StatGroupProps) {
+  const isScroll = variant === "scroll";
+  const isDoubleRow = variant === "double-row";
+  
   return (
     <div className={`
-      flex items-center gap-2.5 overflow-x-auto px-0.5 py-2
-      snap-x snap-mandatory 
-      [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
-      sm:overflow-visible sm:px-0 sm:py-0 
+      flex px-0.5 py-2
+      ${isScroll ? "items-center overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2.5" : ""}
+      ${isDoubleRow ? "grid grid-rows-2 grid-flow-col overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2.5 h-[160px] sm:h-auto" : ""}
+      ${variant === "wrap" ? "items-center flex-wrap gap-2.5" : ""}
+      sm:px-0 sm:py-0 
       sm:gap-3.5 ${className}
     `}>
       {stats.map((stat, idx) => (
