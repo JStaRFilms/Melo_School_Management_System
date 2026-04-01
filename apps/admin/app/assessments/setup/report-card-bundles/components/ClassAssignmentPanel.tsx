@@ -110,7 +110,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   );
 
   return (
-    <AdminSurface intensity="none" className="p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
+    <AdminSurface intensity="none" className="p-4 sm:p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
       <div className="flex items-center justify-between border-b border-slate-50 pb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-50 rounded-lg">

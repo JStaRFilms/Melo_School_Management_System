@@ -16,7 +16,7 @@ interface BundlePreviewProps {
 
 export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
   return (
-    <AdminSurface intensity="none" className="p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
+    <AdminSurface intensity="none" className="p-4 sm:p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
       <div className="flex items-center justify-between border-b border-slate-50 pb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-emerald-50 rounded-lg">
@@ -33,7 +33,7 @@ export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
       </div>
 
       <div className="space-y-6">
-        <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-2xl shadow-slate-900/20">
+        <div className="bg-slate-900 rounded-2xl p-4 sm:p-6 text-white shadow-2xl shadow-slate-900/20">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Active Blueprint</span>

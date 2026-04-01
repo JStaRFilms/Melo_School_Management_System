@@ -177,7 +177,7 @@ export function ReportCardBundlesScreen({
         </aside>
 
         {/* Main Content Bucket */}
-        <main className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto custom-scrollbar p-4 lg:p-6 order-1 lg:order-2">
+        <main className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto custom-scrollbar px-2 py-4 lg:p-6 order-1 lg:order-2">
           <div className="max-w-[1500px] mx-auto w-full space-y-6">
             <div className="space-y-6 pb-20">
               <div className="space-y-4">

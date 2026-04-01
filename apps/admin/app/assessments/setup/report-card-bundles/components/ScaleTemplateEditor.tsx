@@ -20,7 +20,7 @@ interface ScaleTemplateEditorProps {
 export function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-      <AdminSurface intensity="low" className="p-6 space-y-6">
+      <AdminSurface intensity="low" className="p-4 sm:p-6 space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
           <div className="p-2 bg-slate-100 rounded-lg">
             <Layers className="w-4 h-4 text-slate-600" />

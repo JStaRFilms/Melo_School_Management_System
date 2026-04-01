@@ -31,7 +31,7 @@ interface BundleEditorProps {
 export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {
   return (
     <div className="space-y-6">
-      <AdminSurface intensity="low" className="p-6 space-y-6">
+      <AdminSurface intensity="low" className="p-4 sm:p-6 space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
           <div className="p-2 bg-slate-100 rounded-lg">
             <LayoutGrid className="w-4 h-4 text-slate-600" />
@@ -83,7 +83,7 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
         {draft.sections.map((section, sectionIndex) => (
           <div key={section.key} className="group relative animate-in fade-in slide-in-from-top-2 duration-300">
             <AdminSurface intensity="none" className="overflow-hidden border-slate-200/60 shadow-sm border bg-white rounded-2xl">
-              <div className="flex items-center justify-between gap-4 border-b border-slate-50 bg-slate-50/50 px-4 py-3">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-50 bg-slate-50/50 px-3 py-2.5 sm:px-4 sm:py-3">
                 <div className="flex items-center gap-3 flex-1">
                   <GripVertical className="w-4 h-4 text-slate-300 pointer-events-none" />
                   <span className="text-xs font-black text-slate-400 tabular-nums">#{sectionIndex + 1}</span>
@@ -131,9 +131,9 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                 </div>
               </div>
 
-              <div className="p-4 space-y-3 bg-white">
+              <div className="p-3 sm:p-4 space-y-3 bg-white">
                 {section.fields.map((field, fieldIndex) => (
-                  <div key={field.key} className="group/field relative rounded-xl border border-slate-100 bg-slate-50/30 p-4 transition-all hover:border-slate-200 hover:bg-white hover:shadow-sm">
+                  <div key={field.key} className="group/field relative rounded-xl border border-slate-100 bg-slate-50/30 p-3 sm:p-4 transition-all hover:border-slate-200 hover:bg-white hover:shadow-sm">
                     {(() => {
                       const canonicalConfig = getCanonicalFieldConfig(field.systemKey);
                       const canonicalOptions =
