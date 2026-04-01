@@ -57,7 +57,7 @@ export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
                 <div className="flex-1 h-px bg-slate-100" />
               </div>
               
-              <div className="grid gap-3">
+              <div className="grid md:grid-cols-2 gap-4">
                 <PreviewSection
                   fields={getSectionPrintableFields(section)}
                   scaleTemplates={scaleTemplates}

@@ -38,6 +38,7 @@ export function ReportCardBundlesScreen({
   const [selectedBundleId, setSelectedBundleId] = useState<string | "new" | null>(null);
   const [scaleDraft, setScaleDraft] = useState(createEmptyScaleDraft);
   const [bundleDraft, setBundleDraft] = useState(createEmptyBundleDraft);
+  const [bundleSubTab, setBundleSubTab] = useState<"designer" | "monitor" | "distribution">("designer");
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -233,10 +234,42 @@ export function ReportCardBundlesScreen({
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {tab === "bundles" ? (
                   <div className="space-y-6">
-                    <BundleEditor draft={bundleDraft} onChange={setBundleDraft} scaleTemplates={scaleTemplates} />
-                    <div className="grid gap-6 xl:grid-cols-2">
-                      <BundlePreview draft={bundleDraft} scaleTemplates={scaleTemplates} />
-                      {assignmentPanel}
+                    {/* Sub-Tab Navigation for Bundles */}
+                    <div className="flex items-center gap-6 border-b border-slate-200/60 pb-px overflow-x-auto scrollbar-hide">
+                      {[
+                        { id: "designer", label: "Blueprint Designer" },
+                        { id: "monitor", label: "Virtual Monitor" },
+                        { id: "distribution", label: "Distribution Engine" },
+                      ].map((sub) => (
+                        <button
+                          key={sub.id}
+                          onClick={() => setBundleSubTab(sub.id as typeof bundleSubTab)}
+                          className={`relative pb-3 text-xs font-black uppercase tracking-[0.2em] transition-all ${
+                            bundleSubTab === sub.id 
+                              ? "text-slate-900" 
+                              : "text-slate-400 hover:text-slate-600"
+                          }`}
+                        >
+                          {sub.label}
+                          {bundleSubTab === sub.id && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-900 rounded-full animate-in fade-in zoom-in-95 duration-300" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      {bundleSubTab === "designer" && (
+                        <BundleEditor draft={bundleDraft} onChange={setBundleDraft} scaleTemplates={scaleTemplates} />
+                      )}
+                      {bundleSubTab === "monitor" && (
+                        <BundlePreview draft={bundleDraft} scaleTemplates={scaleTemplates} />
+                      )}
+                      {bundleSubTab === "distribution" && (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          {assignmentPanel}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
