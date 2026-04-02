@@ -59,106 +59,108 @@ export function AdminSaveActionBar({
     isEditingLocked || !hasUnsavedChanges || hasValidationErrors || isSaving;
 
   return (
-    <>
-      {/* Success Banner */}
+    <div className="flex flex-col gap-4 w-full">
+      {/* Success Notification */}
       {saveResult?.success && (
-        <div className="bg-emerald-600 text-white rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-emerald-900/10">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-2xl">
-              &#10003;
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">{saveResult.message}</h3>
-              <p className="text-emerald-100/80 text-sm font-medium">
-                All {saveResult.count ?? 0} valid student record
-                {(saveResult.count ?? 0) > 1 ? "s" : ""} have been updated.
-              </p>
-            </div>
+        <div className="flex items-center gap-3 py-2 px-3 bg-emerald-50 border border-emerald-100 rounded-lg animate-in fade-in slide-in-from-bottom-1">
+          <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-black">
+            &#10003;
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setSaveResult(null)}
-              className="bg-emerald-500 border border-white/20 text-white font-bold h-12 px-6 rounded-xl hover:bg-emerald-400 transition-colors"
-            >
-              Dismiss
-            </button>
+          <div className="flex-1">
+             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-900">
+               Sync Successful
+             </span>
+             <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-emerald-600/60 ml-2">
+               {saveResult.count ?? 0} Protocol Records Committed
+             </span>
           </div>
-        </div>
-      )}
-
-      {/* Error toast */}
-      {saveResult && !saveResult.success && (
-        <div className="bg-red-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl">
-          <p className="font-bold text-sm">{saveResult.message}</p>
           <button
             onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
+            className="text-[8px] font-black uppercase tracking-widest text-emerald-900/40 hover:text-emerald-900"
           >
-            <X className="w-4 h-4" />
+            DISMISS
           </button>
         </div>
       )}
 
-      {/* Mobile: Fixed bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 md:hidden bg-white/95 border-t border-slate-100 z-50">
-        {isEditingLocked && lockMessage ? (
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-            {lockMessage}
-          </p>
-        ) : null}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-slate-900 uppercase tracking-tighter">
-              Administrator Session
-            </span>
-            <span className="text-[8px] font-bold text-slate-400 uppercase italic">
-              Batch entry safeguards active
-            </span>
+      {/* Error Toast */}
+      {saveResult && !saveResult.success && (
+        <div className="flex items-center gap-3 py-2 px-3 bg-red-50 border border-red-100 rounded-lg animate-in fade-in slide-in-from-bottom-1">
+          <div className="w-5 h-5 rounded-full bg-red-600 flex items-center justify-center text-[10px] text-white font-black">
+            !
           </div>
+          <p className="flex-1 font-black text-[10px] uppercase tracking-widest text-red-900">
+            {saveResult.message}
+          </p>
+          <button
+            onClick={() => setSaveResult(null)}
+            className="text-red-900/40 hover:text-red-900"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Action Bar Content */}
+      <div className="flex flex-col sm:flex-row items-center justify-between w-full h-auto py-2 px-1">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          {hasUnsavedChanges ? (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                 <span className="text-[10px] font-black text-slate-950 uppercase tracking-[0.15em] leading-none whitespace-nowrap">
+                   MODIFICATIONS PENDING
+                 </span>
+              </div>
+               <p className="hidden sm:block mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-60">
+                 {dirtyCount} local modification{dirtyCount !== 1 ? "s" : ""} pending commit
+               </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 opacity-40">
+               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+               <span className="text-[9px] font-black text-slate-900 uppercase tracking-[0.15em]">Synced</span>
+            </div>
+          )}
+
+          {hasUnsavedChanges && (
+            <div className="sm:hidden ml-auto">
+              <button
+                onClick={onCancel}
+                disabled={isSaving}
+                className="h-8 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-500 active:bg-slate-200 transition-all"
+              >
+                Discard
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2 sm:mt-0 flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={onCancel}
+            disabled={isSaving || !hasUnsavedChanges}
+            className="hidden sm:block h-10 px-6 rounded-md text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 border border-transparent hover:border-slate-200 transition-all disabled:opacity-0 disabled:pointer-events-none"
+          >
+            Discard
+          </button>
+          
           <button
             onClick={handleSave}
             disabled={isDisabled}
-            className="bg-indigo-600 text-white h-12 px-8 rounded-xl font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-indigo-200 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            className={`flex-1 sm:flex-none justify-center h-10 sm:h-10 px-8 rounded-xl sm:rounded-md font-black text-[11px] uppercase tracking-[0.15em] transition-all flex items-center gap-2 shadow-xl shadow-slate-950/10 active:scale-95 ${
+              hasUnsavedChanges 
+                ? "bg-slate-950 text-white hover:bg-slate-800" 
+                : "bg-slate-100 text-slate-400 pointer-events-none opacity-50"
+            }`}
           >
             {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : null}
-            {isEditingLocked ? "Editing Locked" : "Commit Batch"}
+            {isEditingLocked ? "LOCKED" : hasValidationErrors ? `ERR: ${errorCount}` : "COMMIT BATCH"}
           </button>
         </div>
       </div>
-
-      {/* Desktop: Floating action bar */}
-      <div className="fixed bottom-8 right-8 hidden md:flex items-center gap-3 z-50">
-        {isEditingLocked && lockMessage ? (
-          <div className="max-w-xs rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 shadow-sm">
-            {lockMessage}
-          </div>
-        ) : null}
-        <button
-          onClick={onCancel}
-          disabled={isSaving}
-          className="bg-white border border-slate-200 text-slate-700 h-10 px-4 rounded-md font-bold text-xs hover:bg-slate-50 shadow-sm disabled:opacity-40"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={isDisabled}
-          className="bg-indigo-600 text-white h-10 px-6 rounded-md font-bold text-xs hover:bg-indigo-700 shadow-xl shadow-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-        >
-          {isSaving ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : null}
-          {isSaving
-            ? "Saving..."
-            : isEditingLocked
-              ? "Editing Locked"
-            : hasValidationErrors
-              ? "Fix Errors First"
-              : "Commit Batch"}
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

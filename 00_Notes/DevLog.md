@@ -8,6 +8,8 @@
 - Language:
 - Framework:
 
+pnpm --filter @school/admin dev
+
 ## Completed Notes
 
 - [x] Create project
