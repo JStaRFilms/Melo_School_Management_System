@@ -10,13 +10,7 @@ import { AdminSheet } from "@/components/ui/AdminSheet";
 import { SubjectCard } from "./components/SubjectCard";
 import { SubjectCreationForm } from "./components/SubjectCreationForm";
 import { SubjectEditForm } from "./components/SubjectEditForm";
-
-type SubjectRecord = {
-  _id: string;
-  name: string;
-  code: string;
-  createdAt: number;
-};
+import type { SubjectRecord } from "@/types";
 
 export default function SubjectsPage() {
   const subjects = useQuery(
@@ -63,10 +57,10 @@ export default function SubjectsPage() {
   useEffect(() => {
     if (selectedSubjectId && typeof window !== "undefined" && window.innerWidth < 1024) {
       const scrollTimer = setTimeout(() => {
-        const element = document.getElementById(`subject-${selectedSubjectId}`);
+          const element = document.getElementById(`subject-${selectedSubjectId}`);
         if (element) {
           const yOffset = -120; // Ensure card is comfortably in view above the sheet
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 100);
@@ -298,7 +292,7 @@ export default function SubjectsPage() {
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
-                <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase text-xs lg:text-xl">Live Catalog</h3>
+                <h3 className="font-display text-xs lg:text-xl font-bold tracking-tight text-slate-950 uppercase">Live Catalog</h3>
                 <p className="text-xs font-medium text-slate-500">
                   Global list of subjects available for academic operations.
                 </p>

@@ -10,13 +10,8 @@ import { AdminSheet } from "@/components/ui/AdminSheet";
 import { TeacherCard } from "./components/TeacherCard";
 import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
-
-type TeacherRecord = {
-  _id: string;
-  name: string;
-  email: string;
-  createdAt: number;
-};
+import { useIsMobile } from "@/hooks/useIsMobile";
+import type { TeacherRecord } from "@/types";
 
 type ProvisionResult = {
   teacherId: string;
@@ -39,15 +34,7 @@ export default function TeachersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
+  const isMobile = useIsMobile();
 
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
@@ -60,27 +47,19 @@ export default function TeachersPage() {
     teachers?.find((t) => t._id === selectedTeacherId) ?? null,
   [teachers, selectedTeacherId]);
 
-  const [activeTeacher, setActiveTeacher] = useState<TeacherRecord | null>(null);
-
   useEffect(() => {
-    if (selectedTeacher) {
-      setActiveTeacher(selectedTeacher);
-    }
-  }, [selectedTeacher]);
-
-  useEffect(() => {
-    if (selectedTeacherId && typeof window !== "undefined" && window.innerWidth < 1024) {
+    if (selectedTeacherId && isMobile) {
       const scrollTimer = setTimeout(() => {
         const element = document.getElementById(`teacher-${selectedTeacherId}`);
         if (element) {
           const yOffset = -120;
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 100);
       return () => clearTimeout(scrollTimer);
     }
-  }, [selectedTeacherId]);
+  }, [isMobile, selectedTeacherId]);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) return [];
@@ -185,22 +164,6 @@ export default function TeachersPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-          border-radius: 10px;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.15);
-        }
-      `}} />
-
       {/* Mobile Editor Sheet */}
       <AdminSheet
         isOpen={Boolean(selectedTeacherId) && isMobile}
@@ -208,9 +171,9 @@ export default function TeachersPage() {
         title="Edit Staff Member"
         description="Update faculty credentials."
       >
-        {activeTeacher && (
+        {selectedTeacher && (
            <TeacherEditForm
-             teacher={activeTeacher}
+             teacher={selectedTeacher}
              onUpdate={handleUpdate}
              onResetPassword={handleResetPassword}
              onArchive={handleArchive}

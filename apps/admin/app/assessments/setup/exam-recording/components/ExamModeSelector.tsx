@@ -41,7 +41,7 @@ export function ExamModeSelector({
           return (
             <label
               key={mode.id}
-              className={`group relative flex items-center justify-between bg-white border rounded-xl p-4 cursor-pointer transition-all duration-300 ${
+              className={`group relative flex items-center justify-between bg-white border rounded-xl p-4 cursor-pointer transition-all duration-300 focus-within:ring-4 focus-within:ring-blue-50 ${
                 isActive
                   ? "border-blue-600 ring-4 ring-blue-50/50"
                   : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/30"
@@ -52,7 +52,7 @@ export function ExamModeSelector({
                 name="exam_mode"
                 checked={isActive}
                 onChange={() => onModeChange(mode.id)}
-                className="hidden"
+                className="sr-only peer"
               />
               <div className="flex flex-col gap-0.5">
                 <span className={`text-[11px] font-bold tracking-tight transition-colors ${
@@ -69,7 +69,7 @@ export function ExamModeSelector({
                 isActive
                   ? "bg-blue-600 border-blue-600 shadow-sm"
                   : "border-slate-200 group-hover:border-slate-300"
-              }`}>
+              } peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100`}>
                 {isActive && <Check className="w-3 h-3 text-white" />}
               </div>
             </label>

@@ -1,9 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
 import { ClassCard } from "./ClassCard";
 import { Plus, LayoutGrid } from "lucide-react";
-import { AdminSurface } from "@/components/ui/AdminSurface";
 
 type ClassSummary = {
   _id: string;

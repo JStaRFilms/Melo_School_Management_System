@@ -19,7 +19,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [temporaryPassword, setTemporaryPassword] = useState("Admin123!Pass");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
   const submitCreateAdmin = async (event: FormEvent<HTMLFormElement>) => {
@@ -44,7 +44,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
 
       setName("");
       setEmail("");
-      setTemporaryPassword("Admin123!Pass");
+      setTemporaryPassword("");
       onSuccess(`${created.email} can sign in with the temporary password now.`);
     } catch (error) {
       onError("Admin not created", getUserFacingErrorMessage(error, "Failed to create admin"));
@@ -99,7 +99,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
             Temporary Password
           </label>
           <input
-            type="text"
+            type="password"
             value={temporaryPassword}
             onChange={(e) => setTemporaryPassword(e.target.value)}
             className="h-9 w-full rounded-lg border border-slate-200 bg-white/50 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:bg-white"

@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send, KeyRound, Archive, X } from "lucide-react";
+import { Send, KeyRound, Archive, X, Eye, EyeOff } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTypingStrict, humanNameFinalStrict } from "@/human-name";
-
-type TeacherRecord = {
-  _id: string;
-  name: string;
-  email: string;
-};
+import type { TeacherRecord } from "@/types";
 
 interface TeacherEditFormProps {
   teacher: TeacherRecord;
@@ -34,17 +29,22 @@ export function TeacherEditForm({
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [resetPass, setResetPass] = useState("Teacher123!Pass");
+  const [resetPass, setResetPass] = useState("");
+  const [showResetPass, setShowResetPass] = useState(false);
 
   useEffect(() => {
     setName(teacher.name);
     setEmail(teacher.email);
+    setResetPass("");
+    setShowResetPass(false);
   }, [teacher]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) return;
-    await onUpdate(teacher._id, name, email);
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName || !trimmedEmail) return;
+    await onUpdate(teacher._id, trimmedName, trimmedEmail);
   };
 
   const isSheet = variant === "sheet";
@@ -102,11 +102,19 @@ export function TeacherEditForm({
           <FormField label="Reset Password">
             <div className="flex gap-2">
               <input
-                type="text"
+                type={showResetPass ? "text" : "password"}
                 value={resetPass}
                 onChange={(e) => setResetPass(e.target.value)}
                 className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
               />
+              <button
+                type="button"
+                onClick={() => setShowResetPass((current) => !current)}
+                aria-label={showResetPass ? "Hide reset password" : "Show reset password"}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50"
+              >
+                {showResetPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
               <button
                 type="button"
                 onClick={() => onResetPassword(teacher._id, resetPass)}

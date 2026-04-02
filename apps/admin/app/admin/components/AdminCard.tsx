@@ -1,4 +1,4 @@
-import { Archive, ArrowRightLeft, BadgeCheck, Crown, Sparkles } from "lucide-react";
+import { Archive, ArrowRightLeft, Crown, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
 type AdminRecord = {
@@ -79,12 +79,12 @@ export function AdminCard({
       </div>
 
       <div className="mt-3 sm:mt-4 flex flex-col sm:block space-y-3">
-        <div className="flex items-center gap-4 border-t border-slate-50 pt-2.5 sm:pt-3">
+          <div className="flex items-center gap-4 border-t border-slate-50 pt-2.5 sm:pt-3">
           <Meta label="Reporting">
             {admin.isLeadAdmin ? "Board" : admin.managerName ?? "None"}
           </Meta>
-          <div className="hidden xs:flex h-4 w-px bg-slate-100 sm:hidden" />
-          <Meta label="Role" className="hidden xs:block">
+          <div className="hidden sm:flex h-4 w-px bg-slate-100 md:hidden" />
+          <Meta label="Role" className="hidden sm:block md:hidden">
             {admin.isLeadAdmin ? "Root" : admin.isArchived ? "Revoked" : "Admin"}
           </Meta>
         </div>
@@ -124,13 +124,6 @@ export function AdminCard({
               <Archive className="h-2.5 w-2.5 opacity-60" />
               Archive
             </button>
-          )}
-
-          {admin.isLeadAdmin && (
-            <div className="inline-flex h-7 items-center gap-1 px-1 text-[8px] font-bold uppercase tracking-[0.15em] text-slate-300">
-              <BadgeCheck className="h-2.5 w-2.5" />
-              Root
-            </div>
           )}
         </div>
       </div>

@@ -155,9 +155,15 @@ export function AdminSaveActionBar({
             }`}
           >
             {isSaving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : null}
-            {isEditingLocked ? "LOCKED" : hasValidationErrors ? `ERR: ${errorCount}` : "COMMIT BATCH"}
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>SAVING...</span>
+              </>
+            ) : (
+              <>
+                {isEditingLocked ? "LOCKED" : hasValidationErrors ? `ERR: ${errorCount}` : "COMMIT BATCH"}
+              </>
+            )}
           </button>
         </div>
       </div>

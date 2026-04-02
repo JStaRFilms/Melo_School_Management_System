@@ -133,7 +133,7 @@ function SelectField({
   options: SelectorOption[] 
 }) {
   return (
-    <label className="block">
+    <label className="block group">
       <div className="mb-1.5 flex items-center gap-2 px-1">
         {icon && <span className="text-slate-400 group-focus-within:text-indigo-500 transition-colors">{icon}</span>}
         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>

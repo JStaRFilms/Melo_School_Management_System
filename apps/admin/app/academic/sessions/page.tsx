@@ -18,21 +18,8 @@ import { AdminSurface } from "@/components/ui/AdminSurface";
 import { SessionCreationForm } from "./components/SessionCreationForm";
 import { TermCreationForm } from "./components/TermCreationForm";
 import { SessionDirectory } from "./components/SessionDirectory";
-
-type SessionRecord = {
-  _id: string;
-  name: string;
-  startDate: number;
-  endDate: number;
-  isActive: boolean;
-  createdAt: number;
-};
-
-type SubjectRecord = {
-  _id: string;
-  name: string;
-  code: string;
-};
+import { useIsMobile } from "@/hooks/useIsMobile";
+import type { SessionRecord, SubjectRecord } from "@/types";
 
 export default function SessionsPage() {
   const sessions = useQuery(
@@ -51,14 +38,7 @@ export default function SessionsPage() {
   );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
+  const isMobile = useIsMobile();
 
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
@@ -68,18 +48,18 @@ export default function SessionsPage() {
 
   // Handle auto-scroll to selected session on mobile
   useEffect(() => {
-    if (selectedSessionId && typeof window !== "undefined" && window.innerWidth < 1024) {
+    if (selectedSessionId && isMobile) {
       const scrollTimer = setTimeout(() => {
         const element = document.getElementById(`session-${selectedSessionId}`);
         if (element) {
           const yOffset = -120; // Positions the card comfortably above the fold
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 100);
       return () => clearTimeout(scrollTimer);
     }
-  }, [selectedSessionId]);
+  }, [isMobile, selectedSessionId]);
 
   const activeSession = useMemo(
     () => sessions?.find((s) => s.isActive) ?? null,
@@ -134,18 +114,6 @@ export default function SessionsPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.15);
-        }
-      `}} />
-      
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
         {/* Sidebar Bucket */}
         <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">

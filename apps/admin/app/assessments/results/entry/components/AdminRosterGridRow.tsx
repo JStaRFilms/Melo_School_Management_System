@@ -79,6 +79,12 @@ export function AdminRosterGridRow({
 
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
+  const parseScoreValue = (raw: string) => {
+    if (raw === "") return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
   return (
     <tr className="group hover:bg-slate-50/50 transition-all cursor-pointer">
       <td className="sticky-column pl-6">
@@ -115,13 +121,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca1",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca1", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca1 ? "error" : ""} ${
@@ -138,13 +138,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca2",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca2", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca2 ? "error" : ""} ${
@@ -161,13 +155,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca3",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca3", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca3 ? "error" : ""} ${
@@ -184,16 +172,10 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "examRawScore",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "examRawScore", parseScoreValue(e.target.value));
           }}
           placeholder="--"
-          className={`score-input !bg-amber-50/10 !border-amber-200 !text-amber-900 font-bold ${studentErrors.examRawScore ? "error" : ""} ${
+          className={`score-input score-input-exam ${studentErrors.examRawScore ? "error" : ""} ${
             !isEditable ? "cursor-not-allowed opacity-60" : ""
           }`}
         />
@@ -215,7 +197,6 @@ export function AdminRosterGridRow({
           {derived.gradeLetter ?? "--"}
         </span>
       </td>
-      <td className="hidden"></td>
     </tr>
   );
 }

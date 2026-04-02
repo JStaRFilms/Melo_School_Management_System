@@ -2,7 +2,30 @@
 
 import { Lock, Timer } from "lucide-react";
 import type { ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import type { AssessmentEditingPolicyDraft } from "./assessmentEditingPolicyDraft";
+
+export function getEditingWindowError(draft: AssessmentEditingPolicyDraft) {
+  if (!draft.restrictionsEnabled) {
+    return null;
+  }
+
+  if (!draft.editingStartsAt || !draft.editingEndsAt) {
+    return "Set both editing window dates.";
+  }
+
+  const start = new Date(draft.editingStartsAt);
+  const end = new Date(draft.editingEndsAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "Enter valid editing window dates.";
+  }
+
+  if (end.getTime() <= start.getTime()) {
+    return "Editing end must be after the start.";
+  }
+
+  return null;
+}
 
 interface AssessmentEditingPolicyProps {
   draft: AssessmentEditingPolicyDraft;
@@ -26,6 +49,25 @@ export function AssessmentEditingPolicy({
   onDateChange,
 }: AssessmentEditingPolicyProps) {
   const isTargetReady = Boolean(draft.sessionId && draft.termId);
+  const [editingDateError, setEditingDateError] = useState<string | null>(() =>
+    getEditingWindowError(draft)
+  );
+
+  useEffect(() => {
+    setEditingDateError(getEditingWindowError(draft));
+  }, [draft.editingStartsAt, draft.editingEndsAt, draft.restrictionsEnabled]);
+
+  const handleDateChange = (
+    field: "editingStartsAt" | "editingEndsAt",
+    value: string
+  ) => {
+    const nextDraft = {
+      ...draft,
+      [field]: value,
+    };
+    setEditingDateError(getEditingWindowError(nextDraft));
+    onDateChange(field, value);
+  };
 
   return (
     <div className="space-y-8">
@@ -71,7 +113,9 @@ export function AssessmentEditingPolicy({
               type="datetime-local"
               value={draft.editingStartsAt}
               disabled={!draft.restrictionsEnabled || !isTargetReady}
-              onChange={(event) => onDateChange("editingStartsAt", event.target.value)}
+              onChange={(event) =>
+                handleDateChange("editingStartsAt", event.target.value)
+              }
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-50 font-mono"
             />
           </div>
@@ -85,11 +129,19 @@ export function AssessmentEditingPolicy({
               type="datetime-local"
               value={draft.editingEndsAt}
               disabled={!draft.restrictionsEnabled || !isTargetReady}
-              onChange={(event) => onDateChange("editingEndsAt", event.target.value)}
+              onChange={(event) =>
+                handleDateChange("editingEndsAt", event.target.value)
+              }
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-50 font-mono"
             />
           </div>
         </div>
+
+        {editingDateError && (
+          <p className="px-1 text-[10px] font-bold uppercase tracking-[0.15em] text-rose-500">
+            {editingDateError}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Hash } from "lucide-react";
+import { Hash } from "lucide-react";
 import { useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
@@ -26,19 +26,41 @@ export function TermCreationForm({
   const [endDate, setEndDate] = useState("");
   const [activateTerm, setActivateTerm] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const parseLocalDate = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) {
+      return Number.NaN;
+    }
+    return new Date(year, month - 1, day).getTime();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedName = humanNameFinal(termName);
     if (!selectedSessionId || !normalizedName || !startDate || !endDate) return;
 
+    const startTimestamp = parseLocalDate(startDate);
+    const endTimestamp = parseLocalDate(endDate);
+    if (Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
+      setError("Enter valid start and end dates.");
+      return;
+    }
+
+    if (endTimestamp < startTimestamp) {
+      setError("End date must not be before the start date.");
+      return;
+    }
+
+    setError("");
     setIsSaving(true);
     try {
       await createTerm({
         sessionId: selectedSessionId,
         name: normalizedName,
-        startDate: new Date(startDate).getTime(),
-        endDate: new Date(endDate).getTime(),
+        startDate: startTimestamp,
+        endDate: endTimestamp,
         isActive: activateTerm,
       } as never);
       setTermName("First Term");
@@ -89,7 +111,10 @@ export function TermCreationForm({
               type="date"
               required
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setError("");
+                setStartDate(e.target.value);
+              }}
               className="w-full rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 text-xs font-medium transition-all focus:border-indigo-500 outline-none"
             />
           </div>
@@ -101,11 +126,20 @@ export function TermCreationForm({
               type="date"
               required
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setError("");
+                setEndDate(e.target.value);
+              }}
               className="w-full rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 text-xs font-medium transition-all focus:border-indigo-500 outline-none"
             />
           </div>
         </div>
+
+        {error && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-rose-500">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"

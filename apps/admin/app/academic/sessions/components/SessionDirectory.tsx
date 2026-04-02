@@ -1,16 +1,9 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Plus, CheckCircle2, History, Calendar, Trash2 } from "lucide-react";
+import { CheckCircle2, History, Calendar, Trash2 } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-
-type SessionRecord = {
-  _id: string;
-  name: string;
-  startDate: number;
-  endDate: number;
-  isActive: boolean;
-};
+import type { SessionRecord } from "@/types";
 
 type TermRecord = {
   _id: string;
@@ -119,7 +112,7 @@ export function SessionDirectory({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="flex items-center gap-2 opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 transition-all">
                     {!session.isActive && (
                       <button
                         onClick={(e) => {

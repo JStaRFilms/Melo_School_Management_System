@@ -18,12 +18,15 @@ function formatDate(timestamp: number) {
 
 function chipClasses(recordType: ArchivedRecordItem["type"]) {
   const base = "inline-flex items-center rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ring-1 ring-inset";
-  if (recordType === "class") return `${base} bg-emerald-50 text-emerald-700 ring-emerald-600/10`;
-  if (recordType === "subject") return `${base} bg-amber-50 text-amber-700 ring-amber-600/10`;
-  if (recordType === "teacher") return `${base} bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/10`;
-  if (recordType === "student") return `${base} bg-indigo-50 text-indigo-700 ring-indigo-600/10`;
-  if (recordType === "event") return `${base} bg-cyan-50 text-cyan-700 ring-cyan-600/10`;
-  return `${base} bg-slate-50 text-slate-700 ring-slate-600/10`;
+  const typeClasses: Record<ArchivedRecordItem["type"], string> = {
+    class: `${base} bg-emerald-50 text-emerald-700 ring-emerald-600/10`,
+    subject: `${base} bg-amber-50 text-amber-700 ring-amber-600/10`,
+    teacher: `${base} bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/10`,
+    student: `${base} bg-indigo-50 text-indigo-700 ring-indigo-600/10`,
+    event: `${base} bg-cyan-50 text-cyan-700 ring-cyan-600/10`,
+    session: `${base} bg-slate-50 text-slate-700 ring-slate-600/10`,
+  };
+  return typeClasses[recordType] || `${base} bg-slate-50 text-slate-700 ring-slate-600/10`;
 }
 
 export function ArchivedRecordsList({

@@ -22,30 +22,45 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
   const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const resetForm = () => {
     setName("");
     setEmail("");
     setTemporaryPassword("Teacher123!Pass");
     setResult(null);
+    setSubmitError("");
+    setCopied(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !temporaryPassword) return;
-    
-    const res = await onProvision(name, email, temporaryPassword);
-    if (res) {
-      setResult(res);
+
+    setSubmitError("");
+    try {
+      const res = await onProvision(name, email, temporaryPassword);
+      if (res) {
+        setResult(res);
+        setSubmitError("");
+      }
+    } catch (error) {
+      console.error("TeacherCreationForm:onProvision error", error);
+      setSubmitError("We could not create that teacher account right now.");
     }
   };
 
   const copyToClipboard = () => {
     if (!result) return;
     const text = `Email: ${result.email}\nTemp Password: ${result.temporaryPassword}`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((error) => {
+        console.error("TeacherCreationForm:copyToClipboard error", error);
+      });
   };
 
   if (result) {
@@ -133,6 +148,10 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
           <Send className="h-3.5 w-3.5" />
           {isSubmitting ? "Creating..." : "Create Teacher Account"}
         </button>
+
+        {submitError && (
+          <p className="text-[11px] font-bold text-rose-500">{submitError}</p>
+        )}
       </form>
     </AdminSurface>
   );

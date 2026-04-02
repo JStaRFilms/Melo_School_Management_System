@@ -37,6 +37,22 @@ export function ArchivedRecordsFilters({
   onDateFromChange,
   onDateToChange,
 }: ArchivedRecordsFiltersProps) {
+  const handleDateFromChange = (value: string) => {
+    if (value && dateTo && value > dateTo) {
+      onDateFromChange(dateTo);
+      return;
+    }
+    onDateFromChange(value);
+  };
+
+  const handleDateToChange = (value: string) => {
+    if (value && dateFrom && value < dateFrom) {
+      onDateToChange(dateFrom);
+      return;
+    }
+    onDateToChange(value);
+  };
+
   return (
     <div className="space-y-5">
       {/* Search Input */}
@@ -85,7 +101,8 @@ export function ArchivedRecordsFilters({
             <input
               type="date"
               value={dateFrom}
-              onChange={(event) => onDateFromChange(event.target.value)}
+              max={dateTo || undefined}
+              onChange={(event) => handleDateFromChange(event.target.value)}
               className="w-full h-10 px-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
             />
           </div>
@@ -94,7 +111,8 @@ export function ArchivedRecordsFilters({
             <input
               type="date"
               value={dateTo}
-              onChange={(event) => onDateToChange(event.target.value)}
+              min={dateFrom || undefined}
+              onChange={(event) => handleDateToChange(event.target.value)}
               className="w-full h-10 px-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
             />
           </div>

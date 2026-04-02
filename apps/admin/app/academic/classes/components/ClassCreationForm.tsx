@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Layers3, ChevronDown, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";

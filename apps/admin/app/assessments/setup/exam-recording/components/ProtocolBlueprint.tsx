@@ -3,13 +3,24 @@
 import { LayoutGrid, Target, Calculator, CheckCircle2 } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
+const SAMPLE_DATA = [
+  { label: "CA 1", score: 18, weight: 20 },
+  { label: "CA 2", score: 15, weight: 20 },
+  { label: "CA 3", score: 12, weight: 20 },
+  { label: "Exam", score: 32, weight: 40, highlight: true },
+];
+
+function getGradeFromScore(score: number) {
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+}
+
 export function ProtocolBlueprint() {
-  const sampleData = [
-    { label: "CA 1", score: "18", weight: "20" },
-    { label: "CA 2", score: "15", weight: "20" },
-    { label: "CA 3", score: "12", weight: "20" },
-    { label: "Exam", score: "32", weight: "40", highlight: true },
-  ];
+  const aggregate = SAMPLE_DATA.reduce((sum, item) => sum + item.score, 0);
+  const grade = getGradeFromScore(aggregate);
 
   return (
     <div className="space-y-4">
@@ -45,7 +56,7 @@ export function ProtocolBlueprint() {
         <div className="p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 md:gap-12">
             {/* The Row Mockup */}
             <div className="flex-1 w-full grid grid-cols-4 gap-4">
-                {sampleData.map((col) => (
+                {SAMPLE_DATA.map((col) => (
                     <div key={col.label} className="space-y-2">
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{col.label}</div>
                         <div className={`h-12 rounded-xl border flex items-center justify-center text-sm font-black transition-all ${
@@ -64,10 +75,10 @@ export function ProtocolBlueprint() {
             <div className="shrink-0 flex items-center gap-6 bg-slate-50/50 p-4 rounded-3xl border border-slate-100">
                 <div className="space-y-1">
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Aggregate</p>
-                    <p className="text-4xl font-black text-slate-900 tracking-tighter">77.00</p>
+                    <p className="text-4xl font-black text-slate-900 tracking-tighter">{aggregate.toFixed(2)}</p>
                 </div>
                 <div className="h-14 w-14 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center shadow-inner">
-                    <span className="text-xl font-black text-slate-900">A</span>
+                    <span className="text-xl font-black text-slate-900">{grade}</span>
                 </div>
             </div>
         </div>

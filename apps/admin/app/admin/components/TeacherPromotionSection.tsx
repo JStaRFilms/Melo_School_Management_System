@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { ArrowRightLeft, Crown, Loader2, Sparkles } from "lucide-react";
+import { ArrowRightLeft, Loader2, Sparkles } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 

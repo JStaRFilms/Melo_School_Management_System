@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { cn } from "@/utils";
 
 interface AdminHeaderProps {
   title: string;
@@ -16,7 +17,7 @@ export function AdminHeader({
   className = "",
 }: AdminHeaderProps) {
   return (
-    <header className={`flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between ${className}`}>
+    <header className={cn("flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div className="space-y-1">
         {label && (
           <p className="font-display text-xs font-bold uppercase tracking-[0.25em] text-slate-400/80">

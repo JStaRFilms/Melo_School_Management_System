@@ -23,7 +23,7 @@ export function SubjectCreationForm({ onCreate, isSubmitting }: SubjectCreationF
       setName("");
       setCode("");
     } catch (err) {
-      // Error is handled by parent notice
+      console.error("SubjectCreationForm:onCreate error", err);
     }
   };
 

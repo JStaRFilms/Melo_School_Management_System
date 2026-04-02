@@ -29,9 +29,13 @@ export function ClassCard({
   onSelect,
   onArchive,
 }: ClassCardProps) {
-  const initials = classDoc.gradeName
-    ? classDoc.gradeName.split(" ").map(p => p[0]).join("").toUpperCase()
-    : classDoc.name.split(" ").map(p => p[0]).join("").toUpperCase();
+  const source = classDoc.gradeName || classDoc.name;
+  const initials = source
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase() || source.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <AdminSurface
@@ -103,10 +107,13 @@ export function ClassCard({
             <span className="hidden sm:inline">Archive</span>
           </button>
           
-          <div className={`p-1.5 rounded-md transition-colors ${
+          <div
+            aria-hidden="true"
+            title="Edit"
+            className={`p-1.5 rounded-md transition-colors ${
             isSelected ? "text-slate-950 bg-slate-50" : "text-slate-300 group-hover:text-slate-500"
           }`}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
           </div>
         </div>
       </div>

@@ -50,6 +50,8 @@ Scrollbars must be non-intrusive. They should be transparent by default and only
 `}} />
 ```
 
+For maintainability, prefer placing the same rules in a shared global stylesheet or a CSS module and apply them through the `.custom-scrollbar` class. Inline style injection is acceptable for quick prototypes, but component-scoped or global CSS is the better default for production pages.
+
 ---
 
 ## 🤖 Builder Prompt: Implement Independent Scroll
@@ -65,4 +67,4 @@ Scrollbars must be non-intrusive. They should be transparent by default and only
 >    - **Main Bucket:** `flex-1 lg:h-full lg:overflow-y-auto`.
 > 3. Inside the **Main Bucket**, wrap content in a `max-w-[1200px] mx-auto` div to maintain grid density.
 > 4. Ensure mobile responsiveness: on `< LG` widths, the buckets should stack naturally and the page should regain normal vertical scrolling.
-> 5. **Ghost Scrollbars:** Inject a `<style>` block to make the `custom-scrollbar` class `5px` wide, transparent by default, and visible only as `rgba(15, 23, 42, 0.15)` on hover.
+> 5. **Ghost Scrollbars:** Prefer a CSS module or shared stylesheet for the `custom-scrollbar` rules so the class stays reusable and easy to audit; use inline style injection only when you need a one-off prototype or temporary override.

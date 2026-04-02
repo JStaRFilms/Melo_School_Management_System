@@ -1,9 +1,16 @@
-import React, { ReactNode } from "react";
+import React from "react";
+
+type LucideIconProps = {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+};
 
 interface StatProps {
+  id?: string;
   label: string;
   value: string | number;
-  icon?: ReactNode;
+  icon?: React.ReactElement<LucideIconProps>;
   description?: string;
   className?: string;
 }
@@ -17,13 +24,11 @@ export function Stat({ label, value, icon, description, className = "" }: StatPr
       <div className="flex items-center gap-2">
         {icon && (
           <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 border border-slate-100 sm:h-6 sm:w-6 sm:rounded-xl">
-            {React.isValidElement(icon)
-              ? React.cloneElement(icon as React.ReactElement<any>, {
-                  size: 14,
-                  strokeWidth: 2.5,
-                  className: "sm:w-4 sm:h-4"
-                })
-              : icon}
+            {React.cloneElement(icon, {
+              size: 14,
+              strokeWidth: 2.5,
+              className: "sm:w-4 sm:h-4",
+            })}
           </div>
         )}
         <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap sm:text-sm sm:tracking-[0.2em] opacity-80 mt-0.5">
@@ -63,9 +68,9 @@ export function StatGroup({ stats, className = "", variant = "scroll" }: StatGro
       sm:px-0 sm:py-0 
       sm:gap-3.5 ${className}
     `}>
-      {stats.map((stat, idx) => (
+      {stats.map((stat) => (
         <div 
-          key={idx} 
+          key={stat.id ?? stat.label} 
           className="min-w-[125px] shrink-0 snap-start sm:min-w-[160px]"
         >
           <Stat {...stat} />

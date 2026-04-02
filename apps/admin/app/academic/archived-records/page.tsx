@@ -85,7 +85,7 @@ export default function ArchivedRecordsPage() {
         const element = document.getElementById("record-" + selectedRecord.id);
         if (element) {
           const yOffset = -120;
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 150);
@@ -139,11 +139,19 @@ export default function ArchivedRecordsPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: transparent; }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.1); }
-      `}} />
+      <style jsx>{`
+        :global(.custom-scrollbar::-webkit-scrollbar) {
+          width: 4px;
+        }
+
+        :global(.custom-scrollbar::-webkit-scrollbar-thumb) {
+          background: transparent;
+        }
+
+        :global(.custom-scrollbar:hover::-webkit-scrollbar-thumb) {
+          background: rgba(15, 23, 42, 0.1);
+        }
+      `}</style>
 
       {/* Mobile Audit Sheet */}
       <AdminSheet
@@ -198,7 +206,7 @@ export default function ArchivedRecordsPage() {
                       <Search size={10} />
                       Directory Lookup
                     </div>
-                    <h3 className="text-sm font-bold text-slate-900 tracking-tight text-xs lg:text-sm">Search Archive</h3>
+                    <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Search Archive</h3>
                   </div>
 
                   <ArchivedRecordsFilters

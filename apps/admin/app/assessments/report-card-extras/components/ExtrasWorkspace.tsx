@@ -258,7 +258,7 @@ function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField;
           onChange={(event) => onChange({ textValue: event.target.value })} 
           disabled={disabled} 
           className={`${baseClassName} min-h-[60px] resize-none font-medium leading-relaxed`}
-          placeholder={field.helperText || "Enter record..."}
+          placeholder={field.helperText ? "" : "Enter record..."}
         />
         {field.helperText && <p className="px-1 text-[9px] font-medium text-slate-400 italic">{field.helperText}</p>}
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Pencil, MapPin, Clock, Save, Archive } from "lucide-react";
+import { X, MapPin, Clock, Save, Archive } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
 type EventRecord = {
@@ -23,6 +23,29 @@ function toDateTimeInputValue(timestamp: number) {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toDateInputValue(timestamp: number) {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function toDateTimeFromDate(value: string, isEnd = false) {
+  if (!value) return "";
+  return value.includes("T") ? value : `${value}T${isEnd ? "23:59" : "00:00"}`;
+}
+
+function parseComparableTimestamp(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day).getTime();
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 interface EventEditFormProps {
@@ -53,24 +76,62 @@ export function EventEditForm({
 }: EventEditFormProps) {
   const [title, setTitle] = useState(event.title);
   const [location, setLocation] = useState(event.location ?? "");
-  const [startDate, setStartDate] = useState(toDateTimeInputValue(event.startDate));
-  const [endDate, setEndDate] = useState(toDateTimeInputValue(event.endDate));
+  const [startDate, setStartDate] = useState(
+    event.isAllDay ? toDateInputValue(event.startDate) : toDateTimeInputValue(event.startDate)
+  );
+  const [endDate, setEndDate] = useState(
+    event.isAllDay ? toDateInputValue(event.endDate) : toDateTimeInputValue(event.endDate)
+  );
   const [description, setDescription] = useState(event.description ?? "");
   const [isAllDay, setIsAllDay] = useState(event.isAllDay);
+  const [formError, setFormError] = useState("");
+  const [previousDateTimeRange, setPreviousDateTimeRange] = useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
 
   useEffect(() => {
     setTitle(event.title);
     setLocation(event.location ?? "");
-    setStartDate(toDateTimeInputValue(event.startDate));
-    setEndDate(toDateTimeInputValue(event.endDate));
+    setStartDate(event.isAllDay ? toDateInputValue(event.startDate) : toDateTimeInputValue(event.startDate));
+    setEndDate(event.isAllDay ? toDateInputValue(event.endDate) : toDateTimeInputValue(event.endDate));
     setDescription(event.description ?? "");
     setIsAllDay(event.isAllDay);
+    setFormError("");
+    setPreviousDateTimeRange(null);
   }, [event]);
+
+  const handleAllDayToggle = (checked: boolean) => {
+    setFormError("");
+
+    if (checked) {
+      setPreviousDateTimeRange({ startDate, endDate });
+      setStartDate(startDate.includes("T") ? startDate.slice(0, 10) : startDate);
+      setEndDate(endDate.includes("T") ? endDate.slice(0, 10) : endDate);
+    } else {
+      setStartDate(previousDateTimeRange?.startDate ?? toDateTimeFromDate(startDate, false));
+      setEndDate(previousDateTimeRange?.endDate ?? toDateTimeFromDate(endDate, true));
+    }
+
+    setIsAllDay(checked);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !startDate || !endDate) return;
 
+    const startTimestamp = parseComparableTimestamp(startDate);
+    const endTimestamp = parseComparableTimestamp(endDate);
+    if (startTimestamp === null || endTimestamp === null) {
+      setFormError("Enter a valid event date.");
+      return;
+    }
+    if (endTimestamp < startTimestamp) {
+      setFormError("End date must be on or after the start date.");
+      return;
+    }
+
+    setFormError("");
     await onUpdate(event._id, {
       title: title.trim(),
       location: location.trim() || null,
@@ -137,9 +198,12 @@ export function EventEditForm({
               Starts
             </label>
             <input
-              type="datetime-local"
+              type={isAllDay ? "date" : "datetime-local"}
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setFormError("");
+                setStartDate(e.target.value);
+              }}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none focus:border-slate-400"
               required
               disabled={isSaving}
@@ -150,9 +214,12 @@ export function EventEditForm({
               Ends
             </label>
             <input
-              type="datetime-local"
+              type={isAllDay ? "date" : "datetime-local"}
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setFormError("");
+                setEndDate(e.target.value);
+              }}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none focus:border-slate-400"
               required
               disabled={isSaving}
@@ -178,7 +245,7 @@ export function EventEditForm({
             <input
               type="checkbox"
               checked={isAllDay}
-              onChange={(e) => setIsAllDay(e.target.checked)}
+              onChange={(e) => handleAllDayToggle(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 bg-white text-slate-950 focus:ring-slate-950/10"
               disabled={isSaving}
             />
@@ -188,6 +255,10 @@ export function EventEditForm({
             </div>
           </label>
         </div>
+
+        {formError && (
+          <p className="text-[11px] font-bold text-rose-500">{formError}</p>
+        )}
 
         <div className="flex flex-col gap-3 pt-2">
           <button

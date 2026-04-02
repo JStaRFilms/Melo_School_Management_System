@@ -3,7 +3,15 @@
 import { ShieldCheck, Target, Calculator, Fingerprint } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
-export function AuditPolicy() {
+interface AuditPolicyProps {
+  passGate?: string | number;
+  precisionLabel?: string;
+}
+
+export function AuditPolicy({
+  passGate = "40.0",
+  precisionLabel = "2 DP",
+}: AuditPolicyProps) {
   return (
     <div className="space-y-4 pt-4 border-t border-slate-200/60">
       <div className="flex items-center justify-between px-1">
@@ -22,7 +30,7 @@ export function AuditPolicy() {
 
       <AdminSurface intensity="low" className="p-6 md:p-8 bg-[#0F172A] !border-none shadow-2xl shadow-slate-200/50 rounded-2xl relative overflow-hidden">
         {/* Decorative Grid Mesh */}
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_0)] [background-size:16px_16px]" />
         
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div className="space-y-4">
@@ -48,7 +56,7 @@ export function AuditPolicy() {
                 <Target size={10} />
                 Pass Gate
               </div>
-              <p className="text-2xl font-black text-white tracking-tighter font-mono">40.0</p>
+              <p className="text-2xl font-black text-white tracking-tighter font-mono">{passGate}</p>
             </div>
 
             <div className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm space-y-1 w-full lg:w-40 font-mono">
@@ -56,7 +64,7 @@ export function AuditPolicy() {
                 <Calculator size={10} />
                 Precision
               </div>
-              <p className="text-2xl font-black text-white tracking-tighter">2 DP</p>
+              <p className="text-2xl font-black text-white tracking-tighter">{precisionLabel}</p>
             </div>
           </div>
         </div>

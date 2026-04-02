@@ -4,13 +4,7 @@ import { useEffect, useState } from "react";
 import { Save, Archive, X, Info } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";
-
-type SubjectRecord = {
-  _id: string;
-  name: string;
-  code: string;
-  createdAt: number;
-};
+import type { SubjectRecord } from "@/types";
 
 interface SubjectEditFormProps {
   subject: SubjectRecord;
@@ -61,8 +55,9 @@ export function SubjectEditForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        <FormField label="Subject Name">
+        <FormField label="Subject Name" id="subject-name">
           <input
+            id="subject-name"
             type="text"
             required
             value={editName}
@@ -126,10 +121,18 @@ export function SubjectEditForm({
   );
 }
 
-function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+function FormField({
+  label,
+  id,
+  children,
+}: {
+  label: string;
+  id?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+      <label htmlFor={id} className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
         {label}
       </label>
       {children}

@@ -16,7 +16,7 @@ import { ExamModeSelector } from "./components/ExamModeSelector";
 import { WeightDistribution } from "./components/WeightDistribution";
 import { ProtocolBlueprint } from "./components/ProtocolBlueprint";
 import { SettingsActionBar } from "./components/SettingsActionBar";
-import { AssessmentEditingPolicy } from "./components/AssessmentEditingPolicyCard";
+import { AssessmentEditingPolicy, getEditingWindowError } from "./components/AssessmentEditingPolicyCard";
 import { ProtocolTimeline } from "./components/ProtocolTimeline";
 import {
   buildAssessmentEditingPolicyMutationInput,
@@ -398,14 +398,13 @@ function ExamSettingsContent({
   onSave,
   onDiscard,
 }: ExamSettingsContentProps) {
+  const policyDateError = useMemo(
+    () => getEditingWindowError(policyDraft),
+    [policyDraft.editingStartsAt, policyDraft.editingEndsAt, policyDraft.restrictionsEnabled]
+  );
+
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: transparent; }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.1); }
-      `}} />
-
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
         {/* Sidebar Bucket: Configuration & Protocol Switches */}
         <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-l border-slate-200 bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0 flex flex-col">
@@ -444,6 +443,8 @@ function ExamSettingsContent({
 
           <SettingsActionBar
             hasUnsavedChanges={hasUnsavedChanges}
+            hasValidationErrors={Boolean(policyDateError)}
+            validationMessage={policyDateError}
             onSave={onSave}
             onDiscard={onDiscard}
           />

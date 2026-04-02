@@ -1,7 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Timer, Clock, Lock, Unlock } from "lucide-react";
+
+function formatDate(dateStr: string | null) {
+  if (!dateStr) return "UNDEFINED";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "INVALID";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
 
 interface ProtocolTimelineProps {
   startsAt: string | null;
@@ -10,10 +23,33 @@ interface ProtocolTimelineProps {
 }
 
 export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimelineProps) {
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const progressPercent = useMemo(() => {
+    if (!isEnabled) return 0;
+
+    const start = startsAt ? new Date(startsAt) : null;
+    const end = endsAt ? new Date(endsAt) : null;
+    const validStart = start && !isNaN(start.getTime()) ? start.getTime() : null;
+    const validEnd = end && !isNaN(end.getTime()) ? end.getTime() : null;
+
+    if (validStart === null || validEnd === null || validEnd <= validStart) {
+      return 0;
+    }
+
+    const progress = ((nowTick - validStart) / (validEnd - validStart)) * 100;
+    return Math.min(100, Math.max(0, progress));
+  }, [endsAt, isEnabled, nowTick, startsAt]);
+
   const status = useMemo(() => {
     if (!isEnabled) return { label: "Restrictions Disabled", color: "text-slate-400", bg: "bg-slate-100", icon: <Unlock size={14} /> };
     
-    const now = new Date();
+    const now = new Date(nowTick);
     const start = startsAt ? new Date(startsAt) : null;
     const end = endsAt ? new Date(endsAt) : null;
 
@@ -27,20 +63,7 @@ export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimeli
     if (active) return { label: "Window Active", color: "text-emerald-500", bg: "bg-emerald-50/50", icon: <Clock size={14} /> };
     if (now < validStart) return { label: "Opening Soon", color: "text-blue-500", bg: "bg-blue-50/50", icon: <Timer size={14} /> };
     return { label: "Terminal Locked", color: "text-rose-500", bg: "bg-rose-50/50", icon: <Lock size={14} /> };
-  }, [startsAt, endsAt, isEnabled]);
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "UNDEFINED";
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return "INVALID";
-    return new Intl.DateTimeFormat('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false 
-    }).format(date);
-  };
+  }, [startsAt, endsAt, isEnabled, nowTick]);
 
   return (
     <div className="space-y-4">
@@ -66,7 +89,10 @@ export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimeli
           </div>
           <div className="relative h-2 w-full bg-slate-100 rounded-full overflow-hidden">
              {/* Progress Bar Mockup */}
-            <div className={`absolute top-0 bottom-0 left-0 transition-all duration-1000 ${isEnabled ? "bg-blue-600" : "bg-slate-300"}`} style={{ width: isEnabled ? '65%' : '0%' }} />
+            <div
+              className={`absolute top-0 bottom-0 left-0 transition-all duration-1000 ${isEnabled ? "bg-blue-600" : "bg-slate-300"}`}
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
           <div className="flex justify-between font-mono text-[11px] font-black text-slate-900">
             <span>{startsAt ? formatDate(startsAt) : "IMMEDIATE"}</span>

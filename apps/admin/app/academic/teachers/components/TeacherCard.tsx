@@ -1,14 +1,8 @@
 "use client";
 
-import { Mail, Calendar, GraduationCap, Archive } from "lucide-react";
+import { Archive } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-
-type TeacherRecord = {
-  _id: string;
-  name: string;
-  email: string;
-  createdAt: number;
-};
+import type { TeacherRecord } from "@/types";
 
 interface TeacherCardProps {
   teacher: TeacherRecord;
@@ -27,8 +21,19 @@ export function TeacherCard({
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
+    .map((part: string) => part.charAt(0).toUpperCase())
     .join("");
+  const formattedDate = new Date(teacher.createdAt).toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+  });
+  const status = teacher.status ?? "active";
+  const statusStyles: Record<NonNullable<TeacherRecord["status"]> | "active", string> = {
+    active: "bg-emerald-50 border-emerald-100 text-emerald-600",
+    inactive: "bg-slate-50 border-slate-100 text-slate-400",
+    onLeave: "bg-amber-50 border-amber-100 text-amber-600",
+  };
+  const statusLabel = status === "onLeave" ? "On Leave" : status === "inactive" ? "Inactive" : "Active";
 
   return (
     <AdminSurface
@@ -57,7 +62,7 @@ export function TeacherCard({
               </p>
               {/* Mobile-only date */}
               <p className="text-[10px] font-bold text-slate-300 sm:hidden mt-0.5">
-                Added {new Date(teacher.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                Added {formattedDate}
               </p>
             </div>
           </div>
@@ -69,7 +74,7 @@ export function TeacherCard({
             Added on
           </p>
           <p className="font-display text-[11px] font-bold text-slate-500">
-            {new Date(teacher.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+            {formattedDate}
           </p>
         </div>
       </div>
@@ -80,8 +85,8 @@ export function TeacherCard({
             Designation
           </p>
           <div className="mt-0.5 flex flex-wrap gap-1">
-            <span className="inline-flex h-5 items-center px-1.5 rounded-md bg-emerald-50 border border-emerald-100 text-[9px] font-bold uppercase tracking-widest text-emerald-600">
-              Active
+            <span className={`inline-flex h-5 items-center px-1.5 rounded-md border text-[9px] font-bold uppercase tracking-widest ${statusStyles[status]}`}>
+              {statusLabel}
             </span>
           </div>
         </div>

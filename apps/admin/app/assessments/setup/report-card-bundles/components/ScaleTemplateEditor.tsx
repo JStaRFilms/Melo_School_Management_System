@@ -100,7 +100,7 @@ export function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProp
                   />
                 </div>
 
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                   <button
                     className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20 transition-colors"
                     disabled={index === 0}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, CalendarDays } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
@@ -19,18 +19,40 @@ export function SessionCreationForm({ onSuccess, onError }: SessionCreationFormP
   const [endDate, setEndDate] = useState("");
   const [activateSession, setActivateSession] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const parseLocalDate = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) {
+      return Number.NaN;
+    }
+    return new Date(year, month - 1, day).getTime();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedName = humanNameFinal(sessionName);
     if (!normalizedName || !startDate || !endDate) return;
 
+    const startTimestamp = parseLocalDate(startDate);
+    const endTimestamp = parseLocalDate(endDate);
+    if (Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
+      setError("Enter valid start and end dates.");
+      return;
+    }
+
+    if (endTimestamp < startTimestamp) {
+      setError("End date must not be before the start date.");
+      return;
+    }
+
+    setError("");
     setIsSaving(true);
     try {
       await createSession({
         name: normalizedName,
-        startDate: new Date(startDate).getTime(),
-        endDate: new Date(endDate).getTime(),
+        startDate: startTimestamp,
+        endDate: endTimestamp,
         isActive: activateSession,
       } as never);
       setSessionName("");
@@ -81,7 +103,10 @@ export function SessionCreationForm({ onSuccess, onError }: SessionCreationFormP
               type="date"
               required
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setError("");
+                setStartDate(e.target.value);
+              }}
               className="w-full rounded-xl border border-slate-200/60 bg-slate-50/50 px-4 py-2.5 text-xs font-medium transition-all focus:border-indigo-500 focus:bg-white outline-none"
             />
           </div>
@@ -93,11 +118,20 @@ export function SessionCreationForm({ onSuccess, onError }: SessionCreationFormP
               type="date"
               required
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setError("");
+                setEndDate(e.target.value);
+              }}
               className="w-full rounded-xl border border-slate-200/60 bg-slate-50/50 px-4 py-2.5 text-xs font-medium transition-all focus:border-indigo-500 focus:bg-white outline-none"
             />
           </div>
         </div>
+
+        {error && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-rose-500">
+            {error}
+          </p>
+        )}
 
         <label className="flex items-center gap-2 group cursor-pointer">
           <div className="relative flex items-center justify-center w-4 h-4">
@@ -107,7 +141,6 @@ export function SessionCreationForm({ onSuccess, onError }: SessionCreationFormP
               onChange={(e) => setActivateSession(e.target.checked)}
               className="peer appearance-none w-4 h-4 border border-slate-300 rounded transition-all checked:bg-indigo-600 checked:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20"
             />
-            <Plus className="absolute w-3 h-3 text-white scale-0 transition-transform peer-checked:scale-100 pointer-events-none" />
           </div>
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
             Set as Active

@@ -1,15 +1,17 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useEffect } from "react";
+import { useDeferredValue, useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CalendarRange, Sparkles, Search, PlusCircle, X } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EventCard } from "./components/EventCard";
 import { EventCreationForm } from "./components/EventCreationForm";
 import { EventEditForm } from "./components/EventEditForm";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 type EventRecord = {
   _id: string;
@@ -22,8 +24,23 @@ type EventRecord = {
   createdAt: number;
 };
 
-function toTimestamp(value: string) {
-  const timestamp = new Date(value).getTime();
+function toTimestamp(value: string, isEnd = false, isAllDay = false) {
+  const normalized = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const [year, month, day] = normalized.split("-").map(Number);
+    const timestamp = new Date(
+      year,
+      month - 1,
+      day,
+      isAllDay && isEnd ? 23 : 0,
+      isAllDay && isEnd ? 59 : 0,
+      0,
+      0
+    ).getTime();
+    return timestamp;
+  }
+
+  const timestamp = new Date(normalized).getTime();
   if (Number.isNaN(timestamp)) {
     throw new Error("Enter a valid event date and time");
   }
@@ -41,21 +58,16 @@ export default function EventsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [busyState, setBusyState] = useState<"create" | "update" | "archive" | null>(null);
-  
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     title: string;
     message: string;
   } | null>(null);
+  const archiveResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<EventRecord | null>(null);
 
   const deferredSearch = useDeferredValue(search);
   
@@ -63,28 +75,20 @@ export default function EventsPage() {
     events?.find((e) => e._id === selectedEventId) ?? null,
   [events, selectedEventId]);
 
-  const [activeEvent, setActiveEvent] = useState<EventRecord | null>(null);
-
-  useEffect(() => {
-    if (selectedEvent) {
-      setActiveEvent(selectedEvent);
-    }
-  }, [selectedEvent]);
-
   // Handle auto-scroll to selected card on mobile
   useEffect(() => {
-    if (selectedEventId && typeof window !== "undefined" && window.innerWidth < 1024) {
+    if (selectedEventId && isMobile) {
       const scrollTimer = setTimeout(() => {
         const element = document.getElementById(`event-${selectedEventId}`);
         if (element) {
           const yOffset = -120; // Positions the card comfortably above the sheet
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 100);
       return () => clearTimeout(scrollTimer);
     }
-  }, [selectedEventId]);
+  }, [isMobile, selectedEventId]);
 
   const filteredEvents = useMemo(() => {
     if (!events) return [];
@@ -126,8 +130,8 @@ export default function EventsPage() {
     try {
       await createEvent({
         ...data,
-        startDate: toTimestamp(data.startDate),
-        endDate: toTimestamp(data.endDate),
+        startDate: toTimestamp(data.startDate, false, data.isAllDay),
+        endDate: toTimestamp(data.endDate, true, data.isAllDay),
       } as never);
       setNotice({ tone: "success", title: "Event Created", message: `${data.title} added to calendar.` });
     } catch (err) {
@@ -155,8 +159,8 @@ export default function EventsPage() {
       await updateEvent({
         eventId: id,
         ...data,
-        startDate: toTimestamp(data.startDate),
-        endDate: toTimestamp(data.endDate),
+        startDate: toTimestamp(data.startDate, false, data.isAllDay),
+        endDate: toTimestamp(data.endDate, true, data.isAllDay),
       } as never);
       setNotice({ tone: "success", title: "Record Updated", message: "Event changes saved successfully." });
     } catch (err) {
@@ -173,7 +177,14 @@ export default function EventsPage() {
   const handleArchive = async (id: string) => {
     const event = events?.find(e => e._id === id);
     if (!event) return;
-    if (!window.confirm(`Archive ${event.title}? It will be moved to Archive Audit.`)) return;
+
+    const confirmed = await new Promise<boolean>((resolve) => {
+      archiveResolverRef.current = resolve;
+      setArchiveTarget(event);
+    });
+    archiveResolverRef.current = null;
+    setArchiveTarget(null);
+    if (!confirmed) return;
 
     setBusyState("archive");
     setNotice(null);
@@ -209,7 +220,17 @@ export default function EventsPage() {
   return (
     <div className="relative min-h-screen overflow-x-hidden">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
-      
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        title={archiveTarget ? `Archive ${archiveTarget.title}?` : "Archive event?"}
+        description="It will be removed from the live calendar and kept in the archive audit."
+        confirmLabel="Archive"
+        cancelLabel="Keep"
+        onConfirm={() => archiveResolverRef.current?.(true)}
+        onCancel={() => archiveResolverRef.current?.(false)}
+      />
+
       {/* Mobile Editor Sheet */}
       <AdminSheet
         isOpen={Boolean(selectedEventId) && isMobile}
@@ -217,9 +238,9 @@ export default function EventsPage() {
         title="Edit Event"
         description="Update schedule record."
       >
-        {activeEvent && (
+        {selectedEvent && (
           <EventEditForm
-            event={activeEvent}
+            event={selectedEvent}
             onUpdate={handleUpdate}
             onArchive={handleArchive}
             onClose={() => setSelectedEventId(null)}

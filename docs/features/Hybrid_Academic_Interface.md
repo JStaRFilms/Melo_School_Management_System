@@ -37,14 +37,16 @@ Add a unique ID to each card (e.g., `id={"item-" + item._id}`) and trigger a smo
 ```tsx
 useEffect(() => {
   if (selectedId && window.innerWidth < 1024) {
-    setTimeout(() => {
+    const timerId = window.setTimeout(() => {
       const element = document.getElementById(`item-${selectedId}`);
       if (element) {
         const yOffset = -120; // Positions the card comfortably above the sheet
-        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
         window.scrollTo({ top: y, behavior: "smooth" });
       }
     }, 100);
+
+    return () => window.clearTimeout(timerId);
   }
 }, [selectedId]);
 ```

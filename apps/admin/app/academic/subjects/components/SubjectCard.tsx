@@ -2,13 +2,7 @@
 
 import { BookOpenText, Archive } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-
-type SubjectRecord = {
-  _id: string;
-  name: string;
-  code: string;
-  createdAt: number;
-};
+import type { SubjectRecord } from "@/types";
 
 interface SubjectCardProps {
   subject: SubjectRecord;
@@ -27,7 +21,7 @@ export function SubjectCard({
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
+    .map((part: string) => part.charAt(0).toUpperCase())
     .join("");
 
   return (
@@ -76,6 +70,7 @@ export function SubjectCard({
             Status
           </p>
           <div className="mt-0.5 flex flex-wrap gap-1">
+            {/* Archived subjects are filtered out upstream by listSubjects(), so this view only renders active records. */}
             <span className="inline-flex h-5 items-center px-1.5 rounded-md bg-emerald-50 border border-emerald-100 text-[9px] font-bold uppercase tracking-widest text-emerald-600">
               Active
             </span>

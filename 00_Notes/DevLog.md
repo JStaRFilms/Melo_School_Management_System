@@ -8,7 +8,13 @@
 - Language:
 - Framework:
 
+### How to Run
+
+Run the admin dev server:
+
+```bash
 pnpm --filter @school/admin dev
+```
 
 ## Completed Notes
 
@@ -52,13 +58,13 @@ pnpm --filter @school/admin dev
 
   We need to map this out properly so the UX stays sane on both the admin and teacher sides, and anywhere else it touches.
 
-- [x] School admins should be able to create other sub admins likewise the platform super admin can create school admins. So there's a first school admin, right? That first admin is the one who can create other school admins and also archive them. And if that person leaves the school, they should be able to pass their supremeness to another admin to lead the others. All admins can create sub-admins, but only the supreme admin in that school can archive or "delete" other admins.
+- [x] School admins should be able to create other sub admins likewise the platform super-admin can create school admins. So there's a first school super-admin, right? That first admin is the one who can create other school admins and also archive them. And if that person leaves the school, they should be able to pass their supremeness to another admin to lead the others. All admins can create sub-admins, but only the supreme admin in that school can archive or "delete" other admins.
 
-- [x] Some schools use an aggregation system where they merge certain subjects under one umbrella subject. A school might say, “For classes A, B, C, D, these subjects are grouped to form one subject,” say, Population Studies, which could include Home Economics, Agric, and others. The children still write separate exams for each component subject. Sometimes they sit the exams on the same day and split the marks 20/20; sometimes each full exam stays at 40 and Home Economics stays at 40, then you combine everything for the final score. We need the system to handle not just two subjects but any number merged together, while still letting the Kusab subjects stand alone in other classes. It’s class-activated: the admin decides which classes get this treatment.
+- [x] Some schools use an aggregation system where they merge certain subjects under one umbrella subject. A school might say, “For classes A, B, C, D, these subjects are grouped to form one subject,” say, Population Studies, which could include Home Economics, Agric, and others. The children still write separate exams for each component subject. Sometimes they sit the exams on the same day and split the marks 20/20; sometimes each full exam stays at 40 and Home Economics stays at 40, then you combine everything for the final score. We need the system to handle not just two subjects but any number merged, while still letting the Kusab subjects stand alone in other classes. It’s class-activated: the admin decides which classes get this treatment.
 
 ## Pending Notes
 
-- [-] We need to work on debloadting all the pages and working on UI generally
+- [x] We need to work on debloating all the pages and working on UI generally
 
 - [ ] We need to add photo editor
 

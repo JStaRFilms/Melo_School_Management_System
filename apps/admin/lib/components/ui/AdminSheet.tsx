@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, ReactNode } from "react";
+import { useEffect, useRef, useState, ReactNode } from "react";
 import { X } from "lucide-react";
 import { AdminSurface } from "./AdminSurface";
 
@@ -21,22 +21,41 @@ export function AdminSheet({
 }: AdminSheetProps) {
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimating, setIsAnimating] = useState(false);
+  const prevOverflowRef = useRef("");
 
   useEffect(() => {
     if (isOpen) {
+      prevOverflowRef.current = document.body.style.overflow;
       setShouldRender(true);
       const timer = setTimeout(() => setIsAnimating(true), 20);
       document.body.style.overflow = "hidden";
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        document.body.style.overflow = prevOverflowRef.current;
+      };
     } else {
       setIsAnimating(false);
       const timer = setTimeout(() => {
         setShouldRender(false);
-        document.body.style.overflow = "auto";
+        document.body.style.overflow = prevOverflowRef.current;
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!shouldRender) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, shouldRender]);
 
   if (!shouldRender) return null;
 

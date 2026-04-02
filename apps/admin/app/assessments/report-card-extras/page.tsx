@@ -55,18 +55,6 @@ export default function AdminReportCardExtrasPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.1);
-        }
-      `}} />
-
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
         {/* Sidebar Bucket */}
         <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">

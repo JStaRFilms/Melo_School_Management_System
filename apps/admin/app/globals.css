@@ -139,12 +139,28 @@ h3 {
 
 /* Custom Scrollbar (from mockup) */
 .custom-scrollbar::-webkit-scrollbar {
-  height: 4px;
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #e2e8f0;
+  background: transparent;
   border-radius: 99px;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+}
+
+.score-input-exam {
+  background-color: rgba(251, 191, 36, 0.1);
+  border-color: rgb(252 211 77);
+  color: rgb(120 53 15);
+  font-weight: 700;
 }
 
 /* Hide scrollbars Utility */

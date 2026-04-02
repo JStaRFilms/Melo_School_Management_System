@@ -26,11 +26,64 @@ export function EventCreationForm({
   const [endDate, setEndDate] = useState("");
   const [description, setDescription] = useState("");
   const [isAllDay, setIsAllDay] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [previousDateTimeRange, setPreviousDateTimeRange] = useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
+
+  const toDateInputValue = (value: string) => {
+    if (!value) return "";
+    return value.includes("T") ? value.slice(0, 10) : value;
+  };
+
+  const toDateTimeValue = (value: string, isEnd = false) =>
+    !value ? "" : value.includes("T") ? value : `${value}T${isEnd ? "23:59" : "00:00"}`;
+
+  const parseComparableTimestamp = (value: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split("-").map(Number);
+      return new Date(year, month - 1, day).getTime();
+    }
+
+    const timestamp = new Date(value).getTime();
+    if (Number.isNaN(timestamp)) {
+      return null;
+    }
+    return timestamp;
+  };
+
+  const handleAllDayToggle = (checked: boolean) => {
+    setFormError("");
+
+    if (checked) {
+      setPreviousDateTimeRange({ startDate, endDate });
+      setStartDate(toDateInputValue(startDate));
+      setEndDate(toDateInputValue(endDate));
+    } else {
+      setStartDate(previousDateTimeRange?.startDate ?? toDateTimeValue(startDate, false));
+      setEndDate(previousDateTimeRange?.endDate ?? toDateTimeValue(endDate, true));
+    }
+
+    setIsAllDay(checked);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !startDate || !endDate) return;
 
+    const startTimestamp = parseComparableTimestamp(startDate);
+    const endTimestamp = parseComparableTimestamp(endDate);
+    if (startTimestamp === null || endTimestamp === null) {
+      setFormError("Enter a valid event date.");
+      return;
+    }
+    if (endTimestamp < startTimestamp) {
+      setFormError("End date must be on or after the start date.");
+      return;
+    }
+
+    setFormError("");
     await onProvision({
       title: title.trim(),
       location: location.trim() || null,
@@ -46,6 +99,7 @@ export function EventCreationForm({
     setEndDate("");
     setDescription("");
     setIsAllDay(false);
+    setPreviousDateTimeRange(null);
   };
 
   return (
@@ -97,9 +151,12 @@ export function EventCreationForm({
               Starts
             </label>
             <input
-              type="datetime-local"
+              type={isAllDay ? "date" : "datetime-local"}
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setFormError("");
+                setStartDate(e.target.value);
+              }}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none focus:border-slate-400"
               required
               disabled={isSubmitting}
@@ -110,9 +167,12 @@ export function EventCreationForm({
               Ends
             </label>
             <input
-              type="datetime-local"
+              type={isAllDay ? "date" : "datetime-local"}
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setFormError("");
+                setEndDate(e.target.value);
+              }}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none focus:border-slate-400"
               required
               disabled={isSubmitting}
@@ -138,7 +198,7 @@ export function EventCreationForm({
             <input
               type="checkbox"
               checked={isAllDay}
-              onChange={(e) => setIsAllDay(e.target.checked)}
+              onChange={(e) => handleAllDayToggle(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 bg-white text-slate-950 focus:ring-slate-950/10"
               disabled={isSubmitting}
             />
@@ -148,6 +208,10 @@ export function EventCreationForm({
             </div>
           </label>
         </div>
+
+        {formError && (
+          <p className="text-[11px] font-bold text-rose-500">{formError}</p>
+        )}
 
         <button
           type="submit"

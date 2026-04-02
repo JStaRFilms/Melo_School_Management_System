@@ -2,9 +2,11 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
-import { Search, ShieldAlert, Sparkles, UserPlus } from "lucide-react";
+import { Search } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { AdminCard } from "./AdminCard";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
 
 type AdminRecord = {
   _id: string;
@@ -39,13 +41,13 @@ export function AdminDirectorySection({
   onRunAction,
 }: AdminDirectorySectionProps) {
   const promoteSchoolAdmin = useMutation(
-    "functions/academic/adminLeadership:promoteSchoolAdmin" as never
+    api.functions.academic.adminLeadership.promoteSchoolAdmin
   );
   const archiveSchoolAdmin = useMutation(
-    "functions/academic/adminLeadership:archiveSchoolAdmin" as never
+    api.functions.academic.adminLeadership.archiveSchoolAdmin
   );
   const transferSchoolAdminLeadership = useMutation(
-    "functions/academic/adminLeadership:transferSchoolAdminLeadership" as never
+    api.functions.academic.adminLeadership.transferSchoolAdminLeadership
   );
 
   const [search, setSearch] = useState("");
@@ -90,7 +92,7 @@ export function AdminDirectorySection({
             {admins.length} registered administrative accounts.
           </p>
         </div>
-        <div className="relative w-full sm:max-w-xs">
+        <div className="relative w-full sm:max-w-xs group">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-300 transition-colors group-focus-within:text-slate-950" />
           <input
             value={search}
@@ -113,7 +115,7 @@ export function AdminDirectorySection({
             onPromote={() =>
               void handleAction(
                 admin._id,
-                () => promoteSchoolAdmin({ adminId: admin._id } as never),
+                () => promoteSchoolAdmin({ adminId: admin._id as Id<"users"> }),
                 "Admin re-parented",
                 "Promotion failed",
                 "We could not re-parent this admin right now."
@@ -122,7 +124,7 @@ export function AdminDirectorySection({
             onArchive={() =>
               void handleAction(
                 admin._id,
-                () => archiveSchoolAdmin({ adminId: admin._id } as never),
+                () => archiveSchoolAdmin({ adminId: admin._id as Id<"users"> }),
                 "Admin archived",
                 "Archive failed",
                 "We could not archive this admin right now."
@@ -131,7 +133,7 @@ export function AdminDirectorySection({
             onTransferLeadership={() =>
               void handleAction(
                 admin._id,
-                () => transferSchoolAdminLeadership({ adminId: admin._id } as never),
+                () => transferSchoolAdminLeadership({ adminId: admin._id as Id<"users"> }),
                 "Leadership transferred",
                 "Transfer failed",
                 "We could not transfer leadership right now."

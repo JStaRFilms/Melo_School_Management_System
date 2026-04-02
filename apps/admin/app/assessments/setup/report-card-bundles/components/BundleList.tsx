@@ -22,8 +22,10 @@ export function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
           <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">{bundles.length} Registrations</p>
         </div>
         <button
-          onClick={() => onSelect("new")}
+          aria-label="Create new bundle"
           className="p-2 bg-slate-900 text-white rounded-lg shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95 group"
+          onClick={() => onSelect("new")}
+          type="button"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -32,33 +34,38 @@ export function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
       <div className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
         {bundles.map((bundle) => {
           const isSelected = selectedId === bundle._id;
+          const rowClasses = `w-full group relative flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 ${
+            isSelected
+              ? "bg-slate-900 shadow-2xl shadow-slate-900/20 translate-x-1"
+              : "hover:bg-white hover:shadow-lg hover:shadow-slate-200/50"
+          }`;
+          const iconClasses = `p-2 rounded-lg transition-colors ${
+            isSelected ? "bg-white/10 text-white" : "bg-slate-100 text-slate-400 group-hover:bg-slate-900 group-hover:text-white"
+          }`;
+          const titleClasses = `text-xs font-black uppercase tracking-widest truncate transition-colors ${
+            isSelected ? "text-white" : "text-slate-700"
+          }`;
+          const subtitleClasses = `text-xs font-bold uppercase tracking-widest transition-colors ${
+            isSelected ? "text-white/40" : "text-slate-400"
+          }`;
+          const chevronClasses = `w-4 h-4 transition-all ${
+            isSelected ? "text-white translate-x-0" : "text-slate-200 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
+          }`;
+
           return (
-            <button
-              key={bundle._id}
-              onClick={() => onSelect(bundle._id)}
-              className={`w-full group relative flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 ${isSelected
-                ? "bg-slate-900 shadow-2xl shadow-slate-900/20 translate-x-1"
-                : "hover:bg-white hover:shadow-lg hover:shadow-slate-200/50"
-                }`}
-            >
-              <div className={`p-2 rounded-lg transition-colors ${isSelected ? "bg-white/10 text-white" : "bg-slate-100 text-slate-400 group-hover:bg-slate-900 group-hover:text-white"
-                }`}>
+            <button key={bundle._id} className={rowClasses} onClick={() => onSelect(bundle._id)} type="button">
+              <div className={iconClasses}>
                 <Boxes className="w-4 h-4" />
               </div>
 
               <div className="flex-1 text-left min-w-0">
-                <div className={`text-xs font-black uppercase tracking-widest truncate transition-colors ${isSelected ? "text-white" : "text-slate-700"
-                  }`}>
-                  {bundle.name}
-                </div>
-                <div className={`text-xs font-bold uppercase tracking-widest transition-colors ${isSelected ? "text-white/40" : "text-slate-400"
-                  }`}>
+                <div className={titleClasses}>{bundle.name}</div>
+                <div className={subtitleClasses}>
                   {bundle.sections.length} Sectors • {countBundleFields(bundle)} Nodes
                 </div>
               </div>
 
-              <ChevronRight className={`w-4 h-4 transition-all ${isSelected ? "text-white translate-x-0" : "text-slate-200 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
-                }`} />
+              <ChevronRight className={chevronClasses} />
             </button>
           );
         })}

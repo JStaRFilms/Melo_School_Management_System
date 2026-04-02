@@ -1,13 +1,9 @@
 "use client";
 
-import { Monitor, Eye, Layout } from "lucide-react";
+import { Monitor, Layout } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BundleDraft, BundleFieldDraft, ScaleTemplateRecord } from "../types";
-import {
-  getBundlePreviewValue,
-  getSectionInternalFields,
-  getSectionPrintableFields,
-} from "../utils";
+import { getBundlePreviewValue, getSectionInternalFields, getSectionPrintableFields } from "../utils";
 
 interface BundlePreviewProps {
   draft: BundleDraft;
@@ -15,8 +11,10 @@ interface BundlePreviewProps {
 }
 
 export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
+  const version = (draft as BundleDraft & { version?: string | null }).version?.trim();
+
   return (
-    <AdminSurface intensity="none" className="p-4 sm:p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
+    <AdminSurface intensity="medium" className="p-4 sm:p-6 space-y-6 rounded-2xl animate-in fade-in zoom-in-95 duration-500">
       <div className="flex items-center justify-between border-b border-slate-50 pb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-emerald-50 rounded-lg">
@@ -37,11 +35,17 @@ export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Active Blueprint</span>
-              <div className="px-1.5 py-0.5 bg-white/10 rounded text-[9px] font-bold uppercase tracking-widest text-white/60">v1.0</div>
+              {version && (
+                <div className="px-1.5 py-0.5 bg-white/10 rounded text-[9px] font-bold uppercase tracking-widest text-white/60">
+                  {version}
+                </div>
+              )}
             </div>
             <h3 className="text-xl font-black tracking-tight">{draft.name.trim() || "Unlabeled Asset"}</h3>
             {draft.description.trim() && (
-              <p className="text-xs font-medium text-white/50 leading-relaxed max-w-sm line-clamp-2 italic">{draft.description.trim()}</p>
+              <p className="text-xs font-medium text-white/50 leading-relaxed max-w-sm line-clamp-2 italic">
+                {draft.description.trim()}
+              </p>
             )}
           </div>
         </div>
@@ -56,7 +60,7 @@ export function BundlePreview({ draft, scaleTemplates }: BundlePreviewProps) {
                 </span>
                 <div className="flex-1 h-px bg-slate-100" />
               </div>
-              
+
               <div className="grid md:grid-cols-2 gap-4">
                 <PreviewSection
                   fields={getSectionPrintableFields(section)}
@@ -99,7 +103,10 @@ function PreviewSection({
         <span className="text-xs font-bold uppercase tracking-widest text-slate-300">{title}</span>
       </div>
       {fields.map((field) => (
-        <div key={field.key} className="group relative flex items-center justify-between gap-4 border border-slate-50 bg-slate-50/10 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors">
+        <div
+          key={field.key}
+          className="group relative flex items-center justify-between gap-4 border border-slate-50 bg-slate-50/10 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors"
+        >
           <div className="space-y-0.5">
             <div className="text-xs font-bold text-slate-800">{field.label.trim() || "Unnamed Node"}</div>
             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">

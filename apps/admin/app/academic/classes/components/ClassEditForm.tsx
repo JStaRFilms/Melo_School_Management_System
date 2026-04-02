@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect, type SVGProps } from "react";
 import { Layers3, ChevronDown, Archive, Save, X, Sparkles, BookOpen } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";
@@ -83,10 +83,8 @@ export function ClassEditForm({
   }, [classDoc]);
 
   useEffect(() => {
-    if (currentOfferings) {
-      setSubjectIds(currentOfferings.map(o => o.subjectId));
-    }
-  }, [currentOfferings]);
+    setSubjectIds(currentOfferings?.map((offering) => offering.subjectId) ?? []);
+  }, [classDoc._id, currentOfferings]);
 
   const handleSubjectToggle = (subjectId: string) => {
     setSubjectIds((current) =>
@@ -145,7 +143,7 @@ export function ClassEditForm({
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
               activeTab === tab.id
                 ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
@@ -283,7 +281,6 @@ export function ClassEditForm({
                         onChange={(e) => void onAssignTeacher(offering.subjectId, e.target.value)}
                         className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950"
                       >
-                        <option value="">{offering.teacherName ? "Handoff instruction" : "Assign teacher"}</option>
                         {allTeachers.map((t) => (
                           <option key={t._id} value={t._id}>{t.name}</option>
                         ))}
@@ -326,7 +323,7 @@ export function ClassEditForm({
   );
 }
 
-function PencilIcon(props: any) {
+function PencilIcon(props: SVGProps<SVGSVGElement>) {
     return (
         <svg
             {...props}

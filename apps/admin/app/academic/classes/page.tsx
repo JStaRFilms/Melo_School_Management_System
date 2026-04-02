@@ -89,8 +89,24 @@ export default function ClassesPage() {
 
   useEffect(() => {
     if (!classes || classes.length === 0 || hasRequestedBackfill) return;
-    void backfillClassNaming({} as never);
-    setHasRequestedBackfill(true);
+    let cancelled = false;
+
+    const runBackfill = async () => {
+      try {
+        await backfillClassNaming({} as never);
+      } catch (error) {
+        console.error("backfillClassNaming failed", error);
+      } finally {
+        if (!cancelled) {
+          setHasRequestedBackfill(true);
+        }
+      }
+    };
+
+    void runBackfill();
+    return () => {
+      cancelled = true;
+    };
   }, [backfillClassNaming, classes, hasRequestedBackfill]);
 
   const deferredSearch = useDeferredValue(search);
@@ -125,10 +141,10 @@ export default function ClassesPage() {
   useEffect(() => {
     if (selectedClassId && typeof window !== "undefined" && window.innerWidth < 1024) {
       const scrollTimer = setTimeout(() => {
-        const element = document.getElementById(`class-${selectedClassId}`);
+          const element = document.getElementById(`class-${selectedClassId}`);
         if (element) {
           const yOffset = -120;
-          const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }, 100);
@@ -263,22 +279,6 @@ export default function ClassesPage() {
 
   return (
     <div className="relative min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200/50">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-          height: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-          border-radius: 10px;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.15);
-        }
-      `}} />
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
       {/* Mobile Editor Sheet */}

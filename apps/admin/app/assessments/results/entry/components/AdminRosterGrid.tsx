@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
@@ -52,6 +53,20 @@ export function AdminRosterGrid({
 }: AdminRosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
   const examLabel = examInputMode === "raw40" ? "/40" : "/60";
+  const [selectedStudentId, setSelectedStudentId] = useState(roster[0]?.studentId ?? "");
+
+  useEffect(() => {
+    if (roster.length === 0) {
+      setSelectedStudentId("");
+      return;
+    }
+
+    setSelectedStudentId((current) =>
+      roster.some((student) => student.studentId === current)
+        ? current
+        : roster[0].studentId
+    );
+  }, [roster]);
 
   return (
     <section className="space-y-4">
@@ -71,7 +86,18 @@ export function AdminRosterGrid({
           </div>
         </div>
         <div className="relative group px-1">
-          <select className="w-full h-11 bg-white border border-slate-200 rounded-xl px-4 appearance-none font-bold text-xs text-slate-900 focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 outline-none shadow-sm transition-all active:scale-[0.98]">
+          <select
+            value={selectedStudentId}
+            onChange={(event) => {
+              const nextStudentId = event.target.value;
+              setSelectedStudentId(nextStudentId);
+              document.getElementById(`student-${nextStudentId}`)?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+            className="w-full h-11 bg-white border border-slate-200 rounded-xl px-4 appearance-none font-bold text-xs text-slate-900 focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 outline-none shadow-sm transition-all active:scale-[0.98]"
+          >
             {roster.map((student) => (
               <option key={student.studentId} value={student.studentId}>
                 {humanNameFinalStrict(student.studentName)}
@@ -166,10 +192,29 @@ export function AdminRosterGrid({
           const isIncomplete = ca1 === null && ca2 === null && ca3 === null && examRaw === null;
           const reportCardHref = buildReportCardHref({ studentId: student.studentId, sessionId, termId, classId });
           const reportCardExtrasHref = buildReportCardExtrasHref({ studentId: student.studentId, sessionId, termId, classId });
+          const mobileFields: Array<{
+            field: ScoreField;
+            label: string;
+            value: number | null;
+            max: number;
+            isExam?: boolean;
+          }> = [
+            { field: "ca1", label: "01", value: ca1, max: 20 },
+            { field: "ca2", label: "02", value: ca2, max: 20 },
+            { field: "ca3", label: "03", value: ca3, max: 20 },
+            {
+              field: "examRawScore",
+              label: "EX",
+              value: examRaw,
+              max: examInputMode === "raw40" ? 40 : 60,
+              isExam: true,
+            },
+          ];
 
           return (
             <div
               key={student.studentId}
+              id={`student-${student.studentId}`}
               className={`p-3 rounded-xl border transition-all ${
                 isIncomplete ? "border-slate-100 bg-slate-50/20 grayscale" : "border-slate-200 bg-white"
               }`}
@@ -212,32 +257,45 @@ export function AdminRosterGrid({
 
               {/* Input Row: Horizontal Tactical Zone */}
               <div className="grid grid-cols-4 gap-1.5">
-                {[
-                  { field: "ca1", label: "01", max: 20 },
-                  { field: "ca2", label: "02", max: 20 },
-                  { field: "ca3", label: "03", max: 20 },
-                  { field: "examRawScore", label: "EX", max: examInputMode === "raw40" ? 40 : 60, isExam: true },
-                ].map((input) => (
-                  <div key={input.field} className={`relative p-2 rounded-lg border flex flex-col items-center ${
-                    input.isExam ? 'bg-indigo-50/30 border-indigo-100' : 'bg-slate-50 border-slate-100'
-                  }`}>
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">{input.label}</span>
-                    <input
-                      type="number"
-                      value={(input.field === "ca1" ? ca1 : 
-                              input.field === "ca2" ? ca2 : 
-                              input.field === "ca3" ? ca3 : 
-                              examRaw) ?? ""}
-                      disabled={!isEditable}
-                      onChange={(e) => {
-                        const v = e.target.value === "" ? null : parseInt(e.target.value, 10);
-                        onScoreChange(student.studentId, input.field as ScoreField, isNaN(v as number) ? null : v);
-                      }}
-                      placeholder="--"
-                      className="w-full bg-transparent text-center font-black text-sm text-slate-900 outline-none tabular-nums p-0"
-                    />
-                  </div>
-                ))}
+                {mobileFields.map((input) => {
+                  const inputError = studentErrors[input.field];
+                  return (
+                    <div
+                      key={input.field}
+                      className={`relative p-2 rounded-lg border flex flex-col items-center ${
+                        input.isExam ? "bg-indigo-50/30 border-indigo-100" : "bg-slate-50 border-slate-100"
+                      } ${inputError ? "border-rose-200 bg-rose-50/50" : ""}`}
+                    >
+                      <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        {input.label}
+                      </span>
+                      <input
+                        type="number"
+                        value={input.value ?? ""}
+                        disabled={!isEditable}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsed = raw === "" ? null : Number(raw);
+                          onScoreChange(
+                            student.studentId,
+                            input.field,
+                            parsed === null || Number.isNaN(parsed) ? null : parsed
+                          );
+                        }}
+                        placeholder="--"
+                        aria-invalid={Boolean(inputError)}
+                        className={`w-full bg-transparent text-center font-black text-sm text-slate-900 outline-none tabular-nums p-0 ${
+                          inputError ? "text-rose-700" : ""
+                        }`}
+                      />
+                      {inputError && (
+                        <p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-rose-500">
+                          {inputError}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

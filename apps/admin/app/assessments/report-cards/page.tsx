@@ -179,22 +179,6 @@ function AdminReportCardPageContent() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-          border-radius: 10px;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.15);
-        }
-      `}} />
-
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Sidebar Bucket - Management & Navigation */}
         <aside className="lg:w-[460px] lg:h-full lg:overflow-y-auto border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-6 pb-10">
