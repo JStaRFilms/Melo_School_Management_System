@@ -73,7 +73,7 @@ export function TemplateList({ templates, selectedId, onSelect }: TemplateListPr
               <Search className="h-8 w-8" />
             </div>
             <p className="mt-8 text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">No Matrix Data</p>
-            <p className="mt-2 text-xs font-medium text-slate-300 max-w-[200px]">Evaluation scales haven't been configured.</p>
+            <p className="mt-2 text-xs font-medium text-slate-300 max-w-[200px]">Evaluation scales haven&apos;t been configured.</p>
           </div>
         )}
       </div>
