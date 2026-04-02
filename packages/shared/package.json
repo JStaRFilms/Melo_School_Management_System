@@ -4,6 +4,12 @@
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./name-format": "./src/name-format.ts",
+    "./exam-recording": "./src/exam-recording/index.ts",
+    "./subject-aggregation": "./src/subject-aggregation.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

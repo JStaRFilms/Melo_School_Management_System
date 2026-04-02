@@ -31,6 +31,7 @@ interface LinkRenderProps {
 export interface WorkspaceNavbarProps {
   workspace: WorkspaceKey;
   currentPath: string;
+  fullBleed?: boolean;
   userName?: string | null;
   userRole?: string | null;
   onSignOut?: () => void;
@@ -43,6 +44,7 @@ export interface WorkspaceNavbarProps {
 export function WorkspaceNavbar({
   workspace,
   currentPath,
+  fullBleed = false,
   userName,
   userRole,
   onSignOut,
@@ -231,8 +233,12 @@ export function WorkspaceNavbar({
         </header>
 
         {/* ── MAIN SCROLL AREA ── */}
-        <main className="flex-1 overflow-y-auto w-full relative p-4 sm:p-6 lg:p-8 custom-scrollbar scrollbar-hide">
-          <div className="mx-auto max-w-[1600px]">
+        <main
+          className={`flex-1 overflow-y-auto w-full relative custom-scrollbar scrollbar-hide ${
+            fullBleed ? "" : "p-4 sm:p-6 lg:p-8"
+          }`}
+        >
+          <div className={fullBleed ? "w-full" : "mx-auto max-w-[1600px]"}>
             {children}
           </div>
         </main>

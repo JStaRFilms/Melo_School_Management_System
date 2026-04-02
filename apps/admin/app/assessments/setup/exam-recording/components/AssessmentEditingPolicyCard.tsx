@@ -2,7 +2,6 @@
 
 import { Lock, Timer } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useEffect, useState } from "react";
 import type { AssessmentEditingPolicyDraft } from "./assessmentEditingPolicyDraft";
 
 export function getEditingWindowError(draft: AssessmentEditingPolicyDraft) {
@@ -49,23 +48,12 @@ export function AssessmentEditingPolicy({
   onDateChange,
 }: AssessmentEditingPolicyProps) {
   const isTargetReady = Boolean(draft.sessionId && draft.termId);
-  const [editingDateError, setEditingDateError] = useState<string | null>(() =>
-    getEditingWindowError(draft)
-  );
-
-  useEffect(() => {
-    setEditingDateError(getEditingWindowError(draft));
-  }, [draft.editingStartsAt, draft.editingEndsAt, draft.restrictionsEnabled]);
+  const editingDateError = getEditingWindowError(draft);
 
   const handleDateChange = (
     field: "editingStartsAt" | "editingEndsAt",
     value: string
   ) => {
-    const nextDraft = {
-      ...draft,
-      [field]: value,
-    };
-    setEditingDateError(getEditingWindowError(nextDraft));
     onDateChange(field, value);
   };
 

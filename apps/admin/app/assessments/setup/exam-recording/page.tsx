@@ -398,10 +398,7 @@ function ExamSettingsContent({
   onSave,
   onDiscard,
 }: ExamSettingsContentProps) {
-  const policyDateError = useMemo(
-    () => getEditingWindowError(policyDraft),
-    [policyDraft.editingStartsAt, policyDraft.editingEndsAt, policyDraft.restrictionsEnabled]
-  );
+  const policyDateError = getEditingWindowError(policyDraft);
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
