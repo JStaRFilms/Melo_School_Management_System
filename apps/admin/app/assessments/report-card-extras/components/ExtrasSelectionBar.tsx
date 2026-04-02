@@ -2,7 +2,14 @@
 
 import { useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { ExtrasSelection, SelectorOption } from "./types";
+import {
+  CalendarDays,
+  Target,
+  Users,
+  User,
+} from "lucide-react";
 
 export function ExtrasSelectionBar({
   selection,
@@ -52,24 +59,85 @@ export function ExtrasSelectionBar({
   );
 
   const baseSelectClassName =
-    "h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60";
+    "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60";
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SelectField label="Session" value={selection.sessionId ?? ""} onChange={(value) => updateSelection("sessionId", value || null)} disabled={isLoadingSessions} className={baseSelectClassName} placeholder={isLoadingSessions ? "Loading sessions..." : "Select session"} options={sessions} />
-        <SelectField label="Term" value={selection.termId ?? ""} onChange={(value) => updateSelection("termId", value || null)} disabled={!selection.sessionId || isLoadingTerms} className={baseSelectClassName} placeholder={!selection.sessionId ? "Select session first" : isLoadingTerms ? "Loading terms..." : "Select term"} options={terms} />
-        <SelectField label="Class" value={selection.classId ?? ""} onChange={(value) => updateSelection("classId", value || null)} disabled={!selection.termId || isLoadingClasses} className={baseSelectClassName} placeholder={!selection.termId ? "Select term first" : isLoadingClasses ? "Loading classes..." : "Select class"} options={classes} />
-        <SelectField label="Student" value={selection.studentId ?? ""} onChange={(value) => updateSelection("studentId", value || null)} disabled={!selection.classId || isLoadingStudents} className={baseSelectClassName} placeholder={!selection.classId ? "Select class first" : isLoadingStudents ? "Loading students..." : "Select student"} options={students} />
+    <AdminSurface intensity="low" className="p-4 space-y-4">
+      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+        Selection Context
+      </h4>
+      
+      <div className="grid gap-4">
+        <SelectField 
+          label="Session" 
+          icon={<CalendarDays size={14} />}
+          value={selection.sessionId ?? ""} 
+          onChange={(value) => updateSelection("sessionId", value || null)} 
+          disabled={isLoadingSessions} 
+          className={baseSelectClassName} 
+          placeholder={isLoadingSessions ? "Loading..." : "Select Session"} 
+          options={sessions} 
+        />
+        <SelectField 
+          label="Term" 
+          icon={<Target size={14} />}
+          value={selection.termId ?? ""} 
+          onChange={(value) => updateSelection("termId", value || null)} 
+          disabled={!selection.sessionId || isLoadingTerms} 
+          className={baseSelectClassName} 
+          placeholder={!selection.sessionId ? "Select Session First" : isLoadingTerms ? "Loading..." : "Select Term"} 
+          options={terms} 
+        />
+        <SelectField 
+          label="Class" 
+          icon={<Users size={14} />}
+          value={selection.classId ?? ""} 
+          onChange={(value) => updateSelection("classId", value || null)} 
+          disabled={!selection.termId || isLoadingClasses} 
+          className={baseSelectClassName} 
+          placeholder={!selection.termId ? "Select Term First" : isLoadingClasses ? "Loading..." : "Select Class"} 
+          options={classes} 
+        />
+        <SelectField 
+          label="Student" 
+          icon={<User size={14} />}
+          value={selection.studentId ?? ""} 
+          onChange={(value) => updateSelection("studentId", value || null)} 
+          disabled={!selection.classId || isLoadingStudents} 
+          className={baseSelectClassName} 
+          placeholder={!selection.classId ? "Select Class First" : isLoadingStudents ? "Loading..." : "Select Student"} 
+          options={students} 
+        />
       </div>
-    </div>
+    </AdminSurface>
   );
 }
 
-function SelectField({ label, value, onChange, disabled, className, placeholder, options }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; className: string; placeholder: string; options: SelectorOption[] }) {
+function SelectField({ 
+  label, 
+  icon,
+  value, 
+  onChange, 
+  disabled, 
+  className, 
+  placeholder, 
+  options 
+}: { 
+  label: string; 
+  icon?: React.ReactNode;
+  value: string; 
+  onChange: (value: string) => void; 
+  disabled?: boolean; 
+  className: string; 
+  placeholder: string; 
+  options: SelectorOption[] 
+}) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-800">{label}</span>
+      <div className="mb-1.5 flex items-center gap-2 px-1">
+        {icon && <span className="text-slate-400 group-focus-within:text-indigo-500 transition-colors">{icon}</span>}
+        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+      </div>
       <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className={className}>
         <option value="">{placeholder}</option>
         {options.map((option) => (
