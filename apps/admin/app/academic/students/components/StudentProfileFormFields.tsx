@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-
 import type { ClassSummary } from "./types";
 
 interface StudentProfileFormFieldsProps {
@@ -52,7 +51,7 @@ export function StudentProfileFormFields({
   onAddressChange,
 }: StudentProfileFormFieldsProps) {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2">
       <Field label="First Name">
         <input
           value={firstName}
@@ -69,14 +68,15 @@ export function StudentProfileFormFields({
           placeholder="Last name"
         />
       </Field>
-      <Field label="Admission No.">
+      <Field label="Admission ID">
         <input
           value={admissionNumber}
           onChange={(event) => onAdmissionNumberChange(event.target.value)}
           className={fieldInputClassName}
+          placeholder="4A-..."
         />
       </Field>
-      <Field label="Class">
+      <Field label="Active Class">
         <select
           value={classId}
           onChange={(event) => onClassIdChange(event.target.value)}
@@ -89,12 +89,12 @@ export function StudentProfileFormFields({
           ))}
         </select>
       </Field>
-      <Field label="House">
+      <Field label="House Group">
         <input
           value={houseName}
           onChange={(event) => onHouseNameChange(event.target.value)}
           className={fieldInputClassName}
-          placeholder="Blue House"
+          placeholder="e.g. Blue House"
         />
       </Field>
       <Field label="Gender">
@@ -103,12 +103,12 @@ export function StudentProfileFormFields({
           onChange={(event) => onGenderChange(event.target.value)}
           className={fieldInputClassName}
         >
-          <option value="">Select gender</option>
+          <option value="">Select</option>
           <option value="Male">Male</option>
           <option value="Female">Female</option>
         </select>
       </Field>
-      <Field label="Date of Birth">
+      <Field label="Birth Date">
         <input
           type="date"
           value={dateOfBirth}
@@ -121,20 +121,23 @@ export function StudentProfileFormFields({
           value={guardianName}
           onChange={(event) => onGuardianNameChange(event.target.value)}
           className={fieldInputClassName}
+          placeholder="Parent/Guardian"
         />
       </Field>
-      <Field label="Guardian Phone">
+      <Field label="Contact Phone">
         <input
           value={guardianPhone}
           onChange={(event) => onGuardianPhoneChange(event.target.value)}
           className={fieldInputClassName}
+          placeholder="+234..."
         />
       </Field>
-      <Field label="Address">
+      <Field label="Living Address">
         <input
           value={address}
           onChange={(event) => onAddressChange(event.target.value)}
           className={fieldInputClassName}
+          placeholder="Residential address"
         />
       </Field>
     </div>
@@ -150,7 +153,7 @@ function Field({
 }) {
   return (
     <label className="space-y-1.5">
-      <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+      <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
         {label}
       </span>
       {children}
@@ -159,4 +162,4 @@ function Field({
 }
 
 const fieldInputClassName =
-  "h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-indigo-600 focus:shadow-[0_0_0_4px_rgba(79,70,229,0.06)]";
+  "h-10 w-full rounded-lg border border-slate-200 bg-white/60 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-200";

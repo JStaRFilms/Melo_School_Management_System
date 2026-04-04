@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { UserCog, Trash2, CheckCircle2 } from "lucide-react";
 
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
@@ -38,10 +39,7 @@ type StudentProfile = {
 };
 
 function toDateInput(value: number | null) {
-  if (!value) {
-    return "";
-  }
-
+  if (!value) return "";
   return new Date(value).toISOString().slice(0, 10);
 }
 
@@ -82,10 +80,7 @@ export function StudentProfileEditor({
   const [isArchiving, setIsArchiving] = useState(false);
 
   useEffect(() => {
-    if (!studentProfile) {
-      return;
-    }
-
+    if (!studentProfile) return;
     setFirstName(studentProfile.firstName ?? "");
     setLastName(studentProfile.lastName ?? "");
     setAdmissionNumber(studentProfile.admissionNumber);
@@ -101,14 +96,8 @@ export function StudentProfileEditor({
   }, [studentProfile]);
 
   const previewUrl = useMemo(() => {
-    if (photoFile) {
-      return URL.createObjectURL(photoFile);
-    }
-
-    if (clearPhoto) {
-      return null;
-    }
-
+    if (photoFile) return URL.createObjectURL(photoFile);
+    if (clearPhoto) return null;
     return studentProfile?.photoUrl ?? null;
   }, [clearPhoto, photoFile, studentProfile?.photoUrl]);
 
@@ -116,30 +105,21 @@ export function StudentProfileEditor({
 
   useEffect(() => {
     return () => {
-      if (photoFile) {
-        URL.revokeObjectURL(previewUrl ?? "");
-      }
+      if (photoFile) URL.revokeObjectURL(previewUrl ?? "");
     };
   }, [photoFile, previewUrl]);
 
   if (!studentId) {
-    if (variant === "sheet") {
-      return null;
-    }
-
     return (
-      <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-        Select a student from the grid to edit full profile details.
-      </section>
+      <div className="flex flex-col items-center justify-center h-40 rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50/50 text-center">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Record</p>
+        <p className="mt-1 text-xs text-slate-400 max-w-[140px]">Select a student to edit their full profile details.</p>
+      </div>
     );
   }
 
   if (studentProfile === undefined) {
-    return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm">
-        Loading student profile...
-      </section>
-    );
+    return <div className="p-8 text-center text-xs font-bold text-slate-400 uppercase tracking-widest animate-pulse">Syncing Record...</div>;
   }
 
   const handleSave = async () => {
@@ -179,17 +159,12 @@ export function StudentProfileEditor({
 
       onNotice({
         tone: "success",
-        message: `${displayName} was updated successfully.`,
+        message: `${displayName} updated.`,
       });
     } catch (error) {
       onNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(
-          error,
-          uploadedPhoto
-            ? "The photo uploaded, but we couldn't finish saving the student profile."
-            : "We couldn't save the student profile right now."
-        ),
+        message: getUserFacingErrorMessage(error, "Update failed.")
       });
     } finally {
       setIsSaving(false);
@@ -197,57 +172,52 @@ export function StudentProfileEditor({
   };
 
   const handleArchive = async () => {
-    if (!studentProfile) {
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Archive ${displayName}? This keeps the student record for history and removes the student from active enrollment.`
-      )
-    ) {
-      return;
-    }
+    if (!studentProfile) return;
+    if (!window.confirm(`Archive ${displayName}?`)) return;
 
     setIsArchiving(true);
     try {
       await archiveStudent({ studentId: studentProfile._id } as never);
-      onNotice({
-        tone: "success",
-        message: `${displayName} was archived. You can restore the student from the archives page.`,
-      });
+      onNotice({ tone: "success", message: `${displayName} archived.` });
       onStudentArchived?.(studentProfile._id);
     } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(
-          error,
-          "We couldn't archive the student right now."
-        ),
-      });
+      onNotice({ tone: "error", message: getUserFacingErrorMessage(error, "Archive failed.") });
     } finally {
       setIsArchiving(false);
     }
   };
 
   return (
-    <section
-      className={
-        variant === "sheet"
-          ? "rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-          : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      }
-    >
-      <div className="mb-4">
-        <h2 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-950">
-          Edit Student Profile
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Update full student details, including the report-card photo.
+    <div className="space-y-6 pb-10">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+            <UserCog className="h-4 w-4" />
+          </div>
+          <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+            Edit Identity
+          </h2>
+        </div>
+        <p className="text-xs font-medium text-slate-500 line-clamp-2">
+          Modify core records and credentials for <span className="font-bold text-slate-900">{displayName}</span>.
         </p>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-[1fr_240px]">
+      <div className="space-y-6">
+        <StudentPhotoPanel
+          name={displayName}
+          previewUrl={previewUrl}
+          onPhotoChange={(file) => {
+            setPhotoFile(file);
+            setClearPhoto(false);
+          }}
+          onRemovePhoto={() => {
+            setPhotoFile(null);
+            setClearPhoto(true);
+          }}
+          onValidationError={(m) => onNotice({ tone: "error", message: m })}
+        />
+
         <StudentProfileFormFields
           firstName={firstName}
           lastName={lastName}
@@ -271,51 +241,28 @@ export function StudentProfileEditor({
           onGuardianPhoneChange={setGuardianPhone}
           onAddressChange={setAddress}
         />
-        <StudentPhotoPanel
-          name={displayName}
-          previewUrl={previewUrl}
-          onPhotoChange={(file) => {
-            setPhotoFile(file);
-            setClearPhoto(false);
-          }}
-          onRemovePhoto={() => {
-            setPhotoFile(null);
-            setClearPhoto(true);
-          }}
-          onValidationError={(message) =>
-            onNotice({
-              tone: "error",
-              message,
-            })
-          }
-        />
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
+      <div className="flex flex-col gap-3 pt-4 border-t border-slate-200/60">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={isSaving || isArchiving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
+        >
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <span>{isSaving ? "Saving Changes..." : "Save Identity"}</span>
+        </button>
         <button
           type="button"
           onClick={() => void handleArchive()}
           disabled={isSaving || isArchiving}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-5 text-sm font-bold text-rose-700 disabled:opacity-50"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 text-sm font-bold text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
         >
-          {isArchiving ? "Archiving..." : "Archive Student"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={
-            isSaving ||
-            isArchiving ||
-            !firstName.trim() ||
-            !lastName.trim() ||
-            !admissionNumber.trim() ||
-            !classId
-          }
-          className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 disabled:opacity-50"
-        >
-          {isSaving ? "Saving..." : "Save Student"}
+          <Trash2 className="h-4 w-4" />
+          <span>{isArchiving ? "Archiving..." : "Archive Record"}</span>
         </button>
       </div>
-    </section>
+    </div>
   );
 }

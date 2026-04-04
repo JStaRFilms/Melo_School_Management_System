@@ -66,32 +66,19 @@ export function BandTable({
   }, [bands, onBandsChange]);
 
   return (
-    <div className="space-y-4">
-      {/* Header - exact match from mockup */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-            Grading Bands
-          </h1>
-          <p className="text-slate-500 text-xs sm:text-sm italic">
-            Define result derivation tiers for the session.
-          </p>
-        </div>
-        <AddBandButton onAdd={handleAdd} position="top" />
-      </div>
-
+    <div className="flex flex-col">
       {/* Table - exact match from mockup */}
-      <div className="table-responsive">
+      <div className="overflow-x-auto">
         <table className="w-full border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="w-20">Grade</th>
-              <th>Range</th>
-              <th>Remark / Derivation Label</th>
-              <th className="w-16" />
+              <th className="table-th w-24 px-6 border-b">Grade</th>
+              <th className="table-th w-40 border-b">Range</th>
+              <th className="table-th border-b">Remark</th>
+              <th className="table-th w-16 border-b" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100/60">
             {bands.map((band, index) => (
               <BandRow
                 key={index}

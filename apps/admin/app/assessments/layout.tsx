@@ -47,21 +47,20 @@ export default function AssessmentsLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <WorkspaceNavbar
-        workspace="admin"
-        currentPath={pathname}
-        userName={session?.user?.name}
-        userRole={session?.user?.role}
-        onSignOut={handleSignOut}
-        renderLink={(props) => (
-          <Link key={props.href} href={props.href} className={props.className}>
-            {props.children}
-          </Link>
-        )}
-      />
-
-      <main>{children}</main>
-    </div>
+    <WorkspaceNavbar
+      workspace="admin"
+      currentPath={pathname}
+      fullBleed={true}
+      userName={session?.user?.name}
+      userRole={session?.user?.role}
+      onSignOut={handleSignOut}
+      renderLink={(props) => (
+        <Link key={props.href} href={props.href} className={props.className}>
+          {props.children}
+        </Link>
+      )}
+    >
+      {children}
+    </WorkspaceNavbar>
   );
 }

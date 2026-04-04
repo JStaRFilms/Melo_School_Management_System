@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Info } from "lucide-react";
 import type { ExamInputMode } from "@school/shared";
 
 interface ExamModeSelectorProps {
@@ -8,84 +8,74 @@ interface ExamModeSelectorProps {
   onModeChange: (mode: ExamInputMode) => void;
 }
 
+const MODES = [
+  {
+    id: "raw40" as const,
+    label: "Direct /40 Entry",
+    description: "Scores entered directly out of 40.",
+  },
+  {
+    id: "raw60_scaled_to_40" as const,
+    label: "Scaled /60 Entry",
+    description: "Scores entered out of 60, scaled down to 40.",
+  },
+];
+
 export function ExamModeSelector({
   currentMode,
   onModeChange,
 }: ExamModeSelectorProps) {
   return (
-    <section className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h2 className="section-heading">1. Input Mode</h2>
-        <div className="h-px flex-1 bg-slate-100" />
+    <div className="space-y-4">
+      <div className="space-y-1 px-1">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em]">
+          <Info size={10} />
+          Input Strategy
+        </div>
+        <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Exam Scoring Mode</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Direct /40 Entry */}
-        <label
-          className={`group relative bg-white border-2 rounded-xl p-4 sm:p-5 cursor-pointer block transition-all ${
-            currentMode === "raw40"
-              ? "border-blue-600"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-        >
-          <input
-            type="radio"
-            name="exam_mode"
-            checked={currentMode === "raw40"}
-            onChange={() => onModeChange("raw40")}
-            className="hidden"
-          />
-          <div className="flex items-center gap-3 mb-3">
-            {currentMode === "raw40" ? (
-              <span className="bg-blue-600 text-white p-1 rounded-full">
-                <Check className="w-3 h-3" />
-              </span>
-            ) : (
-              <span className="w-5 h-5 rounded-full border border-slate-200 group-hover:border-slate-400" />
-            )}
-            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-tight">
-              Direct /40 Entry
-            </h3>
-          </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-            Teachers enter exam scores directly out of 40. Recommended for
-            secondary schools.
-          </p>
-        </label>
-
-        {/* Scaled /60 Entry */}
-        <label
-          className={`group relative bg-white border-2 rounded-xl p-4 sm:p-5 cursor-pointer block transition-all ${
-            currentMode === "raw60_scaled_to_40"
-              ? "border-blue-600"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-        >
-          <input
-            type="radio"
-            name="exam_mode"
-            checked={currentMode === "raw60_scaled_to_40"}
-            onChange={() => onModeChange("raw60_scaled_to_40")}
-            className="hidden"
-          />
-          <div className="flex items-center gap-3 mb-3">
-            {currentMode === "raw60_scaled_to_40" ? (
-              <span className="bg-blue-600 text-white p-1 rounded-full">
-                <Check className="w-3 h-3" />
-              </span>
-            ) : (
-              <span className="w-5 h-5 rounded-full border border-slate-200 group-hover:border-slate-400" />
-            )}
-            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-tight">
-              Scaled /60 Entry
-            </h3>
-          </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-            Teachers enter scores out of 60. System scales it to 40 for final
-            total.
-          </p>
-        </label>
+      <div className="grid grid-cols-1 gap-2.5">
+        {MODES.map((mode) => {
+          const isActive = currentMode === mode.id;
+          return (
+            <label
+              key={mode.id}
+              className={`group relative flex items-center justify-between bg-white border rounded-xl p-4 cursor-pointer transition-all duration-300 focus-within:ring-4 focus-within:ring-blue-50 ${
+                isActive
+                  ? "border-blue-600 ring-4 ring-blue-50/50"
+                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/30"
+              }`}
+            >
+              <input
+                type="radio"
+                name="exam_mode"
+                checked={isActive}
+                onChange={() => onModeChange(mode.id)}
+                className="sr-only peer"
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className={`text-[11px] font-bold tracking-tight transition-colors ${
+                  isActive ? "text-blue-600" : "text-slate-900 group-hover:text-slate-950"
+                }`}>
+                  {mode.label}
+                </span>
+                <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                  {mode.description}
+                </p>
+              </div>
+              
+              <div className={`shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                isActive
+                  ? "bg-blue-600 border-blue-600 shadow-sm"
+                  : "border-slate-200 group-hover:border-slate-300"
+              } peer-focus-visible:ring-4 peer-focus-visible:ring-blue-100`}>
+                {isActive && <Check className="w-3 h-3 text-white" />}
+              </div>
+            </label>
+          );
+        })}
       </div>
-    </section>
+    </div>
   );
 }

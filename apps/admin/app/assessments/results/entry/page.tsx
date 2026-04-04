@@ -19,6 +19,7 @@ import { AdminSelectionBar } from "./components/AdminSelectionBar";
 import { AdminRosterGrid } from "./components/AdminRosterGrid";
 import { AdminSaveActionBar } from "./components/AdminSaveActionBar";
 import { AdminValidationBanner } from "./components/AdminValidationBanner";
+import { AdminHeader } from "@/components/ui/AdminHeader";
 import {
   buildErrorSummaries,
   countErrors,
@@ -529,114 +530,142 @@ function AdminScoreEntryContent({
   );
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 md:px-6 space-y-6 pb-24">
-      {/* Mobile Header */}
-      <header className="md:hidden bg-white border-b border-slate-200 -mx-4 px-4 py-3.5 sticky top-0 z-50 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button className="w-8 h-8 flex items-center justify-center text-slate-400">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div className="flex flex-col">
-            <span className="font-bold text-[10px] tracking-tight text-slate-900 leading-none uppercase">
-              {selectedSubjectName}
-            </span>
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-              {selectedClassName} &bull; {selectedTermName} &bull; {selectedSessionName}
-            </span>
-          </div>
-        </div>
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50">
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+        }
+      `}</style>
 
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center font-bold text-[10px] text-slate-600 border border-slate-200 uppercase">
-            AD
-          </div>
-        </div>
-      </header>
+      <div className="flex flex-col lg:flex-row-reverse flex-1 min-h-0">
+        {/* Sidebar Bucket: Control Center */}
+        <aside className="w-full lg:w-[320px] lg:h-full lg:overflow-y-auto border-l border-slate-200 bg-slate-50/50 shrink-0 z-20">
+          <div className="p-6 space-y-6">
+            <div className="pb-4">
+               <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1 leading-none">Assessment Engine</h4>
+               <h2 className="text-lg font-black tracking-tight text-slate-950">Entry Selector</h2>
+            </div>
 
-      {modeNotice ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          {modeNotice}
-        </div>
-      ) : null}
-
-      <AdminSelectionBar
-        sessions={sessions}
-        terms={terms}
-        classes={classes}
-        subjects={subjects}
-        selection={selection}
-        isLoadingSessions={isLoadingSessions}
-        isLoadingTerms={isLoadingTerms}
-        isLoadingClasses={isLoadingClasses}
-        isLoadingSubjects={isLoadingSubjects}
-        onBeforeSelectionChange={handleBeforeSelectionChange}
-      />
-
-      {editingState?.hasPolicy ? (
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm font-medium ${
-            editingState.canEdit
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-amber-200 bg-amber-50 text-amber-900"
-          }`}
-        >
-          {editingState.message}
-        </div>
-      ) : null}
-
-      {showErrorBanner && errorSummaries.length > 0 ? (
-        <AdminValidationBanner
-          errorSummaries={errorSummaries}
-          onDismiss={() => setShowErrorBanner(false)}
-        />
-      ) : null}
-
-      {isLoadingSheet ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
-        </div>
-      ) : !isSheetReady ? (
-        <div className="text-center py-12">
-          <p className="text-slate-400 text-sm font-medium">
-            Select a session, term, class, and subject to begin.
-          </p>
-        </div>
-      ) : roster.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-slate-900 font-bold">No Students Found</p>
-          <p className="text-slate-400 text-sm font-medium">
-            This class has no students enrolled. Please select a different
-            class.
-          </p>
-        </div>
-      ) : (
-            <AdminRosterGrid
-              roster={roster}
-              examInputMode={examInputMode}
-              gradingBands={sheetData?.gradingBands ?? []}
-              draftScores={draftScores}
-              validationErrors={validationErrors}
-              sheetLabel={sheetLabel}
-              sessionId={selection.sessionId ?? ""}
-              termId={selection.termId ?? ""}
-              classId={selection.classId ?? ""}
-              isEditable={editingState?.canEdit ?? true}
-              onScoreChange={handleScoreChange}
+            <AdminSelectionBar
+              sessions={sessions}
+              terms={terms}
+              classes={classes}
+              subjects={subjects}
+              selection={selection}
+              isLoadingSessions={isLoadingSessions}
+              isLoadingTerms={isLoadingTerms}
+              isLoadingClasses={isLoadingClasses}
+              isLoadingSubjects={isLoadingSubjects}
+              onBeforeSelectionChange={handleBeforeSelectionChange}
             />
-      )}
+          </div>
+        </aside>
 
-      {isSheetReady && roster.length > 0 ? (
-        <AdminSaveActionBar
-          hasUnsavedChanges={hasUnsavedChanges}
-          hasValidationErrors={hasAnyErrors(validationErrors)}
-          errorCount={countErrors(validationErrors)}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          dirtyCount={draftScores.size}
-          isEditingLocked={!(editingState?.canEdit ?? true)}
-          lockMessage={editingState?.message}
-        />
-      ) : null}
+        {/* Main Bucket: Score Sheet */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar relative bg-white">
+          <div className="max-w-[1280px] mx-auto px-6 py-8 md:px-12 md:py-10 space-y-6 pb-32">
+            <AdminHeader
+              title={selectedSubjectName}
+              label="Bulk Protocol Recording"
+              description={`${selectedClassName} \u2022 ${selectedTermName} \u2022 ${selectedSessionName}`}
+              className="!gap-2"
+            />
+
+            {modeNotice && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-5 py-3">
+                 <p className="text-[9px] font-black uppercase tracking-widest text-amber-900/50 mb-0.5">DEV_ENVIRONMENT_NOTICE</p>
+                 <p className="text-sm font-bold text-amber-900/80">{modeNotice}</p>
+              </div>
+            )}
+
+            {editingState && editingState.hasPolicy && (
+               <div className={`rounded-lg border px-5 py-3 flex items-center justify-between ${
+                editingState.canEdit ? "border-slate-100 bg-slate-50/50" : "border-amber-100 bg-amber-50/50"
+              }`}>
+                <div className="flex items-center gap-4">
+                   <div className={`w-2 h-2 rounded-full ${editingState.canEdit ? "bg-emerald-500" : "bg-amber-500"}`} />
+                   <p className={`text-[13px] font-bold ${editingState.canEdit ? "text-slate-600" : "text-amber-950"}`}>
+                     {editingState.message}
+                   </p>
+                </div>
+              </div>
+            )}
+
+            {showErrorBanner && errorSummaries.length > 0 && (
+              <AdminValidationBanner
+                errorSummaries={errorSummaries}
+                onDismiss={() => setShowErrorBanner(false)}
+              />
+            )}
+
+            {isLoadingSheet ? (
+              <div className="flex flex-col items-center justify-center py-24 space-y-4">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-950 rounded-full animate-spin" />
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Loading Score Sheet...</p>
+              </div>
+            ) : !isSheetReady ? (
+              <div className="flex flex-col items-center justify-center py-32 rounded-3xl border-2 border-dashed border-slate-100 bg-slate-50/50 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-white shadow-sm ring-1 ring-slate-900/5 flex items-center justify-center mb-6">
+                   <ChevronLeft className="w-6 h-6 text-slate-300" />
+                </div>
+                <h3 className="text-lg font-black tracking-tight text-slate-950">Configuration Requested</h3>
+                <p className="mt-2 text-sm font-bold text-slate-400 max-w-[280px]">
+                  Please use the selector on the right to load a specific academic roster.
+                </p>
+              </div>
+            ) : roster.length === 0 ? (
+              <div className="text-center py-24">
+                <p className="text-xl font-black tracking-tighter">No Active Enrollment</p>
+                <p className="text-sm font-bold text-slate-400 mt-2 max-w-sm mx-auto">
+                  This class currently has no students registered for this session and term.
+                </p>
+              </div>
+            ) : (
+              <AdminRosterGrid
+                roster={roster}
+                examInputMode={examInputMode}
+                gradingBands={sheetData?.gradingBands ?? []}
+                draftScores={draftScores}
+                validationErrors={validationErrors}
+                sheetLabel={sheetLabel}
+                sessionId={selection.sessionId ?? ""}
+                termId={selection.termId ?? ""}
+                classId={selection.classId ?? ""}
+                isEditable={editingState?.canEdit ?? true}
+                onScoreChange={handleScoreChange}
+              />
+            )}
+          </div>
+
+          {isSheetReady && roster.length > 0 && (
+            <div className="sticky bottom-0 left-0 right-0 p-3 sm:p-6 bg-white/90 backdrop-blur-md border-t border-slate-200 z-50 shadow-[0_-8px_32px_rgba(0,0,0,0.05)]">
+              <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+                <AdminSaveActionBar
+                  hasUnsavedChanges={hasUnsavedChanges}
+                  hasValidationErrors={hasAnyErrors(validationErrors)}
+                  errorCount={countErrors(validationErrors)}
+                  onSave={handleSave}
+                  onCancel={handleCancel}
+                  dirtyCount={draftScores.size}
+                  isEditingLocked={!(editingState?.canEdit ?? true)}
+                  lockMessage={editingState?.message}
+                />
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

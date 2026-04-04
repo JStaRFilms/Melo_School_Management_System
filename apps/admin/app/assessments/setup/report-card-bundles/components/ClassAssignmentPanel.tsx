@@ -2,7 +2,8 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Link2, CheckCircle2, Circle } from "lucide-react";
+import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BundleRecord, ClassAssignmentRecord, ClassSummary } from "../types";
 import { buildNextAssignedBundleIds } from "../utils";
 
@@ -18,8 +19,8 @@ const EMPTY_ASSIGNMENTS: Record<string, ClassAssignmentRecord> = {};
 const FILTER_OPTIONS = [
   ["all", "All"],
   ["assigned", "Assigned"],
-  ["unassigned", "Unassigned"],
-  ["selected-bundle", "Using selected"],
+  ["unassigned", "Empty"],
+  ["selected-bundle", "Selected"],
 ] as const;
 
 export function StaticClassAssignmentPanel(props: ClassAssignmentPanelProps) {
@@ -82,33 +83,20 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   const filteredClasses = useMemo(() => {
     return classes.filter((classItem) => {
       const matchesSearch = classItem.name.toLowerCase().includes(search.trim().toLowerCase());
-      if (!matchesSearch) {
-        return false;
-      }
+      if (!matchesSearch) return false;
 
       const assignedBundleIds =
         assignmentMap[classItem.id]?.bundleAssignments.map((entry) => entry.bundleId) ?? [];
-      if (filter === "assigned") {
-        return assignedBundleIds.length > 0;
-      }
-      if (filter === "unassigned") {
-        return assignedBundleIds.length === 0;
-      }
-      if (filter === "selected-bundle") {
-        return selectedBundleId ? assignedBundleIds.includes(selectedBundleId) : false;
-      }
+      if (filter === "assigned") return assignedBundleIds.length > 0;
+      if (filter === "unassigned") return assignedBundleIds.length === 0;
+      if (filter === "selected-bundle") return selectedBundleId ? assignedBundleIds.includes(selectedBundleId) : false;
       return true;
     });
   }, [assignmentMap, classes, filter, search, selectedBundleId]);
 
-  const selectedVisibleCount = filteredClasses.filter((entry) => selectedClassIds.includes(entry.id)).length;
-
   const handleBulkApply = useCallback(
     async (includeSelected: boolean) => {
-      if (!selectedBundleId) {
-        return;
-      }
-
+      if (!selectedBundleId) return;
       for (const classId of selectedClassIds) {
         const nextIds = buildNextAssignedBundleIds(
           assignmentMap[classId],
@@ -122,37 +110,38 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   );
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="space-y-1 border-b border-slate-100 pb-5">
-        <h2 className="text-lg font-semibold text-slate-900">Class assignment</h2>
-        <p className="text-sm text-slate-500">
-          Attach the selected bundle in bulk, or toggle multiple bundles per class when schools need stacked extras.
-        </p>
+    <AdminSurface intensity="none" className="p-4 sm:p-6 space-y-6 border-slate-200 shadow-sm bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-500">
+      <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-indigo-50 rounded-lg">
+            <Link2 className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="space-y-0.5">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900">Distribution Engine</h2>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-tight">Deploy blueprints to class instances</p>
+          </div>
+        </div>
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <label className="relative block w-full lg:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <div className="flex flex-col gap-4">
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-950 transition-colors" />
           <input
-            className="w-full rounded-2xl border border-slate-200 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-slate-400"
+            className="w-full h-10 rounded-xl border border-slate-100 bg-slate-50/50 pl-10 pr-4 text-xs font-bold uppercase tracking-widest outline-none transition focus:border-slate-300 focus:bg-white"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search classes"
+            placeholder="Filter Classes..."
             value={search}
           />
-        </label>
+        </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {FILTER_OPTIONS.map(([value, label]) => (
             <button
               key={value}
-              className={[
-                "rounded-full px-3 py-2 text-sm font-medium transition",
-                filter === value
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-              ].join(" ")}
               onClick={() => setFilter(value as typeof filter)}
-              type="button"
+              className={`px-3 py-1.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${
+                filter === value ? "bg-slate-900 text-white shadow-lg" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+              }`}
             >
               {label}
             </button>
@@ -160,44 +149,29 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        <span>{filteredClasses.length} classes shown</span>
-        <span>{selectedVisibleCount} selected in view</span>
-        <button
-          className="font-medium text-slate-900"
-          onClick={() => setSelectedClassIds(Array.from(new Set(filteredClasses.map((entry) => entry.id))))}
-          type="button"
-        >
-          Select visible
-        </button>
-        <button className="font-medium text-slate-900" onClick={() => setSelectedClassIds([])} type="button">
-          Clear selection
-        </button>
-        <button
-          className="rounded-xl bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-40"
-          disabled={!selectedBundleId || selectedClassIds.length === 0}
-          onClick={() => void handleBulkApply(true)}
-          type="button"
-        >
-          Add selected bundle
-        </button>
-        <button
-          className="rounded-xl border border-slate-200 px-4 py-2 font-medium text-slate-700 disabled:opacity-40"
-          disabled={!selectedBundleId || selectedClassIds.length === 0}
-          onClick={() => void handleBulkApply(false)}
-          type="button"
-        >
-          Remove selected bundle
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
+      {selectedClassIds.length > 0 && (
+        <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between animate-in slide-in-from-top-2 duration-300">
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">
+            {selectedClassIds.length} Nodes Locked
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSelectedClassIds([])}
+              className="px-2 py-1 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => handleBulkApply(true)}
+              className="px-3 py-1 bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+            >
+              Deploy Selected
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="mt-5 space-y-3">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[700px] overflow-y-auto custom-scrollbar pr-2 pb-10">
         {filteredClasses.map((classItem) => {
           const assignment = assignmentMap[classItem.id];
           const assignedBundleIds = assignment?.bundleAssignments.map((entry) => entry.bundleId) ?? [];
@@ -207,106 +181,65 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
               .sort((left, right) => left.order - right.order)
               .map((entry) => entry.bundleName) ?? [];
           const isWorking = workingClassIds.includes(classItem.id);
+          const isSelected = selectedClassIds.includes(classItem.id);
 
           return (
             <div
               key={classItem.id}
-              className="grid gap-3 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[auto_1fr]"
+              className={`group relative flex flex-col gap-3 p-4 rounded-xl border transition-all ${
+                isSelected ? "border-indigo-200 bg-indigo-50/30" : "border-slate-50 bg-slate-50/10 hover:border-slate-200"
+              }`}
             >
-              <label className="flex items-center gap-3">
-                <input
-                  checked={selectedClassIds.includes(classItem.id)}
-                  className="h-4 w-4 rounded border-slate-300"
-                  onChange={(event) => {
-                    setSelectedClassIds((current) =>
-                      event.target.checked
-                        ? Array.from(new Set([...current, classItem.id]))
-                        : current.filter((entry) => entry !== classItem.id)
-                    );
-                  }}
-                  type="checkbox"
-                />
-                <div>
-                  <div className="font-medium text-slate-900">{classItem.name}</div>
-                  <div className="text-sm text-slate-500">
-                    Current: {assignedBundleNames.length > 0 ? assignedBundleNames.join(", ") : "No bundles"}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setSelectedClassIds(prev => isSelected ? prev.filter(id => id !== classItem.id) : [...prev, classItem.id])}
+                  className="flex items-center gap-3 text-left"
+                >
+                  {isSelected ? <CheckCircle2 className="w-4 h-4 text-indigo-600" /> : <Circle className="w-4 h-4 text-slate-200 group-hover:text-slate-400 transition-colors" />}
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900">{classItem.name}</div>
+                    <div className="text-xs font-bold text-slate-400 truncate max-w-[200px]">
+                      {assignedBundleNames.length > 0 ? assignedBundleNames.join(" • ") : "Void Stack"}
+                    </div>
                   </div>
-                </div>
-              </label>
+                </button>
+                {isWorking && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300" />}
+              </div>
 
-              <div className="space-y-3">
-                {selectedBundleId ? (
-                  <div className="flex flex-wrap gap-2 text-sm">
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100/50">
+                {bundles.map((bundle) => {
+                  const isChecked = assignedBundleIds.includes(bundle._id);
+                  return (
                     <button
-                      className="rounded-xl bg-slate-900 px-3 py-2 font-medium text-white disabled:opacity-40"
-                      disabled={isWorking || assignedBundleIds.includes(selectedBundleId)}
-                      onClick={() =>
-                        void applyAssignment(
-                          classItem.id,
-                          buildNextAssignedBundleIds(assignment, selectedBundleId, true)
-                        )
-                      }
-                      type="button"
+                      key={bundle._id}
+                      disabled={isWorking}
+                      onClick={() => {
+                        const nextIds = isChecked
+                          ? assignedBundleIds.filter(id => id !== bundle._id)
+                          : [...assignedBundleIds, bundle._id];
+                        void applyAssignment(classItem.id, Array.from(new Set(nextIds)));
+                      }}
+                      className={`px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded transition-all ${
+                        isChecked 
+                          ? "bg-slate-900 text-white" 
+                          : "bg-white text-slate-400 border border-slate-100 hover:border-slate-200 hover:text-slate-600"
+                      }`}
                     >
-                      Add selected bundle
+                      {bundle.name}
                     </button>
-                    <button
-                      className="rounded-xl border border-slate-200 px-3 py-2 font-medium text-slate-700 disabled:opacity-40"
-                      disabled={isWorking || !assignedBundleIds.includes(selectedBundleId)}
-                      onClick={() =>
-                        void applyAssignment(
-                          classItem.id,
-                          buildNextAssignedBundleIds(assignment, selectedBundleId, false)
-                        )
-                      }
-                      type="button"
-                    >
-                      Remove selected bundle
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap gap-2">
-                  {bundles.map((bundle) => {
-                    const isChecked = assignedBundleIds.includes(bundle._id);
-                    return (
-                      <label
-                        key={bundle._id}
-                        className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${
-                          isChecked
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-white text-slate-700"
-                        }`}
-                      >
-                        <input
-                          checked={isChecked}
-                          className="h-4 w-4"
-                          disabled={isWorking}
-                          onChange={(event) => {
-                            const nextIds = event.target.checked
-                              ? [...assignedBundleIds, bundle._id]
-                              : assignedBundleIds.filter((bundleId) => bundleId !== bundle._id);
-                            void applyAssignment(classItem.id, Array.from(new Set(nextIds)));
-                          }}
-                          type="checkbox"
-                        />
-                        <span>{bundle.name}</span>
-                      </label>
-                    );
-                  })}
-                  {isWorking ? <Loader2 className="h-4 w-4 animate-spin self-center text-slate-400" /> : null}
-                </div>
+                  );
+                })}
               </div>
             </div>
           );
         })}
 
         {filteredClasses.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
-            No classes match the current search and filter.
+          <div className="py-10 text-center border border-dashed border-slate-100 rounded-2xl">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No instances found</p>
           </div>
         )}
       </div>
-    </section>
+    </AdminSurface>
   );
 });

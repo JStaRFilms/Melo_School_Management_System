@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+import { Sparkles, Trash2, Edit3, X, Info, ChevronDown, Save } from "lucide-react";
 
 type ClassOffering = {
   _id: string;
@@ -89,6 +91,7 @@ export function ClassAggregationManager({
     setStrategy("fixed_contribution");
     setSelectedComponentIds([]);
     setComponentContributions({});
+    setError(null);
   };
 
   const beginEdit = (aggregation: AggregationRecord) => {
@@ -120,12 +123,12 @@ export function ClassAggregationManager({
 
   const handleSave = async () => {
     if (!classId || !umbrellaSubjectId || selectedComponentIds.length === 0) {
-      setError("Pick an umbrella subject and at least one component subject.");
+      setError("Selection incomplete.");
       return;
     }
 
     if (strategy === "fixed_contribution" && componentContributionTotal !== 100) {
-      setError("Fixed contribution totals must add up to 100.");
+      setError("Check contributions (must sum to 100).");
       return;
     }
 
@@ -150,8 +153,8 @@ export function ClassAggregationManager({
       } as never);
       setSuccessMessage(
         editingAggregationId
-          ? "Aggregation updated for this class."
-          : "Aggregation saved for this class."
+          ? "Sync successful."
+          : "Aggregation saved."
       );
       resetForm();
     } catch (err) {
@@ -189,203 +192,201 @@ export function ClassAggregationManager({
 
   if (offerings === undefined) {
     return (
-      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-white p-4 text-sm text-[#64748b]">
-        Loading class offerings...
+      <div className="py-6 flex items-center justify-center gap-3 animate-pulse">
+        <Sparkles className="h-4 w-4 text-slate-200" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">Synchronizing...</span>
       </div>
     );
   }
 
   if (offerings.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-white p-4 text-sm text-[#64748b]">
-        Save class offerings first before configuring aggregated subjects.
-      </div>
+      <AdminSurface intensity="medium" rounded="lg" className="p-8 text-center space-y-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 mx-auto text-slate-200 ring-1 ring-slate-950/5">
+          <Info className="h-6 w-6" />
+        </div>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Inventory Empty</p>
+        <p className="text-xs font-medium text-slate-300 leading-relaxed px-4">Initialize the subject catalog first to configure aggregated units.</p>
+      </AdminSurface>
     );
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
-      <div>
-        <p className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-          Subject Aggregation
-        </p>
-        <p className="mt-1 text-[11px] font-medium text-[#64748b]">
-          Create derived umbrella subjects for this class. Component subjects stay
-          editable in exam entry, while report cards show only the normalized
-          umbrella score.
-        </p>
-      </div>
-
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+    <div className="space-y-6">
+      {/* Active Aggregations List */}
+      {aggregations && aggregations.length > 0 && (
+        <div className="space-y-3">
+           <div className="flex items-center gap-2 px-1">
+             <div className="h-1.5 w-1.5 rounded-full bg-slate-950 animate-pulse" />
+             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Current Rules</p>
+           </div>
+           {aggregations.map((aggregation) => (
+             <AdminSurface 
+               key={aggregation._id} 
+               intensity={editingAggregationId === aggregation._id ? "high" : "medium"}
+               rounded="lg" 
+               className={`p-4 transition-all duration-300 ${editingAggregationId === aggregation._id ? "ring-2 ring-slate-950 bg-slate-950/5" : ""}`}
+             >
+               <div className="flex items-start justify-between gap-4">
+                 <div className="space-y-1">
+                   <div className="flex items-center gap-2">
+                     <p className="text-sm font-bold text-slate-950 tracking-tight">{aggregation.umbrellaSubjectName}</p>
+                     <p className="text-[8px] font-black tracking-widest text-slate-400 uppercase italic opacity-60">UMBRELLA</p>
+                   </div>
+                   <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                     {aggregation.strategy === "fixed_contribution" ? "Fixed Contribution Rule" : "Raw Combined Rule"}
+                   </p>
+                   <div className="flex flex-wrap gap-1.5 mt-2">
+                     {aggregation.components.map(comp => (
+                       <span key={comp._id} className="inline-flex items-center rounded-md bg-white border border-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 shadow-sm lowercase">
+                         {comp.componentSubjectName}
+                       </span>
+                     ))}
+                   </div>
+                 </div>
+                 <div className="flex gap-2">
+                   <button
+                     onClick={() => beginEdit(aggregation)}
+                     className="p-2 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-slate-950 hover:border-slate-950 transition-all hover:shadow-lg"
+                   >
+                     <Edit3 className="h-3.5 w-3.5" />
+                   </button>
+                   <button
+                     onClick={() => handleRemove(aggregation._id)}
+                     className="p-2 rounded-lg bg-rose-50 border border-rose-100 text-rose-400 hover:text-rose-600 hover:border-rose-300 transition-all"
+                   >
+                     <Trash2 className="h-3.5 w-3.5" />
+                   </button>
+                 </div>
+               </div>
+             </AdminSurface>
+           ))}
         </div>
-      ) : null}
-      {successMessage ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {successMessage}
-        </div>
-      ) : null}
+      )}
 
-      {aggregations && aggregations.length > 0 ? (
-        <div className="space-y-2">
-          {aggregations.map((aggregation) => (
-            <div
-              key={aggregation._id}
-              className="rounded-lg border border-white bg-white p-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold text-[#0f172a]">
-                    {aggregation.umbrellaSubjectName}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#94a3b8]">
-                    {aggregation.strategy === "fixed_contribution"
-                      ? "Fixed contribution"
-                      : "Raw combined normalized"}
-                  </p>
-                  <p className="mt-1 text-xs text-[#64748b]">
-                    {aggregation.components
-                      .map((component) => component.componentSubjectName)
-                      .join(", ")}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => beginEdit(aggregation)}
-                    className="rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#475569]"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRemove(aggregation._id)}
-                    className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-rose-700"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Editor Surface */}
+      <AdminSurface intensity="high" rounded="xl" className="p-5 space-y-6 relative overflow-hidden border-2 border-slate-950/5">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+           <div className="flex items-center gap-3">
+             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-white">
+                <Sparkles className="h-4 w-4" />
+             </div>
+             <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-950">
+                   {editingAggregationId ? "Modify Aggregation" : "Dynamic Unit Builder"}
+                </h4>
+             </div>
+           </div>
+           {editingAggregationId && (
+             <button onClick={resetForm} className="text-slate-300 hover:text-slate-950 transition-colors">
+               <X className="h-4 w-4" />
+             </button>
+           )}
         </div>
-      ) : null}
 
-      <div className="space-y-3 rounded-lg border border-white bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-              Umbrella Subject
-            </label>
-            <select
-              value={umbrellaSubjectId}
-              onChange={(event) => setUmbrellaSubjectId(event.target.value)}
-              className="h-10 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a]"
-            >
-              <option value="">Select umbrella subject</option>
-              {availableSubjects.map((subject) => (
-                <option key={subject.subjectId} value={subject.subjectId}>
-                  {subject.subjectName}
-                </option>
-              ))}
-            </select>
+        {(error || successMessage) && (
+          <div className={`p-3 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${
+            error ? "bg-rose-50 border-rose-100 text-rose-600" : "bg-emerald-50 border-emerald-100 text-emerald-600"
+          }`}>
+             {error || successMessage}
           </div>
+        )}
 
-          <div>
-            <label className="mb-1 block text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-              Combination Rule
-            </label>
-            <select
-              value={strategy}
-              onChange={(event) =>
-                setStrategy(
-                  event.target.value as
-                    | "fixed_contribution"
-                    | "raw_combined_normalized"
-                )
-              }
-              className="h-10 w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm font-bold text-[#0f172a]"
-            >
-              <option value="fixed_contribution">Fixed contribution</option>
-              <option value="raw_combined_normalized">
-                Raw combined normalized
-              </option>
-            </select>
-          </div>
+        <div className="grid gap-5">
+           <div className="space-y-1.5">
+             <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Target Umbrella</p>
+             <div className="relative">
+               <select
+                 value={umbrellaSubjectId}
+                 onChange={(e) => setUmbrellaSubjectId(e.target.value)}
+                 className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950"
+               >
+                 <option value="">Select subject index</option>
+                 {availableSubjects.map((subject) => (
+                   <option key={subject.subjectId} value={subject.subjectId}>
+                     {subject.subjectName}
+                   </option>
+                 ))}
+               </select>
+               <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-300" />
+             </div>
+           </div>
+
+           <div className="space-y-1.5">
+             <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Combination Strategy</p>
+             <div className="flex p-1 bg-slate-100 rounded-lg gap-1 border border-slate-200/50">
+                <button
+                  type="button"
+                  onClick={() => setStrategy("fixed_contribution")}
+                  className={`flex-1 py-2 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    strategy === "fixed_contribution" ? "bg-white text-slate-950 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Fixed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStrategy("raw_combined_normalized")}
+                  className={`flex-1 py-2 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    strategy === "raw_combined_normalized" ? "bg-white text-slate-950 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Raw Sync
+                </button>
+             </div>
+           </div>
+
+           <div className="space-y-3">
+             <div className="flex items-center justify-between">
+                <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Component Buffer</p>
+                {strategy === "fixed_contribution" && (
+                  <p className={`text-[9px] font-bold uppercase tracking-widest ${componentContributionTotal === 100 ? "text-emerald-500" : "text-slate-400"}`}>
+                    Sync: {componentContributionTotal}/100
+                  </p>
+                )}
+             </div>
+             <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar -mx-1 px-1">
+                {availableSubjects
+                  .filter((sub) => sub.subjectId !== umbrellaSubjectId)
+                  .map((sub) => {
+                    const isSelected = selectedComponentIds.includes(sub.subjectId);
+                    return (
+                      <div key={sub.subjectId} className="space-y-1.5">
+                         <button
+                           type="button"
+                           onClick={() => toggleComponent(sub.subjectId)}
+                           className={`h-9 w-full rounded-lg px-2 text-[10px] font-bold transition-all border text-left flex items-center justify-between group ${
+                             isSelected ? "border-slate-950 bg-slate-950/5 text-slate-950" : "border-slate-100 bg-white text-slate-400 hover:border-slate-200"
+                           }`}
+                         >
+                            <span className="truncate">{sub.subjectName}</span>
+                         </button>
+                         {isSelected && strategy === "fixed_contribution" && (
+                           <input
+                             type="number"
+                             value={componentContributions[sub.subjectId] ?? ""}
+                             onChange={(e) => setComponentContributions(c => ({...c, [sub.subjectId]: e.target.value}))}
+                             placeholder="Contrib %"
+                             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-950 outline-none focus:border-slate-950"
+                           />
+                         )}
+                      </div>
+                    );
+                  })
+                }
+             </div>
+           </div>
         </div>
 
-        <div className="space-y-2">
-          <p className="text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94a3b8]">
-            Component Subjects
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {availableSubjects
-              .filter((subject) => subject.subjectId !== umbrellaSubjectId)
-              .map((subject) => {
-                const selected = selectedComponentIds.includes(subject.subjectId);
-                return (
-                  <label
-                    key={subject.subjectId}
-                    className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-bold text-[#0f172a]">
-                        {subject.subjectName}
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleComponent(subject.subjectId)}
-                      />
-                    </div>
-                    {selected && strategy === "fixed_contribution" ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={componentContributions[subject.subjectId] ?? ""}
-                        onChange={(event) =>
-                          setComponentContributions((current) => ({
-                            ...current,
-                            [subject.subjectId]: event.target.value,
-                          }))
-                        }
-                        className="mt-2 h-10 w-full rounded-lg border border-[#e2e8f0] bg-white px-3 text-sm font-bold text-[#0f172a]"
-                        placeholder="Contribution out of 100"
-                      />
-                    ) : null}
-                  </label>
-                );
-              })}
-          </div>
-          {strategy === "fixed_contribution" ? (
-            <p className="text-xs font-semibold text-[#64748b]">
-              Contribution total: {componentContributionTotal} / 100
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={isSaving}
-            className="rounded-lg bg-[#4f46e5] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white disabled:opacity-50"
-          >
-            {isSaving ? "Saving..." : editingAggregationId ? "Update" : "Save"}
-          </button>
-          {editingAggregationId ? (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="rounded-lg border border-[#e2e8f0] bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#475569]"
-            >
-              Cancel edit
-            </button>
-          ) : null}
-        </div>
-      </div>
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-950/20 transition-all hover:bg-slate-900 active:scale-[0.98] disabled:opacity-50"
+        >
+          <Save className="h-4 w-4 text-white/50" />
+          {isSaving ? "Synchronizing..." : editingAggregationId ? "Sync Modification" : "Publish Aggregation"}
+        </button>
+      </AdminSurface>
     </div>
   );
 }

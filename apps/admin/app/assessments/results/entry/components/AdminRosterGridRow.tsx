@@ -79,37 +79,40 @@ export function AdminRosterGridRow({
 
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
+  const parseScoreValue = (raw: string) => {
+    if (raw === "") return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
   return (
-    <tr className="hover:bg-slate-50/50 transition-all cursor-pointer">
-      <td className="sticky-column">
-        <span className="font-semibold text-slate-900">
-          {displayStudentName}
-        </span>
-        <div className="mt-1">
-          {reportCardHref ? (
-            <Link
-              href={reportCardHref}
-              className="text-[9px] font-bold uppercase tracking-[0.12em] text-indigo-600"
-            >
-              View Report Card
-            </Link>
-          ) : null}
-          {reportCardExtrasHref ? (
-            <Link
-              href={reportCardExtrasHref}
-              className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
-            >
-              Report Extras
-            </Link>
-          ) : null}
+    <tr className="group hover:bg-slate-50/50 transition-all cursor-pointer">
+      <td className="sticky-column pl-6">
+        <div className="flex flex-col">
+          <span className="font-bold text-slate-950 text-sm tracking-tight">
+            {displayStudentName}
+          </span>
+          <div className="flex gap-2.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {reportCardHref && (
+              <Link
+                href={reportCardHref}
+                className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-900"
+              >
+                Report
+              </Link>
+            )}
+            {reportCardExtrasHref && (
+              <Link
+                href={reportCardExtrasHref}
+                className="text-[9px] font-black uppercase tracking-widest text-emerald-700 hover:text-emerald-900"
+              >
+                Extras
+              </Link>
+            )}
+          </div>
         </div>
-        <p className="text-[8px] font-medium text-slate-400 uppercase mt-0.5 tracking-tighter">
-          {student.assessmentRecord
-            ? "Standard Entry"
-            : "Admin Override"}
-        </p>
       </td>
-      <td>
+      <td className="text-center">
         <input
           type="number"
           value={ca1 ?? ""}
@@ -118,13 +121,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca1",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca1", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca1 ? "error" : ""} ${
@@ -132,7 +129,7 @@ export function AdminRosterGridRow({
           }`}
         />
       </td>
-      <td>
+      <td className="text-center">
         <input
           type="number"
           value={ca2 ?? ""}
@@ -141,13 +138,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca2",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca2", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca2 ? "error" : ""} ${
@@ -155,7 +146,7 @@ export function AdminRosterGridRow({
           }`}
         />
       </td>
-      <td>
+      <td className="text-center">
         <input
           type="number"
           value={ca3 ?? ""}
@@ -164,13 +155,7 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "ca3",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "ca3", parseScoreValue(e.target.value));
           }}
           placeholder="--"
           className={`score-input ${studentErrors.ca3 ? "error" : ""} ${
@@ -178,7 +163,7 @@ export function AdminRosterGridRow({
           }`}
         />
       </td>
-      <td>
+      <td className="text-center">
         <input
           type="number"
           value={examRaw ?? ""}
@@ -187,16 +172,10 @@ export function AdminRosterGridRow({
           step={1}
           disabled={!isEditable}
           onChange={(e) => {
-            const v =
-              e.target.value === "" ? null : parseInt(e.target.value, 10);
-            onScoreChange(
-              student.studentId,
-              "examRawScore",
-              isNaN(v as number) ? null : v
-            );
+            onScoreChange(student.studentId, "examRawScore", parseScoreValue(e.target.value));
           }}
           placeholder="--"
-          className={`score-input border-blue-100 bg-blue-50/10 ${studentErrors.examRawScore ? "error" : ""} ${
+          className={`score-input score-input-exam ${studentErrors.examRawScore ? "error" : ""} ${
             !isEditable ? "cursor-not-allowed opacity-60" : ""
           }`}
         />
@@ -204,22 +183,19 @@ export function AdminRosterGridRow({
       {showScaledColumn && (
         <td className="text-center font-bold text-indigo-600">
           {derived.examScaledScore !== null
-            ? derived.examScaledScore.toFixed(2)
+            ? derived.examScaledScore.toFixed(1)
             : "--"}
         </td>
       )}
-      <td className="text-center font-bold text-slate-900">
-        {derived.total !== null ? derived.total.toFixed(1) : "--"}
+      <td className="text-center font-black text-white bg-slate-950 border-r border-white/10 tabular-nums">
+        {derived.total !== null ? derived.total.toFixed(0) : "--"}
       </td>
       <td className="text-center">
         <span
-          className={`font-bold ${getGradeColorClass(derived.gradeLetter)}`}
+          className={`font-black text-sm ${getGradeColorClass(derived.gradeLetter)}`}
         >
           {derived.gradeLetter ?? "--"}
         </span>
-      </td>
-      <td className="text-[8px] text-slate-400 uppercase font-medium">
-        {student.assessmentRecord ? "Standard Entry" : "Admin Override"}
       </td>
     </tr>
   );

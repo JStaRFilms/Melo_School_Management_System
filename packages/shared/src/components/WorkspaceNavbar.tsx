@@ -7,6 +7,18 @@ import {
   isWorkspaceSectionActive,
   type WorkspaceKey,
 } from "../workspace-navigation";
+import { 
+  ChevronDown, 
+  LogOut, 
+  Menu, 
+  X, 
+  Layers, 
+  GraduationCap, 
+  ClipboardCheck,
+  ChevronRight,
+  ShieldCheck,
+  LayoutDashboard,
+} from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -19,35 +31,25 @@ interface LinkRenderProps {
 export interface WorkspaceNavbarProps {
   workspace: WorkspaceKey;
   currentPath: string;
+  fullBleed?: boolean;
   userName?: string | null;
   userRole?: string | null;
   onSignOut?: () => void;
   renderLink: (props: LinkRenderProps) => ReactNode;
+  children: ReactNode;
 }
-
-/* ─── Palette ────────────────────────────────────────────────── */
-
-const C = {
-  bg: "#ffffff",
-  bgHover: "#f8fafc",
-  bgActive: "#f1f5f9",
-  border: "#e8ecf1",
-  borderSubtle: "#f1f5f9",
-  ink: "#0f172a",
-  inkMuted: "#64748b",
-  inkFaint: "#94a3b8",
-  inkGhost: "#cbd5e1",
-} as const;
 
 /* ─── Component ──────────────────────────────────────────────── */
 
 export function WorkspaceNavbar({
   workspace,
   currentPath,
+  fullBleed = false,
   userName,
   userRole,
   onSignOut,
   renderLink,
+  children,
 }: WorkspaceNavbarProps) {
   const def = getWorkspaceDefinition(workspace);
   const sections = getWorkspaceSections(workspace);
@@ -55,332 +57,290 @@ export function WorkspaceNavbar({
     userName?.trim().charAt(0).toUpperCase() ?? def.label.charAt(0);
 
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
-  /* Close on outside click */
+  const groups = {
+    management: {
+        label: "Management",
+        icon: <LayoutDashboard className="h-4 w-4" />,
+        links: sections.slice(0, 2)
+    },
+    academic: {
+        label: "Academic Operations",
+        icon: <GraduationCap className="h-4 w-4" />,
+        links: sections.slice(2, 8)
+    },
+    assessments: {
+        label: "Assessments & Exams",
+        icon: <ClipboardCheck className="h-4 w-4" />,
+        links: sections.slice(8)
+    }
+  };
+
   useEffect(() => {
-    if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (
-        menuRef.current && !menuRef.current.contains(target) &&
-        toggleRef.current && !toggleRef.current.contains(target)
-      ) setOpen(false);
+      if (open && menuRef.current && !menuRef.current.contains(target) &&
+          toggleRef.current && !toggleRef.current.contains(target)) {
+        setOpen(false);
+      }
+      if (profileOpen && profileRef.current && !profileRef.current.contains(target)) {
+        setProfileOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, [open, profileOpen]);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  /* Close on navigate */
-  useEffect(() => setOpen(false), [currentPath]);
+  useEffect(() => {
+    setOpen(false);
+    setProfileOpen(false);
+  }, [currentPath]);
 
   const activeSection = sections.find((s) =>
     isWorkspaceSectionActive(s, currentPath)
   );
 
   return (
-    <header
-      className="rc-no-print"
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        background: "rgba(255,255,255,0.92)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderBottom: `1px solid ${C.border}`,
-      }}
-    >
-      {/* ═══ BAR ═══════════════════════════════════════════════ */}
-      <div
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          padding: "0 16px",
-          height: 52,
-        }}
-      >
-        {/* ── Logo + label ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: C.ink,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontSize: 9,
-              fontWeight: 900,
-              letterSpacing: "0.14em",
-            }}
-          >
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
+      
+      {/* ═══ DESKTOP SIDEBAR (Pinned) ═══════════════════════════ */}
+      <aside className="hidden h-full w-72 flex-col border-r border-slate-200 bg-white xl:flex shrink-0 z-30">
+        <div className="flex h-16 items-center gap-4 px-6 border-b border-slate-100/60">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[10px] font-black tracking-tighter text-white shadow-lg shadow-slate-950/20">
             OS
           </div>
-
-          {/* Desktop workspace label */}
-          <div className="ws-d">
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>
-              {def.label}
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 500, color: C.inkFaint, marginLeft: 6 }}>
-              {def.audience}
-            </span>
-          </div>
-
-          {/* Mobile: active section name */}
-          <div className="ws-m">
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>
-              {activeSection?.label ?? def.label}
-            </span>
+          <div>
+            <h1 className="font-display text-sm font-bold tracking-tight text-slate-950 leading-none">
+              {def.label} Portal
+            </h1>
+            <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400 mt-1 leading-none">
+              Academic Engine
+            </p>
           </div>
         </div>
 
-        {/* ── Section tabs (desktop) ── */}
-        <nav className="ws-d" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
-          {sections.map((section) => {
-            const active = isWorkspaceSectionActive(section, currentPath);
-            return renderLink({
-              href: section.href,
-              children: (
-                <span
-                  key={section.href}
-                  className="ws-tab"
-                  data-active={active || undefined}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "6px 12px",
-                    fontSize: 13,
-                    fontWeight: active ? 650 : 500,
-                    color: active ? C.ink : C.inkMuted,
-                    whiteSpace: "nowrap",
-                    borderRadius: 6,
-                    background: active ? C.bgActive : "transparent",
-                    transition: "all 0.15s ease",
-                    cursor: "pointer",
-                    textDecoration: "none",
-                  }}
-                >
-                  {section.label}
-                </span>
-              ),
-            });
-          })}
+        <nav className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
+          <div className="space-y-7 py-3">
+            {Object.entries(groups).map(([key, group]) => (
+              <div key={key} className="space-y-2.5">
+                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                  {group.label}
+                </h3>
+                <div className="grid gap-0.5">
+                  {group.links.map((s) => (
+                    <SidebarLink 
+                      key={s.href} 
+                      section={s} 
+                      active={isWorkspaceSectionActive(s, currentPath)} 
+                      renderLink={renderLink} 
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </nav>
 
-        {/* ── Right controls ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
-          {/* Desktop user info */}
-          <div className="ws-d" style={{ textAlign: "right", marginRight: 4 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, lineHeight: 1.2, margin: 0 }}>
-              {userName ?? "User"}
-            </p>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.inkFaint, lineHeight: 1.2, margin: 0 }}>
-              {userRole ?? def.label}
-            </p>
-          </div>
-
-          {/* Avatar */}
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: "50%",
-              background: C.bgActive,
-              border: `1.5px solid ${C.border}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 12,
-              fontWeight: 700,
-              color: C.inkMuted,
-              flexShrink: 0,
-            }}
-          >
-            {initials}
-          </div>
-
-          {/* Sign out (desktop) */}
-          {onSignOut ? (
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="ws-d ws-ghost"
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: C.inkFaint,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "6px 8px",
-                borderRadius: 4,
-                transition: "color 0.15s ease",
-              }}
-            >
-              Sign out
-            </button>
-          ) : null}
-
-          {/* Hamburger (mobile) */}
-          <button
-            ref={toggleRef}
-            type="button"
-            className="ws-m"
-            onClick={() => setOpen((v) => !v)}
-            aria-label="Toggle navigation"
-            style={{
-              width: 34,
-              height: 34,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              border: `1.5px solid ${open ? C.inkMuted : C.border}`,
-              background: open ? C.bgActive : C.bg,
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-              flexShrink: 0,
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke={C.inkMuted} strokeWidth="1.5" strokeLinecap="round">
-              {open ? (
-                <>
-                  <line x1="4" y1="4" x2="12" y2="12" />
-                  <line x1="12" y1="4" x2="4" y2="12" />
-                </>
-              ) : (
-                <>
-                  <line x1="3" y1="4.5" x2="13" y2="4.5" />
-                  <line x1="3" y1="8" x2="13" y2="8" />
-                  <line x1="3" y1="11.5" x2="13" y2="11.5" />
-                </>
-              )}
-            </svg>
-          </button>
+        <div className="p-4 border-t border-slate-100 shrink-0">
+           <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-slate-400">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Node Status</p>
+                <p className="text-[11px] font-bold text-slate-900 mt-0.5">Production Core</p>
+              </div>
+           </div>
         </div>
-      </div>
+      </aside>
 
-      {/* ═══ MOBILE DRAWER ═════════════════════════════════════ */}
-      {open && (
-        <div
-          ref={menuRef}
-          className="ws-mb"
-          style={{
-            borderTop: `1px solid ${C.border}`,
-            background: C.bg,
-            padding: 16,
-            boxShadow: "0 8px 24px -4px rgba(0,0,0,0.08)",
-          }}
-        >
-          {/* User context */}
-          <div style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>
-              {userName ?? "User"}
-              <span style={{ color: C.inkFaint, fontWeight: 500, marginLeft: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                {userRole ?? def.label}
+      {/* ═══ RIGHT SIDE (Header + Main) ════════════════════════ */}
+      <div className="flex flex-col flex-1 min-w-0 relative">
+        
+        {/* ── TOP HEADER (Pinned) ── */}
+        <header className="rc-no-print sticky top-0 z-40 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+          
+          <div className="flex items-center gap-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-black tracking-tighter text-white xl:hidden shadow-lg shadow-slate-950/20">
+              OS
+            </div>
+            <div className="flex items-center gap-2 overflow-hidden">
+               <span className="hidden text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 sm:block">
+                {def.label}
               </span>
-            </p>
-            <p style={{ fontSize: 11, fontWeight: 500, color: C.inkFaint, margin: "2px 0 0" }}>
-              {def.label} · {def.audience}
-            </p>
+              <ChevronRight className="hidden h-3 w-3 text-slate-300 sm:block" />
+              <h2 className="truncate font-display text-sm font-bold tracking-tight text-slate-950 xl:text-base">
+                {activeSection?.label ?? "Dashboard"}
+              </h2>
+            </div>
           </div>
 
-          {/* Section links */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {sections.map((section) => {
-              const active = isWorkspaceSectionActive(section, currentPath);
-              return renderLink({
-                href: section.href,
-                children: (
-                  <span
-                    key={section.href}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      fontSize: 14,
-                      fontWeight: active ? 700 : 500,
-                      color: active ? C.ink : C.inkMuted,
-                      borderRadius: 8,
-                      background: active ? C.bgActive : "transparent",
-                      textDecoration: "none",
-                    }}
+          <div className="flex items-center gap-3">
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setProfileOpen(!profileOpen)}
+                className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 transition-all hover:border-slate-300 hover:shadow-sm"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950 text-[10px] font-bold text-white group-hover:bg-blue-600 transition-colors">
+                  {initials}
+                </div>
+                <div className="hidden text-left leading-none sm:block">
+                  <p className="text-xs font-bold text-slate-900">{userName?.split(' ')[0]}</p>
+                  <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">Session</p>
+                </div>
+                <ChevronDown className={`h-3 w-3 text-slate-400 transition-transform duration-300 ${profileOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {profileOpen && (
+                <div className="absolute right-0 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5">
+                  <div className="mb-1 rounded-lg bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Authenticated as</p>
+                    <p className="text-sm font-bold text-slate-950 truncate mt-0.5">{userName}</p>
+                    <p className="text-[10px] font-medium text-slate-500 mt-0.5">{userRole}</p>
+                  </div>
+                  <button
+                    onClick={onSignOut}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50"
                   >
-                    {active && (
-                      <span style={{
-                        width: 4,
-                        height: 4,
-                        borderRadius: "50%",
-                        background: C.ink,
-                        flexShrink: 0,
-                      }} />
-                    )}
-                    {section.label}
-                  </span>
-                ),
-              });
-            })}
-          </div>
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
 
-          {/* Sign out */}
-          {onSignOut ? (
             <button
-              type="button"
-              onClick={onSignOut}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                padding: "10px 0",
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: C.inkFaint,
-                background: C.bgHover,
-                border: `1px solid ${C.border}`,
-                borderRadius: 8,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
+              ref={toggleRef}
+              onClick={() => setOpen(!open)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 xl:hidden"
             >
-              Sign out
+              <Menu className="h-5 w-5" />
             </button>
-          ) : null}
-        </div>
-      )}
+          </div>
+        </header>
 
-      {/* ═══ RESPONSIVE CSS ════════════════════════════════════ */}
-      <style>{`
-        .ws-d  { display: none !important; }
-        .ws-m  { display: flex !important; }
-        .ws-mb { display: block !important; }
-        @media (min-width: 768px) {
-          .ws-d  { display: flex !important; }
-          .ws-m  { display: none !important; }
-          .ws-mb { display: none !important; }
-        }
-        .ws-tab:hover {
-          background: ${C.bgHover} !important;
-          color: ${C.ink} !important;
-        }
-        .ws-tab[data-active]:hover {
-          background: ${C.bgActive} !important;
-        }
-        .ws-ghost:hover {
-          color: ${C.ink} !important;
-        }
-      `}</style>
-    </header>
+        {/* ── MAIN SCROLL AREA ── */}
+        <main
+          className={`flex-1 overflow-y-auto w-full relative custom-scrollbar scrollbar-hide ${
+            fullBleed ? "" : "p-4 sm:p-6 lg:p-8"
+          }`}
+        >
+          <div className={fullBleed ? "w-full" : "mx-auto max-w-[1600px]"}>
+            {children}
+          </div>
+        </main>
+
+        {/* ═══ MOBILE DRAWER ═══════════════════════════════════ */}
+        {open && (
+          <div className="fixed inset-0 z-[100] flex flex-col bg-white xl:hidden transition-all duration-300 animate-in fade-in slide-in-from-right-5">
+            <div className="flex h-16 shrink-0 items-center justify-between px-4 border-b border-slate-100">
+               <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-[10px] font-black tracking-tighter text-white">
+                    OS
+                  </div>
+                  <span className="font-display text-sm font-bold text-slate-950">Navigation</span>
+               </div>
+               <button 
+                  onClick={() => setOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-950"
+               >
+                  <X className="h-5 w-5" />
+               </button>
+            </div>
+
+            <div ref={menuRef} className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide pb-32">
+              <div className="mb-8 flex items-center gap-4 px-2">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-base font-bold text-white shadow-xl shadow-slate-950/20">
+                  {initials}
+                </div>
+                <div>
+                  <p className="text-lg font-bold tracking-tight text-slate-950">{userName}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{userRole}</p>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                {Object.entries(groups).map(([key, group]) => (
+                  <div key={key} className="space-y-3">
+                    <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
+                    <div className="grid gap-1">
+                      {group.links.map((s) => (
+                         <MobileLink 
+                            key={s.href} 
+                            section={s} 
+                            active={isWorkspaceSectionActive(s, currentPath)} 
+                            renderLink={renderLink} 
+                          />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white/95 p-4 backdrop-blur-md">
+               <button
+                onClick={onSignOut}
+                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 py-4 text-sm font-bold text-white shadow-lg shadow-slate-950/20"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out secure session
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
+}
+
+function SidebarLink({ section, active, renderLink }: { section: any, active: boolean, renderLink: any }) {
+  return renderLink({
+    href: section.href,
+    children: (
+      <span
+        className={`flex items-center justify-between rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all duration-200 group ${
+          active 
+            ? "bg-slate-950 text-white shadow-md shadow-slate-950/10" 
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        {section.label}
+        <ChevronRight className={`h-3.5 w-3.5 transition-all ${
+          active ? "text-blue-400 translate-x-0" : "text-slate-300 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5"
+        }`} />
+      </span>
+    ),
+  });
+}
+
+function MobileLink({ section, active, renderLink }: { section: any, active: boolean, renderLink: any }) {
+  return renderLink({
+    href: section.href,
+    children: (
+      <span
+        className={`flex items-center justify-between rounded-xl px-4 py-3.5 text-sm font-bold transition-all ${
+          active 
+            ? "bg-slate-950 text-white shadow-lg shadow-slate-950/10" 
+            : "text-slate-600 hover:bg-slate-50"
+        }`}
+      >
+        {section.label}
+        {active && <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />}
+      </span>
+    ),
+  });
 }

@@ -6,6 +6,8 @@ export type ArchiveRecordType =
   | "student"
   | "event";
 
+export type ArchiveFilterType = "all" | ArchiveRecordType;
+
 export interface ArchivedRecordItem {
   id: string;
   type: ArchiveRecordType;

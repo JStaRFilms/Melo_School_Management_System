@@ -5,6 +5,29 @@ export type Id<TableName extends string> = string & {
   readonly __tableName?: TableName;
 };
 
+export type SubjectRecord = {
+  _id: string;
+  name: string;
+  code: string;
+  createdAt: number;
+};
+
+export type SessionRecord = {
+  _id: string;
+  name: string;
+  startDate: number;
+  endDate: number;
+  isActive: boolean;
+};
+
+export type TeacherRecord = {
+  _id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+  status?: "active" | "inactive" | "onLeave";
+};
+
 // Selection state for the 4 dropdowns
 export interface SelectionState {
   sessionId: Id<"academicSessions"> | null;

@@ -178,30 +178,48 @@ function AdminReportCardPageContent() {
   }
 
   return (
-    <>
-      <ReportCardBatchNavigator
-        students={batchStudents ?? []}
-        activeStudentId={studentId}
-        className={reportCard.className}
-        sessionName={reportCard.sessionName}
-        termName={reportCard.termName}
-        isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
-        isPrintingFullClass={isPrintClassMode}
-        extrasHref={extrasHref}
-        onSelectStudent={handleSelectStudent}
-        onPrintFullClass={handlePrintFullClass}
-      />
-      <ReportCardAdminPanel
-        studentId={studentId}
-        sessionId={sessionId}
-        termId={termId}
-        reportCard={reportCard}
-      />
-      <ReportCardSheet
-        reportCard={reportCard}
-        backHref="/assessments/results/entry"
-      />
-    </>
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+        {/* Sidebar Bucket - Management & Navigation */}
+        <aside className="lg:w-[460px] lg:h-full lg:overflow-y-auto border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-6 pb-10">
+          <div className="space-y-8">
+            <div className="space-y-4 px-5">
+              <ReportCardBatchNavigator
+                students={batchStudents ?? []}
+                activeStudentId={studentId}
+                className={reportCard.className}
+                sessionName={reportCard.sessionName}
+                termName={reportCard.termName}
+                isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
+                isPrintingFullClass={isPrintClassMode}
+                extrasHref={extrasHref}
+                onSelectStudent={handleSelectStudent}
+                onPrintFullClass={handlePrintFullClass}
+              />
+            </div>
+
+            <div className="pt-6 border-t border-slate-100 px-5">
+              <ReportCardAdminPanel
+                studentId={studentId}
+                sessionId={sessionId}
+                termId={termId}
+                reportCard={reportCard}
+              />
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content Bucket - The Report Card Sheet */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
+          <div className="max-w-[1000px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+            <ReportCardSheet
+              reportCard={reportCard}
+              backHref="/assessments/results/entry"
+            />
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }
 

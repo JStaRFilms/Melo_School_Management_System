@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+import { 
+  RotateCcw, 
+  Save, 
+  ExternalLink, 
+  ShieldAlert, 
+  Info,
+  Loader2,
+  FileText,
+  Users
+} from "lucide-react";
 import type { ExtrasBundleValueInput, ExtrasEntry, ExtrasField } from "./types";
 
 type DraftValue = {
@@ -37,7 +48,6 @@ export function ExtrasWorkspace({
   }, [entry]);
 
   const bundles = useMemo(() => entry?.bundles ?? [], [entry]);
-  const canEdit = entry?.canEdit ?? false;
   const hasEditableFields = useMemo(
     () =>
       bundles.some((bundle) =>
@@ -47,6 +57,7 @@ export function ExtrasWorkspace({
       ),
     [bundles]
   );
+
   const savePayload = useMemo(
     () =>
       bundles.map((bundle) => ({
@@ -87,88 +98,259 @@ export function ExtrasWorkspace({
     }
   };
 
-  return (
-    <div className="space-y-5">
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">Report Card Extras</p>
-            <h1 className="mt-1 text-xl font-extrabold text-slate-900">Admin Extras Override</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">Use the same session, term, class, and student flow as teachers, with admin override available when extras need intervention.</p>
-          </div>
-          {reportCardHref ? <a href={reportCardHref} className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">Open report card</a> : null}
-        </div>
-      </div>
+  if (!hasSelection) {
+    return <StateCard 
+      icon={<Info className="text-slate-400" size={32} />} 
+      title="Entry Protocol Required" 
+      message="Choose a session, term, class, and student from the sidebar to begin administrative override." 
+    />;
+  }
 
-      {!hasSelection ? <StateCard title="Select a full context" message="Choose a session, term, class, and student before entering report extras." /> : isLoading ? <StateCard title="Loading extras" message="Preparing the extras workspace for the selected student." /> : !hasStudents ? <StateCard title="No students found" message="This class has no students available for the selected session and term." /> : bundles.length === 0 ? <StateCard title="No extras bundle assigned" message="No report-card extras bundle is assigned to this class yet, so there is nothing to enter." /> : (
-        <div className="space-y-5">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-900">{entry?.studentName}</h2>
-                <p className="mt-1 text-sm text-slate-600">Admin override is available across all bundles assigned to this class.</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Admin override is active for this extras entry.</div>
+  if (isLoading) {
+    return <StateCard 
+      icon={<Loader2 className="text-indigo-500 animate-spin" size={32} />} 
+      title="Loading Records" 
+      message="Retrieving report extras and bundle configurations from the database..." 
+    />;
+  }
+
+  if (!hasStudents) {
+    return <StateCard 
+      icon={<Users size={32} className="text-slate-400" />} 
+      title="No Students Found" 
+      message="The selected class has no active students for this academic period." 
+    />;
+  }
+
+  if (bundles.length === 0) {
+    return <StateCard 
+      icon={<ShieldAlert size={32} className="text-rose-500" />} 
+      title="No Configuration Found" 
+      message="No report-card extras bundle is assigned to this class. Setup the bundle in Exam Setup first." 
+    />;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Active Context Header */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-1">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 ring-1 ring-indigo-200/50">
+            <FileText size={18} />
+          </div>
+          <div>
+            <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">{entry?.studentName}</h2>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="flex h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Override Active</p>
             </div>
           </div>
-
-          {bundles.map((bundle) => (
-            <section key={bundle._id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="border-b border-slate-100 pb-4">
-                <h2 className="text-lg font-extrabold text-slate-900">{bundle.name}</h2>
-                {bundle.description ? <p className="mt-1 text-sm text-slate-600">{bundle.description}</p> : null}
-              </div>
-
-              <div className="mt-5 space-y-5">
-                {bundle.sections.map((section) => (
-                  <div key={section.id} className="space-y-3">
-                    <div>
-                      <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-500">{section.label}</h3>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {section.fields.map((field) => (
-                        <label key={field.id} className="block rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                          <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-slate-900"><span>{field.label}</span>{field.printable ? <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-700">Printable</span> : null}</span>
-                          {field.helperText ? <span className="mb-2 block text-xs text-slate-500">{field.helperText}</span> : null}
-                          <ExtrasInput field={field} draft={draft[bundle._id]?.[field.id]} disabled={!field.canEdit || isSaving} onChange={(value) => { setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } })); setError(null); setSuccess(null); }} />
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-
-          {error ? <Banner tone="error" message={error} /> : null}
-          {success ? <Banner tone="success" message={success} /> : null}
-          {!hasEditableFields ? <Banner tone="success" message="These fields are system-managed or read-only in this workspace." /> : null}
-
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" onClick={() => setDraft(buildDraft(entry))} disabled={isSaving} className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-60">Reset</button>
-            <button type="button" onClick={handleSave} disabled={!hasEditableFields || isSaving} className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{isSaving ? "Saving..." : "Save extras"}</button>
-          </div>
         </div>
-      )}
+
+        {reportCardHref && (
+          <a 
+            href={reportCardHref} 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all duration-300"
+          >
+            Report <ExternalLink size={11} className="opacity-40" />
+          </a>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        {bundles.map((bundle) => (
+          <AdminSurface key={bundle._id} intensity="medium" className="p-4 md:p-6 overflow-hidden">
+            <div className="mb-6 border-b border-slate-100 pb-3">
+              <h3 className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-indigo-600/80 mb-0.5">{bundle.name}</h3>
+              {bundle.description && <p className="text-[11px] font-medium text-slate-500 max-w-xl">{bundle.description}</p>}
+            </div>
+
+            <div className="space-y-8">
+              {bundle.sections.map((section) => (
+                <div key={section.id} className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-300 whitespace-nowrap">{section.label}</h4>
+                    <span className="h-px flex-1 bg-slate-100/60" />
+                  </div>
+                  
+                  <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 lg:grid-cols-2">
+                    {section.fields.map((field) => (
+                      <div key={field.id} className="group flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-3 px-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 group-focus-within:text-indigo-600 transition-colors">
+                            {field.label}
+                          </label>
+                          {field.printable && (
+                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-400">Printable</span>
+                          )}
+                        </div>
+                        <ExtrasInput 
+                          field={field} 
+                          draft={draft[bundle._id]?.[field.id]} 
+                          disabled={!field.canEdit || isSaving} 
+                          onChange={(value) => { 
+                            setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } })); 
+                            setError(null); 
+                            setSuccess(null); 
+                          }} 
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </AdminSurface>
+        ))}
+      </div>
+
+      {/* Global Actions Banner */}
+      <div className="sticky bottom-6 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6 rounded-2xl border border-slate-200/60 bg-white/95 backdrop-blur-md p-3 md:p-3.5 shadow-2xl shadow-slate-200/40">
+        <div className="flex-1 min-w-0 overflow-hidden">
+          {error ? <Banner tone="error" message={error} /> : 
+           success ? <Banner tone="success" message={success} /> : 
+           !hasEditableFields ? <Banner tone="info" message="Read-only workspace." /> :
+           <p className="px-3 text-[9px] font-black uppercase tracking-wider text-slate-400 leading-tight">
+             Review and commit override data to persist changes
+           </p>
+          }
+        </div>
+        
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
+          <button 
+            type="button" 
+            onClick={() => { if(window.confirm("Discard draft changes?")) setDraft(buildDraft(entry)); }} 
+            disabled={isSaving} 
+            className="flex h-9 md:h-10 flex-1 md:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 md:px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            <RotateCcw size={13} className="opacity-40" /> Reset
+          </button>
+          <button 
+            type="button" 
+            onClick={handleSave} 
+            disabled={!hasEditableFields || isSaving} 
+            className="flex h-9 md:h-10 flex-[2] md:flex-none items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 md:px-6 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800 transition-all disabled:opacity-30 shadow-lg shadow-slate-900/20"
+          >
+            {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 
+            {isSaving ? "Saving..." : "Commit Override"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField; draft?: DraftValue; disabled: boolean; onChange: (value: Partial<DraftValue>) => void }) {
-  const className = "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60";
-  if (!field.canEdit) return <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">{field.value.printValue ?? "Not set"}</div>;
-  if (field.type === "text") return <textarea rows={4} value={draft?.textValue ?? ""} onChange={(event) => onChange({ textValue: event.target.value })} disabled={disabled} className={className} />;
-  if (field.type === "number") return <input type="number" value={draft?.numberValue ?? ""} onChange={(event) => onChange({ numberValue: event.target.value })} disabled={disabled} className={className} />;
-  if (field.type === "boolean") return <select value={draft?.booleanValue ?? ""} onChange={(event) => onChange({ booleanValue: event.target.value as DraftValue["booleanValue"] })} disabled={disabled} className={`${className} h-11 py-0`}><option value="">Not set</option><option value="true">Yes</option><option value="false">No</option></select>;
-  return <select value={draft?.scaleOptionId ?? ""} onChange={(event) => onChange({ scaleOptionId: event.target.value })} disabled={disabled} className={`${className} h-11 py-0`}><option value="">Select option</option>{field.scaleOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>;
+  const baseClassName = "w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-bold text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 placeholder:font-medium placeholder:text-slate-300";
+  
+  if (!field.canEdit) {
+    return <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-400 cursor-not-allowed">{field.value.printValue ?? "---"}</div>;
+  }
+  
+  if (field.type === "text") {
+    return (
+      <div className="space-y-1.5">
+        <textarea 
+          rows={2} 
+          value={draft?.textValue ?? ""} 
+          onChange={(event) => onChange({ textValue: event.target.value })} 
+          disabled={disabled} 
+          className={`${baseClassName} min-h-[60px] resize-none font-medium leading-relaxed`}
+          placeholder={field.helperText ? "" : "Enter record..."}
+        />
+        {field.helperText && <p className="px-1 text-[9px] font-medium text-slate-400 italic">{field.helperText}</p>}
+      </div>
+    );
+  }
+  
+  if (field.type === "number") {
+    return <input type="number" value={draft?.numberValue ?? ""} onChange={(event) => onChange({ numberValue: event.target.value })} disabled={disabled} className={baseClassName} placeholder="0.00" />;
+  }
+  
+  if (field.type === "boolean") {
+    const options = [
+      { label: "Yes", value: "true" },
+      { label: "No", value: "false" }
+    ];
+    return (
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => {
+          const isSelected = draft?.booleanValue === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange({ booleanValue: (isSelected ? "" : opt.value) as DraftValue["booleanValue"] })}
+              className={`
+                h-9 flex-1 min-w-[80px] rounded-lg border px-4 text-[11px] font-black uppercase tracking-widest transition-all
+                ${isSelected 
+                  ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" 
+                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300"
+                }
+                disabled:opacity-40 disabled:cursor-not-allowed
+              `}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+  
+  return (
+    <div className="flex flex-wrap gap-2">
+      {field.scaleOptions.map((option) => {
+        const isSelected = draft?.scaleOptionId === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange({ scaleOptionId: isSelected ? "" : option.id })}
+            className={`
+              h-9 px-4 rounded-lg border text-[11px] font-black uppercase tracking-widest transition-all
+              ${isSelected 
+                ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" 
+                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 group-hover:border-slate-300"
+              }
+              disabled:opacity-40 disabled:cursor-not-allowed
+            `}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-function StateCard({ title, message }: { title: string; message: string }) {
-  return <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-lg font-extrabold text-slate-900">{title}</p><p className="mt-2 text-sm text-slate-600">{message}</p></div>;
+function StateCard({ icon, title, message }: { icon?: React.ReactNode, title: string; message: string }) {
+  return (
+    <AdminSurface intensity="low" className="p-8 flex flex-col items-center text-center">
+      {icon && <div className="mb-6">{icon}</div>}
+      <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-900">{title}</h3>
+      <p className="mt-2 text-xs font-medium text-slate-500 max-w-sm leading-relaxed">{message}</p>
+    </AdminSurface>
+  );
 }
 
-function Banner({ tone, message }: { tone: "error" | "success"; message: string }) {
-  return <div className={`rounded-2xl px-4 py-3 text-sm ${tone === "error" ? "border border-rose-200 bg-rose-50 text-rose-700" : "border border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</div>;
+function Banner({ tone, message }: { tone: "error" | "success" | "info"; message: string }) {
+  const styles = {
+    error: "text-rose-600 bg-rose-50 border-rose-100",
+    success: "text-emerald-600 bg-emerald-50 border-emerald-100",
+    info: "text-indigo-600 bg-indigo-50 border-indigo-100"
+  };
+  
+  return (
+    <div className={`rounded-xl border px-3 py-2 flex items-center gap-2 font-bold text-[10px] uppercase tracking-widest ${styles[tone]}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${tone === "error" ? "bg-rose-500" : tone === "success" ? "bg-emerald-500" : "bg-indigo-500"}`} />
+      {message}
+    </div>
+  );
 }
 
 function buildDraft(entry?: ExtrasEntry) {

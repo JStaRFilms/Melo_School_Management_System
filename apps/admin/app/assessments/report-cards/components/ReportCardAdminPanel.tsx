@@ -4,6 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
 import { SchoolLogoManagerCard } from "./SchoolLogoManagerCard";
+import { 
+  MessageSquare, 
+  Calendar, 
+  Users, 
+  Image as ImageIcon, 
+  Save, 
+  Trash2, 
+  Plus 
+} from "lucide-react";
 
 function formatDateInputValue(value: number | null) {
   if (!value) return "";
@@ -161,12 +170,12 @@ export function ReportCardAdminPanel({
         classTeacherComment,
         headTeacherComment,
       } as never);
-      setCommentSuccess("Comments saved for this student.");
+      setCommentSuccess("Comments saved.");
     } catch (error) {
       setCommentError(
         error instanceof Error
           ? error.message
-          : "Unable to save comments right now."
+          : "Unable to save comments."
       );
     } finally {
       setIsSavingComments(false);
@@ -184,12 +193,12 @@ export function ReportCardAdminPanel({
         nextTermBegins: parseDateInputValue(defaultNextTermBegins),
         defaultTimesSchoolOpened: parseIntegerInputValue(defaultTimesOpened),
       } as never);
-      setTermDefaultsSuccess("Shared term defaults saved.");
+      setTermDefaultsSuccess("Term defaults saved.");
     } catch (error) {
       setTermDefaultsError(
         error instanceof Error
           ? error.message
-          : "Unable to save the shared term defaults."
+          : "Unable to save defaults."
       );
     } finally {
       setIsSavingTermDefaults(false);
@@ -211,12 +220,12 @@ export function ReportCardAdminPanel({
         timesSchoolOpened: parseIntegerInputValue(groupTimesOpened),
       } as never)) as string;
       setSelectedGroupId(nextGroupId);
-      setGroupSuccess("Shared class group saved.");
+      setGroupSuccess("Class group saved.");
     } catch (error) {
       setGroupError(
         error instanceof Error
           ? error.message
-          : "Unable to save the shared class group."
+          : "Unable to save group."
       );
     } finally {
       setIsSavingGroup(false);
@@ -231,12 +240,12 @@ export function ReportCardAdminPanel({
     try {
       await deleteTermGroup({ groupId } as never);
       setSelectedGroupId(null);
-      setGroupSuccess("Shared class group removed.");
+      setGroupSuccess("Group removed.");
     } catch (error) {
       setGroupError(
         error instanceof Error
           ? error.message
-          : "Unable to delete the shared class group."
+          : "Unable to delete group."
       );
     } finally {
       setIsDeletingGroup(false);
@@ -255,356 +264,245 @@ export function ReportCardAdminPanel({
   };
 
   return (
-    <div
-      className="rc-no-print mx-auto mb-5 px-4 pt-6 md:px-6"
-      style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif", maxWidth: '210mm' }}
-    >
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
-              Report Card Controls
-            </p>
-            <h2 className="mt-1 text-lg font-extrabold text-slate-900">
-              Update Comments And Shared Term Settings
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              These controls stay in the admin panel only. Teacher and head
-              teacher comments are saved per student, while term defaults and
-              class groups control shared report-card dates and attendance totals.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-            <div className="font-bold text-slate-900">{reportCard.student.name}</div>
-            <div>{reportCard.className}</div>
-            <div>
-              {reportCard.sessionName} • {reportCard.termName}
-            </div>
-          </div>
+    <div className="rc-no-print space-y-10">
+      {/* Student Specific Section */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2 px-1">
+          <MessageSquare className="h-4 w-4 text-slate-400" />
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Student Performance
+          </h3>
         </div>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="mb-3">
-              <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-700">
-                Student Comments
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Save the comments exactly as you want them to appear on this
-                student&apos;s report card.
-              </p>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-900 ml-1">Class Teacher Comment</span>
+            <textarea
+              value={classTeacherComment}
+              onChange={(event) => {
+                setClassTeacherComment(event.target.value);
+                setCommentError(null);
+                setCommentSuccess(null);
+              }}
+              rows={3}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-950/5 resize-none"
+              placeholder="Observation on progress..."
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-900 ml-1">Head Teacher Comment</span>
+            <textarea
+              value={headTeacherComment}
+              onChange={(event) => {
+                setHeadTeacherComment(event.target.value);
+                setCommentError(null);
+                setCommentSuccess(null);
+              }}
+              rows={3}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-950/5 resize-none"
+              placeholder="Final administrative remarks..."
+            />
+          </div>
+
+          {(commentError || commentSuccess) && (
+            <div className={`text-[11px] font-bold px-1 animate-in fade-in slide-in-from-top-1 ${commentError ? "text-rose-500" : "text-emerald-500"}`}>
+              {commentError || commentSuccess}
             </div>
+          )}
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-800">
-                Class Teacher&apos;s Comment
-              </span>
-              <textarea
-                value={classTeacherComment}
-                onChange={(event) => {
-                  setClassTeacherComment(event.target.value);
-                  setCommentError(null);
-                  setCommentSuccess(null);
-                }}
-                rows={4}
-                maxLength={1000}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                placeholder="Enter the class teacher's comment for this student"
-              />
-            </label>
+          <button
+            type="button"
+            onClick={handleSaveComments}
+            disabled={isSavingComments}
+            className="w-full h-10 flex items-center justify-center gap-2 rounded-xl bg-slate-950 text-xs font-black uppercase tracking-widest text-white transition hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed shadow-md active:scale-[0.98]"
+          >
+            <Save className="h-3.5 w-3.5" />
+            <span>{isSavingComments ? "Saving..." : "Save Comments"}</span>
+          </button>
+        </div>
+      </section>
 
-            <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-semibold text-slate-800">
-                Head Teacher&apos;s Comment
-              </span>
-              <textarea
-                value={headTeacherComment}
-                onChange={(event) => {
-                  setHeadTeacherComment(event.target.value);
-                  setCommentError(null);
-                  setCommentSuccess(null);
-                }}
-                rows={4}
-                maxLength={1000}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                placeholder="Enter the head teacher's comment for this student"
-              />
-            </label>
+      {/* Global Term Settings */}
+      <section className="space-y-4 pt-6 border-t border-slate-100">
+        <div className="flex items-center gap-2 px-1">
+          <Calendar className="h-4 w-4 text-slate-400" />
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Term Logistics
+          </h3>
+        </div>
 
-            {commentError ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {commentError}
-              </div>
-            ) : null}
-            {commentSuccess ? (
-              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {commentSuccess}
-              </div>
-            ) : null}
-
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveComments}
-                disabled={isSavingComments}
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSavingComments ? "Saving comments..." : "Save comments"}
-              </button>
-            </div>
-          </section>
-
-          <div className="space-y-5">
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="mb-3">
-                <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-700">
-                  Shared Term Defaults
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  These defaults apply to every class in the selected term unless
-                  a class-group override replaces them.
-                </p>
-              </div>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">
-                  Default next-term start date
-                </span>
-                <input
-                  type="date"
-                  value={defaultNextTermBegins}
-                  onChange={(event) => {
-                    setDefaultNextTermBegins(event.target.value);
-                    setTermDefaultsError(null);
-                    setTermDefaultsSuccess(null);
-                  }}
-                  className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                />
-              </label>
-
-              <label className="mt-4 block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">
-                  Default number of times opened
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  value={defaultTimesOpened}
-                  onChange={(event) => {
-                    setDefaultTimesOpened(event.target.value);
-                    setTermDefaultsError(null);
-                    setTermDefaultsSuccess(null);
-                  }}
-                  className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  placeholder="Leave blank if not set"
-                />
-              </label>
-
-              <p className="mt-3 text-xs text-slate-500">
-                Leave any field empty if you want classes without overrides to
-                fall back to a dash for now.
-              </p>
-
-              {termDefaultsError ? (
-                <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {termDefaultsError}
-                </div>
-              ) : null}
-              {termDefaultsSuccess ? (
-                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {termDefaultsSuccess}
-                </div>
-              ) : null}
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveTermDefaults}
-                  disabled={isSavingTermDefaults || !termSettingsReady}
-                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingTermDefaults ? "Saving defaults..." : "Save defaults"}
-                </button>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="mb-3">
-                <h3 className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-700">
-                  Shared Class Groups
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Group classes that share the same dates or number of times opened.
-                  A class can belong to only one group in this term.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                {(termSettings?.groups ?? []).length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
-                    No shared groups yet.
-                  </div>
-                ) : (
-                  termSettings?.groups.map((group) => (
-                    <button
-                      key={group._id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGroupId(group._id);
-                        setGroupError(null);
-                        setGroupSuccess(null);
-                      }}
-                      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
-                        selectedGroupId === group._id
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
-                      }`}
-                    >
-                      <div className="font-bold">{group.name}</div>
-                      <div className={`mt-1 text-xs ${selectedGroupId === group._id ? "text-slate-200" : "text-slate-500"}`}>
-                        {group.classIds.length} class{group.classIds.length === 1 ? "" : "es"} selected
-                        {group.timesSchoolOpened !== null ? ` • Opened: ${group.timesSchoolOpened}` : ""}
-                        {group.nextTermBegins !== null ? ` • Date set` : ""}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="text-sm font-bold text-slate-900">
-                    {groupId ? "Edit shared group" : "Create shared group"}
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={resetGroupEditor}
-                    className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500"
-                  >
-                    New group
-                  </button>
-                </div>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Group name
-                  </span>
-                  <input
-                    value={groupName}
-                    onChange={(event) => {
-                      setGroupName(event.target.value);
-                      setGroupError(null);
-                      setGroupSuccess(null);
-                    }}
-                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                    placeholder="Primary classes on the same calendar"
-                  />
-                </label>
-
-                <div>
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Classes in this group
-                  </span>
-                  <div className="grid max-h-44 gap-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    {(classes ?? []).map((classOption) => {
-                      const checked = groupClassIds.includes(classOption.id);
-                      return (
-                        <label key={classOption.id} className="flex items-center gap-3 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => {
-                              setGroupClassIds((current) =>
-                                event.target.checked
-                                  ? [...current, classOption.id]
-                                  : current.filter((id) => id !== classOption.id)
-                              );
-                              setGroupError(null);
-                              setGroupSuccess(null);
-                            }}
-                          />
-                          <span>{classOption.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Group next-term start date
-                  </span>
-                  <input
-                    type="date"
-                    value={groupNextTermBegins}
-                    onChange={(event) => {
-                      setGroupNextTermBegins(event.target.value);
-                      setGroupError(null);
-                      setGroupSuccess(null);
-                    }}
-                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Group number of times opened
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={groupTimesOpened}
-                    onChange={(event) => {
-                      setGroupTimesOpened(event.target.value);
-                      setGroupError(null);
-                      setGroupSuccess(null);
-                    }}
-                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                    placeholder="Leave blank if this group only overrides the date"
-                  />
-                </label>
-
-                {groupError ? (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {groupError}
-                  </div>
-                ) : null}
-                {groupSuccess ? (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                    {groupSuccess}
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap justify-end gap-3">
-                  {groupId ? (
-                    <button
-                      type="button"
-                      onClick={handleDeleteGroup}
-                      disabled={isDeletingGroup}
-                      className="inline-flex h-11 items-center justify-center rounded-2xl border border-rose-200 bg-white px-5 text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isDeletingGroup ? "Deleting..." : "Delete group"}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={handleSaveGroup}
-                    disabled={isSavingGroup}
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSavingGroup ? "Saving group..." : "Save group"}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <SchoolLogoManagerCard
-              schoolName={reportCard.schoolName}
-              schoolLogoUrl={reportCard.schoolLogoUrl}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-900 ml-1">Resumption</span>
+            <input
+              type="date"
+              value={defaultNextTermBegins}
+              onChange={(event) => setDefaultNextTermBegins(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 text-[13px] font-medium text-slate-900 outline-none transition focus:border-slate-400"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-900 ml-1">Times Opened</span>
+            <input
+              type="number"
+              value={defaultTimesOpened}
+              onChange={(event) => setDefaultTimesOpened(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 text-[13px] font-medium text-slate-900 outline-none transition focus:border-slate-400"
+              placeholder="Total days"
             />
           </div>
         </div>
-      </div>
+
+        {(termDefaultsError || termDefaultsSuccess) && (
+          <div className={`text-[11px] font-bold px-1 animate-in fade-in slide-in-from-top-1 ${termDefaultsError ? "text-rose-500" : "text-emerald-500"}`}>
+            {termDefaultsError || termDefaultsSuccess}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSaveTermDefaults}
+          disabled={isSavingTermDefaults || !termSettingsReady}
+          className="w-full h-10 flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-xs font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50 disabled:opacity-30 shadow-sm active:scale-[0.98]"
+        >
+          <Save className="h-3.5 w-3.5 opacity-40" />
+          <span>Save Defaults</span>
+        </button>
+      </section>
+
+      {/* Class Overrides / Groups */}
+      <section className="space-y-4 pt-6 border-t border-slate-100">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-slate-400" />
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              Class Groups
+            </h3>
+          </div>
+          <button onClick={resetGroupEditor} className="p-1 hover:bg-slate-100 rounded-lg transition-colors group">
+            <Plus className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-900" />
+          </button>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+          {(termSettings?.groups ?? []).map((group) => (
+            <button
+              key={group._id}
+              type="button"
+              onClick={() => setSelectedGroupId(group._id)}
+              className={`flex-none px-4 py-2 rounded-xl text-[11px] font-bold border transition-all ${
+                selectedGroupId === group._id
+                  ? "bg-slate-950 border-slate-950 text-white shadow-lg shadow-slate-950/20"
+                  : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+              }`}
+            >
+              {group.name}
+            </button>
+          ))}
+          {(termSettings?.groups ?? []).length === 0 && (
+            <div className="text-[11px] font-medium text-slate-300 px-1 py-1 italic">No overrides set.</div>
+          )}
+        </div>
+
+        {(selectedGroupId || groupName) && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-slate-100 bg-slate-50/30 p-3">
+             <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-900 ml-1">Group Name</span>
+              <input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition focus:border-slate-400"
+                placeholder="e.g. Preschool"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-900 ml-1">Included Classes</span>
+              <div className="max-h-28 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                {(classes ?? []).map((classOption) => (
+                  <label key={classOption.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={groupClassIds.includes(classOption.id)}
+                      onChange={(event) => {
+                        setGroupClassIds(cur => 
+                          event.target.checked ? [...cur, classOption.id] : cur.filter(id => id !== classOption.id)
+                        );
+                      }}
+                      className="rounded border-slate-300 text-slate-950 focus:ring-slate-950"
+                    />
+                    <span className="text-[12px] font-medium text-slate-600">{classOption.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-900 ml-1">Resumption</span>
+                <input
+                  type="date"
+                  value={groupNextTermBegins}
+                  onChange={(event) => setGroupNextTermBegins(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-900 outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-900 ml-1">Opened</span>
+                <input
+                  type="number"
+                  value={groupTimesOpened}
+                  onChange={(event) => setGroupTimesOpened(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-900 outline-none"
+                  placeholder="Days"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleSaveGroup}
+                disabled={isSavingGroup}
+                className="flex-1 h-9 flex items-center justify-center rounded-lg bg-slate-950 text-[10px] font-black uppercase tracking-widest text-white shadow-sm"
+              >
+                {isSavingGroup ? "Saving..." : "Save Group"}
+              </button>
+              {groupId && (
+                <button
+                  type="button"
+                  onClick={handleDeleteGroup}
+                  disabled={isDeletingGroup}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            
+            {(groupError || groupSuccess) && (
+              <p className={`text-[10px] font-bold text-center ${groupError ? "text-rose-500" : "text-emerald-500"}`}>
+                {groupError || groupSuccess}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* School Setup */}
+      <section className="space-y-4 pt-6 border-t border-slate-100">
+        <div className="flex items-center gap-2 px-1">
+          <ImageIcon className="h-4 w-4 text-slate-400" />
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Branding
+          </h3>
+        </div>
+        <SchoolLogoManagerCard
+          schoolName={reportCard.schoolName}
+          schoolLogoUrl={reportCard.schoolLogoUrl}
+        />
+      </section>
     </div>
   );
 }

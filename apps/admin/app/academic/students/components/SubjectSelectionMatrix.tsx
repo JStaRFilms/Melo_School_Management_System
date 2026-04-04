@@ -1,8 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { SubjectSelectionDesktopTable } from "./SubjectSelectionDesktopTable";
 import { SubjectSelectionMobileEditor } from "./SubjectSelectionMobileEditor";
-import type { EnrollmentMatrix } from "./types";
+import type { EnrollmentMatrix, ClassSummary, EnrollmentNotice } from "./types";
 
 interface SubjectSelectionMatrixProps {
   matrix: EnrollmentMatrix | undefined;
@@ -12,7 +13,7 @@ interface SubjectSelectionMatrixProps {
   studentsWithNoSubjects: number;
   selectedStudentId?: string | null;
   onSelectStudent?: (studentId: string) => void;
-  onOpenProfile?: (studentId: string) => void;
+  onOpenUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -25,7 +26,7 @@ export function SubjectSelectionMatrix({
   studentsWithNoSubjects,
   selectedStudentId,
   onSelectStudent,
-  onOpenProfile,
+  onOpenUnifiedEditor,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionMatrixProps) {
@@ -36,7 +37,7 @@ export function SubjectSelectionMatrix({
           <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
             Subject Selection
           </h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 font-medium">
             On phones, edit one student at a time with larger tap targets. On
             bigger screens, the full class matrix stays available.
           </p>
@@ -81,9 +82,7 @@ export function SubjectSelectionMatrix({
                 totalSubjects={totalSubjects}
                 selectedStudentId={selectedStudentId}
                 onSelectStudent={onSelectStudent}
-                onOpenProfile={onOpenProfile}
-                onToggle={onToggle}
-                onSetStudentSubjects={onSetStudentSubjects}
+                openUnifiedEditor={onOpenUnifiedEditor}
               />
             </div>
             <div className="hidden md:block">
@@ -95,7 +94,7 @@ export function SubjectSelectionMatrix({
                 onSetStudentSubjects={onSetStudentSubjects}
               />
             </div>
-            <div className="border-t border-slate-100 bg-slate-50/60 p-4">
+            <div className="border-t border-slate-100 bg-slate-50/60 p-4 font-medium">
               <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
                 Showing {totalStudents} students • {totalSubjects} subjects
               </p>

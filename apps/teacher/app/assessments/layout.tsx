@@ -47,21 +47,19 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-[#fbfbfc]">
-      <WorkspaceNavbar
-        workspace="teacher"
-        currentPath={pathname}
-        userName={session?.user?.name}
-        userRole={session?.user?.role}
-        onSignOut={handleSignOut}
-        renderLink={(props) => (
-          <Link key={props.href} href={props.href} className={props.className}>
-            {props.children}
-          </Link>
-        )}
-      />
-
-      <main className="mx-auto max-w-screen-xl p-4 md:p-10">{children}</main>
-    </div>
+    <WorkspaceNavbar
+      workspace="teacher"
+      currentPath={pathname}
+      userName={session?.user?.name}
+      userRole={session?.user?.role}
+      onSignOut={handleSignOut}
+      renderLink={(props) => (
+        <Link key={props.href} href={props.href} className={props.className}>
+          {props.children}
+        </Link>
+      )}
+    >
+      {children}
+    </WorkspaceNavbar>
   );
 }

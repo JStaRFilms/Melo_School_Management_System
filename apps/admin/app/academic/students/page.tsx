@@ -9,6 +9,14 @@ import {
   type FormEvent,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { 
+  Users, 
+  Sparkles, 
+  X, 
+  ArrowRight,
+  BookOpen,
+  Search,
+} from "lucide-react";
 import Link from "next/link";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -17,13 +25,13 @@ import {
   humanNameTypingStrict,
 } from "@/human-name";
 
-import { AdminMobileRosterActions } from "./components/AdminMobileRosterActions";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { StatGroup } from "@/components/ui/StatGroup";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
-import { FloatingNotice } from "./components/FloatingNotice";
-import { MobileSheet } from "./components/MobileSheet";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
+import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
 import { uploadStudentPhoto } from "./components/studentPhotoUpload";
 import type {
   ClassSummary,
@@ -62,14 +70,23 @@ export default function StudentsPage() {
   const [address, setAddress] = useState("");
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [isAddStudentSheetOpen, setIsAddStudentSheetOpen] = useState(false);
-  const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
-  const studentFormRef = useRef<HTMLElement>(null);
+  // New states for Unified Editor
+  const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
+  const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">("subjects");
+
+  const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const matrix = useQuery(
     "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
@@ -94,20 +111,9 @@ export default function StudentsPage() {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => setNotice(null), 2800);
+    const timeoutId = window.setTimeout(() => setNotice(null), 3500);
     return () => window.clearTimeout(timeoutId);
   }, [notice]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 767px)");
-    const syncViewport = (event?: MediaQueryListEvent) => {
-      setIsMobileViewport(event?.matches ?? mediaQuery.matches);
-    };
-
-    syncViewport();
-    mediaQuery.addEventListener("change", syncViewport);
-    return () => mediaQuery.removeEventListener("change", syncViewport);
-  }, []);
 
   useEffect(() => {
     if (!matrix?.students.length) {
@@ -122,6 +128,11 @@ export default function StudentsPage() {
     );
   }, [matrix]);
 
+  const activeStudentForSheet = useMemo(() => {
+    if (!matrix || !selectedStudentId) return null;
+    return matrix.students.find(s => s._id === selectedStudentId) ?? null;
+  }, [matrix, selectedStudentId]);
+
   const selectedClassName =
     classes?.find((classDoc) => classDoc._id === selectedClassId)?.name ??
     "Select Class";
@@ -129,9 +140,6 @@ export default function StudentsPage() {
     sessions?.find((session) => session._id === selectedSessionId)?.name ??
     sessions?.find((session) => session.isActive)?.name ??
     "No active session";
-  const selectedStudentName =
-    matrix?.students.find((student) => student._id === selectedStudentId)
-      ?.studentName ?? null;
 
   const matrixSummary = useMemo(() => {
     if (!matrix) {
@@ -147,6 +155,9 @@ export default function StudentsPage() {
         (student) => student.selectedSubjectIds.length === 0
       ).length,
       totalStudents: matrix.students.length,
+      totalStudentsWithNoSubjectsLabel: matrix.students.filter(
+        (student) => student.selectedSubjectIds.length === 0
+      ).length === 1 ? "student" : "students",
       totalSubjects: matrix.subjects.length,
     };
   }, [matrix]);
@@ -166,55 +177,6 @@ export default function StudentsPage() {
       }
     };
   }, [studentPhotoFile, studentPhotoPreviewUrl]);
-
-  const focusStudentForm = useCallback(() => {
-    if (!selectedClassId) {
-      setNotice({
-        tone: "error",
-        message: "Select a class first, then add the student.",
-      });
-      return;
-    }
-
-    studentFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => {
-      studentNameInputRef.current?.focus();
-    }, 120);
-  }, [selectedClassId]);
-
-  const openAddStudent = useCallback(() => {
-    if (!selectedClassId) {
-      setNotice({
-        tone: "error",
-        message: "Select a class first, then add the student.",
-      });
-      return;
-    }
-
-    setIsAddStudentSheetOpen(true);
-  }, [selectedClassId]);
-
-  const openProfileEditor = useCallback(
-    (studentId?: string | null) => {
-      const nextStudentId = studentId ?? selectedStudentId;
-      if (!nextStudentId) {
-        setNotice({
-          tone: "error",
-          message: "Select a student first to edit the full profile.",
-        });
-        return;
-      }
-
-      setSelectedStudentId(nextStudentId);
-      setIsProfileSheetOpen(true);
-    },
-    [selectedStudentId]
-  );
-
-  const handleStudentArchived = useCallback(() => {
-    setSelectedStudentId(null);
-    setIsProfileSheetOpen(false);
-  }, []);
 
   const resetStudentCreationForm = useCallback(() => {
     setStudentName("");
@@ -281,15 +243,14 @@ export default function StudentsPage() {
       } as never)) as string;
       resetStudentCreationForm();
       setSelectedStudentId(createdStudentId);
-      setIsAddStudentSheetOpen(false);
       setNotice({
         tone: missingOptionalFields.length > 0 ? "warning" : "success",
         message:
           missingOptionalFields.length > 0
-            ? `${normalizedStudentName} was added to ${selectedClassName}. You have not added ${joinFieldLabels(missingOptionalFields)} yet.`
-            : `${normalizedStudentName} was added to ${selectedClassName}.`,
+            ? `${normalizedStudentName} added. Missing: ${joinFieldLabels(missingOptionalFields)}.`
+            : `${normalizedStudentName} added successfully to ${selectedClassName}.`,
       });
-      if (!isMobileViewport) {
+      if (!isMobile) {
         studentNameInputRef.current?.focus();
       }
     } catch (err) {
@@ -297,9 +258,7 @@ export default function StudentsPage() {
         tone: "error",
         message: getUserFacingErrorMessage(
           err,
-          uploadedPhoto
-            ? "The photo uploaded, but we couldn't finish creating the student."
-            : "We couldn't add the student right now."
+          "Account creation failed."
         ),
       });
     } finally {
@@ -333,14 +292,14 @@ export default function StudentsPage() {
         } as never);
         setNotice({
           tone: "success",
-          message: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
+          message: `Saved subjects for ${humanNameFinalStrict(student.studentName)}.`,
         });
       } catch (err) {
         setNotice({
           tone: "error",
           message: getUserFacingErrorMessage(
             err,
-            "We couldn't update the subject selection right now."
+            "Failed to update subject."
           ),
         });
       }
@@ -370,14 +329,14 @@ export default function StudentsPage() {
         } as never);
         setNotice({
           tone: "success",
-          message: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
+          message: `Batch update saved for ${humanNameFinalStrict(student.studentName)}.`,
         });
       } catch (err) {
         setNotice({
           tone: "error",
           message: getUserFacingErrorMessage(
             err,
-            "We couldn't update the subject selection right now."
+            "Failed to update subjects."
           ),
         });
       }
@@ -385,242 +344,245 @@ export default function StudentsPage() {
     [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
   );
 
+  const openUnifiedEditor = useCallback((studentId: string, tab: "subjects" | "profile" = "subjects") => {
+    setSelectedStudentId(studentId);
+    setUnifiedInitialTab(tab);
+    setIsUnifiedSheetOpen(true);
+  }, []);
+
   if (classes === undefined || sessions === undefined) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-6">
-        <div className="text-slate-500">Loading...</div>
+      <div className="mx-auto max-w-[1600px] px-2.5 py-6 md:px-6 animate-pulse">
+        <div className="h-10 w-48 rounded-lg bg-slate-100" />
+        <div className="mt-8 grid gap-10 lg:grid-cols-3">
+          <div className="lg:col-span-2 h-96 rounded-xl bg-slate-50" />
+          <div className="h-96 rounded-xl bg-slate-50" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6">
-      <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 10px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.15);
+        }
+      `}} />
 
-      <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Student Enrollment
-            </p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-              Manage the class subject matrix without the extra noise.
-            </h1>
-            <p className="max-w-3xl text-sm text-slate-500">
-              Use the live matrix for <span className="font-semibold text-slate-700">{activeSessionName}</span>.
-              Subject ticks save instantly, so there is nothing separate to
-              commit at the bottom of the page.
-            </p>
-            <p className="text-sm text-slate-500">
-              Need student-first intake instead? Use the dedicated onboarding route for first name, last name, guardian details, and class selection later in the flow.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Link
-              href="/academic/students/onboarding"
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
-            >
-              Student-First Onboarding
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                if (isMobileViewport) {
-                  openAddStudent();
-                  return;
-                }
-
-                focusStudentForm();
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-700"
-            >
-              Add Student
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <EnrollmentFilters
+      {/* Unified Mobile Sheet - Rendered at Top level for avoid clipping issues */}
+      <StudentUnifiedEditorSheet
+        activeStudent={activeStudentForSheet}
+        subjects={matrix?.subjects ?? []}
+        totalSubjects={matrixSummary.totalSubjects}
+        isOpen={isUnifiedSheetOpen && isMobile}
+        onClose={() => setIsUnifiedSheetOpen(false)}
+        onToggle={handleToggleSubject}
+        onSetStudentSubjects={handleSetStudentSubjects}
         classes={classes}
-        sessions={sessions}
-        selectedClassId={selectedClassId}
-        selectedSessionId={selectedSessionId}
-        onClassChange={setSelectedClassId}
-        onSessionChange={setSelectedSessionId}
+        onNotice={setNotice}
+        initialTab={unifiedInitialTab}
+        onStudentArchived={() => setIsUnifiedSheetOpen(false)}
       />
 
-      <AdminMobileRosterActions
-        selectedStudentName={selectedStudentName}
-        onAddStudent={openAddStudent}
-        onEditProfile={() => openProfileEditor()}
-      />
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+        {/* Main Bucket - Content Primary */}
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-6 lg:order-1">
+          <div className="max-w-[1400px] mx-auto space-y-6">
+            
+            <div className="space-y-6">
+              <AdminHeader
+                title="Student Enrollment"
+              />
 
-      {selectedClassId && !isMobileViewport ? (
-        <div>
-          <StudentCreationForm
-            selectedClassName={selectedClassName}
-            studentName={studentName}
-            admissionNumber={admissionNumber}
-            gender={gender}
-            houseName={houseName}
-            dateOfBirth={dateOfBirth}
-            guardianName={guardianName}
-            guardianPhone={guardianPhone}
-            address={address}
-            photoPreviewUrl={studentPhotoPreviewUrl}
-            isSubmitting={isSubmitting}
-            variant="inline"
-            sectionRef={studentFormRef}
-            inputRef={studentNameInputRef}
-            onStudentNameChange={(value) =>
-              setStudentName(humanNameTypingStrict(value))
-            }
-            onStudentNameBlur={(value) =>
-              setStudentName(humanNameFinalStrict(value))
-            }
-            onAdmissionNumberChange={setAdmissionNumber}
-            onGenderChange={setGender}
-            onHouseNameChange={setHouseName}
-            onDateOfBirthChange={setDateOfBirth}
-            onGuardianNameChange={setGuardianName}
-            onGuardianPhoneChange={setGuardianPhone}
-            onAddressChange={setAddress}
-            onPhotoChange={setStudentPhotoFile}
-            onRemovePhoto={() => setStudentPhotoFile(null)}
-            onPhotoValidationError={(message) =>
-              setNotice({
-                tone: "error",
-                message,
-              })
-            }
-            onSubmit={handleCreateStudent}
-          />
-        </div>
-      ) : null}
+              <StatGroup
+                stats={[
+                  {
+                    label: "Total Registered",
+                    value: matrixSummary.totalStudents,
+                    icon: <Users className="h-4 w-4" />,
+                  },
+                  {
+                    label: "Subjects Offered",
+                    value: matrixSummary.totalSubjects,
+                    icon: <BookOpen className="h-4 w-4" />,
+                  },
+                  {
+                    label: "Active Session",
+                    value: activeSessionName,
+                    icon: <Sparkles className="h-4 w-4" />,
+                  },
+                ]}
+              />
 
-      {selectedClassId && selectedSessionId ? (
-        <SubjectSelectionMatrix
-          matrix={matrix}
-          totalStudents={matrixSummary.totalStudents}
-          totalSubjects={matrixSummary.totalSubjects}
-          isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
-          studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
-          selectedStudentId={selectedStudentId}
-          onSelectStudent={setSelectedStudentId}
-          onOpenProfile={(studentId) => openProfileEditor(studentId)}
-          onToggle={(studentId, subjectId) => {
-            void handleToggleSubject(studentId, subjectId);
-          }}
-          onSetStudentSubjects={(studentId, subjectIds) => {
-            void handleSetStudentSubjects(studentId, subjectIds);
-          }}
-        />
-      ) : (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500">
-          Select a class and session to load the enrollment grid.
-        </section>
-      )}
+              <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+                <EnrollmentFilters
+                  classes={classes}
+                  sessions={sessions}
+                  selectedClassId={selectedClassId}
+                  selectedSessionId={selectedSessionId}
+                  onClassChange={setSelectedClassId}
+                  onSessionChange={setSelectedSessionId}
+                />
+              </div>
+            </div>
 
-      {!isMobileViewport ? (
-        <div>
-          <StudentProfileEditor
-            studentId={selectedStudentId}
-            classes={classes}
-            onNotice={setNotice}
-            onStudentArchived={handleStudentArchived}
-          />
-        </div>
-      ) : null}
+            {notice && (
+              <div className={`group relative overflow-hidden rounded-xl border-l-[6px] p-4 shadow-xl transition-all border-white bg-white ${
+                notice.tone === "success" ? "border-l-emerald-500" : notice.tone === "warning" ? "border-l-amber-500" : "border-l-rose-500"
+              }`}>
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">System Message</p>
+                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
+                  </div>
+                  <button onClick={() => setNotice(null)} className="rounded-full p-1.5 hover:bg-slate-50">
+                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </div>
+              </div>
+            )}
 
-      {isMobileViewport ? (
-        <>
-          <MobileSheet
-            isOpen={isAddStudentSheetOpen}
-            title="Add Student"
-            description={`Add a new student to ${selectedClassName}.`}
-            onClose={() => setIsAddStudentSheetOpen(false)}
-          >
-            <StudentCreationForm
-              selectedClassName={selectedClassName}
-              studentName={studentName}
-              admissionNumber={admissionNumber}
-              gender={gender}
-              houseName={houseName}
-              dateOfBirth={dateOfBirth}
-              guardianName={guardianName}
-              guardianPhone={guardianPhone}
-              address={address}
-              photoPreviewUrl={studentPhotoPreviewUrl}
-              isSubmitting={isSubmitting}
-              variant="sheet"
-              sectionRef={studentFormRef}
-              inputRef={studentNameInputRef}
-              onStudentNameChange={(value) =>
-                setStudentName(humanNameTypingStrict(value))
-              }
-              onStudentNameBlur={(value) =>
-                setStudentName(humanNameFinalStrict(value))
-              }
-              onAdmissionNumberChange={setAdmissionNumber}
-              onGenderChange={setGender}
-              onHouseNameChange={setHouseName}
-              onDateOfBirthChange={setDateOfBirth}
-              onGuardianNameChange={setGuardianName}
-              onGuardianPhoneChange={setGuardianPhone}
-              onAddressChange={setAddress}
-              onPhotoChange={setStudentPhotoFile}
-              onRemovePhoto={() => setStudentPhotoFile(null)}
-              onPhotoValidationError={(message) =>
-                setNotice({
-                  tone: "error",
-                  message,
-                })
-              }
-              onSubmit={handleCreateStudent}
-            />
-          </MobileSheet>
+            <div className="space-y-8">
+              {/* MOBILE ONLY: New Admission trigger follows the context block */}
+              {isMobile && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
+                  <StudentCreationForm
+                    selectedClassName={selectedClassName}
+                    studentName={studentName}
+                    admissionNumber={admissionNumber}
+                    gender={gender}
+                    houseName={houseName}
+                    dateOfBirth={dateOfBirth}
+                    guardianName={guardianName}
+                    guardianPhone={guardianPhone}
+                    address={address}
+                    photoPreviewUrl={studentPhotoPreviewUrl}
+                    isSubmitting={isSubmitting}
+                    sectionRef={studentFormRef}
+                    inputRef={studentNameInputRef}
+                    onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
+                    onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
+                    onAdmissionNumberChange={setAdmissionNumber}
+                    onGenderChange={setGender}
+                    onHouseNameChange={setHouseName}
+                    onDateOfBirthChange={setDateOfBirth}
+                    onGuardianNameChange={setGuardianName}
+                    onGuardianPhoneChange={setGuardianPhone}
+                    onAddressChange={setAddress}
+                    onPhotoChange={setStudentPhotoFile}
+                    onRemovePhoto={() => setStudentPhotoFile(null)}
+                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                    onSubmit={handleCreateStudent}
+                  />
+                </div>
+              )}
 
-          <MobileSheet
-            isOpen={isProfileSheetOpen}
-            title="Edit Student Profile"
-            description={
-              selectedStudentName
-                ? `Update ${selectedStudentName}'s details without leaving this screen.`
-                : "Select a student to edit the full profile."
-            }
-            onClose={() => setIsProfileSheetOpen(false)}
-          >
-            <StudentProfileEditor
-              studentId={selectedStudentId}
-              classes={classes}
-              onNotice={(nextNotice) => {
-                setNotice(nextNotice);
-                if (nextNotice.tone === "success") {
-                  setIsProfileSheetOpen(false);
-                }
-              }}
-              onStudentArchived={handleStudentArchived}
-              variant="sheet"
-            />
-          </MobileSheet>
-        </>
-      ) : null}
+              {selectedClassId && selectedSessionId ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-950/5 pb-2">
+                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 px-1">Roster Matrix</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block px-1">Live Update</p>
+                  </div>
+                  <SubjectSelectionMatrix
+                    matrix={matrix}
+                    totalStudents={matrixSummary.totalStudents}
+                    totalSubjects={matrixSummary.totalSubjects}
+                    isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
+                    studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
+                    selectedStudentId={selectedStudentId}
+                    onSelectStudent={setSelectedStudentId}
+                    onOpenUnifiedEditor={openUnifiedEditor}
+                    onToggle={handleToggleSubject}
+                    onSetStudentSubjects={handleSetStudentSubjects}
+                  />
+                </div>
+              ) : (
+                <div className="py-20 flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 text-center">
+                  <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-xl ring-1 ring-slate-950/5 animate-in fade-in zoom-in duration-700">
+                    <Search className="h-8 w-8" />
+                  </div>
+                  <p className="mt-8 text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Select Context Above</p>
+                  <p className="mt-2 text-xs font-medium text-slate-400 max-w-[200px]">Management matrix will appear once a class and session are chosen.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+
+        {/* Sidebar Bucket - Desktop Management */}
+        <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-5 lg:order-2">
+          <div className="space-y-6">
+            {selectedStudentId ? (
+              <StudentProfileEditor
+                studentId={selectedStudentId}
+                classes={classes}
+                onNotice={setNotice}
+                onStudentArchived={() => setSelectedStudentId(null)}
+              />
+            ) : (
+              <StudentCreationForm
+                selectedClassName={selectedClassName}
+                studentName={studentName}
+                admissionNumber={admissionNumber}
+                gender={gender}
+                houseName={houseName}
+                dateOfBirth={dateOfBirth}
+                guardianName={guardianName}
+                guardianPhone={guardianPhone}
+                address={address}
+                photoPreviewUrl={studentPhotoPreviewUrl}
+                isSubmitting={isSubmitting}
+                sectionRef={studentFormRef}
+                inputRef={studentNameInputRef}
+                onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
+                onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
+                onAdmissionNumberChange={setAdmissionNumber}
+                onGenderChange={setGender}
+                onHouseNameChange={setHouseName}
+                onDateOfBirthChange={setDateOfBirth}
+                onGuardianNameChange={setGuardianName}
+                onGuardianPhoneChange={setGuardianPhone}
+                onAddressChange={setAddress}
+                onPhotoChange={setStudentPhotoFile}
+                onRemovePhoto={() => setStudentPhotoFile(null)}
+                onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                onSubmit={handleCreateStudent}
+              />
+            )}
+
+            <div className="pt-6 border-t border-slate-200/60 group">
+              <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-300 group-hover:text-slate-500 transition-colors">Quick Reference</h4>
+              <p className="mt-2 text-xs leading-relaxed font-medium text-slate-400">
+                Enrollment changes are pushed live. Updates to student profile details will reflect across all academic reports for the active session.
+              </p>
+              <Link 
+                href="/academic/students/onboarding"
+                className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                Access Bulk Onboarding <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
 
 function joinFieldLabels(fields: string[]) {
-  if (fields.length === 0) {
-    return "";
-  }
-
-  if (fields.length === 1) {
-    return fields[0];
-  }
-
-  if (fields.length === 2) {
-    return `${fields[0]} and ${fields[1]}`;
-  }
-
+  if (fields.length === 0) return "";
+  if (fields.length === 1) return fields[0];
+  if (fields.length === 2) return `${fields[0]} and ${fields[1]}`;
   return `${fields.slice(0, -1).join(", ")}, and ${fields[fields.length - 1]}`;
 }

@@ -19,7 +19,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="pb-32 antialiased">
+      <body className="antialiased">
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
             {children}

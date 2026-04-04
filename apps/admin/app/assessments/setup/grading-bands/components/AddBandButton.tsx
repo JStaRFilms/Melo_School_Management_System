@@ -27,7 +27,7 @@ export function AddBandButton({ onAdd, position }: AddBandButtonProps) {
         className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors flex items-center gap-2"
       >
         <Plus className="w-3 h-3 text-slate-300 transition-colors" />
-        Append Pass Tier
+        Add New Tier
       </button>
     </div>
   );

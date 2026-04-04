@@ -1,38 +1,74 @@
-import { ShieldCheck } from "lucide-react";
+"use client";
 
-export function AuditPolicyCard() {
+import { ShieldCheck, Target, Calculator, Fingerprint } from "lucide-react";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+
+interface AuditPolicyProps {
+  passGate?: string | number;
+  precisionLabel?: string;
+}
+
+export function AuditPolicy({
+  passGate = "40.0",
+  precisionLabel = "2 DP",
+}: AuditPolicyProps) {
   return (
-    <section className="bg-slate-900 text-white rounded-xl p-6 sm:p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <ShieldCheck className="w-5 h-5 text-emerald-400" />
-        <h3 className="font-bold text-xs uppercase tracking-widest text-white/70">
-          Audit Enforcement Policy
-        </h3>
+    <div className="space-y-4 pt-4 border-t border-slate-200/60">
+      <div className="flex items-center justify-between px-1">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+            <ShieldCheck size={10} />
+            Integrity Kernel
+          </div>
+          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Enforcement Logic</h3>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Active Guard</span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-        <div className="space-y-2">
-          <p className="text-[11px] text-white/60 leading-relaxed">
-            Changes are logged per administrator. Edit restriction rules are
-            enforced on the server, so teachers and admins cannot bypass them
-            from the browser once a cutoff is active.
-          </p>
-        </div>
-        <div className="flex gap-4 sm:justify-end">
-          <div className="text-center bg-white/5 border border-white/10 rounded-lg p-3 min-w-[100px]">
-            <span className="text-[8px] text-white/40 block mb-1 uppercase tracking-widest">
-              Pass Mark
-            </span>
-            <span className="text-lg font-bold">40.0</span>
+      <AdminSurface intensity="low" className="p-6 md:p-8 bg-[#0F172A] !border-none shadow-2xl shadow-slate-200/50 rounded-2xl relative overflow-hidden">
+        {/* Decorative Grid Mesh */}
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_0)] [background-size:16px_16px]" />
+        
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-emerald-400">
+              <Fingerprint size={16} />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">Integrity Ledger</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                <span className="h-1 w-1 rounded-full bg-slate-600" />
+                Auth-Linked
+              </div>
+              <div className="flex items-center gap-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                <span className="h-1 w-1 rounded-full bg-slate-600" />
+                Immutable Log
+              </div>
+            </div>
           </div>
-          <div className="text-center bg-white/5 border border-white/10 rounded-lg p-3 min-w-[100px]">
-            <span className="text-[8px] text-white/40 block mb-1 uppercase tracking-widest">
-              Precision
-            </span>
-            <span className="text-lg font-bold">2 DP</span>
+
+          <div className="grid grid-cols-2 gap-4 lg:justify-items-end">
+            <div className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-1 w-full lg:w-40">
+              <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">
+                <Target size={10} />
+                Pass Gate
+              </div>
+              <p className="text-2xl font-black text-white tracking-tighter font-mono">{passGate}</p>
+            </div>
+
+            <div className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm space-y-1 w-full lg:w-40 font-mono">
+              <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                <Calculator size={10} />
+                Precision
+              </div>
+              <p className="text-2xl font-black text-white tracking-tighter">{precisionLabel}</p>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </AdminSurface>
+    </div>
   );
 }
