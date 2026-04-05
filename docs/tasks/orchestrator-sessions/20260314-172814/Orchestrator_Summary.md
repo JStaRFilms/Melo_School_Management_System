@@ -1,7 +1,13 @@
 # Orchestrator Summary
 
 **Session ID:** `orch-20260314-172814`  
-**Status:** Audited and reconciled
+**Status:** Cancelled / superseded after audit reconciliation
+
+## Supersession Note
+
+This historical session should no longer be treated as the active execution queue.
+
+Use `docs/tasks/orchestrator-sessions/orch-20260404-193645-relaunch/` for the fresh Takomi backlog that reflects the real current repo state and the cumulative-results requirement.
 
 ## Execution Overview
 
