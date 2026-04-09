@@ -52,10 +52,10 @@ describe("ExamModeSelector", () => {
     render(<ExamModeSelector currentMode="raw40" onModeChange={onModeChange} />);
 
     expect(
-      screen.getByText(/Teachers enter exam scores directly out of 40/)
+      screen.getByText(/Scores entered directly out of 40\./)
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Teachers enter scores out of 60/)
+      screen.getByText(/Scores entered out of 60, scaled down to 40\./)
     ).toBeInTheDocument();
   });
 });

@@ -41,11 +41,23 @@ describe("resolveAssessmentEditingState", () => {
     expect(state.isWithinEditingWindow).toBe(true);
   });
 
-  it("blocks editing after the window closes", () => {
+  it("treats a closed finalized window as finalized", () => {
     const state = resolveAssessmentEditingState(basePolicy, 2_100);
 
     expect(state.canEdit).toBe(false);
+    expect(state.lockReason).toBe("finalized");
+    expect(state.isFinalized).toBe(true);
+  });
+
+  it("reports window_closed when the editing window ends without finalization", () => {
+    const state = resolveAssessmentEditingState(
+      { ...basePolicy, finalizationEnabled: false, finalizeAt: null },
+      2_100
+    );
+
+    expect(state.canEdit).toBe(false);
     expect(state.lockReason).toBe("window_closed");
+    expect(state.isFinalized).toBe(false);
   });
 
   it("prioritizes finalization over window status", () => {

@@ -23,4 +23,4 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Current Blocker
 
-Dev-data replacement is complete. The next blocker is release confidence: unit-test drift and the lack of meaningful E2E coverage still need to be resolved before wider delivery continues.
+Dev-data replacement is complete. The remaining blocker is release confidence: unit-test drift has been resolved, but meaningful E2E coverage is still absent and `pnpm test:e2e` remains a build-only gate.

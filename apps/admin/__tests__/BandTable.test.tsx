@@ -22,12 +22,14 @@ describe("BandTable", () => {
       />
     );
 
-    expect(screen.getByText("Grading Bands")).toBeInTheDocument();
+    expect(screen.getByText("Grade")).toBeInTheDocument();
+    expect(screen.getByText("Range")).toBeInTheDocument();
+    expect(screen.getByText("Remark")).toBeInTheDocument();
     expect(screen.getByDisplayValue("F")).toBeInTheDocument();
     expect(screen.getByDisplayValue("A")).toBeInTheDocument();
   });
 
-  it("renders Add Tier button", () => {
+  it("renders the add-tier button", () => {
     const onBandsChange = vi.fn();
     const onValidationChange = vi.fn();
 
@@ -40,8 +42,7 @@ describe("BandTable", () => {
       />
     );
 
-    expect(screen.getByText("Add Tier")).toBeInTheDocument();
-    expect(screen.getByText("Append Pass Tier")).toBeInTheDocument();
+    expect(screen.getByText("Add New Tier")).toBeInTheDocument();
   });
 
   it("calls onBandsChange when adding a tier", () => {
@@ -57,7 +58,7 @@ describe("BandTable", () => {
       />
     );
 
-    const addButton = screen.getByText("Add Tier");
+    const addButton = screen.getByText("Add New Tier");
     fireEvent.click(addButton);
 
     expect(onBandsChange).toHaveBeenCalledWith([
@@ -109,12 +110,14 @@ describe("BandTable", () => {
       />
     );
 
-    // Error rows should have error styling
-    const rows = document.querySelectorAll(".bg-red-50\\/10");
+    const rows = document.querySelectorAll(".bg-rose-50\\/30");
+    const fields = document.querySelectorAll(".border-rose-500");
+
     expect(rows.length).toBeGreaterThan(0);
+    expect(fields.length).toBeGreaterThan(0);
   });
 
-  it("renders subtitle text", () => {
+  it("renders table headers", () => {
     const onBandsChange = vi.fn();
     const onValidationChange = vi.fn();
 
@@ -127,8 +130,8 @@ describe("BandTable", () => {
       />
     );
 
-    expect(
-      screen.getByText("Define result derivation tiers for the session.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Grade")).toBeInTheDocument();
+    expect(screen.getByText("Range")).toBeInTheDocument();
+    expect(screen.getByText("Remark")).toBeInTheDocument();
   });
 });

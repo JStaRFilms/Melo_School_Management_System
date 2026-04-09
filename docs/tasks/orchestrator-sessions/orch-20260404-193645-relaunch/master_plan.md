@@ -91,7 +91,7 @@ The new baseline is:
 
 | Task | Status | Lane | Notes |
 | --- | --- | --- | --- |
-| `T01` | Pending | A | Shipped-core hardening and regression baseline |
+| `T01` | Complete | A | Shipped-core hardening and regression baseline |
 | `T02` | Pending | B | Cumulative-results domain and schema |
 | `T03` | Pending | B | Admin and teacher cumulative-report UX |
 | `T04` | Pending | B | Historical backfill and migration-safe prior totals |
@@ -104,8 +104,8 @@ The new baseline is:
 
 ## Current Known Blockers
 
-- Unit tests currently fail in `packages/convex` because auth tests do not match the current helper return shape.
 - Real E2E coverage is still absent; `pnpm test:e2e` currently behaves as a build gate.
+- Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 
 ## Exit Criteria
 
