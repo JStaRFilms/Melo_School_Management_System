@@ -244,6 +244,33 @@ Add school- or term-level configuration so the report-card layer knows when to p
 - `apps/admin/app/assessments/report-cards/page.tsx`
 - `apps/teacher/app/assessments/report-card-workbench/page.tsx`
 
+## Implementation Status
+
+### Backend Foundation Landed on `2026-04-09`
+
+The backend/domain slice for cumulative results is now in place:
+
+- `packages/convex/schema.ts`
+  - adds `historicalTermTotals`
+  - adds `academicTerms.reportCardCalculationMode`
+  - adds `assessmentRecords.by_student_and_session` for session-wide report-card lookups
+- `packages/convex/functions/academic/historicalTermTotals.ts`
+  - admin-only read/write support for historical prior-term total snapshots
+- `packages/convex/functions/academic/reportCardTermSettings.ts`
+  - exposes and saves `resultCalculationMode` for term-level report-card behavior
+- `packages/convex/functions/academic/reportCards.ts`
+  - resolves prior-term totals from real assessment records first, then historical snapshots
+  - computes third-term annual averages when cumulative annual mode is enabled
+  - returns cumulative breakdown metadata for later UI work
+- `packages/shared/src/cumulative-results.ts`
+  - reusable cumulative-average and missing-data helpers with tests
+
+### Still Pending
+
+- admin cumulative/backfill UI
+- teacher cumulative-report UI
+- printable report-card layout updates to visibly present the cumulative breakdown
+
 ## Definition Of Done
 
 - Third-term cumulative report cards work from actual prior-term totals

@@ -23,4 +23,4 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Current Blocker
 
-Dev-data replacement is complete. The remaining blocker is release confidence: unit-test drift has been resolved, but meaningful E2E coverage is still absent and `pnpm test:e2e` remains a build-only gate.
+Dev-data replacement, shipped-core hardening, and the cumulative-results backend foundation are complete. The next queued work is UI/workflow-facing (`T03-T04`), so orchestration should pause for user direction before implementing the cumulative UX surfaces.

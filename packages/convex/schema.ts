@@ -257,6 +257,9 @@ export default defineSchema({
     endDate: v.number(),
     nextTermBegins: v.optional(v.number()),
     defaultTimesSchoolOpened: v.optional(v.number()),
+    reportCardCalculationMode: v.optional(
+      v.union(v.literal("standalone"), v.literal("cumulative_annual"))
+    ),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -358,7 +361,41 @@ export default defineSchema({
       "studentId",
       "sessionId",
       "termId",
+    ])
+    .index("by_student_and_session", [
+      "schoolId",
+      "studentId",
+      "sessionId",
     ]),
+
+  historicalTermTotals: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    subjectId: v.id("subjects"),
+    studentId: v.id("students"),
+    total: v.number(),
+    source: v.union(
+      v.literal("manual_backfill"),
+      v.literal("migration_snapshot")
+    ),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class_session_term", ["classId", "sessionId", "termId"])
+    .index("by_lookup", [
+      "schoolId",
+      "sessionId",
+      "termId",
+      "classId",
+      "subjectId",
+      "studentId",
+    ])
+    .index("by_student_and_session", ["schoolId", "studentId", "sessionId"]),
 
   reportCardComments: defineTable({
     schoolId: v.id("schools"),

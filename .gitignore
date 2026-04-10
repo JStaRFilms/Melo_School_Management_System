@@ -27,6 +27,8 @@ dist/
 build/
 .next/
 coverage/
+playwright-report/
+test-results/
 .npm
 *.log
 

@@ -55,6 +55,7 @@ export function ReportCardAdminPanel({
         termId: string;
         nextTermBegins: number | null;
         defaultTimesSchoolOpened: number | null;
+        resultCalculationMode: "standalone" | "cumulative_annual";
         groups: Array<{
           _id: string;
           name: string;
@@ -192,6 +193,10 @@ export function ReportCardAdminPanel({
         termId,
         nextTermBegins: parseDateInputValue(defaultNextTermBegins),
         defaultTimesSchoolOpened: parseIntegerInputValue(defaultTimesOpened),
+        resultCalculationMode:
+          termSettings?.resultCalculationMode ??
+          reportCard.resultCalculationMode ??
+          "standalone",
       } as never);
       setTermDefaultsSuccess("Term defaults saved.");
     } catch (error) {

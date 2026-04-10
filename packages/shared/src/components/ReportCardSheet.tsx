@@ -17,6 +17,7 @@ export type ReportCardSheetData = {
     ca3Max: number;
     examMax: number;
   };
+  resultCalculationMode?: "standalone" | "cumulative_annual";
   student: {
     _id: string;
     name: string;
@@ -52,6 +53,13 @@ export type ReportCardSheetData = {
     gradeLetter: string;
     remark: string;
     isRecorded: boolean;
+    calculationMode?: "standalone" | "cumulative_annual";
+    currentTermTotal?: number | null;
+    firstTermTotal?: number | null;
+    secondTermTotal?: number | null;
+    annualAverage?: number | null;
+    isCumulativeComplete?: boolean;
+    missingHistoricalTerms?: Array<"first" | "second" | "current">;
   }>;
   extras?: Array<{
     bundleId: string;

@@ -92,7 +92,7 @@ The new baseline is:
 | Task | Status | Lane | Notes |
 | --- | --- | --- | --- |
 | `T01` | Complete | A | Shipped-core hardening and regression baseline |
-| `T02` | Pending | B | Cumulative-results domain and schema |
+| `T02` | Complete | B | Cumulative-results domain and schema |
 | `T03` | Pending | B | Admin and teacher cumulative-report UX |
 | `T04` | Pending | B | Historical backfill and migration-safe prior totals |
 | `T05` | Complete | C | Dev deployment replaced from exported production snapshot on 2026-04-04 |
@@ -104,7 +104,8 @@ The new baseline is:
 
 ## Current Known Blockers
 
-- Real E2E coverage is still absent; `pnpm test:e2e` currently behaves as a build gate.
+- The next queued cumulative-results tasks (`T03-T04`) are workflow/UI-facing follow-ons after the backend foundation delivered in `T02`.
+- E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 
 ## Exit Criteria
