@@ -23,4 +23,4 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Current Blocker
 
-Dev-data replacement, shipped-core hardening, and the cumulative-results backend foundation are complete. The next queued work is UI/workflow-facing (`T03-T04`), so orchestration should pause for user direction before implementing the cumulative UX surfaces.
+Dev-data replacement, shipped-core hardening, and the cumulative-results backend/UI slice through `T03` are complete. The next queued work is `T04` historical backfill workflow, followed by `T06` verification and release-readiness.

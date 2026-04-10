@@ -53,3 +53,4 @@ test-results/
 # skills-lock.json
 
 .jstar/
+.pi/

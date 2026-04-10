@@ -246,7 +246,7 @@ Add school- or term-level configuration so the report-card layer knows when to p
 
 ## Implementation Status
 
-### Backend Foundation Landed on `2026-04-09`
+### Foundation and UI Landed on `2026-04-10`
 
 The backend/domain slice for cumulative results is now in place:
 
@@ -265,11 +265,15 @@ The backend/domain slice for cumulative results is now in place:
 - `packages/shared/src/cumulative-results.ts`
   - reusable cumulative-average and missing-data helpers with tests
 
+The presentation layers have also been augmented to present the metrics clearly:
+
+- admin-facing warnings for missing prior-term results prior to backfill, with printing blocked until missing totals are resolved
+- teacher cumulative-report readability enhancements with conditionally rendered columns, explicit annual-average labeling, and incomplete-state visibility
+- printable report-card layout updates to visibly present the cumulative breakdown, mark incomplete subjects, and suppress ambiguous final grade/remark output while historical data is missing
+
 ### Still Pending
 
-- admin cumulative/backfill UI
-- teacher cumulative-report UI
-- printable report-card layout updates to visibly present the cumulative breakdown
+- admin historical prior-term backfill data entry grid
 
 ## Definition Of Done
 

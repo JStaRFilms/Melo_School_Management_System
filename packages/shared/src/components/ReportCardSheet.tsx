@@ -93,6 +93,32 @@ function formatScore(value: number | null) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+type ReportCardResult = ReportCardSheetData["results"][number];
+
+export function isIncompleteCumulativeResult(result: ReportCardResult) {
+  return (
+    result.calculationMode === "cumulative_annual" &&
+    result.isCumulativeComplete === false
+  );
+}
+
+export function hasIncompleteCumulativeResults(reportCard: ReportCardSheetData) {
+  return (
+    reportCard.resultCalculationMode === "cumulative_annual" &&
+    reportCard.results.some((result) => isIncompleteCumulativeResult(result))
+  );
+}
+
+function getResultGradeDisplay(result: ReportCardResult) {
+  return isIncompleteCumulativeResult(result) ? "—" : result.gradeLetter;
+}
+
+function getResultRemarkDisplay(result: ReportCardResult) {
+  return isIncompleteCumulativeResult(result)
+    ? "Pending prior-term scores"
+    : result.remark;
+}
+
 function buildInitials(name: string) {
   return name
     .split(" ")
@@ -270,6 +296,7 @@ export function ReportCardSheet({
 
   const schoolInitials = buildInitials(reportCard.schoolName);
   const ac = reportCard.assessmentConfig;
+  const hasBlockingCumulativePrint = hasIncompleteCumulativeResults(reportCard);
 
   /* ─── Info rows data ─── */
   const leftFields = [
@@ -369,6 +396,7 @@ export function ReportCardSheet({
           </a>
           <button
             type="button"
+            disabled={hasBlockingCumulativePrint}
             onClick={() => window.print()}
             style={{
               display: "inline-flex",
@@ -380,15 +408,36 @@ export function ReportCardSheet({
               fontSize: 13,
               fontWeight: 700,
               color: "white",
-              background: "#0f172a",
-              cursor: "pointer",
+              background: hasBlockingCumulativePrint ? "#94a3b8" : "#0f172a",
+              cursor: hasBlockingCumulativePrint ? "not-allowed" : "pointer",
+              opacity: hasBlockingCumulativePrint ? 0.9 : 1,
             }}
           >
-            Export / Print
+            {hasBlockingCumulativePrint ? "Print blocked" : "Export / Print"}
           </button>
         </div>
       </div>
       )}
+
+      {hasBlockingCumulativePrint ? (
+        <div
+          className="rc-no-print"
+          style={{
+            maxWidth: "210mm",
+            margin: "0 auto 12px",
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #fecaca",
+            background: "#fff1f2",
+            color: "#9f1239",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          Printing is blocked until the missing prior-term scores are backfilled and
+          the annual average is complete for every cumulative subject.
+        </div>
+      ) : null}
 
       {/* ─── Report Card Sheet ─── */}
       <div 
@@ -689,52 +738,119 @@ export function ReportCardSheet({
           >
             <thead>
               <tr style={{ background: "#f1f5f9" }}>
-                <Th align="left" width="28%">
+                <Th align="left" width={reportCard.resultCalculationMode === "cumulative_annual" ? "24%" : "28%"}>
                   Subject
                 </Th>
-                <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
-                <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
-                <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
-                <Th width="10%">Exam ({ac.examMax}%)</Th>
-                <Th width="11%">Total (100%)</Th>
-                <Th width="7%">Grade</Th>
-                <Th width="12%" align="left">
-                  Remark
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportCard.results.map((result, i) => (
-                <tr
-                  key={result.subjectId}
-                  style={{
-                    background: !result.isRecorded
-                      ? "#fffbeb"
-                      : i % 2 === 1
-                        ? "#fafbfc"
-                        : "white",
-                  }}
-                >
-                  <Td align="left" bold>
-                    {result.subjectName}
-                  </Td>
-                  <Td mono>{formatScore(result.ca1)}</Td>
-                  <Td mono>{formatScore(result.ca2)}</Td>
-                  <Td mono>{formatScore(result.ca3)}</Td>
-                  <Td mono>{formatScore(result.examScore)}</Td>
-                  <Td mono bold>
-                    {formatScore(result.total)}
-                  </Td>
-                  <Td bold color={gradeColor(result.gradeLetter)}>
-                    {result.gradeLetter}
-                  </Td>
-                  <Td align="left" fontSize={11}>
-                    {result.remark}
-                  </Td>
+                  {reportCard.resultCalculationMode === "cumulative_annual" ? (
+                    <>
+                      <Th width="11%">1st Term</Th>
+                      <Th width="11%">2nd Term</Th>
+                      <Th width="11%">3rd Term</Th>
+                      <Th width="13%">Annual Avg</Th>
+                    </>
+                  ) : (
+                    <>
+                      <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
+                      <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
+                      <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
+                      <Th width="10%">Exam ({ac.examMax}%)</Th>
+                      <Th width="11%">Total (100%)</Th>
+                    </>
+                  )}
+                  <Th width="7%">Grade</Th>
+                  <Th width="15%" align="left">
+                    Remark
+                  </Th>
                 </tr>
-              ))}
-            </tbody>
+              </thead>
+              <tbody>
+                {reportCard.results.map((result, i) => (
+                  <tr
+                    key={result.subjectId}
+                    style={{
+                      background: !result.isRecorded
+                        ? "#fffbeb"
+                        : i % 2 === 1
+                          ? "#fafbfc"
+                          : "white",
+                    }}
+                  >
+                    <Td align="left" bold>
+                      {result.subjectName}
+                      {reportCard.resultCalculationMode === "cumulative_annual" &&
+                        (result.calculationMode === "cumulative_annual" &&
+                        result.missingHistoricalTerms &&
+                        result.missingHistoricalTerms.length > 0 ? (
+                          <span style={{ color: "#ef4444", marginLeft: 4, fontSize: 10 }}>*</span>
+                        ) : result.calculationMode !== "cumulative_annual" ? (
+                          <span
+                            style={{
+                              color: "#64748b",
+                              marginLeft: 6,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                            }}
+                          >
+                            Standalone
+                          </span>
+                        ) : null)}
+                    </Td>
+                    {reportCard.resultCalculationMode === "cumulative_annual" ? (
+                      <>
+                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.firstTermTotal ?? null) : "-"}</Td>
+                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.secondTermTotal ?? null) : "-"}</Td>
+                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.currentTermTotal ?? null) : formatScore(result.total)}</Td>
+                        <Td mono bold>
+                          {result.calculationMode === "cumulative_annual" ? formatScore(result.annualAverage ?? null) : formatScore(result.total)}
+                        </Td>
+                      </>
+                    ) : (
+                      <>
+                        <Td mono>{formatScore(result.ca1)}</Td>
+                        <Td mono>{formatScore(result.ca2)}</Td>
+                        <Td mono>{formatScore(result.ca3)}</Td>
+                        <Td mono>{formatScore(result.examScore)}</Td>
+                        <Td mono bold>
+                          {formatScore(result.total)}
+                        </Td>
+                      </>
+                    )}
+                    <Td
+                      bold
+                      color={
+                        isIncompleteCumulativeResult(result)
+                          ? "#64748b"
+                          : gradeColor(result.gradeLetter)
+                      }
+                    >
+                      {getResultGradeDisplay(result)}
+                    </Td>
+                    <Td align="left" fontSize={11}>
+                      {getResultRemarkDisplay(result)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
           </table>
+          {reportCard.resultCalculationMode === "cumulative_annual" &&
+            reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0) && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #fecaca",
+                  background: "#fff1f2",
+                  fontSize: 10.5,
+                  color: "#9f1239",
+                  fontWeight: 700,
+                }}
+              >
+                Rows marked * are incomplete. Printing stays blocked until the missing prior-term scores are backfilled and the annual average can be finalized.
+              </div>
+            )}
         </div>
 
         {/* ─── COMMENTS SECTION ─── */}

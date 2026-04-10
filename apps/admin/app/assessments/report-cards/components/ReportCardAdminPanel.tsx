@@ -268,8 +268,31 @@ export function ReportCardAdminPanel({
     setGroupSuccess(null);
   };
 
+  const missingDataSubjects = reportCard.results.filter(
+    (r) => r.calculationMode === "cumulative_annual" && r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0
+  );
+
   return (
     <div className="rc-no-print space-y-10">
+      {reportCard.resultCalculationMode === "cumulative_annual" && missingDataSubjects.length > 0 && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 min-w-fit">
+              <svg className="h-5 w-5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-rose-900">Missing prior-term data</h4>
+              <p className="mt-1 text-xs text-rose-700/90 leading-relaxed font-medium">
+                Cumulative annual computation cannot complete because {missingDataSubjects.length} subject{missingDataSubjects.length === 1 ? " is" : "s are"} missing scores from previous terms.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-rose-800">
+                Printing stays blocked until the missing prior-term totals are backfilled.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Student Specific Section */}
       <section className="space-y-4">
         <div className="flex items-center gap-2 px-1">
