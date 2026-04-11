@@ -109,9 +109,14 @@ export function WorkspaceNavbar({
     setProfileOpen(false);
   }, [currentPath]);
 
-  const activeSection = sections.find((s) =>
-    isWorkspaceSectionActive(s, currentPath)
-  );
+  const activeSection =
+    sections
+      .filter((section) => isWorkspaceSectionActive(section, currentPath))
+      .sort((a, b) => {
+        const aLength = Math.max(...a.matchers.map((matcher) => matcher.length));
+        const bLength = Math.max(...b.matchers.map((matcher) => matcher.length));
+        return bLength - aLength;
+      })[0] ?? null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
@@ -144,7 +149,7 @@ export function WorkspaceNavbar({
                     <SidebarLink 
                       key={s.href} 
                       section={s} 
-                      active={isWorkspaceSectionActive(s, currentPath)} 
+                      active={activeSection?.href === s.href} 
                       renderLink={renderLink} 
                     />
                   ))}

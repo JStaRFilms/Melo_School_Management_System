@@ -913,6 +913,9 @@ export const createTerm = mutation({
     startDate: v.number(),
     endDate: v.number(),
     isActive: v.boolean(),
+    resultCalculationMode: v.optional(
+      v.union(v.literal("standalone"), v.literal("cumulative_annual"))
+    ),
   },
   returns: v.id("academicTerms"),
   handler: async (ctx, args) => {
@@ -954,9 +957,38 @@ export const createTerm = mutation({
       startDate: args.startDate,
       endDate: args.endDate,
       isActive: args.isActive,
+      reportCardCalculationMode: args.resultCalculationMode ?? "standalone",
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const updateTermCalculationMode = mutation({
+  args: {
+    termId: v.id("academicTerms"),
+    resultCalculationMode: v.union(
+      v.literal("standalone"),
+      v.literal("cumulative_annual")
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const term = await ctx.db.get(args.termId);
+    if (!term || term.schoolId !== schoolId) {
+      throw new ConvexError("Cross-school access denied");
+    }
+
+    await ctx.db.patch(args.termId, {
+      reportCardCalculationMode: args.resultCalculationMode,
+      updatedAt: Date.now(),
+    });
+
+    return null;
   },
 });
 
@@ -969,6 +1001,10 @@ export const listTermsBySession = query({
       startDate: v.number(),
       endDate: v.number(),
       isActive: v.boolean(),
+      reportCardCalculationMode: v.union(
+        v.literal("standalone"),
+        v.literal("cumulative_annual")
+      ),
       createdAt: v.number(),
     })
   ),
@@ -995,6 +1031,7 @@ export const listTermsBySession = query({
         startDate: t.startDate,
         endDate: t.endDate,
         isActive: t.isActive,
+        reportCardCalculationMode: t.reportCardCalculationMode ?? "standalone",
         createdAt: t.createdAt,
       }));
   },

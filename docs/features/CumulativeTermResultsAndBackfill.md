@@ -271,9 +271,13 @@ The presentation layers have also been augmented to present the metrics clearly:
 - teacher cumulative-report readability enhancements with conditionally rendered columns, explicit annual-average labeling, and incomplete-state visibility
 - printable report-card layout updates to visibly present the cumulative breakdown, mark incomplete subjects, and suppress ambiguous final grade/remark output while historical data is missing
 
-### Still Pending
+### Backfill Workspace Landed on `2026-04-10`
 
-- admin historical prior-term backfill data entry grid
+- admin-only historical backfill route at `apps/admin/app/assessments/report-cards/backfill/page.tsx`
+- roster-style student/subject grid for prior-term total entry with notes
+- audit-safe overwrite flow using the existing historical snapshot mutation
+- direct admin CTA from report-card missing-data warnings into the backfill workspace
+- term-level result layout selection now lives with session/term setup, where admins can create or update a term as `standalone` or `cumulative_annual`
 
 ## Definition Of Done
 

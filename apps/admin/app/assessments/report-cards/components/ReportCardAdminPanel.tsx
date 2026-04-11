@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
 import { SchoolLogoManagerCard } from "./SchoolLogoManagerCard";
@@ -288,6 +289,12 @@ export function ReportCardAdminPanel({
               <p className="mt-2 text-xs font-semibold text-rose-800">
                 Printing stays blocked until the missing prior-term totals are backfilled.
               </p>
+              <Link
+                href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${reportCard.classId}`}
+                className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-rose-950 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-rose-800"
+              >
+                Open historical backfill
+              </Link>
             </div>
           </div>
         </div>

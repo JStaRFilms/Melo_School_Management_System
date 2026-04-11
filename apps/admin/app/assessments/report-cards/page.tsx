@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
@@ -187,7 +188,13 @@ function AdminReportCardPageContent() {
         {classReportCards === undefined ? null : isClassPrintBlocked ? (
           <div className="rc-no-print mx-auto px-4 pb-6 md:px-6" style={{ maxWidth: "210mm" }}>
             <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
-              Full-class print is blocked until the missing prior-term totals are backfilled for every cumulative report card in this class.
+              <p>Full-class print is blocked until the missing prior-term totals are backfilled for every cumulative report card in this class.</p>
+              <Link
+                href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${resolvedClassId}`}
+                className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-rose-950 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-rose-800"
+              >
+                Open historical backfill
+              </Link>
             </div>
           </div>
         ) : (

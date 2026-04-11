@@ -737,32 +737,47 @@ export function ReportCardSheet({
             }}
           >
             <thead>
-              <tr style={{ background: "#f1f5f9" }}>
-                <Th align="left" width={reportCard.resultCalculationMode === "cumulative_annual" ? "24%" : "28%"}>
-                  Subject
-                </Th>
-                  {reportCard.resultCalculationMode === "cumulative_annual" ? (
-                    <>
-                      <Th width="11%">1st Term</Th>
-                      <Th width="11%">2nd Term</Th>
-                      <Th width="11%">3rd Term</Th>
-                      <Th width="13%">Annual Avg</Th>
-                    </>
-                  ) : (
-                    <>
-                      <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
-                      <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
-                      <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
-                      <Th width="10%">Exam ({ac.examMax}%)</Th>
-                      <Th width="11%">Total (100%)</Th>
-                    </>
-                  )}
+              {reportCard.resultCalculationMode === "cumulative_annual" ? (
+                <>
+                  <tr style={{ background: "#f8fafc" }}>
+                    <Th align="left" width="23%" rowSpan={2}>
+                      Subject
+                    </Th>
+                    <Th width="41%" colSpan={5}>
+                      {reportCard.termName.toUpperCase()}
+                    </Th>
+                    <Th width="9%" rowSpan={2}>1st Term</Th>
+                    <Th width="9%" rowSpan={2}>2nd Term</Th>
+                    <Th width="7%" rowSpan={2}>Grade</Th>
+                    <Th width="11%" align="left" rowSpan={2}>
+                      Remark
+                    </Th>
+                  </tr>
+                  <tr style={{ background: "#f1f5f9" }}>
+                    <Th width="8%">CA1 ({ac.ca1Max}%)</Th>
+                    <Th width="8%">CA2 ({ac.ca2Max}%)</Th>
+                    <Th width="8%">CA3 ({ac.ca3Max}%)</Th>
+                    <Th width="8%">Exam ({ac.examMax}%)</Th>
+                    <Th width="9%">Total (100%)</Th>
+                  </tr>
+                </>
+              ) : (
+                <tr style={{ background: "#f1f5f9" }}>
+                  <Th align="left" width="28%">
+                    Subject
+                  </Th>
+                  <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
+                  <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
+                  <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
+                  <Th width="10%">Exam ({ac.examMax}%)</Th>
+                  <Th width="11%">Total (100%)</Th>
                   <Th width="7%">Grade</Th>
                   <Th width="15%" align="left">
                     Remark
                   </Th>
                 </tr>
-              </thead>
+              )}
+            </thead>
               <tbody>
                 {reportCard.results.map((result, i) => (
                   <tr
@@ -799,12 +814,13 @@ export function ReportCardSheet({
                     </Td>
                     {reportCard.resultCalculationMode === "cumulative_annual" ? (
                       <>
+                        <Td mono>{formatScore(result.ca1)}</Td>
+                        <Td mono>{formatScore(result.ca2)}</Td>
+                        <Td mono>{formatScore(result.ca3)}</Td>
+                        <Td mono>{formatScore(result.examScore)}</Td>
+                        <Td mono bold>{formatScore(result.currentTermTotal ?? result.total)}</Td>
                         <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.firstTermTotal ?? null) : "-"}</Td>
                         <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.secondTermTotal ?? null) : "-"}</Td>
-                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.currentTermTotal ?? null) : formatScore(result.total)}</Td>
-                        <Td mono bold>
-                          {result.calculationMode === "cumulative_annual" ? formatScore(result.annualAverage ?? null) : formatScore(result.total)}
-                        </Td>
                       </>
                     ) : (
                       <>
@@ -834,23 +850,30 @@ export function ReportCardSheet({
                 ))}
               </tbody>
           </table>
-          {reportCard.resultCalculationMode === "cumulative_annual" &&
-            reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0) && (
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #fecaca",
-                  background: "#fff1f2",
-                  fontSize: 10.5,
-                  color: "#9f1239",
-                  fontWeight: 700,
-                }}
-              >
-                Rows marked * are incomplete. Printing stays blocked until the missing prior-term scores are backfilled and the annual average can be finalized.
-              </div>
-            )}
+          {reportCard.resultCalculationMode === "cumulative_annual" ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "1px solid #fecaca"
+                  : "1px solid #dbeafe",
+                background: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "#fff1f2"
+                  : "#eff6ff",
+                fontSize: 10.5,
+                color: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "#9f1239"
+                  : "#1d4ed8",
+                fontWeight: 700,
+              }}
+            >
+              {reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                ? "Rows marked * are incomplete. Printing stays blocked until the missing prior-term scores are backfilled and the cumulative grade can be finalized."
+                : "In cumulative annual mode, the current term breakdown is shown alongside first-term and second-term totals. Grade and remark follow the cumulative annual calculation."}
+            </div>
+          ) : null}
         </div>
 
         {/* ─── COMMENTS SECTION ─── */}
@@ -969,13 +992,19 @@ function Th({
   children,
   width,
   align = "center",
+  rowSpan,
+  colSpan,
 }: {
   children: React.ReactNode;
   width?: number | string;
   align?: "left" | "center" | "right";
+  rowSpan?: number;
+  colSpan?: number;
 }) {
   return (
     <th
+      rowSpan={rowSpan}
+      colSpan={colSpan}
       style={{
         width: width ?? "auto",
         padding: "5px 6px",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { CheckCircle2, History, Calendar, Trash2 } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { SessionRecord } from "@/types";
@@ -11,6 +12,7 @@ type TermRecord = {
   startDate: number;
   endDate: number;
   isActive: boolean;
+  reportCardCalculationMode: "standalone" | "cumulative_annual";
 };
 
 interface SessionDirectoryProps {
@@ -22,30 +24,75 @@ interface SessionDirectoryProps {
 }
 
 function TermBadge({ term }: { term: TermRecord }) {
+  const updateTermCalculationMode = useMutation(
+    "functions/academic/academicSetup:updateTermCalculationMode" as never
+  );
+  const [isSavingMode, setIsSavingMode] = useState(false);
   const dateStr = `${new Date(term.startDate).toLocaleDateString()} - ${new Date(term.endDate).toLocaleDateString()}`;
+
+  const handleModeChange = async (nextMode: "standalone" | "cumulative_annual") => {
+    if (nextMode === term.reportCardCalculationMode) {
+      return;
+    }
+
+    setIsSavingMode(true);
+    try {
+      await updateTermCalculationMode({
+        termId: term._id,
+        resultCalculationMode: nextMode,
+      } as never);
+    } finally {
+      setIsSavingMode(false);
+    }
+  };
+
   return (
     <div
-      className={`group flex items-center justify-between rounded-lg border px-3 py-2 transition-all ${
+      className={`group rounded-lg border px-3 py-3 transition-all ${
         term.isActive
           ? "border-indigo-100 bg-indigo-50/50"
           : "border-slate-100 bg-white"
       }`}
     >
-      <div className="flex flex-col gap-0.5">
-        <span className={`text-[9px] font-bold uppercase tracking-wider ${
-          term.isActive ? "text-indigo-600" : "text-slate-400"
-        }`}>
-          {term.name}
-        </span>
-        <span className="text-[10px] font-medium text-slate-600 tracking-tight">
-          {dateStr}
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className={`text-[9px] font-bold uppercase tracking-wider ${
+            term.isActive ? "text-indigo-600" : "text-slate-400"
+          }`}>
+            {term.name}
+          </span>
+          <span className="text-[10px] font-medium text-slate-600 tracking-tight">
+            {dateStr}
+          </span>
+        </div>
+        {term.isActive && (
+          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white">
+            Active
+          </span>
+        )}
       </div>
-      {term.isActive && (
-        <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white">
-          Active
+
+      <div className="mt-3 space-y-1.5">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+          Report Card Mode
         </span>
-      )}
+        <select
+          value={term.reportCardCalculationMode}
+          onChange={(event) =>
+            void handleModeChange(
+              event.target.value as "standalone" | "cumulative_annual"
+            )
+          }
+          disabled={isSavingMode}
+          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-indigo-500 disabled:opacity-60"
+        >
+          <option value="standalone">Standalone term report</option>
+          <option value="cumulative_annual">Cumulative annual report</option>
+        </select>
+        <p className="text-[10px] font-medium leading-relaxed text-slate-500">
+          Usually first and second term stay standalone. Set third term to cumulative annual if it should combine prior-term totals.
+        </p>
+      </div>
     </div>
   );
 }

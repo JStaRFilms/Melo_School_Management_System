@@ -21,6 +21,6 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 - billing, payments, notifications, and AI teacher tools remain pending
 - cumulative third-term reporting is now explicitly in scope for this session
 
-## Current Blocker
+## Current Status
 
-Dev-data replacement, shipped-core hardening, and the cumulative-results backend/UI slice through `T03` are complete. The next queued work is `T04` historical backfill workflow, followed by `T06` verification and release-readiness.
+Dev-data replacement, shipped-core hardening, and the cumulative-results backend/UI slice through `T03` are complete. `T04` historical backfill workflow is now complete as well. The next queued work is `T06` verification and release-readiness.

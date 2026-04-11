@@ -70,6 +70,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         label: "Report Extras",
         matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
       },
+      {
+        href: "/assessments/report-cards/backfill",
+        label: "Historical Backfill",
+        matchers: ["/assessments/report-cards/backfill"],
+      },
     ],
   },
   teacher: {
