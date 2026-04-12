@@ -156,6 +156,137 @@ function getValidatedPhotoMetadata(args: {
   };
 }
 
+function normalizeOptionalEmail(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || undefined;
+}
+
+function normalizeOptionalPhone(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function buildFamilyName(args: { studentName: string; parentName?: string; familyName?: string | null | undefined; }) {
+  const explicitFamilyName = normalizeOptionalText(args.familyName);
+  if (explicitFamilyName) {
+    return normalizeHumanName(explicitFamilyName);
+  }
+
+  const baseName = normalizeHumanName(args.parentName ?? args.studentName);
+  if (!baseName) {
+    throw new ConvexError("Family name could not be generated");
+  }
+
+  return `${baseName} Family`;
+}
+
+async function findParentUsersByEmail(
+  ctx: any,
+  schoolId: Id<"schools">,
+  email: string
+) {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .filter((q: any) => q.eq(q.field("email"), email))
+    .collect();
+}
+
+async function findFamiliesForParentUser(
+  ctx: any,
+  schoolId: Id<"schools">,
+  parentUserId: Id<"users">
+) {
+  const familyLinks = await ctx.db
+    .query("familyMembers")
+    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", parentUserId))
+    .collect();
+
+  const families = await Promise.all(
+    familyLinks.map(async (familyLink: any) => {
+      const family = await ctx.db.get(familyLink.familyId);
+      if (!family || family.schoolId !== schoolId) {
+        return null;
+      }
+
+      return {
+        ...family,
+        familyLink,
+      };
+    })
+  );
+
+  return families
+    .filter((family: any) => family && !family.isArchived)
+    .sort((a: any, b: any) => a.createdAt - b.createdAt);
+}
+
+async function getFamilyMembers(
+  ctx: any,
+  familyId: Id<"families">
+) {
+  return await ctx.db
+    .query("familyMembers")
+    .withIndex("by_family", (q: any) => q.eq("familyId", familyId))
+    .collect();
+}
+
+async function getStudentsForFamily(ctx: any, familyId: Id<"families">) {
+  return await ctx.db
+    .query("students")
+    .withIndex("by_family", (q: any) => q.eq("familyId", familyId))
+    .collect();
+}
+
+async function findReusableOrphanFamilyByName(
+  ctx: any,
+  schoolId: Id<"schools">,
+  familyName: string
+) {
+  const matches = await ctx.db
+    .query("families")
+    .withIndex("by_school_and_name", (q: any) =>
+      q.eq("schoolId", schoolId).eq("name", familyName)
+    )
+    .collect();
+
+  const orphanFamilies = [] as any[];
+
+  for (const family of matches) {
+    const [members, students] = await Promise.all([
+      getFamilyMembers(ctx, family._id),
+      getStudentsForFamily(ctx, family._id),
+    ]);
+
+    const activeStudents = students.filter((student: any) => !student.isArchived);
+    if (members.length === 0 && activeStudents.length > 0) {
+      orphanFamilies.push(family);
+    }
+  }
+
+  return orphanFamilies.length === 1 ? orphanFamilies[0] : null;
+}
+
+async function deleteFamilyIfEmpty(ctx: any, familyId: Id<"families">) {
+  const [members, students] = await Promise.all([
+    getFamilyMembers(ctx, familyId),
+    getStudentsForFamily(ctx, familyId),
+  ]);
+
+  const activeStudents = students.filter((student: any) => !student.isArchived);
+  if (members.length === 0 && activeStudents.length === 0) {
+    await ctx.db.delete(familyId);
+  }
+}
+
 // ==================== STUDENT ROSTER ====================
 
 export const createStudent = mutation({
@@ -458,6 +589,7 @@ export const updateStudent = mutation({
       schoolId: student.schoolId,
       classId: args.classId ?? student.classId,
       userId: student.userId,
+      ...(student.familyId ? { familyId: student.familyId } : {}),
       admissionNumber: nextAdmissionNumber,
       createdAt: student.createdAt,
       updatedAt: Date.now(),
@@ -1126,5 +1258,456 @@ export const getClassStudentSubjectMatrix = query({
       subjects: subjects.sort((a, b) => a.name.localeCompare(b.name)),
       students: await Promise.all(studentResults),
     };
+  },
+});
+
+async function loadStudentFamilyProfile(
+  ctx: any,
+  schoolId: Id<"schools">,
+  studentId: Id<"students">
+) {
+  const student = await ctx.db.get(studentId);
+  if (!student || student.schoolId !== schoolId || student.isArchived) {
+    throw new ConvexError("Student not found");
+  }
+
+  if (!student.familyId) {
+    return {
+      family: null,
+      parents: [],
+      students: [],
+    };
+  }
+
+  const family = await ctx.db.get(student.familyId);
+  if (!family || family.schoolId !== schoolId) {
+    return {
+      family: null,
+      parents: [],
+      students: [],
+    };
+  }
+
+  const familyMembers = await getFamilyMembers(ctx, family._id);
+  const parentRows = await Promise.all(
+    familyMembers.map(async (familyMember: any) => {
+      const parentUser = await ctx.db.get(familyMember.parentUserId);
+      if (
+        !parentUser ||
+        parentUser.schoolId !== schoolId ||
+        parentUser.isArchived ||
+        parentUser.role !== "parent"
+      ) {
+        return null;
+      }
+
+      const parentName = getReadableUserName(parentUser);
+      return {
+        _id: familyMember._id,
+        parentUserId: parentUser._id,
+        name: parentName.displayName || "Unnamed Parent",
+        firstName: parentName.firstName,
+        lastName: parentName.lastName,
+        email: parentUser.email,
+        phone: parentUser.phone ?? null,
+        relationship: familyMember.relationship ?? null,
+        isPrimaryContact: familyMember.isPrimaryContact,
+      };
+    })
+  );
+
+  const parents = parentRows
+    .filter((parent): parent is NonNullable<typeof parent> => Boolean(parent))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const familyStudents = await ctx.db
+    .query("students")
+    .withIndex("by_family", (q: any) => q.eq("familyId", family._id))
+    .collect();
+
+  const activeStudents = familyStudents.filter((familyStudent: any) => !familyStudent.isArchived);
+  const classIds = [...new Set(activeStudents.map((familyStudent: any) => String(familyStudent.classId)))];
+  const classDocs = await Promise.all(
+    classIds.map(async (classId) => ctx.db.get(classId as Id<"classes">))
+  );
+  const classNameById = new Map<string, string>();
+  for (const classDoc of classDocs) {
+    if (!classDoc || classDoc.schoolId !== schoolId) {
+      continue;
+    }
+
+    classNameById.set(String(classDoc._id), normalizeHumanName(classDoc.name));
+  }
+
+  const students = await Promise.all(
+    activeStudents
+      .sort((a: any, b: any) => a.admissionNumber.localeCompare(b.admissionNumber))
+      .map(async (familyStudent: any) => {
+        const familyStudentUser = await ctx.db.get(familyStudent.userId);
+        const studentName = getReadableUserName(familyStudentUser);
+        return {
+          _id: familyStudent._id,
+          studentName: studentName.displayName || "Unnamed Student",
+          admissionNumber: familyStudent.admissionNumber,
+          classId: familyStudent.classId,
+          className:
+            classNameById.get(String(familyStudent.classId)) ?? "Unknown class",
+        };
+      })
+  );
+
+  return {
+    family: {
+      _id: family._id,
+      name: family.name,
+      studentCount: students.length,
+      parentCount: parents.length,
+    },
+    parents,
+    students,
+  };
+}
+
+export const getStudentFamilyProfile = query({
+  args: { studentId: v.id("students") },
+  returns: v.object({
+    family: v.union(
+      v.null(),
+      v.object({
+        _id: v.id("families"),
+        name: v.string(),
+        studentCount: v.number(),
+        parentCount: v.number(),
+      })
+    ),
+    parents: v.array(
+      v.object({
+        _id: v.id("familyMembers"),
+        parentUserId: v.id("users"),
+        name: v.string(),
+        firstName: v.union(v.string(), v.null()),
+        lastName: v.union(v.string(), v.null()),
+        email: v.string(),
+        phone: v.union(v.string(), v.null()),
+        relationship: v.union(v.string(), v.null()),
+        isPrimaryContact: v.boolean(),
+      })
+    ),
+    students: v.array(
+      v.object({
+        _id: v.id("students"),
+        studentName: v.string(),
+        admissionNumber: v.string(),
+        classId: v.id("classes"),
+        className: v.string(),
+      })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    return await loadStudentFamilyProfile(ctx, schoolId, args.studentId);
+  },
+});
+
+export const upsertStudentFamilyLink = mutation({
+  args: {
+    studentId: v.id("students"),
+    firstName: v.string(),
+    lastName: v.string(),
+    email: v.string(),
+    phone: v.optional(v.union(v.string(), v.null())),
+    relationship: v.optional(v.union(v.string(), v.null())),
+    familyName: v.optional(v.union(v.string(), v.null())),
+    isPrimaryContact: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    familyId: v.id("families"),
+    parentUserId: v.id("users"),
+    familyMemberId: v.id("familyMembers"),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
+      throw new ConvexError("Student not found");
+    }
+
+    const studentUser = await ctx.db.get(student.userId);
+    if (!studentUser || studentUser.schoolId !== schoolId || studentUser.isArchived) {
+      throw new ConvexError("Student account not found");
+    }
+
+    const normalizedEmail = normalizeOptionalEmail(args.email);
+    if (!normalizedEmail) {
+      throw new ConvexError("Parent email is required");
+    }
+
+    const normalizedPhone = normalizeOptionalPhone(args.phone);
+    const parentName = resolveStoredUserNameFields({
+      firstName: args.firstName,
+      lastName: args.lastName,
+      requiredMessage: "Parent first and last name are required",
+    });
+    const relationship = normalizeOptionalText(args.relationship)
+      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
+      : undefined;
+    const now = Date.now();
+
+    const matchingUsers = await findParentUsersByEmail(ctx, schoolId, normalizedEmail);
+    const archivedDuplicate = matchingUsers.find((candidate: any) => candidate.isArchived);
+    if (archivedDuplicate) {
+      throw new ConvexError(archivedRecordNotice("parent"));
+    }
+
+    let parentUser = matchingUsers.find((candidate: any) => !candidate.isArchived);
+    if (parentUser && parentUser.role !== "parent") {
+      throw new ConvexError("A user with this email already exists");
+    }
+
+    if (!parentUser) {
+      const parentUserId = await ctx.db.insert("users", {
+        schoolId,
+        authId: `parent:${String(schoolId)}:${normalizedEmail}`,
+        name: parentName.name,
+        ...(parentName.firstName ? { firstName: parentName.firstName } : {}),
+        ...(parentName.lastName ? { lastName: parentName.lastName } : {}),
+        email: normalizedEmail,
+        ...(normalizedPhone ? { phone: normalizedPhone } : {}),
+        role: "parent",
+        createdAt: now,
+        updatedAt: now,
+      });
+      parentUser = await ctx.db.get(parentUserId);
+    } else {
+      const nextParentRecord: Record<string, unknown> = {
+        updatedAt: now,
+        name: parentName.name,
+        email: normalizedEmail,
+      };
+
+      if (parentName.firstName) {
+        nextParentRecord.firstName = parentName.firstName;
+      }
+      if (parentName.lastName) {
+        nextParentRecord.lastName = parentName.lastName;
+      }
+      if (normalizedPhone !== undefined) {
+        nextParentRecord.phone = normalizedPhone;
+      }
+
+      await ctx.db.patch(parentUser._id, nextParentRecord as any);
+      parentUser = {
+        ...parentUser,
+        ...nextParentRecord,
+      } as any;
+    }
+
+    if (!parentUser) {
+      throw new ConvexError("Parent record could not be created");
+    }
+
+    const studentName = getReadableUserName(studentUser);
+    let familyId = student.familyId;
+    let familyDoc: any = null;
+
+    if (familyId) {
+      familyDoc = await ctx.db.get(familyId);
+      if (!familyDoc || familyDoc.schoolId !== schoolId) {
+        throw new ConvexError("Family not found");
+      }
+    } else {
+      const familyName = buildFamilyName({
+        studentName: studentName.displayName || studentUser.name,
+        parentName: parentName.name,
+        familyName: args.familyName,
+      });
+      const parentFamilies = await findFamiliesForParentUser(ctx, schoolId, parentUser._id);
+      if (parentFamilies.length > 0) {
+        familyDoc = parentFamilies[0];
+        familyId = familyDoc._id;
+      } else {
+        const reusableOrphanFamily = await findReusableOrphanFamilyByName(
+          ctx,
+          schoolId,
+          familyName
+        );
+        if (reusableOrphanFamily) {
+          familyDoc = reusableOrphanFamily;
+          familyId = reusableOrphanFamily._id;
+        } else {
+          familyId = await ctx.db.insert("families", {
+            schoolId,
+            name: familyName,
+            createdAt: now,
+            updatedAt: now,
+            createdBy: userId,
+            updatedBy: userId,
+          });
+          familyDoc = await ctx.db.get(familyId);
+        }
+      }
+    }
+
+    if (!familyDoc) {
+      throw new ConvexError("Family could not be created");
+    }
+
+    const familyNameOverride = normalizeOptionalText(args.familyName);
+    if (familyNameOverride && normalizeHumanName(familyNameOverride) !== familyDoc.name) {
+      await ctx.db.patch(familyDoc._id, {
+        name: normalizeHumanName(familyNameOverride),
+        updatedAt: now,
+        updatedBy: userId,
+      });
+      familyDoc = await ctx.db.get(familyDoc._id);
+    }
+
+    if (!familyDoc) {
+      throw new ConvexError("Family could not be updated");
+    }
+
+    if (!student.familyId || String(student.familyId) !== String(familyDoc._id)) {
+      await ctx.db.patch(student._id, {
+        familyId: familyDoc._id,
+        updatedAt: now,
+      });
+    }
+
+    const familyMembers = await getFamilyMembers(ctx, familyDoc._id);
+    const existingLink = familyMembers.find(
+      (familyMember: any) => String(familyMember.parentUserId) === String(parentUser._id)
+    );
+    const nextIsPrimaryContact =
+      args.isPrimaryContact ??
+      (familyMembers.length === 0 && !existingLink ? true : existingLink?.isPrimaryContact ?? false);
+
+    if (nextIsPrimaryContact) {
+      for (const familyMember of familyMembers) {
+        if (String(familyMember._id) === String(existingLink?._id)) {
+          continue;
+        }
+        if (familyMember.isPrimaryContact) {
+          await ctx.db.patch(familyMember._id, {
+            isPrimaryContact: false,
+            updatedAt: now,
+            updatedBy: userId,
+          });
+        }
+      }
+    }
+
+    if (existingLink) {
+      await ctx.db.patch(existingLink._id, {
+        relationship,
+        isPrimaryContact: nextIsPrimaryContact,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+
+      return {
+        familyId: familyDoc._id,
+        parentUserId: parentUser._id,
+        familyMemberId: existingLink._id,
+      };
+    }
+
+    const familyMemberId = await ctx.db.insert("familyMembers", {
+      schoolId,
+      familyId: familyDoc._id,
+      parentUserId: parentUser._id,
+      relationship,
+      isPrimaryContact: nextIsPrimaryContact,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    return {
+      familyId: familyDoc._id,
+      parentUserId: parentUser._id,
+      familyMemberId,
+    };
+  },
+});
+
+export const unlinkStudentFromFamily = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { schoolId, role, userId } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
+      throw new ConvexError("Student not found");
+    }
+
+    if (!student.familyId) {
+      return null;
+    }
+
+    const familyId = student.familyId;
+    await ctx.db.patch(student._id, {
+      familyId: undefined,
+      updatedAt: Date.now(),
+    });
+
+    await deleteFamilyIfEmpty(ctx, familyId);
+    return null;
+  },
+});
+
+export const removeStudentFamilyLink = mutation({
+  args: { familyMemberId: v.id("familyMembers") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const familyMember = await ctx.db.get(args.familyMemberId);
+    if (!familyMember || familyMember.schoolId !== schoolId) {
+      throw new ConvexError("Family link not found");
+    }
+
+    const family = await ctx.db.get(familyMember.familyId);
+    if (!family || family.schoolId !== schoolId) {
+      throw new ConvexError("Family not found");
+    }
+
+    const [remainingMembersBeforeDelete, linkedStudents] = await Promise.all([
+      getFamilyMembers(ctx, family._id),
+      getStudentsForFamily(ctx, family._id),
+    ]);
+    const activeStudents = linkedStudents.filter((student: any) => !student.isArchived);
+
+    if (remainingMembersBeforeDelete.length === 1 && activeStudents.length > 0) {
+      throw new ConvexError(
+        "Cannot remove the last parent from a family that still has linked students. Unlink the student from the family instead."
+      );
+    }
+
+    const wasPrimaryContact = familyMember.isPrimaryContact;
+    await ctx.db.delete(args.familyMemberId);
+
+    if (wasPrimaryContact) {
+      const remainingMembers = await getFamilyMembers(ctx, family._id);
+      const nextPrimaryMember = remainingMembers.find((member: any) => member.isPrimaryContact);
+      if (!nextPrimaryMember && remainingMembers.length > 0) {
+        await ctx.db.patch(remainingMembers[0]._id, {
+          isPrimaryContact: true,
+          updatedAt: Date.now(),
+          updatedBy: userId,
+        });
+      }
+    }
+
+    await deleteFamilyIfEmpty(ctx, family._id);
+    return null;
   },
 });

@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { UserCog, Trash2, CheckCircle2 } from "lucide-react";
 
+import { StudentFamilyPanel } from "./StudentFamilyPanel";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
 import { uploadStudentPhoto } from "./studentPhotoUpload";
@@ -240,6 +241,12 @@ export function StudentProfileEditor({
           onGuardianNameChange={setGuardianName}
           onGuardianPhoneChange={setGuardianPhone}
           onAddressChange={setAddress}
+        />
+
+        <StudentFamilyPanel
+          studentId={studentProfile._id}
+          studentName={displayName}
+          onNotice={onNotice}
         />
       </div>
 

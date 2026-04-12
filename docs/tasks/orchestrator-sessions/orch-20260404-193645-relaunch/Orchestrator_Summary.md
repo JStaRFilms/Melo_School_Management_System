@@ -23,4 +23,4 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Current Status
 
-Dev-data replacement, shipped-core hardening, and the cumulative-results backend/UI slice through `T03` are complete. `T04` historical backfill workflow is now complete as well. The next queued work is `T06` verification and release-readiness.
+Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, and the T07 parent/family linking foundation are complete. `T04` historical backfill workflow is complete as well. The next queued work is `T08` portal MVP academics.

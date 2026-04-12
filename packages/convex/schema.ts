@@ -36,6 +36,7 @@ export default defineSchema({
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     email: v.string(),
+    phone: v.optional(v.string()),
     role: v.union(
       v.literal("student"),
       v.literal("parent"),
@@ -53,6 +54,34 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_auth", ["authId"]),
 
+  families: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_name", ["schoolId", "name"]),
+
+  familyMembers: defineTable({
+    schoolId: v.id("schools"),
+    familyId: v.id("families"),
+    parentUserId: v.id("users"),
+    relationship: v.optional(v.string()),
+    isPrimaryContact: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_family", ["familyId"])
+    .index("by_parent_user", ["parentUserId"])
+    .index("by_family_and_parent", ["familyId", "parentUserId"])
+    .index("by_family_and_primary", ["familyId", "isPrimaryContact"]),
+
   schoolAdminLeadership: defineTable({
     schoolId: v.id("schools"),
     leadAdminUserId: v.id("users"),
@@ -68,6 +97,7 @@ export default defineSchema({
     schoolId: v.id("schools"),
     classId: v.id("classes"),
     userId: v.id("users"),
+    familyId: v.optional(v.id("families")),
     admissionNumber: v.string(),
     houseName: v.optional(v.string()),
     gender: v.optional(v.string()),
@@ -87,6 +117,7 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_class", ["classId"])
+    .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"]),
 
   classes: defineTable({
