@@ -9,16 +9,17 @@ import {
   type WorkspaceSection,
 } from "../workspace-navigation";
 import { 
-  ChevronDown, 
-  LogOut, 
-  Menu, 
-  X, 
-  Layers, 
-  GraduationCap, 
+  ChevronDown,
+  LogOut,
+  Menu,
+  X,
+  Layers,
+  GraduationCap,
   ClipboardCheck,
   ChevronRight,
   ShieldCheck,
   LayoutDashboard,
+  Landmark,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -93,10 +94,15 @@ export function WorkspaceNavbar({
             icon: <GraduationCap className="h-4 w-4" />,
             links: sections.slice(2, 8),
           },
+          finance: {
+            label: "Finance",
+            icon: <Landmark className="h-4 w-4" />,
+            links: sections.slice(8, 9),
+          },
           assessments: {
             label: "Assessments & Exams",
             icon: <ClipboardCheck className="h-4 w-4" />,
-            links: sections.slice(8),
+            links: sections.slice(9),
           },
         };
 

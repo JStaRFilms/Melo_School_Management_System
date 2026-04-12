@@ -31,12 +31,19 @@ No server changes.
 3. Admin route-group layouts and teacher route-group layouts render app-local navbar views backed by the same shared navigation metadata instead of maintaining independent route lists.
 4. The app-local `switch-areas` pages use the same shared metadata so users can move between workspaces from a single consistent screen.
 5. Portal is now a live workspace destination in the navigation model, so the area switcher can route to the authenticated parent/student portal instead of a placeholder.
+6. The admin workspace now includes a dedicated Finance/Billing link so school billing surfaces remain discoverable without mixing them into assessment routes.
 
 ## Database Schema
 
 No schema change.
 
 The feature only reorganizes client-side navigation and route metadata.
+
+## Implemented Outcome
+
+- Admin, teacher, and portal routes continue to share one navigation contract.
+- The admin workspace now exposes a billing entry point alongside academic and assessment sections.
+- The shared workspace switcher remains the single route catalog for all app shells.
 
 ## Regression Check
 

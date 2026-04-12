@@ -38,6 +38,10 @@ import type * as functions_academic_subjectAggregationSelectionHelpers from "../
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
+import type * as functions_billing from "../functions/billing.js";
+import type * as functions_billingGateway from "../functions/billingGateway.js";
+import type * as functions_billingShared from "../functions/billingShared.js";
+import type * as functions_billingWebhooks from "../functions/billingWebhooks.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
@@ -82,6 +86,10 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
+  "functions/billing": typeof functions_billing;
+  "functions/billingGateway": typeof functions_billingGateway;
+  "functions/billingShared": typeof functions_billingShared;
+  "functions/billingWebhooks": typeof functions_billingWebhooks;
   "functions/platform/auth": typeof functions_platform_auth;
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;

@@ -153,6 +153,50 @@ Important boundary:
 
 These should stay separate in both data model and UI.
 
+### Platform pricing guidance to preserve
+
+The current commercialization direction should assume:
+
+- a mixed pricing model, not a single per-student rule
+- setup fees plus recurring term or annual software fees
+- optional paid upgrades for higher-touch modules and customization
+- school segmentation by size and willingness to pay
+
+Recommended pricing shape:
+
+- **small private schools**
+  - lower setup fee
+  - lighter recurring term fee
+  - simpler module mix
+- **mid-tier schools**
+  - higher setup fee
+  - stronger recurring term fee
+  - broader operations coverage
+- **premium schools**
+  - custom setup and branding
+  - higher recurring contract value
+  - customization, priority support, and premium modules
+
+Recommended package direction:
+
+- **Basic**
+  - admin workspace
+  - teacher workspace
+  - core result management
+  - academic setup
+- **Standard**
+  - everything in Basic
+  - parent/student portal
+  - branded school website
+  - onboarding and training
+- **Premium**
+  - everything in Standard
+  - customization
+  - priority support
+  - finance and automation upgrades
+
+This should inform the future platform plan and entitlement model, not the school-fee billing implementation inside `FR-013` through `FR-015`.
+
 ---
 
 ### 3. School Plan Entitlements

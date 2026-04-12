@@ -595,4 +595,227 @@ export default defineSchema({
     .index("by_term", ["termId"])
     .index("by_session", ["sessionId"])
     .index("by_school_and_term", ["schoolId", "termId"]),
+
+  schoolBillingSettings: defineTable({
+    schoolId: v.id("schools"),
+    invoicePrefix: v.string(),
+    defaultCurrency: v.string(),
+    defaultDueDays: v.number(),
+    preferredProvider: v.union(
+      v.literal("paystack"),
+      v.literal("flutterwave"),
+      v.literal("stripe"),
+      v.literal("manual")
+    ),
+    allowManualPayments: v.boolean(),
+    allowOnlinePayments: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.union(v.id("users"), v.null()),
+  }).index("by_school", ["schoolId"]),
+
+  feePlans: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    currency: v.string(),
+    lineItems: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        amount: v.number(),
+        category: v.union(
+          v.literal("tuition"),
+          v.literal("boarding"),
+          v.literal("transport"),
+          v.literal("exam"),
+          v.literal("activity"),
+          v.literal("other")
+        ),
+        order: v.number(),
+      })
+    ),
+    installmentPolicy: v.object({
+      enabled: v.boolean(),
+      installmentCount: v.number(),
+      intervalDays: v.number(),
+      firstDueDays: v.number(),
+    }),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_active", ["schoolId", "isActive"]),
+
+  studentInvoices: defineTable({
+    schoolId: v.id("schools"),
+    feePlanId: v.id("feePlans"),
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    invoiceNumber: v.string(),
+    feePlanNameSnapshot: v.string(),
+    currency: v.string(),
+    lineItems: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        amount: v.number(),
+        category: v.union(
+          v.literal("tuition"),
+          v.literal("boarding"),
+          v.literal("transport"),
+          v.literal("exam"),
+          v.literal("activity"),
+          v.literal("other")
+        ),
+        order: v.number(),
+      })
+    ),
+    installmentSchedule: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        dueAt: v.number(),
+        amount: v.number(),
+        isPaid: v.boolean(),
+      })
+    ),
+    subtotal: v.number(),
+    waiverAmount: v.number(),
+    discountAmount: v.number(),
+    totalAmount: v.number(),
+    amountPaid: v.number(),
+    balanceDue: v.number(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("issued"),
+      v.literal("partially_paid"),
+      v.literal("paid"),
+      v.literal("overdue"),
+      v.literal("waived"),
+      v.literal("cancelled")
+    ),
+    dueDate: v.number(),
+    issuedAt: v.number(),
+    issuedBy: v.id("users"),
+    notes: v.optional(v.string()),
+    lastPaymentId: v.optional(v.id("billingPayments")),
+    lastPaymentAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_class", ["schoolId", "classId"])
+    .index("by_school_and_session_term", ["schoolId", "sessionId", "termId"])
+    .index("by_student", ["studentId"])
+    .index("by_status", ["status"])
+    .index("by_school_and_number", ["schoolId", "invoiceNumber"]),
+
+  billingPayments: defineTable({
+    schoolId: v.id("schools"),
+    invoiceId: v.id("studentInvoices"),
+    reference: v.string(),
+    gatewayReference: v.optional(v.string()),
+    provider: v.optional(
+      v.union(
+        v.literal("paystack"),
+        v.literal("flutterwave"),
+        v.literal("stripe"),
+        v.literal("manual")
+      )
+    ),
+    paymentMethod: v.union(
+      v.literal("cash"),
+      v.literal("bank_transfer"),
+      v.literal("cheque"),
+      v.literal("mobile_money"),
+      v.literal("card"),
+      v.literal("online")
+    ),
+    amountReceived: v.number(),
+    amountApplied: v.number(),
+    unappliedAmount: v.number(),
+    applicationStatus: v.union(
+      v.literal("applied"),
+      v.literal("partial"),
+      v.literal("unapplied")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("successful"),
+      v.literal("failed"),
+      v.literal("reconciled"),
+      v.literal("reversed")
+    ),
+    payerName: v.optional(v.string()),
+    payerEmail: v.optional(v.string()),
+    receivedAt: v.number(),
+    recordedBy: v.union(v.id("users"), v.null()),
+    reconciliationStatus: v.union(
+      v.literal("unreconciled"),
+      v.literal("reconciled"),
+      v.literal("flagged")
+    ),
+    reconciledBy: v.union(v.id("users"), v.null()),
+    reconciledAt: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_invoice", ["invoiceId"])
+    .index("by_reference", ["reference"])
+    .index("by_gateway_reference", ["gatewayReference"])
+    .index("by_status", ["status"]),
+
+  paymentAllocations: defineTable({
+    schoolId: v.id("schools"),
+    invoiceId: v.id("studentInvoices"),
+    paymentId: v.id("billingPayments"),
+    amountApplied: v.number(),
+    createdAt: v.number(),
+    createdBy: v.union(v.id("users"), v.null()),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_invoice", ["invoiceId"])
+    .index("by_payment", ["paymentId"]),
+
+  paymentGatewayEvents: defineTable({
+    schoolId: v.id("schools"),
+    provider: v.union(
+      v.literal("paystack"),
+      v.literal("flutterwave"),
+      v.literal("stripe"),
+      v.literal("manual")
+    ),
+    eventId: v.string(),
+    eventType: v.string(),
+    reference: v.string(),
+    invoiceNumber: v.optional(v.string()),
+    invoiceId: v.optional(v.id("studentInvoices")),
+    paymentId: v.optional(v.id("billingPayments")),
+    signatureValid: v.boolean(),
+    verificationStatus: v.union(
+      v.literal("verified"),
+      v.literal("rejected"),
+      v.literal("ignored")
+    ),
+    rawBody: v.string(),
+    payload: v.any(),
+    processedAt: v.optional(v.number()),
+    verificationMessage: v.optional(v.string()),
+    receivedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_provider", ["provider"])
+    .index("by_reference", ["reference"])
+    .index("by_event", ["eventId"])
+    .index("by_school_and_event", ["schoolId", "eventId"]),
 });

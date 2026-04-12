@@ -99,13 +99,14 @@ The new baseline is:
 | `T06` | Pending | A | Verification, docs sync, and release-readiness pass |
 | `T07` | Complete | D | Parent and family linking foundation |
 | `T08` | Complete | D | Portal MVP academic surface |
-| `T09` | Pending | D | Billing and payment foundation |
+| `T09` | Complete | D | Billing and payment foundation |
 | `T10` | Pending | D | Public website and SEO surface |
 | `T11` | Pending | D | Household management hardening: parent email maintenance, duplicate-link review, and child-parent unlink/edit flows |
+| `T12` | Pending | D | Platform pricing and packaging strategy: segmented setup/recurring plans, entitlements, and upgrade model |
 
 ## Current Known Blockers
 
-- `T02-T08` completed foundation work is in place. Per current execution order, the next queued product task is `T09`, with `T11` now recorded as a requested follow-up for household management hardening and `T06` deferred until after `T10` as the final verification gate.
+- `T02-T09` completed foundation work is in place. Per current execution order, the next queued product task is `T10`, with `T11` and `T12` recorded as requested follow-up strategy/hardening slices and `T06` deferred until after `T10` as the final verification gate.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 
