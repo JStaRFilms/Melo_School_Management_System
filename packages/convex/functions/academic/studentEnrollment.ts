@@ -1,4 +1,5 @@
-import { mutation, query } from "../../_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
+import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -8,6 +9,7 @@ import {
   teacherHasClassAccess,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { provisionSchoolPortalAuthUser } from "../platform/provisioningHelpers";
 import {
   getReadableUserName,
   resolveStoredUserNameFields,
@@ -187,6 +189,66 @@ function buildFamilyName(args: { studentName: string; parentName?: string; famil
 
   return `${baseName} Family`;
 }
+
+export const updatePortalUserAuthIdInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    schoolId: v.id("schools"),
+    authId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.schoolId !== args.schoolId) {
+      throw new ConvexError("User not found");
+    }
+
+    await ctx.db.patch(args.userId, {
+      authId: args.authId,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
+export const getPortalUserInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    schoolId: v.id("schools"),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      _id: v.id("users"),
+      name: v.string(),
+      email: v.string(),
+      authId: v.string(),
+      role: v.union(
+        v.literal("student"),
+        v.literal("parent"),
+        v.literal("teacher"),
+        v.literal("admin")
+      ),
+      isArchived: v.union(v.boolean(), v.null()),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.schoolId !== args.schoolId) {
+      return null;
+    }
+
+    return {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      authId: user.authId,
+      role: user.role,
+      isArchived: user.isArchived ?? null,
+    };
+  },
+});
 
 async function findParentUsersByEmail(
   ctx: any,
@@ -665,6 +727,8 @@ export const getStudentProfile = query({
   args: { studentId: v.id("students") },
   returns: v.object({
     _id: v.id("students"),
+    userId: v.id("users"),
+    email: v.string(),
     name: v.string(),
     displayName: v.string(),
     firstName: v.union(v.string(), v.null()),
@@ -698,6 +762,14 @@ export const getStudentProfile = query({
       student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
     ]);
 
+    if (
+      !studentUser ||
+      studentUser.schoolId !== schoolId ||
+      studentUser.isArchived
+    ) {
+      throw new ConvexError("Student account not found");
+    }
+
     if (!classDoc || classDoc.schoolId !== schoolId) {
       throw new ConvexError("Student class not found");
     }
@@ -706,6 +778,8 @@ export const getStudentProfile = query({
 
     return {
       _id: student._id,
+      userId: studentUser._id,
+      email: studentUser.email,
       name: studentName.displayName || "Unnamed Student",
       displayName: studentName.displayName || "Unnamed Student",
       firstName: studentName.firstName,
@@ -1710,4 +1784,96 @@ export const removeStudentFamilyLink = mutation({
     await deleteFamilyIfEmpty(ctx, family._id);
     return null;
   },
+});
+
+type PortalCredentialProvisionResult = {
+  userId: Id<"users">;
+  email: string;
+  temporaryPassword: string;
+};
+
+type PortalUserRecord = {
+  _id: Id<"users">;
+  name: string;
+  email: string;
+  authId: string;
+  role: "student" | "parent" | "teacher" | "admin";
+  isArchived: boolean | null;
+};
+
+async function upsertPortalCredentialsHandler(
+  ctx: any,
+  args: {
+    userId: Id<"users">;
+    temporaryPassword: string;
+  }
+): Promise<PortalCredentialProvisionResult> {
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  if (!viewer) {
+    throw new ConvexError("Unauthorized");
+  }
+  if (viewer.isSchoolAdmin !== true) {
+    throw new ConvexError("Admin access required");
+  }
+
+  const targetUser = (await ctx.runQuery(
+    (internal as any).functions.academic.studentEnrollment.getPortalUserInternal,
+    {
+      userId: args.userId,
+      schoolId: viewer.schoolId,
+    }
+  )) as PortalUserRecord | null;
+
+  if (!targetUser || targetUser.isArchived) {
+    throw new ConvexError("User not found");
+  }
+
+  if (targetUser.role !== "student" && targetUser.role !== "parent") {
+    throw new ConvexError(
+      "Portal credentials are only available for students and parents"
+    );
+  }
+
+  const normalizedName = resolveStoredUserNameFields({
+    name: targetUser.name,
+    requiredMessage: "User name is required",
+  }).name;
+  const normalizedEmail = targetUser.email.trim().toLowerCase();
+  const authId = await provisionSchoolPortalAuthUser(ctx, {
+    appUserId: String(targetUser._id),
+    currentAuthId: targetUser.authId,
+    email: normalizedEmail,
+    name: normalizedName,
+    temporaryPassword: args.temporaryPassword,
+  });
+
+  if (authId !== targetUser.authId) {
+    await ctx.runMutation(
+      (internal as any).functions.academic.studentEnrollment.updatePortalUserAuthIdInternal,
+      {
+        userId: targetUser._id,
+        schoolId: viewer.schoolId,
+        authId,
+      }
+    );
+  }
+
+  return {
+    userId: targetUser._id,
+    email: normalizedEmail,
+    temporaryPassword: args.temporaryPassword,
+  };
+}
+
+export const upsertPortalCredentials = action({
+  args: {
+    userId: v.id("users"),
+    temporaryPassword: v.string(),
+  },
+  returns: v.object({
+    userId: v.id("users"),
+    email: v.string(),
+    temporaryPassword: v.string(),
+  }),
+  handler: upsertPortalCredentialsHandler,
 });

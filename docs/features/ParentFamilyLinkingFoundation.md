@@ -62,3 +62,4 @@ Give school admins a lightweight way to create real household records, link pare
 - A family record is created automatically when the first parent is linked.
 - Student records now carry an optional family anchor for later billing use.
 - The admin roster now exposes a real household foundation without implementing the parent portal surface yet.
+- Current-school admins can provision or reset Better Auth portal credentials for students and linked parents directly from the roster/family editor, which makes the portal testable without adding self-service invites yet.

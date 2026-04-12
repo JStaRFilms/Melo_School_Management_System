@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { BadgeCheck, Link2, PlusCircle, Unlink2, Users } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
+import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import type { EnrollmentNotice } from "./types";
 
 interface StudentFamilyProfile {
@@ -232,6 +233,18 @@ export function StudentFamilyPanel({
                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold leading-relaxed text-slate-500">
                     Parent removal is household-wide and is not done from the student screen.
                   </div>
+                </div>
+
+                <div className="mt-4">
+                  <PortalCredentialPanel
+                    title="Parent Portal Access"
+                    description="Provision or refresh the portal login for this linked parent so the portal can be tested with real Better Auth credentials."
+                    userId={parent.parentUserId}
+                    userName={parent.name}
+                    email={parent.email}
+                    defaultPassword="Parent123!Pass"
+                    onNotice={onNotice}
+                  />
                 </div>
               </div>
             ))}

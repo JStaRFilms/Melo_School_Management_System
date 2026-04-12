@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { UserCog, Trash2, CheckCircle2 } from "lucide-react";
 
+import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import { StudentFamilyPanel } from "./StudentFamilyPanel";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
@@ -21,6 +22,8 @@ interface StudentProfileEditorProps {
 
 type StudentProfile = {
   _id: string;
+  userId: string;
+  email: string;
   name: string;
   displayName: string;
   firstName: string | null;
@@ -246,6 +249,16 @@ export function StudentProfileEditor({
         <StudentFamilyPanel
           studentId={studentProfile._id}
           studentName={displayName}
+          onNotice={onNotice}
+        />
+
+        <PortalCredentialPanel
+          title="Student Portal Access"
+          description="Provision or refresh the portal login used by this student for the parent/student portal test flow."
+          userId={studentProfile.userId}
+          userName={studentProfile.displayName}
+          email={studentProfile.email}
+          defaultPassword="Student123!Pass"
           onNotice={onNotice}
         />
       </div>
