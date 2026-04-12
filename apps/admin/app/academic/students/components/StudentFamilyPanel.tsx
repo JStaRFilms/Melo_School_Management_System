@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BadgeCheck, Link2, PlusCircle, Unlink2, Users } from "lucide-react";
+import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
@@ -91,6 +92,14 @@ export function StudentFamilyPanel({
       onNotice({
         tone: "error",
         message: "Parent first name, last name, and email are required.",
+      });
+      return;
+    }
+
+    if (!isValidEmailAddress(parentEmail.trim().toLowerCase())) {
+      onNotice({
+        tone: "error",
+        message: "Enter a valid parent email address.",
       });
       return;
     }

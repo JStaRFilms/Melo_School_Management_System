@@ -59,9 +59,10 @@ This feature also adds a dedicated student-first onboarding route so new student
 1. Admin opens the student-first onboarding route.
 2. Admin enters the student identity fields first, including first name, last name, admission number, and supporting bio data.
 3. Admin enters guardian and contact details on the same flow without crowding the class roster page.
-4. Admin selects the class as the final placement step.
-5. The server creates or updates the linked `users` row and the `students` row using the same school-scoped rules as the current onboarding flow.
-6. Existing records with only a display name are backfilled automatically where possible, and ambiguous names remain editable rather than blocking the flow.
+4. Admin can optionally link the first parent contact immediately and optionally provision temporary portal access for the student and parent during intake.
+5. Admin selects the class as the final placement step.
+6. The server creates or updates the linked `users` row and the `students` row using the same school-scoped rules as the current onboarding flow.
+7. Existing records with only a display name are backfilled automatically where possible, and ambiguous names remain editable rather than blocking the flow.
 
 ## Database Schema
 
@@ -161,7 +162,8 @@ This feature also adds a dedicated student-first onboarding route so new student
 - Admin opens `/academic/students/onboarding` to start from the student, not the class.
 - Step one captures the student name split into first and last name plus admission number.
 - Step two captures guardian name, phone, address, house, gender, date of birth, and optional photo.
-- Step three selects the class and finishes creation.
+- Step three can link the first parent contact and optionally prepare temporary portal credentials during intake.
+- Step four selects the class and finishes creation.
 - The existing `/academic/students` page keeps the class-first matrix and editing tools for roster work.
 
 ### Report-card rendering
@@ -178,6 +180,7 @@ This feature also adds a dedicated student-first onboarding route so new student
 - Teacher report-card access still respects school and class boundaries.
 - Existing students with only `users.name` still render correctly before the name backfill is complete.
 - Duplicate admission-number protection still applies in the new onboarding route.
+- Parent email validation rejects malformed addresses before family links or portal credentials are created.
 - Nursery appears where class-level selection and bundle assignment need it, without breaking Primary and Secondary screens.
 
 ## Explicit Out Of Scope

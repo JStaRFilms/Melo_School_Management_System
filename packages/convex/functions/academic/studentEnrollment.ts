@@ -164,7 +164,15 @@ function normalizeOptionalEmail(value: string | null | undefined) {
   }
 
   const trimmed = value.trim().toLowerCase();
-  return trimmed || undefined;
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    throw new ConvexError("Enter a valid email address");
+  }
+
+  return trimmed;
 }
 
 function normalizeOptionalPhone(value: string | null | undefined) {
@@ -1838,7 +1846,13 @@ async function upsertPortalCredentialsHandler(
     name: targetUser.name,
     requiredMessage: "User name is required",
   }).name;
-  const normalizedEmail = targetUser.email.trim().toLowerCase();
+  const normalizedEmail = normalizeOptionalEmail(targetUser.email);
+  if (!normalizedEmail) {
+    throw new ConvexError(
+      "A valid email address is required before portal access can be provisioned"
+    );
+  }
+
   const authId = await provisionSchoolPortalAuthUser(ctx, {
     appUserId: String(targetUser._id),
     currentAuthId: targetUser.authId,
@@ -1876,4 +1890,73 @@ export const upsertPortalCredentials = action({
     temporaryPassword: v.string(),
   }),
   handler: upsertPortalCredentialsHandler,
+});
+
+export const getStudentPortalTargetInternal = internalQuery({
+  args: {
+    studentId: v.id("students"),
+    schoolId: v.id("schools"),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      userId: v.id("users"),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== args.schoolId || student.isArchived) {
+      return null;
+    }
+
+    return {
+      userId: student.userId,
+    };
+  },
+});
+
+const upsertStudentPortalCredentialsByStudentIdHandler = async (
+  ctx: any,
+  args: {
+    studentId: Id<"students">;
+    temporaryPassword: string;
+  }
+): Promise<PortalCredentialProvisionResult> => {
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  if (!viewer) {
+    throw new ConvexError("Unauthorized");
+  }
+  if (viewer.isSchoolAdmin !== true) {
+    throw new ConvexError("Admin access required");
+  }
+
+  const target = (await ctx.runQuery(
+    (internal as any).functions.academic.studentEnrollment.getStudentPortalTargetInternal,
+    {
+      studentId: args.studentId,
+      schoolId: viewer.schoolId,
+    }
+  )) as { userId: Id<"users"> } | null;
+
+  if (!target) {
+    throw new ConvexError("Student not found");
+  }
+
+  return await upsertPortalCredentialsHandler(ctx, {
+    userId: target.userId,
+    temporaryPassword: args.temporaryPassword,
+  });
+};
+
+export const upsertStudentPortalCredentialsByStudentId = action({
+  args: {
+    studentId: v.id("students"),
+    temporaryPassword: v.string(),
+  },
+  returns: v.object({
+    userId: v.id("users"),
+    email: v.string(),
+    temporaryPassword: v.string(),
+  }),
+  handler: upsertStudentPortalCredentialsByStudentIdHandler,
 });
