@@ -16,11 +16,11 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Initial Notes
 
-- `admin`, `teacher`, and `platform` are live surfaces
-- `portal` and `www` remain unimplemented
-- billing, payments, notifications, and AI teacher tools remain pending
+- `admin`, `teacher`, `platform`, and `portal` are now live surfaces
+- `www` remains unimplemented
+- billing, payments, richer notification workflows, and AI teacher tools remain pending
 - cumulative third-term reporting is now explicitly in scope for this session
 
 ## Current Status
 
-Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, and the T07 parent/family linking foundation are complete. `T04` historical backfill workflow is complete as well. The next queued work is `T08` portal MVP academics.
+Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, the `T04` historical backfill workflow, the `T07` parent/family linking foundation, and `T08` portal MVP academics are complete. The next queued work is `T09` billing and payment foundation.

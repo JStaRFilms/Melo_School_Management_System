@@ -3,5 +3,5 @@
 import { createAppAuthClient } from "@school/auth";
 
 export const authClient = createAppAuthClient(
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:3004"
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:3003"
 );

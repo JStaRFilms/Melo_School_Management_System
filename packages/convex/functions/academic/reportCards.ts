@@ -159,7 +159,7 @@ const reportCardBatchStudentValidator = v.object({
   admissionNumber: v.string(),
 });
 
-const reportCardResultValidator = v.object({
+export const reportCardResultValidator = v.object({
   schoolName: v.string(),
   schoolLogoUrl: v.union(v.string(), v.null()),
   sessionName: v.string(),
@@ -425,7 +425,7 @@ async function getStudentsForClassReportCardBatch(
   });
 }
 
-async function buildStudentReportCard(
+export async function buildStudentReportCard(
   ctx: any,
   args: {
     userId: Id<"users">;

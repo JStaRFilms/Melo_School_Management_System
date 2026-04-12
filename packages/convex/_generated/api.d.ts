@@ -42,6 +42,7 @@ import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as functions_platform_provisioningHelpers from "../functions/platform/provisioningHelpers.js";
+import type * as functions_portal from "../functions/portal.js";
 import type * as http from "../http.js";
 
 import type {
@@ -85,6 +86,7 @@ declare const fullApi: ApiFromModules<{
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;
   "functions/platform/provisioningHelpers": typeof functions_platform_provisioningHelpers;
+  "functions/portal": typeof functions_portal;
   http: typeof http;
 }>;
 

@@ -1,17 +1,20 @@
 {
-  "name": "@school/platform",
+  "name": "@school/portal",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3004",
+    "dev": "next dev --port 3003",
     "build": "next build",
-    "start": "next start --port 3004",
+    "start": "next start --port 3003",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@school/auth": "workspace:*",
     "@school/convex": "workspace:*",
+    "@school/shared": "workspace:*",
     "better-auth": "^1.2.0",
     "convex": "^1.0.0",
     "lucide-react": "^0.400.0",
@@ -21,13 +24,18 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/react": "^14.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.0",
     "eslint-config-next": "^14.2.35",
+    "jsdom": "^24.0.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^1.0.0"
   }
 }

@@ -150,9 +150,26 @@ This document defines the complete page inventory for all four application surfa
 
 ## App 4: `portal` — Parent & Student Portal
 
-**Purpose:** Academic view for parents and students to track progress, results, and payments.  
+**Purpose:** Academic view for parents and students to track progress, results, and notifications.  
 **Base Path:** `/portal`  
 **Auth Required:** Yes (Parent, Student roles)
+
+### 4.1 Dashboard
+| Route | Page Purpose | Key Components |
+|-------|---------------|-----------------|
+| `/` | Main dashboard | Child switcher, report-card summary, term snapshot cards, notifications |
+
+### 4.2 Academic Views
+| Route | Page Purpose | Key Components |
+|-------|---------------|-----------------|
+| `/report-cards` | Report card view | Child selector, term selector, printable report card sheet |
+| `/results` | Result history | Timeline of recent terms, summary cards, quick links |
+| `/notifications` | Academic notifications | Notice cards, term reminders, event alerts |
+
+### 4.3 Authentication
+| Route | Page Purpose | Key Components |
+|-------|---------------|-----------------|
+| `/sign-in` | Portal sign-in | Email/password form, error state, callback routing |
 
 ---
 

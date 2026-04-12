@@ -98,13 +98,13 @@ The new baseline is:
 | `T05` | Complete | C | Dev deployment replaced from exported production snapshot on 2026-04-04 |
 | `T06` | Pending | A | Verification, docs sync, and release-readiness pass |
 | `T07` | Complete | D | Parent and family linking foundation |
-| `T08` | Pending | D | Portal MVP academic surface |
+| `T08` | Complete | D | Portal MVP academic surface |
 | `T09` | Pending | D | Billing and payment foundation |
 | `T10` | Pending | D | Public website and SEO surface |
 
 ## Current Known Blockers
 
-- `T02-T07` completed foundation work is in place. Per current execution order, the next queued product task is `T08`, with `T06` deferred until after `T10` as the final verification gate.
+- `T02-T08` completed foundation work is in place. Per current execution order, the next queued product task is `T09`, with `T06` deferred until after `T10` as the final verification gate.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 
