@@ -6,6 +6,8 @@ import { formatClassDisplayName } from "@school/shared/name-format";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { getAuthenticatedSchoolMembership } from "./academic/auth";
 import {
+  billingFeePlanApplicationValidator,
+  billingFeePlanBillingModeValidator,
   billingFeePlanValidator,
   billingGatewayEventValidator,
   billingInvoiceStatusValidator,
@@ -40,6 +42,7 @@ const billingSummaryValidator = v.object({
   invoiceCount: v.number(),
   paymentCount: v.number(),
   feePlanCount: v.number(),
+  feePlanApplicationCount: v.number(),
   gatewayEventCount: v.number(),
 });
 
@@ -60,6 +63,14 @@ const billingPaymentRowValidator = v.object({
   termName: v.string(),
 });
 
+const billingFeePlanApplicationRowValidator = v.object({
+  application: billingFeePlanApplicationValidator,
+  feePlanName: v.string(),
+  className: v.string(),
+  sessionName: v.string(),
+  termName: v.string(),
+});
+
 const billingDashboardValidator = v.object({
   school: v.object({
     id: v.id("schools"),
@@ -69,6 +80,7 @@ const billingDashboardValidator = v.object({
   settings: billingSettingsValidator,
   summary: billingSummaryValidator,
   feePlans: v.array(billingFeePlanValidator),
+  applications: v.array(billingFeePlanApplicationRowValidator),
   invoices: v.array(billingInvoiceRowValidator),
   payments: v.array(billingPaymentRowValidator),
   gatewayEvents: v.array(billingGatewayEventValidator),
@@ -78,6 +90,8 @@ const createFeePlanValidator = v.object({
   name: v.string(),
   description: v.optional(v.string()),
   currency: v.optional(v.string()),
+  billingMode: v.optional(billingFeePlanBillingModeValidator),
+  targetClassIds: v.optional(v.array(v.id("classes"))),
   lineItems: v.array(
     v.object({
       label: v.string(),
@@ -102,6 +116,20 @@ const createFeePlanValidator = v.object({
       firstDueDays: v.optional(v.number()),
     })
   ),
+});
+
+const applyFeePlanValidator = v.object({
+  feePlanId: v.id("feePlans"),
+  classId: v.id("classes"),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  notes: v.optional(v.string()),
+});
+
+const applyFeePlanResultValidator = v.object({
+  application: billingFeePlanApplicationValidator,
+  createdCount: v.number(),
+  skippedCount: v.number(),
 });
 
 const createInvoiceValidator = v.object({
@@ -170,6 +198,7 @@ function invoiceDocToReturn(invoice: any) {
     _id: invoice._id,
     schoolId: invoice.schoolId,
     feePlanId: invoice.feePlanId,
+    feePlanApplicationId: invoice.feePlanApplicationId ?? null,
     studentId: invoice.studentId,
     classId: invoice.classId,
     sessionId: invoice.sessionId,
@@ -231,6 +260,8 @@ function feePlanDocToReturn(feePlan: any) {
     name: feePlan.name,
     description: feePlan.description ?? null,
     currency: feePlan.currency,
+    billingMode: feePlan.billingMode ?? "class_default",
+    targetClassIds: feePlan.targetClassIds ?? [],
     lineItems: feePlan.lineItems,
     installmentPolicy: feePlan.installmentPolicy,
     isActive: feePlan.isActive,
@@ -239,6 +270,123 @@ function feePlanDocToReturn(feePlan: any) {
     createdBy: feePlan.createdBy,
     updatedBy: feePlan.updatedBy,
   };
+}
+
+function feePlanApplicationDocToReturn(application: any) {
+  return {
+    _id: application._id,
+    schoolId: application.schoolId,
+    feePlanId: application.feePlanId,
+    classId: application.classId,
+    sessionId: application.sessionId,
+    termId: application.termId,
+    studentCount: application.studentCount,
+    createdInvoiceCount: application.createdInvoiceCount,
+    skippedInvoiceCount: application.skippedInvoiceCount,
+    notes: application.notes ?? null,
+    createdAt: application.createdAt,
+    updatedAt: application.updatedAt,
+    createdBy: application.createdBy,
+  };
+}
+
+function normalizeClassIdList(classIds?: Array<Id<"classes">>) {
+  return [...new Set((classIds ?? []).map((classId) => String(classId)))] as Array<Id<"classes">>;
+}
+
+function feePlanBillingMode(feePlan: any) {
+  return (feePlan.billingMode ?? "class_default") as "class_default" | "manual_extra";
+}
+
+function feePlanTargetClassIds(feePlan: any) {
+  return normalizeClassIdList(feePlan.targetClassIds ?? []);
+}
+
+async function createInvoiceFromFeePlanRecord(args: {
+  ctx: any;
+  school: { _id: Id<"schools">; name: string; slug: string };
+  settingsRecord: any;
+  feePlan: any;
+  student: any;
+  classDoc: any;
+  session: any;
+  term: any;
+  issuedAt?: number;
+  waiverAmount?: number;
+  discountAmount?: number;
+  dueDate?: number;
+  notes?: string | null;
+  applicationId?: Id<"feePlanApplications">;
+  issuedBy: Id<"users">;
+}) {
+  const issuedAt = args.issuedAt ?? Date.now();
+  const total = computeBillingInvoiceTotal({
+    lineItems: args.feePlan.lineItems,
+    waiverAmount: args.waiverAmount,
+    discountAmount: args.discountAmount,
+  });
+  const dueDate =
+    args.dueDate ??
+    issuedAt +
+      Math.max(
+        1,
+        args.settingsRecord?.defaultDueDays ?? args.feePlan.installmentPolicy.firstDueDays ?? 14
+      ) *
+        24 *
+        60 *
+        60 *
+        1000;
+  const installmentSchedule = buildBillingInstallmentSchedule({
+    totalAmount: total.totalAmount,
+    policy: args.feePlan.installmentPolicy,
+    issuedAt,
+  });
+
+  const normalizedNotes = normalizeBillingText(args.notes);
+  const invoiceId = await args.ctx.db.insert("studentInvoices", {
+    schoolId: args.school._id,
+    feePlanId: args.feePlan._id,
+    ...(args.applicationId ? { feePlanApplicationId: args.applicationId } : {}),
+    studentId: args.student._id,
+    classId: args.classDoc._id,
+    sessionId: args.session._id,
+    termId: args.term._id,
+    invoiceNumber: "",
+    feePlanNameSnapshot: args.feePlan.name,
+    currency: args.feePlan.currency,
+    lineItems: args.feePlan.lineItems,
+    installmentSchedule,
+    subtotal: total.subtotal,
+    waiverAmount: total.waiverAmount,
+    discountAmount: total.discountAmount,
+    totalAmount: total.totalAmount,
+    amountPaid: 0,
+    balanceDue: total.totalAmount,
+    status: deriveBillingInvoiceStatus({
+      totalAmount: total.totalAmount,
+      amountPaid: 0,
+      dueDate,
+      now: issuedAt,
+    }),
+    dueDate,
+    issuedAt,
+    issuedBy: args.issuedBy,
+    ...(normalizedNotes ? { notes: normalizedNotes } : {}),
+    createdAt: issuedAt,
+    updatedAt: issuedAt,
+  });
+
+  const invoiceNumber = generateBillingInvoiceNumber({
+    prefix: getSchoolPrefix(args.school, args.settingsRecord),
+    invoiceId: String(invoiceId),
+  });
+
+  await args.ctx.db.patch(invoiceId, {
+    invoiceNumber,
+    updatedAt: Date.now(),
+  });
+
+  return await args.ctx.db.get(invoiceId);
 }
 
 function gatewayEventDocToReturn(event: any) {
@@ -559,6 +707,10 @@ export const getBillingDashboard = query({
       .query("paymentGatewayEvents")
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .collect();
+    const allApplications = await ctx.db
+      .query("feePlanApplications")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+      .collect();
 
     const filteredInvoices = allInvoices.filter((invoice: any) => {
       if (args.classId && String(invoice.classId) !== String(args.classId)) {
@@ -629,6 +781,17 @@ export const getBillingDashboard = query({
       };
     });
 
+    const applicationRows = [...allApplications]
+      .sort((left: any, right: any) => right.createdAt - left.createdAt)
+      .slice(0, 12)
+      .map((application: any) => ({
+        application: feePlanApplicationDocToReturn(application),
+        feePlanName: lookups.feePlanById.get(String(application.feePlanId))?.name ?? "Unknown fee plan",
+        className: lookups.classNameById.get(String(application.classId)) ?? "Unknown class",
+        sessionName: lookups.sessionNameById.get(String(application.sessionId)) ?? "Unknown session",
+        termName: lookups.termNameById.get(String(application.termId)) ?? "Unknown term",
+      }));
+
     const summary = summarizeBillingCollections({
       invoices: filteredInvoices,
       payments: visiblePayments,
@@ -658,9 +821,11 @@ export const getBillingDashboard = query({
       summary: {
         ...summary,
         feePlanCount: lookups.feePlans.length,
+        feePlanApplicationCount: allApplications.length,
         gatewayEventCount: visibleEvents.length,
       },
       feePlans: lookups.feePlans.map(feePlanDocToReturn),
+      applications: applicationRows,
       invoices: invoiceRows,
       payments: paymentRows,
       gatewayEvents: visibleEvents.slice(0, 12).map(gatewayEventDocToReturn),
@@ -706,12 +871,34 @@ export const createFeePlan = mutation({
       throw new ConvexError("Installment plans need a positive interval");
     }
 
+    const billingMode = args.billingMode ?? "class_default";
+    const targetClassIds = normalizeClassIdList(args.targetClassIds ?? []);
+    if (billingMode === "class_default" && targetClassIds.length === 0) {
+      throw new ConvexError("Class-default fee plans need at least one target class");
+    }
+    if (billingMode === "manual_extra" && targetClassIds.length > 0) {
+      throw new ConvexError("Manual extra fee plans cannot target classes");
+    }
+
+    if (targetClassIds.length > 0) {
+      const targetClasses = await Promise.all(
+        targetClassIds.map((classId) => ctx.db.get(classId))
+      );
+      for (const classDoc of targetClasses) {
+        if (!classDoc || classDoc.schoolId !== viewer.schoolId || classDoc.isArchived) {
+          throw new ConvexError("One or more target classes are not available");
+        }
+      }
+    }
+
     const now = Date.now();
     const feePlanId = await ctx.db.insert("feePlans", {
       schoolId: viewer.schoolId,
       name,
       description: normalizeBillingText(args.description),
       currency: normalizeBillingText(args.currency)?.toUpperCase() ?? "NGN",
+      billingMode,
+      targetClassIds,
       lineItems: normalizedLineItems,
       installmentPolicy: policy,
       isActive: true,
@@ -778,6 +965,16 @@ export const createInvoiceFromFeePlan = mutation({
       throw new ConvexError("An invoice already exists for this student, term, and fee plan");
     }
 
+    const feePlanMode = feePlanBillingMode(feePlan);
+    const targetClassIds = feePlanTargetClassIds(feePlan);
+    if (
+      feePlanMode === "class_default" &&
+      targetClassIds.length > 0 &&
+      !targetClassIds.some((targetClassId) => String(targetClassId) === String(args.classId))
+    ) {
+      throw new ConvexError("This fee plan is not assigned to the selected class");
+    }
+
     const school = await ctx.db.get(viewer.schoolId);
     if (!school) {
       throw new ConvexError("School not found");
@@ -788,78 +985,168 @@ export const createInvoiceFromFeePlan = mutation({
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .unique();
 
-    const total = computeBillingInvoiceTotal({
-      lineItems: feePlan.lineItems,
+    const invoice = await createInvoiceFromFeePlanRecord({
+      ctx,
+      school,
+      settingsRecord,
+      feePlan,
+      student,
+      classDoc,
+      session,
+      term,
       waiverAmount: args.waiverAmount,
       discountAmount: args.discountAmount,
-    });
-    const issuedAt = Date.now();
-    const dueDate =
-      args.dueDate ??
-      issuedAt +
-        Math.max(
-          1,
-          settingsRecord?.defaultDueDays ?? feePlan.installmentPolicy.firstDueDays ?? 14
-        ) *
-          24 *
-          60 *
-          60 *
-          1000;
-
-    const installmentSchedule = buildBillingInstallmentSchedule({
-      totalAmount: total.totalAmount,
-      policy: feePlan.installmentPolicy,
-      issuedAt,
-    });
-
-    const invoiceId = await ctx.db.insert("studentInvoices", {
-      schoolId: viewer.schoolId,
-      feePlanId: args.feePlanId,
-      studentId: args.studentId,
-      classId: args.classId,
-      sessionId: args.sessionId,
-      termId: args.termId,
-      invoiceNumber: "",
-      feePlanNameSnapshot: feePlan.name,
-      currency: feePlan.currency,
-      lineItems: feePlan.lineItems,
-      installmentSchedule,
-      subtotal: total.subtotal,
-      waiverAmount: total.waiverAmount,
-      discountAmount: total.discountAmount,
-      totalAmount: total.totalAmount,
-      amountPaid: 0,
-      balanceDue: total.totalAmount,
-      status: deriveBillingInvoiceStatus({
-        totalAmount: total.totalAmount,
-        amountPaid: 0,
-        dueDate,
-        now: issuedAt,
-      }),
-      dueDate,
-      issuedAt,
+      dueDate: args.dueDate,
+      notes: args.notes,
       issuedBy: viewer.userId,
-      ...(args.notes ? { notes: args.notes.trim() } : {}),
-      createdAt: issuedAt,
-      updatedAt: issuedAt,
     });
-
-    const invoiceNumber = generateBillingInvoiceNumber({
-      prefix: getSchoolPrefix(school, settingsRecord),
-      invoiceId: String(invoiceId),
-    });
-
-    await ctx.db.patch(invoiceId, {
-      invoiceNumber,
-      updatedAt: Date.now(),
-    });
-
-    const invoice = await ctx.db.get(invoiceId);
     if (!invoice) {
       throw new ConvexError("Invoice not found after creation");
     }
 
     return invoiceDocToReturn(invoice);
+  },
+});
+
+export const applyFeePlanToClassStudents = mutation({
+  args: applyFeePlanValidator,
+  returns: applyFeePlanResultValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const [feePlan, classDoc, session, term, school] = await Promise.all([
+      ctx.db.get(args.feePlanId),
+      ctx.db.get(args.classId),
+      ctx.db.get(args.sessionId),
+      ctx.db.get(args.termId),
+      ctx.db.get(viewer.schoolId),
+    ]);
+
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+    if (!feePlan || feePlan.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Fee plan not found");
+    }
+    if (!classDoc || classDoc.schoolId !== viewer.schoolId || classDoc.isArchived) {
+      throw new ConvexError("Class not found");
+    }
+    if (!session || session.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Session not found");
+    }
+    if (!term || term.schoolId !== viewer.schoolId || String(term.sessionId) !== String(session._id)) {
+      throw new ConvexError("Term not found in the selected session");
+    }
+
+    const feePlanMode = feePlanBillingMode(feePlan);
+    if (feePlanMode !== "class_default") {
+      throw new ConvexError("Manual extra fee plans cannot be bulk applied");
+    }
+
+    const targetClassIds = feePlanTargetClassIds(feePlan);
+    if (
+      targetClassIds.length > 0 &&
+      !targetClassIds.some((targetClassId) => String(targetClassId) === String(args.classId))
+    ) {
+      throw new ConvexError("This fee plan is not assigned to the selected class");
+    }
+
+    const [students, existingInvoices, settingsRecord] = await Promise.all([
+      ctx.db
+        .query("students")
+        .withIndex("by_school_and_class", (q: any) =>
+          q.eq("schoolId", viewer.schoolId).eq("classId", args.classId)
+        )
+        .collect(),
+      ctx.db
+        .query("studentInvoices")
+        .withIndex("by_school_and_class", (q: any) =>
+          q.eq("schoolId", viewer.schoolId).eq("classId", args.classId)
+        )
+        .collect(),
+      ctx.db
+        .query("schoolBillingSettings")
+        .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+        .unique(),
+    ]);
+
+    const activeStudents = students.filter((student: any) => !student.isArchived);
+    const existingInvoiceStudentIds = new Set(
+      existingInvoices
+        .filter(
+          (invoice: any) =>
+            String(invoice.feePlanId) === String(args.feePlanId) &&
+            String(invoice.sessionId) === String(args.sessionId) &&
+            String(invoice.termId) === String(args.termId)
+        )
+        .map((invoice: any) => String(invoice.studentId))
+    );
+
+    const applicationId = await ctx.db.insert("feePlanApplications", {
+      schoolId: viewer.schoolId,
+      feePlanId: args.feePlanId,
+      classId: args.classId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+      studentCount: activeStudents.length,
+      createdInvoiceCount: 0,
+      skippedInvoiceCount: 0,
+      notes: normalizeBillingText(args.notes),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      createdBy: viewer.userId,
+    });
+
+    let createdCount = 0;
+    let skippedCount = 0;
+    const orderedStudents = [...activeStudents].sort((left: any, right: any) =>
+      left.admissionNumber.localeCompare(right.admissionNumber)
+    );
+
+    for (const student of orderedStudents) {
+      if (existingInvoiceStudentIds.has(String(student._id))) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const createdInvoice = await createInvoiceFromFeePlanRecord({
+        ctx,
+        school,
+        settingsRecord,
+        feePlan,
+        student,
+        classDoc,
+        session,
+        term,
+        applicationId,
+        issuedBy: viewer.userId,
+        notes: args.notes,
+      });
+
+      if (!createdInvoice) {
+        throw new ConvexError("Invoice creation failed during bulk application");
+      }
+
+      createdCount += 1;
+    }
+
+    await ctx.db.patch(applicationId, {
+      createdInvoiceCount: createdCount,
+      skippedInvoiceCount: skippedCount,
+      updatedAt: Date.now(),
+    });
+
+    const application = await ctx.db.get(applicationId);
+    if (!application) {
+      throw new ConvexError("Fee plan application not found after creation");
+    }
+
+    return {
+      application: feePlanApplicationDocToReturn(application),
+      createdCount,
+      skippedCount,
+    };
   },
 });
 
@@ -882,6 +1169,14 @@ export const recordManualPayment = mutation({
       throw new ConvexError("Cancelled invoices cannot receive payments");
     }
 
+    const amountReceived = normalizeBillingAmount(args.amountReceived);
+    const balanceDue = normalizeBillingAmount(Math.max(0, invoice.balanceDue));
+    if (amountReceived > balanceDue) {
+      throw new ConvexError(
+        `Manual payment cannot exceed the invoice balance due of ${balanceDue.toFixed(2)}`
+      );
+    }
+
     const paymentResult = await createPaymentAndAllocation({
       ctx,
       schoolId: viewer.schoolId,
@@ -890,7 +1185,7 @@ export const recordManualPayment = mutation({
       gatewayReference: null,
       provider: "manual",
       paymentMethod: args.paymentMethod,
-      amountReceived: args.amountReceived,
+      amountReceived,
       receivedAt: args.receivedAt ?? Date.now(),
       payerName: args.payerName,
       payerEmail: args.payerEmail,

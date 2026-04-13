@@ -32,12 +32,19 @@ export const billingInstallmentScheduleValidator = v.object({
   isPaid: v.boolean(),
 });
 
+export const billingFeePlanBillingModeValidator = v.union(
+  v.literal("class_default"),
+  v.literal("manual_extra")
+);
+
 export const billingFeePlanValidator = v.object({
   _id: v.id("feePlans"),
   schoolId: v.id("schools"),
   name: v.string(),
   description: v.union(v.string(), v.null()),
   currency: v.string(),
+  billingMode: billingFeePlanBillingModeValidator,
+  targetClassIds: v.array(v.id("classes")),
   lineItems: v.array(billingLineItemValidator),
   installmentPolicy: billingInstallmentPolicyValidator,
   isActive: v.boolean(),
@@ -45,6 +52,22 @@ export const billingFeePlanValidator = v.object({
   updatedAt: v.number(),
   createdBy: v.id("users"),
   updatedBy: v.id("users"),
+});
+
+export const billingFeePlanApplicationValidator = v.object({
+  _id: v.id("feePlanApplications"),
+  schoolId: v.id("schools"),
+  feePlanId: v.id("feePlans"),
+  classId: v.id("classes"),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  studentCount: v.number(),
+  createdInvoiceCount: v.number(),
+  skippedInvoiceCount: v.number(),
+  notes: v.union(v.string(), v.null()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  createdBy: v.id("users"),
 });
 
 export const billingInvoiceStatusValidator = v.union(
@@ -61,6 +84,7 @@ export const billingInvoiceValidator = v.object({
   _id: v.id("studentInvoices"),
   schoolId: v.id("schools"),
   feePlanId: v.id("feePlans"),
+  feePlanApplicationId: v.union(v.id("feePlanApplications"), v.null()),
   studentId: v.id("students"),
   classId: v.id("classes"),
   sessionId: v.id("academicSessions"),

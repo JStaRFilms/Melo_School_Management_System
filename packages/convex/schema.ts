@@ -619,6 +619,10 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     currency: v.string(),
+    billingMode: v.optional(
+      v.union(v.literal("class_default"), v.literal("manual_extra"))
+    ),
+    targetClassIds: v.optional(v.array(v.id("classes"))),
     lineItems: v.array(
       v.object({
         id: v.string(),
@@ -650,9 +654,29 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
 
+  feePlanApplications: defineTable({
+    schoolId: v.id("schools"),
+    feePlanId: v.id("feePlans"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    studentCount: v.number(),
+    createdInvoiceCount: v.number(),
+    skippedInvoiceCount: v.number(),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_fee_plan", ["feePlanId"])
+    .index("by_class_session_term", ["classId", "sessionId", "termId"])
+    .index("by_school_and_created_at", ["schoolId", "createdAt"]),
+
   studentInvoices: defineTable({
     schoolId: v.id("schools"),
     feePlanId: v.id("feePlans"),
+    feePlanApplicationId: v.optional(v.id("feePlanApplications")),
     studentId: v.id("students"),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),

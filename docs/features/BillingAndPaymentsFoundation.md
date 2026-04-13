@@ -35,9 +35,10 @@ It does **not** include platform SaaS subscription billing.
 
 1. A school admin opens the billing workspace.
 2. The dashboard query loads fee plans, invoices, payments, collections summaries, and recent gateway events for the current school.
-3. The admin can create a fee plan with itemized charges and an installment policy.
-4. The admin can generate a student invoice from a fee plan.
-5. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
+3. The admin can create a fee plan with itemized charges, an installment policy, and optional class targeting.
+4. The admin can bulk-apply a class-default fee plan to covered students for a selected session and term.
+5. The admin can generate a student invoice from a fee plan for one-off or student-specific charges.
+6. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
 6. Online payment initialization is provided through a provider adapter, and Paystack webhook callbacks are signature-verified before they mutate invoice state.
 7. Admins can filter collections by class, term, invoice status, or search text.
 
@@ -55,6 +56,12 @@ It does **not** include platform SaaS subscription billing.
 - school-scoped fee plan template
 - line-item snapshot with categories and ordering
 - installment policy snapshot
+- class-targeting mode for class defaults vs manual extras
+- target class ids for class-default plans
+
+### `feePlanApplications`
+- auditable bulk application runs for class-default plans
+- captures school, plan, class, session, term, and created/skipped counts
 
 ### `studentInvoices`
 - school-scoped invoice records for one student, class, session, and term
@@ -98,4 +105,5 @@ It does **not** include platform SaaS subscription billing.
 - Manual payment capture updates invoice balances and allocation history.
 - Paystack webhook verification and event persistence are wired through a dedicated HTTP action.
 - A provider-agnostic gateway adapter exists for future payment providers.
+- Class-default fee plans can now be bulk-applied to a class for a session/term with duplicate prevention and audit history.
 - The shared workspace navigation now includes a Finance/Billing section for admin users.

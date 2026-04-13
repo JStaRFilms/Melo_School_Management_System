@@ -16,12 +16,12 @@ Upgrade billing from school-wide fee-plan templates into class-targeted defaults
 
 ## Acceptance Criteria
 
-- [ ] An admin can create a fee plan, choose one or more target classes, and save it.
-- [ ] The billing workflow clearly distinguishes class-default fee plans from one-off student extras.
-- [ ] The system can apply a class-targeted fee plan across covered students for the selected academic period without duplicate default invoices.
-- [ ] A bursar can still add a manual extra charge such as sportswear to a specific student.
-- [ ] Invoice totals, balances, waivers, and payment allocation logic remain correct after the class-targeting changes.
-- [ ] Existing school-billing data remains school-scoped and backward compatible.
+- [x] An admin can create a fee plan, choose one or more target classes, and save it.
+- [x] The billing workflow clearly distinguishes class-default fee plans from one-off student extras.
+- [x] The system can apply a class-targeted fee plan across covered students for the selected academic period without duplicate default invoices.
+- [x] A bursar can still add a manual extra charge such as sportswear to a specific student.
+- [x] Invoice totals, balances, waivers, and payment allocation logic remain correct after the class-targeting changes.
+- [x] Existing school-billing data remains school-scoped and backward compatible.
 
 ## Notes
 

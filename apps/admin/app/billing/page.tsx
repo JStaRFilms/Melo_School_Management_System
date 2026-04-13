@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
@@ -46,11 +46,21 @@ type FeePlanDraft = {
   name: string;
   description: string;
   currency: string;
+  billingMode: "class_default" | "manual_extra";
+  targetClassIds: string[];
   installmentEnabled: boolean;
   installmentCount: string;
   intervalDays: string;
   firstDueDays: string;
   lineItems: FeePlanDraftItem[];
+};
+
+type FeePlanApplicationDraft = {
+  feePlanId: string;
+  classId: string;
+  sessionId: string;
+  termId: string;
+  notes: string;
 };
 
 type InvoiceDraft = {
@@ -123,12 +133,15 @@ type BillingDashboardData = {
     invoiceCount: number;
     paymentCount: number;
     feePlanCount: number;
+    feePlanApplicationCount: number;
     gatewayEventCount: number;
   };
   feePlans: Array<{
     _id: string;
     name: string;
     currency: string;
+    billingMode: "class_default" | "manual_extra";
+    targetClassIds: string[];
     lineItems: Array<{ id: string; label: string; amount: number; category: string; order: number }>;
     installmentPolicy: {
       enabled: boolean;
@@ -139,11 +152,32 @@ type BillingDashboardData = {
     isActive: boolean;
     description: string | null;
   }>;
+  applications: Array<{
+    application: {
+      _id: string;
+      feePlanId: string;
+      classId: string;
+      sessionId: string;
+      termId: string;
+      studentCount: number;
+      createdInvoiceCount: number;
+      skippedInvoiceCount: number;
+      notes: string | null;
+      createdAt: number;
+      updatedAt: number;
+      createdBy: string;
+    };
+    feePlanName: string;
+    className: string;
+    sessionName: string;
+    termName: string;
+  }>;
   invoices: Array<{
     invoice: {
       _id: string;
       invoiceNumber: string;
       feePlanNameSnapshot: string;
+      feePlanApplicationId: string | null;
       currency: string;
       totalAmount: number;
       amountPaid: number;
@@ -213,6 +247,15 @@ function toQueryArgs(field: "classId" | "sessionId", value: string) {
     : ("skip" as never);
 }
 
+function matchesSearch(query: string, values: Array<string | null | undefined>) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
 function createDraftLineItem(
   overrides?: Partial<Omit<FeePlanDraftItem, "draftId">>
 ): FeePlanDraftItem {
@@ -229,11 +272,23 @@ function initialFeePlanDraft(): FeePlanDraft {
     name: "",
     description: "",
     currency: "NGN",
+    billingMode: "class_default",
+    targetClassIds: [],
     installmentEnabled: false,
     installmentCount: "1",
     intervalDays: "0",
     firstDueDays: "14",
     lineItems: [createDraftLineItem({ label: "Tuition", category: "tuition" })],
+  };
+}
+
+function initialFeePlanApplicationDraft(): FeePlanApplicationDraft {
+  return {
+    feePlanId: "",
+    classId: "",
+    sessionId: "",
+    termId: "",
+    notes: "",
   };
 }
 
@@ -290,8 +345,18 @@ export default function BillingPage() {
     search: "",
   });
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
+  const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
+  const [selectorSearch, setSelectorSearch] = useState({
+    targetClasses: "",
+    bulkFeePlans: "",
+    bulkClasses: "",
+    invoiceFeePlans: "",
+    invoiceClasses: "",
+    invoiceStudents: "",
+    paymentInvoices: "",
+  });
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
     title: string;
@@ -328,9 +393,14 @@ export default function BillingPage() {
     "functions/academic/studentEnrollment:listStudentsByClass" as never,
     toQueryArgs("classId", invoiceDraft.classId)
   ) as StudentOption[] | undefined;
+  const applicationTerms = useQuery(
+    "functions/academic/academicSetup:listTermsBySession" as never,
+    toQueryArgs("sessionId", feePlanApplicationDraft.sessionId)
+  ) as TermOption[] | undefined;
 
   const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
   const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
+  const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
   const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
 
   const selectedCurrency = feePlanDraft.currency.trim().toUpperCase() || data?.settings?.defaultCurrency || "NGN";
@@ -344,6 +414,123 @@ export default function BillingPage() {
   );
 
   const activeFilters = [filters.classId, filters.sessionId, filters.termId, filters.status, filters.search.trim()].filter(Boolean).length;
+  const classNameById = useMemo(
+    () => new Map((classes ?? []).map((classOption) => [classOption._id, classOption.name])),
+    [classes]
+  );
+  const selectedInvoiceFeePlan = useMemo(
+    () => data?.feePlans?.find((feePlan) => feePlan._id === invoiceDraft.feePlanId) ?? null,
+    [data?.feePlans, invoiceDraft.feePlanId]
+  );
+  const selectedApplicationFeePlan = useMemo(
+    () =>
+      data?.feePlans?.find((feePlan) => feePlan._id === feePlanApplicationDraft.feePlanId) ?? null,
+    [data?.feePlans, feePlanApplicationDraft.feePlanId]
+  );
+  const bulkFeePlanOptions = useMemo(
+    () => (data?.feePlans ?? []).filter((feePlan) => feePlan.billingMode === "class_default"),
+    [data?.feePlans]
+  );
+  const invoiceClassOptions = useMemo(() => {
+    if (selectedInvoiceFeePlan && selectedInvoiceFeePlan.targetClassIds.length > 0) {
+      return (classes ?? []).filter((classOption) =>
+        selectedInvoiceFeePlan.targetClassIds.includes(classOption._id)
+      );
+    }
+
+    return classes ?? [];
+  }, [classes, selectedInvoiceFeePlan]);
+  const applicationClassOptions = useMemo(() => {
+    if (selectedApplicationFeePlan && selectedApplicationFeePlan.targetClassIds.length > 0) {
+      return (classes ?? []).filter((classOption) =>
+        selectedApplicationFeePlan.targetClassIds.includes(classOption._id)
+      );
+    }
+
+    return classes ?? [];
+  }, [classes, selectedApplicationFeePlan]);
+  const visibleTargetClasses = useMemo(
+    () =>
+      (classes ?? []).filter((classOption) =>
+        matchesSearch(selectorSearch.targetClasses, [classOption.name])
+      ),
+    [classes, selectorSearch.targetClasses]
+  );
+  const visibleBulkFeePlanOptions = useMemo(
+    () =>
+      bulkFeePlanOptions.filter((feePlan) =>
+        matchesSearch(selectorSearch.bulkFeePlans, [feePlan.name, feePlan.description])
+      ),
+    [bulkFeePlanOptions, selectorSearch.bulkFeePlans]
+  );
+  const visibleApplicationClassOptions = useMemo(
+    () =>
+      applicationClassOptions.filter((classOption) =>
+        matchesSearch(selectorSearch.bulkClasses, [classOption.name])
+      ),
+    [applicationClassOptions, selectorSearch.bulkClasses]
+  );
+  const visibleInvoiceFeePlanOptions = useMemo(
+    () =>
+      (data?.feePlans ?? []).filter((feePlan) =>
+        matchesSearch(selectorSearch.invoiceFeePlans, [feePlan.name, feePlan.description])
+      ),
+    [data?.feePlans, selectorSearch.invoiceFeePlans]
+  );
+  const visibleInvoiceClassOptions = useMemo(
+    () =>
+      invoiceClassOptions.filter((classOption) =>
+        matchesSearch(selectorSearch.invoiceClasses, [classOption.name])
+      ),
+    [invoiceClassOptions, selectorSearch.invoiceClasses]
+  );
+  const visibleInvoiceStudents = useMemo(
+    () =>
+      (invoiceStudents ?? []).filter((student) =>
+        matchesSearch(selectorSearch.invoiceStudents, [student.studentName, student.admissionNumber])
+      ),
+    [invoiceStudents, selectorSearch.invoiceStudents]
+  );
+  const visiblePaymentInvoices = useMemo(
+    () =>
+      (data?.invoices ?? []).filter((row) =>
+        matchesSearch(selectorSearch.paymentInvoices, [
+          row.invoice.invoiceNumber,
+          row.studentName,
+          row.className,
+          row.invoice.feePlanNameSnapshot,
+        ])
+      ),
+    [data?.invoices, selectorSearch.paymentInvoices]
+  );
+  const selectedPaymentInvoice = useMemo(
+    () => data?.invoices.find((row) => row.invoice._id === paymentDraft.invoiceId) ?? null,
+    [data?.invoices, paymentDraft.invoiceId]
+  );
+
+  useEffect(() => {
+    if (selectedInvoiceFeePlan && selectedInvoiceFeePlan.targetClassIds.length > 0) {
+      const allowedClassId = selectedInvoiceFeePlan.targetClassIds.includes(invoiceDraft.classId)
+        ? invoiceDraft.classId
+        : selectedInvoiceFeePlan.targetClassIds[0] ?? "";
+      if (allowedClassId !== invoiceDraft.classId) {
+        setInvoiceDraft((current) => ({ ...current, classId: allowedClassId, studentId: "" }));
+      }
+    }
+  }, [invoiceDraft.classId, selectedInvoiceFeePlan]);
+
+  useEffect(() => {
+    if (selectedApplicationFeePlan && selectedApplicationFeePlan.targetClassIds.length > 0) {
+      const allowedClassId = selectedApplicationFeePlan.targetClassIds.includes(
+        feePlanApplicationDraft.classId
+      )
+        ? feePlanApplicationDraft.classId
+        : selectedApplicationFeePlan.targetClassIds[0] ?? "";
+      if (allowedClassId !== feePlanApplicationDraft.classId) {
+        setFeePlanApplicationDraft((current) => ({ ...current, classId: allowedClassId }));
+      }
+    }
+  }, [feePlanApplicationDraft.classId, selectedApplicationFeePlan]);
 
   const runAction = async (
     action: () => Promise<unknown>,
@@ -392,6 +579,23 @@ export default function BillingPage() {
     }));
   };
 
+  const toggleFeePlanTargetClass = (classId: string) => {
+    setFeePlanDraft((current) => ({
+      ...current,
+      targetClassIds: current.targetClassIds.includes(classId)
+        ? current.targetClassIds.filter((targetClassId) => targetClassId !== classId)
+        : [...current.targetClassIds, classId],
+    }));
+  };
+
+  const setFeePlanBillingMode = (billingMode: FeePlanDraft["billingMode"]) => {
+    setFeePlanDraft((current) => ({
+      ...current,
+      billingMode,
+      targetClassIds: billingMode === "manual_extra" ? [] : current.targetClassIds,
+    }));
+  };
+
   const handleCreateFeePlan = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await runAction(async () => {
@@ -399,6 +603,11 @@ export default function BillingPage() {
         name: feePlanDraft.name,
         description: feePlanDraft.description || undefined,
         currency: feePlanDraft.currency || undefined,
+        billingMode: feePlanDraft.billingMode,
+        targetClassIds:
+          feePlanDraft.billingMode === "class_default"
+            ? feePlanDraft.targetClassIds.map((classId) => classId as never)
+            : undefined,
         lineItems: feePlanDraft.lineItems.map((item) => ({
           label: item.label,
           amount: Number(item.amount),
@@ -433,13 +642,44 @@ export default function BillingPage() {
     }, "Invoice created", "Unable to generate the invoice.");
   };
 
+  const handleApplyFeePlanToClassStudents = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runAction(async () => {
+      await applyFeePlanToClassStudents({
+        feePlanId: feePlanApplicationDraft.feePlanId,
+        classId: feePlanApplicationDraft.classId,
+        sessionId: feePlanApplicationDraft.sessionId,
+        termId: feePlanApplicationDraft.termId,
+        notes: feePlanApplicationDraft.notes || undefined,
+      } as never);
+      setFeePlanApplicationDraft(initialFeePlanApplicationDraft());
+    }, "Fee plan applied", "Unable to apply the fee plan to the selected class.");
+  };
+
   const handleRecordPayment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await runAction(async () => {
+      const amountReceived = Number(paymentDraft.amountReceived);
+      if (!Number.isFinite(amountReceived) || amountReceived <= 0) {
+        throw new Error("Enter a valid payment amount greater than zero.");
+      }
+
+      if (
+        selectedPaymentInvoice &&
+        amountReceived > selectedPaymentInvoice.invoice.balanceDue
+      ) {
+        throw new Error(
+          `Amount exceeds the outstanding balance of ${formatMoney(
+            selectedPaymentInvoice.invoice.balanceDue,
+            selectedPaymentInvoice.invoice.currency
+          )}.`
+        );
+      }
+
       await recordPayment({
         invoiceId: paymentDraft.invoiceId,
         reference: paymentDraft.reference,
-        amountReceived: Number(paymentDraft.amountReceived),
+        amountReceived,
         paymentMethod: paymentDraft.paymentMethod,
         payerName: paymentDraft.payerName || undefined,
         payerEmail: paymentDraft.payerEmail || undefined,
@@ -584,7 +824,7 @@ export default function BillingPage() {
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h3 className="text-base font-semibold text-slate-950">Fee plans</h3>
-              <p className="text-sm text-slate-500">School-wide templates with line items and installment rules.</p>
+              <p className="text-sm text-slate-500">Class-default templates, one-off extras, and installment rules.</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
               {data.summary.feePlanCount} plans
@@ -623,6 +863,85 @@ export default function BillingPage() {
                 placeholder="Optional note for bursary staff"
               />
             </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Billing mode</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setFeePlanBillingMode("class_default")}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                      feePlanDraft.billingMode === "class_default"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <span className="block font-semibold">Class default</span>
+                    <span className={`block text-xs ${feePlanDraft.billingMode === "class_default" ? "text-slate-200" : "text-slate-500"}`}>
+                      Auto-apply to chosen classes for a session/term.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFeePlanBillingMode("manual_extra")}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                      feePlanDraft.billingMode === "manual_extra"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <span className="block font-semibold">Manual extra</span>
+                    <span className={`block text-xs ${feePlanDraft.billingMode === "manual_extra" ? "text-slate-200" : "text-slate-500"}`}>
+                      Use for one-off student charges like books or sportswear.
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">Target classes</p>
+                  <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
+                    {feePlanDraft.targetClassIds.length} selected
+                  </span>
+                </div>
+                {feePlanDraft.billingMode === "manual_extra" ? (
+                  <p className="text-sm text-slate-500">
+                    Manual extra plans are not assigned to a class. Use them in the one-off invoice flow.
+                  </p>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={selectorSearch.targetClasses}
+                        onChange={(event) =>
+                          setSelectorSearch((current) => ({ ...current, targetClasses: event.target.value }))
+                        }
+                        placeholder="Search classes"
+                        className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                      />
+                    </div>
+                    <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                      {visibleTargetClasses.map((classOption) => (
+                        <label key={classOption._id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={feePlanDraft.targetClassIds.includes(classOption._id)}
+                            onChange={() => toggleFeePlanTargetClass(classOption._id)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span>{classOption.name}</span>
+                        </label>
+                      ))}
+                      {visibleTargetClasses.length === 0 && (
+                        <p className="text-sm text-slate-500">No classes match this search yet.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
 
             <div className="grid gap-3 md:grid-cols-4">
               <label className="space-y-1 text-sm">
@@ -727,9 +1046,17 @@ export default function BillingPage() {
             {data.feePlans.map((feePlan) => (
               <div key={feePlan._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="space-y-1">
                     <p className="font-semibold text-slate-950">{feePlan.name}</p>
                     <p className="text-xs text-slate-500">{feePlan.description ?? "No description"}</p>
+                    <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                      <span className="rounded-full bg-white px-2.5 py-1 text-slate-600">
+                        {feePlan.billingMode === "manual_extra" ? "Manual extra" : "Class default"}
+                      </span>
+                      <span className={`rounded-full px-2.5 py-1 ${feePlan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                        {feePlan.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
                   </div>
                   <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                     {feePlan.lineItems.length} line item{feePlan.lineItems.length === 1 ? "" : "s"}
@@ -738,18 +1065,200 @@ export default function BillingPage() {
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
                   <span>{feePlan.currency}</span>
                   <span>Installments: {feePlan.installmentPolicy.enabled ? feePlan.installmentPolicy.installmentCount : 1}</span>
-                  <span>{feePlan.isActive ? "Active" : "Inactive"}</span>
+                  <span>
+                    {feePlan.targetClassIds.length > 0
+                      ? `${feePlan.targetClassIds.length} target class${feePlan.targetClassIds.length === 1 ? "" : "es"}`
+                      : feePlan.billingMode === "manual_extra"
+                        ? "One-off extra only"
+                        : "Legacy / school-wide"}
+                  </span>
                 </div>
+                {feePlan.targetClassIds.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {feePlan.targetClassIds.map((classId) => (
+                      <span key={classId} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                        {classNameById.get(classId) ?? "Unknown class"}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
+          </div>
+
+          <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h4 className="text-base font-semibold text-slate-950">Bulk fee-plan application</h4>
+                <p className="text-sm text-slate-500">
+                  Apply a class-default fee plan to all active students in a class for a session and term.
+                  Existing invoices for the same student, plan, session, and term are skipped.
+                </p>
+              </div>
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {data.summary.feePlanApplicationCount} runs
+              </div>
+            </div>
+
+            <form onSubmit={handleApplyFeePlanToClassStudents} className="mt-4 space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-sm block">
+                  <span className="font-medium text-slate-600">Fee plan</span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={selectorSearch.bulkFeePlans}
+                      onChange={(event) =>
+                        setSelectorSearch((current) => ({ ...current, bulkFeePlans: event.target.value }))
+                      }
+                      placeholder="Search fee plans"
+                      className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                    />
+                  </div>
+                  <select
+                    value={feePlanApplicationDraft.feePlanId}
+                    onChange={(event) =>
+                      setFeePlanApplicationDraft((current) => ({ ...current, feePlanId: event.target.value, classId: "" }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <option value="">Select a class-default plan</option>
+                    {visibleBulkFeePlanOptions.map((feePlan) => (
+                      <option key={feePlan._id} value={feePlan._id}>
+                        {feePlan.name}
+                        {feePlan.targetClassIds.length > 0 ? ` · ${feePlan.targetClassIds.length} class target${feePlan.targetClassIds.length === 1 ? "" : "s"}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1 text-sm block">
+                  <span className="font-medium text-slate-600">Class</span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={selectorSearch.bulkClasses}
+                      onChange={(event) =>
+                        setSelectorSearch((current) => ({ ...current, bulkClasses: event.target.value }))
+                      }
+                      placeholder="Search classes"
+                      className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                    />
+                  </div>
+                  <select
+                    value={feePlanApplicationDraft.classId}
+                    onChange={(event) =>
+                      setFeePlanApplicationDraft((current) => ({ ...current, classId: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <option value="">Select class</option>
+                    {visibleApplicationClassOptions.map((classOption) => (
+                      <option key={classOption._id} value={classOption._id}>
+                        {classOption.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-sm">
+                  <span className="font-medium text-slate-600">Session</span>
+                  <select
+                    value={feePlanApplicationDraft.sessionId}
+                    onChange={(event) =>
+                      setFeePlanApplicationDraft((current) => ({
+                        ...current,
+                        sessionId: event.target.value,
+                        termId: "",
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <option value="">Select session</option>
+                    {sessions?.map((session) => (
+                      <option key={session._id} value={session._id}>
+                        {session.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1 text-sm">
+                  <span className="font-medium text-slate-600">Term</span>
+                  <select
+                    value={feePlanApplicationDraft.termId}
+                    onChange={(event) => setFeePlanApplicationDraft((current) => ({ ...current, termId: event.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <option value="">Select term</option>
+                    {applicationTerms?.map((term) => (
+                      <option key={term._id} value={term._id}>
+                        {term.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="space-y-1 text-sm block">
+                <span className="font-medium text-slate-600">Notes</span>
+                <textarea
+                  value={feePlanApplicationDraft.notes}
+                  onChange={(event) => setFeePlanApplicationDraft((current) => ({ ...current, notes: event.target.value }))}
+                  className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2"
+                  placeholder="Optional note for the application run"
+                />
+              </label>
+
+              <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+                <ReceiptText className="h-4 w-4" /> Apply fee plan
+              </button>
+            </form>
+
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h5 className="text-sm font-semibold text-slate-900">Recent applications</h5>
+                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Auditable runs</span>
+              </div>
+              <div className="space-y-3">
+                {data.applications.map((entry) => (
+                  <div key={entry.application._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-950">{entry.feePlanName}</p>
+                        <p className="text-xs text-slate-500">
+                          {entry.className} · {entry.sessionName} · {entry.termName}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                          {entry.application.createdInvoiceCount} created · {entry.application.skippedInvoiceCount} skipped
+                        </p>
+                      </div>
+                      <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                        {entry.application.studentCount} students
+                      </div>
+                    </div>
+                    {entry.application.notes ? (
+                      <p className="mt-2 text-xs text-slate-500">{entry.application.notes}</p>
+                    ) : null}
+                  </div>
+                ))}
+                {data.applications.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                    No fee-plan application runs yet.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </AdminSurface>
 
         <AdminSurface className="p-4 md:p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-base font-semibold text-slate-950">Invoice creation</h3>
-              <p className="text-sm text-slate-500">Generate a student invoice from a fee plan and academic term.</p>
+              <h3 className="text-base font-semibold text-slate-950">One-off student extra invoice</h3>
+              <p className="text-sm text-slate-500">Use this for student-specific charges like books, sportswear, or levies.</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
               {data.summary.paymentCount} payments
@@ -760,22 +1269,49 @@ export default function BillingPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
                 <span className="font-medium text-slate-600">Fee plan</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={selectorSearch.invoiceFeePlans}
+                    onChange={(event) =>
+                      setSelectorSearch((current) => ({ ...current, invoiceFeePlans: event.target.value }))
+                    }
+                    placeholder="Search fee plans"
+                    className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                  />
+                </div>
                 <select
                   value={invoiceDraft.feePlanId}
                   onChange={(event) => setInvoiceDraft((current) => ({ ...current, feePlanId: event.target.value }))}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
                 >
                   <option value="">Select a fee plan</option>
-                  {data.feePlans.map((feePlan) => (
+                  {visibleInvoiceFeePlanOptions.map((feePlan) => (
                     <option key={feePlan._id} value={feePlan._id}>
-                      {feePlan.name}
+                      {feePlan.name} · {feePlan.billingMode === "manual_extra" ? "Manual extra" : "Class default"}
                     </option>
                   ))}
                 </select>
+                {selectedInvoiceFeePlan && selectedInvoiceFeePlan.billingMode === "class_default" && (
+                  <p className="text-xs text-slate-500">
+                    This plan is class-targeted. For class-wide billing, use the bulk application flow below.
+                  </p>
+                )}
               </label>
 
               <label className="space-y-1 text-sm">
                 <span className="font-medium text-slate-600">Class</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={selectorSearch.invoiceClasses}
+                    onChange={(event) =>
+                      setSelectorSearch((current) => ({ ...current, invoiceClasses: event.target.value }))
+                    }
+                    placeholder="Search classes"
+                    className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                  />
+                </div>
                 <select
                   value={invoiceDraft.classId}
                   onChange={(event) =>
@@ -788,7 +1324,7 @@ export default function BillingPage() {
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
                 >
                   <option value="">Select class</option>
-                  {classes?.map((classOption) => (
+                  {visibleInvoiceClassOptions.map((classOption) => (
                     <option key={classOption._id} value={classOption._id}>
                       {classOption.name}
                     </option>
@@ -839,13 +1375,24 @@ export default function BillingPage() {
 
             <label className="space-y-1 text-sm block">
               <span className="font-medium text-slate-600">Student</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={selectorSearch.invoiceStudents}
+                  onChange={(event) =>
+                    setSelectorSearch((current) => ({ ...current, invoiceStudents: event.target.value }))
+                  }
+                  placeholder="Search student name or admission number"
+                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                />
+              </div>
               <select
                 value={invoiceDraft.studentId}
                 onChange={(event) => setInvoiceDraft((current) => ({ ...current, studentId: event.target.value }))}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
               >
                 <option value="">Select student</option>
-                {invoiceStudents?.map((student) => (
+                {visibleInvoiceStudents.map((student) => (
                   <option key={student._id} value={student._id}>
                     {student.studentName} - {student.admissionNumber}
                   </option>
@@ -912,6 +1459,9 @@ export default function BillingPage() {
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
                       {row.invoice.invoiceNumber} · {row.invoice.feePlanNameSnapshot}
                     </p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                      {row.invoice.feePlanApplicationId ? "Bulk application" : "One-off invoice"}
+                    </p>
                   </div>
                   <div className="text-sm text-slate-600">
                     <p>Total: {formatMoney(row.invoice.totalAmount, row.invoice.currency)}</p>
@@ -949,18 +1499,37 @@ export default function BillingPage() {
           <form onSubmit={handleRecordPayment} className="space-y-4">
             <label className="space-y-1 text-sm block">
               <span className="font-medium text-slate-600">Invoice</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={selectorSearch.paymentInvoices}
+                  onChange={(event) =>
+                    setSelectorSearch((current) => ({ ...current, paymentInvoices: event.target.value }))
+                  }
+                  placeholder="Search invoice number, student, class, or fee plan"
+                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                />
+              </div>
               <select
                 value={paymentDraft.invoiceId}
                 onChange={(event) => setPaymentDraft((current) => ({ ...current, invoiceId: event.target.value }))}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
               >
                 <option value="">Select invoice</option>
-                {data.invoices.map((row) => (
+                {visiblePaymentInvoices.map((row) => (
                   <option key={row.invoice._id} value={row.invoice._id}>
                     {row.invoice.invoiceNumber} - {row.studentName}
                   </option>
                 ))}
               </select>
+              {selectedPaymentInvoice ? (
+                <p className="text-xs text-slate-500">
+                  Outstanding balance: {formatMoney(
+                    selectedPaymentInvoice.invoice.balanceDue,
+                    selectedPaymentInvoice.invoice.currency
+                  )}
+                </p>
+              ) : null}
             </label>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -979,10 +1548,19 @@ export default function BillingPage() {
                 <input
                   type="number"
                   min="0"
+                  max={selectedPaymentInvoice ? selectedPaymentInvoice.invoice.balanceDue : undefined}
                   value={paymentDraft.amountReceived}
                   onChange={(event) => setPaymentDraft((current) => ({ ...current, amountReceived: event.target.value }))}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
                 />
+                {selectedPaymentInvoice ? (
+                  <p className="text-xs text-slate-500">
+                    Cannot exceed {formatMoney(
+                      selectedPaymentInvoice.invoice.balanceDue,
+                      selectedPaymentInvoice.invoice.currency
+                    )} for this invoice.
+                  </p>
+                ) : null}
               </label>
             </div>
 

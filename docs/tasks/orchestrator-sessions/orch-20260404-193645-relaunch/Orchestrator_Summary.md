@@ -23,4 +23,4 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Current Status
 
-Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, the `T04` historical backfill workflow, the `T07` parent/family linking foundation, `T08` portal MVP academics, and `T09` billing and payment foundation are complete. The next recommended work is the billing continuation track: `T13` class-assigned fee plans and student extras, then `T14` school-scoped Paystack/front-desk payment handoff, then `T15` portal billing and self-serve payments. `T10` public website and SEO surface is now lower priority.
+Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, the `T04` historical backfill workflow, the `T07` parent/family linking foundation, `T08` portal MVP academics, `T09` billing and payment foundation, and `T13` class-assigned fee plans and student extras are complete. The next recommended work is `T14` school-scoped Paystack/front-desk payment handoff, then `T15` portal billing and self-serve payments. `T10` public website and SEO surface is now lower priority.
