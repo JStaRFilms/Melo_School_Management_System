@@ -474,7 +474,6 @@ async function createPaymentAndAllocation(args: {
     recordedBy: args.recordedBy ?? null,
     reconciliationStatus: args.reconciliationStatus ?? "unreconciled",
     reconciledBy: null,
-    reconciledAt: null,
     notes: normalizeBillingText(args.notes),
     createdAt: now,
     updatedAt: now,

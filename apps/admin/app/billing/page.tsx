@@ -36,6 +36,7 @@ type DashboardFilters = {
 };
 
 type FeePlanDraftItem = {
+  draftId: string;
   label: string;
   amount: string;
   category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other";
@@ -212,6 +213,17 @@ function toQueryArgs(field: "classId" | "sessionId", value: string) {
     : ("skip" as never);
 }
 
+function createDraftLineItem(
+  overrides?: Partial<Omit<FeePlanDraftItem, "draftId">>
+): FeePlanDraftItem {
+  return {
+    draftId: crypto.randomUUID(),
+    label: overrides?.label ?? "",
+    amount: overrides?.amount ?? "",
+    category: overrides?.category ?? "other",
+  };
+}
+
 function initialFeePlanDraft(): FeePlanDraft {
   return {
     name: "",
@@ -221,7 +233,7 @@ function initialFeePlanDraft(): FeePlanDraft {
     installmentCount: "1",
     intervalDays: "0",
     firstDueDays: "14",
-    lineItems: [{ label: "Tuition", amount: "", category: "tuition" }],
+    lineItems: [createDraftLineItem({ label: "Tuition", category: "tuition" })],
   };
 }
 
@@ -367,10 +379,7 @@ export default function BillingPage() {
   const addLineItem = () => {
     setFeePlanDraft((current) => ({
       ...current,
-      lineItems: [
-        ...current.lineItems,
-        { label: "", amount: "", category: "other" },
-      ],
+      lineItems: [...current.lineItems, createDraftLineItem()],
     }));
   };
 
@@ -667,7 +676,7 @@ export default function BillingPage() {
 
               <div className="space-y-3">
                 {feePlanDraft.lineItems.map((item, index) => (
-                  <div key={`${index}-${item.label}`} className="grid gap-2 rounded-2xl border border-slate-200 p-3 md:grid-cols-[1.2fr_0.7fr_0.7fr_auto] md:items-center">
+                  <div key={item.draftId} className="grid gap-2 rounded-2xl border border-slate-200 p-3 md:grid-cols-[1.2fr_0.7fr_0.7fr_auto] md:items-center">
                     <input
                       value={item.label}
                       onChange={(event) => updateLineItem(index, "label", event.target.value)}
