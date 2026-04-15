@@ -56,3 +56,6 @@ test-results/
 .pi/
 .kilo
 .codex-temp/
+.kilocode/
+.windsurf/
+.agents/
