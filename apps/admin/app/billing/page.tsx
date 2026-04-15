@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Banknote,
+  Copy,
   CreditCard,
+  ExternalLink,
   FileText,
   Landmark,
+  Link2,
   Plus,
+  QrCode,
   ReceiptText,
   Search,
+  Settings2,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -83,6 +89,30 @@ type PaymentDraft = {
   payerName: string;
   payerEmail: string;
   notes: string;
+};
+
+type BillingSettingsDraft = {
+  invoicePrefix: string;
+  defaultCurrency: string;
+  defaultDueDays: string;
+  allowManualPayments: boolean;
+  allowOnlinePayments: boolean;
+};
+
+type PaymentLinkDraft = {
+  invoiceId: string;
+  amount: string;
+  email: string;
+  description: string;
+  callbackUrl: string;
+};
+
+type PaymentLinkResult = {
+  provider: string;
+  reference: string;
+  authorizationUrl: string | null;
+  accessCode: string | null;
+  checkoutPayload: Record<string, unknown>;
 };
 
 type ClassOption = {
@@ -318,6 +348,54 @@ function initialPaymentDraft(): PaymentDraft {
   };
 }
 
+function initialBillingSettingsDraft(schoolSlug = ""): BillingSettingsDraft {
+  const normalizedPrefix = schoolSlug.trim().toUpperCase();
+
+  return {
+    invoicePrefix: normalizedPrefix,
+    defaultCurrency: "NGN",
+    defaultDueDays: "14",
+    allowManualPayments: true,
+    allowOnlinePayments: false,
+  };
+}
+
+function buildBillingSettingsDraft(
+  settings:
+    | {
+        invoicePrefix: string;
+        defaultCurrency: string;
+        defaultDueDays: number;
+        allowManualPayments: boolean;
+        allowOnlinePayments: boolean;
+      }
+    | null
+    | undefined,
+  schoolSlug: string
+): BillingSettingsDraft {
+  if (!settings) {
+    return initialBillingSettingsDraft(schoolSlug);
+  }
+
+  return {
+    invoicePrefix: settings.invoicePrefix,
+    defaultCurrency: settings.defaultCurrency,
+    defaultDueDays: String(settings.defaultDueDays),
+    allowManualPayments: settings.allowManualPayments,
+    allowOnlinePayments: settings.allowOnlinePayments,
+  };
+}
+
+function initialPaymentLinkDraft(): PaymentLinkDraft {
+  return {
+    invoiceId: "",
+    amount: "",
+    email: "",
+    description: "",
+    callbackUrl: "",
+  };
+}
+
 function DashboardSkeleton() {
   return (
     <div className="space-y-6 md:space-y-8">
@@ -348,6 +426,11 @@ export default function BillingPage() {
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
+  const [billingSettingsDraft, setBillingSettingsDraft] = useState<BillingSettingsDraft>(initialBillingSettingsDraft());
+  const [billingSettingsLoaded, setBillingSettingsLoaded] = useState(false);
+  const [paymentLinkDraft, setPaymentLinkDraft] = useState<PaymentLinkDraft>(initialPaymentLinkDraft());
+  const [paymentLinkResult, setPaymentLinkResult] = useState<PaymentLinkResult | null>(null);
+  const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
   const [selectorSearch, setSelectorSearch] = useState({
     targetClasses: "",
     bulkFeePlans: "",
@@ -356,6 +439,7 @@ export default function BillingPage() {
     invoiceClasses: "",
     invoiceStudents: "",
     paymentInvoices: "",
+    paymentLinkInvoices: "",
   });
   const [notice, setNotice] = useState<{
     tone: "success" | "error";
@@ -398,10 +482,12 @@ export default function BillingPage() {
     toQueryArgs("sessionId", feePlanApplicationDraft.sessionId)
   ) as TermOption[] | undefined;
 
+  const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
   const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
   const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
   const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
   const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
+  const createInvoicePaymentLink = useAction("functions/billing:initializeOnlinePayment" as never);
 
   const selectedCurrency = feePlanDraft.currency.trim().toUpperCase() || data?.settings?.defaultCurrency || "NGN";
   const feePlanTotal = useMemo(
@@ -493,19 +579,43 @@ export default function BillingPage() {
   );
   const visiblePaymentInvoices = useMemo(
     () =>
-      (data?.invoices ?? []).filter((row) =>
-        matchesSearch(selectorSearch.paymentInvoices, [
-          row.invoice.invoiceNumber,
-          row.studentName,
-          row.className,
-          row.invoice.feePlanNameSnapshot,
-        ])
-      ),
+      (data?.invoices ?? [])
+        .filter(
+          (row) => row.invoice.balanceDue > 0 && row.invoice.status !== "paid" && row.invoice.status !== "waived"
+        )
+        .filter((row) =>
+          matchesSearch(selectorSearch.paymentInvoices, [
+            row.invoice.invoiceNumber,
+            row.studentName,
+            row.className,
+            row.invoice.feePlanNameSnapshot,
+          ])
+        ),
     [data?.invoices, selectorSearch.paymentInvoices]
+  );
+  const visiblePaymentLinkInvoices = useMemo(
+    () =>
+      (data?.invoices ?? [])
+        .filter(
+          (row) => row.invoice.balanceDue > 0 && row.invoice.status !== "paid" && row.invoice.status !== "waived"
+        )
+        .filter((row) =>
+          matchesSearch(selectorSearch.paymentLinkInvoices, [
+            row.invoice.invoiceNumber,
+            row.studentName,
+            row.className,
+            row.invoice.feePlanNameSnapshot,
+          ])
+        ),
+    [data?.invoices, selectorSearch.paymentLinkInvoices]
   );
   const selectedPaymentInvoice = useMemo(
     () => data?.invoices.find((row) => row.invoice._id === paymentDraft.invoiceId) ?? null,
     [data?.invoices, paymentDraft.invoiceId]
+  );
+  const selectedPaymentLinkInvoice = useMemo(
+    () => data?.invoices.find((row) => row.invoice._id === paymentLinkDraft.invoiceId) ?? null,
+    [data?.invoices, paymentLinkDraft.invoiceId]
   );
 
   useEffect(() => {
@@ -531,6 +641,15 @@ export default function BillingPage() {
       }
     }
   }, [feePlanApplicationDraft.classId, selectedApplicationFeePlan]);
+
+  useEffect(() => {
+    if (!data || billingSettingsLoaded) {
+      return;
+    }
+
+    setBillingSettingsDraft(buildBillingSettingsDraft(data.settings, data.school.slug));
+    setBillingSettingsLoaded(true);
+  }, [billingSettingsLoaded, data]);
 
   const runAction = async (
     action: () => Promise<unknown>,
@@ -594,6 +713,137 @@ export default function BillingPage() {
       billingMode,
       targetClassIds: billingMode === "manual_extra" ? [] : current.targetClassIds,
     }));
+  };
+
+  const selectPaymentLinkInvoice = (invoiceId: string) => {
+    const nextInvoice = data?.invoices.find((row) => row.invoice._id === invoiceId) ?? null;
+    setPaymentLinkDraft((current) => ({
+      ...current,
+      invoiceId,
+      amount: nextInvoice ? String(nextInvoice.invoice.balanceDue) : "",
+      description: nextInvoice
+        ? `Invoice ${nextInvoice.invoice.invoiceNumber} · ${nextInvoice.studentName}`
+        : "",
+    }));
+    setPaymentLinkResult(null);
+    setPaymentLinkCopied(false);
+  };
+
+  const handleSaveBillingSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runAction(async () => {
+      const defaultDueDays = Number(billingSettingsDraft.defaultDueDays);
+      if (!Number.isFinite(defaultDueDays) || defaultDueDays < 1) {
+        throw new Error("Enter a valid default due-day value.");
+      }
+
+      const updatedSettings = (await saveBillingSettings({
+        invoicePrefix: billingSettingsDraft.invoicePrefix,
+        defaultCurrency: billingSettingsDraft.defaultCurrency,
+        defaultDueDays,
+        allowManualPayments: billingSettingsDraft.allowManualPayments,
+        allowOnlinePayments: billingSettingsDraft.allowOnlinePayments,
+      } as never)) as {
+        invoicePrefix: string;
+        defaultCurrency: string;
+        defaultDueDays: number;
+        allowManualPayments: boolean;
+        allowOnlinePayments: boolean;
+      };
+
+      setBillingSettingsDraft({
+        invoicePrefix: updatedSettings.invoicePrefix,
+        defaultCurrency: updatedSettings.defaultCurrency,
+        defaultDueDays: String(updatedSettings.defaultDueDays),
+        allowManualPayments: updatedSettings.allowManualPayments,
+        allowOnlinePayments: updatedSettings.allowOnlinePayments,
+      });
+    }, "Billing settings saved", "Unable to save billing settings.");
+  };
+
+  const handleGeneratePaymentLink = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setNotice(null);
+    try {
+      const billingData = data;
+      if (!billingData) {
+        throw new Error("Billing data is still loading.");
+      }
+
+      if (!billingData.settings?.allowOnlinePayments) {
+        throw new Error("Enable online payments in billing settings before generating a payment link.");
+      }
+
+      if (!paymentLinkDraft.invoiceId) {
+        throw new Error("Select an invoice first.");
+      }
+
+      const selectedInvoice = selectedPaymentLinkInvoice;
+      if (!selectedInvoice) {
+        throw new Error("Select a valid invoice for the payment link.");
+      }
+
+      const amount = Number(paymentLinkDraft.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid payment amount greater than zero.");
+      }
+      if (amount > selectedInvoice.invoice.balanceDue) {
+        throw new Error(
+          `Payment link amount cannot exceed the outstanding balance of ${formatMoney(
+            selectedInvoice.invoice.balanceDue,
+            selectedInvoice.invoice.currency
+          )}.`
+        );
+      }
+      if (!paymentLinkDraft.email.trim()) {
+        throw new Error("Enter the payer email before generating the payment link.");
+      }
+
+      const result = (await createInvoicePaymentLink({
+        schoolId: billingData.school.id,
+        invoiceId: selectedInvoice.invoice._id,
+        amount,
+        email: paymentLinkDraft.email,
+        description: paymentLinkDraft.description || `Invoice ${selectedInvoice.invoice.invoiceNumber} · ${selectedInvoice.studentName}`,
+        callbackUrl: paymentLinkDraft.callbackUrl || undefined,
+      } as never)) as PaymentLinkResult;
+
+      setPaymentLinkResult(result);
+      setPaymentLinkCopied(false);
+      setNotice({
+        tone: "success",
+        title: "Payment link generated",
+        message: "Copy the URL or open it on a device at the front desk.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        title: "Payment link generation failed",
+        message: getUserFacingErrorMessage(error, "Unable to generate the payment link."),
+      });
+    }
+  };
+
+  const handleCopyPaymentLink = async () => {
+    if (!paymentLinkResult?.authorizationUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(paymentLinkResult.authorizationUrl);
+      setPaymentLinkCopied(true);
+      setNotice({
+        tone: "success",
+        title: "Payment link copied",
+        message: "The front-desk handoff URL is now on the clipboard.",
+      });
+    } catch {
+      setNotice({
+        tone: "error",
+        title: "Unable to copy link",
+        message: "Copy the URL manually if clipboard access is blocked.",
+      });
+    }
   };
 
   const handleCreateFeePlan = async (event: FormEvent<HTMLFormElement>) => {
@@ -818,6 +1068,319 @@ export default function BillingPage() {
           </div>
         )}
       </AdminSurface>
+
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <AdminSurface className="p-4 md:p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-slate-950">School payment setup</h3>
+              <p className="text-sm text-slate-500">
+                Configure school-scoped billing defaults and enable Paystack-backed online payments.
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              Direct-to-school
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveBillingSettings} className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-slate-600">Invoice prefix</span>
+                <input
+                  value={billingSettingsDraft.invoicePrefix}
+                  onChange={(event) =>
+                    setBillingSettingsDraft((current) => ({ ...current, invoicePrefix: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                  placeholder={data.school.slug.toUpperCase()}
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-slate-600">Default currency</span>
+                <input
+                  value={billingSettingsDraft.defaultCurrency}
+                  onChange={(event) =>
+                    setBillingSettingsDraft((current) => ({ ...current, defaultCurrency: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                  placeholder="NGN"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-slate-600">Default due days</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={billingSettingsDraft.defaultDueDays}
+                  onChange={(event) =>
+                    setBillingSettingsDraft((current) => ({ ...current, defaultDueDays: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                />
+              </label>
+
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Payment toggles</p>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={billingSettingsDraft.allowManualPayments}
+                    onChange={(event) =>
+                      setBillingSettingsDraft((current) => ({ ...current, allowManualPayments: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Allow manual cash or bank receipts</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={billingSettingsDraft.allowOnlinePayments}
+                    onChange={(event) =>
+                      setBillingSettingsDraft((current) => ({ ...current, allowOnlinePayments: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Allow Paystack online payment links</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm text-sky-900">
+              <div className="flex items-center gap-2 font-semibold">
+                <ShieldCheck className="h-4 w-4" />
+                Routing model
+              </div>
+              <p className="mt-2 leading-6 text-sky-900/85">
+                This workspace uses a constrained direct-to-school Paystack flow. The Paystack secret is
+                configured at the deployment level, while schoolId and invoice metadata are embedded in the
+                transaction so webhook reconciliation comes back to the correct school invoice.
+                School billing is kept separate from future platform SaaS billing.
+              </p>
+            </div>
+
+            <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+              <Settings2 className="h-4 w-4" /> Save billing settings
+            </button>
+          </form>
+        </AdminSurface>
+
+        <AdminSurface className="p-4 md:p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-slate-950">Front-desk Paystack handoff</h3>
+              <p className="text-sm text-slate-500">
+                Generate a shareable payment URL for an invoice, then copy it or open it on a cashier device.
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {data.summary.gatewayEventCount} gateway events
+            </div>
+          </div>
+
+          <form onSubmit={handleGeneratePaymentLink} className="space-y-4">
+            <label className="space-y-1 text-sm block">
+              <span className="font-medium text-slate-600">Invoice</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={selectorSearch.paymentLinkInvoices}
+                  onChange={(event) =>
+                    setSelectorSearch((current) => ({ ...current, paymentLinkInvoices: event.target.value }))
+                  }
+                  placeholder="Search invoice number, student, class, or fee plan"
+                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
+                />
+              </div>
+              <select
+                value={paymentLinkDraft.invoiceId}
+                onChange={(event) => selectPaymentLinkInvoice(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+              >
+                <option value="">Select invoice</option>
+                {visiblePaymentLinkInvoices.map((row) => (
+                  <option key={row.invoice._id} value={row.invoice._id}>
+                    {row.invoice.invoiceNumber} - {row.studentName}
+                  </option>
+                ))}
+              </select>
+              {selectedPaymentLinkInvoice ? (
+                <p className="text-xs text-slate-500">
+                  Outstanding balance: {formatMoney(
+                    selectedPaymentLinkInvoice.invoice.balanceDue,
+                    selectedPaymentLinkInvoice.invoice.currency
+                  )}
+                </p>
+              ) : null}
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-slate-600">Payer email</span>
+                <input
+                  value={paymentLinkDraft.email}
+                  onChange={(event) =>
+                    setPaymentLinkDraft((current) => ({ ...current, email: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                  placeholder="parent@example.com"
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-slate-600">Amount</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={selectedPaymentLinkInvoice ? selectedPaymentLinkInvoice.invoice.balanceDue : undefined}
+                  value={paymentLinkDraft.amount}
+                  onChange={(event) =>
+                    setPaymentLinkDraft((current) => ({ ...current, amount: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <label className="space-y-1 text-sm block">
+              <span className="font-medium text-slate-600">Description</span>
+              <input
+                value={paymentLinkDraft.description}
+                onChange={(event) =>
+                  setPaymentLinkDraft((current) => ({ ...current, description: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                placeholder="Invoice payment for front-desk handoff"
+              />
+            </label>
+
+            <label className="space-y-1 text-sm block">
+              <span className="font-medium text-slate-600">Callback URL</span>
+              <input
+                value={paymentLinkDraft.callbackUrl}
+                onChange={(event) =>
+                  setPaymentLinkDraft((current) => ({ ...current, callbackUrl: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                placeholder="Optional return URL"
+              />
+            </label>
+
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <QrCode className="h-4 w-4" /> QR-ready handoff
+              </div>
+              <p className="mt-2 leading-6">
+                Generate the link here, then print it as a QR code or share it as a URL. The parent can
+                pay on their own phone without leaving the front desk.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={!data.settings?.allowOnlinePayments || !paymentLinkDraft.invoiceId}
+              className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Link2 className="h-4 w-4" /> Generate payment link
+            </button>
+          </form>
+
+          {paymentLinkResult && (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Generated link
+                  </p>
+                  <p className="mt-1 font-semibold text-slate-950">{paymentLinkResult.reference}</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                  {paymentLinkResult.provider}
+                </span>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white bg-white p-4 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                      Authorization URL
+                    </p>
+                    <p className="mt-2 break-all text-slate-700">
+                      {paymentLinkResult.authorizationUrl ?? "No checkout URL was returned."}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={handleCopyPaymentLink}
+                      disabled={!paymentLinkResult.authorizationUrl}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {paymentLinkCopied ? "Copied" : "Copy"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        paymentLinkResult.authorizationUrl &&
+                        window.open(paymentLinkResult.authorizationUrl, "_blank", "noopener,noreferrer")
+                      }
+                      disabled={!paymentLinkResult.authorizationUrl}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 text-xs md:grid-cols-2">
+                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
+                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Amount</span>
+                  <span className="mt-1 block text-sm text-slate-900">
+                    {selectedPaymentLinkInvoice
+                      ? formatMoney(
+                          Number(paymentLinkDraft.amount || 0),
+                          selectedPaymentLinkInvoice.invoice.currency
+                        )
+                      : "—"}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
+                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Invoice</span>
+                  <span className="mt-1 block text-sm text-slate-900">
+                    {selectedPaymentLinkInvoice?.invoice.invoiceNumber ?? "—"}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
+                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Access code</span>
+                  <span className="mt-1 block text-sm text-slate-900">
+                    {paymentLinkResult.accessCode ?? "—"}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
+                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Payload keys</span>
+                  <span className="mt-1 block text-sm text-slate-900">
+                    {Object.keys(paymentLinkResult.checkoutPayload ?? {}).length} fields captured
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!data.settings?.allowOnlinePayments && (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+              Online payments are currently disabled. Enable them in the billing settings panel above to
+              generate a Paystack handoff link.
+            </div>
+          )}
+        </AdminSurface>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <AdminSurface className="p-4 md:p-5">
@@ -1512,7 +2075,19 @@ export default function BillingPage() {
               </div>
               <select
                 value={paymentDraft.invoiceId}
-                onChange={(event) => setPaymentDraft((current) => ({ ...current, invoiceId: event.target.value }))}
+                onChange={(event) => {
+                  const nextInvoiceId = event.target.value;
+                  const nextInvoice = visiblePaymentInvoices.find(
+                    (row) => row.invoice._id === nextInvoiceId
+                  );
+                  setPaymentDraft((current) => ({
+                    ...current,
+                    invoiceId: nextInvoiceId,
+                    amountReceived: nextInvoice
+                      ? String(nextInvoice.invoice.balanceDue)
+                      : "",
+                  }));
+                }}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
               >
                 <option value="">Select invoice</option>
@@ -1613,7 +2188,11 @@ export default function BillingPage() {
               </label>
             </div>
 
-            <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+            <button
+              type="submit"
+              disabled={!paymentDraft.invoiceId}
+              className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <CreditCard className="h-4 w-4" /> Save payment
             </button>
           </form>

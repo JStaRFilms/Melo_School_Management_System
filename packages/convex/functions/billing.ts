@@ -26,6 +26,7 @@ import {
   normalizeBillingLineItems,
   normalizeBillingReference,
   normalizeBillingText,
+  normalizeCurrencyCode,
   summarizeBillingCollections,
 } from "./billingShared";
 import { createBillingGatewayAdapter } from "./billingGateway";
@@ -84,6 +85,14 @@ const billingDashboardValidator = v.object({
   invoices: v.array(billingInvoiceRowValidator),
   payments: v.array(billingPaymentRowValidator),
   gatewayEvents: v.array(billingGatewayEventValidator),
+});
+
+const billingSettingsUpdateValidator = v.object({
+  invoicePrefix: v.string(),
+  defaultCurrency: v.string(),
+  defaultDueDays: v.number(),
+  allowManualPayments: v.boolean(),
+  allowOnlinePayments: v.boolean(),
 });
 
 const createFeePlanValidator = v.object({
@@ -389,6 +398,22 @@ async function createInvoiceFromFeePlanRecord(args: {
   return await args.ctx.db.get(invoiceId);
 }
 
+function billingSettingsDocToReturn(settings: any) {
+  return {
+    _id: settings._id,
+    schoolId: settings.schoolId,
+    invoicePrefix: settings.invoicePrefix,
+    defaultCurrency: settings.defaultCurrency,
+    defaultDueDays: settings.defaultDueDays,
+    preferredProvider: settings.preferredProvider,
+    allowManualPayments: settings.allowManualPayments,
+    allowOnlinePayments: settings.allowOnlinePayments,
+    createdAt: settings.createdAt,
+    updatedAt: settings.updatedAt,
+    updatedBy: settings.updatedBy ?? null,
+  };
+}
+
 function gatewayEventDocToReturn(event: any) {
   return {
     _id: event._id,
@@ -456,6 +481,46 @@ export const resolveBillingInvoiceForWebhookInternal = internalQuery({
     }
 
     return null;
+  },
+});
+
+export const resolveBillingInvoiceForPaymentLinkInternal = internalQuery({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      schoolId: v.id("schools"),
+      schoolName: v.string(),
+      schoolSlug: v.string(),
+      settings: billingSettingsValidator,
+      invoice: billingInvoiceValidator,
+    })
+  ),
+  handler: async (ctx, args) => {
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice) {
+      return null;
+    }
+
+    const school = await ctx.db.get(invoice.schoolId);
+    if (!school) {
+      return null;
+    }
+
+    const settingsRecord = await ctx.db
+      .query("schoolBillingSettings")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", invoice.schoolId))
+      .unique();
+
+    return {
+      schoolId: school._id,
+      schoolName: school.name,
+      schoolSlug: school.slug,
+      settings: settingsRecord ? billingSettingsDocToReturn(settingsRecord) : null,
+      invoice: invoiceDocToReturn(invoice),
+    };
   },
 });
 
@@ -803,21 +868,7 @@ export const getBillingDashboard = query({
         name: school.name,
         slug: school.slug,
       },
-      settings: settingsRecord
-        ? {
-            _id: settingsRecord._id,
-            schoolId: settingsRecord.schoolId,
-            invoicePrefix: settingsRecord.invoicePrefix,
-            defaultCurrency: settingsRecord.defaultCurrency,
-            defaultDueDays: settingsRecord.defaultDueDays,
-            preferredProvider: settingsRecord.preferredProvider,
-            allowManualPayments: settingsRecord.allowManualPayments,
-            allowOnlinePayments: settingsRecord.allowOnlinePayments,
-            createdAt: settingsRecord.createdAt,
-            updatedAt: settingsRecord.updatedAt,
-            updatedBy: settingsRecord.updatedBy ?? null,
-          }
-        : null,
+      settings: settingsRecord ? billingSettingsDocToReturn(settingsRecord) : null,
       summary: {
         ...summary,
         feePlanCount: lookups.feePlans.length,
@@ -830,6 +881,62 @@ export const getBillingDashboard = query({
       payments: paymentRows,
       gatewayEvents: visibleEvents.slice(0, 12).map(gatewayEventDocToReturn),
     };
+  },
+});
+
+export const upsertBillingSettings = mutation({
+  args: billingSettingsUpdateValidator,
+  returns: billingSettingsValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const school = await ctx.db.get(viewer.schoolId);
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+
+    const normalizedPrefix = normalizeBillingText(args.invoicePrefix) ?? school.slug.trim().toUpperCase();
+    const normalizedCurrency = normalizeCurrencyCode(args.defaultCurrency, "NGN");
+    const normalizedDueDays = Math.max(1, Math.floor(args.defaultDueDays));
+    const now = Date.now();
+    const existingSettings = await ctx.db
+      .query("schoolBillingSettings")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+      .unique();
+
+    const nextSettings = {
+      schoolId: viewer.schoolId,
+      invoicePrefix: normalizedPrefix,
+      defaultCurrency: normalizedCurrency,
+      defaultDueDays: normalizedDueDays,
+      preferredProvider: args.allowOnlinePayments ? "paystack" : "manual",
+      allowManualPayments: args.allowManualPayments,
+      allowOnlinePayments: args.allowOnlinePayments,
+      updatedAt: now,
+      updatedBy: viewer.userId,
+    } as const;
+
+    if (existingSettings) {
+      await ctx.db.patch(existingSettings._id, nextSettings);
+      const updatedSettings = await ctx.db.get(existingSettings._id);
+      if (!updatedSettings) {
+        throw new ConvexError("Billing settings not found after update");
+      }
+
+      return billingSettingsDocToReturn(updatedSettings);
+    }
+
+    const settingsId = await ctx.db.insert("schoolBillingSettings", {
+      ...nextSettings,
+      createdAt: now,
+    });
+    const createdSettings = await ctx.db.get(settingsId);
+    if (!createdSettings) {
+      throw new ConvexError("Billing settings not found after creation");
+    }
+
+    return billingSettingsDocToReturn(createdSettings);
   },
 });
 
@@ -1344,7 +1451,16 @@ export const initializeOnlinePayment = action({
     accessCode: v.union(v.string(), v.null()),
     checkoutPayload: v.any(),
   }),
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    provider: "paystack";
+    reference: string;
+    authorizationUrl: string | null;
+    accessCode: string | null;
+    checkoutPayload: Record<string, unknown>;
+  }> => {
     const viewer = await getAuthenticatedSchoolMembership(ctx);
     assertAdmin(viewer);
 
@@ -1352,29 +1468,55 @@ export const initializeOnlinePayment = action({
       throw new ConvexError("Cross-school access denied");
     }
 
-    const invoiceResolution = await ctx.runQuery(
-      (internal as any).functions.billing.resolveBillingInvoiceForWebhookInternal,
+    const paymentContext: any = await ctx.runQuery(
+      (internal as any).functions.billing.resolveBillingInvoiceForPaymentLinkInternal,
       {
         invoiceId: args.invoiceId,
       }
     );
 
-    if (!invoiceResolution || String(invoiceResolution.schoolId) !== String(args.schoolId)) {
+    if (!paymentContext || String(paymentContext.schoolId) !== String(args.schoolId)) {
       throw new ConvexError("Invoice not found");
+    }
+
+    if (!paymentContext.settings || !paymentContext.settings.allowOnlinePayments) {
+      throw new ConvexError("Online payments are not enabled for this school");
+    }
+
+    if (paymentContext.settings.preferredProvider !== "paystack") {
+      throw new ConvexError("This school is not configured for Paystack online payments");
+    }
+
+    const invoice = paymentContext.invoice;
+    if (invoice.status === "cancelled" || invoice.status === "waived" || invoice.status === "paid") {
+      throw new ConvexError("Only unpaid school invoices can receive an online payment link");
+    }
+
+    const amount = normalizeBillingAmount(args.amount);
+    if (amount <= 0) {
+      throw new ConvexError("Payment amount must be greater than zero");
+    }
+    if (amount > invoice.balanceDue) {
+      throw new ConvexError(
+        `Payment link amount cannot exceed the outstanding balance of ${invoice.balanceDue.toFixed(2)}`
+      );
     }
 
     const gateway = createBillingGatewayAdapter("paystack");
     const reference = generateBillingInvoiceNumber({
-      prefix: `${invoiceResolution.invoiceNumber}-PAY`,
+      prefix: `${paymentContext.invoice.invoiceNumber}-PAY`,
       invoiceId: String(args.invoiceId),
     });
+    const description = normalizeBillingText(args.description) ?? `Pay ${invoice.invoiceNumber} via front desk`;
 
     return await gateway.createPaymentLink({
-      amount: args.amount,
+      amount,
       email: args.email.trim().toLowerCase(),
       schoolId: String(args.schoolId),
+      schoolSlug: paymentContext.schoolSlug,
       invoiceId: String(args.invoiceId),
-      description: args.description,
+      invoiceNumber: invoice.invoiceNumber,
+      description,
       reference,
       callbackUrl: args.callbackUrl,
     });

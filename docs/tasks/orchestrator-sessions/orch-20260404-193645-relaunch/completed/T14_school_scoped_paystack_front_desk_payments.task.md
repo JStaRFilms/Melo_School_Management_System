@@ -16,15 +16,15 @@ Turn the existing billing gateway foundation into a real school-facing Paystack 
 
 ## Acceptance Criteria
 
-- [ ] A school admin can enable and configure Paystack-backed online payments for school invoices.
-- [ ] From an invoice, the admin can generate a payment link for the parent.
-- [ ] The admin can display or copy a QR/payment link for the parent to complete on their own device.
-- [ ] Successful Paystack callbacks update the right invoice and payment records safely.
-- [ ] Failed, duplicate, or invalid webhook events are handled defensively.
-- [ ] The implementation is safe for a multi-school deployment model and does not conflate school money with platform SaaS billing.
+- [x] A school admin can enable and configure Paystack-backed online payments for school invoices.
+- [x] From an invoice, the admin can generate a payment link for the parent.
+- [x] The admin can display or copy a QR/payment link for the parent to complete on their own device.
+- [x] Successful Paystack callbacks update the right invoice and payment records safely.
+- [x] Failed, duplicate, or invalid webhook events are handled defensively.
+- [x] The implementation is safe for a multi-school deployment model and does not conflate school money with platform SaaS billing.
 
 ## Notes
 
 - Keep this task focused on school-scoped gateway setup plus the admin/front-desk payment experience.
-- Parent self-serve portal billing should remain a separate follow-up task.
-- Explicitly document the chosen multi-school money-routing model during implementation.
+- Parent self-serve portal billing remains a separate follow-up task.
+- The chosen multi-school money-routing model is documented as direct-to-school with a shared deployment Paystack secret.

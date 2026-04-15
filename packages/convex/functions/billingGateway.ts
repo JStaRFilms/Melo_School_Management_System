@@ -5,6 +5,8 @@ export interface PaymentLinkInput {
   email: string;
   schoolId: string;
   invoiceId: string;
+  invoiceNumber?: string;
+  schoolSlug?: string;
   description: string;
   reference: string;
   callbackUrl?: string;
@@ -81,7 +83,9 @@ function buildPaystackGateway(): PaymentGateway {
           callback_url: input.callbackUrl,
           metadata: {
             schoolId: input.schoolId,
+            schoolSlug: input.schoolSlug,
             invoiceId: input.invoiceId,
+            invoiceNumber: input.invoiceNumber,
             description: input.description,
           },
         }),
