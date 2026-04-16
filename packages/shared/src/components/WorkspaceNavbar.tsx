@@ -77,10 +77,15 @@ export function WorkspaceNavbar({
             icon: <GraduationCap className="h-4 w-4" />,
             links: sections.slice(1, 3),
           },
+          finance: {
+            label: "Finance",
+            icon: <Landmark className="h-4 w-4" />,
+            links: sections.slice(3, 4),
+          },
           alerts: {
             label: "Alerts",
             icon: <ClipboardCheck className="h-4 w-4" />,
-            links: sections.slice(3),
+            links: sections.slice(4),
           },
         }
       : {

@@ -1632,6 +1632,61 @@ export const verifyOnlinePaymentByReferencePublic = action({
   },
 });
 
+async function createOnlinePaymentLinkForInvoiceContext(args: {
+  paymentContext: any;
+  invoiceId: Id<"studentInvoices">;
+  amount: number;
+  email: string;
+  description: string;
+  callbackUrl?: string;
+}) {
+  if (!args.paymentContext) {
+    throw new ConvexError("Invoice not found");
+  }
+
+  if (!args.paymentContext.settings || !args.paymentContext.settings.allowOnlinePayments) {
+    throw new ConvexError("Online payments are not enabled for this school");
+  }
+
+  if (args.paymentContext.settings.preferredProvider !== "paystack") {
+    throw new ConvexError("This school is not configured for Paystack online payments");
+  }
+
+  const invoice = args.paymentContext.invoice;
+  if (invoice.status === "cancelled" || invoice.status === "waived" || invoice.status === "paid") {
+    throw new ConvexError("Only unpaid school invoices can receive an online payment link");
+  }
+
+  const amount = normalizeBillingAmount(args.amount);
+  if (amount <= 0) {
+    throw new ConvexError("Payment amount must be greater than zero");
+  }
+  if (amount > invoice.balanceDue) {
+    throw new ConvexError(
+      `Payment link amount cannot exceed the outstanding balance of ${invoice.balanceDue.toFixed(2)}`
+    );
+  }
+
+  const gateway = createBillingGatewayAdapter("paystack");
+  const reference = generateBillingInvoiceNumber({
+    prefix: `${invoice.invoiceNumber}-PAY`,
+    invoiceId: String(args.invoiceId),
+  });
+  const description = normalizeBillingText(args.description) ?? `Pay ${invoice.invoiceNumber}`;
+
+  return await gateway.createPaymentLink({
+    amount,
+    email: args.email.trim().toLowerCase(),
+    schoolId: String(args.paymentContext.schoolId),
+    schoolSlug: args.paymentContext.schoolSlug,
+    invoiceId: String(args.invoiceId),
+    invoiceNumber: invoice.invoiceNumber,
+    description,
+    reference,
+    callbackUrl: args.callbackUrl,
+  });
+}
+
 export const initializeOnlinePayment = action({
   args: {
     schoolId: v.id("schools"),
@@ -1679,45 +1734,61 @@ export const initializeOnlinePayment = action({
       throw new ConvexError("Invoice not found");
     }
 
-    if (!paymentContext.settings || !paymentContext.settings.allowOnlinePayments) {
-      throw new ConvexError("Online payments are not enabled for this school");
-    }
-
-    if (paymentContext.settings.preferredProvider !== "paystack") {
-      throw new ConvexError("This school is not configured for Paystack online payments");
-    }
-
-    const invoice = paymentContext.invoice;
-    if (invoice.status === "cancelled" || invoice.status === "waived" || invoice.status === "paid") {
-      throw new ConvexError("Only unpaid school invoices can receive an online payment link");
-    }
-
-    const amount = normalizeBillingAmount(args.amount);
-    if (amount <= 0) {
-      throw new ConvexError("Payment amount must be greater than zero");
-    }
-    if (amount > invoice.balanceDue) {
-      throw new ConvexError(
-        `Payment link amount cannot exceed the outstanding balance of ${invoice.balanceDue.toFixed(2)}`
-      );
-    }
-
-    const gateway = createBillingGatewayAdapter("paystack");
-    const reference = generateBillingInvoiceNumber({
-      prefix: `${paymentContext.invoice.invoiceNumber}-PAY`,
-      invoiceId: String(args.invoiceId),
+    return await createOnlinePaymentLinkForInvoiceContext({
+      paymentContext,
+      invoiceId: args.invoiceId,
+      amount: args.amount,
+      email: args.email,
+      description: args.description || `Pay ${paymentContext.invoice.invoiceNumber} via front desk`,
+      callbackUrl: args.callbackUrl,
     });
-    const description = normalizeBillingText(args.description) ?? `Pay ${invoice.invoiceNumber} via front desk`;
+  },
+});
 
-    return await gateway.createPaymentLink({
-      amount,
-      email: args.email.trim().toLowerCase(),
-      schoolId: String(args.schoolId),
-      schoolSlug: paymentContext.schoolSlug,
-      invoiceId: String(args.invoiceId),
-      invoiceNumber: invoice.invoiceNumber,
-      description,
-      reference,
+export const initializePortalOnlinePayment = action({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+    callbackUrl: v.optional(v.string()),
+  },
+  returns: v.object({
+    provider: billingPaymentProviderValidator,
+    reference: v.string(),
+    authorizationUrl: v.union(v.string(), v.null()),
+    accessCode: v.union(v.string(), v.null()),
+    checkoutPayload: v.any(),
+  }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    provider: "paystack";
+    reference: string;
+    authorizationUrl: string | null;
+    accessCode: string | null;
+    checkoutPayload: Record<string, unknown>;
+  }> => {
+    const portalPaymentContext: any = await ctx.runQuery(
+      api.functions.portal.resolvePortalInvoicePaymentContext,
+      { invoiceId: args.invoiceId }
+    );
+
+    const paymentContext: any = await ctx.runQuery(
+      (internal as any).functions.billing.resolveBillingInvoiceForPaymentLinkInternal,
+      {
+        invoiceId: args.invoiceId,
+      }
+    );
+
+    if (!paymentContext || String(paymentContext.schoolId) !== String(portalPaymentContext.schoolId)) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    return await createOnlinePaymentLinkForInvoiceContext({
+      paymentContext,
+      invoiceId: args.invoiceId,
+      amount: paymentContext.invoice.balanceDue,
+      email: portalPaymentContext.payerEmail,
+      description: `Portal payment for ${paymentContext.invoice.invoiceNumber}`,
       callbackUrl: args.callbackUrl,
     });
   },

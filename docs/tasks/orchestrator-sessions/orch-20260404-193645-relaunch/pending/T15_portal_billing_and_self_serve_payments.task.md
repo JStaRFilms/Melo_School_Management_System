@@ -15,12 +15,12 @@ Extend the student/parent portal so parents can log in and manage the financial 
 
 ## Acceptance Criteria
 
-- [ ] A parent can log in and see outstanding fees for the correct student(s).
-- [ ] A parent can review prior payments and receipt/status details.
-- [ ] A parent can launch an online payment for an eligible invoice from the portal.
-- [ ] Successful payments are reflected in both the portal and admin billing workspace.
-- [ ] Portal billing data remains school-scoped, student-safe, and permission-aware.
-- [ ] The portal UX keeps grades/results/notifications intact while adding finance visibility clearly.
+- [x] A parent can log in and see outstanding fees for the correct student(s).
+- [x] A parent can review prior payments and receipt/status details.
+- [x] A parent can launch an online payment for an eligible invoice from the portal.
+- [x] Successful payments are reflected in both the portal and admin billing workspace.
+- [x] Portal billing data remains school-scoped, student-safe, and permission-aware.
+- [x] The portal UX keeps grades/results/notifications intact while adding finance visibility clearly.
 
 ## Notes
 

@@ -47,6 +47,90 @@ const portalNotificationValidator = v.object({
   href: v.union(v.string(), v.null()),
 });
 
+const portalBillingInvoiceValidator = v.object({
+  invoiceId: v.id("studentInvoices"),
+  studentId: v.id("students"),
+  invoiceNumber: v.string(),
+  feePlanName: v.string(),
+  currency: v.string(),
+  totalAmount: v.number(),
+  amountPaid: v.number(),
+  balanceDue: v.number(),
+  dueDate: v.number(),
+  issuedAt: v.number(),
+  status: v.union(
+    v.literal("draft"),
+    v.literal("issued"),
+    v.literal("partially_paid"),
+    v.literal("paid"),
+    v.literal("overdue"),
+    v.literal("waived"),
+    v.literal("cancelled")
+  ),
+  canPayOnline: v.boolean(),
+  lineItems: v.array(
+    v.object({
+      id: v.string(),
+      label: v.string(),
+      amount: v.number(),
+      category: v.string(),
+      order: v.number(),
+    })
+  ),
+  notes: v.union(v.string(), v.null()),
+});
+
+const portalBillingPaymentValidator = v.object({
+  paymentId: v.id("billingPayments"),
+  invoiceId: v.id("studentInvoices"),
+  invoiceNumber: v.string(),
+  reference: v.string(),
+  gatewayReference: v.union(v.string(), v.null()),
+  provider: v.union(v.string(), v.null()),
+  paymentMethod: v.string(),
+  amountApplied: v.number(),
+  amountReceived: v.number(),
+  status: v.string(),
+  reconciliationStatus: v.string(),
+  receivedAt: v.number(),
+  notes: v.union(v.string(), v.null()),
+});
+
+export const portalBillingDataValidator = v.object({
+  selectedStudentId: v.union(v.id("students"), v.null()),
+  school: v.object({
+    id: v.id("schools"),
+    name: v.string(),
+  }),
+  settings: v.object({
+    allowOnlinePayments: v.boolean(),
+    preferredProvider: v.union(v.string(), v.null()),
+    defaultCurrency: v.string(),
+  }),
+  householdSummary: v.object({
+    studentCount: v.number(),
+    invoiceCount: v.number(),
+    totalInvoiced: v.number(),
+    totalPaid: v.number(),
+    outstandingBalance: v.number(),
+  }),
+  studentSummary: v.object({
+    invoiceCount: v.number(),
+    totalInvoiced: v.number(),
+    totalPaid: v.number(),
+    outstandingBalance: v.number(),
+  }),
+  invoices: v.array(portalBillingInvoiceValidator),
+  payments: v.array(portalBillingPaymentValidator),
+});
+
+export const portalInvoicePaymentContextValidator = v.object({
+  schoolId: v.id("schools"),
+  invoiceId: v.id("studentInvoices"),
+  payerEmail: v.string(),
+  payerName: v.string(),
+});
+
 export const portalWorkspaceDataValidator = v.object({
   school: v.object({
     id: v.id("schools"),
@@ -624,6 +708,199 @@ export const getWorkspaceData = query({
       selectedReportCard,
       history,
       notifications,
+    };
+  },
+});
+
+export const getBillingData = query({
+  args: {
+    studentId: v.optional(v.union(v.id("students"), v.null())),
+  },
+  returns: portalBillingDataValidator,
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const portalRole: "parent" | "student" | null =
+      role === "parent" || role === "student" ? role : null;
+
+    if (!portalRole) {
+      throw new ConvexError("Unauthorized");
+    }
+
+    const school = await ctx.db.get(schoolId);
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+
+    const [accessibleStudentsResult, settingsRecord, allInvoices] = await Promise.all([
+      getAccessibleStudents(ctx, { userId, schoolId, role: portalRole }),
+      ctx.db
+        .query("schoolBillingSettings")
+        .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+        .unique(),
+      ctx.db
+        .query("studentInvoices")
+        .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+        .collect(),
+    ]);
+
+    const accessibleStudentIds = new Set(
+      accessibleStudentsResult.students.map((entry) => String(entry.student._id))
+    );
+    const selectedStudentRow =
+      args.studentId === undefined || args.studentId === null
+        ? accessibleStudentsResult.students[0] ?? null
+        : accessibleStudentsResult.students.find(
+            (entry) => String(entry.student._id) === String(args.studentId)
+          ) ?? null;
+
+    if (
+      args.studentId !== undefined &&
+      args.studentId !== null &&
+      !selectedStudentRow &&
+      accessibleStudentsResult.students.length > 0
+    ) {
+      throw new ConvexError("Student not found");
+    }
+
+    const selectedStudentId = selectedStudentRow?.student._id ?? null;
+    const householdInvoices = allInvoices.filter((invoice: any) =>
+      accessibleStudentIds.has(String(invoice.studentId))
+    );
+    const selectedStudentInvoices = selectedStudentId
+      ? householdInvoices.filter((invoice: any) => String(invoice.studentId) === String(selectedStudentId))
+      : [];
+
+    const invoicePaymentGroups = await Promise.all(
+      selectedStudentInvoices.map(async (invoice: any) => {
+        const invoicePayments = await ctx.db
+          .query("billingPayments")
+          .withIndex("by_invoice", (q: any) => q.eq("invoiceId", invoice._id))
+          .collect();
+
+        return invoicePayments.map((payment: any) => ({ invoice, payment }));
+      })
+    );
+
+    const payments = invoicePaymentGroups
+      .flat()
+      .sort((left: any, right: any) => right.payment.receivedAt - left.payment.receivedAt)
+      .map(({ invoice, payment }: any) => ({
+        paymentId: payment._id,
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        reference: payment.reference,
+        gatewayReference: payment.gatewayReference ?? null,
+        provider: payment.provider ?? null,
+        paymentMethod: payment.paymentMethod,
+        amountApplied: payment.amountApplied,
+        amountReceived: payment.amountReceived,
+        status: payment.status,
+        reconciliationStatus: payment.reconciliationStatus,
+        receivedAt: payment.receivedAt,
+        notes: payment.notes ?? null,
+      }));
+
+    const invoices = [...selectedStudentInvoices]
+      .sort((left: any, right: any) => right.issuedAt - left.issuedAt)
+      .map((invoice: any) => ({
+        invoiceId: invoice._id,
+        studentId: invoice.studentId,
+        invoiceNumber: invoice.invoiceNumber,
+        feePlanName: invoice.feePlanNameSnapshot,
+        currency: invoice.currency,
+        totalAmount: invoice.totalAmount,
+        amountPaid: invoice.amountPaid,
+        balanceDue: invoice.balanceDue,
+        dueDate: invoice.dueDate,
+        issuedAt: invoice.issuedAt,
+        status: invoice.status,
+        canPayOnline:
+          Boolean(settingsRecord?.allowOnlinePayments) &&
+          invoice.balanceDue > 0 &&
+          invoice.status !== "paid" &&
+          invoice.status !== "waived" &&
+          invoice.status !== "cancelled",
+        lineItems: invoice.lineItems,
+        notes: invoice.notes ?? null,
+      }));
+
+    const summarizeInvoices = (entries: any[]) => ({
+      invoiceCount: entries.length,
+      totalInvoiced: entries.reduce((sum, invoice) => sum + invoice.totalAmount, 0),
+      totalPaid: entries.reduce((sum, invoice) => sum + invoice.amountPaid, 0),
+      outstandingBalance: entries.reduce((sum, invoice) => sum + invoice.balanceDue, 0),
+    });
+
+    return {
+      selectedStudentId,
+      school: {
+        id: school._id,
+        name: school.name,
+      },
+      settings: {
+        allowOnlinePayments: Boolean(settingsRecord?.allowOnlinePayments),
+        preferredProvider: settingsRecord?.preferredProvider ?? null,
+        defaultCurrency: settingsRecord?.defaultCurrency ?? "NGN",
+      },
+      householdSummary: {
+        studentCount: accessibleStudentsResult.students.length,
+        ...summarizeInvoices(householdInvoices),
+      },
+      studentSummary: summarizeInvoices(selectedStudentInvoices),
+      invoices,
+      payments,
+    };
+  },
+});
+
+export const resolvePortalInvoicePaymentContext = query({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+  },
+  returns: portalInvoicePaymentContextValidator,
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const portalRole: "parent" | "student" | null =
+      role === "parent" || role === "student" ? role : null;
+
+    if (!portalRole) {
+      throw new ConvexError("Unauthorized");
+    }
+
+    const [invoice, userRecord, accessibleStudentsResult] = await Promise.all([
+      ctx.db.get(args.invoiceId),
+      ctx.db.get(userId),
+      getAccessibleStudents(ctx, { userId, schoolId, role: portalRole }),
+    ]);
+
+    if (!invoice || invoice.schoolId !== schoolId) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    const accessibleStudentIds = new Set(
+      accessibleStudentsResult.students.map((entry) => String(entry.student._id))
+    );
+    if (!accessibleStudentIds.has(String(invoice.studentId))) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    const payerEmail =
+      typeof userRecord?.email === "string" ? userRecord.email.trim().toLowerCase() : "";
+    const payerName = normalizeHumanName(
+      getReadableUserName((userRecord as any) ?? { name: "Portal payer" }).displayName ||
+        userRecord?.name ||
+        "Portal payer"
+    );
+
+    if (!payerEmail) {
+      throw new ConvexError("A valid email address is required before online payment can start");
+    }
+
+    return {
+      schoolId,
+      invoiceId: invoice._id,
+      payerEmail,
+      payerName,
     };
   },
 });
