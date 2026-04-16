@@ -100,17 +100,18 @@ The new baseline is:
 | `T07` | Complete | D | Parent and family linking foundation |
 | `T08` | Complete | D | Portal MVP academic surface |
 | `T09` | Complete | D | Billing and payment foundation |
-| `T10` | Pending | D | Public website and SEO surface |
+| `T10` | Complete | D | Public website and SEO surface in `apps/www` with core pages and SEO baseline |
 | `T11` | Pending | D | Household management hardening: parent email maintenance, duplicate-link review, and child-parent unlink/edit flows |
 | `T12` | Pending | D | Platform pricing and packaging strategy: segmented setup/recurring plans, entitlements, and upgrade model |
 | `T13` | Complete | D | Class-assigned fee plans with default billing coverage and student-specific extras |
 | `T14` | Complete | D | School-scoped Paystack setup plus front-desk payment links and QR handoff |
-| `T15` | Pending | D | Parent portal billing, receipts, and self-serve online payment flow |
+| `T15` | Complete | D | Parent portal billing, receipts, self-serve pay-now flow, and portal payment return verification |
 | `T16` | Pending | D | Cross-device payment reconciliation hardening: pending-payment polling and durable callback/session flow |
+| `T17` | Pending | D | Platform marketing website for selling the SchoolOS product itself, separate from tenant school public sites |
 
 ## Current Known Blockers
 
-- `T02-T14` completed foundation work is in place. Per the latest billing continuation request, the next recommended product task is `T15`, with `T16` now recorded as a follow-up billing hardening slice for cross-device reconciliation edge cases, `T10` lower priority, `T11` and `T12` remaining recorded as follow-up strategy/hardening slices, and `T06` still deferred to the release-readiness pass.
+- `T02-T15` plus `T10` are now completed foundation/product slices. The next recommended product task is `T11`, while `T16` remains a follow-up billing hardening slice for cross-device reconciliation edge cases, `T17` records a separate future platform-marketing-site task, `T12` remains a pricing/packaging strategy follow-up, and `T06` is still deferred to the release-readiness pass.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 
