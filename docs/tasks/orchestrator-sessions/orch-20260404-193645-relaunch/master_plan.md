@@ -106,10 +106,11 @@ The new baseline is:
 | `T13` | Complete | D | Class-assigned fee plans with default billing coverage and student-specific extras |
 | `T14` | Complete | D | School-scoped Paystack setup plus front-desk payment links and QR handoff |
 | `T15` | Pending | D | Parent portal billing, receipts, and self-serve online payment flow |
+| `T16` | Pending | D | Cross-device payment reconciliation hardening: pending-payment polling and durable callback/session flow |
 
 ## Current Known Blockers
 
-- `T02-T14` completed foundation work is in place. Per the latest billing continuation request, the next recommended product task is `T15`, with `T10` now lower priority, `T11` and `T12` remaining recorded as follow-up strategy/hardening slices, and `T06` still deferred to the release-readiness pass.
+- `T02-T14` completed foundation work is in place. Per the latest billing continuation request, the next recommended product task is `T15`, with `T16` now recorded as a follow-up billing hardening slice for cross-device reconciliation edge cases, `T10` lower priority, `T11` and `T12` remaining recorded as follow-up strategy/hardening slices, and `T06` still deferred to the release-readiness pass.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 

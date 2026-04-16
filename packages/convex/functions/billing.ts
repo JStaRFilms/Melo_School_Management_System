@@ -1,6 +1,6 @@
 import { query, mutation, internalMutation, internalQuery, action } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { formatClassDisplayName } from "@school/shared/name-format";
 import { getReadableUserName } from "./academic/studentNameCompat";
@@ -435,6 +435,133 @@ function gatewayEventDocToReturn(event: any) {
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
   };
+}
+
+function parsePaystackMetadata(rawMetadata: unknown) {
+  if (!rawMetadata) {
+    return {} as Record<string, unknown>;
+  }
+
+  if (typeof rawMetadata === "string") {
+    try {
+      const parsed = JSON.parse(rawMetadata) as unknown;
+      if (parsed && typeof parsed === "object") {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {} as Record<string, unknown>;
+    }
+
+    return {} as Record<string, unknown>;
+  }
+
+  if (typeof rawMetadata === "object") {
+    return rawMetadata as Record<string, unknown>;
+  }
+
+  return {} as Record<string, unknown>;
+}
+
+function extractPaystackVerificationMetadata(payload: any) {
+  const data = payload?.data ?? {};
+  const metadata = parsePaystackMetadata(data?.metadata ?? payload?.metadata ?? {});
+
+  return {
+    schoolId: normalizeBillingText(metadata.schoolId ?? payload?.schoolId),
+    invoiceId: normalizeBillingText(metadata.invoiceId),
+    invoiceNumber: normalizeBillingText(metadata.invoiceNumber),
+    gatewayReference: normalizeBillingText(
+      data.reference ?? data.gateway_reference ?? payload?.reference
+    ),
+    amountReceived:
+      typeof data.amount === "number"
+        ? data.amount / 100
+        : typeof payload?.amount === "number"
+          ? payload.amount
+          : undefined,
+    payerEmail: normalizeBillingText(
+      data?.customer?.email ?? data?.authorization?.customer_email ?? metadata.email
+    ),
+    payerName: normalizeBillingText(
+      data?.customer?.name ?? metadata.payerName ?? data?.customer?.first_name
+    ),
+  };
+}
+
+function buildPaystackEventId(payload: any, fallbackReference: string) {
+  const data = payload?.data ?? {};
+  const eventMarker = normalizeBillingText(data.id ?? payload?.event_id) ?? fallbackReference;
+  return `paystack:${eventMarker}`;
+}
+
+async function verifyPaystackReferenceAndReconcile(
+  ctx: any,
+  reference: string,
+  options?: { expectedSchoolId?: Id<"schools"> | null }
+): Promise<{
+  event: any;
+  invoice: any;
+  payment: any;
+}> {
+  const gateway = createBillingGatewayAdapter("paystack");
+  const verification = await gateway.verifyPayment(reference);
+  const payload = verification.raw as any;
+  const metadata = extractPaystackVerificationMetadata(payload);
+  const invoiceResolution: any = await ctx.runQuery(
+    (internal as any).functions.billing.resolveBillingInvoiceForWebhookInternal,
+    {
+      invoiceId: metadata.invoiceId ?? undefined,
+      invoiceNumber: metadata.invoiceNumber ?? undefined,
+    }
+  );
+
+  const schoolId: Id<"schools"> | null =
+    (metadata.schoolId as Id<"schools"> | undefined) ??
+    invoiceResolution?.schoolId ??
+    null;
+  if (!schoolId) {
+    throw new ConvexError("Verified Paystack payment did not include a resolvable school reference");
+  }
+
+  if (options?.expectedSchoolId && String(options.expectedSchoolId) !== String(schoolId)) {
+    throw new ConvexError("Cross-school access denied");
+  }
+
+  if (
+    invoiceResolution &&
+    metadata.schoolId &&
+    String(invoiceResolution.schoolId) !== String(metadata.schoolId)
+  ) {
+    throw new ConvexError("Verified invoice reference does not belong to the supplied schoolId");
+  }
+
+  const data = payload?.data ?? {};
+  const eventType =
+    verification.status === "success"
+      ? "charge.success"
+      : `payment.${normalizeBillingText(data.status) ?? "unknown"}`;
+
+  return await ctx.runMutation(
+    (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
+    {
+      schoolId,
+      provider: "paystack",
+      eventId: buildPaystackEventId(payload, verification.reference),
+      eventType,
+      reference: metadata.gatewayReference ?? verification.reference,
+      invoiceId: invoiceResolution?.invoiceId ?? undefined,
+      invoiceNumber: invoiceResolution?.invoiceNumber ?? metadata.invoiceNumber ?? undefined,
+      gatewayReference: metadata.gatewayReference ?? verification.reference,
+      amountReceived: metadata.amountReceived ?? verification.amount,
+      payerName: metadata.payerName,
+      payerEmail: metadata.payerEmail,
+      rawBody: JSON.stringify(payload),
+      payload,
+      signatureValid: true,
+      verificationMessage: "Paystack verify endpoint confirmed payment",
+      receivedAt: Date.now(),
+    }
+  );
 }
 
 export const resolveBillingInvoiceForWebhookInternal = internalQuery({
@@ -1435,6 +1562,76 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
   },
 });
 
+export const verifyOnlinePaymentByReference = action({
+  args: {
+    reference: v.string(),
+  },
+  returns: v.object({
+    event: billingGatewayEventValidator,
+    invoice: v.union(billingInvoiceValidator, v.null()),
+    payment: v.union(billingPaymentValidator, v.null()),
+  }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    event: any;
+    invoice: any;
+    payment: any;
+  }> => {
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
+
+    return await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
+      expectedSchoolId: viewer.schoolId ?? null,
+    });
+  },
+});
+
+export const verifyOnlinePaymentByReferencePublic = action({
+  args: {
+    reference: v.string(),
+  },
+  returns: v.object({
+    reference: v.string(),
+    verificationStatus: v.union(
+      v.literal("verified"),
+      v.literal("rejected"),
+      v.literal("ignored")
+    ),
+    invoiceNumber: v.union(v.string(), v.null()),
+    paymentRecorded: v.boolean(),
+    message: v.string(),
+  }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    reference: string;
+    verificationStatus: "verified" | "rejected" | "ignored";
+    invoiceNumber: string | null;
+    paymentRecorded: boolean;
+    message: string;
+  }> => {
+    const result = await verifyPaystackReferenceAndReconcile(ctx, args.reference);
+
+    return {
+      reference: result.event.reference,
+      verificationStatus: result.event.verificationStatus,
+      invoiceNumber: result.invoice?.invoiceNumber ?? result.event.invoiceNumber ?? null,
+      paymentRecorded: result.payment !== null,
+      message:
+        result.event.verificationMessage ??
+        (result.payment !== null
+          ? "Payment verified successfully"
+          : "Payment verification completed"),
+    };
+  },
+});
+
 export const initializeOnlinePayment = action({
   args: {
     schoolId: v.id("schools"),
@@ -1461,10 +1658,13 @@ export const initializeOnlinePayment = action({
     accessCode: string | null;
     checkoutPayload: Record<string, unknown>;
   }> => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx);
-    assertAdmin(viewer);
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
 
-    if (String(viewer.schoolId) !== String(args.schoolId)) {
+    if (!viewer.schoolId || String(viewer.schoolId) !== String(args.schoolId)) {
       throw new ConvexError("Cross-school access denied");
     }
 

@@ -214,13 +214,22 @@ export const billingGatewayEventValidator = v.object({
   updatedAt: v.number(),
 });
 
-export function normalizeBillingText(value: string | null | undefined) {
+export function normalizeBillingText(value: unknown) {
   if (value === undefined || value === null) {
     return undefined;
   }
 
-  const trimmed = value.trim();
-  return trimmed || undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    const trimmed = String(value).trim();
+    return trimmed || undefined;
+  }
+
+  return undefined;
 }
 
 export function normalizeCurrencyCode(value: string | null | undefined, fallback = "NGN") {
