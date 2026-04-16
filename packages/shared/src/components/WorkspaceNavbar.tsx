@@ -80,12 +80,12 @@ export function WorkspaceNavbar({
           finance: {
             label: "Finance",
             icon: <Landmark className="h-4 w-4" />,
-            links: sections.slice(3, 4),
+            links: sections.slice(4, 5),
           },
           alerts: {
             label: "Alerts",
             icon: <ClipboardCheck className="h-4 w-4" />,
-            links: sections.slice(4),
+            links: sections.slice(3, 4),
           },
         }
       : {

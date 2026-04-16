@@ -6,7 +6,7 @@ Define a production-ready hosting, domain, and authentication model for turning 
 
 This note captures the intended target state for:
 
-- product-owned subdomains such as `platform.mellowschools.com`
+- product-owned subdomains such as `platform.meloschool.com`
 - school public sites on either platform subdomains or school-owned custom domains
 - optional school-owned role subdomains such as `admin.obhis.com` and `students.obhis.com`
 - runtime branding and template switching based on resolved school context
@@ -49,12 +49,12 @@ Separate deployments should only be considered for schools that require custom c
 
 Example:
 
-- `mellowschools.com`
-- `platform.mellowschools.com`
-- `admin.mellowschools.com`
-- `teacher.mellowschools.com`
-- `portal.mellowschools.com`
-- `greenfield.mellowschools.com` for a school public site
+- `meloschool.com`
+- `platform.meloschool.com`
+- `admin.meloschool.com`
+- `teacher.meloschool.com`
+- `portal.meloschool.com`
+- `greenfield.meloschool.com` for a school public site
 
 Use this as the **default and easiest** operating mode.
 
@@ -71,9 +71,9 @@ Example:
 
 - `obhis.com` serves the school's public website
 - authenticated surfaces remain on product-owned hosts such as:
-  - `admin.mellowschools.com`
-  - `teacher.mellowschools.com`
-  - `portal.mellowschools.com`
+  - `admin.meloschool.com`
+  - `teacher.meloschool.com`
+  - `portal.meloschool.com`
 
 Use this as the **recommended white-label model** for most schools.
 
@@ -126,7 +126,7 @@ For the main product:
 
 Why this is the preferred baseline:
 
-- shared auth across `*.mellowschools.com` is much simpler
+- shared auth across `*.meloschool.com` is much simpler
 - support tooling and redirects stay predictable
 - parent accounts that may span multiple schools remain manageable
 - schools still get white-label public presence without forcing the hardest auth topology everywhere
@@ -147,9 +147,9 @@ Users can stay signed in across sibling subdomains **when those subdomains share
 
 Example:
 
-- `admin.mellowschools.com`
-- `teacher.mellowschools.com`
-- `portal.mellowschools.com`
+- `admin.meloschool.com`
+- `teacher.meloschool.com`
+- `portal.meloschool.com`
 
 This is the straightforward shared-session case.
 
@@ -157,7 +157,7 @@ This is the straightforward shared-session case.
 
 Cookies are **not** shared natively between unrelated roots such as:
 
-- `admin.mellowschools.com`
+- `admin.meloschool.com`
 - `admin.obhis.com`
 
 That means a school using its own role subdomains cannot rely on simple cookie reuse from the product domain.
@@ -166,7 +166,7 @@ For that topology, the system should use a centralized auth authority plus redir
 
 Recommended target:
 
-- canonical auth authority on a stable product-owned host such as `auth.mellowschools.com`
+- canonical auth authority on a stable product-owned host such as `auth.meloschool.com`
 - each app host redirects unauthenticated users to that authority
 - after successful sign-in, the auth authority returns the user with a signed, short-lived handoff
 - target host establishes its own local session for that domain family
@@ -241,7 +241,7 @@ This must happen from configuration and resolved school context, not from duplic
 ### 2. Authenticated Request On Product-Owned Subdomains
 
 ```text
-1. User visits admin/teacher/portal host under mellowschools.com
+1. User visits admin/teacher/portal host under meloschool.com
 2. Shared auth session is checked
 3. Viewer membership is resolved from Better Auth + Convex
 4. Current school context is selected
@@ -253,7 +253,7 @@ This must happen from configuration and resolved school context, not from duplic
 ```text
 1. User visits admin.obhis.com or students.obhis.com
 2. Local host checks for a valid session for that domain family
-3. If missing, redirect to auth.mellowschools.com
+3. If missing, redirect to auth.meloschool.com
 4. Auth authority validates identity and membership
 5. Auth authority redirects back with a signed bootstrap payload
 6. Target host establishes its own session
@@ -410,7 +410,7 @@ The current codebase does not yet fully implement:
 1. Add schema for domain mappings and richer branding config.
 2. Build hostname resolver for public requests.
 3. Support custom domains for public sites first.
-4. Keep authenticated apps canonical on `*.mellowschools.com`.
+4. Keep authenticated apps canonical on `*.meloschool.com`.
 5. Add runtime branding resolution across authenticated apps.
 6. Add centralized auth authority and cross-root session bootstrap.
 7. Enable school-owned role subdomains as an advanced option.

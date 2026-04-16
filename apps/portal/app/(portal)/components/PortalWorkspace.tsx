@@ -281,7 +281,7 @@ function PortalWorkspaceContent({ mode }: { mode: PortalWorkspaceMode }) {
     try {
       setBillingNotice(null);
       setPayingInvoiceId(invoice.invoiceId);
-      const callbackUrl = `${window.location.origin}/payments/paystack/return`;
+      const callbackUrl = `${window.location.origin}/payments/paystack/return?studentId=${encodeURIComponent(invoice.studentId)}`;
       const result = (await initializePortalPayment({
         invoiceId: invoice.invoiceId,
         callbackUrl,

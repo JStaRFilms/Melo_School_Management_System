@@ -16,7 +16,13 @@ type PublicPaymentVerificationResult = {
 
 type VerificationState = "idle" | "verifying" | "verified" | "failed";
 
-export function PaystackReturnClient({ reference }: { reference: string }) {
+export function PaystackReturnClient({
+  reference,
+  returnHref,
+}: {
+  reference: string;
+  returnHref: string;
+}) {
   const verifyPayment = useAction(
     "functions/billing:verifyOnlinePaymentByReferencePublic" as never
   );
@@ -139,7 +145,7 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
             <RefreshCw className="h-4 w-4" /> Retry verification
           </button>
           <Link
-            href="/billing"
+            href={returnHref}
             className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white"
           >
             Back to billing
