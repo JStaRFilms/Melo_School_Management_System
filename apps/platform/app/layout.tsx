@@ -6,8 +6,12 @@ import { hasConvexAuthEnv } from "@school/auth";
 import { getToken } from "@/auth-server";
 
 export const metadata = {
-  title: "OS/SCHOOL Platform Admin",
-  description: "School Management System - Platform Administration",
+  title: "SchoolOS Platform Admin",
+  description: "Internal super-admin workspace for SchoolOS.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 export default async function RootLayout({
@@ -19,11 +23,9 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="bg-slate-50 min-h-screen">
+      <body className="min-h-screen bg-slate-50 text-slate-900">
         <ConvexClientProvider initialToken={initialToken}>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <AuthProvider>{children}</AuthProvider>
         </ConvexClientProvider>
       </body>
     </html>

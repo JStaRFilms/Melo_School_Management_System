@@ -142,10 +142,10 @@ export function SiteHeader() {
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--school-primary)] text-sm font-bold text-white shadow-soft">
-              CG
+              SO
             </div>
             <div className="leading-tight">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">School website</p>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Product website</p>
               <p className="font-display text-lg font-semibold text-slate-950">{siteBrand.name}</p>
             </div>
           </Link>
@@ -170,7 +170,7 @@ export function SiteHeader() {
               <Phone className="h-4 w-4" />
               {siteBrand.phone}
             </a>
-            <ButtonLink href="/contact">Enquire</ButtonLink>
+            <ButtonLink href="/contact">Request demo</ButtonLink>
           </div>
         </div>
 
@@ -203,10 +203,13 @@ export function SiteFooter() {
                 <MapPin className="h-4 w-4" />
                 {siteBrand.address}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
+              <a
+                href={`mailto:${siteBrand.email}`}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 transition hover:bg-slate-200"
+              >
                 <Mail className="h-4 w-4" />
                 {siteBrand.email}
-              </span>
+              </a>
             </div>
           </div>
 
@@ -222,18 +225,18 @@ export function SiteFooter() {
           </div>
 
           <div className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Admissions</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Contact</p>
             <p className="text-sm leading-7 text-slate-600">{siteBrand.hours}</p>
             <div className="flex flex-col gap-3">
               <a
-                href={`tel:${siteBrand.admissionsPhone.replace(/\s+/g, "")}`}
+                href={`tel:${siteBrand.phone.replace(/\s+/g, "")}`}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[color:var(--school-primary)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[color:var(--school-secondary)]"
               >
                 <Phone className="h-4 w-4" />
-                Call admissions
+                Call sales
               </a>
-              <ButtonLink href="/visit" variant="outline" className="justify-center">
-                Plan a visit
+              <ButtonLink href="/contact" variant="outline" className="justify-center">
+                Request demo
               </ButtonLink>
             </div>
           </div>

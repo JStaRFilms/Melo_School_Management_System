@@ -1,38 +1,38 @@
 import type { Metadata } from "next";
-import { CalendarDays, Clock3, MapPin, MessageSquare, Route, Sparkles } from "lucide-react";
+import { CalendarDays, Clock3, MessageSquare, Route, Sparkles } from "lucide-react";
 import { ButtonLink, Container, PageHero, SectionHeading, SurfaceCard } from "@/site-ui";
-import { siteBrand, visitMoments, buildPageMetadata } from "@/site";
+import { buildPageMetadata, siteBrand, visitMoments } from "@/site";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Visit",
+  title: "Demo",
   description:
-    "Plan a visit to Cedar Grove Academy and see the classrooms, routines, and admissions flow for yourself.",
+    "Plan a demo of SchoolOS and see the admin, teacher, family, and commercial surfaces in one walkthrough.",
   path: "/visit",
 });
 
 const visitTips = [
-  "Come with the questions that matter most to your family.",
-  "Bring any previous school details that may help with placement.",
-  "Ask about the school day, supervision, and communication routines.",
+  "Come with the questions that matter most to your team.",
+  "Bring any current workflow notes that may help with rollout planning.",
+  "Ask about the first modules you would want to launch.",
 ];
 
 export default function VisitPage() {
   return (
     <>
       <PageHero
-        eyebrow="Visit the campus"
-        title="The best school decision usually starts with walking the campus."
-        description={`${siteBrand.name} welcomes families who want to see the environment, meet the team, and get practical answers before making a commitment.`}
-        primaryAction={{ label: "Call admissions", href: `tel:${siteBrand.admissionsPhone.replace(/\s+/g, "")}` }}
-        secondaryAction={{ label: "Email admissions", href: `mailto:${siteBrand.email}` }}
+        eyebrow="Demo"
+        title="The best product decision usually starts with seeing the workflow."
+        description={`${siteBrand.name} is easier to judge once you have seen the internal workspace, the family access layer, and the public marketing story together.`}
+        primaryAction={{ label: "Request a demo", href: "/contact" }}
+        secondaryAction={{ label: "Review modules", href: "/academics" }}
         aside={
           <SurfaceCard className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Visit details</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Demo details</p>
             <div className="space-y-3">
               {[
-                { label: "Office hours", value: siteBrand.hours, icon: Clock3 },
-                { label: "Campus", value: siteBrand.address, icon: MapPin },
-                { label: "Best next step", value: "Call or email to schedule a tour", icon: MessageSquare },
+                { label: "Discovery", value: "School goals and constraints", icon: Clock3 },
+                { label: "Walkthrough", value: "Product and access boundaries", icon: MessageSquare },
+                { label: "Follow-up", value: "Commercial fit and rollout path", icon: Route },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -53,13 +53,13 @@ export default function VisitPage() {
       <section className="pb-16">
         <Container>
           <SectionHeading
-            eyebrow="What a visit looks like"
-            title="Short, friendly, and focused on the information families really need."
-            description="We keep visits practical so parents can quickly understand the school's culture, routines, and support systems."
+            eyebrow="What a demo looks like"
+            title="Short, focused, and built around the product boundaries that matter."
+            description="The walkthrough should help the school understand how the platform works without detouring into admissions or school-site content."
           />
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {visitMoments.map((moment) => {
-              const Icon = moment.title.includes("Welcome") ? Sparkles : moment.title.includes("Walk") ? Route : CalendarDays;
+              const Icon = moment.title.includes("Discovery") ? Sparkles : moment.title.includes("Walkthrough") ? Route : CalendarDays;
               return (
                 <SurfaceCard key={moment.title} className="space-y-4">
                   <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-primary)]/10 text-[color:var(--school-primary)]">
@@ -80,7 +80,7 @@ export default function VisitPage() {
         <Container>
           <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr] lg:items-start">
             <SurfaceCard className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Visit tips</p>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Prep for the call</p>
               <h2 className="text-3xl font-semibold text-slate-950">Arrive with the right questions.</h2>
               <div className="space-y-3">
                 {visitTips.map((item) => (
@@ -93,24 +93,15 @@ export default function VisitPage() {
             </SurfaceCard>
 
             <SurfaceCard className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Directions and logistics</p>
-              <h2 className="text-3xl font-semibold text-slate-950">Make the trip easy to plan.</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Rollout conversation</p>
+              <h2 className="text-3xl font-semibold text-slate-950">Confirm the scope before anything is launched.</h2>
               <p className="text-sm leading-7 text-slate-600">
-                If you are travelling from outside the immediate area, call ahead so the team can give you the most helpful arrival details.
+                A good demo ends with a clear understanding of the starting package, the support path, and whether future public-web work belongs in the roadmap.
               </p>
-              <div className="space-y-3 text-sm leading-7 text-slate-700">
-                <p>• Tell us the day and time that works best for your family.</p>
-                <p>• Ask for the admissions lead if you want a more detailed discussion.</p>
-                <p>• If needed, we can point you to the easiest landmark on the route.</p>
-              </div>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <ButtonLink href={`tel:${siteBrand.admissionsPhone.replace(/\s+/g, "")}`}>
-                  <MapPin className="h-4 w-4" />
-                  Call for directions
-                </ButtonLink>
-                <ButtonLink href="/contact" variant="outline">
-                  <MessageSquare className="h-4 w-4" />
-                  Send a message
+                <ButtonLink href="/contact">Request demo</ButtonLink>
+                <ButtonLink href="/fees" variant="outline">
+                  Review packages
                 </ButtonLink>
               </div>
             </SurfaceCard>
@@ -124,9 +115,9 @@ export default function VisitPage() {
             <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-[color:var(--school-secondary)]">Next step</p>
-                <h2 className="text-3xl font-semibold text-slate-950">Book a visit while the question is still fresh.</h2>
+                <h2 className="text-3xl font-semibold text-slate-950">Book the demo while the question is still fresh.</h2>
                 <p className="max-w-2xl text-sm leading-7 text-slate-600">
-                  The right visit can make the admissions decision feel simple. We would be glad to host you.
+                  The product is clearer once you see the boundaries in action. We would be glad to walk you through it.
                 </p>
               </div>
               <ButtonLink href="/contact">Book now</ButtonLink>

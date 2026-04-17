@@ -27,11 +27,11 @@ That is different from the platform's own product-marketing presence, which need
 
 ## Acceptance Criteria
 
-- [ ] A distinct platform-marketing site exists separately from the tenant school public website.
-- [ ] The platform site speaks to school decision-makers rather than families.
-- [ ] Product-level CTAs exist for demo/contact intent.
-- [ ] The platform site does not get conflated with tenant school branding or admissions content.
-- [ ] The content leaves room for future pricing/packaging work from `T12`.
+- [x] A distinct platform-marketing site exists separately from the tenant school public website.
+- [x] The platform site speaks to school decision-makers rather than families.
+- [x] Product-level CTAs exist for demo/contact intent.
+- [x] The platform site does not get conflated with tenant school branding or admissions content.
+- [x] The content leaves room for future pricing/packaging work from `T12`.
 
 ## Notes
 

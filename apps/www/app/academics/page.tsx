@@ -4,26 +4,26 @@ import { ButtonLink, Container, PageHero, SectionHeading, SurfaceCard } from "@/
 import { academicTracks, buildPageMetadata, siteBrand } from "@/site";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Academics",
+  title: "Modules",
   description:
-    "Explore the academic structure, learning support, and enrichment approach that shape the Cedar Grove Academy experience.",
+    "Explore the module stack, access boundaries, and public-web separation that shape the SchoolOS product.",
   path: "/academics",
 });
 
-const academicNotes = [
+const moduleNotes = [
   {
-    title: "Learning is structured",
-    description: "Each stage has clear goals, repeatable routines, and evidence of progress families can understand.",
+    title: "Operations first",
+    description: "School setup, classes, terms, and teacher assignments belong in the internal workspace.",
     icon: Layers3,
   },
   {
-    title: "Assessment is visible",
-    description: "Teachers use feedback, classwork, and formal assessments to guide the next teaching step.",
+    title: "Visibility for families",
+    description: "Parent and student portals connect to the school experience without turning the public site into a portal.",
     icon: BookOpenCheck,
   },
   {
-    title: "Support is personal",
-    description: "When a child needs more challenge or more care, the response is coordinated and practical.",
+    title: "Controlled expansion",
+    description: "Future managed school websites can be introduced later through the public-web roadmap.",
     icon: Sparkles,
   },
 ];
@@ -32,19 +32,19 @@ export default function AcademicsPage() {
   return (
     <>
       <PageHero
-        eyebrow="Academics"
-        title="A curriculum that builds confidence, mastery, and curiosity."
-        description={`${siteBrand.name} keeps the academic offer simple to understand: strong foundations, thoughtful teaching, and enough breadth for children to discover where they shine.`}
-        primaryAction={{ label: "Review admissions", href: "/admissions" }}
-        secondaryAction={{ label: "Book a visit", href: "/visit" }}
+        eyebrow="Modules"
+        title="A module stack that matches how schools actually run."
+        description={`${siteBrand.name} keeps the internal system focused on operations, family access, and rollout paths instead of trying to make the marketing site do everything.`}
+        primaryAction={{ label: "Review packages", href: "/fees" }}
+        secondaryAction={{ label: "Request a demo", href: "/contact" }}
         aside={
           <SurfaceCard className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Academic promise</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">What the modules cover</p>
             <div className="space-y-3">
               {[
-                "Early years that make learning feel safe and playful",
-                "Primary years that strengthen literacy and numeracy",
-                "Secondary years that prepare students for exam success",
+                "Core admin workflows",
+                "Portal access for families",
+                "Commercial and public-web separation",
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
                   <BadgeCheck className="mt-0.5 h-4 w-4 text-[color:var(--school-primary)]" />
@@ -59,9 +59,9 @@ export default function AcademicsPage() {
       <section className="pb-16">
         <Container>
           <SectionHeading
-            eyebrow="Learning stages"
-            title="One school, three clear academic phases."
-            description="Families can see where their child fits today and how the school supports the next step without confusion."
+            eyebrow="Module groups"
+            title="Three layers that stay connected but not confused."
+            description="The product story can explain the shape of the platform without pretending it is already a school website engine."
           />
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {academicTracks.map((track) => (
@@ -82,7 +82,7 @@ export default function AcademicsPage() {
       <section className="pb-16">
         <Container>
           <div className="grid gap-4 lg:grid-cols-3">
-            {academicNotes.map((note) => {
+            {moduleNotes.map((note) => {
               const Icon = note.icon;
               return (
                 <SurfaceCard key={note.title} className="space-y-4 lg:col-span-1">
@@ -102,17 +102,17 @@ export default function AcademicsPage() {
         <Container>
           <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr] lg:items-start">
             <SurfaceCard className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">How we teach</p>
-              <h2 className="text-3xl font-semibold text-slate-950">Teaching that stays disciplined without feeling rigid.</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">How the product is framed</p>
+              <h2 className="text-3xl font-semibold text-slate-950">A clear product message without school admissions framing.</h2>
               <p className="text-sm leading-7 text-slate-600">
-                The academic experience balances explanation, guided practice, independent work, and feedback so children can make progress with confidence.
+                The public site should make the internal boundaries obvious: internal workspace, family access, and public marketing each live in their own lane.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
-                  "Clear daily objectives",
-                  "Teacher feedback and corrections",
-                  "Homework that reinforces classwork",
-                  "Enrichment in arts, ICT, and leadership",
+                  "Distinct admin and workspace flows",
+                  "Family-facing access stays separate",
+                  "Billing remains platform-aware",
+                  "Future managed school websites stay on the roadmap",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 text-[color:var(--school-primary)]" />
@@ -124,14 +124,14 @@ export default function AcademicsPage() {
 
             <SurfaceCard className="space-y-4">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Need the right fit?</p>
-              <h2 className="text-3xl font-semibold text-slate-950">Bring your questions to a visit.</h2>
+              <h2 className="text-3xl font-semibold text-slate-950">Bring your product questions to a demo.</h2>
               <p className="text-sm leading-7 text-slate-600">
-                We are happy to explain class placement, subject coverage, or how we support a child who is moving from another school.
+                We can explain scope, rollout order, and what stays in the internal workspace versus the public marketing surface.
               </p>
               <div className="flex flex-col gap-3">
-                <ButtonLink href="/visit">Plan a visit</ButtonLink>
-                <ButtonLink href="/contact" variant="outline">
-                  Contact admissions
+                <ButtonLink href="/contact">Request a demo</ButtonLink>
+                <ButtonLink href="/about" variant="outline">
+                  Read the overview
                 </ButtonLink>
               </div>
             </SurfaceCard>

@@ -102,14 +102,14 @@ The new baseline is:
 | `T09` | Complete | D | Billing and payment foundation |
 | `T10` | Complete | D | Public website and SEO surface in `apps/www` with core pages and SEO baseline |
 | `T11` | Complete | D | Household management hardening: parent email maintenance, duplicate-link review, and child-parent unlink/edit flows |
-| `T12` | Pending | D | Platform pricing and packaging strategy: segmented setup/recurring plans, entitlements, and upgrade model |
+| `T12` | Complete | D | Platform pricing and packaging strategy: segmented setup/recurring plans, entitlements, and upgrade model |
 | `T13` | Complete | D | Class-assigned fee plans with default billing coverage and student-specific extras |
 | `T14` | Complete | D | School-scoped Paystack setup plus front-desk payment links and QR handoff |
 | `T15` | Complete | D | Parent portal billing, receipts, self-serve pay-now flow, and portal payment return verification |
 | `T16` | Complete | D | Cross-device payment reconciliation hardening: pending-payment polling and durable callback/session flow |
-| `T17` | Pending | D | Platform marketing website for selling the SchoolOS product itself, separate from tenant school public sites |
+| `T17` | Complete | D | Platform marketing website for selling the SchoolOS product itself, separate from tenant school public sites |
 | `T18` | Pending | D | Per-school Paystack credential management and merchant routing |
-| `T19` | Pending | D | Public web operating modes: platform site, school-keeps-existing-site support, and managed school-site onboarding policy |
+| `T19` | Complete | D | Public web operating modes: platform site, school-keeps-existing-site support, and managed school-site onboarding policy |
 | `T20` | Pending | D | Multi-tenant school public-site engine foundation with hostname resolution and runtime branding |
 | `T21` | Pending | D | School website template library and flexible page/section composition model |
 | `T22` | Pending | D | School public-domain mapping, verification, canonical routing, and custom-domain onboarding |
@@ -117,7 +117,7 @@ The new baseline is:
 
 ## Current Known Blockers
 
-- `T02-T16` plus `T10` are now completed foundation/product slices. Household management hardening and cross-device payment reconciliation are complete, so the next recommended product task is `T19`, followed by `T12`, `T17`, and the managed-school-site/public-web engine sequence in `T20-T23`. `T18` remains the later per-school Paystack credential lane, and `T06` is still deferred to the release-readiness pass.
+- `T02-T17` plus `T19` are now completed foundation/product slices. The next recommended product task remains `T18`. Later follow-on lanes stay split across `T20-T23`, and `T06` is still deferred to the release-readiness pass.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 

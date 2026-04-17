@@ -1,39 +1,39 @@
 import type { Metadata } from "next";
 import { BadgeCheck, Clock3, CreditCard, FileText, ShieldCheck } from "lucide-react";
 import { ButtonLink, Container, PageHero, SectionHeading, SurfaceCard } from "@/site-ui";
-import { feeHighlights, buildPageMetadata, siteBrand } from "@/site";
+import { buildPageMetadata, feeHighlights, siteBrand } from "@/site";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Fees",
+  title: "Commercials",
   description:
-    "Review the fee conversation early so families understand tuition expectations, payment timing, and support options.",
+    "Review the SchoolOS commercial model: setup fee, recurring access, and optional upgrades.",
   path: "/fees",
 });
 
 const feeQuestions = [
-  "What does the term fee cover?",
-  "When are payments due?",
-  "Are there optional extras or activity costs?",
-  "Who do families contact if they need clarification?",
+  "What does the setup fee cover?",
+  "Is access billed termly or annually?",
+  "Which upgrades are optional?",
+  "How do commercial fees stay separate from school fee billing?",
 ];
 
 export default function FeesPage() {
   return (
     <>
       <PageHero
-        eyebrow="Fees"
-        title="Transparent fee conversations help families plan with confidence."
-        description={`${siteBrand.name} keeps financial communication straightforward: what is due, when it is due, and who to ask if a family needs help understanding the term breakdown.`}
-        primaryAction={{ label: "Speak to admissions", href: "/contact" }}
-        secondaryAction={{ label: "Book a visit", href: "/visit" }}
+        eyebrow="Commercials"
+        title="Transparent pricing language helps a school plan ahead."
+        description={`${siteBrand.name} keeps the commercial conversation straightforward: one-time setup, recurring platform access, and optional upgrades.`}
+        primaryAction={{ label: "Request a demo", href: "/contact" }}
+        secondaryAction={{ label: "Review packages", href: "/admissions" }}
         aside={
           <SurfaceCard className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Fee conversation goals</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">What the pricing model protects</p>
             <div className="space-y-3">
               {[
-                "Explain the tuition structure before enrolment",
-                "Separate required fees from optional extras",
-                "Keep payment timing visible and easy to plan for",
+                "Base plan stays simple",
+                "Upgrades stay optional",
+                "Student billing remains separate",
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
                   <CreditCard className="mt-0.5 h-4 w-4 text-[color:var(--school-primary)]" />
@@ -48,13 +48,13 @@ export default function FeesPage() {
       <section className="pb-16">
         <Container>
           <SectionHeading
-            eyebrow="What families should expect"
-            title="Clear, honest, and early enough to plan ahead."
-            description="The website should not hide fee reality. It should help parents know what to ask and what they will receive in return."
+            eyebrow="Pricing components"
+            title="The model stays mixed, not single-metric."
+            description="This commercial language can support small schools, mid-tier schools, and premium service arrangements without making every buyer fit the same shape."
           />
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {feeHighlights.map((highlight) => {
-              const Icon = highlight.title.includes("Transparent") ? FileText : highlight.title.includes("Simple") ? Clock3 : ShieldCheck;
+              const Icon = highlight.title.includes("Setup") ? FileText : highlight.title.includes("Recurring") ? Clock3 : ShieldCheck;
               return (
                 <SurfaceCard key={highlight.title} className="space-y-4">
                   <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-primary)]/10 text-[color:var(--school-primary)]">
@@ -75,8 +75,8 @@ export default function FeesPage() {
         <Container>
           <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
             <SurfaceCard className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Questions worth asking</p>
-              <h2 className="text-3xl font-semibold text-slate-950">A good fee page answers the obvious questions up front.</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Questions worth answering early</p>
+              <h2 className="text-3xl font-semibold text-slate-950">A strong commercial page answers the obvious questions.</h2>
               <div className="space-y-3">
                 {feeQuestions.map((item) => (
                   <div key={item} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
@@ -88,18 +88,15 @@ export default function FeesPage() {
             </SurfaceCard>
 
             <SurfaceCard className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Support and payment conversations</p>
-              <h2 className="text-3xl font-semibold text-slate-950">Need help understanding a term balance?</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">What stays out of scope</p>
+              <h2 className="text-3xl font-semibold text-slate-950">Platform fees should not blur into school fee billing.</h2>
               <p className="text-sm leading-7 text-slate-600">
-                Families should always know where to ask for clarification. The admissions team can route payment questions to the right person quickly.
+                The product can charge for software access and service layers while school collections continue to live in the school billing domain.
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <ButtonLink href={`tel:${siteBrand.admissionsPhone.replace(/\s+/g, "")}`}>
-                  <CreditCard className="h-4 w-4" />
-                  Call admissions
-                </ButtonLink>
-                <ButtonLink href="/contact" variant="outline">
-                  Contact the school
+                <ButtonLink href="/contact">Talk commercial fit</ButtonLink>
+                <ButtonLink href="/visit" variant="outline">
+                  Request a walkthrough
                 </ButtonLink>
               </div>
             </SurfaceCard>
@@ -112,14 +109,14 @@ export default function FeesPage() {
           <SurfaceCard className="bg-[linear-gradient(135deg,#173b72_0%,#0f766e_100%)] p-8 text-white sm:p-10">
             <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/70">Financial clarity</p>
-                <h2 className="text-3xl font-semibold">Admissions decisions are easier when fee information is easy to trust.</h2>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/70">Commercial clarity</p>
+                <h2 className="text-3xl font-semibold">Setup fees, recurring access, and optional upgrades.</h2>
                 <p className="max-w-2xl text-sm leading-7 text-white/80">
-                  We keep the conversation direct so families can compare options and move forward with confidence.
+                  The packaging story leaves space for custom quoting while staying simple enough to understand quickly.
                 </p>
               </div>
               <ButtonLink href="/contact" className="bg-white text-slate-950 hover:bg-slate-100">
-                Ask a question
+                Request a demo
               </ButtonLink>
             </div>
           </SurfaceCard>

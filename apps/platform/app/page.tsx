@@ -1,31 +1,12 @@
-"use client";
-
 import { redirect } from "next/navigation";
-import { useAuth } from "@/AuthProvider";
-import { isConvexConfigured } from "@/convex-runtime";
+import { isAuthenticated } from "@/auth-server";
 
-export default function HomePage() {
-  const { isAuthenticated, isLoading, isPlatformAdmin } = useAuth();
+export default async function PlatformHomePage() {
+  const authenticated = await isAuthenticated();
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-slate-500">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!isConvexConfigured()) {
+  if (authenticated) {
     redirect("/schools");
   }
 
-  if (!isAuthenticated) {
-    redirect("/sign-in");
-  }
-
-  if (!isPlatformAdmin) {
-    redirect("/sign-in?error=unauthorized");
-  }
-
-  redirect("/schools");
+  redirect("/sign-in?callbackUrl=%2Fschools");
 }

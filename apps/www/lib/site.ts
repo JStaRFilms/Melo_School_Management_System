@@ -7,17 +7,17 @@ export type SiteNavigationItem = {
 };
 
 export const siteBrand = {
-  name: "Cedar Grove Academy",
-  shortName: "Cedar Grove",
-  tagline: "A calm, ambitious school community.",
+  name: "SchoolOS",
+  shortName: "SchoolOS",
+  tagline: "The operating system for school owners and operators.",
   description:
-    "Cedar Grove Academy is a private school for families who want strong academics, thoughtful pastoral care, and a clear admissions journey.",
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.com",
+    "SchoolOS helps schools run admin, teaching, family access, billing, and public web from separate, tenant-aware surfaces.",
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   phone: "+234 812 345 6789",
-  admissionsPhone: "+234 812 345 6790",
-  email: "admissions@cedargroveacademy.edu.ng",
-  address: "14 Admiralty Way, Lekki Phase 1, Lagos",
-  hours: "Monday to Friday, 8:00am to 4:00pm",
+  salesEmail: "hello@schoolos.example",
+  email: "hello@schoolos.example",
+  address: "Lagos, Nigeria",
+  hours: "Monday to Friday, 9:00am to 5:00pm",
   colors: {
     primary: "#173B72",
     secondary: "#0F766E",
@@ -30,147 +30,148 @@ export const siteBrand = {
 } as const;
 
 export const siteNavigation: SiteNavigationItem[] = [
-  { href: "/about", label: "About" },
-  { href: "/academics", label: "Academics" },
-  { href: "/admissions", label: "Admissions" },
-  { href: "/fees", label: "Fees" },
-  { href: "/visit", label: "Visit" },
+  { href: "/", label: "Home" },
+  { href: "/about", label: "Overview" },
+  { href: "/academics", label: "Modules" },
+  { href: "/admissions", label: "Packages" },
+  { href: "/fees", label: "Commercials" },
+  { href: "/visit", label: "Demo" },
   { href: "/contact", label: "Contact" },
 ];
 
 export const homeSellingPoints = [
   {
-    title: "Clear expectations",
+    title: "Separate public and workspace surfaces",
     description:
-      "Families know what learning looks like, how progress is shared, and who to speak to when they need support.",
+      "The marketing site explains the product; admin, teacher, and portal work stays behind workspace sign-in.",
   },
   {
-    title: "Strong teaching rhythm",
+    title: "Built for one real school first",
     description:
-      "Teachers plan lessons deliberately, keep routines consistent, and help every learner move forward with confidence.",
+      "The product can launch with a single school and still keep multi-school boundaries ready for later growth.",
   },
   {
-    title: "Warm school culture",
+    title: "Commercials stay separate from school fees",
     description:
-      "Children are known by name, encouraged to ask questions, and guided by adults who care about more than grades.",
+      "Setup fees, recurring access, and optional upgrades live outside the student billing flow.",
   },
 ];
 
 export const academicTracks = [
   {
-    title: "Early Years",
+    title: "Core operations",
     description:
-      "Play-rich foundations build language, curiosity, number sense, and confidence in a nurturing environment.",
+      "School setup, classes, sessions, terms, subjects, and teacher assignments live in one bounded workspace.",
   },
   {
-    title: "Primary",
+    title: "Family access",
     description:
-      "Structured literacy, numeracy, science, and creative subjects move children from basic skills into steady mastery.",
+      "Parent and student portal entry points, notifications, and status visibility stay connected but separate.",
   },
   {
-    title: "Secondary",
+    title: "Public web path",
     description:
-      "Subject specialists prepare students for examinations, leadership, and life beyond the classroom.",
+      "The public site markets the platform now while future managed school websites arrive through T20-T23.",
   },
 ];
 
 export const aboutMilestones = [
   {
-    title: "Foundations first",
+    title: "Clear product story",
     description:
-      "The school culture begins with simple routines that make children feel safe, seen, and ready to learn.",
+      "Explain SchoolOS in language that school buyers can act on without mixing it into admissions copy.",
   },
   {
-    title: "Teaching with structure",
+    title: "One tenant at a time",
     description:
-      "Lesson planning and feedback keep every class moving with clarity, pace, and room for questions.",
+      "Keep the first rollout simple while preserving school-scoped data boundaries for later growth.",
   },
   {
-    title: "Family partnership",
+    title: "Commercial separation",
     description:
-      "Parents are kept informed so they can support learning at home and understand the school journey.",
+      "Keep platform packaging distinct from student fee collection and school billing.",
   },
   {
-    title: "Future-ready growth",
+    title: "Future-ready public web",
     description:
-      "As children mature, the school strengthens independence, leadership, and preparation for the next step.",
+      "Leave room for managed school websites later without forcing that work into the marketing site now.",
   },
 ];
 
 export const admissionsSteps = [
   {
-    title: "Make an enquiry",
+    title: "Discover the fit",
     description:
-      "Call, email, or visit our contact page and tell us the class level your child is joining.",
+      "Review the modules, pricing model, and operating boundaries to see whether the product matches the school.",
   },
   {
-    title: "Visit the campus",
+    title: "Plan the rollout",
     description:
-      "Meet the team, see the classrooms, and ask practical questions about learning and daily routines.",
+      "Agree on setup, support, and the first school workflows that need to go live.",
   },
   {
-    title: "Submit the basics",
+    title: "Launch the workspace",
     description:
-      "Share the required documents, previous school records, and any helpful notes about your child.",
+      "Move into internal platform onboarding and configure the school tenant.",
   },
   {
-    title: "Complete enrolment",
+    title: "Expand later",
     description:
-      "Once places are confirmed, we guide families through the final onboarding steps with care.",
+      "Add public-web or other service layers when the school is ready.",
   },
 ];
 
 export const feeHighlights = [
   {
-    title: "Transparent term structure",
+    title: "Setup fee",
     description:
-      "Tuition, activity costs, and optional extras are explained clearly before a family commits.",
+      "One-time onboarding, launch help, and brand kickoff for the school.",
   },
   {
-    title: "Simple payment conversations",
+    title: "Recurring platform access",
     description:
-      "The bursary team helps families understand the schedule, due dates, and the right place to ask for support.",
+      "Term-based or annual access to the modules included in the package.",
   },
   {
-    title: "No hidden-school surprises",
+    title: "Optional upgrades",
     description:
-      "We keep communication direct so parents can plan ahead without guessing what comes next.",
+      "Managed services and add-ons stay separate from the base tier.",
   },
 ];
 
 export const visitMoments = [
   {
-    title: "Welcome and overview",
+    title: "Short discovery call",
     description:
-      "We start with the school story, age ranges, and the learning culture families will experience each day.",
+      "Discuss the school's current setup, goals, and operating constraints.",
   },
   {
-    title: "Classroom walk-through",
+    title: "Focused product walkthrough",
     description:
-      "See the spaces where children learn, play, and move through the school day with steady support.",
+      "See the admin, teacher, and family surfaces without any admissions-style detour.",
   },
   {
-    title: "Admissions conversation",
+    title: "Commercial alignment",
     description:
-      "Finish with practical next steps, including class availability, fees, and documents to prepare.",
+      "Confirm package fit, service level, and rollout path.",
   },
 ];
 
 export const contactChannels = [
   {
-    label: "Admissions line",
-    value: siteBrand.admissionsPhone,
-    href: `tel:${siteBrand.admissionsPhone.replace(/\s+/g, "")}`,
+    label: "Sales email",
+    value: siteBrand.salesEmail,
+    href: `mailto:${siteBrand.salesEmail}`,
   },
   {
-    label: "Admissions email",
-    value: siteBrand.email,
-    href: `mailto:${siteBrand.email}`,
+    label: "Sales line",
+    value: siteBrand.phone,
+    href: `tel:${siteBrand.phone.replace(/\s+/g, "")}`,
   },
   {
-    label: "Campus address",
-    value: siteBrand.address,
-    href: "/visit",
+    label: "Office hours",
+    value: siteBrand.hours,
+    href: "/contact",
   },
 ];
 

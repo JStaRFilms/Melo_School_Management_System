@@ -55,11 +55,11 @@ This task exists so the platform does not accidentally assume that every school 
 
 ## Acceptance Criteria
 
-- [ ] The platform supports schools that keep their own website without blocking adoption of admin/teacher/portal workflows.
-- [ ] The platform marketing website is clearly separated from tenant school public websites.
-- [ ] The platform-built school website option is clearly defined as an onboarding/service path, not the only allowed model.
-- [ ] A migration path exists from existing external school website to platform-built website later.
-- [ ] The product and onboarding docs clearly describe the supported operating modes.
+- [x] The platform supports schools that keep their own website without blocking adoption of admin/teacher/portal workflows.
+- [x] The platform marketing website is clearly separated from tenant school public websites.
+- [x] The platform-built school website option is clearly defined as an onboarding/service path, not the only allowed model.
+- [x] A migration path exists from existing external school website to platform-built website later.
+- [x] The product and onboarding docs clearly describe the supported operating modes.
 
 ## Notes
 
