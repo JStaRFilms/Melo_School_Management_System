@@ -2,7 +2,7 @@
 
 ## Objective
 
-Create a flexible school-website template and section-composition system in `apps/sites` so public websites can feel intentionally different without requiring a fully custom codebase every time.
+Create a flexible school-website template and section-composition system so school public websites can feel intentionally different without requiring a fully custom codebase every time.
 
 ## Why This Exists
 
@@ -50,11 +50,11 @@ Examples:
 
 ## Acceptance Criteria
 
-- [x] The public-site system supports more than one template family.
-- [x] A school can be assigned a template key without code duplication.
-- [x] Page/section composition can vary by school in a structured way.
-- [x] The design allows new templates to be added over time.
-- [x] The design allows new pages to be introduced for specific school needs without turning the app into one-off chaos.
+- [ ] The public-site system supports more than one template family.
+- [ ] A school can be assigned a template key without code duplication.
+- [ ] Page/section composition can vary by school in a structured way.
+- [ ] The design allows new templates to be added over time.
+- [ ] The design allows new pages to be introduced for specific school needs without turning the app into one-off chaos.
 
 ## Notes
 

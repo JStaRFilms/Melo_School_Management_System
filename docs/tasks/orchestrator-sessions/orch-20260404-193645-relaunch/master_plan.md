@@ -112,12 +112,12 @@ The new baseline is:
 | `T19` | Complete | D | Public web operating modes: platform site, school-keeps-existing-site support, and managed school-site onboarding policy |
 | `T20` | Complete | D | Multi-tenant school public-site engine foundation with hostname resolution and runtime branding |
 | `T21` | Complete | D | School website template library and flexible page/section composition model |
-| `T22` | Pending | D | School public-domain mapping, verification, canonical routing, and custom-domain onboarding |
-| `T23` | Pending | D | Managed school-site delivery workflow, optional school-admin editing boundaries, and page expansion model |
+| `T22` | Complete | D | School public-domain mapping, verification, canonical routing, custom-domain onboarding, and school-aware SEO outputs |
+| `T23` | Complete | D | Managed school-site delivery workflow, optional school-admin editing boundaries, and page expansion model |
 
 ## Current Known Blockers
 
-- `T02-T17` plus `T19-T21` are now completed foundation/product slices. The next recommended product task remains `T18`. The remaining public-site follow-on work is now narrowed to `T22-T23`, and `T06` is still deferred to the release-readiness pass.
+- `T02-T17` plus `T19-T23` are now completed foundation/product slices. The next recommended product task remains `T18`. The public-site follow-on work for this batch is now complete, and `T06` is still deferred to the release-readiness pass.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 

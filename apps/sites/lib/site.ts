@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Metadata } from "next";
+import type { Metadata, MetadataRoute } from "next";
 
 export type TemplateKey =
   | "modern-campus"
@@ -12,6 +12,11 @@ export type PageKey = "home" | "about" | "academics" | "admissions" | "fees" | "
 export type PageSlot = "hero" | "points" | "cards" | "timeline" | "steps" | "fees" | "faq" | "contacts" | "note" | "cta";
 export type SchoolStatus = "active" | "inactive";
 export type DomainKind = "platform_subdomain" | "custom_domain" | "preview";
+export type DomainStatus = "pending" | "verified" | "active";
+export type DomainReadiness = "dns_pending" | "dns_verified" | "ssl_pending" | "ready";
+export type DomainSslStatus = "pending" | "ready" | "failed";
+export type DomainVerificationMethod = "txt" | "cname" | "manual";
+export type DomainCanonicalIntent = "canonical" | "redirect";
 
 export interface LinkAction {
   label: string;
@@ -66,10 +71,29 @@ export interface PageContent {
   };
 }
 
+export interface DomainVerificationConfig {
+  method: DomainVerificationMethod;
+  token?: string;
+  recordName?: string;
+  recordValue?: string;
+  instructions: string[];
+}
+
 export interface SchoolDomain {
+  id: string;
   hostname: string;
+  surface: "public";
   kind: DomainKind;
+  status: DomainStatus;
+  readiness: DomainReadiness;
+  sslStatus: DomainSslStatus;
   isPrimary?: boolean;
+  isCanonical?: boolean;
+  canonicalIntent: DomainCanonicalIntent;
+  dnsManagedBySchool: boolean;
+  verification: DomainVerificationConfig;
+  redirectToHostname?: string;
+  notes?: string;
 }
 
 export interface SchoolTheme {
@@ -137,6 +161,8 @@ export interface SchoolResolution {
   school?: SchoolConfig;
   template?: SchoolTemplateConfig;
   matchedDomain?: SchoolDomain;
+  canonicalDomain?: SchoolDomain;
+  redirectToHostname?: string;
 }
 
 export interface ResolvedPage {
@@ -293,9 +319,79 @@ const greenfieldSchool: SchoolConfig = {
   key: "greenfield-preparatory",
   status: "active",
   domains: [
-    { hostname: "localhost", kind: "preview", isPrimary: true },
-    { hostname: "greenfield.schoolos.localhost", kind: "platform_subdomain", isPrimary: true },
-    { hostname: "greenfield.localhost", kind: "platform_subdomain" },
+    {
+      id: "greenfield-preview-localhost",
+      hostname: "localhost",
+      surface: "public",
+      kind: "preview",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      canonicalIntent: "redirect",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Local preview host for development and safety checks."],
+      },
+      redirectToHostname: "greenfield.schoolos.localhost",
+      notes: "Preview hostname for local development.",
+    },
+    {
+      id: "greenfield-platform-canonical",
+      hostname: "greenfield.schoolos.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      isPrimary: true,
+      isCanonical: true,
+      canonicalIntent: "canonical",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Platform-managed canonical public subdomain."],
+      },
+    },
+    {
+      id: "greenfield-platform-alias",
+      hostname: "greenfield.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      canonicalIntent: "redirect",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Platform-managed alias host used for canonical redirect checks."],
+      },
+      redirectToHostname: "greenfield.schoolos.localhost",
+      notes: "Non-canonical alias for the greenfield public site.",
+    },
+    {
+      id: "greenfield-custom-onboarding",
+      hostname: "greenfieldprep.ng",
+      surface: "public",
+      kind: "custom_domain",
+      status: "pending",
+      readiness: "dns_pending",
+      sslStatus: "pending",
+      canonicalIntent: "redirect",
+      dnsManagedBySchool: true,
+      verification: {
+        method: "txt",
+        token: "greenfield-prep-verification-token",
+        recordName: "_schoolos.greenfieldprep.ng",
+        recordValue: "greenfield-prep-verification-token",
+        instructions: [
+          "Add the TXT verification record at your DNS provider.",
+          "Keep the platform-managed subdomain live until the custom domain becomes active.",
+        ],
+      },
+      notes: "School-managed custom domain onboarding record.",
+    },
   ],
   brand: {
     name: "Greenfield Preparatory School",
@@ -510,8 +606,41 @@ const obhisSchool: SchoolConfig = {
   key: "obhis-heritage-academy",
   status: "active",
   domains: [
-    { hostname: "obhis.test", kind: "custom_domain", isPrimary: true },
-    { hostname: "obhis.schoolos.localhost", kind: "platform_subdomain" },
+    {
+      id: "obhis-custom-canonical",
+      hostname: "obhis.test",
+      surface: "public",
+      kind: "custom_domain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      isPrimary: true,
+      isCanonical: true,
+      canonicalIntent: "canonical",
+      dnsManagedBySchool: true,
+      verification: {
+        method: "txt",
+        instructions: ["Verification completed for the school-owned canonical public domain."],
+      },
+      notes: "Canonical school-owned public domain.",
+    },
+    {
+      id: "obhis-platform-alias",
+      hostname: "obhis.schoolos.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      canonicalIntent: "redirect",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Platform-managed alias host that should redirect to the canonical custom domain."],
+      },
+      redirectToHostname: "obhis.test",
+      notes: "Non-canonical platform-managed alias for the Obhis public site.",
+    },
   ],
   brand: {
     name: "Obhis Heritage Academy",
@@ -726,8 +855,39 @@ const asterPrimarySchool: SchoolConfig = {
   key: "aster-primary-school",
   status: "active",
   domains: [
-    { hostname: "aster.schoolos.localhost", kind: "platform_subdomain", isPrimary: true },
-    { hostname: "aster.localhost", kind: "platform_subdomain" },
+    {
+      id: "aster-platform-canonical",
+      hostname: "aster.schoolos.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      isPrimary: true,
+      isCanonical: true,
+      canonicalIntent: "canonical",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Platform-managed canonical public subdomain."],
+      },
+    },
+    {
+      id: "aster-platform-alias",
+      hostname: "aster.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      canonicalIntent: "redirect",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Local alias host used for canonical redirect checks."],
+      },
+      redirectToHostname: "aster.schoolos.localhost",
+    },
   ],
   brand: {
     name: "Aster Primary School",
@@ -942,7 +1102,23 @@ const legacySchool: SchoolConfig = {
   key: "legacy-heights-school",
   status: "inactive",
   domains: [
-    { hostname: "legacy-heights.schoolos.localhost", kind: "platform_subdomain", isPrimary: true },
+    {
+      id: "legacy-platform-preview",
+      hostname: "legacy-heights.schoolos.localhost",
+      surface: "public",
+      kind: "platform_subdomain",
+      status: "active",
+      readiness: "ready",
+      sslStatus: "ready",
+      isPrimary: true,
+      canonicalIntent: "canonical",
+      dnsManagedBySchool: false,
+      verification: {
+        method: "manual",
+        instructions: ["Inactive example school used for safe host handling."],
+      },
+      notes: "The school itself remains inactive, so requests must still fail safely.",
+    },
   ],
   brand: {
     name: "Legacy Heights School",
@@ -974,12 +1150,17 @@ const legacySchool: SchoolConfig = {
 
 export const schools: SchoolConfig[] = [greenfieldSchool, obhisSchool, asterPrimarySchool, legacySchool];
 
+interface HostnameEntry {
+  school: SchoolConfig;
+  domain: SchoolDomain;
+}
+
 function buildHostnameIndex() {
-  const index = new Map<string, SchoolConfig>();
+  const index = new Map<string, HostnameEntry>();
 
   for (const school of schools) {
     for (const domain of school.domains) {
-      index.set(domain.hostname, school);
+      index.set(normalizeHostname(domain.hostname) ?? domain.hostname, { school, domain });
     }
   }
 
@@ -1036,6 +1217,48 @@ function isKnownSchoolHostname(hostname: string | null | undefined): boolean {
   return normalizedHostname ? hostnameIndex.has(normalizedHostname) : false;
 }
 
+function getHostnameEntry(hostname: string | null | undefined): HostnameEntry | null {
+  const normalizedHostname = normalizeHostname(hostname);
+  if (!normalizedHostname) {
+    return null;
+  }
+
+  return hostnameIndex.get(normalizedHostname) ?? null;
+}
+
+function getActivePublicDomains(school: SchoolConfig): SchoolDomain[] {
+  return school.domains.filter((domain) => domain.status === "active" && domain.surface === "public");
+}
+
+export function getCanonicalPublicDomain(school: SchoolConfig): SchoolDomain | null {
+  const activeDomains = getActivePublicDomains(school);
+  if (!activeDomains.length) {
+    return null;
+  }
+
+  return (
+    activeDomains.find((domain) => domain.isCanonical && domain.kind !== "preview") ??
+    activeDomains.find((domain) => domain.isPrimary && domain.kind !== "preview") ??
+    activeDomains.find((domain) => domain.kind !== "preview") ??
+    activeDomains.find((domain) => domain.isCanonical) ??
+    activeDomains.find((domain) => domain.isPrimary) ??
+    activeDomains[0] ??
+    null
+  );
+}
+
+export function buildCanonicalPublicOrigin({
+  headers,
+  resolution,
+}: {
+  headers: Pick<Headers, "get">;
+  resolution: SchoolResolution;
+}): string {
+  const canonicalDomain = resolution.canonicalDomain ?? (resolution.school ? getCanonicalPublicDomain(resolution.school) : null);
+  const hostname = canonicalDomain?.hostname ?? getRequestHostHeader(headers) ?? "localhost:3005";
+  return `${getRequestProtocol(headers)}://${hostname}`;
+}
+
 export function getRequestHostHeader(headers: Pick<Headers, "get">): string | null {
   const host = headers.get("host");
   const normalizedHost = host ? host.split(",")[0]?.trim() ?? null : null;
@@ -1073,18 +1296,26 @@ export function resolveSchoolFromHostname(hostname: string | null | undefined): 
     return { status: "unknown", hostname: "" };
   }
 
-  const school = hostnameIndex.get(resolvedHostname);
-  if (!school) {
+  const entry = getHostnameEntry(resolvedHostname);
+  if (!entry) {
     return { status: "unknown", hostname: resolvedHostname };
   }
 
-  if (school.status !== "active") {
+  const { school, domain } = entry;
+  const template = schoolTemplates[school.templateKey];
+  const canonicalDomain = getCanonicalPublicDomain(school);
+  const redirectToHostname =
+    canonicalDomain && canonicalDomain.hostname !== resolvedHostname ? canonicalDomain.hostname : undefined;
+
+  if (school.status !== "active" || domain.status !== "active") {
     return {
       status: "inactive",
       hostname: resolvedHostname,
       school,
-      template: schoolTemplates[school.templateKey],
-      matchedDomain: school.domains.find((domain) => domain.hostname === resolvedHostname),
+      template,
+      matchedDomain: domain,
+      canonicalDomain: canonicalDomain ?? undefined,
+      redirectToHostname,
     };
   }
 
@@ -1092,8 +1323,10 @@ export function resolveSchoolFromHostname(hostname: string | null | undefined): 
     status: "active",
     hostname: resolvedHostname,
     school,
-    template: schoolTemplates[school.templateKey],
-    matchedDomain: school.domains.find((domain) => domain.hostname === resolvedHostname),
+    template,
+    matchedDomain: domain,
+    canonicalDomain: canonicalDomain ?? undefined,
+    redirectToHostname,
   };
 }
 
@@ -1145,6 +1378,10 @@ export function resolveRequestedPage(school: SchoolConfig, slugParts?: string[])
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function toSafeJsonLd(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 export function siteThemeStyle(theme: SchoolTheme): CSSProperties {
@@ -1199,6 +1436,82 @@ export function buildPageMetadata({
       follow: true,
     },
   };
+}
+
+export function buildSchoolStructuredData({
+  canonicalUrl,
+  school,
+  page,
+}: {
+  canonicalUrl: string;
+  school: SchoolConfig;
+  page: ResolvedPage;
+}): string {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        name: school.brand.name,
+        url: canonicalUrl,
+        description: page.description,
+      },
+      {
+        "@type": "EducationalOrganization",
+        name: school.brand.name,
+        url: canonicalUrl,
+        telephone: school.contact.phone,
+        email: school.contact.email,
+        address: school.contact.address,
+        logo: school.brand.faviconUrl ? new URL(school.brand.faviconUrl, canonicalUrl).toString() : new URL("/icon.svg", canonicalUrl).toString(),
+      },
+    ],
+  };
+
+  return toSafeJsonLd(structuredData);
+}
+
+export function buildRobotsMetadata({
+  headers,
+  resolution,
+}: {
+  headers: Pick<Headers, "get">;
+  resolution: SchoolResolution;
+}): MetadataRoute.Robots {
+  if (resolution.status !== "active" || !resolution.school || !resolution.template) {
+    return {
+      rules: [{ userAgent: "*", disallow: "/" }],
+    };
+  }
+
+  const canonicalOrigin = buildCanonicalPublicOrigin({ headers, resolution });
+  return {
+    rules: [{ userAgent: "*", allow: "/" }],
+    sitemap: `${canonicalOrigin}/sitemap.xml`,
+  };
+}
+
+export function buildSitemapEntries({
+  headers,
+  resolution,
+}: {
+  headers: Pick<Headers, "get">;
+  resolution: SchoolResolution;
+}): MetadataRoute.Sitemap {
+  if (resolution.status !== "active" || !resolution.school || !resolution.template) {
+    return [];
+  }
+
+  const canonicalOrigin = buildCanonicalPublicOrigin({ headers, resolution });
+  const pages = getSchoolNavigationPages(resolution.school);
+  const now = new Date();
+
+  return pages.map((page) => ({
+    url: new URL(page.key === "home" ? "/" : `/${page.slug}`, canonicalOrigin).toString(),
+    lastModified: now,
+    changeFrequency: page.key === "home" ? "weekly" : "monthly",
+    priority: page.key === "home" ? 1 : 0.7,
+  }));
 }
 
 export function buildMissingSiteMetadata(): Metadata {

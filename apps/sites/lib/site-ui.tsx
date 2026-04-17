@@ -2,12 +2,14 @@ import Link from "next/link";
 import { ArrowRight, Clock3, Mail, MapPin, Phone } from "lucide-react";
 import type { ReactNode } from "react";
 import {
+  buildSchoolStructuredData,
   getSchoolNavigationPages,
   siteThemeStyle,
   type ContactItem,
   type FaqItem,
   type PageContent,
   type PageKey,
+  type ResolvedPage,
   type SchoolConfig,
   type SchoolTemplateConfig,
   type SummaryCard,
@@ -509,25 +511,32 @@ export function PublicSiteFrame({ school, children }: { school: SchoolConfig; ch
 export function PublicSchoolPage({
   school,
   template,
-  pageKey,
+  page,
+  canonicalOrigin,
 }: {
   school: SchoolConfig;
   template: SchoolTemplateConfig;
-  pageKey: PageKey;
+  page: ResolvedPage;
+  canonicalOrigin: string;
 }) {
-  const page = school.pageContent[pageKey];
-  const layout = template.pageLayouts[pageKey];
+  const content = school.pageContent[page.key];
+  const layout = template.pageLayouts[page.key];
+  const canonicalUrl = new URL(page.canonicalPath, canonicalOrigin).toString();
+  const structuredData = buildSchoolStructuredData({ canonicalUrl, school, page });
 
   return (
-    <PublicSiteFrame school={school}>
-      {layout.slots.map((slot) => {
-        if (slot === "hero") {
-          return <HeroSection key="hero" school={school} page={page} />;
-        }
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
+      <PublicSiteFrame school={school}>
+        {layout.slots.map((slot) => {
+          if (slot === "hero") {
+            return <HeroSection key="hero" school={school} page={content} />;
+          }
 
-        const section = renderSection(slot, page);
-        return <div key={slot}>{section}</div>;
-      })}
-    </PublicSiteFrame>
+          const section = renderSection(slot, content);
+          return <div key={slot}>{section}</div>;
+        })}
+      </PublicSiteFrame>
+    </>
   );
 }

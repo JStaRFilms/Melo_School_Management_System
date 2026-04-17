@@ -2,19 +2,19 @@
 
 ## Objective
 
-Build the first dedicated tenant public-site engine in `apps/sites` so the school-facing website can resolve school context at runtime and render the correct branding/content/template without repo cloning.
+Turn the current `apps/www` single-school-style implementation into a true multi-tenant school public-site engine that can resolve school identity at runtime and render the correct school branding/content/template without repo cloning.
 
 ## Why This Exists
 
-The SchoolOS marketing site belongs in `apps/www`, but tenant school public websites need their own dedicated surface.
+Right now `apps/www` is a real public site, but it still behaves like one school website with hardcoded placeholder branding/content.
 
 We need a reusable engine that can support many school public sites with one codebase.
 
 ## Requested Scope
 
 - add runtime school resolution for public-site requests
-- add school-aware branding/content loading instead of hardcoded values
-- support both platform-managed school subdomains and custom public domains
+- add school-aware branding/content loading instead of hardcoded `site.ts` values
+- support both platform-managed school subdomains and future custom public domains
 - keep the engine separate from platform marketing-site concerns
 - keep authenticated apps separate from this runtime unless a later advanced topology explicitly changes that
 
@@ -28,14 +28,14 @@ We need a reusable engine that can support many school public sites with one cod
 ### 2. Runtime Branding
 - school name
 - logo
-- favicon behavior
+- favicon
 - theme tokens
 - contact details
 - template selection key
 
 ### 3. Runtime Content Loading
-- home/about/admissions/etc. content resolves by school context
-- content no longer lives as one hardcoded single-school blob
+- home/about/admissions/etc. content should no longer be hardcoded in one file for one school
+- content should resolve by school context
 
 ### 4. Public-Site Rendering Contract
 - one public-site app
@@ -43,13 +43,21 @@ We need a reusable engine that can support many school public sites with one cod
 - request-time school resolution
 - no repo clone per school for normal cases
 
+## Suggested Data Structures
+
+Use the direction already captured in the domain/auth topology note, such as:
+- richer `schools` config
+- `schoolDomains`
+- `schoolBrandingProfiles`
+- later `schoolPublicContent` or equivalent
+
 ## Acceptance Criteria
 
-- [x] A school public request can resolve school context by hostname.
-- [x] Branding and public-site content can switch at runtime by resolved school.
-- [x] The public-site engine supports multiple schools in one deployment.
-- [x] Unknown or inactive hostnames fail cleanly and safely.
-- [x] The engine remains separate from platform marketing-site content.
+- [ ] A school public request can resolve school context by hostname.
+- [ ] Branding and public-site content can switch at runtime by resolved school.
+- [ ] The public-site engine supports multiple schools in one deployment.
+- [ ] Unknown or inactive hostnames fail cleanly and safely.
+- [ ] The engine remains separate from platform marketing-site content.
 
 ## Notes
 

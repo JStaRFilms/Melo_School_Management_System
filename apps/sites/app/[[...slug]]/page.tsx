@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
-import { buildMissingSiteMetadata, buildOrigin, buildPageMetadata, resolveRequestedPage, resolveSiteRequest } from "@/site";
+import { notFound, redirect } from "next/navigation";
+import {
+  buildCanonicalPublicOrigin,
+  buildMissingSiteMetadata,
+  buildPageMetadata,
+  resolveRequestedPage,
+  resolveSiteRequest,
+} from "@/site";
 import { PublicSchoolPage } from "@/site-ui";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +33,7 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
     return buildMissingSiteMetadata();
   }
 
-  return buildPageMetadata({ origin: buildOrigin(requestHeaders), school: resolution.school, page });
+  return buildPageMetadata({ origin: buildCanonicalPublicOrigin({ headers: requestHeaders, resolution }), school: resolution.school, page });
 }
 
 export default function SitePage({ params }: RouteProps) {
@@ -43,5 +49,11 @@ export default function SitePage({ params }: RouteProps) {
     notFound();
   }
 
-  return <PublicSchoolPage school={resolution.school} template={resolution.template} pageKey={page.key} />;
+  const canonicalOrigin = buildCanonicalPublicOrigin({ headers: requestHeaders, resolution });
+
+  if (resolution.redirectToHostname && resolution.redirectToHostname !== resolution.hostname) {
+    redirect(new URL(page.canonicalPath, canonicalOrigin).toString());
+  }
+
+  return <PublicSchoolPage school={resolution.school} template={resolution.template} page={page} canonicalOrigin={canonicalOrigin} />;
 }
