@@ -4,6 +4,15 @@
 
 A shared, unified print system for report cards across all surfaces (admin, teacher, and parent/student portal). Ensures consistent A4 preview and print behavior, eliminates duplicate print logic, and maintains a single source of truth for report card rendering.
 
+## Canonical Status
+
+This is the canonical architecture document for report-card preview and print behavior.
+
+- If another report-card doc disagrees about toolbar placement, preview scaling, print CSS ownership, or per-surface print logic, this document wins.
+- `docs/features/FullClassReportCardPrinting.md` remains the source for full-class batch flow and query behavior, but not for low-level print rendering details.
+- `docs/features/ArchiveOnlyRecordsAndReportCards.md` remains the source for the original report-card rollout, comments, archival safety, and export capability, but not for shared print internals.
+- See `docs/features/ReportCardDocumentationAuthority.md` for the current reading order and conflict-resolution rules.
+
 ## Why This Architecture
 
 The previous implementation had separate print logic per surface, leading to:
@@ -54,6 +63,12 @@ All three surfaces (admin, teacher, portal) use the same pattern:
 />
 ```
 
+Admin and teacher still use `printClass=1` to enter full-class print mode, but that mode also routes through the same shared print components:
+
+- surface page handles mode switching and print lifecycle
+- `ReportCardPrintStack` renders the stacked batch output
+- `ReportCardSheet` remains the single source of truth for each page's printable body
+
 ### Key Decisions
 
 1. **Toolbar is external** - The toolbar lives outside `ReportCardSheet` so it can be used consistently across surfaces
@@ -103,6 +118,13 @@ When adding new report card features:
 2. If surface-specific controls are needed, add them outside the sheet (like toolbar)
 3. Never duplicate print logic in surface pages - keep it in shared components
 4. Test both preview and print output when making changes
+
+## Related Docs
+
+- `docs/features/ReportCardDocumentationAuthority.md` - authoritative reading order for report-card docs
+- `docs/features/FullClassReportCardPrinting.md` - batch print entry flow and class-print lifecycle
+- `docs/features/ArchiveOnlyRecordsAndReportCards.md` - original report-card rollout, archival safety, comments, and export capability
+- `docs/features/CumulativeTermResultsAndBackfill.md` - cumulative-result blocking and backfill rules that affect print eligibility
 
 ## Changelog
 

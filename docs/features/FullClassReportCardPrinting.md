@@ -4,6 +4,13 @@
 
 Add a clear `Print Full Class` action to the class report-card screen so admins and teachers can print every student report card in the selected class, session, and term in one run.
 
+## Canonical Boundary
+
+This document owns the batch-print entry flow, query behavior, and print lifecycle for admin and teacher report-card pages.
+
+- For the shared preview and print rendering architecture, use `docs/features/UnifiedReportCardPrintSystem.md` as the source of truth.
+- If this document and the unified print doc disagree about toolbar placement, scaling, or print CSS, the unified print doc wins.
+
 ## Why This Feature Exists
 
 The current class-level batch flow improved navigation:
@@ -108,10 +115,9 @@ That is much better than reopening report cards individually, but it still falls
 ### Shared UI
 
 - `ReportCardBatchNavigator` now includes a clear `Print Full Class` action
-- `ReportCardSheet` now supports `hideToolbar` so stacked print runs do not repeat the screen toolbar on every sheet
-- `ReportCardPrintStack` now renders one report card per page using print page breaks
-- `ReportCardSheet` now uses the same fit-to-A4 scale in print that it uses on screen, which keeps stacked pages consistent with the single-student export layout
-- the fit now relies on browser zoom during print, which makes the scaled layout participate in page breaking instead of only changing the visual size
+- `ReportCardPrintStack` renders one report card per page using the shared `ReportCardSheet`
+- on-screen scaling belongs to `ReportCardPreview`, while print CSS in `ReportCardSheet` removes preview transforms and renders each sheet at full A4 size
+- single-student toolbars stay outside `ReportCardSheet`, so stacked print output does not duplicate surface controls
 
 ### Admin And Teacher Pages
 
@@ -122,6 +128,11 @@ That is much better than reopening report cards individually, but it still falls
   - opens the browser print dialog automatically once ready
   - returns to the normal report-card view after the dialog closes
 - the existing class-aware report-card links continue to work and now feed the full-class print flow directly
+
+## Documentation Note
+
+- Treat this file as the authoritative doc for class-print orchestration only.
+- Treat `docs/features/UnifiedReportCardPrintSystem.md` as the authoritative doc for shared print rendering behavior.
 
 ## Verification
 
