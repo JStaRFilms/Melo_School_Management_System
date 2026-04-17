@@ -258,15 +258,16 @@ export const getPortalUserInternal = internalQuery({
   },
 });
 
-async function findParentUsersByEmail(
+async function findUsersByEmail(
   ctx: any,
   schoolId: Id<"schools">,
   email: string
 ) {
   return await ctx.db
     .query("users")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .filter((q: any) => q.eq(q.field("email"), email))
+    .withIndex("by_school_and_email", (q: any) =>
+      q.eq("schoolId", schoolId).eq("email", email)
+    )
     .collect();
 }
 
@@ -297,6 +298,30 @@ async function findFamiliesForParentUser(
   return families
     .filter((family: any) => family && !family.isArchived)
     .sort((a: any, b: any) => a.createdAt - b.createdAt);
+}
+
+async function summarizeFamiliesForParentUser(
+  ctx: any,
+  schoolId: Id<"schools">,
+  parentUserId: Id<"users">
+) {
+  const families = await findFamiliesForParentUser(ctx, schoolId, parentUserId);
+  return await Promise.all(
+    families.map(async (family: any) => {
+      const [members, students] = await Promise.all([
+        getFamilyMembers(ctx, family._id),
+        getStudentsForFamily(ctx, family._id),
+      ]);
+
+      const activeStudents = students.filter((student: any) => !student.isArchived);
+      return {
+        _id: family._id,
+        name: family.name,
+        studentCount: activeStudents.length,
+        parentCount: members.length,
+      };
+    })
+  );
 }
 
 async function getFamilyMembers(
@@ -1494,6 +1519,72 @@ export const getStudentFamilyProfile = query({
   },
 });
 
+export const getParentEmailReview = query({
+  args: {
+    email: v.string(),
+  },
+  returns: v.object({
+    email: v.string(),
+    matches: v.array(
+      v.object({
+        userId: v.id("users"),
+        name: v.string(),
+        email: v.string(),
+        phone: v.union(v.string(), v.null()),
+        role: v.union(
+          v.literal("student"),
+          v.literal("parent"),
+          v.literal("teacher"),
+          v.literal("admin")
+        ),
+        isArchived: v.boolean(),
+        families: v.array(
+          v.object({
+            _id: v.id("families"),
+            name: v.string(),
+            studentCount: v.number(),
+            parentCount: v.number(),
+          })
+        ),
+      })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const normalizedEmail = normalizeOptionalEmail(args.email);
+    if (!normalizedEmail) {
+      throw new ConvexError("Parent email is required");
+    }
+
+    const users = await findUsersByEmail(ctx, schoolId, normalizedEmail);
+    const matches = await Promise.all(
+      users.map(async (user: any) => {
+        const families =
+          user.role === "parent" && !user.isArchived
+            ? await summarizeFamiliesForParentUser(ctx, schoolId, user._id)
+            : [];
+
+        return {
+          userId: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone ?? null,
+          role: user.role,
+          isArchived: user.isArchived ?? false,
+          families,
+        };
+      })
+    );
+
+    return {
+      email: normalizedEmail,
+      matches,
+    };
+  },
+});
+
 export const upsertStudentFamilyLink = mutation({
   args: {
     studentId: v.id("students"),
@@ -1504,6 +1595,7 @@ export const upsertStudentFamilyLink = mutation({
     relationship: v.optional(v.union(v.string(), v.null())),
     familyName: v.optional(v.union(v.string(), v.null())),
     isPrimaryContact: v.optional(v.boolean()),
+    confirmDuplicateLink: v.optional(v.boolean()),
   },
   returns: v.object({
     familyId: v.id("families"),
@@ -1540,16 +1632,29 @@ export const upsertStudentFamilyLink = mutation({
       : undefined;
     const now = Date.now();
 
-    const matchingUsers = await findParentUsersByEmail(ctx, schoolId, normalizedEmail);
+    const matchingUsers = await findUsersByEmail(ctx, schoolId, normalizedEmail);
     const archivedDuplicate = matchingUsers.find((candidate: any) => candidate.isArchived);
     if (archivedDuplicate) {
       throw new ConvexError(archivedRecordNotice("parent"));
     }
 
-    let parentUser = matchingUsers.find((candidate: any) => !candidate.isArchived);
-    if (parentUser && parentUser.role !== "parent") {
+    const activeUsers = matchingUsers.filter((candidate: any) => !candidate.isArchived);
+    const activeParentUsers = activeUsers.filter((candidate: any) => candidate.role === "parent");
+    const activeOtherUsers = activeUsers.filter((candidate: any) => candidate.role !== "parent");
+
+    if (activeOtherUsers.length > 0) {
       throw new ConvexError("A user with this email already exists");
     }
+
+    if (activeParentUsers.length > 1) {
+      throw new ConvexError(
+        "Multiple parent records share this email. Resolve the duplicate parent account first."
+      );
+    }
+
+    const matchedExistingParentUser = activeParentUsers[0] ?? null;
+    const reusedExistingParent = matchedExistingParentUser !== null;
+    let parentUser = matchedExistingParentUser;
 
     if (!parentUser) {
       const parentUserId = await ctx.db.insert("users", {
@@ -1639,6 +1744,17 @@ export const upsertStudentFamilyLink = mutation({
       throw new ConvexError("Family could not be created");
     }
 
+    const familyMembers = await getFamilyMembers(ctx, familyDoc._id);
+    const existingLink = familyMembers.find(
+      (familyMember: any) => String(familyMember.parentUserId) === String(parentUser._id)
+    );
+
+    if (reusedExistingParent && !existingLink && !args.confirmDuplicateLink) {
+      throw new ConvexError(
+        "This email already belongs to an existing parent. Review the duplicate-link details and confirm to continue."
+      );
+    }
+
     const familyNameOverride = normalizeOptionalText(args.familyName);
     if (familyNameOverride && normalizeHumanName(familyNameOverride) !== familyDoc.name) {
       await ctx.db.patch(familyDoc._id, {
@@ -1660,10 +1776,6 @@ export const upsertStudentFamilyLink = mutation({
       });
     }
 
-    const familyMembers = await getFamilyMembers(ctx, familyDoc._id);
-    const existingLink = familyMembers.find(
-      (familyMember: any) => String(familyMember.parentUserId) === String(parentUser._id)
-    );
     const nextIsPrimaryContact =
       args.isPrimaryContact ??
       (familyMembers.length === 0 && !existingLink ? true : existingLink?.isPrimaryContact ?? false);
@@ -1714,6 +1826,179 @@ export const upsertStudentFamilyLink = mutation({
       familyId: familyDoc._id,
       parentUserId: parentUser._id,
       familyMemberId,
+    };
+  },
+});
+
+export const updateStudentFamilyParentContact = mutation({
+  args: {
+    familyMemberId: v.id("familyMembers"),
+    firstName: v.string(),
+    lastName: v.string(),
+    email: v.string(),
+    phone: v.optional(v.union(v.string(), v.null())),
+    relationship: v.optional(v.union(v.string(), v.null())),
+    isPrimaryContact: v.optional(v.boolean()),
+    confirmDuplicateEmail: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    familyId: v.id("families"),
+    parentUserId: v.id("users"),
+    familyMemberId: v.id("familyMembers"),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const familyMember = await ctx.db.get(args.familyMemberId);
+    if (!familyMember || familyMember.schoolId !== schoolId) {
+      throw new ConvexError("Family link not found");
+    }
+
+    const family = await ctx.db.get(familyMember.familyId);
+    if (!family || family.schoolId !== schoolId) {
+      throw new ConvexError("Family not found");
+    }
+
+    const parentUser = await ctx.db.get(familyMember.parentUserId);
+    if (
+      !parentUser ||
+      parentUser.schoolId !== schoolId ||
+      parentUser.isArchived ||
+      parentUser.role !== "parent"
+    ) {
+      throw new ConvexError("Parent not found");
+    }
+
+    const normalizedEmail = normalizeOptionalEmail(args.email);
+    if (!normalizedEmail) {
+      throw new ConvexError("Parent email is required");
+    }
+
+    const matchingUsers = await findUsersByEmail(ctx, schoolId, normalizedEmail);
+    const archivedDuplicate = matchingUsers.find((candidate: any) => candidate.isArchived);
+    if (archivedDuplicate) {
+      throw new ConvexError(archivedRecordNotice("parent"));
+    }
+
+    const activeUsers = matchingUsers.filter((candidate: any) => !candidate.isArchived);
+    const activeParentUsers = activeUsers.filter((candidate: any) => candidate.role === "parent");
+    const activeOtherUsers = activeUsers.filter((candidate: any) => candidate.role !== "parent");
+
+    if (activeOtherUsers.length > 0) {
+      throw new ConvexError("A user with this email already exists");
+    }
+
+    if (activeParentUsers.length > 1) {
+      throw new ConvexError(
+        "Multiple parent records share this email. Resolve the duplicate parent account first."
+      );
+    }
+
+    const duplicateParentUser = activeParentUsers.find(
+      (candidate: any) => String(candidate._id) !== String(parentUser._id)
+    );
+    if (duplicateParentUser && !args.confirmDuplicateEmail) {
+      throw new ConvexError(
+        "This email already belongs to an existing parent. Review the duplicate-link details and confirm to continue."
+      );
+    }
+
+    const normalizedPhone = normalizeOptionalPhone(args.phone);
+    const parentName = resolveStoredUserNameFields({
+      firstName: args.firstName,
+      lastName: args.lastName,
+      requiredMessage: "Parent first and last name are required",
+    });
+    const relationship = normalizeOptionalText(args.relationship)
+      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
+      : undefined;
+    const now = Date.now();
+
+    const familyMembers = await getFamilyMembers(ctx, family._id);
+    const nextIsPrimaryContact =
+      args.isPrimaryContact ?? familyMember.isPrimaryContact;
+    const targetParentUser = duplicateParentUser ?? parentUser;
+    const duplicateFamilyMember = duplicateParentUser
+      ? familyMembers.find(
+          (member: any) =>
+            String(member.parentUserId) === String(duplicateParentUser._id) &&
+            String(member._id) !== String(familyMember._id)
+        )
+      : null;
+    const targetFamilyMemberId = duplicateFamilyMember?._id ?? familyMember._id;
+
+    if (!duplicateParentUser) {
+      const nextParentRecord: Record<string, unknown> = {
+        updatedAt: now,
+        name: parentName.name,
+        email: normalizedEmail,
+      };
+
+      if (parentName.firstName) {
+        nextParentRecord.firstName = parentName.firstName;
+      }
+      if (parentName.lastName) {
+        nextParentRecord.lastName = parentName.lastName;
+      }
+      if (normalizedPhone !== undefined) {
+        nextParentRecord.phone = normalizedPhone;
+      }
+
+      await ctx.db.patch(parentUser._id, nextParentRecord as any);
+    }
+
+    if (nextIsPrimaryContact) {
+      for (const member of familyMembers) {
+        if (String(member._id) === String(targetFamilyMemberId)) {
+          continue;
+        }
+        if (member.isPrimaryContact) {
+          await ctx.db.patch(member._id, {
+            isPrimaryContact: false,
+            updatedAt: now,
+            updatedBy: userId,
+          });
+        }
+      }
+    }
+
+    if (duplicateFamilyMember) {
+      await ctx.db.patch(duplicateFamilyMember._id, {
+        relationship,
+        isPrimaryContact: nextIsPrimaryContact,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+      await ctx.db.delete(familyMember._id);
+    } else {
+      await ctx.db.patch(familyMember._id, {
+        parentUserId: targetParentUser._id,
+        relationship,
+        isPrimaryContact: nextIsPrimaryContact,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+    }
+
+    const updatedFamilyMembers = await getFamilyMembers(ctx, family._id);
+    if (updatedFamilyMembers.length > 0) {
+      const hasPrimaryContact = updatedFamilyMembers.some(
+        (member: any) => member.isPrimaryContact
+      );
+      if (!hasPrimaryContact) {
+        await ctx.db.patch(updatedFamilyMembers[0]._id, {
+          isPrimaryContact: true,
+          updatedAt: now,
+          updatedBy: userId,
+        });
+      }
+    }
+
+    return {
+      familyId: family._id,
+      parentUserId: targetParentUser._id,
+      familyMemberId: targetFamilyMemberId,
     };
   },
 });

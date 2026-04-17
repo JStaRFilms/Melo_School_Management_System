@@ -133,7 +133,7 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
             </div>
           ) : null}
           <p className="text-sm leading-6 text-slate-600">
-            This return page verifies payment programmatically on this device, so staff do not need to open the admin billing screen just to confirm a successful payment.
+            This return page verifies payment programmatically on this device, so staff do not need to open the admin billing screen just to confirm a successful payment. If the payer used another device or this page was skipped, the admin workspace can keep rechecking the reference in the background.
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
           <p className="text-sm text-slate-500">
             {state === "verified"
               ? "Verification is complete. You can close this page now."
-              : "If confirmation does not appear yet, wait a moment and retry."}
+              : "If confirmation does not appear yet, wait a moment and retry. The admin workspace can keep checking this reference in the background."}
           </p>
         </div>
       </div>

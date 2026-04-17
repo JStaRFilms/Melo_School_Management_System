@@ -52,6 +52,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
+    .index("by_school_and_email", ["schoolId", "email"])
     .index("by_auth", ["authId"]),
 
   families: defineTable({
@@ -739,6 +740,49 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
     .index("by_school_and_number", ["schoolId", "invoiceNumber"]),
+
+  billingPaymentAttempts: defineTable({
+    schoolId: v.id("schools"),
+    invoiceId: v.id("studentInvoices"),
+    provider: v.union(
+      v.literal("paystack"),
+      v.literal("flutterwave"),
+      v.literal("stripe"),
+      v.literal("manual")
+    ),
+    reference: v.string(),
+    gatewayReference: v.union(v.string(), v.null()),
+    authorizationUrl: v.union(v.string(), v.null()),
+    accessCode: v.union(v.string(), v.null()),
+    amount: v.number(),
+    currency: v.string(),
+    status: v.union(
+      v.literal("link_generated"),
+      v.literal("awaiting_payer_return"),
+      v.literal("verified"),
+      v.literal("webhook_reconciled"),
+      v.literal("manual_attention_needed")
+    ),
+    reconciliationSource: v.union(
+      v.literal("return_page"),
+      v.literal("webhook"),
+      v.literal("admin_poll"),
+      v.null()
+    ),
+    checkoutPayload: v.any(),
+    callbackUrl: v.union(v.string(), v.null()),
+    paymentId: v.union(v.id("billingPayments"), v.null()),
+    gatewayEventId: v.union(v.id("paymentGatewayEvents"), v.null()),
+    lastCheckedAt: v.union(v.number(), v.null()),
+    resolvedAt: v.union(v.number(), v.null()),
+    resolutionMessage: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_invoice", ["schoolId", "invoiceId"])
+    .index("by_school_and_reference", ["schoolId", "reference"])
+    .index("by_school_and_status", ["schoolId", "status"]),
 
   billingPayments: defineTable({
     schoolId: v.id("schools"),

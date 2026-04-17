@@ -184,6 +184,7 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
       payload,
       signatureValid: true,
       verificationMessage: "Paystack signature verified",
+      attemptReconciliationSource: "webhook",
       receivedAt: Date.now(),
     }
   );

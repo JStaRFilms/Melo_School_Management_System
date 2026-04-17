@@ -45,15 +45,17 @@ The current MVP uses a constrained **direct-to-school** Paystack model:
 ## Data Flow
 
 1. A school admin opens the billing workspace.
-2. The dashboard query loads fee plans, invoices, payments, collections summaries, and recent gateway events for the current school.
+2. The dashboard query loads fee plans, invoices, payments, payment-attempt lifecycle rows, collections summaries, and recent gateway events for the current school.
 3. The admin can create a fee plan with itemized charges, an installment policy, and optional class targeting.
 4. The admin can bulk-apply a class-default fee plan to covered students for a selected session and term.
 5. The admin can generate a student invoice from a fee plan for one-off or student-specific charges.
 6. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
 7. Admins can configure school-level billing defaults and enable or disable online Paystack payments for the school.
 8. Online payment initialization is provided through a provider adapter, the admin can generate a front-desk payment URL, and the default return target is a public Paystack callback page that verifies the reference programmatically on the payer's device.
-9. Paystack webhook callbacks are still signature-verified before they mutate invoice state, acting as a background reconciliation fallback.
-10. Admins can filter collections by class, term, invoice status, or search text.
+9. Every generated online payment link now creates a durable payment-attempt record so pending references can survive cross-device handoff gaps.
+10. Paystack webhook callbacks are still signature-verified before they mutate invoice state, acting as a background reconciliation fallback.
+11. The admin billing workspace can passively recheck pending references and surface whether they are still pending, verified, webhook reconciled, or need manual attention.
+12. Admins can filter collections by class, term, invoice status, or search text.
 
 ## Database Schema
 
@@ -87,6 +89,11 @@ The current MVP uses a constrained **direct-to-school** Paystack model:
 - tracks applied and unapplied amounts
 - stores reconciliation state
 
+### `billingPaymentAttempts`
+- durable online-payment attempt records for generated Paystack links
+- tracks pending, verified, webhook-reconciled, and manual-attention lifecycle states
+- stores callback, gateway-reference, and reconciliation timestamps for cross-device follow-up
+
 ### `paymentAllocations`
 - links a payment to an invoice allocation
 - preserves audit visibility for applied amounts
@@ -99,7 +106,7 @@ The current MVP uses a constrained **direct-to-school** Paystack model:
 
 - Keep billing tasks compact and mobile-friendly for bursary staff.
 - Show outstanding balance and collection status first.
-- Make payment states obvious: manual, online, reconciled, unresolved.
+- Make payment states obvious: manual, online, pending, verified, reconciled, unresolved.
 - Keep invoice creation close to fee-plan setup so a school can move from template to bill quickly.
 
 ## Regression Checks
@@ -121,7 +128,9 @@ The current MVP uses a constrained **direct-to-school** Paystack model:
 - A front-desk Paystack handoff flow can generate and share an invoice payment URL for the selected school invoice.
 - The payment-link action is school-scoped and now defaults to a public Paystack return page so cross-device payments do not bounce users into the admin workspace.
 - The public return page verifies the Paystack reference programmatically and reconciles the invoice without needing an admin confirmation click in the normal flow.
+- Durable payment-attempt records now preserve generated references so the admin workspace can continue reconciling skipped-return or cross-device payments in the background.
 - Paystack webhook verification, duplicate-event deduplication, and payment event persistence are wired through a dedicated HTTP action as a background fallback.
+- The billing dashboard now exposes payment-attempt lifecycle states and recheck controls without mixing school billing with future platform SaaS billing.
 - A provider-agnostic gateway adapter exists for future payment providers.
 - Class-default fee plans can now be bulk-applied to a class for a session/term with duplicate prevention and audit history.
 - The shared workspace navigation now includes a Finance/Billing section for admin users.

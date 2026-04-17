@@ -172,6 +172,45 @@ export const billingPaymentValidator = v.object({
   updatedAt: v.number(),
 });
 
+export const billingPaymentAttemptStatusValidator = v.union(
+  v.literal("link_generated"),
+  v.literal("awaiting_payer_return"),
+  v.literal("verified"),
+  v.literal("webhook_reconciled"),
+  v.literal("manual_attention_needed")
+);
+
+export const billingPaymentAttemptReconciliationSourceValidator = v.union(
+  v.literal("return_page"),
+  v.literal("webhook"),
+  v.literal("admin_poll"),
+  v.null()
+);
+
+export const billingPaymentAttemptValidator = v.object({
+  _id: v.id("billingPaymentAttempts"),
+  schoolId: v.id("schools"),
+  invoiceId: v.id("studentInvoices"),
+  provider: billingPaymentProviderValidator,
+  reference: v.string(),
+  gatewayReference: v.union(v.string(), v.null()),
+  authorizationUrl: v.union(v.string(), v.null()),
+  accessCode: v.union(v.string(), v.null()),
+  amount: v.number(),
+  currency: v.string(),
+  status: billingPaymentAttemptStatusValidator,
+  reconciliationSource: billingPaymentAttemptReconciliationSourceValidator,
+  checkoutPayload: v.any(),
+  callbackUrl: v.union(v.string(), v.null()),
+  paymentId: v.union(v.id("billingPayments"), v.null()),
+  gatewayEventId: v.union(v.id("paymentGatewayEvents"), v.null()),
+  lastCheckedAt: v.union(v.number(), v.null()),
+  resolvedAt: v.union(v.number(), v.null()),
+  resolutionMessage: v.union(v.string(), v.null()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const billingSettingsValidator = v.union(
   v.null(),
   v.object({

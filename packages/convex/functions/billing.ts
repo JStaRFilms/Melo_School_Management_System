@@ -12,6 +12,9 @@ import {
   billingGatewayEventValidator,
   billingInvoiceStatusValidator,
   billingInvoiceValidator,
+  billingPaymentAttemptReconciliationSourceValidator,
+  billingPaymentAttemptStatusValidator,
+  billingPaymentAttemptValidator,
   billingPaymentMethodValidator,
   billingPaymentProviderValidator,
   billingPaymentStatusValidator,
@@ -42,6 +45,9 @@ const billingSummaryValidator = v.object({
   gatewayPayments: v.number(),
   invoiceCount: v.number(),
   paymentCount: v.number(),
+  paymentAttemptCount: v.number(),
+  pendingPaymentAttempts: v.number(),
+  manualAttentionPaymentAttempts: v.number(),
   feePlanCount: v.number(),
   feePlanApplicationCount: v.number(),
   gatewayEventCount: v.number(),
@@ -64,6 +70,36 @@ const billingPaymentRowValidator = v.object({
   termName: v.string(),
 });
 
+const billingPaymentAttemptRowValidator = v.object({
+  attempt: billingPaymentAttemptValidator,
+  invoiceNumber: v.string(),
+  studentName: v.string(),
+  className: v.string(),
+  sessionName: v.string(),
+  termName: v.string(),
+});
+
+const billingPaymentAttemptUpsertValidator = v.object({
+  schoolId: v.id("schools"),
+  invoiceId: v.id("studentInvoices"),
+  provider: billingPaymentProviderValidator,
+  reference: v.string(),
+  gatewayReference: v.optional(v.union(v.string(), v.null())),
+  authorizationUrl: v.optional(v.union(v.string(), v.null())),
+  accessCode: v.optional(v.union(v.string(), v.null())),
+  amount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  status: v.optional(billingPaymentAttemptStatusValidator),
+  reconciliationSource: v.optional(billingPaymentAttemptReconciliationSourceValidator),
+  checkoutPayload: v.optional(v.any()),
+  callbackUrl: v.optional(v.union(v.string(), v.null())),
+  paymentId: v.optional(v.union(v.id("billingPayments"), v.null())),
+  gatewayEventId: v.optional(v.union(v.id("paymentGatewayEvents"), v.null())),
+  lastCheckedAt: v.optional(v.union(v.number(), v.null())),
+  resolvedAt: v.optional(v.union(v.number(), v.null())),
+  resolutionMessage: v.optional(v.union(v.string(), v.null())),
+});
+
 const billingFeePlanApplicationRowValidator = v.object({
   application: billingFeePlanApplicationValidator,
   feePlanName: v.string(),
@@ -84,6 +120,7 @@ const billingDashboardValidator = v.object({
   applications: v.array(billingFeePlanApplicationRowValidator),
   invoices: v.array(billingInvoiceRowValidator),
   payments: v.array(billingPaymentRowValidator),
+  paymentAttempts: v.array(billingPaymentAttemptRowValidator),
   gatewayEvents: v.array(billingGatewayEventValidator),
 });
 
@@ -180,6 +217,9 @@ const gatewayEventInputValidator = v.object({
   payload: v.any(),
   signatureValid: v.boolean(),
   verificationMessage: v.optional(v.string()),
+  attemptReconciliationSource: v.optional(
+    v.union(v.literal("return_page"), v.literal("webhook"), v.literal("admin_poll"))
+  ),
   receivedAt: v.optional(v.number()),
 });
 
@@ -259,6 +299,32 @@ function paymentDocToReturn(payment: any) {
     notes: payment.notes ?? null,
     createdAt: payment.createdAt,
     updatedAt: payment.updatedAt,
+  };
+}
+
+function billingPaymentAttemptDocToReturn(attempt: any) {
+  return {
+    _id: attempt._id,
+    schoolId: attempt.schoolId,
+    invoiceId: attempt.invoiceId,
+    provider: attempt.provider,
+    reference: attempt.reference,
+    gatewayReference: attempt.gatewayReference ?? null,
+    authorizationUrl: attempt.authorizationUrl ?? null,
+    accessCode: attempt.accessCode ?? null,
+    amount: attempt.amount,
+    currency: attempt.currency,
+    status: attempt.status,
+    reconciliationSource: attempt.reconciliationSource ?? null,
+    checkoutPayload: attempt.checkoutPayload,
+    callbackUrl: attempt.callbackUrl ?? null,
+    paymentId: attempt.paymentId ?? null,
+    gatewayEventId: attempt.gatewayEventId ?? null,
+    lastCheckedAt: attempt.lastCheckedAt ?? null,
+    resolvedAt: attempt.resolvedAt ?? null,
+    resolutionMessage: attempt.resolutionMessage ?? null,
+    createdAt: attempt.createdAt,
+    updatedAt: attempt.updatedAt,
   };
 }
 
@@ -497,7 +563,10 @@ function buildPaystackEventId(payload: any, fallbackReference: string) {
 async function verifyPaystackReferenceAndReconcile(
   ctx: any,
   reference: string,
-  options?: { expectedSchoolId?: Id<"schools"> | null }
+  options?: {
+    expectedSchoolId?: Id<"schools"> | null;
+    attemptReconciliationSource?: "return_page" | "webhook" | "admin_poll";
+  }
 ): Promise<{
   event: any;
   invoice: any;
@@ -559,6 +628,7 @@ async function verifyPaystackReferenceAndReconcile(
       payload,
       signatureValid: true,
       verificationMessage: "Paystack verify endpoint confirmed payment",
+      attemptReconciliationSource: options?.attemptReconciliationSource ?? "return_page",
       receivedAt: Date.now(),
     }
   );
@@ -728,6 +798,19 @@ async function loadPaymentByReference(
   return existingPayments.find((payment: any) => String(payment.schoolId) === String(schoolId)) ?? null;
 }
 
+async function loadBillingPaymentAttemptByReference(
+  ctx: any,
+  schoolId: Id<"schools">,
+  reference: string
+) {
+  return await ctx.db
+    .query("billingPaymentAttempts")
+    .withIndex("by_school_and_reference", (q: any) =>
+      q.eq("schoolId", schoolId).eq("reference", reference)
+    )
+    .unique();
+}
+
 function applyInvoiceLedgerUpdate(args: {
   invoice: any;
   amountApplied: number;
@@ -863,6 +946,146 @@ async function createPaymentAndAllocation(args: {
   };
 }
 
+async function upsertBillingPaymentAttemptRecord(args: {
+  ctx: any;
+  schoolId: Id<"schools">;
+  invoiceId: Id<"studentInvoices">;
+  provider: "paystack" | "flutterwave" | "stripe" | "manual";
+  reference: string;
+  gatewayReference?: string | null;
+  authorizationUrl?: string | null;
+  accessCode?: string | null;
+  amount?: number;
+  currency?: string;
+  status?:
+    | "link_generated"
+    | "awaiting_payer_return"
+    | "verified"
+    | "webhook_reconciled"
+    | "manual_attention_needed";
+  reconciliationSource?: "return_page" | "webhook" | "admin_poll" | null;
+  checkoutPayload?: any;
+  callbackUrl?: string | null;
+  paymentId?: Id<"billingPayments"> | null;
+  gatewayEventId?: Id<"paymentGatewayEvents"> | null;
+  lastCheckedAt?: number | null;
+  resolvedAt?: number | null;
+  resolutionMessage?: string | null;
+}) {
+  const now = Date.now();
+  const reference = normalizeBillingReference(args.reference);
+  const existingAttempt = await loadBillingPaymentAttemptByReference(
+    args.ctx,
+    args.schoolId,
+    reference
+  );
+  const terminalStatus =
+    existingAttempt &&
+    (existingAttempt.status === "verified" || existingAttempt.status === "webhook_reconciled");
+
+  const nextStatus = terminalStatus
+    ? existingAttempt.status
+    : args.status ?? existingAttempt?.status ?? "link_generated";
+  const nextReconciliationSource = terminalStatus
+    ? existingAttempt.reconciliationSource ?? null
+    : args.reconciliationSource !== undefined
+      ? args.reconciliationSource
+      : existingAttempt?.reconciliationSource ?? null;
+  const nextInvoiceId = existingAttempt?.invoiceId ?? args.invoiceId;
+  const nextProvider = existingAttempt?.provider ?? args.provider;
+  const nextAuthorizationUrl =
+    args.authorizationUrl !== undefined ? args.authorizationUrl : existingAttempt?.authorizationUrl ?? null;
+  const nextAccessCode =
+    args.accessCode !== undefined ? args.accessCode : existingAttempt?.accessCode ?? null;
+  const nextAmount = existingAttempt?.amount ?? args.amount;
+  const nextCurrency = existingAttempt?.currency ?? args.currency;
+  const nextCheckoutPayload =
+    args.checkoutPayload !== undefined ? args.checkoutPayload : existingAttempt?.checkoutPayload;
+  const nextCallbackUrl =
+    args.callbackUrl !== undefined ? args.callbackUrl : existingAttempt?.callbackUrl ?? null;
+  const nextPaymentId =
+    args.paymentId !== undefined ? args.paymentId : existingAttempt?.paymentId ?? null;
+  const nextGatewayEventId =
+    args.gatewayEventId !== undefined ? args.gatewayEventId : existingAttempt?.gatewayEventId ?? null;
+  const nextLastCheckedAt =
+    args.lastCheckedAt !== undefined ? args.lastCheckedAt : existingAttempt?.lastCheckedAt ?? null;
+  const nextResolvedAt =
+    args.resolvedAt !== undefined ? args.resolvedAt : existingAttempt?.resolvedAt ?? null;
+  const nextResolutionMessage =
+    args.resolutionMessage !== undefined
+      ? normalizeBillingText(args.resolutionMessage) ?? null
+      : existingAttempt?.resolutionMessage ?? null;
+
+  if (existingAttempt) {
+    await args.ctx.db.patch(existingAttempt._id, {
+      invoiceId: nextInvoiceId,
+      provider: nextProvider,
+      gatewayReference: args.gatewayReference !== undefined ? args.gatewayReference : existingAttempt.gatewayReference ?? null,
+      authorizationUrl: nextAuthorizationUrl,
+      accessCode: nextAccessCode,
+      amount: nextAmount ?? existingAttempt.amount,
+      currency: nextCurrency ?? existingAttempt.currency,
+      status: nextStatus,
+      reconciliationSource: nextReconciliationSource,
+      checkoutPayload: nextCheckoutPayload ?? existingAttempt.checkoutPayload,
+      callbackUrl: nextCallbackUrl,
+      paymentId: nextPaymentId,
+      gatewayEventId: nextGatewayEventId,
+      lastCheckedAt: nextLastCheckedAt,
+      resolvedAt: nextResolvedAt,
+      resolutionMessage: nextResolutionMessage,
+      updatedAt: now,
+    });
+
+    const updatedAttempt = await args.ctx.db.get(existingAttempt._id);
+    if (!updatedAttempt) {
+      throw new ConvexError("Billing payment attempt not found after update");
+    }
+
+    return updatedAttempt;
+  }
+
+  if (
+    nextInvoiceId === undefined ||
+    !nextProvider ||
+    nextAmount === undefined ||
+    nextCurrency === undefined ||
+    nextCheckoutPayload === undefined
+  ) {
+    throw new ConvexError("Billing payment attempt requires invoice, amount, currency, and checkout payload");
+  }
+
+  const attemptId = await args.ctx.db.insert("billingPaymentAttempts", {
+    schoolId: args.schoolId,
+    invoiceId: nextInvoiceId,
+    provider: nextProvider,
+    reference,
+    gatewayReference: args.gatewayReference ?? null,
+    authorizationUrl: nextAuthorizationUrl,
+    accessCode: nextAccessCode,
+    amount: nextAmount,
+    currency: nextCurrency,
+    status: nextStatus,
+    reconciliationSource: nextReconciliationSource,
+    checkoutPayload: nextCheckoutPayload,
+    callbackUrl: nextCallbackUrl,
+    paymentId: nextPaymentId,
+    gatewayEventId: nextGatewayEventId,
+    lastCheckedAt: nextLastCheckedAt,
+    resolvedAt: nextResolvedAt,
+    resolutionMessage: nextResolutionMessage,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const createdAttempt = await args.ctx.db.get(attemptId);
+  if (!createdAttempt) {
+    throw new ConvexError("Billing payment attempt not found after creation");
+  }
+
+  return createdAttempt;
+}
+
 export const getBillingDashboard = query({
   args: {
     classId: v.optional(v.union(v.id("classes"), v.null())),
@@ -893,6 +1116,10 @@ export const getBillingDashboard = query({
       .collect();
     const allPayments = await ctx.db
       .query("billingPayments")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+      .collect();
+    const allAttempts = await ctx.db
+      .query("billingPaymentAttempts")
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .collect();
     const allEvents = await ctx.db
@@ -945,6 +1172,33 @@ export const getBillingDashboard = query({
       return visibleInvoiceIds.has(String(event.invoiceId));
     });
 
+    const invoiceById = new Map(filteredInvoices.map((invoice: any) => [String(invoice._id), invoice]));
+    const visibleAttempts = allAttempts.filter((attempt: any) =>
+      visibleInvoiceIds.has(String(attempt.invoiceId))
+    );
+    const paymentAttemptRows = visibleAttempts
+      .sort((left: any, right: any) => right.createdAt - left.createdAt)
+      .slice(0, 12)
+      .map((attempt: any) => {
+        const invoice = invoiceById.get(String(attempt.invoiceId));
+        return {
+          attempt: billingPaymentAttemptDocToReturn(attempt),
+          invoiceNumber: invoice ? getInvoiceDisplayName(invoice.invoiceNumber) : "Unknown invoice",
+          studentName: invoice
+            ? lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student"
+            : "Unknown student",
+          className: invoice
+            ? lookups.classNameById.get(String(invoice.classId)) ?? "Unknown class"
+            : "Unknown class",
+          sessionName: invoice
+            ? lookups.sessionNameById.get(String(invoice.sessionId)) ?? "Unknown session"
+            : "Unknown session",
+          termName: invoice
+            ? lookups.termNameById.get(String(invoice.termId)) ?? "Unknown term"
+            : "Unknown term",
+        };
+      });
+
     const invoiceRows = filteredInvoices.map((invoice: any) => ({
       invoice: invoiceDocToReturn(invoice),
       studentName: lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student",
@@ -988,6 +1242,14 @@ export const getBillingDashboard = query({
       invoices: filteredInvoices,
       payments: visiblePayments,
     });
+    const pendingPaymentAttempts = visibleAttempts.filter(
+      (attempt: any) =>
+        attempt.status === "link_generated" ||
+        attempt.status === "awaiting_payer_return"
+    ).length;
+    const manualAttentionPaymentAttempts = visibleAttempts.filter(
+      (attempt: any) => attempt.status === "manual_attention_needed"
+    ).length;
 
     return {
       school: {
@@ -1000,14 +1262,71 @@ export const getBillingDashboard = query({
         ...summary,
         feePlanCount: lookups.feePlans.length,
         feePlanApplicationCount: allApplications.length,
+        paymentAttemptCount: visibleAttempts.length,
+        pendingPaymentAttempts,
+        manualAttentionPaymentAttempts,
         gatewayEventCount: visibleEvents.length,
       },
       feePlans: lookups.feePlans.map(feePlanDocToReturn),
       applications: applicationRows,
       invoices: invoiceRows,
       payments: paymentRows,
+      paymentAttempts: paymentAttemptRows,
       gatewayEvents: visibleEvents.slice(0, 12).map(gatewayEventDocToReturn),
     };
+  },
+});
+
+export const listBillingPaymentAttempts = query({
+  args: {
+    status: v.optional(v.union(billingPaymentAttemptStatusValidator, v.null())),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(billingPaymentAttemptRowValidator),
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const lookups = await loadBillingLookups(ctx, viewer.schoolId);
+    const allInvoices = await ctx.db
+      .query("studentInvoices")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+      .collect();
+    const invoiceById = new Map(allInvoices.map((invoice: any) => [String(invoice._id), invoice]));
+
+    const attempts = args.status
+      ? await ctx.db
+          .query("billingPaymentAttempts")
+          .withIndex("by_school_and_status", (q: any) =>
+            q.eq("schoolId", viewer.schoolId).eq("status", args.status ?? "link_generated")
+          )
+          .order("desc")
+          .take(args.limit ?? 20)
+      : await ctx.db
+          .query("billingPaymentAttempts")
+          .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+          .order("desc")
+          .take(args.limit ?? 20);
+
+    return attempts.map((attempt: any) => {
+      const invoice = invoiceById.get(String(attempt.invoiceId));
+      return {
+        attempt: billingPaymentAttemptDocToReturn(attempt),
+        invoiceNumber: invoice ? getInvoiceDisplayName(invoice.invoiceNumber) : "Unknown invoice",
+        studentName: invoice
+          ? lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student"
+          : "Unknown student",
+        className: invoice
+          ? lookups.classNameById.get(String(invoice.classId)) ?? "Unknown class"
+          : "Unknown class",
+        sessionName: invoice
+          ? lookups.sessionNameById.get(String(invoice.sessionId)) ?? "Unknown session"
+          : "Unknown session",
+        termName: invoice
+          ? lookups.termNameById.get(String(invoice.termId)) ?? "Unknown term"
+          : "Unknown term",
+      };
+    });
   },
 });
 
@@ -1435,6 +1754,36 @@ export const recordManualPayment = mutation({
   },
 });
 
+export const recordBillingPaymentAttemptGeneratedInternal = internalMutation({
+  args: billingPaymentAttemptUpsertValidator,
+  returns: billingPaymentAttemptValidator,
+  handler: async (ctx, args) => {
+    const attempt = await upsertBillingPaymentAttemptRecord({
+      ctx,
+      schoolId: args.schoolId,
+      invoiceId: args.invoiceId,
+      provider: args.provider,
+      reference: args.reference,
+      gatewayReference: args.gatewayReference ?? null,
+      authorizationUrl: args.authorizationUrl ?? null,
+      accessCode: args.accessCode ?? null,
+      amount: args.amount,
+      currency: args.currency,
+      status: args.status,
+      reconciliationSource: args.reconciliationSource ?? null,
+      checkoutPayload: args.checkoutPayload,
+      callbackUrl: args.callbackUrl ?? null,
+      paymentId: args.paymentId ?? null,
+      gatewayEventId: args.gatewayEventId ?? null,
+      lastCheckedAt: args.lastCheckedAt ?? null,
+      resolvedAt: args.resolvedAt ?? null,
+      resolutionMessage: args.resolutionMessage ?? null,
+    });
+
+    return billingPaymentAttemptDocToReturn(attempt);
+  },
+});
+
 export const recordVerifiedGatewayEventInternal = internalMutation({
   args: gatewayEventInputValidator,
   returns: v.object({
@@ -1451,7 +1800,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
       )
       .unique();
 
-    if (existingEvent) {
+    if (existingEvent && existingEvent.verificationStatus === "verified" && existingEvent.paymentId) {
       const existingInvoice = existingEvent.invoiceId ? await ctx.db.get(existingEvent.invoiceId) : null;
       const existingPayment = existingEvent.paymentId ? await ctx.db.get(existingEvent.paymentId) : null;
       return {
@@ -1529,7 +1878,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
       processingMessage = processingMessage ?? "Webhook payment applied successfully";
     }
 
-    const eventId = await ctx.db.insert("paymentGatewayEvents", {
+    const eventRecord = {
       schoolId,
       provider: args.provider,
       eventId: args.eventId,
@@ -1547,11 +1896,86 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
       receivedAt: now,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    const cleanEventRecord = Object.fromEntries(
+      Object.entries(eventRecord).filter(([, value]) => value !== undefined)
+    ) as Record<string, unknown>;
+    const eventId = existingEvent
+      ? existingEvent._id
+      : await ctx.db.insert("paymentGatewayEvents", cleanEventRecord as any);
+    if (existingEvent) {
+      const eventPatch = { ...cleanEventRecord } as Record<string, unknown>;
+      delete eventPatch.createdAt;
+      await ctx.db.patch(existingEvent._id, eventPatch as any);
+    }
 
     const event = await ctx.db.get(eventId);
     if (!event) {
       throw new ConvexError("Gateway event not found after persistence");
+    }
+
+    const normalizedReference = normalizeBillingReference(
+      args.gatewayReference ?? args.reference ?? args.eventId
+    );
+    const existingAttempt = await loadBillingPaymentAttemptByReference(ctx, schoolId, normalizedReference);
+
+    if (payment) {
+      await upsertBillingPaymentAttemptRecord({
+        ctx,
+        schoolId,
+        invoiceId: invoice?._id ?? existingAttempt?.invoiceId ?? invoiceCandidate?._id ?? args.invoiceId ?? invoiceCandidate?._id,
+        provider: args.provider,
+        reference: normalizedReference,
+        gatewayReference: args.gatewayReference ?? args.reference ?? normalizedReference,
+        amount: args.amountReceived ?? existingAttempt?.amount,
+        currency: invoice?.currency ?? existingAttempt?.currency,
+        authorizationUrl: existingAttempt?.authorizationUrl ?? null,
+        accessCode: existingAttempt?.accessCode ?? null,
+        checkoutPayload: existingAttempt?.checkoutPayload ?? args.payload,
+        callbackUrl: existingAttempt?.callbackUrl ?? null,
+        status: args.attemptReconciliationSource === "webhook" ? "webhook_reconciled" : "verified",
+        reconciliationSource: args.attemptReconciliationSource ?? "return_page",
+        paymentId,
+        gatewayEventId: eventId,
+        lastCheckedAt: now,
+        resolvedAt: now,
+        resolutionMessage:
+          args.verificationMessage ??
+          (args.attemptReconciliationSource === "webhook"
+            ? "Webhook reconciliation completed"
+            : "Payment verified successfully"),
+      });
+    } else if (existingAttempt) {
+      const nextAttemptStatus =
+        existingAttempt.status === "manual_attention_needed"
+          ? "manual_attention_needed"
+          : verificationStatus === "rejected"
+            ? "manual_attention_needed"
+            : "awaiting_payer_return";
+      await upsertBillingPaymentAttemptRecord({
+        ctx,
+        schoolId,
+        invoiceId: existingAttempt.invoiceId,
+        provider: existingAttempt.provider,
+        reference: normalizedReference,
+        gatewayReference: args.gatewayReference ?? args.reference ?? existingAttempt.gatewayReference ?? null,
+        authorizationUrl: existingAttempt.authorizationUrl ?? null,
+        accessCode: existingAttempt.accessCode ?? null,
+        amount: existingAttempt.amount,
+        currency: existingAttempt.currency,
+        checkoutPayload: existingAttempt.checkoutPayload,
+        callbackUrl: existingAttempt.callbackUrl ?? null,
+        status: nextAttemptStatus,
+        reconciliationSource: nextAttemptStatus === "awaiting_payer_return" ? existingAttempt.reconciliationSource ?? null : null,
+        paymentId: existingAttempt.paymentId ?? null,
+        gatewayEventId: eventId,
+        lastCheckedAt: now,
+        resolutionMessage:
+          args.verificationMessage ??
+          (nextAttemptStatus === "manual_attention_needed"
+            ? "Manual attention needed"
+            : "Awaiting payer return or gateway confirmation"),
+      });
     }
 
     return {
@@ -1587,6 +2011,7 @@ export const verifyOnlinePaymentByReference = action({
 
     return await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
       expectedSchoolId: viewer.schoolId ?? null,
+      attemptReconciliationSource: "admin_poll",
     });
   },
 });
@@ -1616,7 +2041,9 @@ export const verifyOnlinePaymentByReferencePublic = action({
     paymentRecorded: boolean;
     message: string;
   }> => {
-    const result = await verifyPaystackReferenceAndReconcile(ctx, args.reference);
+    const result = await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
+      attemptReconciliationSource: "return_page",
+    });
 
     return {
       reference: result.event.reference,
@@ -1628,6 +2055,136 @@ export const verifyOnlinePaymentByReferencePublic = action({
         (result.payment !== null
           ? "Payment verified successfully"
           : "Payment verification completed"),
+    };
+  },
+});
+
+export const reconcilePendingOnlinePayments = action({
+  args: {
+    force: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    scannedCount: v.number(),
+    checkedCount: v.number(),
+    resolvedCount: v.number(),
+    pendingCount: v.number(),
+    manualAttentionCount: v.number(),
+  }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    scannedCount: number;
+    checkedCount: number;
+    resolvedCount: number;
+    pendingCount: number;
+    manualAttentionCount: number;
+  }> => {
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (!viewer) {
+      throw new ConvexError("Unauthorized");
+    }
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
+
+    const pendingAttempts: any[] = await ctx.runQuery((api as any).functions.billing.listBillingPaymentAttempts, {
+      status: null,
+      limit: 50,
+    });
+    const now = Date.now();
+    const staleThreshold = args.force ? 0 : 2 * 60 * 1000;
+    const candidates = pendingAttempts.filter((row: any) => {
+      const isPendingState =
+        row.attempt.status === "link_generated" ||
+        row.attempt.status === "awaiting_payer_return" ||
+        row.attempt.status === "manual_attention_needed";
+      if (!isPendingState) {
+        return false;
+      }
+
+      if (args.force) {
+        return true;
+      }
+
+      return !row.attempt.lastCheckedAt || now - row.attempt.lastCheckedAt >= staleThreshold;
+    });
+
+    let checkedCount = 0;
+    let resolvedCount = 0;
+    let pendingCount = 0;
+    let manualAttentionCount = 0;
+
+    for (const row of candidates) {
+      checkedCount += 1;
+
+      await ctx.runMutation((internal as any).functions.billing.recordBillingPaymentAttemptGeneratedInternal, {
+        schoolId: row.attempt.schoolId,
+        invoiceId: row.attempt.invoiceId,
+        provider: row.attempt.provider,
+        reference: row.attempt.reference,
+        gatewayReference: row.attempt.gatewayReference ?? row.attempt.reference,
+        authorizationUrl: row.attempt.authorizationUrl ?? null,
+        accessCode: row.attempt.accessCode ?? null,
+        amount: row.attempt.amount,
+        currency: row.attempt.currency,
+        status:
+          row.attempt.status === "manual_attention_needed"
+            ? "manual_attention_needed"
+            : "awaiting_payer_return",
+        reconciliationSource: row.attempt.reconciliationSource ?? null,
+        checkoutPayload: row.attempt.checkoutPayload,
+        callbackUrl: row.attempt.callbackUrl ?? null,
+        paymentId: row.attempt.paymentId ?? null,
+        gatewayEventId: row.attempt.gatewayEventId ?? null,
+        lastCheckedAt: now,
+        resolvedAt: row.attempt.resolvedAt ?? null,
+        resolutionMessage: "Rechecked from the admin billing workspace",
+      });
+
+      try {
+        const result = await verifyPaystackReferenceAndReconcile(ctx, row.attempt.reference, {
+          expectedSchoolId: viewer.schoolId ?? null,
+          attemptReconciliationSource: "admin_poll",
+        });
+
+        if (result.payment) {
+          resolvedCount += 1;
+        } else if (row.attempt.status === "manual_attention_needed") {
+          manualAttentionCount += 1;
+        } else {
+          pendingCount += 1;
+        }
+      } catch (error) {
+        manualAttentionCount += 1;
+        const errorMessage = error instanceof Error ? error.message : "Unable to confirm this payment right now.";
+        await ctx.runMutation((internal as any).functions.billing.recordBillingPaymentAttemptGeneratedInternal, {
+          schoolId: row.attempt.schoolId,
+          invoiceId: row.attempt.invoiceId,
+          provider: row.attempt.provider,
+          reference: row.attempt.reference,
+          gatewayReference: row.attempt.gatewayReference ?? row.attempt.reference,
+          authorizationUrl: row.attempt.authorizationUrl ?? null,
+          accessCode: row.attempt.accessCode ?? null,
+          amount: row.attempt.amount,
+          currency: row.attempt.currency,
+          status: "manual_attention_needed",
+          reconciliationSource: null,
+          checkoutPayload: row.attempt.checkoutPayload,
+          callbackUrl: row.attempt.callbackUrl ?? null,
+          paymentId: row.attempt.paymentId ?? null,
+          gatewayEventId: row.attempt.gatewayEventId ?? null,
+          lastCheckedAt: now,
+          resolvedAt: row.attempt.resolvedAt ?? null,
+          resolutionMessage: errorMessage,
+        });
+      }
+    }
+
+    return {
+      scannedCount: candidates.length,
+      checkedCount,
+      resolvedCount,
+      pendingCount,
+      manualAttentionCount,
     };
   },
 });
@@ -1734,7 +2291,7 @@ export const initializeOnlinePayment = action({
       throw new ConvexError("Invoice not found");
     }
 
-    return await createOnlinePaymentLinkForInvoiceContext({
+    const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
       paymentContext,
       invoiceId: args.invoiceId,
       amount: args.amount,
@@ -1742,6 +2299,25 @@ export const initializeOnlinePayment = action({
       description: args.description || `Pay ${paymentContext.invoice.invoiceNumber} via front desk`,
       callbackUrl: args.callbackUrl,
     });
+
+    await ctx.runMutation((internal as any).functions.billing.recordBillingPaymentAttemptGeneratedInternal, {
+      schoolId: paymentContext.schoolId,
+      invoiceId: args.invoiceId,
+      provider: paymentLink.provider,
+      reference: paymentLink.reference,
+      gatewayReference: paymentLink.reference,
+      authorizationUrl: paymentLink.authorizationUrl,
+      accessCode: paymentLink.accessCode,
+      amount: args.amount,
+      currency: paymentContext.invoice.currency,
+      status: "link_generated",
+      reconciliationSource: null,
+      checkoutPayload: paymentLink.checkoutPayload,
+      callbackUrl: args.callbackUrl ?? null,
+      resolutionMessage: "Payment link generated",
+    });
+
+    return paymentLink;
   },
 });
 
@@ -1783,7 +2359,7 @@ export const initializePortalOnlinePayment = action({
       throw new ConvexError("Invoice not found");
     }
 
-    return await createOnlinePaymentLinkForInvoiceContext({
+    const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
       paymentContext,
       invoiceId: args.invoiceId,
       amount: paymentContext.invoice.balanceDue,
@@ -1791,5 +2367,24 @@ export const initializePortalOnlinePayment = action({
       description: `Portal payment for ${paymentContext.invoice.invoiceNumber}`,
       callbackUrl: args.callbackUrl,
     });
+
+    await ctx.runMutation((internal as any).functions.billing.recordBillingPaymentAttemptGeneratedInternal, {
+      schoolId: paymentContext.schoolId,
+      invoiceId: args.invoiceId,
+      provider: paymentLink.provider,
+      reference: paymentLink.reference,
+      gatewayReference: paymentLink.reference,
+      authorizationUrl: paymentLink.authorizationUrl,
+      accessCode: paymentLink.accessCode,
+      amount: paymentContext.invoice.balanceDue,
+      currency: paymentContext.invoice.currency,
+      status: "link_generated",
+      reconciliationSource: null,
+      checkoutPayload: paymentLink.checkoutPayload,
+      callbackUrl: args.callbackUrl ?? null,
+      resolutionMessage: "Payment link generated",
+    });
+
+    return paymentLink;
   },
 });

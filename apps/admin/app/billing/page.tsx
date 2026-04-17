@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
   Plus,
   QrCode,
   ReceiptText,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
@@ -162,6 +163,9 @@ type BillingDashboardData = {
     gatewayPayments: number;
     invoiceCount: number;
     paymentCount: number;
+    paymentAttemptCount: number;
+    pendingPaymentAttempts: number;
+    manualAttentionPaymentAttempts: number;
     feePlanCount: number;
     feePlanApplicationCount: number;
     gatewayEventCount: number;
@@ -248,6 +252,40 @@ type BillingDashboardData = {
     sessionName: string;
     termName: string;
   }>;
+  paymentAttempts: Array<{
+    attempt: {
+      _id: string;
+      invoiceId: string;
+      provider: string;
+      reference: string;
+      gatewayReference: string | null;
+      authorizationUrl: string | null;
+      accessCode: string | null;
+      amount: number;
+      currency: string;
+      status:
+        | "link_generated"
+        | "awaiting_payer_return"
+        | "verified"
+        | "webhook_reconciled"
+        | "manual_attention_needed";
+      reconciliationSource: "return_page" | "webhook" | "admin_poll" | null;
+      checkoutPayload: Record<string, unknown>;
+      callbackUrl: string | null;
+      paymentId: string | null;
+      gatewayEventId: string | null;
+      lastCheckedAt: number | null;
+      resolvedAt: number | null;
+      resolutionMessage: string | null;
+      createdAt: number;
+      updatedAt: number;
+    };
+    invoiceNumber: string;
+    studentName: string;
+    className: string;
+    sessionName: string;
+    termName: string;
+  }>;
   gatewayEvents: Array<{
     _id: string;
     provider: string;
@@ -285,6 +323,51 @@ function matchesSearch(query: string, values: Array<string | null | undefined>) 
   }
 
   return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
+function getPaymentAttemptStatusLabel(
+  status: "link_generated" | "awaiting_payer_return" | "verified" | "webhook_reconciled" | "manual_attention_needed"
+) {
+  switch (status) {
+    case "link_generated":
+      return "Link generated";
+    case "awaiting_payer_return":
+      return "Awaiting payer return";
+    case "verified":
+      return "Verified";
+    case "webhook_reconciled":
+      return "Webhook reconciled";
+    case "manual_attention_needed":
+      return "Manual attention needed";
+  }
+}
+
+function getPaymentAttemptStatusClass(
+  status: "link_generated" | "awaiting_payer_return" | "verified" | "webhook_reconciled" | "manual_attention_needed"
+) {
+  switch (status) {
+    case "link_generated":
+      return "bg-slate-100 text-slate-700";
+    case "awaiting_payer_return":
+      return "bg-amber-50 text-amber-700";
+    case "verified":
+      return "bg-emerald-50 text-emerald-700";
+    case "webhook_reconciled":
+      return "bg-sky-50 text-sky-700";
+    case "manual_attention_needed":
+      return "bg-rose-50 text-rose-700";
+  }
+}
+
+function formatAttemptTimestamp(timestamp: number | null) {
+  if (!timestamp) {
+    return "Never checked";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
 }
 
 function createDraftLineItem(
@@ -482,6 +565,10 @@ export default function BillingPage() {
     "functions/academic/academicSetup:listTermsBySession" as never,
     toQueryArgs("sessionId", feePlanApplicationDraft.sessionId)
   ) as TermOption[] | undefined;
+  const schoolPaymentAttemptRows = useQuery(
+    "functions/billing:listBillingPaymentAttempts" as never,
+    { status: null, limit: 50 } as never
+  ) as BillingDashboardData["paymentAttempts"] | undefined;
 
   const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
   const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
@@ -489,6 +576,8 @@ export default function BillingPage() {
   const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
   const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
   const createInvoicePaymentLink = useAction("functions/billing:initializeOnlinePayment" as never);
+  const reconcilePendingOnlinePayments = useAction("functions/billing:reconcilePendingOnlinePayments" as never);
+  const reconciliationInFlightRef = useRef(false);
 
   const selectedCurrency = feePlanDraft.currency.trim().toUpperCase() || data?.settings?.defaultCurrency || "NGN";
   const feePlanTotal = useMemo(
@@ -622,6 +711,87 @@ export default function BillingPage() {
     () => data?.invoices.find((row) => row.invoice._id === paymentLinkDraft.invoiceId) ?? null,
     [data?.invoices, paymentLinkDraft.invoiceId]
   );
+  const paymentAttemptRows = useMemo(() => data?.paymentAttempts ?? [], [data?.paymentAttempts]);
+  const activePaymentAttempts = useMemo(
+    () =>
+      paymentAttemptRows.filter(
+        (row) =>
+          row.attempt.status === "link_generated" ||
+          row.attempt.status === "awaiting_payer_return" ||
+          row.attempt.status === "manual_attention_needed"
+      ),
+    [paymentAttemptRows]
+  );
+  const pendingPaymentAttempts = useMemo(
+    () =>
+      activePaymentAttempts.filter(
+        (row) => row.attempt.status === "link_generated" || row.attempt.status === "awaiting_payer_return"
+      ),
+    [activePaymentAttempts]
+  );
+  const manualAttentionPaymentAttempts = useMemo(
+    () => paymentAttemptRows.filter((row) => row.attempt.status === "manual_attention_needed"),
+    [paymentAttemptRows]
+  );
+  const reconciliationAttemptRows = useMemo(
+    () => schoolPaymentAttemptRows ?? [],
+    [schoolPaymentAttemptRows]
+  );
+  const reconciliationActiveAttempts = useMemo(
+    () =>
+      reconciliationAttemptRows.filter(
+        (row) =>
+          row.attempt.status === "link_generated" ||
+          row.attempt.status === "awaiting_payer_return" ||
+          row.attempt.status === "manual_attention_needed"
+      ),
+    [reconciliationAttemptRows]
+  );
+
+  const executePendingPaymentReconciliation = useCallback(
+    async (force = false, showNotice = false) => {
+      if (reconciliationInFlightRef.current) {
+        return null;
+      }
+
+      reconciliationInFlightRef.current = true;
+      try {
+        const result = (await reconcilePendingOnlinePayments({ force } as never)) as {
+          scannedCount: number;
+          checkedCount: number;
+          resolvedCount: number;
+          pendingCount: number;
+          manualAttentionCount: number;
+        };
+
+        if (showNotice) {
+          setNotice({
+            tone: "success",
+            title: "Pending payment references rechecked",
+            message: `${result.resolvedCount} resolved · ${result.pendingCount} still pending · ${result.manualAttentionCount} need attention`,
+          });
+        }
+
+        return result;
+      } catch (error) {
+        if (showNotice) {
+          setNotice({
+            tone: "error",
+            title: "Unable to recheck pending references",
+            message: getUserFacingErrorMessage(
+              error,
+              "The admin workspace could not verify one or more Paystack references."
+            ),
+          });
+        }
+
+        return null;
+      } finally {
+        reconciliationInFlightRef.current = false;
+      }
+    },
+    [reconcilePendingOnlinePayments]
+  );
 
   useEffect(() => {
     if (selectedInvoiceFeePlan && selectedInvoiceFeePlan.targetClassIds.length > 0) {
@@ -672,6 +842,21 @@ export default function BillingPage() {
       };
     });
   }, []);
+
+  useEffect(() => {
+    if (reconciliationActiveAttempts.length === 0) {
+      return;
+    }
+
+    void executePendingPaymentReconciliation(false, false);
+    const timer = window.setInterval(() => {
+      void executePendingPaymentReconciliation(false, false);
+    }, 2 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [executePendingPaymentReconciliation, reconciliationActiveAttempts.length]);
 
   const runAction = async (
     action: () => Promise<unknown>,
@@ -835,7 +1020,7 @@ export default function BillingPage() {
       setNotice({
         tone: "success",
         title: "Payment link generated",
-        message: "Copy the URL or open it on a device at the front desk.",
+        message: "Copy the URL or open it on a device at the front desk. The attempt will keep reconciling in the background.",
       });
     } catch (error) {
       setNotice({
@@ -1431,6 +1616,12 @@ export default function BillingPage() {
                   </span>
                 </div>
               </div>
+
+              <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-xs leading-6 text-slate-500">
+                A durable payment attempt is now recorded in the billing workspace. If the payer switches
+                devices or the return page is skipped, admin polling and webhook reconciliation can still
+                close the loop later.
+              </p>
 
             </div>
           )}
@@ -2269,43 +2460,151 @@ export default function BillingPage() {
         </AdminSurface>
 
         <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Payment history and gateway events</h3>
-              <p className="text-sm text-slate-500">Review captured cash, bank, and online payment records.</p>
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold text-slate-950">Online payment lifecycle</h3>
+              <p className="text-sm text-slate-500">
+                Generated Paystack links stay visible as durable attempts, and the admin workspace keeps rechecking
+                pending references until they resolve or need staff attention. The list below follows the current
+                billing filter, while background reconciliation scans the whole school.
+              </p>
             </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {data.summary.unreconciledPayments} unreconciled
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {data.summary.paymentAttemptCount} attempts
+              </span>
+              <button
+                type="button"
+                onClick={() => void executePendingPaymentReconciliation(true, true)}
+                disabled={reconciliationActiveAttempts.length === 0}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Recheck pending references
+              </button>
             </div>
           </div>
 
-          <div className="space-y-3">
-            {data.payments.map((row) => (
-              <div key={row.payment._id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-semibold text-slate-950">{row.studentName}</p>
-                    <p className="text-xs text-slate-500">
-                      {row.className} · {row.sessionName} · {row.termName}
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                      {row.invoiceNumber} · {row.payment.reference}
-                    </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Pending</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{pendingPaymentAttempts.length}</p>
+              <p className="mt-1 text-sm text-slate-500">Links generated or awaiting payer return.</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Resolved</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">
+                {paymentAttemptRows.filter((row) => row.attempt.status === "verified" || row.attempt.status === "webhook_reconciled").length}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Confirmed through return page or webhook reconciliation.</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Needs review</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{manualAttentionPaymentAttempts.length}</p>
+              <p className="mt-1 text-sm text-slate-500">References that need staff follow-up.</p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-semibold text-slate-900">Payment attempts</h4>
+              <p className="text-xs text-slate-500">Latest generated attempts and their reconciliation state.</p>
+            </div>
+            <div className="space-y-3">
+              {paymentAttemptRows.map((row) => {
+                const linkedPayment = row.attempt.paymentId ? paymentRowById.get(row.attempt.paymentId) ?? null : null;
+                const isPending =
+                  row.attempt.status === "link_generated" || row.attempt.status === "awaiting_payer_return";
+
+                return (
+                  <div key={row.attempt._id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] ${getPaymentAttemptStatusClass(row.attempt.status)}`}
+                          >
+                            {getPaymentAttemptStatusLabel(row.attempt.status)}
+                          </span>
+                          {row.attempt.reconciliationSource ? (
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">
+                              {row.attempt.reconciliationSource.replace("_", " ")}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="font-semibold text-slate-950">{row.studentName}</p>
+                        <p className="text-xs text-slate-500">
+                          {row.className} · {row.sessionName} · {row.termName}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                          {row.invoiceNumber} · {row.attempt.reference}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {formatMoney(row.attempt.amount, row.attempt.currency)} · {row.attempt.provider}
+                          {row.attempt.gatewayReference && row.attempt.gatewayReference !== row.attempt.reference
+                            ? ` · Gateway ${row.attempt.gatewayReference}`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="space-y-1 text-sm text-slate-600 lg:text-right">
+                        <p className="font-semibold text-slate-900">
+                          {row.attempt.resolvedAt ? `Resolved ${formatAttemptTimestamp(row.attempt.resolvedAt)}` : formatAttemptTimestamp(row.attempt.lastCheckedAt)}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {row.attempt.resolutionMessage ?? (isPending ? "Awaiting confirmation" : "Recorded attempt")}
+                        </p>
+                        {linkedPayment ? (
+                          <p className="text-xs font-semibold text-emerald-700">
+                            Matched payment: {formatMoney(linkedPayment.payment.amountApplied, summaryCurrency)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right text-sm text-slate-600">
-                    <p>{formatMoney(row.payment.amountApplied, summaryCurrency)}</p>
-                    <p className="text-xs text-slate-400">
-                      {row.payment.provider ?? row.payment.paymentMethod} · {row.payment.reconciliationStatus}
-                    </p>
+                );
+              })}
+              {paymentAttemptRows.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                  No online payment attempts have been generated yet.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-semibold text-slate-900">Recorded payments</h4>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {data.summary.unreconciledPayments} unreconciled
+              </span>
+            </div>
+            <div className="space-y-3">
+              {data.payments.map((row) => (
+                <div key={row.payment._id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-slate-950">{row.studentName}</p>
+                      <p className="text-xs text-slate-500">
+                        {row.className} · {row.sessionName} · {row.termName}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                        {row.invoiceNumber} · {row.payment.reference}
+                      </p>
+                    </div>
+                    <div className="text-right text-sm text-slate-600">
+                      <p>{formatMoney(row.payment.amountApplied, summaryCurrency)}</p>
+                      <p className="text-xs text-slate-400">
+                        {row.payment.provider ?? row.payment.paymentMethod} · {row.payment.reconciliationStatus}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {data.payments.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                No payments have been recorded for the current filter.
-              </div>
-            )}
+              ))}
+              {data.payments.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                  No payments have been recorded for the current filter.
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-6 space-y-3">

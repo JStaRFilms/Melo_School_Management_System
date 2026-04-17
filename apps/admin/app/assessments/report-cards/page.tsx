@@ -7,7 +7,9 @@ import { useQuery } from "convex/react";
 import {
   ReportCardBatchNavigator,
   ReportCardPrintStack,
-  ReportCardSheet,
+  ReportCardPreview,
+  ReportCardToolbar,
+  ReportCardPrintBlockedNotice,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -241,10 +243,18 @@ function AdminReportCardPageContent() {
 
         {/* Main Content Bucket - The Report Card Sheet */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
-          <div className="max-w-[1000px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            <ReportCardSheet
+          <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+            <ReportCardToolbar
+              studentName={reportCard.student.name}
+              backHref="/assessments/results/entry"
+            />
+            {hasIncompleteCumulativeResults(reportCard) && (
+              <ReportCardPrintBlockedNotice />
+            )}
+            <ReportCardPreview
               reportCard={reportCard}
               backHref="/assessments/results/entry"
+              hideToolbar
             />
           </div>
         </main>

@@ -6,7 +6,9 @@ import { useQuery } from "convex/react";
 import {
   ReportCardBatchNavigator,
   ReportCardPrintStack,
-  ReportCardSheet,
+  ReportCardPreview,
+  ReportCardToolbar,
+  ReportCardPrintBlockedNotice,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -213,9 +215,17 @@ function TeacherReportCardPageContent() {
         onSelectStudent={handleSelectStudent}
         onPrintFullClass={handlePrintFullClass}
       />
-      <ReportCardSheet
+      <ReportCardToolbar
+        studentName={reportCard.student.name}
+        backHref="/assessments/exams/entry"
+      />
+      {hasIncompleteCumulativeResults(reportCard) && (
+        <ReportCardPrintBlockedNotice />
+      )}
+      <ReportCardPreview
         reportCard={reportCard}
         backHref="/assessments/exams/entry"
+        hideToolbar
       />
     </>
   );

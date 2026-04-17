@@ -10,6 +10,8 @@ export { WorkspaceNavbar } from "./components/WorkspaceNavbar";
 export type { WorkspaceNavbarProps } from "./components/WorkspaceNavbar";
 export { ReportCardSheet } from "./components/ReportCardSheet";
 export type { ReportCardSheetData } from "./components/ReportCardSheet";
+export { ReportCardPreview } from "./components/ReportCardPreview";
+export { ReportCardToolbar, ReportCardPrintBlockedNotice } from "./components/ReportCardToolbar";
 export { ReportCardBatchNavigator } from "./components/ReportCardBatchNavigator";
 export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigator";
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";

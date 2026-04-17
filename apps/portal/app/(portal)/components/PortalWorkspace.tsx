@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { ArrowRight, Bell, CalendarDays, ChevronRight, FileText, GraduationCap, Landmark, ShieldCheck, Sparkles, Users } from "lucide-react";
-import { getUserFacingErrorMessage, ReportCardSheet } from "@school/shared";
+import { getUserFacingErrorMessage, ReportCardPreview, ReportCardToolbar } from "@school/shared";
 import { isConvexConfigured } from "@/convex-runtime";
 import type {
   PortalBillingData,
@@ -669,15 +669,24 @@ function ReportCardView({
       </aside>
 
       <main className="space-y-6 xl:col-span-8">
+        <ReportCardToolbar
+          studentName={selectedReportCard?.student.name ?? ""}
+          backHref={buildPortalHref("/results", {
+            studentId: selectedStudentId,
+            sessionId: workspace.selectedSessionId,
+            termId: workspace.selectedTermId,
+          })}
+        />
         <section className="rounded-[1.75rem] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           {selectedReportCard ? (
-            <ReportCardSheet
+            <ReportCardPreview
               reportCard={selectedReportCard}
               backHref={buildPortalHref("/results", {
                 studentId: selectedStudentId,
                 sessionId: workspace.selectedSessionId,
                 termId: workspace.selectedTermId,
               })}
+              hideToolbar
             />
           ) : (
             <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">

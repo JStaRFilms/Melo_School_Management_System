@@ -169,55 +169,82 @@ function ensurePrintStyles() {
     @media print {
       @page {
         size: A4 portrait;
-        margin: 10mm;
+        margin: 0;
       }
       html, body { 
         margin: 0 !important; 
         padding: 0 !important; 
+        width: 100% !important;
+        height: auto !important;
         background: white !important; 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
-      .rc-no-print { display: none !important; }
-      .rc-print-root { 
-        width: 100% !important; 
-        margin: 0 !important; 
-        padding: 0 !important; 
-        display: block !important; 
+      /* Hide toolbar elements */
+      .rc-no-print { 
+        display: none !important; 
       }
-      /* Reset wrapper for print */
+      /* Root container - remove scaling transform for print */
+      .rc-print-root { 
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 210mm !important;
+        height: auto !important;
+        min-height: 297mm;
+        margin: 0 !important; 
+        padding: 8mm !important; 
+        background: white !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        transform: none !important;
+      }
+      /* Inner preview wrapper - remove scaling for print */
+      .rc-print-root > div {
+        transform: none !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      /* Sheet wrapper becomes the printable area */
       .rc-sheet-wrapper { 
         width: 100% !important; 
         height: auto !important; 
         margin: 0 !important; 
-        padding: 0 !important; 
+        padding: 0 !important;
         background: white !important; 
         border: none !important;
         box-shadow: none !important;
         display: block !important;
         overflow: visible !important;
+        box-sizing: border-box !important;
       }
-      /* Reset sheet for print */
+      /* Sheet content */
       .rc-sheet { 
         width: 100% !important; 
-        max-width: 100% !important; 
         margin: 0 !important; 
+        padding: 0 !important;
         border: none !important; 
-        box-shadow: none !important; 
+        box-shadow: none !important;
+        overflow: visible !important;
+        background: white !important;
       }
       .rc-sheet * { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
+      /* Prevent page breaks inside report card */
       .rc-sheet,
       .rc-sheet-wrapper {
         break-inside: avoid;
         page-break-inside: avoid;
       }
+      /* Full class print stack */
       .rc-stack-item { 
         break-after: page; 
         page-break-after: always; 
         margin: 0 !important; 
+        padding: 0 !important;
+        width: 210mm !important;
       }
       .rc-stack-item:last-child { 
         break-after: auto; 
@@ -230,7 +257,7 @@ function ensurePrintStyles() {
 
 /* ─── Component ─── */
 
-import React, { useRef, useEffect, useState } from "react";
+import React from "react";
 
 export function ReportCardSheet({
   reportCard,
@@ -243,60 +270,8 @@ export function ReportCardSheet({
 }) {
   if (typeof window !== "undefined") ensurePrintStyles();
 
-  const [scale, setScale] = useState(1);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const updateScale = () => {
-      const element = contentRef.current;
-      if (!element) return;
-
-      const previousZoom = element.style.zoom;
-      element.style.zoom = "1";
-      const scrollHeight = element.scrollHeight;
-      const scrollWidth = element.scrollWidth;
-      element.style.zoom = previousZoom;
-
-      if (!scrollHeight || !scrollWidth) return;
-
-      const heightScale = PRINT_TARGET_HEIGHT_PX / scrollHeight;
-      const widthScale = PRINT_TARGET_WIDTH_PX / scrollWidth;
-      const nextScale = Math.min(1, heightScale, widthScale);
-
-      setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1);
-    };
-
-    updateScale();
-
-    const timer = window.setTimeout(updateScale, 120);
-    const handleBeforePrint = () => updateScale();
-    const handleResize = () => updateScale();
-
-    window.addEventListener("beforeprint", handleBeforePrint);
-    window.addEventListener("resize", handleResize);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined" && contentRef.current) {
-      resizeObserver = new ResizeObserver(() => updateScale());
-      resizeObserver.observe(contentRef.current);
-    }
-
-    const fonts = document.fonts;
-    if (fonts?.ready) {
-      void fonts.ready.then(updateScale).catch(() => undefined);
-    }
-
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("beforeprint", handleBeforePrint);
-      window.removeEventListener("resize", handleResize);
-      resizeObserver?.disconnect();
-    };
-  }, [reportCard]);
-
   const schoolInitials = buildInitials(reportCard.schoolName);
   const ac = reportCard.assessmentConfig;
-  const hasBlockingCumulativePrint = hasIncompleteCumulativeResults(reportCard);
 
   /* ─── Info rows data ─── */
   const leftFields = [
@@ -336,115 +311,12 @@ export function ReportCardSheet({
 
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
-      {/* ─── Toolbar (hidden during print) ─── */}
-      {hideToolbar ? null : (
-      <div
-        className="rc-no-print"
-        style={{
-          maxWidth: "210mm",
-          margin: "0 auto",
-          padding: "16px 8px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <div>
-          <p
-            style={{
-              fontSize: 10,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: "0.16em",
-              color: "#94a3b8",
-              margin: 0,
-            }}
-          >
-            Report Card
-          </p>
-          <h1
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#0f172a",
-              margin: "2px 0 0",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {reportCard.student.name}
-          </h1>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <a
-            href={backHref}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 36,
-              padding: "0 16px",
-              borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#475569",
-              textDecoration: "none",
-              background: "white",
-            }}
-          >
-            Back
-          </a>
-          <button
-            type="button"
-            disabled={hasBlockingCumulativePrint}
-            onClick={() => window.print()}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 36,
-              padding: "0 20px",
-              borderRadius: 8,
-              border: "none",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "white",
-              background: hasBlockingCumulativePrint ? "#94a3b8" : "#0f172a",
-              cursor: hasBlockingCumulativePrint ? "not-allowed" : "pointer",
-              opacity: hasBlockingCumulativePrint ? 0.9 : 1,
-            }}
-          >
-            {hasBlockingCumulativePrint ? "Print blocked" : "Export / Print"}
-          </button>
-        </div>
-      </div>
-      )}
-
-      {hasBlockingCumulativePrint ? (
-        <div
-          className="rc-no-print"
-          style={{
-            maxWidth: "210mm",
-            margin: "0 auto 12px",
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: "1px solid #fecaca",
-            background: "#fff1f2",
-            color: "#9f1239",
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
-          Printing is blocked until the missing prior-term scores are backfilled and
-          the annual average is complete for every cumulative subject.
-        </div>
-      ) : null}
-
-      {/* ─── Report Card Sheet ─── */}
+        {/* ─── Report Card Sheet ─── */}
       <div 
         className="rc-sheet-wrapper"
         style={{
           width: "210mm",
-          height: "297mm",
+          minHeight: "297mm",
           margin: "0 auto 40px",
           padding: "10mm",
           background: "white",
@@ -454,23 +326,19 @@ export function ReportCardSheet({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "flex-start",
-          overflow: "hidden",
+          overflow: "visible",
           border: "none",
           position: "relative",
         }}
       >
         <div
-          ref={contentRef}
           className="rc-sheet"
           style={{
             width: "100%",
-            minHeight: "100%",
             background: "white",
             border: "none",
             borderRadius: 0,
-            overflow: "hidden",
-            transform: `scale(${scale})`,
-            transformOrigin: "top center",
+            overflow: "visible",
             boxSizing: "border-box",
           }}
         >
