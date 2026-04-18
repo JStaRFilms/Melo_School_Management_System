@@ -2072,6 +2072,13 @@ export const verifyOnlinePaymentByReferencePublic = action({
       v.literal("ignored")
     ),
     invoiceNumber: v.union(v.string(), v.null()),
+    amountPaid: v.union(v.number(), v.null()),
+    currency: v.union(v.string(), v.null()),
+    paymentMethod: v.union(v.string(), v.null()),
+    payerName: v.union(v.string(), v.null()),
+    payerEmail: v.union(v.string(), v.null()),
+    paidAt: v.union(v.number(), v.null()),
+    balanceRemaining: v.union(v.number(), v.null()),
     paymentRecorded: v.boolean(),
     message: v.string(),
   }),
@@ -2082,6 +2089,13 @@ export const verifyOnlinePaymentByReferencePublic = action({
     reference: string;
     verificationStatus: "verified" | "rejected" | "ignored";
     invoiceNumber: string | null;
+    amountPaid: number | null;
+    currency: string | null;
+    paymentMethod: string | null;
+    payerName: string | null;
+    payerEmail: string | null;
+    paidAt: number | null;
+    balanceRemaining: number | null;
     paymentRecorded: boolean;
     message: string;
   }> => {
@@ -2093,6 +2107,13 @@ export const verifyOnlinePaymentByReferencePublic = action({
       reference: result.event.reference,
       verificationStatus: result.event.verificationStatus,
       invoiceNumber: result.invoice?.invoiceNumber ?? result.event.invoiceNumber ?? null,
+      amountPaid: result.payment?.amountReceived ?? null,
+      currency: result.invoice?.currency ?? null,
+      paymentMethod: result.payment?.paymentMethod ?? null,
+      payerName: result.payment?.payerName ?? null,
+      payerEmail: result.payment?.payerEmail ?? null,
+      paidAt: result.payment?.receivedAt ?? null,
+      balanceRemaining: result.invoice?.balanceDue ?? null,
       paymentRecorded: result.payment !== null,
       message:
         result.event.verificationMessage ??

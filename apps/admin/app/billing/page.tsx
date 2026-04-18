@@ -1,589 +1,62 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
-import {
-  AlertTriangle,
-  Banknote,
-  Copy,
-  CreditCard,
-  ExternalLink,
-  FileText,
-  Landmark,
+import { useState, useEffect, useMemo } from "react";
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  X, 
   Link2,
-  Plus,
-  QrCode,
-  ReceiptText,
-  RefreshCw,
-  Search,
-  Settings2,
-  ShieldCheck,
-  X,
 } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
-import { AdminHeader } from "@/components/ui/AdminHeader";
+import { AdminSheet } from "@/components/ui/AdminSheet";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { StatGroup } from "@/components/ui/StatGroup";
 
-const paymentMethods = [
-  { value: "cash", label: "Cash" },
-  { value: "bank_transfer", label: "Bank transfer" },
-  { value: "cheque", label: "Cheque" },
-  { value: "mobile_money", label: "Mobile money" },
-  { value: "card", label: "Card" },
-  { value: "online", label: "Online" },
-] as const;
+// Local Components
+import { BillingHeader } from "./components/BillingHeader";
+import { BillingTabs, type BillingTab } from "./components/BillingTabs";
+import { InvoiceTable } from "./components/InvoiceTable";
+import { PaymentTable } from "./components/PaymentTable";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { BillingSidebar } from "./components/BillingSidebar";
+import { DashboardSkeleton } from "./components/DashboardSkeleton";
+import { FeePlanList } from "./components/FeePlanList";
 
-type DashboardFilters = {
-  classId: string;
-  sessionId: string;
-  termId: string;
-  status: string;
-  search: string;
-};
-
-type FeePlanDraftItem = {
-  draftId: string;
-  label: string;
-  amount: string;
-  category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other";
-};
-
-type FeePlanDraft = {
-  name: string;
-  description: string;
-  currency: string;
-  billingMode: "class_default" | "manual_extra";
-  targetClassIds: string[];
-  installmentEnabled: boolean;
-  installmentCount: string;
-  intervalDays: string;
-  firstDueDays: string;
-  lineItems: FeePlanDraftItem[];
-};
-
-type FeePlanApplicationDraft = {
-  feePlanId: string;
-  classId: string;
-  sessionId: string;
-  termId: string;
-  notes: string;
-};
-
-type InvoiceDraft = {
-  feePlanId: string;
-  classId: string;
-  sessionId: string;
-  termId: string;
-  studentId: string;
-  waiverAmount: string;
-  discountAmount: string;
-  dueDate: string;
-  notes: string;
-};
-
-type PaymentDraft = {
-  invoiceId: string;
-  reference: string;
-  amountReceived: string;
-  paymentMethod: (typeof paymentMethods)[number]["value"];
-  payerName: string;
-  payerEmail: string;
-  notes: string;
-};
-
-type BillingSettingsDraft = {
-  invoicePrefix: string;
-  defaultCurrency: string;
-  defaultDueDays: string;
-  paymentProviderMode: "test" | "live";
-  allowManualPayments: boolean;
-  allowOnlinePayments: boolean;
-};
-
-type PaystackProviderModeState = {
-  provider: "paystack";
-  mode: "test" | "live";
-  isEnabled: boolean;
-  status: "not_configured" | "invalid" | "ready" | "disabled" | "rotation_pending";
-  publicKeyMasked: string | null;
-  activeSecretMasked: string | null;
-  pendingSecretMasked: string | null;
-  publicKeyFingerprint: string | null;
-  activeSecretFingerprint: string | null;
-  pendingSecretFingerprint: string | null;
-  lastValidatedAt: number | null;
-  lastValidationMessage: string | null;
-  hasActiveSecret: boolean;
-  hasPendingSecret: boolean;
-  readyForPayments: boolean;
-  readyForWebhookVerification: boolean;
-};
-
-type PaystackProviderOverview = {
-  provider: "paystack";
-  activeMode: "test" | "live";
-  allowOnlinePayments: boolean;
-  readyForPayments: boolean;
-  modes: {
-    test: PaystackProviderModeState;
-    live: PaystackProviderModeState;
-  };
-};
-
-type PaystackGatewayConfigDraft = {
-  publicKey: string;
-  secretKey: string;
-};
-
-type PaymentLinkDraft = {
-  invoiceId: string;
-  amount: string;
-  email: string;
-  description: string;
-  callbackUrl: string;
-};
-
-type PaymentLinkResult = {
-  provider: string;
-  reference: string;
-  authorizationUrl: string | null;
-  accessCode: string | null;
-  checkoutPayload: Record<string, unknown>;
-};
-
-type ClassOption = {
-  _id: string;
-  name: string;
-};
-
-type SessionOption = {
-  _id: string;
-  name: string;
-};
-
-type TermOption = {
-  _id: string;
-  name: string;
-};
-
-type StudentOption = {
-  _id: string;
-  studentName: string;
-  admissionNumber: string;
-};
-
-type BillingDashboardData = {
-  school: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-  settings: {
-    _id: string;
-    invoicePrefix: string;
-    defaultCurrency: string;
-    defaultDueDays: number;
-    preferredProvider: string;
-    paymentProviderMode: "test" | "live";
-    allowManualPayments: boolean;
-    allowOnlinePayments: boolean;
-  } | null;
-  paymentGateway: PaystackProviderOverview;
-  summary: {
-    totalInvoiceAmount: number;
-    amountCollected: number;
-    outstandingBalance: number;
-    overdueInvoices: number;
-    paidInvoices: number;
-    unreconciledPayments: number;
-    manualPayments: number;
-    gatewayPayments: number;
-    invoiceCount: number;
-    paymentCount: number;
-    paymentAttemptCount: number;
-    pendingPaymentAttempts: number;
-    manualAttentionPaymentAttempts: number;
-    feePlanCount: number;
-    feePlanApplicationCount: number;
-    gatewayEventCount: number;
-  };
-  feePlans: Array<{
-    _id: string;
-    name: string;
-    currency: string;
-    billingMode: "class_default" | "manual_extra";
-    targetClassIds: string[];
-    lineItems: Array<{ id: string; label: string; amount: number; category: string; order: number }>;
-    installmentPolicy: {
-      enabled: boolean;
-      installmentCount: number;
-      intervalDays: number;
-      firstDueDays: number;
-    };
-    isActive: boolean;
-    description: string | null;
-  }>;
-  applications: Array<{
-    application: {
-      _id: string;
-      feePlanId: string;
-      classId: string;
-      sessionId: string;
-      termId: string;
-      studentCount: number;
-      createdInvoiceCount: number;
-      skippedInvoiceCount: number;
-      notes: string | null;
-      createdAt: number;
-      updatedAt: number;
-      createdBy: string;
-    };
-    feePlanName: string;
-    className: string;
-    sessionName: string;
-    termName: string;
-  }>;
-  invoices: Array<{
-    invoice: {
-      _id: string;
-      invoiceNumber: string;
-      feePlanNameSnapshot: string;
-      feePlanApplicationId: string | null;
-      currency: string;
-      totalAmount: number;
-      amountPaid: number;
-      balanceDue: number;
-      status: string;
-      dueDate: number;
-      issuedAt: number;
-      notes: string | null;
-    };
-    studentName: string;
-    className: string;
-    sessionName: string;
-    termName: string;
-  }>;
-  payments: Array<{
-    payment: {
-      _id: string;
-      invoiceId: string;
-      reference: string;
-      gatewayReference: string | null;
-      provider: string | null;
-      paymentMethod: string;
-      amountReceived: number;
-      amountApplied: number;
-      unappliedAmount: number;
-      applicationStatus: string;
-      status: string;
-      payerName: string | null;
-      payerEmail: string | null;
-      receivedAt: number;
-      reconciliationStatus: string;
-      reconciledAt: number | null;
-      notes: string | null;
-    };
-    invoiceNumber: string;
-    studentName: string;
-    className: string;
-    sessionName: string;
-    termName: string;
-  }>;
-  paymentAttempts: Array<{
-    attempt: {
-      _id: string;
-      invoiceId: string;
-      provider: string;
-      reference: string;
-      gatewayReference: string | null;
-      authorizationUrl: string | null;
-      accessCode: string | null;
-      amount: number;
-      currency: string;
-      status:
-        | "link_generated"
-        | "awaiting_payer_return"
-        | "verified"
-        | "webhook_reconciled"
-        | "manual_attention_needed";
-      reconciliationSource: "return_page" | "webhook" | "admin_poll" | null;
-      checkoutPayload: Record<string, unknown>;
-      callbackUrl: string | null;
-      paymentId: string | null;
-      gatewayEventId: string | null;
-      lastCheckedAt: number | null;
-      resolvedAt: number | null;
-      resolutionMessage: string | null;
-      createdAt: number;
-      updatedAt: number;
-    };
-    invoiceNumber: string;
-    studentName: string;
-    className: string;
-    sessionName: string;
-    termName: string;
-  }>;
-  gatewayEvents: Array<{
-    _id: string;
-    provider: string;
-    eventId: string;
-    eventType: string;
-    reference: string;
-    invoiceNumber: string | null;
-    paymentId: string | null;
-    signatureValid: boolean;
-    verificationStatus: string;
-    processedAt: number | null;
-    verificationMessage: string | null;
-    receivedAt: number;
-  }>;
-};
-
-function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatDateTime(value: number) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
-
-function toQueryArgs(field: "classId" | "sessionId", value: string) {
-  return value.trim()
-    ? ({ [field]: value.trim() } as never)
-    : ("skip" as never);
-}
-
-function matchesSearch(query: string, values: Array<string | null | undefined>) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
-}
-
-function getPaymentAttemptStatusLabel(
-  status: "link_generated" | "awaiting_payer_return" | "verified" | "webhook_reconciled" | "manual_attention_needed"
-) {
-  switch (status) {
-    case "link_generated":
-      return "Link generated";
-    case "awaiting_payer_return":
-      return "Awaiting payer return";
-    case "verified":
-      return "Verified";
-    case "webhook_reconciled":
-      return "Webhook reconciled";
-    case "manual_attention_needed":
-      return "Manual attention needed";
-  }
-}
-
-function getPaymentAttemptStatusClass(
-  status: "link_generated" | "awaiting_payer_return" | "verified" | "webhook_reconciled" | "manual_attention_needed"
-) {
-  switch (status) {
-    case "link_generated":
-      return "bg-slate-100 text-slate-700";
-    case "awaiting_payer_return":
-      return "bg-amber-50 text-amber-700";
-    case "verified":
-      return "bg-emerald-50 text-emerald-700";
-    case "webhook_reconciled":
-      return "bg-sky-50 text-sky-700";
-    case "manual_attention_needed":
-      return "bg-rose-50 text-rose-700";
-  }
-}
-
-function formatAttemptTimestamp(timestamp: number | null) {
-  if (!timestamp) {
-    return "Never checked";
-  }
-
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
-}
-
-function createDraftLineItem(
-  overrides?: Partial<Omit<FeePlanDraftItem, "draftId">>
-): FeePlanDraftItem {
-  return {
-    draftId: crypto.randomUUID(),
-    label: overrides?.label ?? "",
-    amount: overrides?.amount ?? "",
-    category: overrides?.category ?? "other",
-  };
-}
-
-function initialFeePlanDraft(): FeePlanDraft {
-  return {
-    name: "",
-    description: "",
-    currency: "NGN",
-    billingMode: "class_default",
-    targetClassIds: [],
-    installmentEnabled: false,
-    installmentCount: "1",
-    intervalDays: "0",
-    firstDueDays: "14",
-    lineItems: [createDraftLineItem({ label: "Tuition", category: "tuition" })],
-  };
-}
-
-function initialFeePlanApplicationDraft(): FeePlanApplicationDraft {
-  return {
-    feePlanId: "",
-    classId: "",
-    sessionId: "",
-    termId: "",
-    notes: "",
-  };
-}
-
-function initialInvoiceDraft(): InvoiceDraft {
-  return {
-    feePlanId: "",
-    classId: "",
-    sessionId: "",
-    termId: "",
-    studentId: "",
-    waiverAmount: "0",
-    discountAmount: "0",
-    dueDate: "",
-    notes: "",
-  };
-}
-
-function initialPaymentDraft(): PaymentDraft {
-  return {
-    invoiceId: "",
-    reference: "",
-    amountReceived: "",
-    paymentMethod: "cash",
-    payerName: "",
-    payerEmail: "",
-    notes: "",
-  };
-}
-
-function initialBillingSettingsDraft(schoolSlug = ""): BillingSettingsDraft {
-  const normalizedPrefix = schoolSlug.trim().toUpperCase();
-
-  return {
-    invoicePrefix: normalizedPrefix,
-    defaultCurrency: "NGN",
-    defaultDueDays: "14",
-    paymentProviderMode: "test",
-    allowManualPayments: true,
-    allowOnlinePayments: false,
-  };
-}
-
-function buildBillingSettingsDraft(
-  settings:
-    | {
-        invoicePrefix: string;
-        defaultCurrency: string;
-        defaultDueDays: number;
-        paymentProviderMode: "test" | "live";
-        allowManualPayments: boolean;
-        allowOnlinePayments: boolean;
-      }
-    | null
-    | undefined,
-  schoolSlug: string
-): BillingSettingsDraft {
-  if (!settings) {
-    return initialBillingSettingsDraft(schoolSlug);
-  }
-
-  return {
-    invoicePrefix: settings.invoicePrefix,
-    defaultCurrency: settings.defaultCurrency,
-    defaultDueDays: String(settings.defaultDueDays),
-    paymentProviderMode: settings.paymentProviderMode,
-    allowManualPayments: settings.allowManualPayments,
-    allowOnlinePayments: settings.allowOnlinePayments,
-  };
-}
-
-function initialPaystackGatewayConfigDraft(): PaystackGatewayConfigDraft {
-  return {
-    publicKey: "",
-    secretKey: "",
-  };
-}
-
-function paymentGatewayStatusLabel(status: PaystackProviderModeState["status"]) {
-  switch (status) {
-    case "ready":
-      return "Ready";
-    case "rotation_pending":
-      return "Rotation pending";
-    case "invalid":
-      return "Invalid";
-    case "disabled":
-      return "Disabled";
-    default:
-      return "Not configured";
-  }
-}
-
-function paymentGatewayStatusClasses(status: PaystackProviderModeState["status"]) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-50 text-emerald-700";
-    case "rotation_pending":
-      return "bg-amber-50 text-amber-700";
-    case "invalid":
-      return "bg-rose-50 text-rose-700";
-    case "disabled":
-      return "bg-slate-100 text-slate-600";
-    default:
-      return "bg-slate-100 text-slate-600";
-  }
-}
-
-function initialPaymentLinkDraft(): PaymentLinkDraft {
-  return {
-    invoiceId: "",
-    amount: "",
-    email: "",
-    description: "",
-    callbackUrl: "",
-  };
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-6 md:space-y-8">
-      <div className="h-20 rounded-2xl bg-slate-100/80 animate-pulse" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-28 rounded-2xl bg-slate-100/70 animate-pulse" />
-        ))}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="h-[420px] rounded-2xl bg-slate-100/70 animate-pulse" />
-        <div className="h-[420px] rounded-2xl bg-slate-100/70 animate-pulse" />
-      </div>
-      <div className="h-[520px] rounded-2xl bg-slate-100/70 animate-pulse" />
-    </div>
-  );
-}
+// Hooks & Utils
+import { useBillingData } from "./hooks/useBillingData";
+import { useBillingActions } from "./hooks/useBillingActions";
+import { useBillingSortPreferences } from "./hooks/useBillingSortPreferences";
+import { 
+  initialFeePlanDraft, 
+  initialFeePlanApplicationDraft, 
+  initialInvoiceDraft, 
+  initialPaymentDraft, 
+  initialBillingSettingsDraft,
+  initialPaystackGatewayConfigDraft,
+  initialPaymentLinkDraft,
+  buildBillingSettingsDraft,
+  sortFeePlans,
+  sortInvoiceRows,
+  sortPaymentRows,
+  toggleSortDirection
+} from "./utils";
+import type { 
+  DashboardFilters, 
+  FeePlanDraft, 
+  FeePlanApplicationDraft, 
+  InvoiceDraft, 
+  PaymentDraft, 
+  BillingSettingsDraft,
+  PaystackGatewayConfigDraft,
+  PaymentLinkDraft,
+  PaymentLinkResult,
+  FeePlanSortKey,
+  InvoiceSortKey,
+  PaymentSortKey
+} from "./types";
 
 export default function BillingPage() {
+  // 1. State Management
+  const [activeTab, setActiveTab] = useState<BillingTab>("overview");
   const [filters, setFilters] = useState<DashboardFilters>({
     classId: "",
     sessionId: "",
@@ -591,2290 +64,488 @@ export default function BillingPage() {
     status: "",
     search: "",
   });
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; title: string; message: string } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarVariant, setSidebarVariant] = useState<"arsenal" | "payment" | "invoice" | "application" | "link" | "plan">("payment");
+
+  // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
   const [billingSettingsDraft, setBillingSettingsDraft] = useState<BillingSettingsDraft>(initialBillingSettingsDraft());
-  const [billingSettingsLoaded, setBillingSettingsLoaded] = useState(false);
-  const [selectedGatewayMode, setSelectedGatewayMode] = useState<"test" | "live">("test");
-  const [gatewayConfigDraft, setGatewayConfigDraft] = useState<PaystackGatewayConfigDraft>(
-    initialPaystackGatewayConfigDraft()
-  );
+  const [gatewayConfigDraft, setGatewayConfigDraft] = useState<PaystackGatewayConfigDraft>(initialPaystackGatewayConfigDraft());
   const [paymentLinkDraft, setPaymentLinkDraft] = useState<PaymentLinkDraft>(initialPaymentLinkDraft());
-  const [paymentLinkResult, setPaymentLinkResult] = useState<PaymentLinkResult | null>(null);
-  const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
-  const [selectorSearch, setSelectorSearch] = useState({
-    targetClasses: "",
-    bulkFeePlans: "",
-    bulkClasses: "",
-    invoiceFeePlans: "",
-    invoiceClasses: "",
-    invoiceStudents: "",
-    paymentInvoices: "",
-    paymentLinkInvoices: "",
-  });
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
+  const [generatedPaymentLink, setGeneratedPaymentLink] = useState<PaymentLinkResult | null>(null);
+  const [selectedGatewayMode, setSelectedGatewayMode] = useState<"test" | "live">("test");
 
-  const dashboardArgs = {
-    classId: filters.classId ? (filters.classId as never) : (null as never),
-    sessionId: filters.sessionId ? (filters.sessionId as never) : (null as never),
-    termId: filters.termId ? (filters.termId as never) : (null as never),
-    status: filters.status ? (filters.status as never) : (null as never),
-    search: filters.search.trim() ? filters.search.trim() : undefined,
+  const sidebarTitles: Record<string, string> = {
+    arsenal: "Financial Hub",
+    payment: "Record Receipt",
+    invoice: "Generate Invoice",
+    application: "Bulk Distribution",
+    link: "Payment Handoff",
+    plan: "New Fee Plan",
   };
 
-  const data = useQuery("functions/billing:getBillingDashboard" as never, dashboardArgs as never) as
-    | BillingDashboardData
-    | undefined;
+  // 2. Data & Actions
+  const { 
+    data, 
+    classes, 
+    sessions, 
+    classNameById, 
+    applicationTerms 
+  } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
+  const actions = useBillingActions(setNotice);
+  const { sortPreferences, setSortPreferences } = useBillingSortPreferences();
 
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as
-    | ClassOption[]
-    | undefined;
-  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as
-    | SessionOption[]
-    | undefined;
-  const filterTerms = useQuery(
-    "functions/academic/academicSetup:listTermsBySession" as never,
-    toQueryArgs("sessionId", filters.sessionId)
-  ) as TermOption[] | undefined;
-  const invoiceTerms = useQuery(
-    "functions/academic/academicSetup:listTermsBySession" as never,
-    toQueryArgs("sessionId", invoiceDraft.sessionId)
-  ) as TermOption[] | undefined;
-  const invoiceStudents = useQuery(
-    "functions/academic/studentEnrollment:listStudentsByClass" as never,
-    toQueryArgs("classId", invoiceDraft.classId)
-  ) as StudentOption[] | undefined;
-  const applicationTerms = useQuery(
-    "functions/academic/academicSetup:listTermsBySession" as never,
-    toQueryArgs("sessionId", feePlanApplicationDraft.sessionId)
-  ) as TermOption[] | undefined;
-  const schoolPaymentAttemptRows = useQuery(
-    "functions/billing:listBillingPaymentAttempts" as never,
-    { status: null, limit: 50 } as never
-  ) as BillingDashboardData["paymentAttempts"] | undefined;
-
-  const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
-  const saveSchoolPaystackGatewayConfig = useMutation(
-    "functions/billingProviders:saveSchoolPaystackGatewayConfig" as never
+  const sortedInvoices = useMemo(
+    () => sortInvoiceRows(data?.invoices ?? [], sortPreferences.invoices),
+    [data?.invoices, sortPreferences.invoices]
   );
-  const validateSchoolPaystackGatewayConfig = useAction(
-    "functions/billingProviders:validateSchoolPaystackGatewayConfig" as never
+  const sortedPayments = useMemo(
+    () => sortPaymentRows(data?.payments ?? [], sortPreferences.payments),
+    [data?.payments, sortPreferences.payments]
   );
-  const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
-  const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
-  const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
-  const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
-  const createInvoicePaymentLink = useAction("functions/billing:initializeOnlinePayment" as never);
-  const reconcilePendingOnlinePayments = useAction("functions/billing:reconcilePendingOnlinePayments" as never);
-  const reconciliationInFlightRef = useRef(false);
-
-  const selectedCurrency = feePlanDraft.currency.trim().toUpperCase() || data?.settings?.defaultCurrency || "NGN";
-  const feePlanTotal = useMemo(
-    () =>
-      feePlanDraft.lineItems.reduce((sum, item) => {
-        const parsed = Number(item.amount);
-        return sum + (Number.isFinite(parsed) ? parsed : 0);
-      }, 0),
-    [feePlanDraft.lineItems]
+  const sortedFeePlans = useMemo(
+    () => sortFeePlans(data?.feePlans ?? [], sortPreferences.plans),
+    [data?.feePlans, sortPreferences.plans]
   );
-
-  const activeFilters = [filters.classId, filters.sessionId, filters.termId, filters.status, filters.search.trim()].filter(Boolean).length;
-  const activePaymentGatewayMode = data?.paymentGateway?.activeMode ?? billingSettingsDraft.paymentProviderMode;
-  const selectedPaymentGatewayState = data?.paymentGateway?.modes[selectedGatewayMode] ?? null;
-  const classNameById = useMemo(
-    () => new Map((classes ?? []).map((classOption) => [classOption._id, classOption.name])),
-    [classes]
+  const overviewInvoices = useMemo(
+    () => sortInvoiceRows(data?.invoices ?? [], { key: "date", direction: "desc" }).filter((invoiceRow) => invoiceRow.invoice.status !== "paid").slice(0, 5),
+    [data?.invoices]
   );
-  const selectedInvoiceFeePlan = useMemo(
-    () => data?.feePlans?.find((feePlan) => feePlan._id === invoiceDraft.feePlanId) ?? null,
-    [data?.feePlans, invoiceDraft.feePlanId]
-  );
-  const selectedApplicationFeePlan = useMemo(
-    () =>
-      data?.feePlans?.find((feePlan) => feePlan._id === feePlanApplicationDraft.feePlanId) ?? null,
-    [data?.feePlans, feePlanApplicationDraft.feePlanId]
-  );
-  const bulkFeePlanOptions = useMemo(
-    () => (data?.feePlans ?? []).filter((feePlan) => feePlan.billingMode === "class_default"),
-    [data?.feePlans]
-  );
-  const invoiceClassOptions = useMemo(() => {
-    if (selectedInvoiceFeePlan && selectedInvoiceFeePlan.targetClassIds.length > 0) {
-      return (classes ?? []).filter((classOption) =>
-        selectedInvoiceFeePlan.targetClassIds.includes(classOption._id)
-      );
-    }
-
-    return classes ?? [];
-  }, [classes, selectedInvoiceFeePlan]);
-  const applicationClassOptions = useMemo(() => {
-    if (selectedApplicationFeePlan && selectedApplicationFeePlan.targetClassIds.length > 0) {
-      return (classes ?? []).filter((classOption) =>
-        selectedApplicationFeePlan.targetClassIds.includes(classOption._id)
-      );
-    }
-
-    return classes ?? [];
-  }, [classes, selectedApplicationFeePlan]);
-  const visibleTargetClasses = useMemo(
-    () =>
-      (classes ?? []).filter((classOption) =>
-        matchesSearch(selectorSearch.targetClasses, [classOption.name])
-      ),
-    [classes, selectorSearch.targetClasses]
-  );
-  const visibleBulkFeePlanOptions = useMemo(
-    () =>
-      bulkFeePlanOptions.filter((feePlan) =>
-        matchesSearch(selectorSearch.bulkFeePlans, [feePlan.name, feePlan.description])
-      ),
-    [bulkFeePlanOptions, selectorSearch.bulkFeePlans]
-  );
-  const visibleApplicationClassOptions = useMemo(
-    () =>
-      applicationClassOptions.filter((classOption) =>
-        matchesSearch(selectorSearch.bulkClasses, [classOption.name])
-      ),
-    [applicationClassOptions, selectorSearch.bulkClasses]
-  );
-  const visibleInvoiceFeePlanOptions = useMemo(
-    () =>
-      (data?.feePlans ?? []).filter((feePlan) =>
-        matchesSearch(selectorSearch.invoiceFeePlans, [feePlan.name, feePlan.description])
-      ),
-    [data?.feePlans, selectorSearch.invoiceFeePlans]
-  );
-  const visibleInvoiceClassOptions = useMemo(
-    () =>
-      invoiceClassOptions.filter((classOption) =>
-        matchesSearch(selectorSearch.invoiceClasses, [classOption.name])
-      ),
-    [invoiceClassOptions, selectorSearch.invoiceClasses]
-  );
-  const visibleInvoiceStudents = useMemo(
-    () =>
-      (invoiceStudents ?? []).filter((student) =>
-        matchesSearch(selectorSearch.invoiceStudents, [student.studentName, student.admissionNumber])
-      ),
-    [invoiceStudents, selectorSearch.invoiceStudents]
-  );
-  const visiblePaymentInvoices = useMemo(
-    () =>
-      (data?.invoices ?? [])
-        .filter(
-          (row) => row.invoice.balanceDue > 0 && row.invoice.status !== "paid" && row.invoice.status !== "waived"
-        )
-        .filter((row) =>
-          matchesSearch(selectorSearch.paymentInvoices, [
-            row.invoice.invoiceNumber,
-            row.studentName,
-            row.className,
-            row.invoice.feePlanNameSnapshot,
-          ])
-        ),
-    [data?.invoices, selectorSearch.paymentInvoices]
-  );
-  const visiblePaymentLinkInvoices = useMemo(
-    () =>
-      (data?.invoices ?? [])
-        .filter(
-          (row) => row.invoice.balanceDue > 0 && row.invoice.status !== "paid" && row.invoice.status !== "waived"
-        )
-        .filter((row) =>
-          matchesSearch(selectorSearch.paymentLinkInvoices, [
-            row.invoice.invoiceNumber,
-            row.studentName,
-            row.className,
-            row.invoice.feePlanNameSnapshot,
-          ])
-        ),
-    [data?.invoices, selectorSearch.paymentLinkInvoices]
-  );
-  const selectedPaymentInvoice = useMemo(
-    () => data?.invoices.find((row) => row.invoice._id === paymentDraft.invoiceId) ?? null,
-    [data?.invoices, paymentDraft.invoiceId]
-  );
-  const paymentRowById = useMemo(
-    () => new Map((data?.payments ?? []).map((row) => [row.payment._id, row])),
+  const overviewPayments = useMemo(
+    () => sortPaymentRows(data?.payments ?? [], { key: "date", direction: "desc" }).slice(0, 5),
     [data?.payments]
   );
-  const selectedPaymentLinkInvoice = useMemo(
-    () => data?.invoices.find((row) => row.invoice._id === paymentLinkDraft.invoiceId) ?? null,
-    [data?.invoices, paymentLinkDraft.invoiceId]
-  );
-  const paymentAttemptRows = useMemo(() => data?.paymentAttempts ?? [], [data?.paymentAttempts]);
-  const activePaymentAttempts = useMemo(
-    () =>
-      paymentAttemptRows.filter(
-        (row) =>
-          row.attempt.status === "link_generated" ||
-          row.attempt.status === "awaiting_payer_return" ||
-          row.attempt.status === "manual_attention_needed"
-      ),
-    [paymentAttemptRows]
-  );
-  const pendingPaymentAttempts = useMemo(
-    () =>
-      activePaymentAttempts.filter(
-        (row) => row.attempt.status === "link_generated" || row.attempt.status === "awaiting_payer_return"
-      ),
-    [activePaymentAttempts]
-  );
-  const manualAttentionPaymentAttempts = useMemo(
-    () => paymentAttemptRows.filter((row) => row.attempt.status === "manual_attention_needed"),
-    [paymentAttemptRows]
-  );
-  const reconciliationAttemptRows = useMemo(
-    () => schoolPaymentAttemptRows ?? [],
-    [schoolPaymentAttemptRows]
-  );
-  const reconciliationActiveAttempts = useMemo(
-    () =>
-      reconciliationAttemptRows.filter(
-        (row) =>
-          row.attempt.status === "link_generated" ||
-          row.attempt.status === "awaiting_payer_return" ||
-          row.attempt.status === "manual_attention_needed"
-      ),
-    [reconciliationAttemptRows]
-  );
 
-  const executePendingPaymentReconciliation = useCallback(
-    async (force = false, showNotice = false) => {
-      if (reconciliationInFlightRef.current) {
-        return null;
-      }
+  const handleInvoiceSortChange = (key: InvoiceSortKey) => {
+    setSortPreferences((current) => ({
+      ...current,
+      invoices: toggleSortDirection(current.invoices, key, key === "date" ? "desc" : "asc"),
+    }));
+  };
 
-      reconciliationInFlightRef.current = true;
-      try {
-        const result = (await reconcilePendingOnlinePayments({ force } as never)) as {
-          scannedCount: number;
-          checkedCount: number;
-          resolvedCount: number;
-          pendingCount: number;
-          manualAttentionCount: number;
-        };
+  const handlePaymentSortChange = (key: PaymentSortKey) => {
+    setSortPreferences((current) => ({
+      ...current,
+      payments: toggleSortDirection(current.payments, key, key === "date" || key === "settlement" ? "desc" : "asc"),
+    }));
+  };
 
-        if (showNotice) {
-          setNotice({
-            tone: "success",
-            title: "Pending payment references rechecked",
-            message: `${result.resolvedCount} resolved · ${result.pendingCount} still pending · ${result.manualAttentionCount} need attention`,
-          });
-        }
+  const handleFeePlanSortChange = (key: FeePlanSortKey) => {
+    setSortPreferences((current) => ({
+      ...current,
+      plans: toggleSortDirection(current.plans, key, key === "date" || key === "amount" ? "desc" : "asc"),
+    }));
+  };
 
-        return result;
-      } catch (error) {
-        if (showNotice) {
-          setNotice({
-            tone: "error",
-            title: "Unable to recheck pending references",
-            message: getUserFacingErrorMessage(
-              error,
-              "The admin workspace could not verify one or more Paystack references."
-            ),
-          });
-        }
-
-        return null;
-      } finally {
-        reconciliationInFlightRef.current = false;
-      }
-    },
-    [reconcilePendingOnlinePayments]
-  );
-
+  // 3. Effects
   useEffect(() => {
-    if (selectedInvoiceFeePlan && selectedInvoiceFeePlan.targetClassIds.length > 0) {
-      const allowedClassId = selectedInvoiceFeePlan.targetClassIds.includes(invoiceDraft.classId)
-        ? invoiceDraft.classId
-        : selectedInvoiceFeePlan.targetClassIds[0] ?? "";
-      if (allowedClassId !== invoiceDraft.classId) {
-        setInvoiceDraft((current) => ({ ...current, classId: allowedClassId, studentId: "" }));
-      }
+    if (data?.settings) {
+      setBillingSettingsDraft(buildBillingSettingsDraft(data.settings, data.school.slug));
+      setSelectedGatewayMode(data.settings.paymentProviderMode);
     }
-  }, [invoiceDraft.classId, selectedInvoiceFeePlan]);
+  }, [data?.settings, data?.school.slug]);
 
-  useEffect(() => {
-    if (selectedApplicationFeePlan && selectedApplicationFeePlan.targetClassIds.length > 0) {
-      const allowedClassId = selectedApplicationFeePlan.targetClassIds.includes(
-        feePlanApplicationDraft.classId
-      )
-        ? feePlanApplicationDraft.classId
-        : selectedApplicationFeePlan.targetClassIds[0] ?? "";
-      if (allowedClassId !== feePlanApplicationDraft.classId) {
-        setFeePlanApplicationDraft((current) => ({ ...current, classId: allowedClassId }));
-      }
-    }
-  }, [feePlanApplicationDraft.classId, selectedApplicationFeePlan]);
-
-  useEffect(() => {
-    if (!data || billingSettingsLoaded) {
-      return;
-    }
-
-    setBillingSettingsDraft(buildBillingSettingsDraft(data.settings, data.school.slug));
-    setSelectedGatewayMode(data.settings?.paymentProviderMode ?? data.paymentGateway.activeMode);
-    setBillingSettingsLoaded(true);
-  }, [billingSettingsLoaded, data]);
-
-  useEffect(() => {
-    setPaymentLinkDraft((current) => {
-      if (current.callbackUrl) {
-        return current;
-      }
-
-      if (typeof window === "undefined") {
-        return current;
-      }
-
-      return {
-        ...current,
-        callbackUrl: `${window.location.origin}/payments/paystack/return`,
-      };
-    });
-  }, []);
-
-  useEffect(() => {
-    if (reconciliationActiveAttempts.length === 0) {
-      return;
-    }
-
-    void executePendingPaymentReconciliation(false, false);
-    const timer = window.setInterval(() => {
-      void executePendingPaymentReconciliation(false, false);
-    }, 2 * 60 * 1000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [executePendingPaymentReconciliation, reconciliationActiveAttempts.length]);
-
-  const runAction = async (
-    action: () => Promise<unknown>,
-    successTitle: string,
-    fallbackMessage: string
-  ) => {
-    setNotice(null);
-    try {
-      await action();
-      setNotice({
-        tone: "success",
-        title: successTitle,
-        message: "Saved successfully.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        title: successTitle,
-        message: getUserFacingErrorMessage(error, fallbackMessage),
-      });
-    }
-  };
-
-  const updateLineItem = (index: number, field: keyof FeePlanDraftItem, value: string) => {
-    setFeePlanDraft((current) => ({
-      ...current,
-      lineItems: current.lineItems.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      ),
-    }));
-  };
-
-  const addLineItem = () => {
-    setFeePlanDraft((current) => ({
-      ...current,
-      lineItems: [...current.lineItems, createDraftLineItem()],
-    }));
-  };
-
-  const removeLineItem = (index: number) => {
-    setFeePlanDraft((current) => ({
-      ...current,
-      lineItems: current.lineItems.length === 1
-        ? current.lineItems
-        : current.lineItems.filter((_, itemIndex) => itemIndex !== index),
-    }));
-  };
-
-  const toggleFeePlanTargetClass = (classId: string) => {
-    setFeePlanDraft((current) => ({
-      ...current,
-      targetClassIds: current.targetClassIds.includes(classId)
-        ? current.targetClassIds.filter((targetClassId) => targetClassId !== classId)
-        : [...current.targetClassIds, classId],
-    }));
-  };
-
-  const setFeePlanBillingMode = (billingMode: FeePlanDraft["billingMode"]) => {
-    setFeePlanDraft((current) => ({
-      ...current,
-      billingMode,
-      targetClassIds: billingMode === "manual_extra" ? [] : current.targetClassIds,
-    }));
-  };
-
-  const selectPaymentLinkInvoice = (invoiceId: string) => {
-    const nextInvoice = data?.invoices.find((row) => row.invoice._id === invoiceId) ?? null;
-    setPaymentLinkDraft((current) => ({
-      ...current,
-      invoiceId,
-      amount: nextInvoice ? String(nextInvoice.invoice.balanceDue) : "",
-      description: nextInvoice
-        ? `Invoice ${nextInvoice.invoice.invoiceNumber} · ${nextInvoice.studentName}`
-        : "",
-    }));
-    setPaymentLinkResult(null);
-    setPaymentLinkCopied(false);
-  };
-
-  const handleSaveBillingSettings = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runAction(async () => {
-      const defaultDueDays = Number(billingSettingsDraft.defaultDueDays);
-      if (!Number.isFinite(defaultDueDays) || defaultDueDays < 1) {
-        throw new Error("Enter a valid default due-day value.");
-      }
-
-      const updatedSettings = (await saveBillingSettings({
-        invoicePrefix: billingSettingsDraft.invoicePrefix,
-        defaultCurrency: billingSettingsDraft.defaultCurrency,
-        defaultDueDays,
-        paymentProviderMode: billingSettingsDraft.paymentProviderMode,
-        allowManualPayments: billingSettingsDraft.allowManualPayments,
-        allowOnlinePayments: billingSettingsDraft.allowOnlinePayments,
-      } as never)) as {
-        invoicePrefix: string;
-        defaultCurrency: string;
-        defaultDueDays: number;
-        paymentProviderMode: "test" | "live";
-        allowManualPayments: boolean;
-        allowOnlinePayments: boolean;
-      };
-
-      setBillingSettingsDraft({
-        invoicePrefix: updatedSettings.invoicePrefix,
-        defaultCurrency: updatedSettings.defaultCurrency,
-        defaultDueDays: String(updatedSettings.defaultDueDays),
-        paymentProviderMode: updatedSettings.paymentProviderMode,
-        allowManualPayments: updatedSettings.allowManualPayments,
-        allowOnlinePayments: updatedSettings.allowOnlinePayments,
-      });
-    }, "Billing settings saved", "Unable to save billing settings.");
-  };
-
-  const handleSavePaystackGatewayConfig = async () => {
-    await runAction(async () => {
-      await saveSchoolPaystackGatewayConfig({
-        mode: selectedGatewayMode,
-        publicKey: gatewayConfigDraft.publicKey.trim() ? gatewayConfigDraft.publicKey.trim() : null,
-        secretKey: gatewayConfigDraft.secretKey.trim() ? gatewayConfigDraft.secretKey.trim() : null,
-      } as never);
-
-      setGatewayConfigDraft((current) => ({ ...current, secretKey: "" }));
-    }, "Merchant credentials saved", "Unable to save the Paystack merchant credentials.");
-  };
-
-  const handleValidatePaystackGatewayConfig = async () => {
-    await runAction(async () => {
-      await validateSchoolPaystackGatewayConfig({
-        mode: selectedGatewayMode,
-      } as never);
-    }, "Merchant credentials validated", "Unable to validate the Paystack merchant credentials.");
-  };
-
-  const handleGeneratePaymentLink = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setNotice(null);
-    try {
-      const billingData = data;
-      if (!billingData) {
-        throw new Error("Billing data is still loading.");
-      }
-
-      if (!billingData.settings?.allowOnlinePayments) {
-        throw new Error("Enable online payments in billing settings before generating a payment link.");
-      }
-
-      if (!billingData.paymentGateway.readyForPayments) {
-        throw new Error("Configure and validate the active Paystack merchant credentials before generating a payment link.");
-      }
-
-      if (!paymentLinkDraft.invoiceId) {
-        throw new Error("Select an invoice first.");
-      }
-
-      const selectedInvoice = selectedPaymentLinkInvoice;
-      if (!selectedInvoice) {
-        throw new Error("Select a valid invoice for the payment link.");
-      }
-
-      const amount = Number(paymentLinkDraft.amount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Enter a valid payment amount greater than zero.");
-      }
-      if (amount > selectedInvoice.invoice.balanceDue) {
-        throw new Error(
-          `Payment link amount cannot exceed the outstanding balance of ${formatMoney(
-            selectedInvoice.invoice.balanceDue,
-            selectedInvoice.invoice.currency
-          )}.`
-        );
-      }
-      if (!paymentLinkDraft.email.trim()) {
-        throw new Error("Enter the payer email before generating the payment link.");
-      }
-
-      const result = (await createInvoicePaymentLink({
-        schoolId: billingData.school.id,
-        invoiceId: selectedInvoice.invoice._id,
-        amount,
-        email: paymentLinkDraft.email,
-        description: paymentLinkDraft.description || `Invoice ${selectedInvoice.invoice.invoiceNumber} · ${selectedInvoice.studentName}`,
-        callbackUrl: paymentLinkDraft.callbackUrl || undefined,
-      } as never)) as PaymentLinkResult;
-
-      setPaymentLinkResult(result);
-      setPaymentLinkCopied(false);
-      setNotice({
-        tone: "success",
-        title: "Payment link generated",
-        message: "Copy the URL or open it on a device at the front desk. The attempt will keep reconciling in the background.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        title: "Payment link generation failed",
-        message: getUserFacingErrorMessage(error, "Unable to generate the payment link."),
-      });
-    }
-  };
-
-  const handleCopyPaymentLink = async () => {
-    if (!paymentLinkResult?.authorizationUrl) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(paymentLinkResult.authorizationUrl);
-      setPaymentLinkCopied(true);
-      setNotice({
-        tone: "success",
-        title: "Payment link copied",
-        message: "The front-desk handoff URL is now on the clipboard.",
-      });
-    } catch {
-      setNotice({
-        tone: "error",
-        title: "Unable to copy link",
-        message: "Copy the URL manually if clipboard access is blocked.",
-      });
-    }
-  };
-
-  const handleCreateFeePlan = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runAction(async () => {
-      await createFeePlan({
-        name: feePlanDraft.name,
-        description: feePlanDraft.description || undefined,
-        currency: feePlanDraft.currency || undefined,
-        billingMode: feePlanDraft.billingMode,
-        targetClassIds:
-          feePlanDraft.billingMode === "class_default"
-            ? feePlanDraft.targetClassIds.map((classId) => classId as never)
-            : undefined,
-        lineItems: feePlanDraft.lineItems.map((item) => ({
-          label: item.label,
-          amount: Number(item.amount),
-          category: item.category,
-        })),
-        installmentPolicy: {
-          enabled: feePlanDraft.installmentEnabled,
-          installmentCount: Number(feePlanDraft.installmentCount),
-          intervalDays: Number(feePlanDraft.intervalDays),
-          firstDueDays: Number(feePlanDraft.firstDueDays),
-        },
-      } as never);
-      setFeePlanDraft(initialFeePlanDraft());
-    }, "Fee plan created", "Unable to create the fee plan.");
-  };
-
-  const handleCreateInvoice = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runAction(async () => {
-      if (!invoiceDraft.feePlanId) {
-        throw new Error("Select a fee plan before generating an invoice.");
-      }
-      if (!invoiceDraft.classId) {
-        throw new Error("Select a class before generating an invoice.");
-      }
-      if (!invoiceDraft.sessionId || !invoiceDraft.termId) {
-        throw new Error("Select both session and term before generating an invoice.");
-      }
-      if (!invoiceDraft.studentId) {
-        throw new Error("Select a student before generating an invoice.");
-      }
-
-      await createInvoice({
-        feePlanId: invoiceDraft.feePlanId,
-        studentId: invoiceDraft.studentId,
-        classId: invoiceDraft.classId,
-        sessionId: invoiceDraft.sessionId,
-        termId: invoiceDraft.termId,
-        waiverAmount: invoiceDraft.waiverAmount ? Number(invoiceDraft.waiverAmount) : undefined,
-        discountAmount: invoiceDraft.discountAmount ? Number(invoiceDraft.discountAmount) : undefined,
-        dueDate: invoiceDraft.dueDate ? new Date(invoiceDraft.dueDate).getTime() : undefined,
-        notes: invoiceDraft.notes || undefined,
-      } as never);
-      setInvoiceDraft(initialInvoiceDraft());
-    }, "Invoice created", "Unable to generate the invoice.");
-  };
-
-  const handleApplyFeePlanToClassStudents = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runAction(async () => {
-      if (!feePlanApplicationDraft.feePlanId) {
-        throw new Error("Select a fee plan before applying it to a class.");
-      }
-      if (!feePlanApplicationDraft.classId) {
-        throw new Error("Select a class before applying the fee plan.");
-      }
-      if (!feePlanApplicationDraft.sessionId || !feePlanApplicationDraft.termId) {
-        throw new Error("Select both session and term before applying the fee plan.");
-      }
-
-      await applyFeePlanToClassStudents({
-        feePlanId: feePlanApplicationDraft.feePlanId,
-        classId: feePlanApplicationDraft.classId,
-        sessionId: feePlanApplicationDraft.sessionId,
-        termId: feePlanApplicationDraft.termId,
-        notes: feePlanApplicationDraft.notes || undefined,
-      } as never);
-      setFeePlanApplicationDraft(initialFeePlanApplicationDraft());
-    }, "Fee plan applied", "Unable to apply the fee plan to the selected class.");
-  };
-
-  const handleRecordPayment = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runAction(async () => {
-      const amountReceived = Number(paymentDraft.amountReceived);
-      if (!Number.isFinite(amountReceived) || amountReceived <= 0) {
-        throw new Error("Enter a valid payment amount greater than zero.");
-      }
-
-      if (
-        selectedPaymentInvoice &&
-        amountReceived > selectedPaymentInvoice.invoice.balanceDue
-      ) {
-        throw new Error(
-          `Amount exceeds the outstanding balance of ${formatMoney(
-            selectedPaymentInvoice.invoice.balanceDue,
-            selectedPaymentInvoice.invoice.currency
-          )}.`
-        );
-      }
-
-      await recordPayment({
+  // 4. Handlers
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await actions.runAction(async () => {
+      await actions.recordPayment({
         invoiceId: paymentDraft.invoiceId,
         reference: paymentDraft.reference,
-        amountReceived,
+        amountReceived: Number(paymentDraft.amountReceived),
         paymentMethod: paymentDraft.paymentMethod,
         payerName: paymentDraft.payerName || undefined,
         payerEmail: paymentDraft.payerEmail || undefined,
         notes: paymentDraft.notes || undefined,
       } as never);
+    }, "Payment Recorded", "Unable to save manual payment.");
+    if (success) {
       setPaymentDraft(initialPaymentDraft());
-    }, "Payment recorded", "Unable to save the payment.");
+      setSidebarOpen(false);
+    }
   };
 
-  if (data === undefined) {
-    return <DashboardSkeleton />;
-  }
+  const handleCreateFeePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await actions.runAction(async () => {
+      await actions.createFeePlan({
+        name: feePlanDraft.name,
+        description: feePlanDraft.description,
+        currency: feePlanDraft.currency,
+        billingMode: feePlanDraft.billingMode,
+        targetClassIds: feePlanDraft.targetClassIds,
+        installmentEnabled: feePlanDraft.installmentEnabled,
+        installmentCount: Number(feePlanDraft.installmentCount),
+        intervalDays: Number(feePlanDraft.intervalDays),
+        firstDueDays: Number(feePlanDraft.firstDueDays),
+        lineItems: feePlanDraft.lineItems.map((item: any) => ({
+             label: item.label,
+             amount: Number(item.amount),
+             category: item.category,
+             order: 0
+        })),
+      } as never);
+    }, "Fee Plan Created", "Unable to create new fee plan.");
+    if (success) {
+      setFeePlanDraft(initialFeePlanDraft());
+      setSidebarOpen(false);
+    }
+  };
 
-  const canApplyFeePlan = Boolean(
-    feePlanApplicationDraft.feePlanId &&
-      feePlanApplicationDraft.classId &&
-      feePlanApplicationDraft.sessionId &&
-      feePlanApplicationDraft.termId
-  );
-  const canCreateInvoice = Boolean(
-    invoiceDraft.feePlanId &&
-      invoiceDraft.classId &&
-      invoiceDraft.sessionId &&
-      invoiceDraft.termId &&
-      invoiceDraft.studentId
-  );
-  const summaryCurrency = data.settings?.defaultCurrency ?? "NGN";
+  const handleApplyFeePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await actions.runAction(async () => {
+      await actions.applyFeePlanToClassStudents({
+        feePlanId: feePlanApplicationDraft.feePlanId,
+        classId: feePlanApplicationDraft.classId,
+        sessionId: feePlanApplicationDraft.sessionId,
+        termId: feePlanApplicationDraft.termId,
+      } as never);
+    }, "Invoices Generated", "Unable to distribute invoices for class.");
+    if (success) {
+      setFeePlanApplicationDraft(initialFeePlanApplicationDraft());
+      setSidebarOpen(false);
+    }
+  };
+
+  const handleGenerateLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!data) {
+      return;
+    }
+
+    const selectedInvoice = data.invoices.find((row) => row.invoice._id === paymentLinkDraft.invoiceId);
+    const fallbackDescription = selectedInvoice
+      ? `Payment for ${selectedInvoice.invoice.invoiceNumber}`
+      : "Front-desk invoice payment";
+
+    const success = await actions.runAction(async () => {
+      const result = await actions.createInvoicePaymentLink({
+        schoolId: data.school.id,
+        invoiceId: paymentLinkDraft.invoiceId,
+        amount: Number(paymentLinkDraft.amount),
+        email: paymentLinkDraft.email,
+        description: paymentLinkDraft.description.trim() || fallbackDescription,
+        callbackUrl: `${window.location.origin}/payments/paystack/return`,
+      } as never) as any;
+
+      setGeneratedPaymentLink({
+        provider: result?.provider ?? "paystack",
+        reference: result?.reference ?? "",
+        authorizationUrl: result?.authorizationUrl ?? result?.authorization_url ?? null,
+        accessCode: result?.accessCode ?? result?.access_code ?? null,
+        checkoutPayload: result?.checkoutPayload ?? result?.checkout_payload ?? {},
+      });
+    }, "Link Generated", "Unable to initialize Paystack session.");
+    if (success) {
+      setNotice({
+        tone: "success",
+        title: "Link Generated",
+        message: "Payment link is ready. Copy it or open it from the handoff panel.",
+      });
+    }
+  };
+
+  const handleSaveBillingSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await actions.runAction(async () => {
+      await actions.saveBillingSettings({
+        ...billingSettingsDraft,
+        defaultDueDays: Number(billingSettingsDraft.defaultDueDays),
+      } as never);
+    }, "Settings Updated", "Unable to update billing configuration.");
+  };
+
+  const handleSaveGatewayConfig = async () => {
+    await actions.runAction(async () => {
+      await actions.saveSchoolPaystackGatewayConfig({
+        mode: selectedGatewayMode,
+        publicKey: gatewayConfigDraft.publicKey.trim() || null,
+        secretKey: gatewayConfigDraft.secretKey.trim() || null,
+      } as never);
+      setGatewayConfigDraft((c: any) => ({ ...c, secretKey: "" }));
+    }, "Merchant Credentials Saved", "Unable to save Paystack API keys.");
+  };
+
+  const handleValidateGatewayConfig = async () => {
+    await actions.runAction(async () => {
+      await actions.validateSchoolPaystackGatewayConfig({ mode: selectedGatewayMode } as never);
+    }, "Credentials Validated", "Verification failed for merchant credentials.");
+  };
+
+  const openSidebar = (variant: typeof sidebarVariant) => {
+    setSidebarVariant(variant);
+    if (variant !== "link") {
+      setGeneratedPaymentLink(null);
+    }
+    // Only open the modal if we're not on desktop (lg breakpoint = 1024px)
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setSidebarOpen(true);
+    }
+  };
+
+  // 5. Loading State
+  if (!data) return <DashboardSkeleton />;
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      <AdminHeader
-        title="Billing & Collections"
-        actions={
-          <StatGroup
-            stats={[
-              { label: "Outstanding", value: formatMoney(data.summary.outstandingBalance, summaryCurrency), icon: <Banknote /> },
-              { label: "Collected", value: formatMoney(data.summary.amountCollected, summaryCurrency), icon: <Landmark /> },
-              { label: "Invoices", value: data.summary.invoiceCount, icon: <ReceiptText /> },
-              { label: "Overdue", value: data.summary.overdueInvoices, icon: <AlertTriangle /> },
-            ]}
-          />
-        }
-      />
-
-      {notice && (
-        <div
-          className={`rounded-2xl border-l-4 bg-white p-4 shadow-sm ${
-            notice.tone === "success" ? "border-emerald-500" : "border-rose-500"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                {notice.title}
-              </p>
-              <p className="mt-1 text-sm font-medium text-slate-700">{notice.message}</p>
-            </div>
-            <button onClick={() => setNotice(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <AdminSurface className="p-4 md:p-5">
-        <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr] xl:items-end">
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Collections view
-            </h2>
-            <p className="text-sm text-slate-600">
-              Filter invoices, payments, and reconciliation states for the current school.
-            </p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <select
-              value={filters.classId}
-              onChange={(event) => setFilters((current) => ({ ...current, classId: event.target.value }))}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">All classes</option>
-              {classes?.map((classOption) => (
-                <option key={classOption._id} value={classOption._id}>
-                  {classOption.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filters.sessionId}
-              onChange={(event) => setFilters((current) => ({ ...current, sessionId: event.target.value, termId: "" }))}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">All sessions</option>
-              {sessions?.map((session) => (
-                <option key={session._id} value={session._id}>
-                  {session.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filters.termId}
-              onChange={(event) => setFilters((current) => ({ ...current, termId: event.target.value }))}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">All terms</option>
-              {filterTerms?.map((term) => (
-                <option key={term._id} value={term._id}>
-                  {term.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filters.status}
-              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">All invoice states</option>
-              <option value="issued">Issued</option>
-              <option value="partially_paid">Partially paid</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-              <option value="waived">Waived</option>
-            </select>
-
-            <div className="relative xl:col-span-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={filters.search}
-                onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-                placeholder="Search invoices"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {activeFilters > 0 && (
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            <span>{activeFilters} active filter{activeFilters === 1 ? "" : "s"}</span>
-            <button
-              onClick={() => setFilters({ classId: "", sessionId: "", termId: "", status: "", search: "" })}
-              className="font-semibold text-slate-700 hover:text-slate-950"
-            >
-              Clear filters
-            </button>
-          </div>
-        )}
-      </AdminSurface>
-
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">School payment setup</h3>
-              <p className="text-sm text-slate-500">
-                Configure school-scoped billing defaults and enable Paystack-backed online payments.
-              </p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              Per-school merchant
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveBillingSettings} className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Invoice prefix</span>
-                <input
-                  value={billingSettingsDraft.invoicePrefix}
-                  onChange={(event) =>
-                    setBillingSettingsDraft((current) => ({ ...current, invoicePrefix: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder={data.school.slug.toUpperCase()}
-                />
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Default currency</span>
-                <input
-                  value={billingSettingsDraft.defaultCurrency}
-                  onChange={(event) =>
-                    setBillingSettingsDraft((current) => ({ ...current, defaultCurrency: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="NGN"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Default due days</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={billingSettingsDraft.defaultDueDays}
-                  onChange={(event) =>
-                    setBillingSettingsDraft((current) => ({ ...current, defaultDueDays: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Payment controls</p>
-                <label className="space-y-1 text-sm block">
-                  <span className="font-medium text-slate-600">Active Paystack mode</span>
-                  <select
-                    value={billingSettingsDraft.paymentProviderMode}
-                    onChange={(event) => {
-                      const mode = event.target.value as "test" | "live";
-                      setBillingSettingsDraft((current) => ({ ...current, paymentProviderMode: mode }));
-                      setSelectedGatewayMode(mode);
-                    }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <option value="test">Test mode</option>
-                    <option value="live">Live mode</option>
-                  </select>
-                  <p className="text-xs text-slate-500">
-                    This decides which merchant credentials are used for new payment links and verification follow-up.
-                  </p>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={billingSettingsDraft.allowManualPayments}
-                    onChange={(event) =>
-                      setBillingSettingsDraft((current) => ({ ...current, allowManualPayments: event.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  <span>Allow manual cash or bank receipts</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={billingSettingsDraft.allowOnlinePayments}
-                    onChange={(event) =>
-                      setBillingSettingsDraft((current) => ({ ...current, allowOnlinePayments: event.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  <span>Allow school-owned Paystack payment links</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm text-sky-900">
-              <div className="flex items-center gap-2 font-semibold">
-                <ShieldCheck className="h-4 w-4" />
-                Merchant routing model
-              </div>
-              <p className="mt-2 leading-6 text-sky-900/85">
-                New payment links and verification flows now route through the currently selected school-owned
-                Paystack merchant mode. Secret keys stay server-side and are never returned in the normal billing UI.
-              </p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {(["test", "live"] as const).map((mode) => {
-                const modeState = data.paymentGateway.modes[mode];
-                return (
-                  <div key={mode} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{mode} mode</p>
-                        <p className="mt-1 font-semibold text-slate-950">{paymentGatewayStatusLabel(modeState.status)}</p>
-                      </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentGatewayStatusClasses(modeState.status)}`}>
-                        {modeState.readyForPayments ? "Ready" : paymentGatewayStatusLabel(modeState.status)}
-                      </span>
-                    </div>
-                    <div className="mt-4 space-y-2 text-xs text-slate-500">
-                      <p>Public key: {modeState.publicKeyMasked ?? "Not saved"}</p>
-                      <p>Active secret: {modeState.activeSecretMasked ?? "Not saved"}</p>
-                      <p>Pending secret: {modeState.pendingSecretMasked ?? "None"}</p>
-                      <p>
-                        Last validation: {modeState.lastValidatedAt ? formatDateTime(modeState.lastValidatedAt) : "Not yet validated"}
-                      </p>
-                      {modeState.lastValidationMessage ? <p>{modeState.lastValidationMessage}</p> : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-950">Paystack merchant credentials</p>
-                  <p className="text-sm text-slate-500">
-                    Save or rotate credentials for the selected {selectedGatewayMode} merchant mode.
-                  </p>
-                </div>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                  Active mode: {activePaymentGatewayMode}
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-slate-600">Paystack public key</span>
-                  <input
-                    value={gatewayConfigDraft.publicKey}
-                    onChange={(event) =>
-                      setGatewayConfigDraft((current) => ({ ...current, publicKey: event.target.value }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                    placeholder={selectedPaymentGatewayState?.publicKeyMasked ?? "pk_test_... or pk_live_..."}
-                  />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-slate-600">Paystack secret key</span>
-                  <input
-                    type="password"
-                    value={gatewayConfigDraft.secretKey}
-                    onChange={(event) =>
-                      setGatewayConfigDraft((current) => ({ ...current, secretKey: event.target.value }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                    placeholder="Enter a new secret key to save or rotate"
-                  />
-                </label>
-              </div>
-
-              <p className="mt-3 text-xs leading-6 text-slate-500">
-                Leave fields blank to keep the currently stored value for this mode. Saving stores the draft securely; validation promotes it for live payment use.
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={handleSavePaystackGatewayConfig}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+    <main className="lg:h-screen lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      <div className="flex-1 flex lg:overflow-hidden">
+        {/* Main Content Area */}
+        <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
+          <div className="p-4 lg:p-8 space-y-8">
+            {/* System Notifications */}
+            {notice && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
+                <AdminSurface 
+                  intensity="medium" 
+                  className={`border-l-4 ${notice.tone === 'success' ? 'border-l-emerald-500' : 'border-l-rose-500'} flex items-center justify-between p-4 shadow-lg shadow-slate-200/50`}
                 >
-                  <Settings2 className="h-4 w-4" /> Save merchant config
-                </button>
-                <button
-                  type="button"
-                  onClick={handleValidatePaystackGatewayConfig}
-                  className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
-                >
-                  <ShieldCheck className="h-4 w-4" /> Validate {selectedGatewayMode} credentials
-                </button>
-              </div>
-            </div>
-
-            <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
-              <Settings2 className="h-4 w-4" /> Save billing settings
-            </button>
-          </form>
-        </AdminSurface>
-
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Front-desk Paystack handoff</h3>
-              <p className="text-sm text-slate-500">
-                Generate a shareable payment URL for an invoice, then copy it or open it on a cashier device. Callback verification is handled programmatically, with webhook delivery as a backup.
-              </p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {data.summary.gatewayEventCount} gateway events
-            </div>
-          </div>
-
-          <form onSubmit={handleGeneratePaymentLink} className="space-y-4">
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Invoice</span>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={selectorSearch.paymentLinkInvoices}
-                  onChange={(event) =>
-                    setSelectorSearch((current) => ({ ...current, paymentLinkInvoices: event.target.value }))
-                  }
-                  placeholder="Search invoice number, student, class, or fee plan"
-                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                />
-              </div>
-              <select
-                value={paymentLinkDraft.invoiceId}
-                onChange={(event) => selectPaymentLinkInvoice(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-              >
-                <option value="">Select invoice</option>
-                {visiblePaymentLinkInvoices.map((row) => (
-                  <option key={row.invoice._id} value={row.invoice._id}>
-                    {row.invoice.invoiceNumber} - {row.studentName}
-                  </option>
-                ))}
-              </select>
-              {selectedPaymentLinkInvoice ? (
-                <p className="text-xs text-slate-500">
-                  Outstanding balance: {formatMoney(
-                    selectedPaymentLinkInvoice.invoice.balanceDue,
-                    selectedPaymentLinkInvoice.invoice.currency
-                  )}
-                </p>
-              ) : null}
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Payer email</span>
-                <input
-                  value={paymentLinkDraft.email}
-                  onChange={(event) =>
-                    setPaymentLinkDraft((current) => ({ ...current, email: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="parent@example.com"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedPaymentLinkInvoice ? selectedPaymentLinkInvoice.invoice.balanceDue : undefined}
-                  value={paymentLinkDraft.amount}
-                  onChange={(event) =>
-                    setPaymentLinkDraft((current) => ({ ...current, amount: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-            </div>
-
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Description</span>
-              <input
-                value={paymentLinkDraft.description}
-                onChange={(event) =>
-                  setPaymentLinkDraft((current) => ({ ...current, description: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                placeholder="Invoice payment for front-desk handoff"
-              />
-            </label>
-
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Return URL</span>
-              <input
-                value={paymentLinkDraft.callbackUrl}
-                onChange={(event) =>
-                  setPaymentLinkDraft((current) => ({ ...current, callbackUrl: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                placeholder="Public payment return page"
-              />
-              <p className="text-xs text-slate-500">
-                This defaults to the public Paystack return page, which verifies the payment automatically on the payer&apos;s device.
-              </p>
-            </label>
-
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              <div className="flex items-center gap-2 font-semibold text-slate-900">
-                <QrCode className="h-4 w-4" /> QR-ready handoff
-              </div>
-              <p className="mt-2 leading-6">
-                Generate the link here, then print it as a QR code or share it as a URL. The parent can
-                pay on their own phone without leaving the front desk.
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={!data.settings?.allowOnlinePayments || !data.paymentGateway.readyForPayments || !paymentLinkDraft.invoiceId}
-              className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Link2 className="h-4 w-4" /> Generate payment link
-            </button>
-          </form>
-
-          {paymentLinkResult && (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    Generated link
-                  </p>
-                  <p className="mt-1 font-semibold text-slate-950">{paymentLinkResult.reference}</p>
-                </div>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                  {paymentLinkResult.provider}
-                </span>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white bg-white p-4 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                      Authorization URL
-                    </p>
-                    <p className="mt-2 break-all text-slate-700">
-                      {paymentLinkResult.authorizationUrl ?? "No checkout URL was returned."}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={handleCopyPaymentLink}
-                      disabled={!paymentLinkResult.authorizationUrl}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      {paymentLinkCopied ? "Copied" : "Copy"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        paymentLinkResult.authorizationUrl &&
-                        window.open(paymentLinkResult.authorizationUrl, "_blank", "noopener,noreferrer")
-                      }
-                      disabled={!paymentLinkResult.authorizationUrl}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> Open
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 text-xs md:grid-cols-2">
-                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
-                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Amount</span>
-                  <span className="mt-1 block text-sm text-slate-900">
-                    {selectedPaymentLinkInvoice
-                      ? formatMoney(
-                          Number(paymentLinkDraft.amount || 0),
-                          selectedPaymentLinkInvoice.invoice.currency
-                        )
-                      : "—"}
-                  </span>
-                </div>
-                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
-                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Invoice</span>
-                  <span className="mt-1 block text-sm text-slate-900">
-                    {selectedPaymentLinkInvoice?.invoice.invoiceNumber ?? "—"}
-                  </span>
-                </div>
-                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
-                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Access code</span>
-                  <span className="mt-1 block text-sm text-slate-900">
-                    {paymentLinkResult.accessCode ?? "—"}
-                  </span>
-                </div>
-                <div className="rounded-xl bg-white px-3 py-2 text-slate-600">
-                  <span className="block font-semibold uppercase tracking-[0.15em] text-slate-400">Payload keys</span>
-                  <span className="mt-1 block text-sm text-slate-900">
-                    {Object.keys(paymentLinkResult.checkoutPayload ?? {}).length} fields captured
-                  </span>
-                </div>
-              </div>
-
-              <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-xs leading-6 text-slate-500">
-                A durable payment attempt is now recorded in the billing workspace. If the payer switches
-                devices or the return page is skipped, admin polling and webhook reconciliation can still
-                close the loop later.
-              </p>
-
-            </div>
-          )}
-
-          {(!data.settings?.allowOnlinePayments || !data.paymentGateway.readyForPayments) && (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
-              {!data.settings?.allowOnlinePayments
-                ? "Online payments are currently disabled. Enable them in the billing settings panel above to generate a Paystack handoff link."
-                : `The active ${data.paymentGateway.activeMode} Paystack merchant is not ready yet. Save and validate credentials before generating a payment link.`}
-            </div>
-          )}
-        </AdminSurface>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Fee plans</h3>
-              <p className="text-sm text-slate-500">Class-default templates, one-off extras, and installment rules.</p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {data.summary.feePlanCount} plans
-            </div>
-          </div>
-
-          <form onSubmit={handleCreateFeePlan} className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Plan name</span>
-                <input
-                  value={feePlanDraft.name}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Mid-year school fees"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Currency</span>
-                <input
-                  value={feePlanDraft.currency}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, currency: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="NGN"
-                />
-              </label>
-            </div>
-
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Description</span>
-              <textarea
-                value={feePlanDraft.description}
-                onChange={(event) => setFeePlanDraft((current) => ({ ...current, description: event.target.value }))}
-                className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2"
-                placeholder="Optional note for bursary staff"
-              />
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Billing mode</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setFeePlanBillingMode("class_default")}
-                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
-                      feePlanDraft.billingMode === "class_default"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    }`}
-                  >
-                    <span className="block font-semibold">Class default</span>
-                    <span className={`block text-xs ${feePlanDraft.billingMode === "class_default" ? "text-slate-200" : "text-slate-500"}`}>
-                      Auto-apply to chosen classes for a session/term.
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFeePlanBillingMode("manual_extra")}
-                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
-                      feePlanDraft.billingMode === "manual_extra"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    }`}
-                  >
-                    <span className="block font-semibold">Manual extra</span>
-                    <span className={`block text-xs ${feePlanDraft.billingMode === "manual_extra" ? "text-slate-200" : "text-slate-500"}`}>
-                      Use for one-off student charges like books or sportswear.
-                    </span>
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">Target classes</p>
-                  <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
-                    {feePlanDraft.targetClassIds.length} selected
-                  </span>
-                </div>
-                {feePlanDraft.billingMode === "manual_extra" ? (
-                  <p className="text-sm text-slate-500">
-                    Manual extra plans are not assigned to a class. Use them in the one-off invoice flow.
-                  </p>
-                ) : (
-                  <>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <input
-                        value={selectorSearch.targetClasses}
-                        onChange={(event) =>
-                          setSelectorSearch((current) => ({ ...current, targetClasses: event.target.value }))
-                        }
-                        placeholder="Search classes"
-                        className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                      />
+                  <div className="flex items-center gap-4">
+                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${notice.tone === 'success' ? 'bg-emerald-50 text-emerald-600 font-black' : 'bg-rose-50 text-rose-600 font-black'}`}>
+                      {notice.tone === 'success' ? <Plus className="h-5 w-5" /> : <X className="h-5 w-5" />}
                     </div>
-                    <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
-                      {visibleTargetClasses.map((classOption) => (
-                        <label key={classOption._id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={feePlanDraft.targetClassIds.includes(classOption._id)}
-                            onChange={() => toggleFeePlanTargetClass(classOption._id)}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          <span>{classOption.name}</span>
-                        </label>
-                      ))}
-                      {visibleTargetClasses.length === 0 && (
-                        <p className="text-sm text-slate-500">No classes match this search yet.</p>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Installments</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={feePlanDraft.installmentCount}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, installmentCount: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">First due days</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={feePlanDraft.firstDueDays}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, firstDueDays: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Interval days</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={feePlanDraft.intervalDays}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, intervalDays: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="space-y-1 text-sm flex items-end gap-2 pb-1">
-                <input
-                  type="checkbox"
-                  checked={feePlanDraft.installmentEnabled}
-                  onChange={(event) => setFeePlanDraft((current) => ({ ...current, installmentEnabled: event.target.checked }))}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                <span className="font-medium text-slate-600">Enable installments</span>
-              </label>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <h4 className="text-sm font-semibold text-slate-900">Line items</h4>
-                <button type="button" onClick={addLineItem} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600">
-                  <Plus className="h-3.5 w-3.5" /> Add item
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {feePlanDraft.lineItems.map((item, index) => (
-                  <div key={item.draftId} className="grid gap-2 rounded-2xl border border-slate-200 p-3 md:grid-cols-[1.2fr_0.7fr_0.7fr_auto] md:items-center">
-                    <input
-                      value={item.label}
-                      onChange={(event) => updateLineItem(index, "label", event.target.value)}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder="Item label"
-                    />
-                    <input
-                      value={item.amount}
-                      onChange={(event) => updateLineItem(index, "amount", event.target.value)}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder="Amount"
-                    />
-                    <select
-                      value={item.category}
-                      onChange={(event) => updateLineItem(index, "category", event.target.value)}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    >
-                      <option value="tuition">Tuition</option>
-                      <option value="boarding">Boarding</option>
-                      <option value="transport">Transport</option>
-                      <option value="exam">Exam</option>
-                      <option value="activity">Activity</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => removeLineItem(index)}
-                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:text-rose-600"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm">
-              <span className="text-slate-500">Estimated total</span>
-              <span className="font-semibold text-slate-950">{formatMoney(feePlanTotal, selectedCurrency)}</span>
-            </div>
-
-            <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
-              <ReceiptText className="h-4 w-4" /> Save fee plan
-            </button>
-          </form>
-
-          <div className="mt-6 space-y-3">
-            {data.feePlans.map((feePlan) => (
-              <div key={feePlan._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="font-semibold text-slate-950">{feePlan.name}</p>
-                    <p className="text-xs text-slate-500">{feePlan.description ?? "No description"}</p>
-                    <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                      <span className="rounded-full bg-white px-2.5 py-1 text-slate-600">
-                        {feePlan.billingMode === "manual_extra" ? "Manual extra" : "Class default"}
-                      </span>
-                      <span className={`rounded-full px-2.5 py-1 ${feePlan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                        {feePlan.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                    {feePlan.lineItems.length} line item{feePlan.lineItems.length === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                  <span>{feePlan.currency}</span>
-                  <span>Installments: {feePlan.installmentPolicy.enabled ? feePlan.installmentPolicy.installmentCount : 1}</span>
-                  <span>
-                    {feePlan.targetClassIds.length > 0
-                      ? `${feePlan.targetClassIds.length} target class${feePlan.targetClassIds.length === 1 ? "" : "es"}`
-                      : feePlan.billingMode === "manual_extra"
-                        ? "One-off extra only"
-                        : "Legacy / school-wide"}
-                  </span>
-                </div>
-                {feePlan.targetClassIds.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {feePlan.targetClassIds.map((classId) => (
-                      <span key={classId} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                        {classNameById.get(classId) ?? "Unknown class"}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h4 className="text-base font-semibold text-slate-950">Bulk fee-plan application</h4>
-                <p className="text-sm text-slate-500">
-                  Apply a class-default fee plan to all active students in a class for a session and term.
-                  Existing invoices for the same student, plan, session, and term are skipped.
-                </p>
-              </div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {data.summary.feePlanApplicationCount} runs
-              </div>
-            </div>
-
-            <form onSubmit={handleApplyFeePlanToClassStudents} className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="space-y-1 text-sm block">
-                  <span className="font-medium text-slate-600">Fee plan</span>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={selectorSearch.bulkFeePlans}
-                      onChange={(event) =>
-                        setSelectorSearch((current) => ({ ...current, bulkFeePlans: event.target.value }))
-                      }
-                      placeholder="Search fee plans"
-                      className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                    />
-                  </div>
-                  <select
-                    value={feePlanApplicationDraft.feePlanId}
-                    onChange={(event) =>
-                      setFeePlanApplicationDraft((current) => ({ ...current, feePlanId: event.target.value, classId: "" }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <option value="">Select a class-default plan</option>
-                    {visibleBulkFeePlanOptions.map((feePlan) => (
-                      <option key={feePlan._id} value={feePlan._id}>
-                        {feePlan.name}
-                        {feePlan.targetClassIds.length > 0 ? ` · ${feePlan.targetClassIds.length} class target${feePlan.targetClassIds.length === 1 ? "" : "s"}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-1 text-sm block">
-                  <span className="font-medium text-slate-600">Class</span>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={selectorSearch.bulkClasses}
-                      onChange={(event) =>
-                        setSelectorSearch((current) => ({ ...current, bulkClasses: event.target.value }))
-                      }
-                      placeholder="Search classes"
-                      className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                    />
-                  </div>
-                  <select
-                    value={feePlanApplicationDraft.classId}
-                    onChange={(event) =>
-                      setFeePlanApplicationDraft((current) => ({ ...current, classId: event.target.value }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <option value="">Select class</option>
-                    {visibleApplicationClassOptions.map((classOption) => (
-                      <option key={classOption._id} value={classOption._id}>
-                        {classOption.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-slate-600">Session</span>
-                  <select
-                    value={feePlanApplicationDraft.sessionId}
-                    onChange={(event) =>
-                      setFeePlanApplicationDraft((current) => ({
-                        ...current,
-                        sessionId: event.target.value,
-                        termId: "",
-                      }))
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <option value="">Select session</option>
-                    {sessions?.map((session) => (
-                      <option key={session._id} value={session._id}>
-                        {session.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-slate-600">Term</span>
-                  <select
-                    value={feePlanApplicationDraft.termId}
-                    onChange={(event) => setFeePlanApplicationDraft((current) => ({ ...current, termId: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <option value="">Select term</option>
-                    {applicationTerms?.map((term) => (
-                      <option key={term._id} value={term._id}>
-                        {term.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className="space-y-1 text-sm block">
-                <span className="font-medium text-slate-600">Notes</span>
-                <textarea
-                  value={feePlanApplicationDraft.notes}
-                  onChange={(event) => setFeePlanApplicationDraft((current) => ({ ...current, notes: event.target.value }))}
-                  className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Optional note for the application run"
-                />
-              </label>
-
-              <button
-                type="submit"
-                disabled={!canApplyFeePlan}
-                className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <ReceiptText className="h-4 w-4" /> Apply fee plan
-              </button>
-            </form>
-
-            <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <h5 className="text-sm font-semibold text-slate-900">Recent applications</h5>
-                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Auditable runs</span>
-              </div>
-              <div className="space-y-3">
-                {data.applications.map((entry) => (
-                  <div key={entry.application._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-950">{entry.feePlanName}</p>
-                        <p className="text-xs text-slate-500">
-                          {entry.className} · {entry.sessionName} · {entry.termName}
-                        </p>
-                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                          {entry.application.createdInvoiceCount} created · {entry.application.skippedInvoiceCount} skipped
-                        </p>
-                      </div>
-                      <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                        {entry.application.studentCount} students
-                      </div>
-                    </div>
-                    {entry.application.notes ? (
-                      <p className="mt-2 text-xs text-slate-500">{entry.application.notes}</p>
-                    ) : null}
-                  </div>
-                ))}
-                {data.applications.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                    No fee-plan application runs yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </AdminSurface>
-
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">One-off student extra invoice</h3>
-              <p className="text-sm text-slate-500">Use this for student-specific charges like books, sportswear, or levies.</p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {data.summary.paymentCount} payments
-            </div>
-          </div>
-
-          <form onSubmit={handleCreateInvoice} className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Fee plan</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={selectorSearch.invoiceFeePlans}
-                    onChange={(event) =>
-                      setSelectorSearch((current) => ({ ...current, invoiceFeePlans: event.target.value }))
-                    }
-                    placeholder="Search fee plans"
-                    className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                  />
-                </div>
-                <select
-                  value={invoiceDraft.feePlanId}
-                  onChange={(event) => setInvoiceDraft((current) => ({ ...current, feePlanId: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  <option value="">Select a fee plan</option>
-                  {visibleInvoiceFeePlanOptions.map((feePlan) => (
-                    <option key={feePlan._id} value={feePlan._id}>
-                      {feePlan.name} · {feePlan.billingMode === "manual_extra" ? "Manual extra" : "Class default"}
-                    </option>
-                  ))}
-                </select>
-                {selectedInvoiceFeePlan && selectedInvoiceFeePlan.billingMode === "class_default" && (
-                  <p className="text-xs text-slate-500">
-                    This plan is class-targeted. For class-wide billing, use the bulk application flow below.
-                  </p>
-                )}
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Class</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={selectorSearch.invoiceClasses}
-                    onChange={(event) =>
-                      setSelectorSearch((current) => ({ ...current, invoiceClasses: event.target.value }))
-                    }
-                    placeholder="Search classes"
-                    className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                  />
-                </div>
-                <select
-                  value={invoiceDraft.classId}
-                  onChange={(event) =>
-                    setInvoiceDraft((current) => ({
-                      ...current,
-                      classId: event.target.value,
-                      studentId: "",
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  <option value="">Select class</option>
-                  {visibleInvoiceClassOptions.map((classOption) => (
-                    <option key={classOption._id} value={classOption._id}>
-                      {classOption.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Session</span>
-                <select
-                  value={invoiceDraft.sessionId}
-                  onChange={(event) =>
-                    setInvoiceDraft((current) => ({
-                      ...current,
-                      sessionId: event.target.value,
-                      termId: "",
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  <option value="">Select session</option>
-                  {sessions?.map((session) => (
-                    <option key={session._id} value={session._id}>
-                      {session.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Term</span>
-                <select
-                  value={invoiceDraft.termId}
-                  onChange={(event) => setInvoiceDraft((current) => ({ ...current, termId: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  <option value="">Select term</option>
-                  {invoiceTerms?.map((term) => (
-                    <option key={term._id} value={term._id}>
-                      {term.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Student</span>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={selectorSearch.invoiceStudents}
-                  onChange={(event) =>
-                    setSelectorSearch((current) => ({ ...current, invoiceStudents: event.target.value }))
-                  }
-                  placeholder="Search student name or admission number"
-                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                />
-              </div>
-              <select
-                value={invoiceDraft.studentId}
-                onChange={(event) => setInvoiceDraft((current) => ({ ...current, studentId: event.target.value }))}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-              >
-                <option value="">Select student</option>
-                {visibleInvoiceStudents.map((student) => (
-                  <option key={student._id} value={student._id}>
-                    {student.studentName} - {student.admissionNumber}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Waiver</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={invoiceDraft.waiverAmount}
-                  onChange={(event) => setInvoiceDraft((current) => ({ ...current, waiverAmount: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Discount</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={invoiceDraft.discountAmount}
-                  onChange={(event) => setInvoiceDraft((current) => ({ ...current, discountAmount: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Due date</span>
-                <input
-                  type="date"
-                  value={invoiceDraft.dueDate}
-                  onChange={(event) => setInvoiceDraft((current) => ({ ...current, dueDate: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-              </label>
-            </div>
-
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Notes</span>
-              <textarea
-                value={invoiceDraft.notes}
-                onChange={(event) => setInvoiceDraft((current) => ({ ...current, notes: event.target.value }))}
-                className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2"
-                placeholder="Optional memo for the bursary desk"
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={!canCreateInvoice}
-              className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileText className="h-4 w-4" /> Generate invoice
-            </button>
-          </form>
-
-          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-            <div className="max-h-[340px] divide-y divide-slate-200 overflow-y-auto">
-              {data.invoices.map((row) => (
-                <div key={row.invoice._id} className="grid gap-2 bg-white p-4 md:grid-cols-[1.4fr_1fr_0.8fr] md:items-center">
-                  <div>
-                    <p className="font-semibold text-slate-950">{row.studentName}</p>
-                    <p className="text-xs text-slate-500">
-                      {row.className} · {row.sessionName} · {row.termName}
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                      {row.invoice.invoiceNumber} · {row.invoice.feePlanNameSnapshot}
-                    </p>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                      {row.invoice.feePlanApplicationId ? "Bulk application" : "One-off invoice"}
-                    </p>
-                  </div>
-                  <div className="text-sm text-slate-600">
-                    <p>Total: {formatMoney(row.invoice.totalAmount, row.invoice.currency)}</p>
-                    <p>Balance: {formatMoney(row.invoice.balanceDue, row.invoice.currency)}</p>
-                  </div>
-                  <div className="flex justify-start md:justify-end">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {row.invoice.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {data.invoices.length === 0 && (
-                <div className="bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                  No invoices match the current filters.
-                </div>
-              )}
-            </div>
-          </div>
-        </AdminSurface>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Manual payment capture</h3>
-              <p className="text-sm text-slate-500">Record cash or bank payments against a specific invoice.</p>
-            </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {data.summary.manualPayments} manual
-            </div>
-          </div>
-
-          <form onSubmit={handleRecordPayment} className="space-y-4">
-            <label className="space-y-1 text-sm block">
-              <span className="font-medium text-slate-600">Invoice</span>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={selectorSearch.paymentInvoices}
-                  onChange={(event) =>
-                    setSelectorSearch((current) => ({ ...current, paymentInvoices: event.target.value }))
-                  }
-                  placeholder="Search invoice number, student, class, or fee plan"
-                  className="mb-2 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm"
-                />
-              </div>
-              <select
-                value={paymentDraft.invoiceId}
-                onChange={(event) => {
-                  const nextInvoiceId = event.target.value;
-                  const nextInvoice = visiblePaymentInvoices.find(
-                    (row) => row.invoice._id === nextInvoiceId
-                  );
-                  setPaymentDraft((current) => ({
-                    ...current,
-                    invoiceId: nextInvoiceId,
-                    amountReceived: nextInvoice
-                      ? String(nextInvoice.invoice.balanceDue)
-                      : "",
-                  }));
-                }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-              >
-                <option value="">Select invoice</option>
-                {visiblePaymentInvoices.map((row) => (
-                  <option key={row.invoice._id} value={row.invoice._id}>
-                    {row.invoice.invoiceNumber} - {row.studentName}
-                  </option>
-                ))}
-              </select>
-              {selectedPaymentInvoice ? (
-                <p className="text-xs text-slate-500">
-                  Outstanding balance: {formatMoney(
-                    selectedPaymentInvoice.invoice.balanceDue,
-                    selectedPaymentInvoice.invoice.currency
-                  )}
-                </p>
-              ) : null}
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Reference</span>
-                <input
-                  value={paymentDraft.reference}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Receipt or bank reference"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Amount received</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedPaymentInvoice ? selectedPaymentInvoice.invoice.balanceDue : undefined}
-                  value={paymentDraft.amountReceived}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, amountReceived: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                />
-                {selectedPaymentInvoice ? (
-                  <p className="text-xs text-slate-500">
-                    Cannot exceed {formatMoney(
-                      selectedPaymentInvoice.invoice.balanceDue,
-                      selectedPaymentInvoice.invoice.currency
-                    )} for this invoice.
-                  </p>
-                ) : null}
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Method</span>
-                <select
-                  value={paymentDraft.paymentMethod}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, paymentMethod: event.target.value as PaymentDraft["paymentMethod"] }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  {paymentMethods.map((method) => (
-                    <option key={method.value} value={method.value}>
-                      {method.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Payer name</span>
-                <input
-                  value={paymentDraft.payerName}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, payerName: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Optional"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Payer email</span>
-                <input
-                  value={paymentDraft.payerEmail}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, payerEmail: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Optional"
-                />
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-slate-600">Notes</span>
-                <input
-                  value={paymentDraft.notes}
-                  onChange={(event) => setPaymentDraft((current) => ({ ...current, notes: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Optional reconciliation note"
-                />
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              disabled={!paymentDraft.invoiceId}
-              className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <CreditCard className="h-4 w-4" /> Save payment
-            </button>
-          </form>
-        </AdminSurface>
-
-        <AdminSurface className="p-4 md:p-5">
-          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold text-slate-950">Online payment lifecycle</h3>
-              <p className="text-sm text-slate-500">
-                Generated Paystack links stay visible as durable attempts, and the admin workspace keeps rechecking
-                pending references until they resolve or need staff attention. The list below follows the current
-                billing filter, while background reconciliation scans the whole school.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {data.summary.paymentAttemptCount} attempts
-              </span>
-              <button
-                type="button"
-                onClick={() => void executePendingPaymentReconciliation(true, true)}
-                disabled={reconciliationActiveAttempts.length === 0}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Recheck pending references
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Pending</p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">{pendingPaymentAttempts.length}</p>
-              <p className="mt-1 text-sm text-slate-500">Links generated or awaiting payer return.</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Resolved</p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">
-                {paymentAttemptRows.filter((row) => row.attempt.status === "verified" || row.attempt.status === "webhook_reconciled").length}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">Confirmed through return page or webhook reconciliation.</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Needs review</p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">{manualAttentionPaymentAttempts.length}</p>
-              <p className="mt-1 text-sm text-slate-500">References that need staff follow-up.</p>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-slate-900">Payment attempts</h4>
-              <p className="text-xs text-slate-500">Latest generated attempts and their reconciliation state.</p>
-            </div>
-            <div className="space-y-3">
-              {paymentAttemptRows.map((row) => {
-                const linkedPayment = row.attempt.paymentId ? paymentRowById.get(row.attempt.paymentId) ?? null : null;
-                const isPending =
-                  row.attempt.status === "link_generated" || row.attempt.status === "awaiting_payer_return";
-
-                return (
-                  <div key={row.attempt._id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] ${getPaymentAttemptStatusClass(row.attempt.status)}`}
-                          >
-                            {getPaymentAttemptStatusLabel(row.attempt.status)}
-                          </span>
-                          {row.attempt.reconciliationSource ? (
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">
-                              {row.attempt.reconciliationSource.replace("_", " ")}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="font-semibold text-slate-950">{row.studentName}</p>
-                        <p className="text-xs text-slate-500">
-                          {row.className} · {row.sessionName} · {row.termName}
-                        </p>
-                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                          {row.invoiceNumber} · {row.attempt.reference}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {formatMoney(row.attempt.amount, row.attempt.currency)} · {row.attempt.provider}
-                          {row.attempt.gatewayReference && row.attempt.gatewayReference !== row.attempt.reference
-                            ? ` · Gateway ${row.attempt.gatewayReference}`
-                            : ""}
-                        </p>
-                      </div>
-                      <div className="space-y-1 text-sm text-slate-600 lg:text-right">
-                        <p className="font-semibold text-slate-900">
-                          {row.attempt.resolvedAt ? `Resolved ${formatAttemptTimestamp(row.attempt.resolvedAt)}` : formatAttemptTimestamp(row.attempt.lastCheckedAt)}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {row.attempt.resolutionMessage ?? (isPending ? "Awaiting confirmation" : "Recorded attempt")}
-                        </p>
-                        {linkedPayment ? (
-                          <p className="text-xs font-semibold text-emerald-700">
-                            Matched payment: {formatMoney(linkedPayment.payment.amountApplied, summaryCurrency)}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {paymentAttemptRows.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                  No online payment attempts have been generated yet.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-slate-900">Recorded payments</h4>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {data.summary.unreconciledPayments} unreconciled
-              </span>
-            </div>
-            <div className="space-y-3">
-              {data.payments.map((row) => (
-                <div key={row.payment._id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="font-semibold text-slate-950">{row.studentName}</p>
-                      <p className="text-xs text-slate-500">
-                        {row.className} · {row.sessionName} · {row.termName}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                        {row.invoiceNumber} · {row.payment.reference}
-                      </p>
-                    </div>
-                    <div className="text-right text-sm text-slate-600">
-                      <p>{formatMoney(row.payment.amountApplied, summaryCurrency)}</p>
-                      <p className="text-xs text-slate-400">
-                        {row.payment.provider ?? row.payment.paymentMethod} · {row.payment.reconciliationStatus}
-                      </p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300">System Activity</p>
+                      <p className="text-sm font-black text-slate-950 tracking-tight uppercase">{notice.message}</p>
                     </div>
                   </div>
-                </div>
-              ))}
-              {data.payments.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                  No payments have been recorded for the current filter.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <h4 className="text-sm font-semibold text-slate-900">Recent gateway events</h4>
-            {data.gatewayEvents.map((event) => {
-              const linkedPayment = event.paymentId ? paymentRowById.get(event.paymentId) ?? null : null;
-
-              return (
-                <div key={event._id} className="rounded-2xl bg-slate-50 p-4 text-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-slate-950">{event.eventType}</p>
-                      <p className="text-xs text-slate-500">{event.reference}{event.invoiceNumber ? ` · ${event.invoiceNumber}` : ""}</p>
-                      {linkedPayment ? (
-                        <p className="mt-2 text-xs font-semibold text-slate-700">
-                          Paid: {formatMoney(linkedPayment.payment.amountApplied, summaryCurrency)}
-                          <span className="font-normal text-slate-500">{` · ${linkedPayment.studentName}`}</span>
-                        </p>
-                      ) : null}
-                    </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">
-                      {event.verificationStatus}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {event.signatureValid ? "Signature verified" : "Signature failed"}
-                    {event.verificationMessage ? ` · ${event.verificationMessage}` : ""}
-                  </p>
-                </div>
-              );
-            })}
-            {data.gatewayEvents.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                No verified gateway events yet.
+                  <button onClick={() => setNotice(null)} className="p-2 rounded-full hover:bg-slate-50 transition-colors">
+                    <X className="h-4 w-4 text-slate-300" />
+                  </button>
+                </AdminSurface>
               </div>
             )}
+
+            <BillingHeader 
+              summary={data.summary} 
+              currency={data.settings?.defaultCurrency ?? "NGN"} 
+              onOpenArsenal={() => openSidebar("arsenal")}
+            />
+
+            <div className="flex flex-col gap-6">
+              {/* Tab Navigation & Search */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-950/5 pb-2 sticky top-0 bg-slate-50/50 backdrop-blur-md z-10">
+                <BillingTabs activeTab={activeTab} onTabChange={setActiveTab} />
+                
+                <div className="flex items-center gap-2">
+                  <div className="relative group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-slate-950 transition-colors" />
+                    <input 
+                      type="text"
+                      placeholder="Search ledger..."
+                      value={filters.search}
+                      onChange={(e) => setFilters({...filters, search: e.target.value})}
+                      className="h-10 pl-10 pr-4 w-full sm:w-64 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-950 focus:border-slate-950 outline-none transition-all placeholder:text-slate-300 placeholder:font-medium shadow-sm shadow-slate-950/[0.02]"
+                    />
+                  </div>
+                  <button className="h-10 w-10 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-slate-950 transition-all shadow-sm shadow-slate-950/[0.02]">
+                    <Filter className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab Panels */}
+              <div className="pb-20 lg:pb-8">
+                {activeTab === "overview" && (
+                   <div className="space-y-6">
+                      <AdminSurface intensity="medium" className="p-0 overflow-hidden border-none shadow-sm shadow-slate-950/[0.02]">
+                         <div className="p-6 border-b border-slate-950/5 flex items-center justify-between">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Recent Collections</h3>
+                            <button onClick={() => setActiveTab("payments")} className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:text-indigo-700">View History</button>
+                         </div>
+                         <PaymentTable
+                           payments={overviewPayments}
+                           sortKey="date"
+                           sortDirection="desc"
+                           sortable={false}
+                         />
+                      </AdminSurface>
+
+                      <AdminSurface intensity="medium" className="p-0 overflow-hidden border-none shadow-sm shadow-slate-950/[0.02]">
+                         <div className="p-6 border-b border-slate-950/5 flex items-center justify-between">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Open Receivables</h3>
+                            <button onClick={() => setActiveTab("invoices")} className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:text-indigo-700">Full Ledger</button>
+                         </div>
+                         <InvoiceTable
+                           invoices={overviewInvoices}
+                           sortKey="date"
+                           sortDirection="desc"
+                           sortable={false}
+                         />
+                      </AdminSurface>
+                   </div>
+                )}
+
+                {activeTab === "invoices" && (
+                  <AdminSurface intensity="medium" className="p-0 overflow-hidden border-none shadow-sm shadow-slate-950/[0.02]">
+                    <InvoiceTable
+                      invoices={sortedInvoices}
+                      sortKey={sortPreferences.invoices.key}
+                      sortDirection={sortPreferences.invoices.direction}
+                      onSortChange={handleInvoiceSortChange}
+                    />
+                  </AdminSurface>
+                )}
+
+                {activeTab === "payments" && (
+                  <AdminSurface intensity="medium" className="p-0 overflow-hidden border-none shadow-sm shadow-slate-950/[0.02]">
+                    <PaymentTable
+                      payments={sortedPayments}
+                      sortKey={sortPreferences.payments.key}
+                      sortDirection={sortPreferences.payments.direction}
+                      onSortChange={handlePaymentSortChange}
+                    />
+                  </AdminSurface>
+                )}
+
+                {activeTab === "plans" && (
+                   <FeePlanList 
+                     plans={sortedFeePlans} 
+                     classNameById={classNameById} 
+                     sortKey={sortPreferences.plans.key}
+                     sortDirection={sortPreferences.plans.direction}
+                     onSortChange={handleFeePlanSortChange}
+                     onNewPlan={() => openSidebar("plan")}
+                   />
+                )}
+
+                {activeTab === "settings" && (
+                   <SettingsPanel 
+                     settingsDraft={billingSettingsDraft}
+                     onSettingsChange={setBillingSettingsDraft}
+                     onSaveSettings={handleSaveBillingSettings}
+                     gatewayOverview={data.paymentGateway}
+                     gatewayConfigDraft={gatewayConfigDraft}
+                     onGatewayConfigChange={setGatewayConfigDraft}
+                     onSaveGatewayConfig={handleSaveGatewayConfig}
+                     onValidateGatewayConfig={handleValidateGatewayConfig}
+                     selectedGatewayMode={selectedGatewayMode}
+                     setSelectedGatewayMode={setSelectedGatewayMode}
+                     schoolSlug={data.school.slug}
+                   />
+                )}
+              </div>
+            </div>
           </div>
-        </AdminSurface>
+        </section>
+
+        {/* Management Sidebar (Desktop) */}
+        <aside className="hidden lg:block w-[400px] border-l border-slate-950/5 relative overflow-hidden bg-white/50 backdrop-blur-sm">
+          <div className="absolute inset-x-0 top-0 h-64 bg-slate-950/5 skew-y-12 -translate-y-32 pointer-events-none" />
+          <div className="relative z-10 h-full flex flex-col">
+            <div className="p-8 border-b border-slate-950/5 space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Financial Arsenal</h3>
+              <div className="grid grid-cols-2 gap-3">
+                 <button 
+                   onClick={() => openSidebar("payment")}
+                   className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                 >
+                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform">
+                       <Plus className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Receipt</span>
+                 </button>
+                 <button 
+                    onClick={() => openSidebar("link")}
+                    className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                 >
+                    <div className="p-2.5 rounded-2xl bg-orange-50 text-orange-600 group-hover:scale-110 transition-transform">
+                       <Link2 className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Handoff</span>
+                 </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => openSidebar("application")}
+                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-white border border-slate-200 text-slate-950 font-black text-[9px] uppercase tracking-widest shadow-sm hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                >
+                  Bulk Invoicing
+                </button>
+                <button 
+                  onClick={() => openSidebar("plan")}
+                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-slate-950 text-white font-black text-[9px] uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                >
+                  <Plus className="h-3 w-3" /> New Plan
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto no-scrollbar relative">
+              <div className="absolute inset-0 bg-white/40 pointer-events-none" />
+              <BillingSidebar 
+                onClose={() => setSidebarOpen(false)}
+                variant={sidebarVariant}
+                onVariantChange={(v) => {
+                  setSidebarVariant(v);
+                  setSidebarOpen(false);
+                }}
+                paymentDraft={paymentDraft}
+                onPaymentDraftChange={setPaymentDraft}
+                onRecordPayment={handleRecordPayment}
+                paymentLinkDraft={paymentLinkDraft}
+                onPaymentLinkDraftChange={(draft) => {
+                  setPaymentLinkDraft(draft);
+                  setGeneratedPaymentLink(null);
+                }}
+                generatedPaymentLink={generatedPaymentLink}
+                onGenerateLink={handleGenerateLink}
+                feePlanDraft={feePlanDraft}
+                onFeePlanDraftChange={setFeePlanDraft}
+                onCreateFeePlan={handleCreateFeePlan}
+                feePlanApplicationDraft={feePlanApplicationDraft}
+                onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
+                onApplyFeePlan={handleApplyFeePlan}
+                invoices={data.invoices}
+                selectedInvoice={data.invoices.find(i => i.invoice._id === paymentDraft.invoiceId)}
+                classes={classes ?? []}
+                sessions={sessions ?? []}
+                applicationTerms={applicationTerms ?? []}
+                feePlans={data.feePlans}
+              />
+            </div>
+          </div>
+        </aside>
       </div>
-    </div>
+
+      {/* Mobile Sidebar */}
+      <AdminSheet
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        title={sidebarTitles[sidebarVariant]}
+      >
+        <BillingSidebar 
+          onClose={() => setSidebarOpen(false)}
+          variant={sidebarVariant}
+          onVariantChange={setSidebarVariant}
+          paymentDraft={paymentDraft}
+          onPaymentDraftChange={setPaymentDraft}
+          onRecordPayment={handleRecordPayment}
+          paymentLinkDraft={paymentLinkDraft}
+          onPaymentLinkDraftChange={(draft) => {
+            setPaymentLinkDraft(draft);
+            setGeneratedPaymentLink(null);
+          }}
+          generatedPaymentLink={generatedPaymentLink}
+          onGenerateLink={handleGenerateLink}
+          feePlanDraft={feePlanDraft}
+          onFeePlanDraftChange={setFeePlanDraft}
+          onCreateFeePlan={handleCreateFeePlan}
+          feePlanApplicationDraft={feePlanApplicationDraft}
+          onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
+          onApplyFeePlan={handleApplyFeePlan}
+          invoices={data.invoices}
+          selectedInvoice={data.invoices.find(i => i.invoice._id === paymentDraft.invoiceId)}
+          classes={classes ?? []}
+          sessions={sessions ?? []}
+          applicationTerms={applicationTerms ?? []}
+          feePlans={data.feePlans}
+        />
+      </AdminSheet>
+    </main>
   );
 }

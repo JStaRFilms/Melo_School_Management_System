@@ -19,28 +19,28 @@ export function Stat({ label, value, icon, description, className = "" }: StatPr
   return (
     <div className={`
       flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-slate-950/5 
-      transition-all active:scale-[0.98] sm:gap-2 sm:p-3.5 sm:rounded-2xl ${className}
+      transition-all active:scale-[0.98] sm:gap-1.5 sm:p-3 ${className}
     `}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {icon && (
-          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 border border-slate-100 sm:h-6 sm:w-6 sm:rounded-xl">
+          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 border border-slate-100 sm:h-5 sm:w-5">
             {React.cloneElement(icon, {
-              size: 14,
+              size: 12,
               strokeWidth: 2.5,
-              className: "sm:w-4 sm:h-4",
+              className: "sm:w-3.5 sm:h-3.5",
             })}
           </div>
         )}
-        <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap sm:text-sm sm:tracking-[0.2em] opacity-80 mt-0.5">
+        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap sm:text-xs sm:tracking-[0.18em] opacity-80">
           {label}
         </p>
       </div>
       <div className="flex items-baseline gap-1.5 px-0.5">
-        <span className="font-display text-lg font-black tracking-tight text-slate-950 sm:text-2xl">
+        <span className="font-display text-lg font-black tracking-tight text-slate-950 sm:text-xl">
           {value}
         </span>
         {description && (
-          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest sm:text-xs">
+          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
             {description}
           </span>
         )}
@@ -71,7 +71,7 @@ export function StatGroup({ stats, className = "", variant = "scroll" }: StatGro
       {stats.map((stat) => (
         <div 
           key={stat.id ?? stat.label} 
-          className="min-w-[125px] shrink-0 snap-start sm:min-w-[160px]"
+          className="min-w-[110px] shrink-0 snap-start sm:min-w-[130px] lg:min-w-[140px]"
         >
           <Stat {...stat} />
         </div>

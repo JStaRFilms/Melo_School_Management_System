@@ -70,13 +70,13 @@ export function AdminSheet({
       {/* Sheet / Modal */}
       <div
         className={`relative flex w-full flex-col bg-white shadow-2xl ring-1 ring-slate-950/10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
-          rounded-t-[3rem] sm:rounded-2xl sm:max-w-lg
+          rounded-t-[2.5rem] sm:rounded-2xl sm:max-w-lg
           ${isAnimating ? "translate-y-0" : "translate-y-full sm:translate-y-12 sm:scale-95"}
         `}
       >
         {/* Handle for mobile swipe feel */}
         <div className="flex justify-center py-4 sm:hidden">
-          <div className="h-1.5 w-14 rounded-full bg-slate-100" />
+          <div className="h-1.5 w-12 rounded-full bg-slate-200/60" />
         </div>
 
         <div className="flex items-start justify-between px-6 pb-4 pt-2 sm:pt-6 border-b border-slate-50">
