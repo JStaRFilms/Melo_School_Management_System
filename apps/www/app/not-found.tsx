@@ -1,25 +1,20 @@
 import Link from "next/link";
-import { Container, SurfaceCard } from "@/site-ui";
+import { Container, GoldButton, ButtonLink } from "@/site-ui";
 
 export default function NotFound() {
   return (
-    <section className="py-20 sm:py-24">
-      <Container>
-        <SurfaceCard className="mx-auto max-w-2xl space-y-6 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Page not found</p>
-          <h1 className="text-4xl font-semibold text-slate-950">We could not find that page.</h1>
-          <p className="text-sm leading-7 text-slate-600">
-            Try the homepage or contact the team if you were looking for product information.
-          </p>
-          <div className="flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/" className="inline-flex items-center justify-center rounded-full bg-[color:var(--school-primary)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[color:var(--school-secondary)]">
-              Go home
-            </Link>
-            <Link href="/contact" className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100">
-              Contact sales
-            </Link>
-          </div>
-        </SurfaceCard>
+    <section className="relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 grain" />
+      <Container className="relative flex min-h-[60vh] flex-col items-center justify-center py-24 text-center">
+        <span className="font-serif text-8xl text-melo-border sm:text-9xl">404</span>
+        <h1 className="mt-4 font-serif text-3xl text-melo-ink sm:text-4xl">Page not found</h1>
+        <p className="mt-3 max-w-md text-base text-melo-muted">
+          The page you&apos;re looking for doesn&apos;t exist or has been moved.
+        </p>
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <GoldButton href="/">Go home</GoldButton>
+          <ButtonLink href="/contact" variant="outline">Contact us</ButtonLink>
+        </div>
       </Container>
     </section>
   );

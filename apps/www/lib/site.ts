@@ -1,192 +1,195 @@
 import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 
+/* ─── Navigation ─── */
 export type SiteNavigationItem = {
   href: string;
   label: string;
 };
 
+/* ─── Brand ─── */
 export const siteBrand = {
-  name: "SchoolOS",
-  shortName: "SchoolOS",
-  tagline: "The operating system for school owners and operators.",
+  name: "Melo",
+  tagline: "School management, simplified.",
   description:
-    "SchoolOS helps schools run admin, teaching, family access, billing, and public web from separate, tenant-aware surfaces.",
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+    "Melo is one platform for everything your school needs — admin, academics, billing, and parent communication — built for how Nigerian schools actually run.",
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://meloschool.com",
   phone: "+234 812 345 6789",
-  salesEmail: "hello@schoolos.example",
-  email: "hello@schoolos.example",
+  email: "hello@meloschool.com",
   address: "Lagos, Nigeria",
-  hours: "Monday to Friday, 9:00am to 5:00pm",
-  colors: {
-    primary: "#173B72",
-    secondary: "#0F766E",
-    accent: "#C08B2E",
-    background: "#F8FAFC",
-    surface: "#FFFFFF",
-    ink: "#0F172A",
-    muted: "#475569",
-  },
+  hours: "Monday – Friday, 9 am – 5 pm",
 } as const;
 
 export const siteNavigation: SiteNavigationItem[] = [
   { href: "/", label: "Home" },
-  { href: "/about", label: "Overview" },
-  { href: "/academics", label: "Modules" },
-  { href: "/admissions", label: "Packages" },
-  { href: "/fees", label: "Commercials" },
-  { href: "/visit", label: "Demo" },
+  { href: "/features", label: "Features" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/contact", label: "Contact" },
 ];
 
-export const homeSellingPoints = [
+/* ─── Homepage Data ─── */
+export const capabilities = [
   {
-    title: "Separate public and workspace surfaces",
-    description:
-      "The marketing site explains the product; admin, teacher, and portal work stays behind workspace sign-in.",
+    title: "Student Records",
+    description: "Admissions, enrollment, class placement, and complete academic histories — all in one place.",
   },
   {
-    title: "Built for one real school first",
-    description:
-      "The product can launch with a single school and still keep multi-school boundaries ready for later growth.",
+    title: "Result Management",
+    description: "Grade entry, broadsheets, report cards, and cumulative results across all terms.",
   },
   {
-    title: "Commercials stay separate from school fees",
-    description:
-      "Setup fees, recurring access, and optional upgrades live outside the student billing flow.",
-  },
-];
-
-export const academicTracks = [
-  {
-    title: "Core operations",
-    description:
-      "School setup, classes, sessions, terms, subjects, and teacher assignments live in one bounded workspace.",
+    title: "Fee Collection",
+    description: "Invoice generation, Paystack integration, payment tracking, and real-time financial reporting.",
   },
   {
-    title: "Family access",
-    description:
-      "Parent and student portal entry points, notifications, and status visibility stay connected but separate.",
+    title: "Teacher Workbench",
+    description: "Attendance, grade entry, and class management built for teachers who need to move fast.",
   },
   {
-    title: "Public web path",
-    description:
-      "The public site markets the platform now while future managed school websites arrive through T20-T23.",
+    title: "Parent Portal",
+    description: "Results, invoices, payment history and attendance — parents see what matters, when it matters.",
+  },
+  {
+    title: "School Website",
+    description: "A public-facing site for your school, managed from the same platform. No external tools needed.",
   },
 ];
 
-export const aboutMilestones = [
+export const trustPoints = [
+  { metric: "99.9%", label: "Uptime guarantee" },
+  { metric: "< 2s", label: "Average page load" },
+  { metric: "256-bit", label: "Data encryption" },
+];
+
+/* ─── Features Page Data ─── */
+export const featureGroups = [
   {
-    title: "Clear product story",
-    description:
-      "Explain SchoolOS in language that school buyers can act on without mixing it into admissions copy.",
+    group: "Operations",
+    features: [
+      {
+        title: "Multi-session & Term Management",
+        description: "Configure academic sessions, terms, and class structures. Support for Nigerian school calendar patterns.",
+      },
+      {
+        title: "Student & Staff Profiles",
+        description: "Comprehensive records with enrollment tracking, guardian details, and document management.",
+      },
+      {
+        title: "Attendance Tracking",
+        description: "Daily attendance with absence flagging, reports, and parent notification triggers.",
+      },
+    ],
   },
   {
-    title: "One tenant at a time",
-    description:
-      "Keep the first rollout simple while preserving school-scoped data boundaries for later growth.",
+    group: "Academics",
+    features: [
+      {
+        title: "Grade Entry & Broadsheets",
+        description: "Teachers enter marks, the system generates broadsheets, rankings, and cumulative reports automatically.",
+      },
+      {
+        title: "Report Card Generation",
+        description: "Beautiful, printable report cards with school branding, principal remarks, and attendance summaries.",
+      },
+      {
+        title: "Subject & Class Configuration",
+        description: "Flexible subject assignment, class arms, and teacher-subject mapping across the school.",
+      },
+    ],
   },
   {
-    title: "Commercial separation",
-    description:
-      "Keep platform packaging distinct from student fee collection and school billing.",
-  },
-  {
-    title: "Future-ready public web",
-    description:
-      "Leave room for managed school websites later without forcing that work into the marketing site now.",
+    group: "Finance",
+    features: [
+      {
+        title: "Fee Plans & Invoicing",
+        description: "Create fee structures, generate bulk invoices, and track payment status per student.",
+      },
+      {
+        title: "Online Payments",
+        description: "Paystack-powered collection with automatic reconciliation and digital receipts.",
+      },
+      {
+        title: "Financial Reports",
+        description: "Revenue dashboards, outstanding balance tracking, and term-by-term financial summaries.",
+      },
+    ],
   },
 ];
 
-export const admissionsSteps = [
+/* ─── Pricing Page Data ─── */
+export const pricingTiers = [
   {
-    title: "Discover the fit",
-    description:
-      "Review the modules, pricing model, and operating boundaries to see whether the product matches the school.",
+    name: "Starter",
+    price: "₦50,000",
+    period: "/term",
+    description: "For small schools getting started with digital operations.",
+    features: [
+      "Up to 200 students",
+      "Admin & teacher access",
+      "Student records & grades",
+      "Basic report cards",
+      "Email support",
+    ],
+    cta: "Get started",
+    highlighted: false,
   },
   {
-    title: "Plan the rollout",
-    description:
-      "Agree on setup, support, and the first school workflows that need to go live.",
+    name: "Growth",
+    price: "₦120,000",
+    period: "/term",
+    description: "For established schools that need the complete toolkit.",
+    features: [
+      "Up to 800 students",
+      "Everything in Starter",
+      "Online fee collection",
+      "Parent portal access",
+      "Branded report cards",
+      "Priority support",
+    ],
+    cta: "Start free trial",
+    highlighted: true,
   },
   {
-    title: "Launch the workspace",
-    description:
-      "Move into internal platform onboarding and configure the school tenant.",
-  },
-  {
-    title: "Expand later",
-    description:
-      "Add public-web or other service layers when the school is ready.",
-  },
-];
-
-export const feeHighlights = [
-  {
-    title: "Setup fee",
-    description:
-      "One-time onboarding, launch help, and brand kickoff for the school.",
-  },
-  {
-    title: "Recurring platform access",
-    description:
-      "Term-based or annual access to the modules included in the package.",
-  },
-  {
-    title: "Optional upgrades",
-    description:
-      "Managed services and add-ons stay separate from the base tier.",
-  },
-];
-
-export const visitMoments = [
-  {
-    title: "Short discovery call",
-    description:
-      "Discuss the school's current setup, goals, and operating constraints.",
-  },
-  {
-    title: "Focused product walkthrough",
-    description:
-      "See the admin, teacher, and family surfaces without any admissions-style detour.",
-  },
-  {
-    title: "Commercial alignment",
-    description:
-      "Confirm package fit, service level, and rollout path.",
+    name: "Premium",
+    price: "Custom",
+    period: "",
+    description: "For large schools and multi-campus operations.",
+    features: [
+      "Unlimited students",
+      "Everything in Growth",
+      "Multi-campus support",
+      "Managed school website",
+      "Dedicated account manager",
+      "Custom integrations",
+    ],
+    cta: "Talk to sales",
+    highlighted: false,
   },
 ];
 
-export const contactChannels = [
+/* ─── Contact Page Data ─── */
+export const contactMethods = [
   {
-    label: "Sales email",
-    value: siteBrand.salesEmail,
-    href: `mailto:${siteBrand.salesEmail}`,
+    label: "Email",
+    value: siteBrand.email,
+    href: `mailto:${siteBrand.email}`,
+    description: "For general inquiries and support",
   },
   {
-    label: "Sales line",
+    label: "Phone",
     value: siteBrand.phone,
     href: `tel:${siteBrand.phone.replace(/\s+/g, "")}`,
+    description: "Speak to someone directly",
   },
   {
-    label: "Office hours",
-    value: siteBrand.hours,
-    href: "/contact",
+    label: "Office",
+    value: siteBrand.address,
+    href: "#",
+    description: siteBrand.hours,
   },
 ];
 
-export function siteThemeStyle(): CSSProperties {
-  return {
-    ["--school-primary" as never]: siteBrand.colors.primary,
-    ["--school-secondary" as never]: siteBrand.colors.secondary,
-    ["--school-accent" as never]: siteBrand.colors.accent,
-    ["--school-background" as never]: siteBrand.colors.background,
-    ["--school-surface" as never]: siteBrand.colors.surface,
-    ["--school-ink" as never]: siteBrand.colors.ink,
-    ["--school-muted" as never]: siteBrand.colors.muted,
-  } as CSSProperties;
-}
-
+/* ─── SEO ─── */
 export function buildPageMetadata({
   title,
   description = siteBrand.description,
@@ -197,14 +200,12 @@ export function buildPageMetadata({
   path?: string;
 }): Metadata {
   const url = new URL(path, siteBrand.siteUrl).toString();
-  const shareTitle = `${title} | ${siteBrand.name}`;
+  const shareTitle = `${title} — ${siteBrand.name}`;
 
   return {
     title,
     description,
-    alternates: {
-      canonical: url,
-    },
+    alternates: { canonical: url },
     openGraph: {
       title: shareTitle,
       description,
@@ -217,10 +218,7 @@ export function buildPageMetadata({
       title: shareTitle,
       description,
     },
-    robots: {
-      index: true,
-      follow: true,
-    },
+    robots: { index: true, follow: true },
   };
 }
 

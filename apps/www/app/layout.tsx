@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/site-ui";
-import { siteBrand, siteThemeStyle } from "@/site";
+import { siteBrand } from "@/site";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteBrand.siteUrl),
   title: {
-    default: siteBrand.name,
-    template: `%s | ${siteBrand.name}`,
+    default: `${siteBrand.name} — ${siteBrand.tagline}`,
+    template: `%s — ${siteBrand.name}`,
   },
   description: siteBrand.description,
   openGraph: {
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-[color:var(--school-background)] text-slate-900 antialiased" style={siteThemeStyle()}>
+      <body className="bg-melo-paper text-melo-stone antialiased">
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />
