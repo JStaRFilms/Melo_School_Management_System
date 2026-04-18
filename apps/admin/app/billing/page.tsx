@@ -96,8 +96,44 @@ type BillingSettingsDraft = {
   invoicePrefix: string;
   defaultCurrency: string;
   defaultDueDays: string;
+  paymentProviderMode: "test" | "live";
   allowManualPayments: boolean;
   allowOnlinePayments: boolean;
+};
+
+type PaystackProviderModeState = {
+  provider: "paystack";
+  mode: "test" | "live";
+  isEnabled: boolean;
+  status: "not_configured" | "invalid" | "ready" | "disabled" | "rotation_pending";
+  publicKeyMasked: string | null;
+  activeSecretMasked: string | null;
+  pendingSecretMasked: string | null;
+  publicKeyFingerprint: string | null;
+  activeSecretFingerprint: string | null;
+  pendingSecretFingerprint: string | null;
+  lastValidatedAt: number | null;
+  lastValidationMessage: string | null;
+  hasActiveSecret: boolean;
+  hasPendingSecret: boolean;
+  readyForPayments: boolean;
+  readyForWebhookVerification: boolean;
+};
+
+type PaystackProviderOverview = {
+  provider: "paystack";
+  activeMode: "test" | "live";
+  allowOnlinePayments: boolean;
+  readyForPayments: boolean;
+  modes: {
+    test: PaystackProviderModeState;
+    live: PaystackProviderModeState;
+  };
+};
+
+type PaystackGatewayConfigDraft = {
+  publicKey: string;
+  secretKey: string;
 };
 
 type PaymentLinkDraft = {
@@ -149,9 +185,11 @@ type BillingDashboardData = {
     defaultCurrency: string;
     defaultDueDays: number;
     preferredProvider: string;
+    paymentProviderMode: "test" | "live";
     allowManualPayments: boolean;
     allowOnlinePayments: boolean;
   } | null;
+  paymentGateway: PaystackProviderOverview;
   summary: {
     totalInvoiceAmount: number;
     amountCollected: number;
@@ -310,6 +348,13 @@ function formatMoney(amount: number, currency: string) {
   }).format(amount);
 }
 
+function formatDateTime(value: number) {
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
+}
+
 function toQueryArgs(field: "classId" | "sessionId", value: string) {
   return value.trim()
     ? ({ [field]: value.trim() } as never)
@@ -439,6 +484,7 @@ function initialBillingSettingsDraft(schoolSlug = ""): BillingSettingsDraft {
     invoicePrefix: normalizedPrefix,
     defaultCurrency: "NGN",
     defaultDueDays: "14",
+    paymentProviderMode: "test",
     allowManualPayments: true,
     allowOnlinePayments: false,
   };
@@ -450,6 +496,7 @@ function buildBillingSettingsDraft(
         invoicePrefix: string;
         defaultCurrency: string;
         defaultDueDays: number;
+        paymentProviderMode: "test" | "live";
         allowManualPayments: boolean;
         allowOnlinePayments: boolean;
       }
@@ -465,9 +512,47 @@ function buildBillingSettingsDraft(
     invoicePrefix: settings.invoicePrefix,
     defaultCurrency: settings.defaultCurrency,
     defaultDueDays: String(settings.defaultDueDays),
+    paymentProviderMode: settings.paymentProviderMode,
     allowManualPayments: settings.allowManualPayments,
     allowOnlinePayments: settings.allowOnlinePayments,
   };
+}
+
+function initialPaystackGatewayConfigDraft(): PaystackGatewayConfigDraft {
+  return {
+    publicKey: "",
+    secretKey: "",
+  };
+}
+
+function paymentGatewayStatusLabel(status: PaystackProviderModeState["status"]) {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "rotation_pending":
+      return "Rotation pending";
+    case "invalid":
+      return "Invalid";
+    case "disabled":
+      return "Disabled";
+    default:
+      return "Not configured";
+  }
+}
+
+function paymentGatewayStatusClasses(status: PaystackProviderModeState["status"]) {
+  switch (status) {
+    case "ready":
+      return "bg-emerald-50 text-emerald-700";
+    case "rotation_pending":
+      return "bg-amber-50 text-amber-700";
+    case "invalid":
+      return "bg-rose-50 text-rose-700";
+    case "disabled":
+      return "bg-slate-100 text-slate-600";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
 }
 
 function initialPaymentLinkDraft(): PaymentLinkDraft {
@@ -512,6 +597,10 @@ export default function BillingPage() {
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
   const [billingSettingsDraft, setBillingSettingsDraft] = useState<BillingSettingsDraft>(initialBillingSettingsDraft());
   const [billingSettingsLoaded, setBillingSettingsLoaded] = useState(false);
+  const [selectedGatewayMode, setSelectedGatewayMode] = useState<"test" | "live">("test");
+  const [gatewayConfigDraft, setGatewayConfigDraft] = useState<PaystackGatewayConfigDraft>(
+    initialPaystackGatewayConfigDraft()
+  );
   const [paymentLinkDraft, setPaymentLinkDraft] = useState<PaymentLinkDraft>(initialPaymentLinkDraft());
   const [paymentLinkResult, setPaymentLinkResult] = useState<PaymentLinkResult | null>(null);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
@@ -571,6 +660,12 @@ export default function BillingPage() {
   ) as BillingDashboardData["paymentAttempts"] | undefined;
 
   const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
+  const saveSchoolPaystackGatewayConfig = useMutation(
+    "functions/billingProviders:saveSchoolPaystackGatewayConfig" as never
+  );
+  const validateSchoolPaystackGatewayConfig = useAction(
+    "functions/billingProviders:validateSchoolPaystackGatewayConfig" as never
+  );
   const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
   const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
   const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
@@ -590,6 +685,8 @@ export default function BillingPage() {
   );
 
   const activeFilters = [filters.classId, filters.sessionId, filters.termId, filters.status, filters.search.trim()].filter(Boolean).length;
+  const activePaymentGatewayMode = data?.paymentGateway?.activeMode ?? billingSettingsDraft.paymentProviderMode;
+  const selectedPaymentGatewayState = data?.paymentGateway?.modes[selectedGatewayMode] ?? null;
   const classNameById = useMemo(
     () => new Map((classes ?? []).map((classOption) => [classOption._id, classOption.name])),
     [classes]
@@ -823,6 +920,7 @@ export default function BillingPage() {
     }
 
     setBillingSettingsDraft(buildBillingSettingsDraft(data.settings, data.school.slug));
+    setSelectedGatewayMode(data.settings?.paymentProviderMode ?? data.paymentGateway.activeMode);
     setBillingSettingsLoaded(true);
   }, [billingSettingsLoaded, data]);
 
@@ -948,12 +1046,14 @@ export default function BillingPage() {
         invoicePrefix: billingSettingsDraft.invoicePrefix,
         defaultCurrency: billingSettingsDraft.defaultCurrency,
         defaultDueDays,
+        paymentProviderMode: billingSettingsDraft.paymentProviderMode,
         allowManualPayments: billingSettingsDraft.allowManualPayments,
         allowOnlinePayments: billingSettingsDraft.allowOnlinePayments,
       } as never)) as {
         invoicePrefix: string;
         defaultCurrency: string;
         defaultDueDays: number;
+        paymentProviderMode: "test" | "live";
         allowManualPayments: boolean;
         allowOnlinePayments: boolean;
       };
@@ -962,10 +1062,31 @@ export default function BillingPage() {
         invoicePrefix: updatedSettings.invoicePrefix,
         defaultCurrency: updatedSettings.defaultCurrency,
         defaultDueDays: String(updatedSettings.defaultDueDays),
+        paymentProviderMode: updatedSettings.paymentProviderMode,
         allowManualPayments: updatedSettings.allowManualPayments,
         allowOnlinePayments: updatedSettings.allowOnlinePayments,
       });
     }, "Billing settings saved", "Unable to save billing settings.");
+  };
+
+  const handleSavePaystackGatewayConfig = async () => {
+    await runAction(async () => {
+      await saveSchoolPaystackGatewayConfig({
+        mode: selectedGatewayMode,
+        publicKey: gatewayConfigDraft.publicKey.trim() ? gatewayConfigDraft.publicKey.trim() : null,
+        secretKey: gatewayConfigDraft.secretKey.trim() ? gatewayConfigDraft.secretKey.trim() : null,
+      } as never);
+
+      setGatewayConfigDraft((current) => ({ ...current, secretKey: "" }));
+    }, "Merchant credentials saved", "Unable to save the Paystack merchant credentials.");
+  };
+
+  const handleValidatePaystackGatewayConfig = async () => {
+    await runAction(async () => {
+      await validateSchoolPaystackGatewayConfig({
+        mode: selectedGatewayMode,
+      } as never);
+    }, "Merchant credentials validated", "Unable to validate the Paystack merchant credentials.");
   };
 
   const handleGeneratePaymentLink = async (event: FormEvent<HTMLFormElement>) => {
@@ -979,6 +1100,10 @@ export default function BillingPage() {
 
       if (!billingData.settings?.allowOnlinePayments) {
         throw new Error("Enable online payments in billing settings before generating a payment link.");
+      }
+
+      if (!billingData.paymentGateway.readyForPayments) {
+        throw new Error("Configure and validate the active Paystack merchant credentials before generating a payment link.");
       }
 
       if (!paymentLinkDraft.invoiceId) {
@@ -1322,7 +1447,7 @@ export default function BillingPage() {
               </p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              Direct-to-school
+              Per-school merchant
             </div>
           </div>
 
@@ -1367,8 +1492,26 @@ export default function BillingPage() {
                 />
               </label>
 
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Payment toggles</p>
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Payment controls</p>
+                <label className="space-y-1 text-sm block">
+                  <span className="font-medium text-slate-600">Active Paystack mode</span>
+                  <select
+                    value={billingSettingsDraft.paymentProviderMode}
+                    onChange={(event) => {
+                      const mode = event.target.value as "test" | "live";
+                      setBillingSettingsDraft((current) => ({ ...current, paymentProviderMode: mode }));
+                      setSelectedGatewayMode(mode);
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <option value="test">Test mode</option>
+                    <option value="live">Live mode</option>
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    This decides which merchant credentials are used for new payment links and verification follow-up.
+                  </p>
+                </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
@@ -1389,7 +1532,7 @@ export default function BillingPage() {
                     }
                     className="h-4 w-4 rounded border-slate-300"
                   />
-                  <span>Allow Paystack online payment links</span>
+                  <span>Allow school-owned Paystack payment links</span>
                 </label>
               </div>
             </div>
@@ -1397,14 +1540,101 @@ export default function BillingPage() {
             <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm text-sky-900">
               <div className="flex items-center gap-2 font-semibold">
                 <ShieldCheck className="h-4 w-4" />
-                Routing model
+                Merchant routing model
               </div>
               <p className="mt-2 leading-6 text-sky-900/85">
-                This workspace uses a constrained direct-to-school Paystack flow. The Paystack secret is
-                configured at the deployment level, while schoolId and invoice metadata are embedded in the
-                transaction so webhook reconciliation comes back to the correct school invoice.
-                School billing is kept separate from future platform SaaS billing.
+                New payment links and verification flows now route through the currently selected school-owned
+                Paystack merchant mode. Secret keys stay server-side and are never returned in the normal billing UI.
               </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {(["test", "live"] as const).map((mode) => {
+                const modeState = data.paymentGateway.modes[mode];
+                return (
+                  <div key={mode} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{mode} mode</p>
+                        <p className="mt-1 font-semibold text-slate-950">{paymentGatewayStatusLabel(modeState.status)}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentGatewayStatusClasses(modeState.status)}`}>
+                        {modeState.readyForPayments ? "Ready" : paymentGatewayStatusLabel(modeState.status)}
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-slate-500">
+                      <p>Public key: {modeState.publicKeyMasked ?? "Not saved"}</p>
+                      <p>Active secret: {modeState.activeSecretMasked ?? "Not saved"}</p>
+                      <p>Pending secret: {modeState.pendingSecretMasked ?? "None"}</p>
+                      <p>
+                        Last validation: {modeState.lastValidatedAt ? formatDateTime(modeState.lastValidatedAt) : "Not yet validated"}
+                      </p>
+                      {modeState.lastValidationMessage ? <p>{modeState.lastValidationMessage}</p> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Paystack merchant credentials</p>
+                  <p className="text-sm text-slate-500">
+                    Save or rotate credentials for the selected {selectedGatewayMode} merchant mode.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                  Active mode: {activePaymentGatewayMode}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-sm">
+                  <span className="font-medium text-slate-600">Paystack public key</span>
+                  <input
+                    value={gatewayConfigDraft.publicKey}
+                    onChange={(event) =>
+                      setGatewayConfigDraft((current) => ({ ...current, publicKey: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    placeholder={selectedPaymentGatewayState?.publicKeyMasked ?? "pk_test_... or pk_live_..."}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="font-medium text-slate-600">Paystack secret key</span>
+                  <input
+                    type="password"
+                    value={gatewayConfigDraft.secretKey}
+                    onChange={(event) =>
+                      setGatewayConfigDraft((current) => ({ ...current, secretKey: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    placeholder="Enter a new secret key to save or rotate"
+                  />
+                </label>
+              </div>
+
+              <p className="mt-3 text-xs leading-6 text-slate-500">
+                Leave fields blank to keep the currently stored value for this mode. Saving stores the draft securely; validation promotes it for live payment use.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleSavePaystackGatewayConfig}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                >
+                  <Settings2 className="h-4 w-4" /> Save merchant config
+                </button>
+                <button
+                  type="button"
+                  onClick={handleValidatePaystackGatewayConfig}
+                  className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Validate {selectedGatewayMode} credentials
+                </button>
+              </div>
             </div>
 
             <button type="submit" className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
@@ -1529,7 +1759,7 @@ export default function BillingPage() {
 
             <button
               type="submit"
-              disabled={!data.settings?.allowOnlinePayments || !paymentLinkDraft.invoiceId}
+              disabled={!data.settings?.allowOnlinePayments || !data.paymentGateway.readyForPayments || !paymentLinkDraft.invoiceId}
               className="button-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Link2 className="h-4 w-4" /> Generate payment link
@@ -1626,10 +1856,11 @@ export default function BillingPage() {
             </div>
           )}
 
-          {!data.settings?.allowOnlinePayments && (
+          {(!data.settings?.allowOnlinePayments || !data.paymentGateway.readyForPayments) && (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
-              Online payments are currently disabled. Enable them in the billing settings panel above to
-              generate a Paystack handoff link.
+              {!data.settings?.allowOnlinePayments
+                ? "Online payments are currently disabled. Enable them in the billing settings panel above to generate a Paystack handoff link."
+                : `The active ${data.paymentGateway.activeMode} Paystack merchant is not ready yet. Save and validate credentials before generating a payment link.`}
             </div>
           )}
         </AdminSurface>

@@ -72,3 +72,7 @@ pnpm --filter @school/admin dev
 
 - [x] WE need to re work on the printing screen and scalling stuff to fit the screen and what not hehe...
 - [ ] I already implemented the printing feature for a single student at a time, but when I tried the multiple‑student printing available on the admin and teacher portals, it didn't work well. I don't want to tamper with the existing functionality, so I plan to duplicate the shared functions and components and create a new version for the other use case. That should make it easier to get it working. We'll create a dedicated feature for printing multiple students at once, so printing everyone in a class becomes simpler.
+
+- [ ] UI fixes for the billing page, the portal and then the main website and the templates
+
+- [ ] There needs to be a proper way for schools to check and print invoices. They should be able to print invoices that include links and a QR code, and display the QR code in the UI. Schools should also be able to print a statement, like a bank statement, to show when people pay. Additionally, they should be able to see payment dates and times in the UI.

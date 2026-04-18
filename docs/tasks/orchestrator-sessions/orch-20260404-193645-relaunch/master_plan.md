@@ -108,7 +108,7 @@ The new baseline is:
 | `T15` | Complete | D | Parent portal billing, receipts, self-serve pay-now flow, and portal payment return verification |
 | `T16` | Complete | D | Cross-device payment reconciliation hardening: pending-payment polling and durable callback/session flow |
 | `T17` | Complete | D | Platform marketing website for selling the SchoolOS product itself, separate from tenant school public sites |
-| `T18` | Pending | D | Per-school Paystack credential management and merchant routing |
+| `T18` | Complete | D | Per-school Paystack credential management, merchant routing, and school-aware webhook verification |
 | `T19` | Complete | D | Public web operating modes: platform site, school-keeps-existing-site support, and managed school-site onboarding policy |
 | `T20` | Complete | D | Multi-tenant school public-site engine foundation with hostname resolution and runtime branding |
 | `T21` | Complete | D | School website template library and flexible page/section composition model |
@@ -117,7 +117,7 @@ The new baseline is:
 
 ## Current Known Blockers
 
-- `T02-T17` plus `T19-T23` are now completed foundation/product slices. The next recommended product task remains `T18`. The public-site follow-on work for this batch is now complete, and `T06` is still deferred to the release-readiness pass.
+- `T02-T23` are now completed foundation/product slices. The next recommended work is `T06`, the deferred release-readiness and verification pass.
 - E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
 - Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
 

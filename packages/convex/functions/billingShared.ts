@@ -127,6 +127,19 @@ export const billingPaymentProviderValidator = v.union(
   v.literal("manual")
 );
 
+export const billingPaymentProviderModeValidator = v.union(
+  v.literal("test"),
+  v.literal("live")
+);
+
+export const billingPaymentProviderStatusValidator = v.union(
+  v.literal("not_configured"),
+  v.literal("invalid"),
+  v.literal("ready"),
+  v.literal("disabled"),
+  v.literal("rotation_pending")
+);
+
 export const billingPaymentStatusValidator = v.union(
   v.literal("pending"),
   v.literal("successful"),
@@ -154,9 +167,9 @@ export const billingPaymentValidator = v.object({
   reference: v.string(),
   gatewayReference: v.union(v.string(), v.null()),
   provider: v.union(billingPaymentProviderValidator, v.null()),
+  providerMode: v.union(billingPaymentProviderModeValidator, v.null()),
   paymentMethod: billingPaymentMethodValidator,
-  amountReceived: v.number(),
-  amountApplied: v.number(),
+  amountReceived: v.number(),  amountApplied: v.number(),
   unappliedAmount: v.number(),
   applicationStatus: billingPaymentApplicationStatusValidator,
   status: billingPaymentStatusValidator,
@@ -194,6 +207,7 @@ export const billingPaymentAttemptValidator = v.object({
   provider: billingPaymentProviderValidator,
   reference: v.string(),
   gatewayReference: v.union(v.string(), v.null()),
+  providerMode: v.union(billingPaymentProviderModeValidator, v.null()),
   authorizationUrl: v.union(v.string(), v.null()),
   accessCode: v.union(v.string(), v.null()),
   amount: v.number(),
@@ -220,6 +234,7 @@ export const billingSettingsValidator = v.union(
     defaultCurrency: v.string(),
     defaultDueDays: v.number(),
     preferredProvider: billingPaymentProviderValidator,
+    paymentProviderMode: billingPaymentProviderModeValidator,
     allowManualPayments: v.boolean(),
     allowOnlinePayments: v.boolean(),
     createdAt: v.number(),
@@ -232,6 +247,7 @@ export const billingGatewayEventValidator = v.object({
   _id: v.id("paymentGatewayEvents"),
   schoolId: v.id("schools"),
   provider: billingPaymentProviderValidator,
+  providerMode: v.union(billingPaymentProviderModeValidator, v.null()),
   eventId: v.string(),
   eventType: v.string(),
   reference: v.string(),
@@ -251,6 +267,36 @@ export const billingGatewayEventValidator = v.object({
   receivedAt: v.number(),
   createdAt: v.number(),
   updatedAt: v.number(),
+});
+
+export const billingPaystackProviderModeStateValidator = v.object({
+  provider: v.literal("paystack"),
+  mode: billingPaymentProviderModeValidator,
+  isEnabled: v.boolean(),
+  status: billingPaymentProviderStatusValidator,
+  publicKeyMasked: v.union(v.string(), v.null()),
+  activeSecretMasked: v.union(v.string(), v.null()),
+  pendingSecretMasked: v.union(v.string(), v.null()),
+  publicKeyFingerprint: v.union(v.string(), v.null()),
+  activeSecretFingerprint: v.union(v.string(), v.null()),
+  pendingSecretFingerprint: v.union(v.string(), v.null()),
+  lastValidatedAt: v.union(v.number(), v.null()),
+  lastValidationMessage: v.union(v.string(), v.null()),
+  hasActiveSecret: v.boolean(),
+  hasPendingSecret: v.boolean(),
+  readyForPayments: v.boolean(),
+  readyForWebhookVerification: v.boolean(),
+});
+
+export const billingPaystackProviderOverviewValidator = v.object({
+  provider: v.literal("paystack"),
+  activeMode: billingPaymentProviderModeValidator,
+  allowOnlinePayments: v.boolean(),
+  readyForPayments: v.boolean(),
+  modes: v.object({
+    test: billingPaystackProviderModeStateValidator,
+    live: billingPaystackProviderModeStateValidator,
+  }),
 });
 
 export function normalizeBillingText(value: unknown) {

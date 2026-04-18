@@ -40,6 +40,7 @@ import type * as functions_academic_teacherSelectors from "../functions/academic
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_billing from "../functions/billing.js";
 import type * as functions_billingGateway from "../functions/billingGateway.js";
+import type * as functions_billingProviders from "../functions/billingProviders.js";
 import type * as functions_billingShared from "../functions/billingShared.js";
 import type * as functions_billingWebhooks from "../functions/billingWebhooks.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   "functions/auth": typeof functions_auth;
   "functions/billing": typeof functions_billing;
   "functions/billingGateway": typeof functions_billingGateway;
+  "functions/billingProviders": typeof functions_billingProviders;
   "functions/billingShared": typeof functions_billingShared;
   "functions/billingWebhooks": typeof functions_billingWebhooks;
   "functions/platform/auth": typeof functions_platform_auth;

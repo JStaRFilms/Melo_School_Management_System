@@ -608,13 +608,13 @@ export default defineSchema({
       v.literal("stripe"),
       v.literal("manual")
     ),
+    paymentProviderMode: v.optional(v.union(v.literal("test"), v.literal("live"))),
     allowManualPayments: v.boolean(),
     allowOnlinePayments: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedBy: v.union(v.id("users"), v.null()),
   }).index("by_school", ["schoolId"]),
-
   feePlans: defineTable({
     schoolId: v.id("schools"),
     name: v.string(),
@@ -750,8 +750,8 @@ export default defineSchema({
       v.literal("stripe"),
       v.literal("manual")
     ),
-    reference: v.string(),
-    gatewayReference: v.union(v.string(), v.null()),
+    providerMode: v.optional(v.union(v.literal("test"), v.literal("live"))),
+    reference: v.string(),    gatewayReference: v.union(v.string(), v.null()),
     authorizationUrl: v.union(v.string(), v.null()),
     accessCode: v.union(v.string(), v.null()),
     amount: v.number(),
@@ -781,6 +781,7 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_school_and_invoice", ["schoolId", "invoiceId"])
+    .index("by_reference", ["reference"])
     .index("by_school_and_reference", ["schoolId", "reference"])
     .index("by_school_and_status", ["schoolId", "status"]),
 
@@ -861,8 +862,8 @@ export default defineSchema({
       v.literal("stripe"),
       v.literal("manual")
     ),
-    eventId: v.string(),
-    eventType: v.string(),
+    providerMode: v.optional(v.union(v.literal("test"), v.literal("live"))),
+    eventId: v.string(),    eventType: v.string(),
     reference: v.string(),
     invoiceNumber: v.optional(v.string()),
     invoiceId: v.optional(v.id("studentInvoices")),
@@ -886,4 +887,52 @@ export default defineSchema({
     .index("by_reference", ["reference"])
     .index("by_event", ["eventId"])
     .index("by_school_and_event", ["schoolId", "eventId"]),
+
+  schoolPaymentProviders: defineTable({
+    schoolId: v.id("schools"),
+    provider: v.literal("paystack"),
+    mode: v.union(v.literal("test"), v.literal("live")),
+    isEnabled: v.boolean(),
+    status: v.union(
+      v.literal("not_configured"),
+      v.literal("invalid"),
+      v.literal("ready"),
+      v.literal("disabled"),
+      v.literal("rotation_pending")
+    ),
+    publicKey: v.union(v.string(), v.null()),
+    publicKeyMasked: v.union(v.string(), v.null()),
+    publicKeyFingerprint: v.union(v.string(), v.null()),
+    activeSecretMasked: v.union(v.string(), v.null()),
+    pendingSecretMasked: v.union(v.string(), v.null()),
+    activeSecretId: v.union(v.id("schoolPaymentProviderSecrets"), v.null()),
+    pendingSecretId: v.union(v.id("schoolPaymentProviderSecrets"), v.null()),
+    activeSecretFingerprint: v.union(v.string(), v.null()),
+    pendingSecretFingerprint: v.union(v.string(), v.null()),
+    lastValidatedAt: v.union(v.number(), v.null()),
+    lastValidationMessage: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.union(v.id("users"), v.null()),
+    updatedBy: v.union(v.id("users"), v.null()),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_provider", ["schoolId", "provider"])
+    .index("by_school_and_provider_and_mode", ["schoolId", "provider", "mode"])
+    .index("by_school_and_status", ["schoolId", "status"]),
+
+  schoolPaymentProviderSecrets: defineTable({
+    schoolId: v.id("schools"),
+    provider: v.literal("paystack"),
+    mode: v.union(v.literal("test"), v.literal("live")),
+    encryptedSecret: v.string(),
+    secretFingerprint: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.union(v.id("users"), v.null()),
+    updatedBy: v.union(v.id("users"), v.null()),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_provider", ["schoolId", "provider"])
+    .index("by_school_and_provider_and_mode", ["schoolId", "provider", "mode"]),
 });

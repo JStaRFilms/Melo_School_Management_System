@@ -10,6 +10,7 @@ export interface PaymentLinkInput {
   description: string;
   reference: string;
   callbackUrl?: string;
+  providerMode?: "test" | "live";
 }
 
 export interface PaymentLinkResult {
@@ -34,12 +35,10 @@ export interface PaymentGateway {
   verifyPayment(reference: string): Promise<PaymentVerificationResult>;
 }
 
-function getPaystackSecretKey() {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
-  if (!secretKey) {
-    throw new ConvexError("PAYSTACK_SECRET_KEY is not configured on the Convex deployment.");
-  }
-  return secretKey;
+export interface BillingGatewayAdapterInput {
+  provider: "paystack";
+  secretKey: string;
+  mode?: "test" | "live";
 }
 
 function toNairaAmount(amount: number) {
@@ -63,8 +62,7 @@ function normalizeGatewayReference(reference: string) {
   return trimmed;
 }
 
-function buildPaystackGateway(): PaymentGateway {
-  const secretKey = getPaystackSecretKey();
+function buildPaystackGateway(secretKey: string, mode: "test" | "live" = "test"): PaymentGateway {
   const baseUrl = "https://api.paystack.co";
 
   return {
@@ -87,6 +85,7 @@ function buildPaystackGateway(): PaymentGateway {
             invoiceId: input.invoiceId,
             invoiceNumber: input.invoiceNumber,
             description: input.description,
+            paymentProviderMode: input.providerMode ?? mode,
           },
         }),
       });
@@ -135,11 +134,11 @@ function buildPaystackGateway(): PaymentGateway {
   };
 }
 
-export function createBillingGatewayAdapter(provider: "paystack" = "paystack") {
-  switch (provider) {
+export function createBillingGatewayAdapter(input: BillingGatewayAdapterInput): PaymentGateway {
+  switch (input.provider) {
     case "paystack":
-      return buildPaystackGateway();
+      return buildPaystackGateway(input.secretKey, input.mode ?? "test");
     default:
-      throw new Error(`Unsupported payment provider: ${provider}`);
+      throw new Error(`Unsupported payment provider: ${input.provider}`);
   }
 }

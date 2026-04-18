@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import { api } from "../_generated/api";
 import { query } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./academic/auth";

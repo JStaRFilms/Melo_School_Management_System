@@ -34,6 +34,7 @@ function extractPayloadMetadata(payload: any) {
     gatewayReference: normalizeWebhookText(
       data.reference ?? data.gateway_reference ?? payload?.reference
     ),
+    providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? payload?.paymentProviderMode),
     amountReceived:
       typeof data.amount === "number"
         ? data.amount / 100
@@ -110,14 +111,6 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     );
   }
 
-  const secret = process.env.PAYSTACK_SECRET_KEY?.trim();
-  if (!secret) {
-    return jsonResponse(
-      { ok: false, message: "PAYSTACK_SECRET_KEY is not configured on the Convex deployment." },
-      500
-    );
-  }
-
   const rawBody = await request.text();
   let payload: any;
   try {
@@ -126,57 +119,85 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     return jsonResponse({ ok: false, message: "Webhook body must be valid JSON." }, 400);
   }
 
-  const signatureValid = await verifyPaystackSignature(rawBody, paystackSignature, secret);
-  if (!signatureValid) {
-    return jsonResponse({ ok: false, message: "Invalid payment signature." }, 401);
-  }
-
   const metadata = extractPayloadMetadata(payload);
-  const invoiceResolution = await ctx.runQuery(
-    (internal as any).functions.billing.resolveBillingInvoiceForWebhookInternal,
+  const reference =
+    metadata.gatewayReference ??
+    normalizeWebhookText(payload?.data?.reference) ??
+    buildPaystackEventId(payload);
+
+  const referenceContext: any = await ctx.runQuery(
+    (internal as any).functions.billingProviders.resolveSchoolPaystackReferenceContextInternal,
     {
+      reference,
       invoiceId: metadata.invoiceId ?? undefined,
       invoiceNumber: metadata.invoiceNumber ?? undefined,
     }
   );
 
-  const schoolId = metadata.schoolId ?? invoiceResolution?.schoolId ?? null;
-  if (!schoolId) {
+  if (!referenceContext) {
     return jsonResponse(
       {
         ok: false,
         message:
-          "Webhook payload must include a schoolId or a resolvable invoice reference in metadata.",
+          "Webhook payload must include a resolvable school invoice reference from the current merchant configuration.",
       },
       400
     );
   }
 
-  if (invoiceResolution && metadata.schoolId && String(invoiceResolution.schoolId) !== String(metadata.schoolId)) {
+  if (metadata.schoolId && String(metadata.schoolId) !== String(referenceContext.schoolId)) {
     return jsonResponse(
-      { ok: false, message: "Webhook invoice reference does not belong to the supplied schoolId." },
+      { ok: false, message: "Webhook invoice reference does not belong to the resolved school." },
       400
     );
   }
 
+  if (metadata.providerMode && String(metadata.providerMode) !== String(referenceContext.mode)) {
+    return jsonResponse(
+      { ok: false, message: "Webhook invoice reference does not belong to the resolved merchant mode." },
+      400
+    );
+  }
+
+  const gatewayContext: any = await ctx.runQuery(
+    (internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
+    {
+      schoolId: referenceContext.schoolId,
+      mode: referenceContext.mode,
+      purpose: "webhook_verification",
+    }
+  );
+
+  if (!gatewayContext || !gatewayContext.activeSecretKey) {
+    return jsonResponse(
+      {
+        ok: false,
+        message: "Paystack credentials are not configured for the resolved school and mode.",
+      },
+      400
+    );
+  }
+
+  const signatureValid = await verifyPaystackSignature(rawBody, paystackSignature, gatewayContext.activeSecretKey);
+  if (!signatureValid) {
+    return jsonResponse({ ok: false, message: "Invalid payment signature." }, 401);
+  }
+
   const eventId = buildPaystackEventId(payload);
   const eventType = normalizeWebhookText(payload?.event) ?? "payment.webhook";
-  const reference =
-    metadata.gatewayReference ??
-    normalizeWebhookText(payload?.data?.reference) ??
-    eventId;
 
   await ctx.runMutation(
     (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
     {
-      schoolId,
+      schoolId: referenceContext.schoolId,
       provider: "paystack",
+      providerMode: referenceContext.mode,
       eventId,
       eventType,
       reference,
-      invoiceId: invoiceResolution?.invoiceId ?? undefined,
-      invoiceNumber: invoiceResolution?.invoiceNumber ?? metadata.invoiceNumber ?? undefined,
-      gatewayReference: metadata.gatewayReference ?? undefined,
+      invoiceId: referenceContext.invoiceId,
+      invoiceNumber: referenceContext.invoiceNumber,
+      gatewayReference: metadata.gatewayReference ?? reference,
       amountReceived: metadata.amountReceived,
       payerName: metadata.payerName,
       payerEmail: metadata.payerEmail,

@@ -17,8 +17,10 @@ import {
   billingPaymentAttemptValidator,
   billingPaymentMethodValidator,
   billingPaymentProviderValidator,
+  billingPaymentProviderModeValidator,
   billingPaymentStatusValidator,
   billingPaymentValidator,
+  billingPaystackProviderOverviewValidator,
   billingSettingsValidator,
   buildBillingInstallmentPolicy,
   buildBillingInstallmentSchedule,
@@ -95,6 +97,7 @@ const billingPaymentAttemptUpsertValidator = v.object({
   callbackUrl: v.optional(v.union(v.string(), v.null())),
   paymentId: v.optional(v.union(v.id("billingPayments"), v.null())),
   gatewayEventId: v.optional(v.union(v.id("paymentGatewayEvents"), v.null())),
+  providerMode: v.optional(v.union(v.literal("test"), v.literal("live"), v.null())),
   lastCheckedAt: v.optional(v.union(v.number(), v.null())),
   resolvedAt: v.optional(v.union(v.number(), v.null())),
   resolutionMessage: v.optional(v.union(v.string(), v.null())),
@@ -115,6 +118,7 @@ const billingDashboardValidator = v.object({
     slug: v.string(),
   }),
   settings: billingSettingsValidator,
+  paymentGateway: billingPaystackProviderOverviewValidator,
   summary: billingSummaryValidator,
   feePlans: v.array(billingFeePlanValidator),
   applications: v.array(billingFeePlanApplicationRowValidator),
@@ -128,6 +132,7 @@ const billingSettingsUpdateValidator = v.object({
   invoicePrefix: v.string(),
   defaultCurrency: v.string(),
   defaultDueDays: v.number(),
+  paymentProviderMode: billingPaymentProviderModeValidator,
   allowManualPayments: v.boolean(),
   allowOnlinePayments: v.boolean(),
 });
@@ -210,6 +215,7 @@ const gatewayEventInputValidator = v.object({
   invoiceNumber: v.optional(v.string()),
   invoiceId: v.optional(v.id("studentInvoices")),
   gatewayReference: v.optional(v.string()),
+  providerMode: v.optional(v.union(v.literal("test"), v.literal("live"), v.null())),
   amountReceived: v.optional(v.number()),
   payerName: v.optional(v.string()),
   payerEmail: v.optional(v.string()),
@@ -295,6 +301,7 @@ function paymentDocToReturn(payment: any) {
     recordedBy: payment.recordedBy ?? null,
     reconciliationStatus: payment.reconciliationStatus,
     reconciledBy: payment.reconciledBy ?? null,
+    providerMode: payment.providerMode ?? null,
     reconciledAt: payment.reconciledAt ?? null,
     notes: payment.notes ?? null,
     createdAt: payment.createdAt,
@@ -320,6 +327,7 @@ function billingPaymentAttemptDocToReturn(attempt: any) {
     callbackUrl: attempt.callbackUrl ?? null,
     paymentId: attempt.paymentId ?? null,
     gatewayEventId: attempt.gatewayEventId ?? null,
+    providerMode: attempt.providerMode ?? null,
     lastCheckedAt: attempt.lastCheckedAt ?? null,
     resolvedAt: attempt.resolvedAt ?? null,
     resolutionMessage: attempt.resolutionMessage ?? null,
@@ -472,6 +480,7 @@ function billingSettingsDocToReturn(settings: any) {
     defaultCurrency: settings.defaultCurrency,
     defaultDueDays: settings.defaultDueDays,
     preferredProvider: settings.preferredProvider,
+    paymentProviderMode: settings.paymentProviderMode ?? "test",
     allowManualPayments: settings.allowManualPayments,
     allowOnlinePayments: settings.allowOnlinePayments,
     createdAt: settings.createdAt,
@@ -491,6 +500,7 @@ function gatewayEventDocToReturn(event: any) {
     invoiceNumber: event.invoiceNumber ?? null,
     invoiceId: event.invoiceId ?? null,
     paymentId: event.paymentId ?? null,
+    providerMode: event.providerMode ?? null,
     signatureValid: event.signatureValid,
     verificationStatus: event.verificationStatus,
     rawBody: event.rawBody,
@@ -572,36 +582,56 @@ async function verifyPaystackReferenceAndReconcile(
   invoice: any;
   payment: any;
 }> {
-  const gateway = createBillingGatewayAdapter("paystack");
-  const verification = await gateway.verifyPayment(reference);
-  const payload = verification.raw as any;
-  const metadata = extractPaystackVerificationMetadata(payload);
-  const invoiceResolution: any = await ctx.runQuery(
-    (internal as any).functions.billing.resolveBillingInvoiceForWebhookInternal,
+  const referenceContext: any = await ctx.runQuery(
+    (internal as any).functions.billingProviders.resolveSchoolPaystackReferenceContextInternal,
     {
-      invoiceId: metadata.invoiceId ?? undefined,
-      invoiceNumber: metadata.invoiceNumber ?? undefined,
+      reference,
     }
   );
 
-  const schoolId: Id<"schools"> | null =
-    (metadata.schoolId as Id<"schools"> | undefined) ??
-    invoiceResolution?.schoolId ??
-    null;
-  if (!schoolId) {
-    throw new ConvexError("Verified Paystack payment did not include a resolvable school reference");
+  if (!referenceContext) {
+    throw new ConvexError("Verified Paystack payment could not be resolved to a school invoice");
   }
 
-  if (options?.expectedSchoolId && String(options.expectedSchoolId) !== String(schoolId)) {
+  if (options?.expectedSchoolId && String(options.expectedSchoolId) !== String(referenceContext.schoolId)) {
     throw new ConvexError("Cross-school access denied");
   }
 
-  if (
-    invoiceResolution &&
-    metadata.schoolId &&
-    String(invoiceResolution.schoolId) !== String(metadata.schoolId)
-  ) {
-    throw new ConvexError("Verified invoice reference does not belong to the supplied schoolId");
+  const gatewayContext: any = await ctx.runQuery(
+    (internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
+    {
+      schoolId: referenceContext.schoolId,
+      mode: referenceContext.mode,
+      purpose:
+        options?.attemptReconciliationSource === "webhook"
+          ? "webhook_verification"
+          : "payment_verification",
+    }
+  );
+
+  if (!gatewayContext || !gatewayContext.activeSecretKey) {
+    throw new ConvexError("Paystack merchant credentials are not configured for this school");
+  }
+
+  const gateway = createBillingGatewayAdapter({
+    provider: "paystack",
+    secretKey: gatewayContext.activeSecretKey,
+    mode: referenceContext.mode,
+  });
+  const verification = await gateway.verifyPayment(reference);
+  const payload = verification.raw as any;
+  const metadata = extractPaystackVerificationMetadata(payload);
+
+  if (metadata.schoolId && String(metadata.schoolId) !== String(referenceContext.schoolId)) {
+    throw new ConvexError("Verified invoice reference does not belong to the resolved school");
+  }
+
+  if (metadata.invoiceId && String(metadata.invoiceId) !== String(referenceContext.invoiceId)) {
+    throw new ConvexError("Verified invoice reference does not belong to the resolved invoice");
+  }
+
+  if (metadata.invoiceNumber && String(metadata.invoiceNumber) !== String(referenceContext.invoiceNumber)) {
+    throw new ConvexError("Verified invoice reference does not belong to the resolved invoice number");
   }
 
   const data = payload?.data ?? {};
@@ -613,13 +643,14 @@ async function verifyPaystackReferenceAndReconcile(
   return await ctx.runMutation(
     (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
     {
-      schoolId,
+      schoolId: referenceContext.schoolId,
       provider: "paystack",
+      providerMode: referenceContext.mode,
       eventId: buildPaystackEventId(payload, verification.reference),
       eventType,
       reference: metadata.gatewayReference ?? verification.reference,
-      invoiceId: invoiceResolution?.invoiceId ?? undefined,
-      invoiceNumber: invoiceResolution?.invoiceNumber ?? metadata.invoiceNumber ?? undefined,
+      invoiceId: referenceContext.invoiceId,
+      invoiceNumber: referenceContext.invoiceNumber,
       gatewayReference: metadata.gatewayReference ?? verification.reference,
       amountReceived: metadata.amountReceived ?? verification.amount,
       payerName: metadata.payerName,
@@ -951,6 +982,7 @@ async function upsertBillingPaymentAttemptRecord(args: {
   schoolId: Id<"schools">;
   invoiceId: Id<"studentInvoices">;
   provider: "paystack" | "flutterwave" | "stripe" | "manual";
+  providerMode?: "test" | "live" | null;
   reference: string;
   gatewayReference?: string | null;
   authorizationUrl?: string | null;
@@ -1020,6 +1052,7 @@ async function upsertBillingPaymentAttemptRecord(args: {
     await args.ctx.db.patch(existingAttempt._id, {
       invoiceId: nextInvoiceId,
       provider: nextProvider,
+      providerMode: args.providerMode !== undefined ? args.providerMode : existingAttempt.providerMode ?? null,
       gatewayReference: args.gatewayReference !== undefined ? args.gatewayReference : existingAttempt.gatewayReference ?? null,
       authorizationUrl: nextAuthorizationUrl,
       accessCode: nextAccessCode,
@@ -1059,6 +1092,7 @@ async function upsertBillingPaymentAttemptRecord(args: {
     schoolId: args.schoolId,
     invoiceId: nextInvoiceId,
     provider: nextProvider,
+    providerMode: args.providerMode ?? null,
     reference,
     gatewayReference: args.gatewayReference ?? null,
     authorizationUrl: nextAuthorizationUrl,
@@ -1108,6 +1142,10 @@ export const getBillingDashboard = query({
       .query("schoolBillingSettings")
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .unique();
+    const paymentGateway: any = await ctx.runQuery(
+      (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
+      { schoolId: viewer.schoolId }
+    );
 
     const lookups = await loadBillingLookups(ctx, viewer.schoolId);
     const allInvoices = await ctx.db
@@ -1258,6 +1296,7 @@ export const getBillingDashboard = query({
         slug: school.slug,
       },
       settings: settingsRecord ? billingSettingsDocToReturn(settingsRecord) : null,
+      paymentGateway,
       summary: {
         ...summary,
         feePlanCount: lookups.feePlans.length,
@@ -1357,6 +1396,7 @@ export const upsertBillingSettings = mutation({
       defaultCurrency: normalizedCurrency,
       defaultDueDays: normalizedDueDays,
       preferredProvider: args.allowOnlinePayments ? "paystack" : "manual",
+      paymentProviderMode: args.paymentProviderMode,
       allowManualPayments: args.allowManualPayments,
       allowOnlinePayments: args.allowOnlinePayments,
       updatedAt: now,
@@ -1763,6 +1803,7 @@ export const recordBillingPaymentAttemptGeneratedInternal = internalMutation({
       schoolId: args.schoolId,
       invoiceId: args.invoiceId,
       provider: args.provider,
+      providerMode: args.providerMode ?? null,
       reference: args.reference,
       gatewayReference: args.gatewayReference ?? null,
       authorizationUrl: args.authorizationUrl ?? null,
@@ -1881,6 +1922,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
     const eventRecord = {
       schoolId,
       provider: args.provider,
+      providerMode: args.providerMode ?? null,
       eventId: args.eventId,
       eventType: args.eventType,
       reference: normalizeBillingReference(args.reference),
@@ -1925,6 +1967,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         schoolId,
         invoiceId: invoice?._id ?? existingAttempt?.invoiceId ?? invoiceCandidate?._id ?? args.invoiceId ?? invoiceCandidate?._id,
         provider: args.provider,
+        providerMode: args.providerMode ?? existingAttempt?.providerMode ?? null,
         reference: normalizedReference,
         gatewayReference: args.gatewayReference ?? args.reference ?? normalizedReference,
         amount: args.amountReceived ?? existingAttempt?.amount,
@@ -1957,6 +2000,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         schoolId,
         invoiceId: existingAttempt.invoiceId,
         provider: existingAttempt.provider,
+        providerMode: existingAttempt.providerMode ?? null,
         reference: normalizedReference,
         gatewayReference: args.gatewayReference ?? args.reference ?? existingAttempt.gatewayReference ?? null,
         authorizationUrl: existingAttempt.authorizationUrl ?? null,
@@ -2120,6 +2164,7 @@ export const reconcilePendingOnlinePayments = action({
         schoolId: row.attempt.schoolId,
         invoiceId: row.attempt.invoiceId,
         provider: row.attempt.provider,
+        providerMode: row.attempt.providerMode ?? null,
         reference: row.attempt.reference,
         gatewayReference: row.attempt.gatewayReference ?? row.attempt.reference,
         authorizationUrl: row.attempt.authorizationUrl ?? null,
@@ -2160,6 +2205,7 @@ export const reconcilePendingOnlinePayments = action({
           schoolId: row.attempt.schoolId,
           invoiceId: row.attempt.invoiceId,
           provider: row.attempt.provider,
+          providerMode: row.attempt.providerMode ?? null,
           reference: row.attempt.reference,
           gatewayReference: row.attempt.gatewayReference ?? row.attempt.reference,
           authorizationUrl: row.attempt.authorizationUrl ?? null,
@@ -2190,6 +2236,7 @@ export const reconcilePendingOnlinePayments = action({
 });
 
 async function createOnlinePaymentLinkForInvoiceContext(args: {
+  ctx: any;
   paymentContext: any;
   invoiceId: Id<"studentInvoices">;
   amount: number;
@@ -2224,7 +2271,25 @@ async function createOnlinePaymentLinkForInvoiceContext(args: {
     );
   }
 
-  const gateway = createBillingGatewayAdapter("paystack");
+  const mode = args.paymentContext.settings.paymentProviderMode ?? "test";
+  const gatewayContext: any = await args.ctx.runQuery(
+    (internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
+    {
+      schoolId: args.paymentContext.schoolId,
+      mode,
+      purpose: "payment_initialization",
+    }
+  );
+
+  if (!gatewayContext || !gatewayContext.activeSecretKey || !gatewayContext.readyForPayments) {
+    throw new ConvexError(`Paystack ${mode} credentials are not ready for this school`);
+  }
+
+  const gateway = createBillingGatewayAdapter({
+    provider: "paystack",
+    secretKey: gatewayContext.activeSecretKey,
+    mode,
+  });
   const reference = generateBillingInvoiceNumber({
     prefix: `${invoice.invoiceNumber}-PAY`,
     invoiceId: String(args.invoiceId),
@@ -2241,6 +2306,7 @@ async function createOnlinePaymentLinkForInvoiceContext(args: {
     description,
     reference,
     callbackUrl: args.callbackUrl,
+    providerMode: mode,
   });
 }
 
@@ -2292,6 +2358,7 @@ export const initializeOnlinePayment = action({
     }
 
     const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
+      ctx,
       paymentContext,
       invoiceId: args.invoiceId,
       amount: args.amount,
@@ -2304,6 +2371,7 @@ export const initializeOnlinePayment = action({
       schoolId: paymentContext.schoolId,
       invoiceId: args.invoiceId,
       provider: paymentLink.provider,
+      providerMode: paymentContext.settings.paymentProviderMode ?? "test",
       reference: paymentLink.reference,
       gatewayReference: paymentLink.reference,
       authorizationUrl: paymentLink.authorizationUrl,
@@ -2360,6 +2428,7 @@ export const initializePortalOnlinePayment = action({
     }
 
     const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
+      ctx,
       paymentContext,
       invoiceId: args.invoiceId,
       amount: paymentContext.invoice.balanceDue,
@@ -2372,6 +2441,7 @@ export const initializePortalOnlinePayment = action({
       schoolId: paymentContext.schoolId,
       invoiceId: args.invoiceId,
       provider: paymentLink.provider,
+      providerMode: paymentContext.settings.paymentProviderMode ?? "test",
       reference: paymentLink.reference,
       gatewayReference: paymentLink.reference,
       authorizationUrl: paymentLink.authorizationUrl,
