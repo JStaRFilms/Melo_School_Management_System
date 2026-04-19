@@ -112,7 +112,7 @@ The new baseline is:
 | `T02` | Completed | A | Feature blueprint and route/interface contract |
 | `T03` | Completed | A | Curriculum input audit and sample-driven format notes |
 | `T04` | Completed | B | Shared `packages/ai` foundation with centralized OpenRouter AI SDK config, typed contracts, prompts, and retry helpers |
-| `T05` | Pending | B | Convex schema, ACL, visibility, and search foundation |
+| `T05` | Completed | B | Convex schema, ACL, visibility, and search foundation; added school-first indexes, access helpers, and focused tests |
 | `T06` | Pending | B | Ingestion pipeline and audit logging |
 | `T07` | Pending | C | Admin library console |
 | `T08` | Pending | C | Admin template studio |

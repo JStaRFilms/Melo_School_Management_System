@@ -50,3 +50,8 @@ Excluded:
 
 - Schema validates.
 - Cross-school and cross-role checks are exercised with targeted tests or function-level verification.
+
+## Notes
+
+- Added school-first schema tables and indexes for lesson topics, materials, chunks, templates, artifacts, assessment banks, AI runs, and audit trails.
+- Added helper modules for access control and search contracts, plus focused tests for cross-school and role-based guardrails.

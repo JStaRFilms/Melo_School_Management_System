@@ -1,6 +1,126 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const knowledgeVisibilityValidator = v.union(
+  v.literal("private_owner"),
+  v.literal("staff_shared"),
+  v.literal("class_scoped"),
+  v.literal("student_approved")
+);
+
+const knowledgeReviewStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("pending_review"),
+  v.literal("approved"),
+  v.literal("rejected"),
+  v.literal("archived")
+);
+
+const knowledgeSourceTypeValidator = v.union(
+  v.literal("file_upload"),
+  v.literal("text_entry"),
+  v.literal("youtube_link"),
+  v.literal("generated_draft"),
+  v.literal("student_upload"),
+  v.literal("imported_curriculum")
+);
+
+const knowledgeOwnerRoleValidator = v.union(
+  v.literal("teacher"),
+  v.literal("admin"),
+  v.literal("student"),
+  v.literal("system")
+);
+
+const knowledgeOutputTypeValidator = v.union(
+  v.literal("lesson_plan"),
+  v.literal("student_note"),
+  v.literal("assignment"),
+  v.literal("question_bank_draft"),
+  v.literal("cbt_draft")
+);
+
+const knowledgeArtifactStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("active"),
+  v.literal("archived"),
+  v.literal("superseded")
+);
+
+const knowledgeBindingStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("revoked")
+);
+
+const knowledgeBindingPurposeValidator = v.union(
+  v.literal("review_queue"),
+  v.literal("supplemental_upload"),
+  v.literal("topic_attachment")
+);
+
+const knowledgeSearchStatusValidator = v.union(
+  v.literal("not_indexed"),
+  v.literal("indexing"),
+  v.literal("indexed"),
+  v.literal("failed")
+);
+
+const knowledgeTemplateScopeValidator = v.union(
+  v.literal("subject_and_level"),
+  v.literal("subject_only"),
+  v.literal("level_only"),
+  v.literal("school_default")
+);
+
+const knowledgeRevisionKindValidator = v.union(
+  v.literal("generated"),
+  v.literal("manual_save"),
+  v.literal("approval_snapshot"),
+  v.literal("publish_snapshot"),
+  v.literal("archive_snapshot"),
+  v.literal("source_refresh")
+);
+
+const knowledgeQuestionDifficultyValidator = v.union(
+  v.literal("easy"),
+  v.literal("medium"),
+  v.literal("hard")
+);
+
+const knowledgeQuestionTypeValidator = v.union(
+  v.literal("multiple_choice"),
+  v.literal("short_answer"),
+  v.literal("essay"),
+  v.literal("true_false"),
+  v.literal("fill_in_the_blank")
+);
+
+const knowledgeAIRunStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("cancelled")
+);
+
+const knowledgeAuditEventTypeValidator = v.union(
+  v.literal("approved"),
+  v.literal("promoted"),
+  v.literal("published"),
+  v.literal("rejected"),
+  v.literal("archived"),
+  v.literal("overridden"),
+  v.literal("topic_attached"),
+  v.literal("class_bound"),
+  v.literal("visibility_changed")
+);
+
+const knowledgeTopicStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("active"),
+  v.literal("retired")
+);
+
 export default defineSchema({
   // Platform super admin accounts (not school-scoped)
   platformAdmins: defineTable({
@@ -935,4 +1055,553 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_and_provider", ["schoolId", "provider"])
     .index("by_school_and_provider_and_mode", ["schoolId", "provider", "mode"]),
+
+  // Lesson Knowledge Hub foundation
+  knowledgeTopics: defineTable({
+    schoolId: v.id("schools"),
+    subjectId: v.id("subjects"),
+    level: v.string(),
+    termId: v.id("academicTerms"),
+    title: v.string(),
+    slug: v.string(),
+    summary: v.optional(v.string()),
+    searchText: v.string(),
+    status: knowledgeTopicStatusValidator,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_subject_and_level_and_term", [
+      "schoolId",
+      "subjectId",
+      "level",
+      "termId",
+    ])
+    .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_slug", ["schoolId", "slug"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: ["schoolId", "subjectId", "termId", "status"],
+    }),
+
+  knowledgeMaterials: defineTable({
+    schoolId: v.id("schools"),
+    ownerUserId: v.id("users"),
+    ownerRole: knowledgeOwnerRoleValidator,
+    sourceType: knowledgeSourceTypeValidator,
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    title: v.string(),
+    description: v.optional(v.string()),
+    subjectId: v.id("subjects"),
+    level: v.string(),
+    topicLabel: v.string(),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    storageId: v.optional(v.id("_storage")),
+    externalUrl: v.optional(v.string()),
+    searchStatus: knowledgeSearchStatusValidator,
+    searchText: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
+    .index("by_school_and_owner_role", ["schoolId", "ownerRole"])
+    .index("by_school_and_visibility", ["schoolId", "visibility"])
+    .index("by_school_and_review_status", ["schoolId", "reviewStatus"])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_source_type", ["schoolId", "sourceType"])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "sourceType"],
+    }),
+
+  knowledgeMaterialClassBindings: defineTable({
+    schoolId: v.id("schools"),
+    materialId: v.id("knowledgeMaterials"),
+    classId: v.id("classes"),
+    bindingPurpose: knowledgeBindingPurposeValidator,
+    bindingStatus: knowledgeBindingStatusValidator,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_class", ["schoolId", "classId"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_class_and_material", ["schoolId", "classId", "materialId"])
+    .index("by_school_and_material_and_class", ["schoolId", "materialId", "classId"])
+    .index("by_school_and_class_and_binding_status", [
+      "schoolId",
+      "classId",
+      "bindingStatus",
+    ])
+    .index("by_school_and_material_and_binding_status", [
+      "schoolId",
+      "materialId",
+      "bindingStatus",
+    ])
+    .index("by_school_and_binding_purpose", ["schoolId", "bindingPurpose"]),
+
+  knowledgeMaterialChunks: defineTable({
+    schoolId: v.id("schools"),
+    materialId: v.id("knowledgeMaterials"),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    chunkIndex: v.number(),
+    chunkText: v.string(),
+    searchText: v.string(),
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    searchStatus: knowledgeSearchStatusValidator,
+    tokenEstimate: v.optional(v.number()),
+    chunkHash: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_material_and_chunk_index", [
+      "schoolId",
+      "materialId",
+      "chunkIndex",
+    ])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_material_and_visibility_and_review_status", [
+      "schoolId",
+      "materialId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "visibility",
+        "reviewStatus",
+        "topicId",
+        "materialId",
+        "searchStatus",
+      ],
+    }),
+
+  instructionTemplates: defineTable({
+    schoolId: v.id("schools"),
+    templateKey: v.string(),
+    outputType: knowledgeOutputTypeValidator,
+    title: v.string(),
+    description: v.optional(v.string()),
+    templateScope: knowledgeTemplateScopeValidator,
+    subjectId: v.optional(v.id("subjects")),
+    level: v.optional(v.string()),
+    isSchoolDefault: v.boolean(),
+    requiredSectionIds: v.array(v.string()),
+    sectionDefinitions: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        order: v.number(),
+        required: v.boolean(),
+        minimumWordCount: v.optional(v.number()),
+      })
+    ),
+    objectiveMinimums: v.object({
+      minimumObjectives: v.number(),
+      minimumSourceMaterials: v.number(),
+      minimumSections: v.number(),
+    }),
+    searchText: v.string(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_output_type", ["schoolId", "outputType"])
+    .index("by_school_and_output_type_and_subject", [
+      "schoolId",
+      "outputType",
+      "subjectId",
+    ])
+    .index("by_school_and_output_type_and_level", [
+      "schoolId",
+      "outputType",
+      "level",
+    ])
+    .index("by_school_and_output_type_and_subject_and_level", [
+      "schoolId",
+      "outputType",
+      "subjectId",
+      "level",
+    ])
+    .index("by_school_and_template_key", ["schoolId", "templateKey"])
+    .index("by_school_and_template_scope", ["schoolId", "templateScope"])
+    .index("by_school_and_is_school_default", ["schoolId", "isSchoolDefault"])
+    .index("by_school_and_output_type_and_is_school_default", [
+      "schoolId",
+      "outputType",
+      "isSchoolDefault",
+    ])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "outputType",
+        "templateScope",
+        "subjectId",
+        "level",
+        "isSchoolDefault",
+      ],
+    }),
+
+  instructionArtifacts: defineTable({
+    schoolId: v.id("schools"),
+    ownerUserId: v.id("users"),
+    ownerRole: knowledgeOwnerRoleValidator,
+    outputType: knowledgeOutputTypeValidator,
+    artifactStatus: knowledgeArtifactStatusValidator,
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    templateId: v.optional(v.id("instructionTemplates")),
+    templateResolutionPath: v.optional(v.string()),
+    subjectId: v.id("subjects"),
+    level: v.string(),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    currentRevisionId: v.optional(v.id("instructionArtifactRevisions")),
+    currentDocumentId: v.optional(v.id("instructionArtifactDocuments")),
+    searchStatus: knowledgeSearchStatusValidator,
+    searchText: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
+    .index("by_school_and_owner_role", ["schoolId", "ownerRole"])
+    .index("by_school_and_output_type", ["schoolId", "outputType"])
+    .index("by_school_and_output_type_and_review_status", [
+      "schoolId",
+      "outputType",
+      "reviewStatus",
+    ])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_template", ["schoolId", "templateId"])
+    .index("by_school_and_artifact_status", ["schoolId", "artifactStatus"])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "visibility",
+        "reviewStatus",
+        "topicId",
+        "outputType",
+        "templateId",
+        "searchStatus",
+      ],
+    }),
+
+  instructionArtifactDocuments: defineTable({
+    schoolId: v.id("schools"),
+    artifactId: v.id("instructionArtifacts"),
+    documentFormat: v.union(v.literal("markdown"), v.literal("editor_json")),
+    documentState: v.string(),
+    plainText: v.string(),
+    searchText: v.string(),
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    outputType: knowledgeOutputTypeValidator,
+    topicId: v.optional(v.id("knowledgeTopics")),
+    searchStatus: knowledgeSearchStatusValidator,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_artifact", ["schoolId", "artifactId"])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_output_type", ["schoolId", "outputType"])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "visibility",
+        "reviewStatus",
+        "topicId",
+        "outputType",
+        "searchStatus",
+      ],
+    }),
+
+  instructionArtifactRevisions: defineTable({
+    schoolId: v.id("schools"),
+    artifactId: v.id("instructionArtifacts"),
+    revisionNumber: v.number(),
+    revisionKind: knowledgeRevisionKindValidator,
+    documentFormat: v.union(v.literal("markdown"), v.literal("editor_json")),
+    documentState: v.string(),
+    plainText: v.string(),
+    searchText: v.string(),
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    outputType: knowledgeOutputTypeValidator,
+    templateId: v.optional(v.id("instructionTemplates")),
+    templateResolutionPath: v.optional(v.string()),
+    sourceSelectionSnapshot: v.string(),
+    sourceCount: v.number(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_artifact", ["schoolId", "artifactId"])
+    .index("by_school_and_artifact_and_revision_number", [
+      "schoolId",
+      "artifactId",
+      "revisionNumber",
+    ])
+    .index("by_school_and_created_by", ["schoolId", "createdBy"])
+    .index("by_school_and_revision_kind", ["schoolId", "revisionKind"])
+    .index("by_school_and_output_type", ["schoolId", "outputType"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: ["schoolId", "artifactId", "revisionKind", "outputType"],
+    }),
+
+  instructionArtifactSources: defineTable({
+    schoolId: v.id("schools"),
+    artifactId: v.id("instructionArtifacts"),
+    materialId: v.id("knowledgeMaterials"),
+    sourceOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_artifact", ["schoolId", "artifactId"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_artifact_and_source_order", [
+      "schoolId",
+      "artifactId",
+      "sourceOrder",
+    ])
+    .index("by_school_and_material_and_artifact", [
+      "schoolId",
+      "materialId",
+      "artifactId",
+    ]),
+
+  assessmentBanks: defineTable({
+    schoolId: v.id("schools"),
+    ownerUserId: v.id("users"),
+    ownerRole: knowledgeOwnerRoleValidator,
+    outputType: knowledgeOutputTypeValidator,
+    bankStatus: knowledgeArtifactStatusValidator,
+    title: v.string(),
+    description: v.optional(v.string()),
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    subjectId: v.id("subjects"),
+    level: v.string(),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    searchStatus: knowledgeSearchStatusValidator,
+    searchText: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
+    .index("by_school_and_output_type", ["schoolId", "outputType"])
+    .index("by_school_and_output_type_and_review_status", [
+      "schoolId",
+      "outputType",
+      "reviewStatus",
+    ])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_bank_status", ["schoolId", "bankStatus"])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "visibility",
+        "reviewStatus",
+        "topicId",
+        "outputType",
+        "searchStatus",
+      ],
+    }),
+
+  assessmentBankItems: defineTable({
+    schoolId: v.id("schools"),
+    bankId: v.id("assessmentBanks"),
+    itemOrder: v.number(),
+    questionType: knowledgeQuestionTypeValidator,
+    difficulty: knowledgeQuestionDifficultyValidator,
+    promptText: v.string(),
+    answerText: v.string(),
+    explanationText: v.string(),
+    tags: v.array(v.string()),
+    visibility: knowledgeVisibilityValidator,
+    reviewStatus: knowledgeReviewStatusValidator,
+    searchStatus: knowledgeSearchStatusValidator,
+    searchText: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_bank", ["schoolId", "bankId"])
+    .index("by_school_and_bank_and_item_order", ["schoolId", "bankId", "itemOrder"])
+    .index("by_school_and_visibility_and_review_status", [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+    ])
+    .index("by_school_and_bank_and_review_status", [
+      "schoolId",
+      "bankId",
+      "reviewStatus",
+    ])
+    .index("by_school_and_question_type", ["schoolId", "questionType"])
+    .index("by_school_and_difficulty", ["schoolId", "difficulty"])
+    .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: [
+        "schoolId",
+        "bankId",
+        "questionType",
+        "difficulty",
+        "visibility",
+        "reviewStatus",
+        "searchStatus",
+      ],
+    }),
+
+  aiRunLogs: defineTable({
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    actorRole: knowledgeOwnerRoleValidator,
+    outputType: knowledgeOutputTypeValidator,
+    promptClass: v.string(),
+    status: knowledgeAIRunStatusValidator,
+    model: v.string(),
+    provider: v.string(),
+    targetArtifactId: v.optional(v.id("instructionArtifacts")),
+    targetAssessmentBankId: v.optional(v.id("assessmentBanks")),
+    sourceSelectionSnapshot: v.string(),
+    sourceCount: v.number(),
+    tokenPromptCount: v.optional(v.number()),
+    tokenCompletionCount: v.optional(v.number()),
+    costUsd: v.optional(v.number()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_output_type_and_status", [
+      "schoolId",
+      "outputType",
+      "status",
+    ])
+    .index("by_school_and_actor_user", ["schoolId", "actorUserId"])
+    .index("by_school_and_prompt_class", ["schoolId", "promptClass"])
+    .index("by_school_and_target_artifact", ["schoolId", "targetArtifactId"])
+    .index("by_school_and_target_assessment_bank", [
+      "schoolId",
+      "targetAssessmentBankId",
+    ])
+    .index("by_school_and_created_at", ["schoolId", "createdAt"]),
+
+  contentAuditEvents: defineTable({
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    actorRole: knowledgeOwnerRoleValidator,
+    eventType: knowledgeAuditEventTypeValidator,
+    entityType: v.union(
+      v.literal("knowledgeTopic"),
+      v.literal("knowledgeMaterial"),
+      v.literal("knowledgeMaterialClassBinding"),
+      v.literal("knowledgeMaterialChunk"),
+      v.literal("instructionTemplate"),
+      v.literal("instructionArtifact"),
+      v.literal("instructionArtifactDocument"),
+      v.literal("instructionArtifactRevision"),
+      v.literal("instructionArtifactSource"),
+      v.literal("assessmentBank"),
+      v.literal("assessmentBankItem")
+    ),
+    materialId: v.optional(v.id("knowledgeMaterials")),
+    bindingId: v.optional(v.id("knowledgeMaterialClassBindings")),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    artifactId: v.optional(v.id("instructionArtifacts")),
+    templateId: v.optional(v.id("instructionTemplates")),
+    bankId: v.optional(v.id("assessmentBanks")),
+    itemId: v.optional(v.id("assessmentBankItems")),
+    beforeVisibility: v.optional(knowledgeVisibilityValidator),
+    afterVisibility: v.optional(knowledgeVisibilityValidator),
+    beforeReviewStatus: v.optional(knowledgeReviewStatusValidator),
+    afterReviewStatus: v.optional(knowledgeReviewStatusValidator),
+    beforeTopicId: v.optional(v.union(v.id("knowledgeTopics"), v.null())),
+    afterTopicId: v.optional(v.union(v.id("knowledgeTopics"), v.null())),
+    changeSummary: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_event_type", ["schoolId", "eventType"])
+    .index("by_school_and_entity_type", ["schoolId", "entityType"])
+    .index("by_school_and_actor_user", ["schoolId", "actorUserId"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_binding", ["schoolId", "bindingId"])
+    .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_artifact", ["schoolId", "artifactId"])
+    .index("by_school_and_bank", ["schoolId", "bankId"])
+    .index("by_school_and_created_at", ["schoolId", "createdAt"]),
 });

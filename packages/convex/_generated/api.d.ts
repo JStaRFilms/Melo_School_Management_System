@@ -23,6 +23,8 @@ import type * as functions_academic_bootstrap from "../functions/academic/bootst
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
+import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
+import type * as functions_academic_lessonKnowledgeSearch from "../functions/academic/lessonKnowledgeSearch.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
@@ -72,6 +74,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
+  "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;
+  "functions/academic/lessonKnowledgeSearch": typeof functions_academic_lessonKnowledgeSearch;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
