@@ -48,3 +48,9 @@ Excluded:
 ## Verification
 
 - Cross-check the blueprint against the master plan and ensure no contradictions remain.
+
+## Notes
+
+- Tightened route contracts, actor permissions, state transitions, template resolution, artifact output types, approval constraints, and portal exposure rules.
+- Kept the first editor single-user and rich-text-lite, and kept portal scope limited to `/learning/topics/[topicId]`.
+- Preserved the exact sample curriculum paths and avoided any v2 feature creep.

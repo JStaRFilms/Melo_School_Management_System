@@ -109,7 +109,7 @@ The new baseline is:
 | Task | Status | Lane | Notes |
 | --- | --- | --- | --- |
 | `T01` | Completed | A | Create the Takomi session shell and registry docs; validated and archived in completed/ |
-| `T02` | Pending | A | Feature blueprint and route/interface contract |
+| `T02` | Completed | A | Feature blueprint and route/interface contract |
 | `T03` | Pending | A | Curriculum input audit and sample-driven format notes |
 | `T04` | Pending | B | Shared `packages/ai` foundation |
 | `T05` | Pending | B | Convex schema, ACL, visibility, and search foundation |
