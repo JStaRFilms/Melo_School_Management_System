@@ -5,7 +5,7 @@
 
 ## Agent Setup (DO THIS FIRST)
 
-- Read `docs/project_requirements.md`
+- Read `docs/Project_Requirements.md`
 - Read `docs/features/LessonKnowledgeHub_v1.md`
 - Review `docs/issues/FR-010.md` and `docs/issues/FR-016.md`
 - Use `takomi`, `convex-best-practices`, and `sync-docs`

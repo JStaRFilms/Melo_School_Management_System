@@ -49,3 +49,9 @@ Excluded:
 
 - Confirm all referenced files exist.
 - Confirm `T01-T15` task references are dependency-safe.
+
+## Notes
+
+- Validated the session shell, artifact structure, and isolation from `orch-20260404-193645-relaunch`.
+- Moved this task into `completed/` and initialized the completed lane for T01 only.
+- No product scope or feature docs were changed.
