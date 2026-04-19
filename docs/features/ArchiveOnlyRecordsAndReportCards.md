@@ -201,7 +201,7 @@ Specifically:
   - class
   - subject results
   - totals/grade remarks already available from assessment records
-- Export button opens print-friendly output so the report card can be saved/exported cleanly with the student photo visible
+- Export / Print uses the shared report-card print system so the same structured sheet is previewed on screen and printed with the student photo visible
 
 #### Server
 
@@ -303,7 +303,7 @@ Specifically:
 
 1. User clicks `Export`.
 2. Client validates that report-card payload loaded successfully.
-3. Client opens print/export view using the same structured report-card content.
+3. Client uses the shared report-card toolbar and preview flow; it does not create a separate per-surface print document.
 4. User saves/prints the report card with full details and student photo.
 
 ## Database Schema
@@ -453,7 +453,7 @@ All new flows must return user-facing errors that are specific, school-safe, and
 
 - report card not fully loaded
 - image unavailable
-- print/export view generation failure
+- shared print preparation failure
 
 ## Query / Mutation Additions
 
@@ -555,6 +555,7 @@ This keeps us aligned with the project 200-line modularity rule.
 - once assessment data is entered later, the same report-card sheet updates automatically without changing the student export flow
 - the bottom section now reads from the per-student comments saved by admins or the teacher workbench, with the head-teacher field still admin-only
 - the `Next Term Begins` field now reads from the term's saved manual date rather than an inferred next-term lookup
+- shared print architecture is now centralized in `docs/features/UnifiedReportCardPrintSystem.md`; future print changes should update the shared components instead of adding per-surface export logic
 
 ## Verification
 

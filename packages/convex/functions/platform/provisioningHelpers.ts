@@ -140,3 +140,105 @@ export async function provisionSchoolAdminAuthUser(
 
   return createdUser.id;
 }
+
+export async function provisionSchoolPortalAuthUser(
+  ctx: ActionCtx,
+  args: {
+    appUserId: string;
+    currentAuthId: string;
+    email: string;
+    name: string;
+    temporaryPassword: string;
+  }
+) {
+  const auth = createAuth(ctx);
+  const authContext = await auth.$context;
+  const normalizedEmail = args.email.trim().toLowerCase();
+
+  const minPasswordLength = authContext.password.config.minPasswordLength;
+  if (args.temporaryPassword.length < minPasswordLength) {
+    throw new ConvexError(
+      `Password must be at least ${minPasswordLength} characters`
+    );
+  }
+
+  const maxPasswordLength = authContext.password.config.maxPasswordLength;
+  if (args.temporaryPassword.length > maxPasswordLength) {
+    throw new ConvexError(
+      `Password must be at most ${maxPasswordLength} characters`
+    );
+  }
+
+  const passwordHash = await authContext.password.hash(args.temporaryPassword);
+
+  const existingAuth = (await authContext.internalAdapter.findUserByEmail(
+    normalizedEmail,
+    { includeAccounts: true }
+  )) as ExistingAuthLookup | null;
+
+  let authUserId = existingAuth?.user?.id ?? null;
+  if (authUserId && authUserId !== args.currentAuthId) {
+    const authIdUsage = await ctx.runQuery(
+      internal.functions.platform.index.inspectProvisioningAuthIdInternal,
+      {
+        authId: authUserId,
+      }
+    );
+
+    if (
+      (authIdUsage.schoolUserId && String(authIdUsage.schoolUserId) !== args.appUserId) ||
+      authIdUsage.platformAdminId
+    ) {
+      throw new ConvexError(
+        "This email is already attached to another login account in the system."
+      );
+    }
+  }
+
+  if (!authUserId) {
+    const createdUser = await authContext.internalAdapter.createUser({
+      email: normalizedEmail,
+      name: args.name,
+      emailVerified: false,
+    });
+
+    if (!createdUser?.id) {
+      throw new ConvexError("Failed to create portal auth user.");
+    }
+
+    authUserId = createdUser.id;
+
+    try {
+      await authContext.internalAdapter.linkAccount({
+        userId: createdUser.id,
+        providerId: "credential",
+        accountId: createdUser.id,
+        password: passwordHash,
+      });
+    } catch (error) {
+      await authContext.internalAdapter.deleteUser(createdUser.id);
+      throw new ConvexError(
+        `Failed to link portal credentials: ${formatUnknownErrorMessage(error)}`
+      );
+    }
+  } else {
+    await authContext.internalAdapter.updateUser(authUserId, {
+      email: normalizedEmail,
+      name: args.name,
+    });
+
+    if (existingAuth?.accounts?.length) {
+      await authContext.internalAdapter.updatePassword(authUserId, passwordHash);
+    } else {
+      await authContext.internalAdapter.linkAccount({
+        userId: authUserId,
+        providerId: "credential",
+        accountId: authUserId,
+        password: passwordHash,
+      });
+    }
+  }
+
+  await authContext.internalAdapter.deleteSessions(authUserId);
+  return authUserId;
+}

@@ -244,6 +244,41 @@ Add school- or term-level configuration so the report-card layer knows when to p
 - `apps/admin/app/assessments/report-cards/page.tsx`
 - `apps/teacher/app/assessments/report-card-workbench/page.tsx`
 
+## Implementation Status
+
+### Foundation and UI Landed on `2026-04-10`
+
+The backend/domain slice for cumulative results is now in place:
+
+- `packages/convex/schema.ts`
+  - adds `historicalTermTotals`
+  - adds `academicTerms.reportCardCalculationMode`
+  - adds `assessmentRecords.by_student_and_session` for session-wide report-card lookups
+- `packages/convex/functions/academic/historicalTermTotals.ts`
+  - admin-only read/write support for historical prior-term total snapshots
+- `packages/convex/functions/academic/reportCardTermSettings.ts`
+  - exposes and saves `resultCalculationMode` for term-level report-card behavior
+- `packages/convex/functions/academic/reportCards.ts`
+  - resolves prior-term totals from real assessment records first, then historical snapshots
+  - computes third-term annual averages when cumulative annual mode is enabled
+  - returns cumulative breakdown metadata for later UI work
+- `packages/shared/src/cumulative-results.ts`
+  - reusable cumulative-average and missing-data helpers with tests
+
+The presentation layers have also been augmented to present the metrics clearly:
+
+- admin-facing warnings for missing prior-term results prior to backfill, with printing blocked until missing totals are resolved
+- teacher cumulative-report readability enhancements with conditionally rendered columns, explicit annual-average labeling, and incomplete-state visibility
+- printable report-card layout updates to visibly present the cumulative breakdown, mark incomplete subjects, and suppress ambiguous final grade/remark output while historical data is missing
+
+### Backfill Workspace Landed on `2026-04-10`
+
+- admin-only historical backfill route at `apps/admin/app/assessments/report-cards/backfill/page.tsx`
+- roster-style student/subject grid for prior-term total entry with notes
+- audit-safe overwrite flow using the existing historical snapshot mutation
+- direct admin CTA from report-card missing-data warnings into the backfill workspace
+- term-level result layout selection now lives with session/term setup, where admins can create or update a term as `standalone` or `cumulative_annual`
+
 ## Definition Of Done
 
 - Third-term cumulative report cards work from actual prior-term totals

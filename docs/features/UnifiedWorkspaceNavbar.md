@@ -30,7 +30,8 @@ No server changes.
 2. Each app-level navbar reads the current pathname and active workspace, then resolves the correct local section links and workspace-switch destinations from the shared metadata.
 3. Admin route-group layouts and teacher route-group layouts render app-local navbar views backed by the same shared navigation metadata instead of maintaining independent route lists.
 4. The app-local `switch-areas` pages use the same shared metadata so users can move between workspaces from a single consistent screen.
-5. Portal remains represented in the navigation model even before the portal app is implemented, so the area switcher can show a stable "coming soon" state instead of a broken link.
+5. Portal is now a live workspace destination in the navigation model, so the area switcher can route to the authenticated parent/student portal instead of a placeholder.
+6. The admin workspace now includes a dedicated Finance/Billing link so school billing surfaces remain discoverable without mixing them into assessment routes.
 
 ## Database Schema
 
@@ -38,10 +39,16 @@ No schema change.
 
 The feature only reorganizes client-side navigation and route metadata.
 
+## Implemented Outcome
+
+- Admin, teacher, and portal routes continue to share one navigation contract.
+- The admin workspace now exposes a billing entry point alongside academic and assessment sections.
+- The shared workspace switcher remains the single route catalog for all app shells.
+
 ## Regression Check
 
 - Admin academic and assessment routes must still enforce admin-only access.
 - Teacher enrollment and exam routes must still allow teacher and admin access.
 - Existing deep links such as `/academic/teachers`, `/assessments/setup/exam-recording`, `/assessments/exams/entry`, and `/enrollment/subjects` must remain reachable.
 - The new navbar must not hard-redirect users away from the section they are already using.
-- Area switching must avoid sending users to non-existent portal pages; portal should render as unavailable until that app exists.
+- Area switching should continue to preserve the current host/origin while sending users to the appropriate workspace root for admin, teacher, or portal.

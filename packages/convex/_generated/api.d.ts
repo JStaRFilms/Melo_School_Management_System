@@ -22,6 +22,7 @@ import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
+import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
@@ -37,10 +38,16 @@ import type * as functions_academic_subjectAggregationSelectionHelpers from "../
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_auth from "../functions/auth.js";
+import type * as functions_billing from "../functions/billing.js";
+import type * as functions_billingGateway from "../functions/billingGateway.js";
+import type * as functions_billingProviders from "../functions/billingProviders.js";
+import type * as functions_billingShared from "../functions/billingShared.js";
+import type * as functions_billingWebhooks from "../functions/billingWebhooks.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as functions_platform_provisioningHelpers from "../functions/platform/provisioningHelpers.js";
+import type * as functions_portal from "../functions/portal.js";
 import type * as http from "../http.js";
 
 import type {
@@ -64,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
+  "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
@@ -79,10 +87,16 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/auth": typeof functions_auth;
+  "functions/billing": typeof functions_billing;
+  "functions/billingGateway": typeof functions_billingGateway;
+  "functions/billingProviders": typeof functions_billingProviders;
+  "functions/billingShared": typeof functions_billingShared;
+  "functions/billingWebhooks": typeof functions_billingWebhooks;
   "functions/platform/auth": typeof functions_platform_auth;
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;
   "functions/platform/provisioningHelpers": typeof functions_platform_provisioningHelpers;
+  "functions/portal": typeof functions_portal;
   http: typeof http;
 }>;
 

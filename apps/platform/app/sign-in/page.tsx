@@ -5,6 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { AUTH_ERROR_MESSAGES } from "@school/auth";
 
+const DEFAULT_SUCCESS_REDIRECT = "/schools";
+
+function getSafeCallbackUrl(callbackUrl: string | null): string {
+  if (!callbackUrl || !callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) {
+    return DEFAULT_SUCCESS_REDIRECT;
+  }
+
+  return callbackUrl;
+}
+
 function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -14,6 +24,7 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
   const errorParam = searchParams.get("error");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,7 +38,7 @@ function SignInForm() {
 
     const result = await signIn(email, password);
     if (result.success) {
-      router.push("/");
+      router.push(callbackUrl);
       return;
     }
 
@@ -38,7 +49,7 @@ function SignInForm() {
     localError ??
     error ??
     (errorParam === "unauthorized"
-      ? "Platform admin access required. This account is not a platform administrator."
+      ? "Super admin access required. This account is not a platform administrator." 
       : null);
 
   return (
@@ -48,13 +59,13 @@ function SignInForm() {
           {/* Header */}
           <div className="text-center mb-6">
             <div className="w-10 h-10 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-sm mx-auto mb-3">
-              PS
+              SA
             </div>
             <h1 className="text-xl font-bold text-slate-900">
-              Platform Admin
+              Super Admin
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Sign in to manage schools
+              Sign in to manage schools and platform access
             </p>
           </div>
 
@@ -126,7 +137,7 @@ function SignInFallback() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
           <div className="text-center">
             <h1 className="text-xl font-bold text-slate-900">
-              Platform Admin
+              Super Admin
             </h1>
             <p className="mt-2 text-sm text-slate-500">Loading sign-in form...</p>
           </div>

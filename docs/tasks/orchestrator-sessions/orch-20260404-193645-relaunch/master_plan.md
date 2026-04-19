@@ -2,7 +2,7 @@
 
 **Session ID:** `orch-20260404-193645-relaunch`  
 **Created:** `2026-04-04`  
-**Status:** Active  
+**Status:** Complete  
 **Mode:** Takomi Orchestrator
 
 ## Overview
@@ -91,25 +91,39 @@ The new baseline is:
 
 | Task | Status | Lane | Notes |
 | --- | --- | --- | --- |
-| `T01` | Pending | A | Shipped-core hardening and regression baseline |
-| `T02` | Pending | B | Cumulative-results domain and schema |
-| `T03` | Pending | B | Admin and teacher cumulative-report UX |
-| `T04` | Pending | B | Historical backfill and migration-safe prior totals |
+| `T01` | Complete | A | Shipped-core hardening and regression baseline |
+| `T02` | Complete | B | Cumulative-results domain and schema |
+| `T03` | Complete | B | Admin and teacher cumulative-report UX plus print-blocking review pass |
+| `T04` | Complete | B | Historical backfill workflow, admin route, and prior-total entry |
 | `T05` | Complete | C | Dev deployment replaced from exported production snapshot on 2026-04-04 |
-| `T06` | Pending | A | Verification, docs sync, and release-readiness pass |
-| `T07` | Pending | D | Parent and family linking foundation |
-| `T08` | Pending | D | Portal MVP academic surface |
-| `T09` | Pending | D | Billing and payment foundation |
-| `T10` | Pending | D | Public website and SEO surface |
+| `T06` | Complete | A | Verification evidence captured, docs synchronized, root release gate passing |
+| `T07` | Complete | D | Parent and family linking foundation |
+| `T08` | Complete | D | Portal MVP academic surface |
+| `T09` | Complete | D | Billing and payment foundation |
+| `T10` | Complete | D | Public website and SEO surface in `apps/www` with core pages and SEO baseline |
+| `T11` | Complete | D | Household management hardening: parent email maintenance, duplicate-link review, and child-parent unlink/edit flows |
+| `T12` | Complete | D | Platform pricing and packaging strategy: segmented setup/recurring plans, entitlements, and upgrade model |
+| `T13` | Complete | D | Class-assigned fee plans with default billing coverage and student-specific extras |
+| `T14` | Complete | D | School-scoped Paystack setup plus front-desk payment links and QR handoff |
+| `T15` | Complete | D | Parent portal billing, receipts, self-serve pay-now flow, and portal payment return verification |
+| `T16` | Complete | D | Cross-device payment reconciliation hardening: pending-payment polling and durable callback/session flow |
+| `T17` | Complete | D | Platform marketing website for selling the SchoolOS product itself, separate from tenant school public sites |
+| `T18` | Complete | D | Per-school Paystack credential management, merchant routing, and school-aware webhook verification |
+| `T19` | Complete | D | Public web operating modes: platform site, school-keeps-existing-site support, and managed school-site onboarding policy |
+| `T20` | Complete | D | Multi-tenant school public-site engine foundation with hostname resolution and runtime branding |
+| `T21` | Complete | D | School website template library and flexible page/section composition model |
+| `T22` | Complete | D | School public-domain mapping, verification, canonical routing, custom-domain onboarding, and school-aware SEO outputs |
+| `T23` | Complete | D | Managed school-site delivery workflow, optional school-admin editing boundaries, and page expansion model |
 
 ## Current Known Blockers
 
-- Unit tests currently fail in `packages/convex` because auth tests do not match the current helper return shape.
-- Real E2E coverage is still absent; `pnpm test:e2e` currently behaves as a build gate.
+- No blocking relaunch-session tasks remain; `T01-T23` are now complete.
+- E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a broader production hardening pass.
+- `@school/portal` currently has no package-local tests; the release gate now handles that honestly with `--passWithNoTests`, but real portal coverage is still a follow-up gap.
 
 ## Exit Criteria
 
-- Cumulative third-term reporting is fully specified and delegated
-- The new orchestration queue reflects the real current state
-- Dev-data reset is completed with a rollback backup preserved on disk
-- Remaining product work is staged behind the right foundations
+- Cumulative third-term reporting is fully specified and delegated ✅
+- The new orchestration queue reflects the real current state ✅
+- Dev-data reset is completed with a rollback backup preserved on disk ✅
+- Remaining product work is staged behind the right foundations ✅

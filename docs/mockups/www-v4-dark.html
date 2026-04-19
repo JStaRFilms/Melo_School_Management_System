@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo | Premium Dark Mode</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Jost"', 'sans-serif'] },
+          colors: { 
+            melo: { black: '#050505', surface: '#0F0F0F', border: '#222222', muted: '#888888', white: '#FAFAFA' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans text-melo-white bg-melo-black antialiased selection:bg-white selection:text-black">
+
+  <nav class="border-b border-melo-border">
+    <div class="max-w-[1200px] mx-auto px-6 h-20 flex justify-between items-center text-[14px]">
+      <div class="font-semibold text-2xl tracking-tighter">Melo.</div>
+      <div class="hidden md:flex gap-8 text-melo-muted font-medium">
+        <a href="#" class="hover:text-white transition-colors">Product</a>
+        <a href="#" class="hover:text-white transition-colors">Customers</a>
+        <a href="#" class="hover:text-white transition-colors">Pricing</a>
+      </div>
+      <button class="bg-white text-black px-5 py-2 rounded-md font-semibold hover:bg-gray-200 transition-colors">Book a Demo</button>
+    </div>
+  </nav>
+
+  <main class="max-w-[1200px] mx-auto px-6 pt-32 pb-40 flex flex-col items-center text-center border-b border-melo-border">
+    <div class="border border-melo-border px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase text-melo-muted mb-12">
+      The Enterprise School Platform
+    </div>
+    <h1 class="text-6xl md:text-8xl leading-none font-medium tracking-tighter mb-8 max-w-4xl">
+      Command your school's operations.
+    </h1>
+    <p class="text-xl text-melo-muted max-w-2xl leading-relaxed mb-12">
+      Built for principals and founders. Melo brings your academics, billing, and parent relations onto a single, high-performance platform.
+    </p>
+    <div class="flex gap-6">
+      <button class="bg-white text-black px-8 py-4 rounded-md text-base font-semibold hover:bg-gray-200 transition-colors">
+        Request Access
+      </button>
+      <button class="bg-melo-surface border border-melo-border text-white px-8 py-4 rounded-md text-base font-semibold hover:bg-melo-border transition-colors">
+        Read the Manifesto
+      </button>
+    </div>
+  </main>
+
+  <section class="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-melo-border border-b border-melo-border">
+    <div class="p-12 hover:bg-melo-surface transition-colors group cursor-pointer">
+      <h3 class="text-2xl font-medium tracking-tight mb-4">Financial Engine</h3>
+      <p class="text-melo-muted leading-relaxed text-[17px] mb-8">Send bulk invoices, process online payments via Paystack, and instantly track arrears. Reconcile millions in seconds, not days.</p>
+      <div class="w-10 h-10 border border-melo-border rounded-full flex items-center justify-center group-hover:border-white transition-colors">&rarr;</div>
+    </div>
+    <div class="p-12 hover:bg-melo-surface transition-colors group cursor-pointer">
+      <h3 class="text-2xl font-medium tracking-tight mb-4">Academic Ledger</h3>
+      <p class="text-melo-muted leading-relaxed text-[17px] mb-8">Secure assessment processing for entire grades. Instantly generate printable or digital transcripts with zero data-entry duplication.</p>
+      <div class="w-10 h-10 border border-melo-border rounded-full flex items-center justify-center group-hover:border-white transition-colors">&rarr;</div>
+    </div>
+    <div class="p-12 hover:bg-melo-surface transition-colors group cursor-pointer">
+      <h3 class="text-2xl font-medium tracking-tight mb-4">Parent Portal</h3>
+      <p class="text-melo-muted leading-relaxed text-[17px] mb-8">Give families a flawless mobile experience to view sanctioned results, monitor attendance, and pay term fees smoothly.</p>
+      <div class="w-10 h-10 border border-melo-border rounded-full flex items-center justify-center group-hover:border-white transition-colors">&rarr;</div>
+    </div>
+  </section>
+
+</body>
+</html>

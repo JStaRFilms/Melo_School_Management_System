@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo | Institutional Trust</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { serif: ['"Bodoni Moda"', 'serif'], sans: ['"Jost"', 'sans-serif'] },
+          colors: { 
+            melo: { ink: '#0F172A', muted: '#475569', surface: '#F8FAFC', gold: '#94723E', border: '#E2E8F0' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans text-melo-ink bg-white antialiased selection:bg-melo-gold selection:text-white pb-24">
+
+  <!-- Navigation -->
+  <nav class="fixed top-0 w-full bg-white/90 backdrop-blur-md z-50 border-b border-melo-border">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <div class="font-serif text-3xl font-semibold tracking-tight">Melo.</div>
+      <div class="hidden md:flex items-center gap-8 text-sm font-medium">
+        <a href="#" class="hover:text-melo-gold transition-colors">Platform</a>
+        <a href="#" class="hover:text-melo-gold transition-colors">Academics</a>
+        <a href="#" class="hover:text-melo-gold transition-colors">Fees & Billing</a>
+        <a href="#" class="hover:text-melo-gold transition-colors">Company</a>
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="#" class="text-sm font-medium hidden sm:block hover:text-melo-gold">Log in</a>
+        <button class="bg-melo-ink text-white px-5 py-2.5 rounded-sm text-sm font-medium hover:bg-melo-gold transition-colors">
+          Book Demo
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <main class="pt-40 pb-24 px-6 max-w-7xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-melo-surface border border-melo-border text-xs font-semibold uppercase tracking-widest text-melo-muted mb-8">
+      <span class="w-2 h-2 rounded-full bg-melo-gold"></span>
+      The School Operating System
+    </div>
+    <h1 class="font-serif text-5xl md:text-7xl lg:text-8xl leading-tight font-medium tracking-tight mx-auto max-w-5xl text-melo-ink">
+      Run your school with <br/> Uncompromising clarity.
+    </h1>
+    <p class="mt-8 text-xl text-melo-muted max-w-2xl mx-auto leading-relaxed">
+      Melo is the premium operational foundation for serious institutions. 
+      From financial oversight to academic integrity, we manage the complexity so you can lead.
+    </p>
+    <div class="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+      <button class="bg-melo-ink text-white px-8 py-4 rounded-sm text-base font-medium hover:bg-melo-gold transition-all w-full sm:w-auto">
+        Start a Conversation
+      </button>
+      <button class="bg-white text-melo-ink border border-melo-border px-8 py-4 rounded-sm text-base font-medium hover:bg-melo-surface transition-all w-full sm:w-auto">
+        Explore the Platform
+      </button>
+    </div>
+  </main>
+
+  <!-- Trust Bar -->
+  <div class="border-y border-melo-border bg-melo-surface py-12 px-6 mt-12">
+    <div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-melo-border/50">
+      <div>
+        <div class="text-3xl font-serif text-melo-gold mb-1">100%</div>
+        <div class="text-xs font-semibold uppercase tracking-widest text-melo-muted">Data Isolation</div>
+      </div>
+      <div>
+        <div class="text-3xl font-serif text-melo-gold mb-1">0</div>
+        <div class="text-xs font-semibold uppercase tracking-widest text-melo-muted">Reconciliation Errors</div>
+      </div>
+      <div>
+        <div class="text-3xl font-serif text-melo-gold mb-1">T+1</div>
+        <div class="text-xs font-semibold uppercase tracking-widest text-melo-muted">Fee Remittance</div>
+      </div>
+      <div>
+        <div class="text-3xl font-serif text-melo-gold mb-1">24/7</div>
+        <div class="text-xs font-semibold uppercase tracking-widest text-melo-muted">Dedicated Support</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Value Proposition -->
+  <section class="py-32 px-6 max-w-7xl mx-auto">
+    <div class="max-w-3xl mb-20">
+      <h2 class="font-serif text-4xl md:text-5xl leading-tight mb-6">A complete infrastructure for modern education.</h2>
+      <p class="text-xl text-melo-muted leading-relaxed">We replaced fragmented tools, chaotic spreadsheets, and unreliable communication lines with a single, perfectly engineered platform.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-x-16 gap-y-20">
+      <!-- Feature 1 -->
+      <div class="group">
+        <div class="w-12 h-12 border border-melo-border flex items-center justify-center rounded-sm mb-6 bg-melo-surface text-melo-gold font-serif text-xl">I</div>
+        <h3 class="text-2xl font-semibold mb-4">Financial Command Center</h3>
+        <p class="text-melo-muted text-lg leading-relaxed">
+          Manage fee structures, issue professional digital invoices, and track every naira. Real-time dashboards eliminate the guesswork from your school's cash flow.
+        </p>
+        <a href="#" class="inline-flex items-center gap-2 mt-6 text-melo-ink font-semibold hover:text-melo-gold transition-colors">
+          Explore Billing &rarr;
+        </a>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="group">
+        <div class="w-12 h-12 border border-melo-border flex items-center justify-center rounded-sm mb-6 bg-melo-surface text-melo-gold font-serif text-xl">II</div>
+        <h3 class="text-2xl font-semibold mb-4">Academic Integrity Engine</h3>
+        <p class="text-melo-muted text-lg leading-relaxed">
+          Flawless assessment tracking and instantly generated, beautifully formatted report cards. Cumulative academic history is preserved permanently and securely.
+        </p>
+        <a href="#" class="inline-flex items-center gap-2 mt-6 text-melo-ink font-semibold hover:text-melo-gold transition-colors">
+          Explore Academics &rarr;
+        </a>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="group">
+        <div class="w-12 h-12 border border-melo-border flex items-center justify-center rounded-sm mb-6 bg-melo-surface text-melo-gold font-serif text-xl">III</div>
+        <h3 class="text-2xl font-semibold mb-4">The Parent Portal</h3>
+        <p class="text-melo-muted text-lg leading-relaxed">
+          Give parents a premium window into their child's education. A dedicated surface for monitoring attendance, viewing sanctioned results, and paying fees natively.
+        </p>
+        <a href="#" class="inline-flex items-center gap-2 mt-6 text-melo-ink font-semibold hover:text-melo-gold transition-colors">
+          Explore The Portal &rarr;
+        </a>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="group">
+        <div class="w-12 h-12 border border-melo-border flex items-center justify-center rounded-sm mb-6 bg-melo-surface text-melo-gold font-serif text-xl">IV</div>
+        <h3 class="text-2xl font-semibold mb-4">Admissions & Front Desk</h3>
+        <p class="text-melo-muted text-lg leading-relaxed">
+          A dignified, seamless enrollment process. Transition prospective students into fully enrolled records without double data entry or lost paperwork.
+        </p>
+        <a href="#" class="inline-flex items-center gap-2 mt-6 text-melo-ink font-semibold hover:text-melo-gold transition-colors">
+          Explore Admissions &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

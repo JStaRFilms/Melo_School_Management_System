@@ -46,6 +46,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/academic/archived-records"],
       },
       {
+        href: "/billing",
+        label: "Billing",
+        matchers: ["/billing"],
+      },
+      {
         href: "/assessments/setup/exam-recording",
         label: "Exam Setup",
         matchers: ["/assessments/setup/exam-recording"],
@@ -69,6 +74,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         href: "/assessments/report-card-extras",
         label: "Report Extras",
         matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
+      },
+      {
+        href: "/assessments/report-cards/backfill",
+        label: "Historical Backfill",
+        matchers: ["/assessments/report-cards/backfill"],
       },
     ],
   },
@@ -104,9 +114,27 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     audience: "Students & parents",
     switchPath: "/",
     appBasePath: "/portal",
-    available: false,
-    description: "Student and parent self-service will live here.",
-    sections: [],
+    available: true,
+    description: "Parent and student academic dashboard.",
+    sections: [
+      { href: "/", label: "Dashboard", matchers: ["/"] },
+      {
+        href: "/report-cards",
+        label: "Report Cards",
+        matchers: ["/report-cards"],
+      },
+      { href: "/results", label: "Result History", matchers: ["/results"] },
+      {
+        href: "/notifications",
+        label: "Notifications",
+        matchers: ["/notifications"],
+      },
+      {
+        href: "/billing",
+        label: "Billing",
+        matchers: ["/billing"],
+      },
+    ],
   },
 };
 
@@ -123,7 +151,9 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
 }
 
 export function isWorkspaceSectionActive(section: WorkspaceSection, pathname: string) {
-  return section.matchers.some((matcher) => pathname.startsWith(matcher));
+  return section.matchers.some((matcher) =>
+    matcher === "/" ? pathname === "/" : pathname.startsWith(matcher)
+  );
 }
 
 export function resolveWorkspaceSwitchHref(

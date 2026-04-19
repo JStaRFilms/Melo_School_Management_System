@@ -6,18 +6,20 @@ import {
   getWorkspaceSections,
   isWorkspaceSectionActive,
   type WorkspaceKey,
+  type WorkspaceSection,
 } from "../workspace-navigation";
 import { 
-  ChevronDown, 
-  LogOut, 
-  Menu, 
-  X, 
-  Layers, 
-  GraduationCap, 
+  ChevronDown,
+  LogOut,
+  Menu,
+  X,
+  Layers,
+  GraduationCap,
   ClipboardCheck,
   ChevronRight,
   ShieldCheck,
   LayoutDashboard,
+  Landmark,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -62,23 +64,52 @@ export function WorkspaceNavbar({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  const groups = {
-    management: {
-        label: "Management",
-        icon: <LayoutDashboard className="h-4 w-4" />,
-        links: sections.slice(0, 2)
-    },
-    academic: {
-        label: "Academic Operations",
-        icon: <GraduationCap className="h-4 w-4" />,
-        links: sections.slice(2, 8)
-    },
-    assessments: {
-        label: "Assessments & Exams",
-        icon: <ClipboardCheck className="h-4 w-4" />,
-        links: sections.slice(8)
-    }
-  };
+  const groups =
+    workspace === "portal"
+      ? {
+          overview: {
+            label: "Overview",
+            icon: <LayoutDashboard className="h-4 w-4" />,
+            links: sections.slice(0, 1),
+          },
+          records: {
+            label: "Academic Records",
+            icon: <GraduationCap className="h-4 w-4" />,
+            links: sections.slice(1, 3),
+          },
+          finance: {
+            label: "Finance",
+            icon: <Landmark className="h-4 w-4" />,
+            links: sections.slice(4, 5),
+          },
+          alerts: {
+            label: "Alerts",
+            icon: <ClipboardCheck className="h-4 w-4" />,
+            links: sections.slice(3, 4),
+          },
+        }
+      : {
+          management: {
+            label: "Management",
+            icon: <LayoutDashboard className="h-4 w-4" />,
+            links: sections.slice(0, 2),
+          },
+          academic: {
+            label: "Academic Operations",
+            icon: <GraduationCap className="h-4 w-4" />,
+            links: sections.slice(2, 8),
+          },
+          finance: {
+            label: "Finance",
+            icon: <Landmark className="h-4 w-4" />,
+            links: sections.slice(8, 9),
+          },
+          assessments: {
+            label: "Assessments & Exams",
+            icon: <ClipboardCheck className="h-4 w-4" />,
+            links: sections.slice(9),
+          },
+        };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -109,9 +140,14 @@ export function WorkspaceNavbar({
     setProfileOpen(false);
   }, [currentPath]);
 
-  const activeSection = sections.find((s) =>
-    isWorkspaceSectionActive(s, currentPath)
-  );
+  const activeSection =
+    sections
+      .filter((section) => isWorkspaceSectionActive(section, currentPath))
+      .sort((a, b) => {
+        const aLength = Math.max(...a.matchers.map((matcher) => matcher.length));
+        const bLength = Math.max(...b.matchers.map((matcher) => matcher.length));
+        return bLength - aLength;
+      })[0] ?? null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
@@ -134,17 +170,19 @@ export function WorkspaceNavbar({
 
         <nav className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
           <div className="space-y-7 py-3">
-            {Object.entries(groups).map(([key, group]) => (
+            {Object.entries(groups)
+              .filter(([, group]) => group.links.length > 0)
+              .map(([key, group]) => (
               <div key={key} className="space-y-2.5">
                 <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
                   {group.label}
                 </h3>
                 <div className="grid gap-0.5">
-                  {group.links.map((s) => (
+                  {group.links.map((s: WorkspaceSection) => (
                     <SidebarLink 
                       key={s.href} 
                       section={s} 
-                      active={isWorkspaceSectionActive(s, currentPath)} 
+                      active={activeSection?.href === s.href} 
                       renderLink={renderLink} 
                     />
                   ))}
@@ -273,11 +311,13 @@ export function WorkspaceNavbar({
               </div>
 
               <div className="space-y-8">
-                {Object.entries(groups).map(([key, group]) => (
+                {Object.entries(groups)
+                  .filter(([, group]) => group.links.length > 0)
+                  .map(([key, group]) => (
                   <div key={key} className="space-y-3">
                     <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
                     <div className="grid gap-1">
-                      {group.links.map((s) => (
+                      {group.links.map((s: WorkspaceSection) => (
                          <MobileLink 
                             key={s.href} 
                             section={s} 

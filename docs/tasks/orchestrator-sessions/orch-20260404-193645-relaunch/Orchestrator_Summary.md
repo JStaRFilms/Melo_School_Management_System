@@ -1,7 +1,7 @@
 # Orchestrator Summary
 
 **Session ID:** `orch-20260404-193645-relaunch`  
-**Status:** Active
+**Status:** Complete
 
 ## Purpose
 
@@ -16,11 +16,21 @@ Fresh Takomi session created after the historical March 14 queue became too stal
 
 ## Initial Notes
 
-- `admin`, `teacher`, and `platform` are live surfaces
-- `portal` and `www` remain unimplemented
-- billing, payments, notifications, and AI teacher tools remain pending
+- `admin`, `teacher`, `platform`, and `portal` are now live surfaces
+- `www` now serves the SchoolOS product marketing site, while tenant school public websites live in `apps/sites`
+- richer notification workflows and AI teacher tools remain pending
 - cumulative third-term reporting is now explicitly in scope for this session
 
-## Current Blocker
+## Current Status
 
-Dev-data replacement is complete. The next blocker is release confidence: unit-test drift and the lack of meaningful E2E coverage still need to be resolved before wider delivery continues.
+Dev-data replacement, shipped-core hardening, the cumulative-results backend/UI slice through `T03`, the `T04` historical backfill workflow, the `T06` verification/docs/release gate, the `T07` parent/family linking foundation, `T08` portal MVP academics, `T09` billing and payment foundation, `T10` public website and SEO surface, `T11` household management hardening, `T12` pricing/packaging strategy, `T13` class-assigned fee plans and student extras, `T14` school-scoped Paystack/front-desk payment handoff, `T15` portal billing and self-serve payments, `T16` cross-device payment reconciliation hardening, `T17` platform marketing website separation, `T18` per-school Paystack credential management and merchant routing, `T19` public web operating modes, the new `T20-T21` managed-school public-site engine/template foundation, `T22` public-domain routing and SEO, and `T23` managed school-site delivery and editing boundaries are complete.
+
+The relaunch session now closes with a passing monorepo release gate:
+
+- `pnpm build` ✅
+- `pnpm typecheck` ✅
+- `pnpm lint` ✅
+- `pnpm test` ✅
+- `pnpm test:e2e` ✅
+
+The remaining quality gap is not a blocking task-file issue but broader test breadth, especially outside the current academic Playwright smoke coverage.

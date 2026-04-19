@@ -6,7 +6,9 @@ import { useQuery } from "convex/react";
 import {
   ReportCardBatchNavigator,
   ReportCardPrintStack,
-  ReportCardSheet,
+  ReportCardPreview,
+  ReportCardToolbar,
+  ReportCardPrintBlockedNotice,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -17,6 +19,17 @@ export default function TeacherReportCardPage() {
     <Suspense fallback={<ReportCardPageFallback message="Loading report card..." />}>
       <TeacherReportCardPageContent />
     </Suspense>
+  );
+}
+
+function hasIncompleteCumulativeResults(reportCard: ReportCardSheetData) {
+  return (
+    reportCard.resultCalculationMode === "cumulative_annual" &&
+    reportCard.results.some(
+      (result) =>
+        result.calculationMode === "cumulative_annual" &&
+        result.isCumulativeComplete === false
+    )
   );
 }
 
@@ -57,6 +70,9 @@ function TeacherReportCardPageContent() {
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
+  const blockedClassPrintCount =
+    classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
+  const isClassPrintBlocked = blockedClassPrintCount > 0;
 
   const exitFullClassPrint = useCallback(() => {
     const params = new URLSearchParams(searchParamsString);
@@ -99,6 +115,7 @@ function TeacherReportCardPageContent() {
       !isPrintClassMode ||
       classReportCards === undefined ||
       classReportCards.length === 0 ||
+      isClassPrintBlocked ||
       hasTriggeredClassPrintRef.current
     ) {
       return;
@@ -119,7 +136,7 @@ function TeacherReportCardPageContent() {
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", handleAfterPrint);
     };
-  }, [classReportCards, exitFullClassPrint, isPrintClassMode]);
+  }, [classReportCards, exitFullClassPrint, isClassPrintBlocked, isPrintClassMode]);
 
   if (!studentId || !sessionId || !termId) {
     return (
@@ -154,7 +171,9 @@ function TeacherReportCardPageContent() {
               <p className="mt-1 text-sm text-slate-600">
                 {classReportCards === undefined
                   ? "Preparing every student report card for print..."
-                  : `Opening print for ${classReportCards.length} student${classReportCards.length === 1 ? "" : "s"}.`}
+                  : isClassPrintBlocked
+                    ? `Printing is blocked for ${blockedClassPrintCount} student report card${blockedClassPrintCount === 1 ? "" : "s"} with incomplete cumulative annual data.`
+                    : `Opening print for ${classReportCards.length} student${classReportCards.length === 1 ? "" : "s"}.`}
               </p>
             </div>
             <button
@@ -166,7 +185,13 @@ function TeacherReportCardPageContent() {
             </button>
           </div>
         </div>
-        {classReportCards === undefined ? null : (
+        {classReportCards === undefined ? null : isClassPrintBlocked ? (
+          <div className="rc-no-print mx-auto px-4 pb-6 md:px-6" style={{ maxWidth: "210mm" }}>
+            <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
+              Full-class print is blocked until an admin backfills the missing prior-term totals for every cumulative report card in this class.
+            </div>
+          </div>
+        ) : (
           <ReportCardPrintStack
             reportCards={classReportCards}
             backHref="/assessments/exams/entry"
@@ -190,9 +215,17 @@ function TeacherReportCardPageContent() {
         onSelectStudent={handleSelectStudent}
         onPrintFullClass={handlePrintFullClass}
       />
-      <ReportCardSheet
+      <ReportCardToolbar
+        studentName={reportCard.student.name}
+        backHref="/assessments/exams/entry"
+      />
+      {hasIncompleteCumulativeResults(reportCard) && (
+        <ReportCardPrintBlockedNotice />
+      )}
+      <ReportCardPreview
         reportCard={reportCard}
         backHref="/assessments/exams/entry"
+        hideToolbar
       />
     </>
   );

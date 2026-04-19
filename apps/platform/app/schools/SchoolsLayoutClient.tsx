@@ -50,11 +50,11 @@ export function SchoolsLayoutClient({
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
-                PS
+                SA
               </div>
               <div className="hidden sm:block">
                 <span className="text-sm font-bold text-slate-900">
-                  Platform Admin
+                  Super Admin Workspace
                 </span>
               </div>
             </div>

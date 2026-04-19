@@ -9,6 +9,17 @@ import { StudentCreationOptionalFields } from "../components/StudentCreationOpti
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 
+type OnboardingCredentialSummary = {
+  student: {
+    email: string;
+    temporaryPassword: string;
+  } | null;
+  parent: {
+    email: string;
+    temporaryPassword: string;
+  } | null;
+};
+
 type StudentFirstOnboardingFormProps = {
   classes: ClassSummary[];
   selectedClassId: string;
@@ -21,6 +32,16 @@ type StudentFirstOnboardingFormProps = {
   guardianName: string;
   guardianPhone: string;
   address: string;
+  parentFirstName: string;
+  parentLastName: string;
+  parentEmail: string;
+  parentPhone: string;
+  parentRelationship: string;
+  provisionStudentPortalAccess: boolean;
+  provisionParentPortalAccess: boolean;
+  studentTemporaryPassword: string;
+  parentTemporaryPassword: string;
+  credentialSummary: OnboardingCredentialSummary | null;
   photoPreviewUrl: string | null;
   isSubmitting: boolean;
   firstNameInputRef: RefObject<HTMLInputElement>;
@@ -35,6 +56,15 @@ type StudentFirstOnboardingFormProps = {
   onGuardianNameChange: (value: string) => void;
   onGuardianPhoneChange: (value: string) => void;
   onAddressChange: (value: string) => void;
+  onParentFirstNameChange: (value: string) => void;
+  onParentLastNameChange: (value: string) => void;
+  onParentEmailChange: (value: string) => void;
+  onParentPhoneChange: (value: string) => void;
+  onParentRelationshipChange: (value: string) => void;
+  onProvisionStudentPortalAccessChange: (value: boolean) => void;
+  onProvisionParentPortalAccessChange: (value: boolean) => void;
+  onStudentTemporaryPasswordChange: (value: string) => void;
+  onParentTemporaryPasswordChange: (value: string) => void;
   onClassIdChange: (value: string) => void;
   onPhotoChange: (file: File | null) => void;
   onRemovePhoto: () => void;
@@ -56,6 +86,16 @@ export function StudentFirstOnboardingForm({
   guardianName,
   guardianPhone,
   address,
+  parentFirstName,
+  parentLastName,
+  parentEmail,
+  parentPhone,
+  parentRelationship,
+  provisionStudentPortalAccess,
+  provisionParentPortalAccess,
+  studentTemporaryPassword,
+  parentTemporaryPassword,
+  credentialSummary,
   photoPreviewUrl,
   isSubmitting,
   firstNameInputRef,
@@ -70,6 +110,15 @@ export function StudentFirstOnboardingForm({
   onGuardianNameChange,
   onGuardianPhoneChange,
   onAddressChange,
+  onParentFirstNameChange,
+  onParentLastNameChange,
+  onParentEmailChange,
+  onParentPhoneChange,
+  onParentRelationshipChange,
+  onProvisionStudentPortalAccessChange,
+  onProvisionParentPortalAccessChange,
+  onStudentTemporaryPasswordChange,
+  onParentTemporaryPasswordChange,
   onClassIdChange,
   onPhotoChange,
   onRemovePhoto,
@@ -104,10 +153,10 @@ export function StudentFirstOnboardingForm({
                 Student-First Onboarding
               </p>
               <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-                Start with the student profile, then choose the class at the end.
+                Start with the student profile, then link the household before placement.
               </h1>
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                This flow captures names, guardian details, and photo first. The existing class-first matrix stays unchanged for roster work.
+                Front-desk staff can create the student, link a parent, and issue temporary portal access in one pass. The existing class-first matrix stays unchanged for roster work.
               </p>
             </div>
           </div>
@@ -198,14 +247,138 @@ export function StudentFirstOnboardingForm({
               />
             </div>
           </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Step 3</p>
+              <h2 className="text-lg font-bold text-slate-950">Household and portal access</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Optional. Link the parent immediately and issue temporary portal credentials during intake.
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Parent first name">
+                  <input
+                    value={parentFirstName}
+                    onChange={(event) => onParentFirstNameChange(event.target.value)}
+                    className={fieldInputClassName}
+                    placeholder="Aisha"
+                  />
+                </Field>
+                <Field label="Parent last name">
+                  <input
+                    value={parentLastName}
+                    onChange={(event) => onParentLastNameChange(event.target.value)}
+                    className={fieldInputClassName}
+                    placeholder="Bello"
+                  />
+                </Field>
+                <Field label="Parent email">
+                  <input
+                    type="email"
+                    value={parentEmail}
+                    onChange={(event) => onParentEmailChange(event.target.value)}
+                    className={fieldInputClassName}
+                    placeholder="parent@example.com"
+                  />
+                </Field>
+                <Field label="Parent phone">
+                  <input
+                    value={parentPhone}
+                    onChange={(event) => onParentPhoneChange(event.target.value)}
+                    className={fieldInputClassName}
+                    placeholder="+234..."
+                  />
+                </Field>
+                <Field label="Relationship" className="md:col-span-2">
+                  <input
+                    value={parentRelationship}
+                    onChange={(event) => onParentRelationshipChange(event.target.value)}
+                    className={fieldInputClassName}
+                    placeholder="Mother, Father, Guardian..."
+                  />
+                </Field>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <label className="flex items-start gap-3 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={provisionStudentPortalAccess}
+                      onChange={(event) => onProvisionStudentPortalAccessChange(event.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-950"
+                    />
+                    <span>Provision student portal access now</span>
+                  </label>
+                  <Field label="Student temporary password">
+                    <input
+                      type="text"
+                      value={studentTemporaryPassword}
+                      onChange={(event) => onStudentTemporaryPasswordChange(event.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="Student123!Pass"
+                      disabled={!provisionStudentPortalAccess}
+                    />
+                  </Field>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <label className="flex items-start gap-3 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={provisionParentPortalAccess}
+                      onChange={(event) => onProvisionParentPortalAccessChange(event.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-950"
+                    />
+                    <span>Provision parent portal access now</span>
+                  </label>
+                  <Field label="Parent temporary password">
+                    <input
+                      type="text"
+                      value={parentTemporaryPassword}
+                      onChange={(event) => onParentTemporaryPasswordChange(event.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="Parent123!Pass"
+                      disabled={!provisionParentPortalAccess}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              {credentialSummary ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 space-y-3">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">
+                    Portal credentials ready
+                  </p>
+                  {credentialSummary.student ? (
+                    <div className="rounded-xl border border-emerald-100 bg-white p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Student login</p>
+                      <p className="mt-1 font-semibold">{credentialSummary.student.email}</p>
+                      <p className="font-black">{credentialSummary.student.temporaryPassword}</p>
+                    </div>
+                  ) : null}
+                  {credentialSummary.parent ? (
+                    <div className="rounded-xl border border-emerald-100 bg-white p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Parent login</p>
+                      <p className="mt-1 font-semibold">{credentialSummary.parent.email}</p>
+                      <p className="font-black">{credentialSummary.parent.temporaryPassword}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </section>
         </div>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:sticky xl:top-24 xl:self-start">
           <div className="mb-4">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Step 3</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Step 4</p>
             <h2 className="text-lg font-bold text-slate-950">Choose class placement</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Class assignment happens last so you can finish the student profile first.
+              Class assignment happens last so you can finish the student profile and household setup first.
             </p>
           </div>
 
@@ -266,13 +439,15 @@ export function StudentFirstOnboardingForm({
 
 function Field({
   label,
+  className,
   children,
 }: {
   label: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <label className="space-y-1.5">
+    <label className={className ? `space-y-1.5 ${className}` : "space-y-1.5"}>
       <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
         {label}
       </span>

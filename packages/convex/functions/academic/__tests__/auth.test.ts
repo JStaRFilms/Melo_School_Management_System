@@ -234,12 +234,13 @@ function createCtx(options?: {
 }
 
 describe("getAuthenticatedSchoolMembership", () => {
-  it("returns userId, schoolId, and role for an authenticated user", async () => {
+  it("returns userId, schoolId, role, and school-admin state for an authenticated user", async () => {
     const ctx = createCtx();
     await expect(getAuthenticatedSchoolMembership(ctx)).resolves.toEqual({
       userId: "user-1",
       schoolId: "school-1",
       role: "teacher",
+      isSchoolAdmin: false,
     });
   });
 

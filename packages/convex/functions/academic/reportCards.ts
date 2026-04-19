@@ -14,6 +14,12 @@ import {
   deriveAggregatedSubjectResult,
 } from "@school/shared/subject-aggregation";
 import type { GradingBand } from "@school/shared/exam-recording";
+import {
+  deriveCumulativeAnnualResult,
+  isCumulativeAnnualMode,
+  type CumulativeTermTotals,
+  type ReportCardCalculationMode,
+} from "@school/shared";
 import { getReadableUserName } from "./studentNameCompat";
 import {
   buildExtrasCollectionView,
@@ -68,13 +74,92 @@ function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>
   }, null);
 }
 
+function getTermOrderForSession(
+  terms: Array<{ _id: Id<"academicTerms">; startDate: number }>,
+  termId: Id<"academicTerms">
+) {
+  return [...terms]
+    .sort((a, b) => a.startDate - b.startDate)
+    .findIndex((term) => String(term._id) === String(termId));
+}
+
+function resolveHistoricalSnapshot(
+  historicalTotals: Array<{
+    termId: Id<"academicTerms">;
+    subjectId: Id<"subjects">;
+    total: number;
+    updatedAt: number;
+    createdAt: number;
+  }>,
+  termId: Id<"academicTerms">,
+  subjectId: Id<"subjects">
+) {
+  const matching = historicalTotals.filter(
+    (doc) =>
+      String(doc.termId) === String(termId) &&
+      String(doc.subjectId) === String(subjectId)
+  );
+
+  const latest = pickMostRecentDoc(matching);
+  return latest?.total ?? null;
+}
+
+function buildCumulativeResult(args: {
+  subject: {
+    _id: Id<"subjects">;
+    name: string;
+    code: string;
+  };
+  currentRecord: {
+    ca1: number;
+    ca2: number;
+    ca3: number;
+    examScaledScore: number;
+    total: number;
+    gradeLetter: string;
+    remark: string;
+  } | null;
+  firstTermTotal: number | null;
+  secondTermTotal: number | null;
+  gradingBands: GradingBand[];
+}) {
+  const currentBase = args.currentRecord
+    ? buildRecordedResult(args.subject, args.currentRecord)
+    : buildPendingResult(args.subject);
+
+  const totals: CumulativeTermTotals = {
+    first: args.firstTermTotal,
+    second: args.secondTermTotal,
+    current: args.currentRecord?.total ?? null,
+  };
+  const cumulative = deriveCumulativeAnnualResult({
+    totals,
+    gradingBands: args.gradingBands,
+  });
+
+  return {
+    ...currentBase,
+    calculationMode: "cumulative_annual" as const,
+    currentTermTotal: args.currentRecord?.total ?? null,
+    firstTermTotal: args.firstTermTotal,
+    secondTermTotal: args.secondTermTotal,
+    annualAverage: cumulative.annualAverage,
+    isCumulativeComplete: cumulative.isComplete,
+    missingHistoricalTerms: cumulative.missingTerms,
+    total: cumulative.annualAverage ?? currentBase.total,
+    gradeLetter: cumulative.gradeLetter ?? currentBase.gradeLetter,
+    remark: cumulative.remark ?? currentBase.remark,
+    isRecorded: cumulative.isComplete ? true : currentBase.isRecorded,
+  };
+}
+
 const reportCardBatchStudentValidator = v.object({
   studentId: v.id("students"),
   studentName: v.string(),
   admissionNumber: v.string(),
 });
 
-const reportCardResultValidator = v.object({
+export const reportCardResultValidator = v.object({
   schoolName: v.string(),
   schoolLogoUrl: v.union(v.string(), v.null()),
   sessionName: v.string(),
@@ -88,6 +173,10 @@ const reportCardResultValidator = v.object({
     ca3Max: v.number(),
     examMax: v.number(),
   }),
+  resultCalculationMode: v.union(
+    v.literal("standalone"),
+    v.literal("cumulative_annual")
+  ),
   student: v.object({
     _id: v.id("students"),
     name: v.string(),
@@ -124,6 +213,22 @@ const reportCardResultValidator = v.object({
       gradeLetter: v.string(),
       remark: v.string(),
       isRecorded: v.boolean(),
+      calculationMode: v.union(
+        v.literal("standalone"),
+        v.literal("cumulative_annual")
+      ),
+      currentTermTotal: v.union(v.number(), v.null()),
+      firstTermTotal: v.union(v.number(), v.null()),
+      secondTermTotal: v.union(v.number(), v.null()),
+      annualAverage: v.union(v.number(), v.null()),
+      isCumulativeComplete: v.boolean(),
+      missingHistoricalTerms: v.array(
+        v.union(
+          v.literal("first"),
+          v.literal("second"),
+          v.literal("current")
+        )
+      ),
     })
   ),
   extras: reportCardExtraPrintableValidator,
@@ -149,6 +254,13 @@ function buildPendingResult(subject: {
     gradeLetter: "-",
     remark: "Pending",
     isRecorded: false,
+    calculationMode: "standalone" as const,
+    currentTermTotal: null,
+    firstTermTotal: null,
+    secondTermTotal: null,
+    annualAverage: null,
+    isCumulativeComplete: false,
+    missingHistoricalTerms: ["current"] as Array<"first" | "second" | "current">,
   };
 }
 
@@ -177,6 +289,13 @@ function buildRecordedResult(subject: {
     gradeLetter: record.gradeLetter,
     remark: record.remark,
     isRecorded: true,
+    calculationMode: "standalone" as const,
+    currentTermTotal: record.total,
+    firstTermTotal: null,
+    secondTermTotal: null,
+    annualAverage: null,
+    isCumulativeComplete: false,
+    missingHistoricalTerms: [],
   };
 }
 
@@ -306,7 +425,7 @@ async function getStudentsForClassReportCardBatch(
   });
 }
 
-async function buildStudentReportCard(
+export async function buildStudentReportCard(
   ctx: any,
   args: {
     userId: Id<"users">;
@@ -339,16 +458,18 @@ async function buildStudentReportCard(
     throw new ConvexError("School not found");
   }
 
-  const records = await ctx.db
+  const allSessionRecords = await ctx.db
     .query("assessmentRecords")
-    .withIndex("by_student_and_term", (q: any) =>
+    .withIndex("by_student_and_session", (q: any) =>
       q
         .eq("schoolId", args.schoolId)
         .eq("studentId", args.studentId)
         .eq("sessionId", args.sessionId)
-        .eq("termId", args.termId)
     )
     .collect();
+  const records = allSessionRecords.filter(
+    (record: any) => String(record.termId) === String(args.termId)
+  );
 
   const reportCardClassId =
     records[0]?.classId ?? args.preferredClassId ?? student.classId;
@@ -383,6 +504,8 @@ async function buildStudentReportCard(
     effectiveTermSettings,
     aggregations,
     aggregationOptOuts,
+    sessionTerms,
+    historicalTermTotals,
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
@@ -441,6 +564,19 @@ async function buildStudentReportCard(
       classId: reportCardClassId,
       sessionId: args.sessionId,
     }),
+    ctx.db
+      .query("academicTerms")
+      .withIndex("by_session", (q: any) => q.eq("sessionId", args.sessionId))
+      .collect(),
+    ctx.db
+      .query("historicalTermTotals")
+      .withIndex("by_student_and_session", (q: any) =>
+        q
+          .eq("schoolId", args.schoolId)
+          .eq("studentId", args.studentId)
+          .eq("sessionId", args.sessionId)
+      )
+      .collect(),
   ]);
 
   if (!classDoc || classDoc.schoolId !== args.schoolId) {
@@ -497,6 +633,12 @@ async function buildStudentReportCard(
   const recordsBySubjectId = new Map<Id<"subjects">, any>(
     records.map((record: any) => [record.subjectId, record] as const)
   );
+  const sessionRecordsByTermAndSubject = new Map<string, any>(
+    allSessionRecords.map((record: any) => [
+      `${String(record.termId)}:${String(record.subjectId)}`,
+      record,
+    ])
+  );
   const subjectsById = new Map<Id<"subjects">, (typeof subjects)[number]>(
     subjects.map((subject) => [subject._id, subject] as const)
   );
@@ -519,6 +661,19 @@ async function buildStudentReportCard(
     ca3Max: settings?.ca3Max ?? DEFAULT_CA_MAX,
     examMax: settings?.examContributionMax ?? DEFAULT_EXAM_MAX,
   };
+  const currentTermIndex = getTermOrderForSession(sessionTerms, args.termId);
+  const resultCalculationMode =
+    (effectiveTermSettings.resultCalculationMode ??
+      "standalone") as ReportCardCalculationMode;
+  const useCumulativeAnnualMode = isCumulativeAnnualMode({
+    calculationMode: resultCalculationMode,
+    currentTermIndex,
+  });
+  const orderedSessionTerms = [...sessionTerms].sort(
+    (a: any, b: any) => a.startDate - b.startDate
+  );
+  const firstTermId = orderedSessionTerms[0]?._id ?? null;
+  const secondTermId = orderedSessionTerms[1]?._id ?? null;
   const effectiveAggregations = aggregations.filter((aggregation) =>
     effectiveSubjectIds.has(String(aggregation.umbrellaSubjectId))
   );
@@ -540,10 +695,33 @@ async function buildStudentReportCard(
         !aggregatedComponentIds.has(String(subject._id))
     )
     .map((subject) => {
-      const record = recordsBySubjectId.get(subject._id);
-      return record
-        ? buildRecordedResult(subject, record)
-        : buildPendingResult(subject);
+      const record = recordsBySubjectId.get(subject._id) ?? null;
+
+      if (!useCumulativeAnnualMode || !firstTermId || !secondTermId) {
+        return record
+          ? buildRecordedResult(subject, record)
+          : buildPendingResult(subject);
+      }
+
+      const firstTermRecord = sessionRecordsByTermAndSubject.get(
+        `${String(firstTermId)}:${String(subject._id)}`
+      );
+      const secondTermRecord = sessionRecordsByTermAndSubject.get(
+        `${String(secondTermId)}:${String(subject._id)}`
+      );
+
+      const firstTermTotal = firstTermRecord?.total ??
+        resolveHistoricalSnapshot(historicalTermTotals, firstTermId, subject._id);
+      const secondTermTotal = secondTermRecord?.total ??
+        resolveHistoricalSnapshot(historicalTermTotals, secondTermId, subject._id);
+
+      return buildCumulativeResult({
+        subject,
+        currentRecord: record,
+        firstTermTotal,
+        secondTermTotal,
+        gradingBands: activeGradingBands,
+      });
     });
 
   const aggregatedResults = effectiveAggregations
@@ -584,6 +762,13 @@ async function buildStudentReportCard(
         gradeLetter: derived.gradeLetter,
         remark: derived.remark,
         isRecorded: derived.isRecorded,
+        calculationMode: "standalone" as const,
+        currentTermTotal: derived.total,
+        firstTermTotal: null,
+        secondTermTotal: null,
+        annualAverage: null,
+        isCumulativeComplete: false,
+        missingHistoricalTerms: [],
       };
     })
     .filter(
@@ -606,6 +791,7 @@ async function buildStudentReportCard(
     className: buildClassName(classDoc),
     generatedAt: Date.now(),
     assessmentConfig,
+    resultCalculationMode,
     student: {
       _id: student._id,
       name: studentName.displayName || "Unnamed Student",

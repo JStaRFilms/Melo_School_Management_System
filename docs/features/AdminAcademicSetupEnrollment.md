@@ -26,7 +26,7 @@ This feature allows administrators to:
     - Teacher: Can view their classes and edit subject selections for students already in their class (but cannot add/remove students from the school/class).
 
 ## Out Of Scope
-- Parent onboarding and portal
+- Parent portal and billing surfaces
 - Bulk CSV import (manual entry focus for v1)
 - Advanced admissions workflows
 - Promotion/Demotion between sessions
@@ -67,9 +67,10 @@ This feature allows administrators to:
 - `isActive` (boolean)
 
 ### `users`
-- shared table for school admins, teachers, and students
+- shared table for school admins, teachers, students, and parents
 - teacher accounts are provisioned through Better Auth and then inserted as school-scoped `users`
 - student records also link back to a dedicated school-scoped `users` row
+- parent identity rows are now created here by the family-linking workflow so later portal work can attach real accounts without reshaping the academic model
 
 ### `subjects` (Catalog)
 - `name` (e.g., "Mathematics")
@@ -90,7 +91,16 @@ This feature allows administrators to:
 ### `students`
 - `classId`
 - `userId` (linked `users` row for the student identity)
+- `familyId` (optional household link for future billing)
 - `admissionNumber`
+
+### `families`
+- school-scoped household groups for parent and sibling linking
+- used as the future billing anchor for a student group
+
+### `familyMembers`
+- parent contact links for a family
+- tracks relationship label and primary-contact status
 
 ### `studentSubjectSelections`
 - `studentId`
@@ -120,6 +130,7 @@ This feature allows administrators to:
   - optional onboarding fields may also be captured immediately during creation: house, date of birth, guardian name, guardian phone, address, and student photo
   - create-time student photos reuse the same storage-backed metadata flow as profile editing and reject files larger than 1 MB
   - if those optional fields are skipped, the save flow still succeeds and shows a reminder listing what is still missing
+- Student profile editing now includes a family-linking panel that creates or reuses a household record and attaches parent contacts before portal or billing work is added.
 - Subject management now supports editing existing subject names and codes in place from the admin setup UI.
 - Session management now supports:
   - editing session details after creation

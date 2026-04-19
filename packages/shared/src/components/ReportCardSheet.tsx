@@ -17,6 +17,7 @@ export type ReportCardSheetData = {
     ca3Max: number;
     examMax: number;
   };
+  resultCalculationMode?: "standalone" | "cumulative_annual";
   student: {
     _id: string;
     name: string;
@@ -52,6 +53,13 @@ export type ReportCardSheetData = {
     gradeLetter: string;
     remark: string;
     isRecorded: boolean;
+    calculationMode?: "standalone" | "cumulative_annual";
+    currentTermTotal?: number | null;
+    firstTermTotal?: number | null;
+    secondTermTotal?: number | null;
+    annualAverage?: number | null;
+    isCumulativeComplete?: boolean;
+    missingHistoricalTerms?: Array<"first" | "second" | "current">;
   }>;
   extras?: Array<{
     bundleId: string;
@@ -83,6 +91,32 @@ function formatDate(
 function formatScore(value: number | null) {
   if (value === null) return "-";
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+type ReportCardResult = ReportCardSheetData["results"][number];
+
+export function isIncompleteCumulativeResult(result: ReportCardResult) {
+  return (
+    result.calculationMode === "cumulative_annual" &&
+    result.isCumulativeComplete === false
+  );
+}
+
+export function hasIncompleteCumulativeResults(reportCard: ReportCardSheetData) {
+  return (
+    reportCard.resultCalculationMode === "cumulative_annual" &&
+    reportCard.results.some((result) => isIncompleteCumulativeResult(result))
+  );
+}
+
+function getResultGradeDisplay(result: ReportCardResult) {
+  return isIncompleteCumulativeResult(result) ? "—" : result.gradeLetter;
+}
+
+function getResultRemarkDisplay(result: ReportCardResult) {
+  return isIncompleteCumulativeResult(result)
+    ? "Pending prior-term scores"
+    : result.remark;
 }
 
 function buildInitials(name: string) {
@@ -135,55 +169,82 @@ function ensurePrintStyles() {
     @media print {
       @page {
         size: A4 portrait;
-        margin: 10mm;
+        margin: 0;
       }
       html, body { 
         margin: 0 !important; 
         padding: 0 !important; 
+        width: 100% !important;
+        height: auto !important;
         background: white !important; 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
-      .rc-no-print { display: none !important; }
-      .rc-print-root { 
-        width: 100% !important; 
-        margin: 0 !important; 
-        padding: 0 !important; 
-        display: block !important; 
+      /* Hide toolbar elements */
+      .rc-no-print { 
+        display: none !important; 
       }
-      /* Reset wrapper for print */
+      /* Root container - remove scaling transform for print */
+      .rc-print-root { 
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 210mm !important;
+        height: auto !important;
+        min-height: 297mm;
+        margin: 0 !important; 
+        padding: 8mm !important; 
+        background: white !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        transform: none !important;
+      }
+      /* Inner preview wrapper - remove scaling for print */
+      .rc-print-root > div {
+        transform: none !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      /* Sheet wrapper becomes the printable area */
       .rc-sheet-wrapper { 
         width: 100% !important; 
         height: auto !important; 
         margin: 0 !important; 
-        padding: 0 !important; 
+        padding: 0 !important;
         background: white !important; 
         border: none !important;
         box-shadow: none !important;
         display: block !important;
         overflow: visible !important;
+        box-sizing: border-box !important;
       }
-      /* Reset sheet for print */
+      /* Sheet content */
       .rc-sheet { 
         width: 100% !important; 
-        max-width: 100% !important; 
         margin: 0 !important; 
+        padding: 0 !important;
         border: none !important; 
-        box-shadow: none !important; 
+        box-shadow: none !important;
+        overflow: visible !important;
+        background: white !important;
       }
       .rc-sheet * { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
+      /* Prevent page breaks inside report card */
       .rc-sheet,
       .rc-sheet-wrapper {
         break-inside: avoid;
         page-break-inside: avoid;
       }
+      /* Full class print stack */
       .rc-stack-item { 
         break-after: page; 
         page-break-after: always; 
         margin: 0 !important; 
+        padding: 0 !important;
+        width: 210mm !important;
       }
       .rc-stack-item:last-child { 
         break-after: auto; 
@@ -196,7 +257,7 @@ function ensurePrintStyles() {
 
 /* ─── Component ─── */
 
-import React, { useRef, useEffect, useState } from "react";
+import React from "react";
 
 export function ReportCardSheet({
   reportCard,
@@ -208,57 +269,6 @@ export function ReportCardSheet({
   hideToolbar?: boolean;
 }) {
   if (typeof window !== "undefined") ensurePrintStyles();
-
-  const [scale, setScale] = useState(1);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const updateScale = () => {
-      const element = contentRef.current;
-      if (!element) return;
-
-      const previousZoom = element.style.zoom;
-      element.style.zoom = "1";
-      const scrollHeight = element.scrollHeight;
-      const scrollWidth = element.scrollWidth;
-      element.style.zoom = previousZoom;
-
-      if (!scrollHeight || !scrollWidth) return;
-
-      const heightScale = PRINT_TARGET_HEIGHT_PX / scrollHeight;
-      const widthScale = PRINT_TARGET_WIDTH_PX / scrollWidth;
-      const nextScale = Math.min(1, heightScale, widthScale);
-
-      setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1);
-    };
-
-    updateScale();
-
-    const timer = window.setTimeout(updateScale, 120);
-    const handleBeforePrint = () => updateScale();
-    const handleResize = () => updateScale();
-
-    window.addEventListener("beforeprint", handleBeforePrint);
-    window.addEventListener("resize", handleResize);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined" && contentRef.current) {
-      resizeObserver = new ResizeObserver(() => updateScale());
-      resizeObserver.observe(contentRef.current);
-    }
-
-    const fonts = document.fonts;
-    if (fonts?.ready) {
-      void fonts.ready.then(updateScale).catch(() => undefined);
-    }
-
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("beforeprint", handleBeforePrint);
-      window.removeEventListener("resize", handleResize);
-      resizeObserver?.disconnect();
-    };
-  }, [reportCard]);
 
   const schoolInitials = buildInitials(reportCard.schoolName);
   const ac = reportCard.assessmentConfig;
@@ -301,93 +311,12 @@ export function ReportCardSheet({
 
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
-      {/* ─── Toolbar (hidden during print) ─── */}
-      {hideToolbar ? null : (
-      <div
-        className="rc-no-print"
-        style={{
-          maxWidth: "210mm",
-          margin: "0 auto",
-          padding: "16px 8px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <div>
-          <p
-            style={{
-              fontSize: 10,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: "0.16em",
-              color: "#94a3b8",
-              margin: 0,
-            }}
-          >
-            Report Card
-          </p>
-          <h1
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#0f172a",
-              margin: "2px 0 0",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {reportCard.student.name}
-          </h1>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <a
-            href={backHref}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 36,
-              padding: "0 16px",
-              borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#475569",
-              textDecoration: "none",
-              background: "white",
-            }}
-          >
-            Back
-          </a>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 36,
-              padding: "0 20px",
-              borderRadius: 8,
-              border: "none",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "white",
-              background: "#0f172a",
-              cursor: "pointer",
-            }}
-          >
-            Export / Print
-          </button>
-        </div>
-      </div>
-      )}
-
-      {/* ─── Report Card Sheet ─── */}
+        {/* ─── Report Card Sheet ─── */}
       <div 
         className="rc-sheet-wrapper"
         style={{
           width: "210mm",
-          height: "297mm",
+          minHeight: "297mm",
           margin: "0 auto 40px",
           padding: "10mm",
           background: "white",
@@ -397,23 +326,19 @@ export function ReportCardSheet({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "flex-start",
-          overflow: "hidden",
+          overflow: "visible",
           border: "none",
           position: "relative",
         }}
       >
         <div
-          ref={contentRef}
           className="rc-sheet"
           style={{
             width: "100%",
-            minHeight: "100%",
             background: "white",
             border: "none",
             borderRadius: 0,
-            overflow: "hidden",
-            transform: `scale(${scale})`,
-            transformOrigin: "top center",
+            overflow: "visible",
             boxSizing: "border-box",
           }}
         >
@@ -680,53 +605,143 @@ export function ReportCardSheet({
             }}
           >
             <thead>
-              <tr style={{ background: "#f1f5f9" }}>
-                <Th align="left" width="28%">
-                  Subject
-                </Th>
-                <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
-                <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
-                <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
-                <Th width="10%">Exam ({ac.examMax}%)</Th>
-                <Th width="11%">Total (100%)</Th>
-                <Th width="7%">Grade</Th>
-                <Th width="12%" align="left">
-                  Remark
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportCard.results.map((result, i) => (
-                <tr
-                  key={result.subjectId}
-                  style={{
-                    background: !result.isRecorded
-                      ? "#fffbeb"
-                      : i % 2 === 1
-                        ? "#fafbfc"
-                        : "white",
-                  }}
-                >
-                  <Td align="left" bold>
-                    {result.subjectName}
-                  </Td>
-                  <Td mono>{formatScore(result.ca1)}</Td>
-                  <Td mono>{formatScore(result.ca2)}</Td>
-                  <Td mono>{formatScore(result.ca3)}</Td>
-                  <Td mono>{formatScore(result.examScore)}</Td>
-                  <Td mono bold>
-                    {formatScore(result.total)}
-                  </Td>
-                  <Td bold color={gradeColor(result.gradeLetter)}>
-                    {result.gradeLetter}
-                  </Td>
-                  <Td align="left" fontSize={11}>
-                    {result.remark}
-                  </Td>
+              {reportCard.resultCalculationMode === "cumulative_annual" ? (
+                <>
+                  <tr style={{ background: "#f8fafc" }}>
+                    <Th align="left" width="23%" rowSpan={2}>
+                      Subject
+                    </Th>
+                    <Th width="41%" colSpan={5}>
+                      {reportCard.termName.toUpperCase()}
+                    </Th>
+                    <Th width="9%" rowSpan={2}>1st Term</Th>
+                    <Th width="9%" rowSpan={2}>2nd Term</Th>
+                    <Th width="7%" rowSpan={2}>Grade</Th>
+                    <Th width="11%" align="left" rowSpan={2}>
+                      Remark
+                    </Th>
+                  </tr>
+                  <tr style={{ background: "#f1f5f9" }}>
+                    <Th width="8%">CA1 ({ac.ca1Max}%)</Th>
+                    <Th width="8%">CA2 ({ac.ca2Max}%)</Th>
+                    <Th width="8%">CA3 ({ac.ca3Max}%)</Th>
+                    <Th width="8%">Exam ({ac.examMax}%)</Th>
+                    <Th width="9%">Total (100%)</Th>
+                  </tr>
+                </>
+              ) : (
+                <tr style={{ background: "#f1f5f9" }}>
+                  <Th align="left" width="28%">
+                    Subject
+                  </Th>
+                  <Th width="9%">CA1 ({ac.ca1Max}%)</Th>
+                  <Th width="9%">CA2 ({ac.ca2Max}%)</Th>
+                  <Th width="9%">CA3 ({ac.ca3Max}%)</Th>
+                  <Th width="10%">Exam ({ac.examMax}%)</Th>
+                  <Th width="11%">Total (100%)</Th>
+                  <Th width="7%">Grade</Th>
+                  <Th width="15%" align="left">
+                    Remark
+                  </Th>
                 </tr>
-              ))}
-            </tbody>
+              )}
+            </thead>
+              <tbody>
+                {reportCard.results.map((result, i) => (
+                  <tr
+                    key={result.subjectId}
+                    style={{
+                      background: !result.isRecorded
+                        ? "#fffbeb"
+                        : i % 2 === 1
+                          ? "#fafbfc"
+                          : "white",
+                    }}
+                  >
+                    <Td align="left" bold>
+                      {result.subjectName}
+                      {reportCard.resultCalculationMode === "cumulative_annual" &&
+                        (result.calculationMode === "cumulative_annual" &&
+                        result.missingHistoricalTerms &&
+                        result.missingHistoricalTerms.length > 0 ? (
+                          <span style={{ color: "#ef4444", marginLeft: 4, fontSize: 10 }}>*</span>
+                        ) : result.calculationMode !== "cumulative_annual" ? (
+                          <span
+                            style={{
+                              color: "#64748b",
+                              marginLeft: 6,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                            }}
+                          >
+                            Standalone
+                          </span>
+                        ) : null)}
+                    </Td>
+                    {reportCard.resultCalculationMode === "cumulative_annual" ? (
+                      <>
+                        <Td mono>{formatScore(result.ca1)}</Td>
+                        <Td mono>{formatScore(result.ca2)}</Td>
+                        <Td mono>{formatScore(result.ca3)}</Td>
+                        <Td mono>{formatScore(result.examScore)}</Td>
+                        <Td mono bold>{formatScore(result.currentTermTotal ?? result.total)}</Td>
+                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.firstTermTotal ?? null) : "-"}</Td>
+                        <Td mono>{result.calculationMode === "cumulative_annual" ? formatScore(result.secondTermTotal ?? null) : "-"}</Td>
+                      </>
+                    ) : (
+                      <>
+                        <Td mono>{formatScore(result.ca1)}</Td>
+                        <Td mono>{formatScore(result.ca2)}</Td>
+                        <Td mono>{formatScore(result.ca3)}</Td>
+                        <Td mono>{formatScore(result.examScore)}</Td>
+                        <Td mono bold>
+                          {formatScore(result.total)}
+                        </Td>
+                      </>
+                    )}
+                    <Td
+                      bold
+                      color={
+                        isIncompleteCumulativeResult(result)
+                          ? "#64748b"
+                          : gradeColor(result.gradeLetter)
+                      }
+                    >
+                      {getResultGradeDisplay(result)}
+                    </Td>
+                    <Td align="left" fontSize={11}>
+                      {getResultRemarkDisplay(result)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
           </table>
+          {reportCard.resultCalculationMode === "cumulative_annual" ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "1px solid #fecaca"
+                  : "1px solid #dbeafe",
+                background: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "#fff1f2"
+                  : "#eff6ff",
+                fontSize: 10.5,
+                color: reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                  ? "#9f1239"
+                  : "#1d4ed8",
+                fontWeight: 700,
+              }}
+            >
+              {reportCard.results.some((r) => r.missingHistoricalTerms && r.missingHistoricalTerms.length > 0)
+                ? "Rows marked * are incomplete. Printing stays blocked until the missing prior-term scores are backfilled and the cumulative grade can be finalized."
+                : "In cumulative annual mode, the current term breakdown is shown alongside first-term and second-term totals. Grade and remark follow the cumulative annual calculation."}
+            </div>
+          ) : null}
         </div>
 
         {/* ─── COMMENTS SECTION ─── */}
@@ -845,13 +860,19 @@ function Th({
   children,
   width,
   align = "center",
+  rowSpan,
+  colSpan,
 }: {
   children: React.ReactNode;
   width?: number | string;
   align?: "left" | "center" | "right";
+  rowSpan?: number;
+  colSpan?: number;
 }) {
   return (
     <th
+      rowSpan={rowSpan}
+      colSpan={colSpan}
       style={{
         width: width ?? "auto",
         padding: "5px 6px",

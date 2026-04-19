@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo — Soft & Organic (V5)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Bodoni Moda"', 'serif'],
+            sans: ['"Jost"', 'sans-serif'],
+          },
+          colors: {
+            organic: {
+              sand: '#F7F3EE',
+              terracotta: '#C16A4D',
+              forest: '#2C4035',
+              clay: '#E6D3C8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans antialiased bg-organic-sand text-organic-forest">
+
+  <!-- Soft shapes -->
+  <div class="absolute top-0 right-0 w-full h-[600px] overflow-hidden -z-10 pointer-events-none">
+    <div class="absolute -top-[20%] -right-[10%] w-[800px] h-[800px] rounded-full bg-organic-clay/40 mix-blend-multiply filter blur-[80px]"></div>
+    <div class="absolute top-[20%] right-[30%] w-[600px] h-[600px] rounded-full bg-[#E8DCC0]/50 mix-blend-multiply filter blur-[100px]"></div>
+  </div>
+
+  <nav class="max-w-6xl mx-auto px-6 py-8 flex justify-between items-center">
+    <div class="font-serif text-4xl italic text-organic-terracotta">Melo</div>
+    <div class="hidden md:flex gap-8 items-center text-[15px] font-medium text-organic-forest/80">
+      <a href="#" class="hover:text-organic-terracotta transition-colors">Philosophy</a>
+      <a href="#" class="hover:text-organic-terracotta transition-colors">Platform</a>
+      <button class="bg-organic-forest text-white px-8 py-3 rounded-full hover:bg-organic-terracotta transition-all shadow-lg shadow-organic-forest/10 hover:shadow-organic-terracotta/20 transform hover:-translate-y-0.5">
+        Start a Conversation
+      </button>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-6 py-20 md:py-32 flex flex-col items-center text-center relative z-10">
+    <span class="px-5 py-2 rounded-full border border-organic-terracotta/30 text-organic-terracotta text-xs uppercase tracking-[0.15em] font-semibold mb-8 bg-white/50 backdrop-blur-sm">
+      A better way to run your school
+    </span>
+    <h1 class="font-serif text-5xl md:text-7xl lg:text-8xl leading-[1.0] max-w-4xl tracking-tight text-organic-forest">
+      Software that feels like <i class="text-organic-terracotta">relief.</i>
+    </h1>
+    <p class="mt-8 text-xl md:text-2xl font-light text-organic-forest/70 max-w-2xl leading-relaxed">
+      No more chaotic spreadsheets, lost receipts, or late report cards. Just quiet, effortless organization.
+    </p>
+
+    <div class="mt-24 grid md:grid-cols-3 gap-8 w-full max-w-5xl text-left">
+      <!-- Card 1 -->
+      <div class="bg-white/60 backdrop-blur-md p-10 rounded-[2rem] border border-white shadow-xl shadow-organic-clay/20 transform transition-all hover:-translate-y-2">
+        <div class="w-12 h-12 rounded-full bg-organic-clay flex items-center justify-center mb-6 text-organic-terracotta">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+        </div>
+        <h3 class="text-2xl font-serif text-organic-forest mb-3">Holistic Academics</h3>
+        <p class="text-organic-forest/70 leading-relaxed font-light">Generate beautiful, error-free results in an environment teachers actually enjoy using.</p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="bg-white/60 backdrop-blur-md p-10 rounded-[2rem] border border-white shadow-xl shadow-organic-clay/20 transform transition-all hover:-translate-y-2 mt-0 md:mt-12">
+        <div class="w-12 h-12 rounded-full bg-[#E8DCC0] flex items-center justify-center mb-6 text-organic-forest">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+        </div>
+        <h3 class="text-2xl font-serif text-organic-forest mb-3">Gentle Collections</h3>
+        <p class="text-organic-forest/70 leading-relaxed font-light">Collect fees, issue digital receipts, and track defaulters without the traditional friction.</p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-white/60 backdrop-blur-md p-10 rounded-[2rem] border border-white shadow-xl shadow-organic-clay/20 transform transition-all hover:-translate-y-2 mt-0 md:mt-24">
+        <div class="w-12 h-12 rounded-full bg-organic-terracotta/20 flex items-center justify-center mb-6 text-organic-terracotta">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        </div>
+        <h3 class="text-2xl font-serif text-organic-forest mb-3">Happy Parents</h3>
+        <p class="text-organic-forest/70 leading-relaxed font-light">A calm, intuitive portal that gives parents total visibility into their child's progress.</p>
+      </div>
+    </div>
+
+  </main>
+
+</body>
+</html>

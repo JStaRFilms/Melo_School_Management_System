@@ -200,6 +200,32 @@ export const inspectProvisioningEmailInternal = internalQuery({
   },
 });
 
+export const inspectProvisioningAuthIdInternal = internalQuery({
+  args: {
+    authId: v.string(),
+  },
+  returns: v.object({
+    schoolUserId: v.union(v.id("users"), v.null()),
+    platformAdminId: v.union(v.id("platformAdmins"), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const existingSchoolUser = await ctx.db
+      .query("users")
+      .withIndex("by_auth", (q) => q.eq("authId", args.authId))
+      .unique();
+
+    const existingPlatformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q) => q.eq("authId", args.authId))
+      .unique();
+
+    return {
+      schoolUserId: existingSchoolUser?._id ?? null,
+      platformAdminId: existingPlatformAdmin?._id ?? null,
+    };
+  },
+});
+
 /**
  * Action: provision a school admin end-to-end.
  * 1. Creates a Better Auth account via the auth API

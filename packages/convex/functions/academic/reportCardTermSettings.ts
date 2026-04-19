@@ -6,6 +6,7 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import type { ReportCardCalculationMode } from "@school/shared";
 
 type TermSettingGroupDoc = {
   _id: Id<"reportCardTermSettingGroups">;
@@ -87,6 +88,9 @@ export async function resolveEffectiveReportCardTermSettings(
       legacyClassAttendance?.timesSchoolOpened ??
       term.defaultTimesSchoolOpened ??
       null,
+    resultCalculationMode:
+      (term.reportCardCalculationMode ??
+        "standalone") as ReportCardCalculationMode,
     matchedGroup:
       matchingGroup
         ? {
@@ -105,6 +109,10 @@ export const getTermReportCardSettings = query({
     termId: v.id("academicTerms"),
     nextTermBegins: v.union(v.number(), v.null()),
     defaultTimesSchoolOpened: v.union(v.number(), v.null()),
+    resultCalculationMode: v.union(
+      v.literal("standalone"),
+      v.literal("cumulative_annual")
+    ),
     groups: v.array(termSettingGroupValidator),
   }),
   handler: async (ctx, args) => {
@@ -128,6 +136,7 @@ export const getTermReportCardSettings = query({
       termId: args.termId,
       nextTermBegins: term.nextTermBegins ?? null,
       defaultTimesSchoolOpened: term.defaultTimesSchoolOpened ?? null,
+      resultCalculationMode: term.reportCardCalculationMode ?? "standalone",
       groups: groups
         .filter((group) => group.schoolId === schoolId)
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -147,6 +156,10 @@ export const saveTermReportCardDefaults = mutation({
     termId: v.id("academicTerms"),
     nextTermBegins: v.union(v.number(), v.null()),
     defaultTimesSchoolOpened: v.union(v.number(), v.null()),
+    resultCalculationMode: v.union(
+      v.literal("standalone"),
+      v.literal("cumulative_annual")
+    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -179,6 +192,7 @@ export const saveTermReportCardDefaults = mutation({
       startDate: term.startDate,
       endDate: term.endDate,
       isActive: term.isActive,
+      reportCardCalculationMode: args.resultCalculationMode,
       createdAt: term.createdAt,
       updatedAt: Date.now(),
     };

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo | Modern Fintech</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Jost"', 'sans-serif'] },
+          colors: { 
+            core: { black: '#000000', gray: '#666666', bg: '#FAFAFA', border: '#EAEAEA' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans text-core-black bg-core-bg antialiased leading-relaxed">
+
+  <!-- Nav -->
+  <nav class="max-w-[1400px] mx-auto px-8 py-6 w-full flex items-center justify-between">
+    <div class="text-2xl font-semibold tracking-tighter">Melo</div>
+    <div class="hidden md:flex gap-10 text-[15px] font-medium text-core-gray">
+      <a href="#" class="hover:text-core-black transition-colors">Platform</a>
+      <a href="#" class="hover:text-core-black transition-colors">Customers</a>
+      <a href="#" class="hover:text-core-black transition-colors">Company</a>
+    </div>
+    <button class="bg-black text-white px-5 py-2.5 rounded-xl text-[15px] font-semibold hover:bg-gray-800 transition-colors shadow-sm">
+      Get Started
+    </button>
+  </nav>
+
+  <!-- Hero -->
+  <main class="max-w-[1400px] mx-auto px-8 pt-24 pb-32">
+    <div class="max-w-4xl">
+      <h1 class="text-[5rem] md:text-[6.5rem] leading-[0.9] font-medium tracking-tighter mb-8">
+        The financial & operational<br>engine for schools.
+      </h1>
+      <p class="text-2xl text-core-gray max-w-2xl leading-snug mb-12">
+        Melo is the full-stack software built to run educational institutions. 
+        Collect fees, manage academics, and power your administrative workflows from one integrated platform.
+      </p>
+      <div class="flex gap-4">
+        <button class="bg-black text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl">
+          Contact Sales
+        </button>
+        <button class="bg-white border border-core-border px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-50 transition-all shadow-sm">
+          Read the Docs
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bento Grid -->
+  <section class="max-w-[1400px] mx-auto px-8 pb-32">
+    <div class="grid md:grid-cols-3 gap-6 auto-rows-[400px]">
+      
+      <!-- Big Box -->
+      <div class="md:col-span-2 bg-white rounded-3xl border border-core-border p-12 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+        <div class="max-w-md">
+          <h2 class="text-3xl font-semibold tracking-tight mb-4">Total Financial Clarity</h2>
+          <p class="text-core-gray text-lg">Send invoices, offer digital payment options to parents, and track outstanding balances natively. No more reconciling bank statements manually.</p>
+        </div>
+        <div>
+          <!-- Placeholder for UI graphic -->
+          <div class="h-32 bg-core-bg rounded-xl border border-core-border border-dashed w-full flex items-center justify-center text-core-gray font-medium">Fee Collection Dashboard UI</div>
+        </div>
+      </div>
+
+      <!-- Tall Box -->
+      <div class="bg-white rounded-3xl border border-core-border p-12 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+        <div>
+           <div class="w-12 h-12 bg-core-bg rounded-full flex items-center justify-center mb-6">📝</div>
+          <h2 class="text-2xl font-semibold tracking-tight mb-4">Academic Records</h2>
+          <p class="text-core-gray text-[17px]">Permanent, immutable transcripts. Generate hundreds of report cards with a single click.</p>
+        </div>
+        <a href="#" class="font-medium hover:underline text-lg">Learn more &rarr;</a>
+      </div>
+
+       <!-- Box 3 -->
+      <div class="bg-white rounded-3xl border border-core-border p-12 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+        <div>
+          <div class="w-12 h-12 bg-core-bg rounded-full flex items-center justify-center mb-6">🧑‍🏫</div>
+          <h2 class="text-2xl font-semibold tracking-tight mb-4">Parent Portal</h2>
+          <p class="text-core-gray text-[17px]">Give families a dedicated login to monitor attendance and pay bills directly.</p>
+        </div>
+        <a href="#" class="font-medium hover:underline text-lg">Learn more &rarr;</a>
+      </div>
+
+      <!-- Big Box 4 -->
+      <div class="md:col-span-2 bg-white rounded-3xl border border-core-border p-12 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow bg-black text-white">
+        <div class="max-w-md">
+          <h2 class="text-3xl font-semibold tracking-tight mb-4">Enterprise Grade Security</h2>
+          <p class="text-gray-400 text-lg">Role-based access control ensures teachers only see their subjects, while bursars see finances. Complete audit logs tracking every change.</p>
+        </div>
+        <div class="flex gap-8 border-t border-gray-800 pt-8 mt-8">
+          <div>
+            <div class="text-3xl font-medium mb-1">SOC-2</div>
+            <div class="text-sm font-medium text-gray-500">Compliance Ready</div>
+          </div>
+          <div>
+            <div class="text-3xl font-medium mb-1">E2E</div>
+            <div class="text-sm font-medium text-gray-500">Encryption</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</body>
+</html>

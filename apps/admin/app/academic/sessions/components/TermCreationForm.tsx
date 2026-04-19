@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReportCardCalculationMode } from "@school/shared";
 import { Hash } from "lucide-react";
 import { useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -25,6 +26,8 @@ export function TermCreationForm({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activateTerm, setActivateTerm] = useState(true);
+  const [resultCalculationMode, setResultCalculationMode] =
+    useState<ReportCardCalculationMode>("standalone");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,11 +65,13 @@ export function TermCreationForm({
         startDate: startTimestamp,
         endDate: endTimestamp,
         isActive: activateTerm,
+        resultCalculationMode,
       } as never);
       setTermName("First Term");
       setStartDate("");
       setEndDate("");
       setActivateTerm(true);
+      setResultCalculationMode("standalone");
       onSuccess("Academic term added successfully.");
     } catch (err) {
       onError("Term Creation Failed", getUserFacingErrorMessage(err, "Failed to create term"));
@@ -100,6 +105,23 @@ export function TermCreationForm({
             placeholder="e.g., First Term"
             className="w-full rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 text-sm font-medium transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none"
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest pl-1">
+            Report Card Mode
+          </label>
+          <select
+            value={resultCalculationMode}
+            onChange={(e) => setResultCalculationMode(e.target.value as ReportCardCalculationMode)}
+            className="w-full rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 text-sm font-medium transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none"
+          >
+            <option value="standalone">Standalone term report</option>
+            <option value="cumulative_annual">Cumulative annual report</option>
+          </select>
+          <p className="px-1 text-[10px] leading-relaxed font-medium text-slate-400">
+            Choose how this term should render on report cards. In most schools, first and second term stay standalone, while third term is set to cumulative annual.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo — The Heritage Academic (V1)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..800;1,6..96,400..800&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Bodoni Moda"', 'serif'],
+            sans: ['"Jost"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              bg: '#FBF9F5',
+              ink: '#111111',
+              muted: '#6B6A68',
+              gold: '#B68B43'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: theme('colors.brand.bg'); color: theme('colors.brand.ink'); }
+    .hero-line { border-bottom: 1px solid rgba(17,17,17,0.1); }
+  </style>
+</head>
+<body class="font-sans antialiased overflow-x-hidden">
+
+  <!-- Navigation -->
+  <nav class="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto hero-line">
+    <div class="font-serif text-3xl tracking-tight">Melo.</div>
+    <div class="hidden md:flex gap-8 text-sm font-medium tracking-wide">
+      <a href="#" class="hover:text-brand-gold transition-colors">Platform</a>
+      <a href="#" class="hover:text-brand-gold transition-colors">Solutions</a>
+      <a href="#" class="hover:text-brand-gold transition-colors">Pricing</a>
+    </div>
+    <button class="text-xs uppercase tracking-widest font-semibold border border-brand-ink px-6 py-2.5 hover:bg-brand-ink hover:text-brand-bg transition-colors">Book Demo</button>
+  </nav>
+
+  <!-- Hero Section -->
+  <main class="max-w-7xl mx-auto px-8 py-24 md:py-32 grid md:grid-cols-12 gap-12 items-end hero-line pb-24">
+    <div class="md:col-span-8">
+      <span class="text-xs uppercase tracking-[0.2em] font-medium text-brand-gold mb-8 block">The Academic Standard</span>
+      <h1 class="font-serif text-6xl md:text-8xl leading-[0.95] tracking-tight">
+        Your school deserves <br />
+        <i class="opacity-80">better software.</i>
+      </h1>
+    </div>
+    <div class="md:col-span-4 pb-4">
+      <p class="text-lg leading-relaxed text-brand-muted mb-8 max-w-sm">
+        Melo is the all-in-one platform for Nigerian schools — admin, academics, billing, and parent communication, running from one unified, beautiful dashboard.
+      </p>
+      <button class="bg-brand-ink text-brand-bg px-8 py-4 text-sm font-medium hover:bg-brand-gold hover:text-brand-ink transition-colors w-full sm:w-auto">
+        Explore the Platform
+      </button>
+    </div>
+  </main>
+
+  <!-- Trust Section -->
+  <section class="max-w-7xl mx-auto px-8 py-20 bg-white hero-line">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-12 text-center md:text-left">
+      <div>
+        <div class="font-serif text-5xl mb-2">99.9%</div>
+        <div class="text-xs uppercase tracking-widest text-brand-muted">Uptime</div>
+      </div>
+      <div>
+        <div class="font-serif text-5xl mb-2">1M+</div>
+        <div class="text-xs uppercase tracking-widest text-brand-muted">Results Processed</div>
+      </div>
+      <div>
+        <div class="font-serif text-5xl mb-2">50k+</div>
+        <div class="text-xs uppercase tracking-widest text-brand-muted">Parents Connected</div>
+      </div>
+      <div>
+        <div class="font-serif text-5xl mb-2">₦2B+</div>
+        <div class="text-xs uppercase tracking-widest text-brand-muted">Fees Collected</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features List (No Cards, Editorial Layout) -->
+  <section class="max-w-4xl mx-auto px-8 py-32">
+    <h2 class="font-serif text-4xl mb-20 text-center">Everything your school needs.<br>Nothing it doesn't.</h2>
+    
+    <div class="space-y-16">
+      <div class="grid md:grid-cols-[200px_1fr] border-t border-black/10 pt-8">
+        <div class="text-sm font-medium uppercase tracking-widest text-brand-gold mb-2">01 — Academics</div>
+        <div>
+          <h3 class="font-serif text-3xl mb-4">Results & Transcripts</h3>
+          <p class="text-brand-muted leading-relaxed max-w-xl text-lg">Generate comprehensive, error-free report cards with automated cumulative tracking. Say goodbye to spreadsheet chaos at the end of the term.</p>
+        </div>
+      </div>
+      
+      <div class="grid md:grid-cols-[200px_1fr] border-t border-black/10 pt-8">
+        <div class="text-sm font-medium uppercase tracking-widest text-brand-gold mb-2">02 — Finance</div>
+        <div>
+          <h3 class="font-serif text-3xl mb-4">Billing & Payments</h3>
+          <p class="text-brand-muted leading-relaxed max-w-xl text-lg">Real-time payment tracking, digital receipts, and bulk invoicing. Instantly identify defaulters and manage payment plans without hassle.</p>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-[200px_1fr] border-t border-black/10 pt-8">
+        <div class="text-sm font-medium uppercase tracking-widest text-brand-gold mb-2">03 — Comm.</div>
+        <div>
+          <h3 class="font-serif text-3xl mb-4">The Parent Portal</h3>
+          <p class="text-brand-muted leading-relaxed max-w-xl text-lg">A beautiful, secure surface for parents to view results, track attendance, and pay fees instantly via Paystack.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>
