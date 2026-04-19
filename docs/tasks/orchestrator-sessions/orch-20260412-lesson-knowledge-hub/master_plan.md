@@ -99,7 +99,7 @@ The new baseline is:
 
 ## Parallel Opportunities
 
-- `T04-T06` can run in parallel after `T02`
+- `T04-T06` can run in parallel after `T03`
 - `T07-T09` can overlap after `T05`
 - `T10-T13` can partially overlap after `T06` and `T08`
 - `T14-T15` stay sequential and last
@@ -110,7 +110,7 @@ The new baseline is:
 | --- | --- | --- | --- |
 | `T01` | Completed | A | Create the Takomi session shell and registry docs; validated and archived in completed/ |
 | `T02` | Completed | A | Feature blueprint and route/interface contract |
-| `T03` | Pending | A | Curriculum input audit and sample-driven format notes |
+| `T03` | Completed | A | Curriculum input audit and sample-driven format notes |
 | `T04` | Pending | B | Shared `packages/ai` foundation |
 | `T05` | Pending | B | Convex schema, ACL, visibility, and search foundation |
 | `T06` | Pending | B | Ingestion pipeline and audit logging |
