@@ -2,7 +2,7 @@
 
 **Session ID:** `orch-20260404-193645-relaunch`  
 **Created:** `2026-04-04`  
-**Status:** Active  
+**Status:** Complete  
 **Mode:** Takomi Orchestrator
 
 ## Overview
@@ -96,7 +96,7 @@ The new baseline is:
 | `T03` | Complete | B | Admin and teacher cumulative-report UX plus print-blocking review pass |
 | `T04` | Complete | B | Historical backfill workflow, admin route, and prior-total entry |
 | `T05` | Complete | C | Dev deployment replaced from exported production snapshot on 2026-04-04 |
-| `T06` | Pending | A | Verification, docs sync, and release-readiness pass |
+| `T06` | Complete | A | Verification evidence captured, docs synchronized, root release gate passing |
 | `T07` | Complete | D | Parent and family linking foundation |
 | `T08` | Complete | D | Portal MVP academic surface |
 | `T09` | Complete | D | Billing and payment foundation |
@@ -117,13 +117,13 @@ The new baseline is:
 
 ## Current Known Blockers
 
-- `T02-T23` are now completed foundation/product slices. The next recommended work is `T06`, the deferred release-readiness and verification pass.
-- E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a final release-hardening pass.
-- Lint and build still surface non-blocking verification noise in the teacher and platform apps that should be cleaned up before a release-hardening pass.
+- No blocking relaunch-session tasks remain; `T01-T23` are now complete.
+- E2E coverage now exists as a Playwright smoke baseline, but it still needs wider business-path expansion before a broader production hardening pass.
+- `@school/portal` currently has no package-local tests; the release gate now handles that honestly with `--passWithNoTests`, but real portal coverage is still a follow-up gap.
 
 ## Exit Criteria
 
-- Cumulative third-term reporting is fully specified and delegated
-- The new orchestration queue reflects the real current state
-- Dev-data reset is completed with a rollback backup preserved on disk
-- Remaining product work is staged behind the right foundations
+- Cumulative third-term reporting is fully specified and delegated ✅
+- The new orchestration queue reflects the real current state ✅
+- Dev-data reset is completed with a rollback backup preserved on disk ✅
+- Remaining product work is staged behind the right foundations ✅
