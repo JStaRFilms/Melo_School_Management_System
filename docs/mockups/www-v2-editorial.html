@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo — Modern Editorial (V2)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Bodoni Moda"', 'serif'],
+            sans: ['"Jost"', 'sans-serif'],
+          },
+          colors: {
+            editorial: {
+              black: '#0A0A0A',
+              white: '#FFFFFF',
+              gray: '#F3F4F6'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans bg-editorial-white text-editorial-black border-x-[12px] md:border-x-[24px] border-editorial-black min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b-[3px] border-editorial-black flex justify-between items-center px-6 py-4">
+    <div class="font-serif text-4xl uppercase tracking-tighter">MELO</div>
+    <div class="text-xs font-bold uppercase tracking-[0.2em]">Vol. 1 — School Management</div>
+    <button class="bg-editorial-black text-white px-6 py-2 text-sm font-semibold hover:bg-white hover:text-black hover:ring-2 hover:ring-inset hover:ring-black">Start Now</button>
+  </header>
+
+  <!-- Hero Grid Layout -->
+  <main class="grid md:grid-cols-2 border-b-[3px] border-editorial-black">
+    <!-- Left Huge Typography -->
+    <div class="p-8 md:p-16 border-b-[3px] md:border-b-0 md:border-r-[3px] border-editorial-black flex flex-col justify-between min-h-[60vh]">
+      <h1 class="font-serif text-[4rem] md:text-[6rem] leading-[0.85] tracking-tighter uppercase break-words align-baseline">
+        Better <br>
+        <span class="italic text-gray-400">Software</span> <br>
+        For Real <br> Schools.
+      </h1>
+      <div class="mt-12 text-sm max-w-sm uppercase tracking-wider font-semibold border-t-2 border-editorial-black pt-4">
+        Melo is the all-in-one platform for Nigerian schools — Admin, Academics, Billing, and Parent Communication.
+      </div>
+    </div>
+    
+    <!-- Right Structured Images/Stats -->
+    <div class="bg-editorial-gray grid grid-rows-2">
+      <div class="border-b-[3px] border-editorial-black p-8 md:p-12 flex flex-col justify-center bg-white">
+        <h2 class="font-serif text-4xl italic mb-4">"Built for how schools actually run."</h2>
+        <p class="text-sm font-medium">No generic SaaS clutter. Every feature exists solely because a real administrator needed it.</p>
+      </div>
+      <div class="grid grid-cols-2 border-editorial-black h-full">
+        <div class="border-r-[3px] border-editorial-black p-8 flex flex-col items-center justify-center text-center">
+          <div class="font-serif text-5xl mb-2">99%</div>
+          <div class="text-[10px] font-bold uppercase tracking-widest">Adoption Rate</div>
+        </div>
+        <div class="p-8 flex flex-col items-center justify-center text-center bg-editorial-black text-white">
+          <div class="text-xs uppercase tracking-[0.2em] mb-4">Book A Session</div>
+          <div class="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center hover:bg-white hover:text-black transition-colors cursor-pointer">
+            &rarr;
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Distinctive Capabilities -->
+  <section class="p-8 md:p-16">
+    <h2 class="font-serif text-5xl mb-12 uppercase">Capabilities</h2>
+    <div class="grid md:grid-cols-3 gap-[3px] bg-editorial-black border-[3px] border-editorial-black">
+      
+      <div class="bg-white p-8 group hover:bg-editorial-black hover:text-white transition-colors cursor-pointer min-h-[300px] flex flex-col justify-between">
+        <div class="font-serif text-3xl italic">01.</div>
+        <div>
+          <h3 class="text-2xl font-bold uppercase mb-4">Finance</h3>
+          <p class="text-sm opacity-80 group-hover:opacity-100">Stop chasing parents. Automate digital receipts, late tracking, and Paystack integration.</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-8 group hover:bg-editorial-black hover:text-white transition-colors cursor-pointer min-h-[300px] flex flex-col justify-between">
+        <div class="font-serif text-3xl italic">02.</div>
+        <div>
+          <h3 class="text-2xl font-bold uppercase mb-4">Academics</h3>
+          <p class="text-sm opacity-80 group-hover:opacity-100">Beautiful, printable report cards generated in seconds. Native cumulative tracking built in.</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-8 group hover:bg-editorial-black hover:text-white transition-colors cursor-pointer min-h-[300px] flex flex-col justify-between">
+        <div class="font-serif text-3xl italic">03.</div>
+        <div>
+          <h3 class="text-2xl font-bold uppercase mb-4">Portal</h3>
+          <p class="text-sm opacity-80 group-hover:opacity-100">A mobile-first parent portal that looks like a high-end app, not a clunky admin dashboard.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</body>
+</html>

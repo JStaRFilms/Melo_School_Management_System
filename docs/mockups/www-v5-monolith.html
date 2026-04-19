@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo | The Monolith</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { serif: ['"Bodoni Moda"', 'serif'], sans: ['"Jost"', 'sans-serif'] },
+          colors: { 
+            core: { white: '#FFFFFF', black: '#111111', muted: '#555555' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans text-core-black bg-core-white antialiased">
+
+  <div class="px-8 md:px-16 py-10 flex justify-between items-baseline max-w-[1600px] mx-auto">
+    <div class="font-serif text-3xl font-bold tracking-tighter">MELO</div>
+    <a href="#" class="text-sm font-semibold uppercase tracking-widest border-b border-black pb-1 hover:text-core-muted transition-colors">Start Conversation</a>
+  </div>
+
+  <main class="max-w-[1600px] mx-auto px-8 md:px-16 pt-24 pb-48">
+    <div class="grid md:grid-cols-12 gap-16">
+      
+      <div class="md:col-span-8">
+        <h1 class="font-serif text-[4rem] md:text-[6.5rem] leading-[0.95] tracking-tight mb-12">
+          Serious software <br> for serious schools.
+        </h1>
+        <p class="text-2xl text-core-muted max-w-2xl leading-relaxed font-light">
+          School administration shouldn't rely on chaotic spreadsheets and fragmented chat apps. Melo is the monolithic operational foundation designed specifically for institutional clarity.
+        </p>
+      </div>
+
+      <div class="md:col-span-4 flex flex-col justify-end space-y-12">
+        <div>
+          <div class="text-sm uppercase tracking-widest font-semibold mb-4 text-core-muted/70">01 / Foundation</div>
+          <h3 class="text-2xl font-serif mb-2">Academics</h3>
+          <p class="text-core-muted leading-relaxed">Immutable recordkeeping. From teacher assessment entry to flawlessly rendered, printable report cards for hundreds of students.</p>
+        </div>
+        <div>
+          <div class="text-sm uppercase tracking-widest font-semibold mb-4 text-core-muted/70">02 / Ledger</div>
+          <h3 class="text-2xl font-serif mb-2">Billing & Collections</h3>
+          <p class="text-core-muted leading-relaxed">Precision finance tracking. Automated late reminders, split-payment tracking, and 1-click Paystack checkout for parents.</p>
+        </div>
+        <div>
+          <div class="text-sm uppercase tracking-widest font-semibold mb-4 text-core-muted/70">03 / Communication</div>
+          <h3 class="text-2xl font-serif mb-2">Parent Experience</h3>
+          <p class="text-core-muted leading-relaxed">A professional, dedicated portal that reassures parents their child is in an institution that demands excellence.</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <section class="bg-core-black text-core-white">
+    <div class="max-w-[1600px] mx-auto px-8 md:px-16 py-32 flex flex-col md:flex-row justify-between items-center">
+      <h2 class="font-serif text-5xl md:text-7xl max-w-2xl leading-none">Ready to upgrade your institution?</h2>
+      <button class="bg-core-white text-core-black px-12 py-5 text-sm uppercase tracking-widest font-bold hover:bg-gray-200 transition-colors mt-12 md:mt-0">
+        Book a consultation
+      </button>
+    </div>
+  </section>
+
+</body>
+</html>

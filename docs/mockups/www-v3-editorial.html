@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo | Editorial Elegance</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { serif: ['"Bodoni Moda"', 'serif'], sans: ['"Jost"', 'sans-serif'] },
+          colors: { 
+            melo: { bg: '#FDFBF7', text: '#2A2A28', muted: '#767571', accent: '#A65A44' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans text-melo-text bg-melo-bg antialiased">
+
+  <nav class="border-b border-black/10">
+    <div class="max-w-6xl mx-auto px-8 flex justify-between items-center h-24">
+      <div class="font-serif text-4xl tracking-tight">Melo</div>
+      <div class="text-sm uppercase tracking-[0.15em] font-medium flex gap-12 text-melo-muted">
+        <a href="#" class="hover:text-melo-text transition-colors">Philosophy</a>
+        <a href="#" class="hover:text-melo-text transition-colors">Platform</a>
+        <a href="#" class="hover:text-melo-text transition-colors">Connect</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-8 py-32">
+    <h1 class="font-serif text-6xl md:text-8xl leading-[1.05] tracking-tight max-w-4xl text-melo-text mb-12">
+      A deliberate approach to school administration.
+    </h1>
+    
+    <div class="grid md:grid-cols-12 gap-16 border-t border-black/10 pt-16 mt-24">
+      
+      <div class="md:col-span-4">
+        <h2 class="text-sm uppercase tracking-[0.15em] font-medium text-melo-accent mb-6">The Context</h2>
+        <p class="text-xl leading-relaxed text-melo-muted font-light">
+          School leadership shouldn't mean drowning in uncoordinated spreadsheets. Melo brings quiet discipline to your operations, giving directors total visibility and giving staff their time back.
+        </p>
+        <button class="mt-10 pb-2 border-b border-melo-text font-medium text-lg hover:text-melo-accent hover:border-melo-accent transition-colors">
+          Schedule a Walkthrough &rarr;
+        </button>
+      </div>
+
+      <div class="md:col-span-7 md:col-start-6 space-y-16">
+        
+        <article>
+          <h3 class="font-serif text-4xl mb-4">Financial Operations</h3>
+          <p class="text-lg leading-relaxed text-melo-muted max-w-xl">
+            We treat your school's billing with institutional seriousness. From tracking term fees to bulk invoicing and reconciliation, Melo ensures you always know the exact health of your collections.
+          </p>
+        </article>
+
+        <article>
+          <h3 class="font-serif text-4xl mb-4">Academic Recordkeeping</h3>
+          <p class="text-lg leading-relaxed text-melo-muted max-w-xl">
+            Grades and assessments require absolute integrity. Our academic engine computes cumulative transcripts instantly, protecting data while removing the end-of-term rush for teachers.
+          </p>
+        </article>
+
+        <article>
+          <h3 class="font-serif text-4xl mb-4">Parent Communication</h3>
+          <p class="text-lg leading-relaxed text-melo-muted max-w-xl">
+            Parents measure a school's quality by its organization. The Melo portal provides an elegant, secure gateway for families to access sanctioned reports and fulfill financial obligations.
+          </p>
+        </article>
+
+      </div>
+
+    </div>
+  </main>
+
+  <div class="bg-[#1A1A19] text-melo-bg py-32 px-8 text-center mt-12">
+    <h2 class="font-serif text-5xl md:text-7xl mb-8">Ready to elevate your school?</h2>
+    <p class="text-xl max-w-2xl mx-auto font-light opacity-80 mb-12">Join the institutions that have upgraded from chaotic tooling to a unified, premium operating system.</p>
+    <button class="bg-melo-bg text-[#1A1A19] px-10 py-5 text-sm uppercase tracking-[0.15em] font-semibold hover:bg-melo-accent hover:text-white transition-colors">
+      Request Institutional Access
+    </button>
+  </div>
+
+</body>
+</html>

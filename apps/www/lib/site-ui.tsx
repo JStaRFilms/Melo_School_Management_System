@@ -1,10 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, Mail, MapPin, Menu, Phone, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { siteBrand, siteNavigation } from "@/site";
 
 /* ─── Utilities ─── */
-function cn(...parts: Array<string | false | null | undefined>): string {
+export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
@@ -96,54 +98,83 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 /* ─── Site Header ─── */
+import { useEffect, useState } from "react";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
+import { AnimatedDock } from "../components/ui/animated-dock";
+import { Home, Zap, CreditCard } from "lucide-react";
+
 export function SiteHeader() {
+  const { scrollY } = useScroll();
+  const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    const previous = scrollY.getPrevious() ?? 0;
+    if (latest > previous && latest > 150) {
+      setHidden(true);
+    } else {
+      setHidden(false);
+    }
+    setScrolled(latest > 20);
+  });
+
+  const dockItems = [
+    {
+       link: "/",
+       label: "Home",
+       Icon: <Home size={22} className="text-white drop-shadow-md" />,
+    },
+    {
+       link: "/features",
+       label: "Features",
+       Icon: <Zap size={22} className="text-white drop-shadow-md" />,
+    },
+    {
+       link: "/pricing",
+       label: "Pricing",
+       Icon: <CreditCard size={22} className="text-white drop-shadow-md" />,
+    },
+    {
+       link: "/contact",
+       label: "Contact",
+       Icon: <Mail size={22} className="text-white drop-shadow-md" />,
+    }
+  ];
+
   return (
-    <header className="sticky top-0 z-50 border-b border-melo-border/60 bg-melo-paper/80 backdrop-blur-2xl">
-      <Container>
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-melo-ink text-white text-sm font-bold transition-transform duration-300 group-hover:scale-105">
-              M
-            </div>
-            <span className="font-serif text-2xl text-melo-ink">Melo</span>
+    <motion.header 
+      variants={{
+        visible: { y: 0, opacity: 1 },
+        hidden: { y: "-150%", opacity: 0 }
+      }}
+      animate={hidden ? "hidden" : "visible"}
+      transition={{ duration: 0.35, ease: "easeInOut" }}
+      className={cn(
+        "fixed left-0 right-0 z-50 transition-all duration-300 px-4 pointer-events-none flex justify-center",
+        scrolled ? "top-4 sm:top-6" : "top-8 sm:top-10"
+      )}
+    >
+      <div className="flex justify-center items-center relative w-full max-w-7xl pointer-events-auto">
+         <div className="absolute left-0 sm:left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center justify-center p-2 group hover:scale-105 transition-transform duration-300">
+             <Link href="/">
+                <div className="flex bg-white text-melo-ink h-10 w-10 items-center justify-center rounded-full text-base font-bold shadow-lg border border-melo-border/20">
+                   M
+                </div>
+             </Link>
+         </div>
+
+         <AnimatedDock items={dockItems} />
+
+         <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2 pr-1">
+          <Link
+            href="/contact"
+            className="flex items-center justify-center h-12 px-6 rounded-full bg-melo-gold text-white text-sm font-medium hover:bg-amber-600 transition-colors shadow-[0_0_20px_rgba(202,138,4,0.15)] hover:shadow-[0_0_25px_rgba(202,138,4,0.3)]"
+          >
+            Demo
           </Link>
-
-          {/* Desktop Nav */}
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-            {siteNavigation.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="px-4 py-2 text-sm text-melo-muted transition-colors duration-200 hover:text-melo-ink cursor-pointer"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          {/* CTA */}
-          <div className="hidden items-center gap-3 md:flex">
-            <Link
-              href={`tel:${siteBrand.phone.replace(/\s+/g, "")}`}
-              className="text-sm text-melo-muted transition-colors duration-200 hover:text-melo-ink cursor-pointer"
-            >
-              {siteBrand.phone}
-            </Link>
-            <GoldButton href="/contact" size="default">
-              Book a demo
-            </GoldButton>
-          </div>
-
-          {/* Mobile menu toggle (CSS-only via :target or details/summary) */}
-          <div className="md:hidden">
-            <GoldButton href="/contact" size="default">
-              Demo
-            </GoldButton>
-          </div>
         </div>
-      </Container>
-    </header>
+      </div>
+    </motion.header>
   );
 }
 

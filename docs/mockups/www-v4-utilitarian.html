@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo — Utilitarian Grid (V4)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=JetBrains+Mono:wght@400;500;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Bodoni Moda"', 'serif'],
+            sans: ['"Jost"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            blueprint: {
+              bg: '#F2F2F2',
+              ink: '#1D1D1B',
+              accent: '#394A49'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans antialiased bg-blueprint-bg text-blueprint-ink">
+
+  <!-- Full-bleed Grid System -->
+  <div class="fixed inset-0 pointer-events-none z-0 flex justify-evenly opacity-5">
+    <div class="h-full border-r border-black w-full"></div>
+    <div class="h-full border-r border-black w-full"></div>
+    <div class="h-full border-r border-black w-full hidden md:block"></div>
+    <div class="h-full border-r border-black w-full hidden lg:block"></div>
+  </div>
+
+  <div class="relative z-10 min-h-screen flex flex-col border-[1px] border-black m-4 md:m-8 bg-white/50 backdrop-blur-sm">
+    
+    <!-- Header -->
+    <header class="border-b border-black flex justify-between items-stretch">
+      <div class="px-6 py-4 border-r border-black font-serif text-3xl flex-1 md:flex-none">Melo.</div>
+      <div class="hidden md:flex flex-1 divide-x divide-black text-xs font-mono uppercase tracking-tight">
+        <a href="#" class="px-6 py-5 hover:bg-black hover:text-white transition-colors flex-1 text-center">Module: Finance</a>
+        <a href="#" class="px-6 py-5 hover:bg-black hover:text-white transition-colors flex-1 text-center">Module: Academics</a>
+        <a href="#" class="px-6 py-5 hover:bg-black hover:text-white transition-colors flex-1 text-center">SYS: Admin</a>
+      </div>
+      <button class="px-8 py-5 bg-black text-white text-xs font-mono uppercase hover:bg-blueprint-accent transition-colors">INITIATE DEPLOYMENT &#8594;</button>
+    </header>
+
+    <!-- Hero -->
+    <main class="flex-1 grid md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-black">
+      <div class="md:col-span-8 p-8 md:p-16 flex flex-col justify-center">
+        <div class="text-xs font-mono bg-black text-white px-3 py-1 inline-block w-max mb-8 uppercase">V 2.0 / Stable Release</div>
+        <h1 class="font-serif text-5xl md:text-7xl leading-[1.0] mb-8">
+          The structural foundation for modern schools.
+        </h1>
+        <p class="text-lg md:text-xl text-black/70 max-w-2xl leading-relaxed">
+          High-performance, high-density management architecture. We stripped away the marketing fluff to give you tools that simply work.
+        </p>
+      </div>
+
+      <div class="md:col-span-4 grid grid-rows-3 divide-y divide-black">
+        <div class="p-8 flex items-center group cursor-pointer hover:bg-black hover:text-white transition-colors">
+          <div>
+            <div class="font-mono text-sm mb-2 opacity-50">01 / CAPABILITY</div>
+            <h3 class="text-2xl font-serif">Data Integrity</h3>
+          </div>
+        </div>
+        <div class="p-8 flex items-center group cursor-pointer hover:bg-black hover:text-white transition-colors">
+          <div>
+            <div class="font-mono text-sm mb-2 opacity-50">02 / CAPABILITY</div>
+            <h3 class="text-2xl font-serif">Instant Processing</h3>
+          </div>
+        </div>
+        <div class="p-8 flex items-center group cursor-pointer hover:bg-black hover:text-white transition-colors bg-blueprint-bg">
+          <div>
+            <div class="font-mono text-sm mb-2 opacity-50">ACTION REQUIRED</div>
+            <h3 class="text-xl font-bold uppercase underline">View The Blueprint</h3>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer Bar -->
+    <footer class="border-t border-black grid grid-cols-2 md:grid-cols-4 divide-x border-b-0 divide-black text-xs font-mono uppercase text-center">
+      <div class="py-4">Status: Operational</div>
+      <div class="py-4">Uptime: 99.98%</div>
+      <div class="py-4 hidden md:block">Region: Lagos, NG</div>
+      <div class="py-4 hidden md:block">Latency: 12ms</div>
+    </footer>
+  </div>
+
+</body>
+</html>

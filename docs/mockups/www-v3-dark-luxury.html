@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melo — Dark Mode Luxury (V3)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Bodoni Moda"', 'serif'],
+            sans: ['"Jost"', 'sans-serif'],
+          },
+          colors: {
+            lux: {
+              bg: '#050A08', 
+              surface: '#0B1511',
+              gold: '#C8A97E',
+              offwhite: '#F5F5F0',
+              border: 'rgba(200, 169, 126, 0.15)'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans antialiased bg-lux-bg text-lux-offwhite min-h-screen selection:bg-lux-gold selection:text-lux-bg">
+
+  <!-- Glow Effect Background -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-lux-gold/5 blur-[120px] pointer-events-none rounded-full"></div>
+
+  <!-- Navigation -->
+  <nav class="relative border-b border-lux-border">
+    <div class="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+      <div class="font-serif text-3xl font-bold tracking-tighter text-lux-gold">Melo</div>
+      <div class="hidden md:flex gap-10 text-[13px] uppercase tracking-widest text-lux-offwhite/70">
+        <a href="#" class="hover:text-lux-gold transition-colors">Features</a>
+        <a href="#" class="hover:text-lux-gold transition-colors">Security</a>
+        <a href="#" class="hover:text-lux-gold transition-colors">Pricing</a>
+      </div>
+      <button class="text-[13px] uppercase tracking-widest bg-lux-gold text-lux-bg px-6 py-2.5 hover:bg-white transition-colors">Book Consultation</button>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <main class="relative max-w-5xl mx-auto px-6 py-32 text-center">
+    <!-- Sophisticated typography layout -->
+    <div class="text-[11px] font-medium tracking-[0.3em] text-lux-gold uppercase mb-10">Premium Management Software</div>
+    <h1 class="font-serif text-6xl md:text-8xl leading-[1.05] tracking-tight mb-10">
+      Elevate your school's <br>
+      <span class="italic font-normal opacity-90 text-lux-gold">operational standard.</span>
+    </h1>
+    <p class="text-lg md:text-xl text-lux-offwhite/60 max-w-2xl mx-auto leading-relaxed font-light mb-14">
+      An elegantly engineered platform for Nigerian institutions. Streamline your administration, secure your finances, and impress your parent community.
+    </p>
+    
+    <div class="flex justify-center flex-col sm:flex-row gap-6">
+      <button class="bg-lux-gold text-lux-bg px-8 py-4 uppercase tracking-widest text-[13px] font-semibold hover:bg-white transition-colors">
+        Request Invitation
+      </button>
+      <button class="border border-lux-border text-lux-offwhite px-8 py-4 uppercase tracking-widest text-[13px] font-semibold hover:border-lux-gold transition-colors">
+        View Platform
+      </button>
+    </div>
+  </main>
+
+  <!-- Feature Showcase -->
+  <section class="max-w-7xl mx-auto px-6 py-24 border-t border-lux-border grid gap-8 md:grid-cols-3">
+    <!-- Column 1 -->
+    <div class="bg-lux-surface p-10 border border-lux-border rounded-sm hover:-translate-y-2 transition-transform duration-500">
+      <div class="text-lux-gold mb-6 font-serif text-2xl italic">I.</div>
+      <h3 class="text-xl mb-4 font-medium uppercase tracking-wider text-lux-offwhite">Meticulous Billing</h3>
+      <p class="text-sm leading-relaxed text-lux-offwhite/50">Comprehensive financial oversight. Automated reminders, zero reconciliation errors, and beautiful parent-facing invoices.</p>
+    </div>
+    <!-- Column 2 -->
+    <div class="bg-lux-surface p-10 border border-lux-border rounded-sm hover:-translate-y-2 transition-transform duration-500 md:-translate-y-6">
+      <div class="text-lux-gold mb-6 font-serif text-2xl italic">II.</div>
+      <h3 class="text-xl mb-4 font-medium uppercase tracking-wider text-lux-offwhite">Flawless Academics</h3>
+      <p class="text-sm leading-relaxed text-lux-offwhite/50">Cumulative data that persists year over year. Generate thousands of bespoke, print-ready report cards in milliseconds.</p>
+    </div>
+    <!-- Column 3 -->
+    <div class="bg-lux-surface p-10 border border-lux-border rounded-sm hover:-translate-y-2 transition-transform duration-500">
+      <div class="text-lux-gold mb-6 font-serif text-2xl italic">III.</div>
+      <h3 class="text-xl mb-4 font-medium uppercase tracking-wider text-lux-offwhite">Secure Architecture</h3>
+      <p class="text-sm leading-relaxed text-lux-offwhite/50">End-to-end access control. Your data is isolated, encrypted, and accessible only to authorized personnel.</p>
+    </div>
+  </section>
+
+</body>
+</html>
