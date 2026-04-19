@@ -732,17 +732,26 @@ export const getBillingData = query({
       throw new ConvexError("School not found");
     }
 
-    const [accessibleStudentsResult, settingsRecord, allInvoices] = await Promise.all([
+    const [accessibleStudentsResult, settingsRecord] = await Promise.all([
       getAccessibleStudents(ctx, { userId, schoolId, role: portalRole }),
       ctx.db
         .query("schoolBillingSettings")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
         .unique(),
-      ctx.db
-        .query("studentInvoices")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-        .collect(),
     ]);
+
+    const householdInvoices = (
+      await Promise.all(
+        accessibleStudentsResult.students.map(({ student }) =>
+          ctx.db
+            .query("studentInvoices")
+            .withIndex("by_student", (q: any) => q.eq("studentId", student._id))
+            .collect()
+        )
+      )
+    )
+      .flat()
+      .filter((invoice: any) => String(invoice.schoolId) === String(schoolId));
 
     const accessibleStudentIds = new Set(
       accessibleStudentsResult.students.map((entry) => String(entry.student._id))
@@ -764,11 +773,16 @@ export const getBillingData = query({
     }
 
     const selectedStudentId = selectedStudentRow?.student._id ?? null;
-    const householdInvoices = allInvoices.filter((invoice: any) =>
-      accessibleStudentIds.has(String(invoice.studentId))
+    const selectedAccessibleStudentIds = new Set(
+      accessibleStudentsResult.students.map((entry) => String(entry.student._id))
+    );
+    const filteredHouseholdInvoices = householdInvoices.filter((invoice: any) =>
+      selectedAccessibleStudentIds.has(String(invoice.studentId))
     );
     const selectedStudentInvoices = selectedStudentId
-      ? householdInvoices.filter((invoice: any) => String(invoice.studentId) === String(selectedStudentId))
+      ? filteredHouseholdInvoices.filter(
+          (invoice: any) => String(invoice.studentId) === String(selectedStudentId)
+        )
       : [];
 
     const invoicePaymentGroups = await Promise.all(
@@ -845,7 +859,7 @@ export const getBillingData = query({
       },
       householdSummary: {
         studentCount: accessibleStudentsResult.students.length,
-        ...summarizeInvoices(householdInvoices),
+        ...summarizeInvoices(filteredHouseholdInvoices),
       },
       studentSummary: summarizeInvoices(selectedStudentInvoices),
       invoices,

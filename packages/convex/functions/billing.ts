@@ -229,6 +229,18 @@ const gatewayEventInputValidator = v.object({
   receivedAt: v.optional(v.number()),
 });
 
+const portalPaymentVerificationResultValidator = v.object({
+  reference: v.string(),
+  verificationStatus: v.union(
+    v.literal("verified"),
+    v.literal("rejected"),
+    v.literal("ignored")
+  ),
+  invoiceNumber: v.union(v.string(), v.null()),
+  paymentRecorded: v.boolean(),
+  message: v.string(),
+});
+
 function assertAdmin(user: { isSchoolAdmin: boolean }) {
   if (!user.isSchoolAdmin) {
     throw new ConvexError("Admin access required");
@@ -2060,28 +2072,11 @@ export const verifyOnlinePaymentByReference = action({
   },
 });
 
-export const verifyOnlinePaymentByReferencePublic = action({
+export const verifyPortalOnlinePaymentByReference = action({
   args: {
     reference: v.string(),
   },
-  returns: v.object({
-    reference: v.string(),
-    verificationStatus: v.union(
-      v.literal("verified"),
-      v.literal("rejected"),
-      v.literal("ignored")
-    ),
-    invoiceNumber: v.union(v.string(), v.null()),
-    amountPaid: v.union(v.number(), v.null()),
-    currency: v.union(v.string(), v.null()),
-    paymentMethod: v.union(v.string(), v.null()),
-    payerName: v.union(v.string(), v.null()),
-    payerEmail: v.union(v.string(), v.null()),
-    paidAt: v.union(v.number(), v.null()),
-    balanceRemaining: v.union(v.number(), v.null()),
-    paymentRecorded: v.boolean(),
-    message: v.string(),
-  }),
+  returns: portalPaymentVerificationResultValidator,
   handler: async (
     ctx,
     args
@@ -2089,17 +2084,26 @@ export const verifyOnlinePaymentByReferencePublic = action({
     reference: string;
     verificationStatus: "verified" | "rejected" | "ignored";
     invoiceNumber: string | null;
-    amountPaid: number | null;
-    currency: string | null;
-    paymentMethod: string | null;
-    payerName: string | null;
-    payerEmail: string | null;
-    paidAt: number | null;
-    balanceRemaining: number | null;
     paymentRecorded: boolean;
     message: string;
   }> => {
+    const referenceContext: any = await ctx.runQuery(
+      (internal as any).functions.billingProviders.resolveSchoolPaystackReferenceContextInternal,
+      {
+        reference: args.reference,
+      }
+    );
+
+    if (!referenceContext) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    await ctx.runQuery(api.functions.portal.resolvePortalInvoicePaymentContext, {
+      invoiceId: referenceContext.invoiceId,
+    });
+
     const result = await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
+      expectedSchoolId: referenceContext.schoolId,
       attemptReconciliationSource: "return_page",
     });
 
@@ -2107,13 +2111,6 @@ export const verifyOnlinePaymentByReferencePublic = action({
       reference: result.event.reference,
       verificationStatus: result.event.verificationStatus,
       invoiceNumber: result.invoice?.invoiceNumber ?? result.event.invoiceNumber ?? null,
-      amountPaid: result.payment?.amountReceived ?? null,
-      currency: result.invoice?.currency ?? null,
-      paymentMethod: result.payment?.paymentMethod ?? null,
-      payerName: result.payment?.payerName ?? null,
-      payerEmail: result.payment?.payerEmail ?? null,
-      paidAt: result.payment?.receivedAt ?? null,
-      balanceRemaining: result.invoice?.balanceDue ?? null,
       paymentRecorded: result.payment !== null,
       message:
         result.event.verificationMessage ??

@@ -1,16 +1,22 @@
 import { PaystackReturnClient } from "./PaystackReturnClient";
 
-export default function PaystackReturnPage({
+type PaystackReturnSearchParams = {
+  reference?: string;
+  trxref?: string;
+  payment_ref?: string;
+};
+
+export default async function PaystackReturnPage({
   searchParams,
 }: {
-  searchParams?: {
-    reference?: string;
-    trxref?: string;
-    payment_ref?: string;
-  };
+  searchParams?: Promise<PaystackReturnSearchParams>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const reference =
-    searchParams?.reference ?? searchParams?.trxref ?? searchParams?.payment_ref ?? "";
+    resolvedSearchParams?.reference ??
+    resolvedSearchParams?.trxref ??
+    resolvedSearchParams?.payment_ref ??
+    "";
 
   return <PaystackReturnClient reference={reference} />;
 }

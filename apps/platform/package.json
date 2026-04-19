@@ -3,19 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3004",
-    "build": "next build",
+    "dev": "next dev --webpack --port 3004",
+    "build": "next build --webpack",
     "start": "next start --port 3004",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@convex-dev/better-auth": "0.11.4",
     "@school/auth": "workspace:*",
     "@school/convex": "workspace:*",
     "better-auth": "^1.2.0",
     "convex": "^1.0.0",
     "lucide-react": "^0.400.0",
-    "next": "^14.2.0",
+    "next": "^16.2.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "zod": "^3.22.0"
@@ -25,7 +26,7 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.0",
-    "eslint-config-next": "^14.2.35",
+    "eslint-config-next": "^16.2.4",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.4.0"

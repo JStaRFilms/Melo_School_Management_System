@@ -24,7 +24,7 @@ export function PaystackReturnClient({
   returnHref: string;
 }) {
   const verifyPayment = useAction(
-    "functions/billing:verifyOnlinePaymentByReferencePublic" as never
+    "functions/billing:verifyPortalOnlinePaymentByReference" as never
   );
   const [state, setState] = useState<VerificationState>("idle");
   const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);

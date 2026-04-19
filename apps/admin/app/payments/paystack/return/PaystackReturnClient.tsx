@@ -20,6 +20,27 @@ type PublicPaymentVerificationResult = {
   message: string;
 };
 
+type AdminPaymentVerificationResponse = {
+  event: {
+    reference: string;
+    verificationStatus: "verified" | "rejected" | "ignored";
+    invoiceNumber?: string | null;
+    verificationMessage?: string | null;
+  };
+  invoice: {
+    invoiceNumber: string;
+    currency: string;
+    balanceDue: number;
+  } | null;
+  payment: {
+    amountReceived: number;
+    paymentMethod: string;
+    payerName: string | null;
+    payerEmail: string | null;
+    receivedAt: number;
+  } | null;
+};
+
 type VerificationState = "idle" | "verifying" | "verified" | "failed";
 
 function formatMoney(amount: number, currency: string) {
@@ -39,7 +60,7 @@ function formatDateTime(value: number) {
 
 export function PaystackReturnClient({ reference }: { reference: string }) {
   const verifyPayment = useAction(
-    "functions/billing:verifyOnlinePaymentByReferencePublic" as never
+    "functions/billing:verifyOnlinePaymentByReference" as never
   );
   const [state, setState] = useState<VerificationState>("idle");
   const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);
@@ -58,10 +79,31 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
     setErrorMessage(null);
 
     try {
-      const verification = (await verifyPayment({ reference } as never)) as PublicPaymentVerificationResult;
-      setResult(verification);
+      const verification = (await verifyPayment({
+        reference,
+      } as never)) as AdminPaymentVerificationResponse;
+      const mappedResult: PublicPaymentVerificationResult = {
+        reference: verification.event.reference,
+        verificationStatus: verification.event.verificationStatus,
+        invoiceNumber:
+          verification.invoice?.invoiceNumber ?? verification.event.invoiceNumber ?? null,
+        amountPaid: verification.payment?.amountReceived ?? null,
+        currency: verification.invoice?.currency ?? null,
+        paymentMethod: verification.payment?.paymentMethod ?? null,
+        payerName: verification.payment?.payerName ?? null,
+        payerEmail: verification.payment?.payerEmail ?? null,
+        paidAt: verification.payment?.receivedAt ?? null,
+        balanceRemaining: verification.invoice?.balanceDue ?? null,
+        paymentRecorded: verification.payment !== null,
+        message:
+          verification.event.verificationMessage ??
+          (verification.payment !== null
+            ? "Payment verified successfully"
+            : "Payment verification completed"),
+      };
+      setResult(mappedResult);
       setState(
-        verification.verificationStatus === "verified" && verification.paymentRecorded
+        mappedResult.verificationStatus === "verified" && mappedResult.paymentRecorded
           ? "verified"
           : "failed"
       );
