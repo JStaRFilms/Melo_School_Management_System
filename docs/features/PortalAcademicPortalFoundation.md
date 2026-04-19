@@ -35,8 +35,8 @@ Give parents and students a real mobile-first portal where they can sign in, cho
 3. The portal workspace query resolves the school, the accessible student list, the selected child context, and the current academic term.
 4. Report-card and result-history screens use the same school-scoped portal query data so the child selector stays synchronized across views.
 5. Academic notifications are derived from report-card readiness, term reminders, and upcoming school events.
-6. The portal billing view resolves outstanding invoices, payment history, and portal-safe pay-now actions for the selected child.
-7. Portal pay-now links return to a public portal payment callback page that verifies the Paystack reference programmatically.
+6. The portal billing view resolves outstanding invoices, payment history, and portal-safe pay-now actions for the selected child using student-scoped invoice reads instead of school-wide scans.
+7. Portal pay-now links return to an authenticated portal payment callback page that verifies the Paystack reference only after portal access to the invoice is re-checked.
 
 ## Database Schema
 
@@ -79,6 +79,6 @@ The portal reuses existing academic and billing records:
 - Parents and students can enter a school-scoped dashboard.
 - The portal includes report-card, result-history, notification, and billing surfaces.
 - Parents and students can review school-fee invoices, payment history, and receipt/status details from the portal.
-- Eligible invoices can launch Paystack checkout directly from the portal and return to a public portal verification page.
+- Eligible invoices can launch Paystack checkout directly from the portal and return to an authenticated portal verification page.
 - The shared workspace navigation now includes a live portal destination with a billing tab.
 - Future cross-school parent chooser work can build on this foundation without rewriting the portal.

@@ -54,7 +54,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 6. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
 7. Admins can configure school-level billing defaults, choose the active Paystack merchant mode, and enable or disable online payments for the school.
 8. School admins can save and validate per-mode Paystack merchant credentials from the billing workspace without exposing raw secrets back to the normal UI.
-9. Online payment initialization is provided through a provider adapter, the admin can generate a front-desk payment URL, and the default return target is a public Paystack callback page that verifies the reference programmatically on the payer's device.
+9. Online payment initialization is provided through a provider adapter, the admin can generate a front-desk payment URL, and the default return target is an authenticated Paystack callback page inside the correct workspace.
 10. Every generated online payment link now creates a durable payment-attempt record that preserves the active merchant mode alongside the reference so pending references can survive cross-device handoff gaps.
 11. Paystack webhook callbacks now resolve the candidate school invoice context first and verify the signature with the correct school-specific merchant secret before mutating invoice state.
 12. The admin billing workspace can passively recheck pending references and surface whether they are still pending, verified, webhook reconciled, or need manual attention.
@@ -140,8 +140,8 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - School billing settings can be configured from the admin workflow, including invoice prefix, currency, due days, active merchant mode, and online-payment toggles.
 - The admin billing workspace now includes masked per-school Paystack merchant setup, save, and validation flows for both test and live modes.
 - A front-desk Paystack handoff flow can generate and share an invoice payment URL for the selected school invoice.
-- The payment-link action is school-scoped and now defaults to a public Paystack return page so cross-device payments do not bounce users into the admin workspace.
-- The public return page verifies the Paystack reference programmatically and reconciles the invoice without needing an admin confirmation click in the normal flow.
+- The payment-link action is school-scoped and now defaults to workspace-aware Paystack return pages so cross-device payments do not bounce users into the wrong workspace.
+- Admin and portal return pages now verify Paystack references only inside authenticated school or portal context instead of exposing a public verification surface.
 - Durable payment-attempt records now preserve generated references and provider-mode context so the admin workspace can continue reconciling skipped-return or cross-device payments in the background.
 - Paystack webhook verification now resolves the expected school invoice context and verifies with the correct school-specific merchant secret instead of a single global secret.
 - Duplicate-event deduplication and payment event persistence remain wired through a dedicated HTTP action as a background fallback.

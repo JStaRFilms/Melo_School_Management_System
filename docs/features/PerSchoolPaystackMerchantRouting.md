@@ -101,6 +101,12 @@ When the admin or portal initializes a Paystack payment:
 
 If the active merchant is not ready, payment initialization fails with a clear user-facing error.
 
+## Return-Page Verification Boundary
+
+- Admin return-page verification now runs only inside authenticated admin context.
+- Portal return-page verification now runs only inside authenticated parent or student context tied to the invoice being verified.
+- No public Convex action returns payer details or invoice balance data from a bare Paystack reference alone.
+
 ## Webhook Verification Routing
 
 Per-school webhook verification uses a school-aware reference resolution strategy:

@@ -17,18 +17,19 @@ interface RouteParams {
 }
 
 interface RouteProps {
-  params: RouteParams;
+  params: Promise<RouteParams>;
 }
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
-  const requestHeaders = headers();
+  const resolvedParams = await params;
+  const requestHeaders = await headers();
   const resolution = resolveSiteRequest(requestHeaders);
 
   if (resolution.status !== "active" || !resolution.school || !resolution.template) {
     return buildMissingSiteMetadata();
   }
 
-  const page = resolveRequestedPage(resolution.school, params.slug);
+  const page = resolveRequestedPage(resolution.school, resolvedParams.slug);
   if (!page) {
     return buildMissingSiteMetadata();
   }
@@ -36,15 +37,16 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
   return buildPageMetadata({ origin: buildCanonicalPublicOrigin({ headers: requestHeaders, resolution }), school: resolution.school, page });
 }
 
-export default function SitePage({ params }: RouteProps) {
-  const requestHeaders = headers();
+export default async function SitePage({ params }: RouteProps) {
+  const resolvedParams = await params;
+  const requestHeaders = await headers();
   const resolution = resolveSiteRequest(requestHeaders);
 
   if (resolution.status !== "active" || !resolution.school || !resolution.template) {
     notFound();
   }
 
-  const page = resolveRequestedPage(resolution.school, params.slug);
+  const page = resolveRequestedPage(resolution.school, resolvedParams.slug);
   if (!page) {
     notFound();
   }
