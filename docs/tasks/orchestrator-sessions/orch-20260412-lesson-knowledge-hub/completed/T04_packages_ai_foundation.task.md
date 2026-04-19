@@ -52,3 +52,8 @@ Excluded:
 
 - Package resolves from the workspace.
 - Typecheck covers the new shared contracts.
+
+## Notes
+
+- Implemented the shared `packages/ai` foundation with centralized OpenRouter provider/model config, typed document-generation contracts, prompt builders, and retry normalization helpers.
+- Verification passed with `pnpm install` and `pnpm --filter @school/ai typecheck`.

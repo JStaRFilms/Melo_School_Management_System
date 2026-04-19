@@ -111,7 +111,7 @@ The new baseline is:
 | `T01` | Completed | A | Create the Takomi session shell and registry docs; validated and archived in completed/ |
 | `T02` | Completed | A | Feature blueprint and route/interface contract |
 | `T03` | Completed | A | Curriculum input audit and sample-driven format notes |
-| `T04` | Pending | B | Shared `packages/ai` foundation |
+| `T04` | Completed | B | Shared `packages/ai` foundation with centralized OpenRouter AI SDK config, typed contracts, prompts, and retry helpers |
 | `T05` | Pending | B | Convex schema, ACL, visibility, and search foundation |
 | `T06` | Pending | B | Ingestion pipeline and audit logging |
 | `T07` | Pending | C | Admin library console |
@@ -134,5 +134,5 @@ The new baseline is:
 ## Current Known Constraints
 
 - The teacher and portal apps currently have no lesson-planning or topic-view routes, so navigation updates must be staged carefully.
-- No AI SDK package exists in the repo yet; the first foundation task must introduce it explicitly.
+- `packages/ai` now exists as the shared AI SDK foundation for later route handlers.
 - The curriculum sample folder is spelled `School curriculim example` in the repo and task files must reference that exact path.
