@@ -120,52 +120,53 @@ export function SiteHeader() {
 
   const dockItems = [
     {
-       link: "/",
-       label: "Home",
-       Icon: <Home size={22} className="text-white drop-shadow-md" />,
+      link: "/",
+      label: "Home",
+      Icon: <Home size={22} className="text-white drop-shadow-md" />,
     },
     {
-       link: "/features",
-       label: "Features",
-       Icon: <Zap size={22} className="text-white drop-shadow-md" />,
+      link: "/features",
+      label: "Features",
+      Icon: <Zap size={22} className="text-white drop-shadow-md" />,
     },
     {
-       link: "/pricing",
-       label: "Pricing",
-       Icon: <CreditCard size={22} className="text-white drop-shadow-md" />,
+      link: "/pricing",
+      label: "Pricing",
+      Icon: <CreditCard size={22} className="text-white drop-shadow-md" />,
     },
     {
-       link: "/contact",
-       label: "Contact",
-       Icon: <Mail size={22} className="text-white drop-shadow-md" />,
+      link: "/contact",
+      label: "Contact",
+      Icon: <Mail size={22} className="text-white drop-shadow-md" />,
     }
   ];
 
   return (
-    <motion.header 
+    <motion.header
       variants={{
         visible: { y: 0, opacity: 1 },
-        hidden: { y: "-150%", opacity: 0 }
+        hidden: { y: 120, opacity: 0 }
       }}
       animate={hidden ? "hidden" : "visible"}
       transition={{ duration: 0.35, ease: "easeInOut" }}
       className={cn(
         "fixed left-0 right-0 z-50 transition-all duration-300 px-4 pointer-events-none flex justify-center",
-        scrolled ? "top-4 sm:top-6" : "top-8 sm:top-10"
+        "bottom-4 sm:bottom-auto",
+        scrolled ? "sm:top-6" : "sm:top-10"
       )}
     >
       <div className="flex justify-center items-center relative w-full max-w-7xl pointer-events-auto">
-         <div className="absolute left-0 sm:left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center justify-center p-2 group hover:scale-105 transition-transform duration-300">
-             <Link href="/">
-                <div className="flex bg-white text-melo-ink h-10 w-10 items-center justify-center rounded-full text-base font-bold shadow-lg border border-melo-border/20">
-                   M
-                </div>
-             </Link>
-         </div>
+        <div className="absolute left-0 sm:left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center justify-center p-2 group hover:scale-105 transition-transform duration-300">
+          <Link href="/">
+            <div className="flex bg-white text-melo-ink h-10 w-10 items-center justify-center rounded-full text-base font-bold shadow-lg border border-melo-border/20">
+              M
+            </div>
+          </Link>
+        </div>
 
-         <AnimatedDock items={dockItems} />
+        <AnimatedDock items={dockItems} className="sm:mx-auto" />
 
-         <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2 pr-1">
+        <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2 pr-1">
           <Link
             href="/contact"
             className="flex items-center justify-center h-12 px-6 rounded-full bg-melo-gold text-white text-sm font-medium hover:bg-amber-600 transition-colors shadow-[0_0_20px_rgba(202,138,4,0.15)] hover:shadow-[0_0_25px_rgba(202,138,4,0.3)]"
@@ -242,8 +243,8 @@ export function SiteFooter() {
 
         {/* Bottom bar */}
         <div className="mt-16 flex flex-col items-center justify-between gap-4 border-t border-stone-800 pt-8 text-xs text-stone-500 sm:flex-row">
-          <p>© {new Date().getFullYear()} Melo. All rights reserved.</p>
-          <p>Built in Lagos, Nigeria 🇳🇬</p>
+          <p>© {new Date().getFullYear()} Melo. Built by J StaR Films Studios.</p>
+          <p>Built in Abuja, Nigeria 🇳🇬</p>
         </div>
       </Container>
     </footer>

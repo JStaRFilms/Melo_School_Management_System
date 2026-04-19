@@ -12,11 +12,11 @@ export const siteBrand = {
   name: "Melo",
   tagline: "School management, simplified.",
   description:
-    "Melo is one platform for everything your school needs — admin, academics, billing, and parent communication — built for how Nigerian schools actually run.",
+    "Melo is the unified operating system for Nigerian schools — from academics and billing to parent visibility, built for how your institution actually runs.",
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://meloschool.com",
-  phone: "+234 812 345 6789",
-  email: "hello@meloschool.com",
-  address: "Lagos, Nigeria",
+  phone: "+234 815 265 7887", // Keep placeholder or update if you have the studio line
+  email: "melo@jstarfilmsstudios.com",
+  address: "Abuja, Nigeria",
   hours: "Monday – Friday, 9 am – 5 pm",
 } as const;
 
@@ -31,35 +31,51 @@ export const siteNavigation: SiteNavigationItem[] = [
 export const capabilities = [
   {
     title: "Student Records",
-    description: "Admissions, enrollment, class placement, and complete academic histories — all in one place.",
+    description: "Automated enrollment, class placement, and session-aware academic histories that follow every student.",
   },
   {
-    title: "Result Management",
-    description: "Grade entry, broadsheets, report cards, and cumulative results across all terms.",
+    title: "Academic Command",
+    description: "Grade entry, broadsheet compilation, and professional report cards that reflect your school's standards.",
   },
   {
-    title: "Fee Collection",
-    description: "Invoice generation, Paystack integration, payment tracking, and real-time financial reporting.",
+    title: "Billing Clarity",
+    description: "Invoice generation, Paystack collection, and real-time debt tracking built for the school bursary.",
   },
   {
-    title: "Teacher Workbench",
-    description: "Attendance, grade entry, and class management built for teachers who need to move fast.",
+    title: "Staff Coordination",
+    description: "Attendance, approval chains, and teacher-subject mapping that keeps your academic team in sync.",
   },
   {
-    title: "Parent Portal",
-    description: "Results, invoices, payment history and attendance — parents see what matters, when it matters.",
+    title: "Family Visibility",
+    description: "A secure portal where parents track performance and clear fees without needing to visit the office.",
   },
   {
-    title: "School Website",
-    description: "A public-facing site for your school, managed from the same platform. No external tools needed.",
+    title: "Public Presence",
+    description: "A professional school website that syncs your admissions and results directly from the dashboard.",
   },
 ];
 
-export const trustPoints = [
-  { metric: "99.9%", label: "Uptime guarantee" },
-  { metric: "< 2s", label: "Average page load" },
-  { metric: "256-bit", label: "Data encryption" },
+export const operationalProof = [
+  { value: "Draft to Publish", label: "Academic results workflow" },
+  { value: "Session-Aware", label: "Automated term management" },
+  { value: "Audit-Ready", label: "Fee, invoice & balance tracking" },
 ];
+
+export const workflowMarkers = [
+  "Session synchronization",
+  "Broadsheet automated compilation",
+  "Billing hierarchy tracking",
+  "Parent visibility control",
+  "Teacher-subject mapping",
+  "Academic approval chains",
+  "Debt tracking & reconciliation",
+  "Attendance trend flagging",
+  "Cumulative GPA reporting",
+  "Digital payment receipting",
+];
+
+
+
 
 /* ─── Features Page Data ─── */
 export const featureGroups = [

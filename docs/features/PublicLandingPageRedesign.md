@@ -191,6 +191,12 @@ Purpose:
 - move from emotion into product credibility
 - present the platform as composed, capable, and thoughtfully designed
 
+Implementation note:
+
+- the reveal should use a short Remotion walkthrough built from faithful, video-safe clones of real product surfaces
+- shared product UI should be reused where practical, especially report-card presentation
+- the video should favor readability and real workflow proof over broad fake-dashboard spectacle
+
 ### 4. Expansion Story Moment
 
 Use one scroll-led expansion section where a school-life moment transitions into platform capability.
@@ -202,6 +208,11 @@ Examples of the narrative bridge:
 - from paper-heavy workflows to a confident digital command center
 
 This should happen once and feel intentional.
+
+Implementation note:
+
+- the visual should use a Remotion-built still derived from real product surfaces rather than a random screenshot
+- the frame should imply operational alignment across academics, billing, approvals, and parent visibility
 
 ### 5. Proof Band
 
@@ -280,6 +291,8 @@ This keeps the homepage aligned with the 200-line modularity rule.
 - motion should support narrative flow
 - avoid stacking several heavy animated systems at once
 - keep mobile performance and readability intact
+- scroll-led sections should use mobile-specific timing and scroll budgets when the overlay content becomes taller on small screens
+- when a desktop sticky reveal does not fit a phone viewport cleanly, provide a mobile-specific static or reduced-motion composition rather than forcing the same choreography
 - provide graceful static fallbacks where motion is reduced
 
 ---

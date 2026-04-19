@@ -40,12 +40,12 @@ export const WovenLightHero = () => {
   const headline = "Run your school with absolute clarity.";
   
   return (
-    <div className="relative flex h-screen min-h-[700px] w-full flex-col items-center justify-center overflow-hidden bg-melo-ink rounded-b-[40px] sm:rounded-b-[60px]">
+    <div className="relative flex min-h-[740px] w-full flex-col items-center justify-center overflow-hidden bg-melo-ink rounded-b-[40px] sm:h-screen sm:min-h-[700px] sm:rounded-b-[60px]">
       <WovenCanvas />
       
       <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" />
       
-      <div className="relative z-20 text-center px-4 max-w-4xl pt-32 sm:pt-40">
+      <div className="relative z-20 max-w-4xl px-4 pb-28 pt-24 text-center sm:pt-40 sm:pb-0">
          <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -57,7 +57,7 @@ export const WovenLightHero = () => {
             </span>
           </motion.div>
 
-        <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] tracking-tight leading-[1.05] text-white" style={{ fontFamily: "'Instrument Serif', serif" }}>
+        <h1 className="text-[3rem] leading-[0.98] tracking-tight text-white sm:text-6xl md:text-7xl lg:text-[5.5rem]" style={{ fontFamily: "'Instrument Serif', serif" }}>
             {headline.split(" ").map((word, i) => (
                 <span key={i} className="inline-block">
                     {word.split("").map((char, j) => (
@@ -73,13 +73,13 @@ export const WovenLightHero = () => {
           custom={headline.length}
           initial={{ opacity: 0, y: 30 }}
           animate={textControls}
-          className="mx-auto mt-8 max-w-2xl text-lg text-stone-300 font-light leading-relaxed"
+          className="mx-auto mt-6 max-w-[20rem] text-base font-light leading-relaxed text-stone-300 sm:mt-8 sm:max-w-2xl sm:text-lg"
           style={{ fontFamily: "'DM Sans', sans-serif" }}
         >
           Admissions, academics, billing, and parent communication. 
           One unified platform built to handle the rigorous complexity of Nigerian school operations.
         </motion.p>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={buttonControls} className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={buttonControls} className="mt-10 flex flex-col items-center justify-center gap-3 sm:mt-12 sm:flex-row sm:gap-4">
           <GoldButton href="/contact" size="lg" className="h-14 px-8 text-[15px]">
               Book a walkthrough
           </GoldButton>

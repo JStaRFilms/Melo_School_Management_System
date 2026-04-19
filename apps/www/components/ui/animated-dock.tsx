@@ -37,7 +37,7 @@ export const AnimatedDock = ({ className, items }: AnimatedDockProps) => {
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
       className={cn(
-        "mx-auto flex h-16 items-end gap-4 rounded-xl sm:rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 shadow-lg px-2 sm:px-4 pb-2 sm:pb-3",
+        "mx-auto flex h-12 items-center gap-2 rounded-[1.15rem] border border-white/10 bg-black/30 px-2.5 py-1.5 backdrop-blur-2xl shadow-[0_18px_48px_rgba(0,0,0,0.28)] sm:h-14 sm:gap-2.5 sm:rounded-[1.35rem] sm:px-3 sm:py-2",
         className,
       )}
     >
@@ -70,18 +70,18 @@ export const DockItem = ({ mouseX, children, item }: DockItemProps) => {
     return val - bounds.x - bounds.width / 2;
   });
 
-  const widthSync = useTransform(distance, [-150, 0, 150], [40, 80, 40]);
+  const widthSync = useTransform(distance, [-180, 0, 180], [40, 52, 40]);
   const width = useSpring(widthSync, {
-    mass: 0.1,
-    stiffness: 150,
-    damping: 12,
+    mass: 0.2,
+    stiffness: 260,
+    damping: 24,
   });
 
-  const iconScale = useTransform(width, [40, 80], [1, 1.5]);
+  const iconScale = useTransform(width, [40, 52], [1, 1.1]);
   const iconSpring = useSpring(iconScale, {
-    mass: 0.1,
-    stiffness: 150,
-    damping: 12,
+    mass: 0.2,
+    stiffness: 260,
+    damping: 24,
   });
 
   return (
@@ -89,7 +89,7 @@ export const DockItem = ({ mouseX, children, item }: DockItemProps) => {
       ref={ref}
       style={{ width }}
       title={item.label}
-      className="aspect-square w-10 sm:w-12 rounded-full bg-black/40 text-white flex items-center justify-center relative group"
+      className="relative flex aspect-square w-10 items-center justify-center rounded-full bg-white/[0.045] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_24px_rgba(0,0,0,0.16)] transition-colors duration-200 group hover:bg-white/[0.08] sm:w-11"
     >
       <motion.div
         style={{ scale: iconSpring }}
@@ -98,7 +98,7 @@ export const DockItem = ({ mouseX, children, item }: DockItemProps) => {
         {children}
       </motion.div>
       {item.label && (
-         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/80 rounded block md:hidden group-hover:block text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/85 rounded-md hidden group-hover:block text-[10px] text-white whitespace-nowrap pointer-events-none">
            {item.label}
          </div>
       )}

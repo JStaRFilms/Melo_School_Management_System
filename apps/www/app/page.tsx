@@ -32,8 +32,8 @@ export default function HomePage() {
       />
       <WovenLightHero />
       <FramedReveal />
-      <ProofBand />
       <ExpansionStory />
+      <ProofBand />
       <CapabilityComposition />
       <FinalCta />
     </>

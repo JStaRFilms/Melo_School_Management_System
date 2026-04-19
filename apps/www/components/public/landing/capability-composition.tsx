@@ -28,15 +28,15 @@ export function CapabilityComposition() {
       <Container>
         <div className="flex flex-col lg:flex-row gap-16 lg:gap-24 items-start mb-24">
           <div className="lg:w-1/2">
-            <SectionLabel>Orchestrated Capabilities</SectionLabel>
+            <SectionLabel>Capabilities</SectionLabel>
             <h2 className="mt-8 font-serif text-5xl sm:text-7xl text-melo-ink leading-[1.05] tracking-tight">
-              An ecosystem of <br />
-              <span className="text-stone-400 italic font-light">operational excellence.</span>
+              One system to run <br />
+              <span className="text-stone-400 italic font-light">the whole school.</span>
             </h2>
           </div>
           <div className="lg:w-1/2 pt-4">
              <p className="text-xl text-melo-muted font-light leading-relaxed max-w-xl">
-               Melo isn&apos;t just a collection of tools. It&apos;s a cohesive environment where every module feeds into the next, ensuring your school runs with precision and grace.
+               Fragmented tools create fragmented schools. Melo replaces the chaos of disconnected spreadsheets and paper trails with a single, calm operating system designed for the institutional realities of Nigerian education.
              </p>
           </div>
         </div>
@@ -56,7 +56,7 @@ export function CapabilityComposition() {
                 <div className="h-12 w-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/10">
                    <GraduationCap className="w-6 h-6 text-melo-gold" />
                 </div>
-                <span className="text-sm font-medium tracking-widest uppercase text-white/60">Academic Command</span>
+                 <span className="text-sm font-medium tracking-widest uppercase text-white/60">Core Engine</span>
               </div>
               
               <div className="mt-auto">
@@ -65,20 +65,20 @@ export function CapabilityComposition() {
                    <p className="text-stone-400 text-lg sm:text-xl font-light leading-relaxed">
                      {capabilities[1].description}
                    </p>
-                   <ul className="space-y-4 text-stone-300">
-                      <li className="flex gap-3 items-center">
-                         <div className="h-1.5 w-1.5 rounded-full bg-melo-gold" />
-                         <span className="text-sm">Automated broadsheets</span>
-                      </li>
-                      <li className="flex gap-3 items-center">
-                         <div className="h-1.5 w-1.5 rounded-full bg-melo-gold" />
-                         <span className="text-sm">Cumulative result analysis</span>
-                      </li>
-                      <li className="flex gap-3 items-center">
-                         <div className="h-1.5 w-1.5 rounded-full bg-melo-gold" />
-                         <span className="text-sm">Instant report card generation</span>
-                      </li>
-                   </ul>
+                    <ul className="space-y-4 text-stone-400">
+                        <li className="flex gap-3 items-center">
+                           <div className="h-1 w-1 rounded-full bg-melo-gold" />
+                           <span className="text-sm font-light">Automated broadsheets with class-specific logic</span>
+                        </li>
+                        <li className="flex gap-3 items-center">
+                           <div className="h-1 w-1 rounded-full bg-melo-gold" />
+                           <span className="text-sm font-light">Cumulative performance & session-over-session trends</span>
+                        </li>
+                        <li className="flex gap-3 items-center">
+                           <div className="h-1 w-1 rounded-full bg-melo-gold" />
+                           <span className="text-sm font-light">Bespoke, brand-aligned report card generation</span>
+                        </li>
+                     </ul>
                 </div>
                 <GoldButton href="/features" className="w-full sm:w-auto h-14 px-10">Explore Academics</GoldButton>
               </div>
@@ -95,18 +95,18 @@ export function CapabilityComposition() {
             </div>
             
             <h3 className="font-serif text-3xl text-melo-ink mb-6">{capabilities[2].title}</h3>
-            <p className="text-melo-muted text-lg leading-relaxed mb-10 font-light">
-               Integrated fee collection with Paystack, automated invoicing, and real-time financial tracking for stakeholders.
-            </p>
+             <p className="text-melo-muted text-lg leading-relaxed mb-10 font-light">
+               Automate invoices, track payments via Paystack, and generate digital receipts that reconcile instantly with your bursary records.
+             </p>
             
-            <div className="mt-auto pt-8 border-t border-stone-100 grid grid-cols-2 gap-4 text-center">
-                <div>
-                   <div className="text-2xl font-serif text-melo-ink">₦0</div>
-                   <div className="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Unreconciled Fees</div>
+            <div className="mt-auto pt-8 border-t border-stone-100 flex items-center justify-between gap-4">
+                <div className="flex flex-col">
+                   <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-bold mb-1">Reconciliation</span>
+                   <span className="text-xl font-serif text-melo-ink italic">Zero leakage</span>
                 </div>
-                <div>
-                   <div className="text-2xl font-serif text-melo-ink">Instant</div>
-                   <div className="text-[10px] uppercase tracking-wider text-stone-400 font-bold">Billing Cycles</div>
+                <div className="flex flex-col text-right">
+                   <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-bold mb-1">Status</span>
+                   <span className="text-xl font-serif text-melo-ink italic">Audit-Ready</span>
                 </div>
             </div>
           </motion.div>
@@ -117,9 +117,9 @@ export function CapabilityComposition() {
                <Users className="w-5 h-5 text-melo-ink" />
                <h4 className="font-medium tracking-tight text-melo-ink">{capabilities[4].title}</h4>
             </div>
-            <p className="text-melo-muted text-base leading-relaxed font-light mb-8">
-               A dedicated mobile-first portal where parents track performance, pay fees, and stay in the loop.
-            </p>
+             <p className="text-melo-muted text-base leading-relaxed font-light mb-8">
+               Give parents instant access to results, invoices, and attendance—reducing office calls and building long-term trust.
+             </p>
             <div className="mt-auto flex -space-x-3">
                {[1,2,3,4].map(i => (
                  <div key={i} className="h-10 w-10 rounded-full border-2 border-stone-50 bg-stone-200" />
@@ -131,12 +131,12 @@ export function CapabilityComposition() {
           </div>
 
           <div className="md:col-span-4 bg-stone-50 rounded-[2.5rem] p-10 border border-melo-border/50 flex flex-col">
-            <div className="flex items-center gap-3 mb-8">
-               <BarChart3 className="w-5 h-5 text-melo-ink" />
-               <h4 className="font-medium tracking-tight text-melo-ink">Operational Insight</h4>
+             <div className="flex items-center gap-3 mb-8">
+               <ShieldCheck className="w-5 h-5 text-melo-ink" />
+               <h4 className="font-medium tracking-tight text-melo-ink">{capabilities[3].title}</h4>
             </div>
             <p className="text-melo-muted text-base leading-relaxed font-light mb-8">
-               Advanced analytics for proprietors to monitor enrollment trends, financial health, and academic standards.
+               Coordinate staff with structured approval workflows for results, expenses, and records across every session.
             </p>
             <div className="mt-auto grid grid-cols-4 items-end gap-1.5 h-16">
                <div className="h-[40%] bg-stone-200 rounded-sm" />
@@ -152,9 +152,9 @@ export function CapabilityComposition() {
                <Zap className="w-5 h-5 text-white" />
                <h4 className="font-medium tracking-tight whitespace-nowrap">{capabilities[5].title}</h4>
             </div>
-            <p className="text-white/80 text-base leading-relaxed font-light mb-8 relative z-10">
-               Launch your official school portal on your own domain with academic results and admissions built right in.
-            </p>
+             <p className="text-white/80 text-base leading-relaxed font-light mb-8 relative z-10">
+               A professional public-facing site that syncs admissions and results directly from your management dashboard.
+             </p>
             <div className="mt-auto h-6 w-32 rounded bg-white/20 relative z-10" />
           </div>
         </div>
