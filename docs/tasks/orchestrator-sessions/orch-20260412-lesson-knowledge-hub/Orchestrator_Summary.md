@@ -19,9 +19,9 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Session Counts
 
-- Pending task files: `8`
+- Pending task files: `7`
 - In-progress task files: `0`
-- Completed task files: `7`
+- Completed task files: `8`
 
 ## Linked Blueprint
 
@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Proceed with `T08` when ready to continue the admin/template lane now that the library console is complete.
+Proceed with `T09` when ready to continue the teacher lane now that the admin/template lane is complete.
