@@ -113,7 +113,7 @@ The new baseline is:
 | `T03` | Completed | A | Curriculum input audit and sample-driven format notes |
 | `T04` | Completed | B | Shared `packages/ai` foundation with centralized OpenRouter AI SDK config, typed contracts, prompts, and retry helpers |
 | `T05` | Completed | B | Convex schema, ACL, visibility, and search foundation; added school-first indexes, access helpers, and focused tests |
-| `T06` | Pending | B | Ingestion pipeline and audit logging |
+| `T06` | Completed | B | Ingestion pipeline and audit logging; added upload/link ingestion, native PDF-first extraction, chunk writes, status tracking, and audit events |
 | `T07` | Pending | C | Admin library console |
 | `T08` | Pending | C | Admin template studio |
 | `T09` | Pending | D | Teacher library and publish flow |

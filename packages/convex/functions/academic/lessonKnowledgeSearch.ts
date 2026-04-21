@@ -30,7 +30,14 @@ export const KNOWLEDGE_SEARCH_CONTRACTS = {
     tableName: "knowledgeMaterials",
     indexName: "search_search_text",
     searchField: "searchText",
-    filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "sourceType"],
+    filterFields: [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+      "topicId",
+      "sourceType",
+      "searchStatus",
+    ],
     requiresStaffAccess: true,
   },
   knowledgeMaterialChunks: {

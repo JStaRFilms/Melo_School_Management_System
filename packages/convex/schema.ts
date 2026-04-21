@@ -65,6 +65,15 @@ const knowledgeSearchStatusValidator = v.union(
   v.literal("failed")
 );
 
+const knowledgeMaterialProcessingStatusValidator = v.union(
+  v.literal("awaiting_upload"),
+  v.literal("queued"),
+  v.literal("extracting"),
+  v.literal("ocr_needed"),
+  v.literal("ready"),
+  v.literal("failed")
+);
+
 const knowledgeTemplateScopeValidator = v.union(
   v.literal("subject_and_level"),
   v.literal("subject_only"),
@@ -112,7 +121,13 @@ const knowledgeAuditEventTypeValidator = v.union(
   v.literal("overridden"),
   v.literal("topic_attached"),
   v.literal("class_bound"),
-  v.literal("visibility_changed")
+  v.literal("visibility_changed"),
+  v.literal("created"),
+  v.literal("ingestion_started"),
+  v.literal("extraction_completed"),
+  v.literal("ocr_needed"),
+  v.literal("ingestion_failed"),
+  v.literal("retry_requested")
 );
 
 const knowledgeTopicStatusValidator = v.union(
@@ -1104,6 +1119,12 @@ export default defineSchema({
     externalUrl: v.optional(v.string()),
     searchStatus: knowledgeSearchStatusValidator,
     searchText: v.string(),
+    processingStatus: knowledgeMaterialProcessingStatusValidator,
+    ingestionErrorMessage: v.union(v.string(), v.null()),
+    ingestionAttemptCount: v.number(),
+    labelSuggestions: v.array(v.string()),
+    chunkCount: v.number(),
+    indexedAt: v.union(v.number(), v.null()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
@@ -1123,9 +1144,10 @@ export default defineSchema({
     .index("by_school_and_topic", ["schoolId", "topicId"])
     .index("by_school_and_source_type", ["schoolId", "sourceType"])
     .index("by_school_and_search_status", ["schoolId", "searchStatus"])
+    .index("by_school_and_processing_status", ["schoolId", "processingStatus"])
     .searchIndex("search_search_text", {
       searchField: "searchText",
-      filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "sourceType"],
+      filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "sourceType", "searchStatus"],
     }),
 
   knowledgeMaterialClassBindings: defineTable({
