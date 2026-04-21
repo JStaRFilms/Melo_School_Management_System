@@ -114,7 +114,7 @@ The new baseline is:
 | `T04` | Completed | B | Shared `packages/ai` foundation with centralized OpenRouter AI SDK config, typed contracts, prompts, and retry helpers |
 | `T05` | Completed | B | Convex schema, ACL, visibility, and search foundation; added school-first indexes, access helpers, and focused tests |
 | `T06` | Completed | B | Ingestion pipeline and audit logging; added upload/link ingestion, native PDF-first extraction, chunk writes, status tracking, and audit events |
-| `T07` | Pending | C | Admin library console |
+| `T07` | Completed | C | Admin library console; added `/academic/knowledge/library` with Convex-backed search, detail inspection, and admin override actions |
 | `T08` | Pending | C | Admin template studio |
 | `T09` | Pending | D | Teacher library and publish flow |
 | `T10` | Pending | D | Lesson-plan editor and generation routes |

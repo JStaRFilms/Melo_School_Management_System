@@ -41,6 +41,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/students", label: "Students", matchers: ["/academic/students"] },
       {
+        href: "/academic/knowledge/library",
+        label: "Knowledge Library",
+        matchers: ["/academic/knowledge/library"],
+      },
+      {
         href: "/academic/archived-records",
         label: "Archive Audit",
         matchers: ["/academic/archived-records"],

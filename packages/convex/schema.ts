@@ -1147,7 +1147,19 @@ export default defineSchema({
     .index("by_school_and_processing_status", ["schoolId", "processingStatus"])
     .searchIndex("search_search_text", {
       searchField: "searchText",
-      filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "sourceType", "searchStatus"],
+      filterFields: [
+        "schoolId",
+        "visibility",
+        "reviewStatus",
+        "topicId",
+        "sourceType",
+        "searchStatus",
+        "processingStatus",
+        "ownerRole",
+        "ownerUserId",
+        "subjectId",
+        "level",
+      ],
     }),
 
   knowledgeMaterialClassBindings: defineTable({

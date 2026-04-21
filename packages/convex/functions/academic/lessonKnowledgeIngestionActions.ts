@@ -113,7 +113,7 @@ function getPdfContentStrings(content: string): string[] {
     if (decoded) collected.push(decoded);
   }
 
-  for (const match of content.matchAll(/\[(.*?)\]\s*TJ/gs)) {
+  for (const match of content.matchAll(/\[((?:\\.|[\s\S])*?)\]\s*TJ/g)) {
     const block = match[1];
     for (const stringMatch of block.matchAll(/\((?:\\.|[^\\()])*\)/g)) {
       const literal = stringMatch[0].slice(1, -1);
