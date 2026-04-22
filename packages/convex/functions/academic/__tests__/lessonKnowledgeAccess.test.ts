@@ -7,6 +7,7 @@ import {
   canPromoteKnowledgeMaterial,
   canReadKnowledgeMaterialInStaffSurface,
   canReadKnowledgeMaterialOnPortal,
+  canUseKnowledgeMaterialAsLessonSource,
 } from "../lessonKnowledgeAccess";
 import {
   assertKnowledgeSearchAccess,
@@ -59,6 +60,13 @@ const studentApprovedMaterial = {
   ownerUserId: asId<"users">("user-teacher"),
   visibility: "student_approved" as const,
   reviewStatus: "approved" as const,
+};
+
+const readyPrivateMaterial = {
+  ...privateOwnerMaterial,
+  reviewStatus: "approved" as const,
+  processingStatus: "ready" as const,
+  searchStatus: "indexed" as const,
 };
 
 describe("lesson knowledge access", () => {
@@ -175,6 +183,20 @@ describe("lesson knowledge access", () => {
         classContextMatches: true,
       })
     ).toBe(true);
+
+    expect(
+      canUseKnowledgeMaterialAsLessonSource(teacher, readyPrivateMaterial)
+    ).toBe(true);
+
+    expect(
+      canUseKnowledgeMaterialAsLessonSource(
+        teacher,
+        {
+          ...readyPrivateMaterial,
+          processingStatus: "queued",
+        }
+      )
+    ).toBe(false);
 
     expect(() => assertKnowledgeSearchAccess(student)).toThrowError(
       "Knowledge search is restricted to staff"

@@ -116,7 +116,7 @@ The new baseline is:
 | `T06` | Completed | B | Ingestion pipeline and audit logging; added upload/link ingestion, native PDF-first extraction, chunk writes, status tracking, and audit events |
 | `T07` | Completed | C | Admin library console; added `/academic/knowledge/library` with Convex-backed search, detail inspection, and admin override actions |
 | `T08` | Completed | C | Admin template studio; structured lesson template studio delivered at `/academic/knowledge/templates` |
-| `T09` | Pending | D | Teacher library and publish flow |
+| `T09` | Completed | D | Teacher library and publish flow; `/planning/library` now supports private-first uploads, label editing, explicit publish-to-staff, and lesson-plan source handoff |
 | `T10` | Pending | D | Lesson-plan editor and generation routes |
 | `T11` | Pending | D | Question-bank and CBT draft flows |
 | `T12` | Pending | E | YouTube link approval and topic attachment |

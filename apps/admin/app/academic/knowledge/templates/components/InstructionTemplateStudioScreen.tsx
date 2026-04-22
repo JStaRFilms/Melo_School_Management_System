@@ -57,8 +57,25 @@ const editorModes = [
   { id: "monitor", label: "Monitor", icon: Monitor },
 ] as const;
 
+function buildLevelOptionsWithCurrentValue(
+  levelOptions: Array<{ value: string; label: string }>,
+  currentLevel: string
+) {
+  const trimmed = currentLevel.trim();
+  if (!trimmed) {
+    return levelOptions;
+  }
+
+  if (levelOptions.some((option) => option.value === trimmed)) {
+    return levelOptions;
+  }
+
+  return [{ value: trimmed, label: `Legacy: ${trimmed}` }, ...levelOptions];
+}
+
 export function InstructionTemplateStudioScreen({
   subjects,
+  levelOptions,
   templates,
   summary,
   outputType,
@@ -415,6 +432,7 @@ export function InstructionTemplateStudioScreen({
                     subjectLabel={subjectLabel}
                     scopeSummary={scopeSummary}
                     subjects={subjects}
+                    levelOptions={levelOptions}
                     onChange={updateDraft}
                     onScopeChange={handleScopeChange}
                     onSectionChange={updateSection}
@@ -651,6 +669,7 @@ function TemplateEditor({
   subjectLabel,
   scopeSummary,
   subjects,
+  levelOptions,
   onChange,
   onScopeChange,
   onSectionChange,
@@ -663,6 +682,7 @@ function TemplateEditor({
   subjectLabel: string;
   scopeSummary: string;
   subjects: Array<{ _id: string; name: string; code: string }>;
+  levelOptions: Array<{ value: string; label: string }>;
   onChange: (patch: Partial<InstructionTemplateDraft>) => void;
   onScopeChange: (scope: InstructionTemplateScope) => void;
   onSectionChange: (index: number, patch: Partial<InstructionTemplateSectionDraft>) => void;
@@ -767,13 +787,19 @@ function TemplateEditor({
 
           <label className="space-y-1.5">
             <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Level</span>
-            <input
+            <select
               className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-slate-400 focus:bg-white disabled:opacity-50"
               disabled={draft.templateScope === "subject_only" || draft.templateScope === "school_default"}
               onChange={(event) => onChange({ level: event.target.value })}
-              placeholder="e.g. JSS 1"
               value={draft.level}
-            />
+            >
+              <option value="">Select level</option>
+              {buildLevelOptionsWithCurrentValue(levelOptions, draft.level).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </AdminSurface>

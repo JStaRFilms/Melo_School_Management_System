@@ -32,6 +32,7 @@ interface KnowledgeMaterialDetailPanelProps {
   detail: KnowledgeLibraryDetailResponse | null;
   subjects: SubjectRecord[];
   onClose?: () => void;
+  levelOptions: Array<{ value: string; label: string }>;
   onSaveDetails: (args: {
     materialId: string;
     title: string;
@@ -92,6 +93,22 @@ function fieldClassName(
   return base;
 }
 
+function buildLevelOptionsWithCurrentValue(
+  levelOptions: Array<{ value: string; label: string }>,
+  currentLevel: string
+) {
+  const trimmed = currentLevel.trim();
+  if (!trimmed) {
+    return levelOptions;
+  }
+
+  if (levelOptions.some((option) => option.value === trimmed)) {
+    return levelOptions;
+  }
+
+  return [{ value: trimmed, label: `Legacy: ${trimmed}` }, ...levelOptions];
+}
+
 function sectionLabel(text: string) {
   return (
     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
@@ -143,6 +160,7 @@ function MetaChip({ label, value, icon }: { label: string; value: string; icon: 
 export function KnowledgeMaterialDetailPanel({
   detail,
   subjects,
+  levelOptions,
   onClose,
   onSaveDetails,
   onSaveState,
@@ -321,7 +339,14 @@ export function KnowledgeMaterialDetailPanel({
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Level</label>
-                <input value={level} onChange={(e) => setLevel(e.target.value)} className={fieldClassName()} />
+                <select value={level} onChange={(e) => setLevel(e.target.value)} className={fieldClassName()}>
+                  <option value="">Select level</option>
+                  {buildLevelOptionsWithCurrentValue(levelOptions, level).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

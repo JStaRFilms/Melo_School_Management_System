@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Id, TableNames } from "../../../_generated/dataModel";
 
 import {
+  assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
   buildKnowledgeMaterialSearchText,
   chunkKnowledgeMaterialText,
+  MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
 } from "../lessonKnowledgeIngestionHelpers";
@@ -32,7 +34,26 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     });
   });
 
-  it("lets admin-owned links start staff-shared and queued", () => {
+  it("lets staff request a private review queue without auto-publishing", () => {
+    expect(
+      resolveKnowledgeMaterialDefaults({
+        actor: {
+          userId: asId<"users">("teacher-1"),
+          schoolId: asId<"schools">("school-1"),
+          role: "teacher",
+          isSchoolAdmin: false,
+        },
+        sourceType: "file_upload",
+        uploadIntent: "request_review",
+      })
+    ).toEqual({
+      visibility: "private_owner",
+      reviewStatus: "pending_review",
+      processingStatus: "awaiting_upload",
+    });
+  });
+
+  it("lets admins explicitly start a file as staff shared", () => {
     expect(
       resolveKnowledgeMaterialDefaults({
         actor: {
@@ -41,13 +62,45 @@ describe("lessonKnowledgeIngestionHelpers", () => {
           role: "admin",
           isSchoolAdmin: true,
         },
-        sourceType: "youtube_link",
+        sourceType: "file_upload",
+        uploadIntent: "staff_shared",
       })
     ).toEqual({
       visibility: "staff_shared",
       reviewStatus: "approved",
-      processingStatus: "queued",
+      processingStatus: "awaiting_upload",
     });
+  });
+
+  it("blocks non-admins from choosing the staff-shared upload intent", () => {
+    expect(() =>
+      resolveKnowledgeMaterialDefaults({
+        actor: {
+          userId: asId<"users">("teacher-1"),
+          schoolId: asId<"schools">("school-1"),
+          role: "teacher",
+          isSchoolAdmin: false,
+        },
+        sourceType: "file_upload",
+        uploadIntent: "staff_shared",
+      })
+    ).toThrowError("Only admins can start a material as staff shared");
+  });
+
+  it("rejects unsupported upload sizes and content types", () => {
+    expect(() =>
+      assertKnowledgeMaterialUploadIsSupported({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size: 1024,
+      })
+    ).toThrowError("Only PDF and text-based uploads are supported in the planning library right now.");
+
+    expect(() =>
+      assertKnowledgeMaterialUploadIsSupported({
+        contentType: "application/pdf",
+        size: MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES + 1,
+      })
+    ).toThrowError("Uploaded file is too large for the planning library. Keep uploads at or below 12 MB.");
   });
 
   it("normalizes and bounds search text", () => {

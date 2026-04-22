@@ -91,6 +91,7 @@ export interface InstructionTemplateListResponse {
 
 export interface InstructionTemplateStudioScreenProps {
   subjects: SubjectRecord[];
+  levelOptions: Array<{ value: string; label: string }>;
   templates: InstructionTemplateListItem[];
   summary: InstructionTemplateSummary;
   outputType: InstructionTemplateOutputType;

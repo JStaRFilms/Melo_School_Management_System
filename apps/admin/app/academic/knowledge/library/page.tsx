@@ -19,6 +19,19 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SubjectRecord } from "@/types";
 
 import { KnowledgeLibraryFilters } from "./components/KnowledgeLibraryFilters";
+
+interface ClassOptionRecord {
+  _id: string;
+  name: string;
+  gradeName: string;
+  classLabel?: string;
+}
+
+interface LevelOption {
+  value: string;
+  label: string;
+}
+
 import { KnowledgeMaterialDetailPanel } from "./components/KnowledgeMaterialDetailPanel";
 import { KnowledgeMaterialList } from "./components/KnowledgeMaterialList";
 import type {
@@ -39,6 +52,23 @@ const DEFAULT_FILTERS: KnowledgeLibraryFilterState = {
   subjectId: "all",
   level: "all",
 };
+
+function buildLevelOptions(classes: ClassOptionRecord[] | undefined): LevelOption[] {
+  const seen = new Set<string>();
+  const options: LevelOption[] = [];
+
+  for (const classDoc of classes ?? []) {
+    const level = classDoc.gradeName.trim() || classDoc.name.trim();
+    if (!level || seen.has(level)) {
+      continue;
+    }
+
+    seen.add(level);
+    options.push({ value: level, label: level });
+  }
+
+  return options;
+}
 
 function LoadingShell() {
   return (
@@ -121,6 +151,7 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 
 export default function KnowledgeLibraryPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
 
   const [filters, setFilters] = useState<KnowledgeLibraryFilterState>(DEFAULT_FILTERS);
   const isMobile = useIsMobile();
@@ -130,6 +161,8 @@ export default function KnowledgeLibraryPage() {
     "functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeMaterials" as never,
     queryArgs as never
   ) as KnowledgeLibraryListResponse | undefined;
+
+  const levelOptions = useMemo(() => buildLevelOptions(classes), [classes]);
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [activeDetail, setActiveDetail] = useState<KnowledgeLibraryDetailResponse | null>(null);
@@ -267,7 +300,7 @@ export default function KnowledgeLibraryPage() {
     }
   };
 
-  if (!subjects || !libraryData) {
+  if (!subjects || !classes || !libraryData) {
     return <LoadingShell />;
   }
 
@@ -298,6 +331,7 @@ export default function KnowledgeLibraryPage() {
         <KnowledgeMaterialDetailPanel
           detail={activeDetail}
           subjects={subjects}
+          levelOptions={levelOptions}
           variant="sheet"
           isSavingDetails={isSavingDetails}
           isSavingState={isSavingState}
@@ -312,6 +346,7 @@ export default function KnowledgeLibraryPage() {
           <KnowledgeMaterialDetailPanel
             detail={activeDetail}
             subjects={subjects}
+            levelOptions={levelOptions}
             isSavingDetails={isSavingDetails}
             isSavingState={isSavingState}
             onSaveDetails={handleSaveDetails}

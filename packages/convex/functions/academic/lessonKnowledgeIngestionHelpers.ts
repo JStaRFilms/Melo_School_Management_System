@@ -28,6 +28,15 @@ export type KnowledgeMaterialDefaults = {
   processingStatus: KnowledgeMaterialIngestionStatus;
 };
 
+export type KnowledgeMaterialUploadIntent =
+  | "private_draft"
+  | "request_review"
+  | "staff_shared";
+
+export const MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES = 12 * 1024 * 1024;
+export const MAX_KNOWLEDGE_MATERIAL_PDF_PAGES = 80;
+export const MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS = 3;
+
 export type KnowledgeMaterialIngestionOwnerRole =
   | "teacher"
   | "admin"
@@ -92,6 +101,15 @@ const STOP_WORDS = new Set([
   "upload",
 ]);
 
+function normalizeKnowledgeMaterialContentType(contentType?: string | null) {
+  const normalized = contentType?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.split(";")[0].trim();
+}
+
 export function assertKnowledgeMaterialIngestionAccess(actor: KnowledgeActorContext) {
   if (actor.role !== "teacher" && actor.role !== "admin" && !actor.isSchoolAdmin) {
     throw new ConvexError("Knowledge material ingestion is restricted to staff");
@@ -113,16 +131,99 @@ export function canManageKnowledgeMaterial(
   return actor.role === "teacher" && String(actor.userId) === String(material.ownerUserId);
 }
 
+export function isSupportedKnowledgeMaterialContentType(contentType?: string | null) {
+  const normalized = normalizeKnowledgeMaterialContentType(contentType);
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized === "application/pdf" ||
+    normalized === "application/x-pdf" ||
+    normalized.endsWith("+pdf") ||
+    normalized.startsWith("text/")
+  );
+}
+
+export function assertKnowledgeMaterialUploadIsSupported(args: {
+  contentType?: string | null;
+  size: number;
+}) {
+  if (!Number.isFinite(args.size) || args.size <= 0) {
+    throw new ConvexError("Uploaded file is empty");
+  }
+
+  if (args.size > MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES) {
+    throw new ConvexError(
+      "Uploaded file is too large for the planning library. Keep uploads at or below 12 MB."
+    );
+  }
+
+  if (!normalizeKnowledgeMaterialContentType(args.contentType)) {
+    throw new ConvexError("Uploaded file type is missing");
+  }
+
+  if (!isSupportedKnowledgeMaterialContentType(args.contentType)) {
+    throw new ConvexError(
+      "Only PDF and text-based uploads are supported in the planning library right now."
+    );
+  }
+}
+
 export function resolveKnowledgeMaterialDefaults(args: {
   actor: KnowledgeActorContext;
   sourceType: KnowledgeMaterialIngestionSourceType;
+  uploadIntent?: KnowledgeMaterialUploadIntent;
+  defaultsMode?: "actor_default" | "private_first";
 }): KnowledgeMaterialDefaults {
+  const processingStatus =
+    args.sourceType === "file_upload" ? "awaiting_upload" : "queued";
+
+  if (args.uploadIntent === "staff_shared") {
+    if (!args.actor.isSchoolAdmin && args.actor.role !== "admin") {
+      throw new ConvexError("Only admins can start a material as staff shared");
+    }
+
+    return {
+      visibility: "staff_shared",
+      reviewStatus: "approved",
+      processingStatus,
+    };
+  }
+
+  if (args.uploadIntent === "request_review") {
+    return {
+      visibility: "private_owner",
+      reviewStatus: "pending_review",
+      processingStatus,
+    };
+  }
+
+  if (args.uploadIntent === "private_draft") {
+    return {
+      visibility: "private_owner",
+      reviewStatus: "draft",
+      processingStatus,
+    };
+  }
+
+  if (args.defaultsMode === "private_first") {
+    if (args.actor.role !== "teacher" && args.actor.role !== "admin" && !args.actor.isSchoolAdmin) {
+      throw new ConvexError("Knowledge material ingestion is restricted to staff");
+    }
+
+    return {
+      visibility: "private_owner",
+      reviewStatus: "draft",
+      processingStatus,
+    };
+  }
+
   if (args.actor.isSchoolAdmin || args.actor.role === "admin") {
     return {
       visibility: "staff_shared",
       reviewStatus: "approved",
-      processingStatus:
-        args.sourceType === "file_upload" ? "awaiting_upload" : "queued",
+      processingStatus,
     };
   }
 
@@ -130,8 +231,7 @@ export function resolveKnowledgeMaterialDefaults(args: {
     return {
       visibility: "private_owner",
       reviewStatus: "draft",
-      processingStatus:
-        args.sourceType === "file_upload" ? "awaiting_upload" : "queued",
+      processingStatus,
     };
   }
 

@@ -99,7 +99,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     switchPath: "/assessments/exams/entry",
     appBasePath: "/teacher",
     available: true,
-    description: "Open teacher workflows for exam entry and enrollment edits.",
+    description: "Open teacher workflows for exam entry, planning, and enrollment edits.",
     sections: [
       {
         href: "/assessments/exams/entry",
@@ -115,6 +115,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         href: "/enrollment/subjects",
         label: "Subject Selection",
         matchers: ["/enrollment/subjects"],
+      },
+      {
+        href: "/planning/library",
+        label: "Library",
+        matchers: ["/planning/library", "/planning/lesson-plans"],
       },
     ],
   },

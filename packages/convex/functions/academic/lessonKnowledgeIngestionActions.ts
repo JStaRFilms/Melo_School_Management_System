@@ -7,6 +7,7 @@ import {
   buildKnowledgeMaterialSearchText,
   chunkKnowledgeMaterialText,
   estimateKnowledgeMaterialTokens,
+  MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
   normalizeKnowledgeMaterialText,
   suggestKnowledgeMaterialLabels,
   type KnowledgeMaterialIngestionSnapshot,
@@ -138,6 +139,24 @@ function inflatePdfStream(streamContent: string) {
   return inflateSync(buffer).toString("latin1");
 }
 
+function normalizeContentType(contentType?: string) {
+  const normalized = contentType?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.split(";")[0].trim();
+}
+
+function countPdfPages(pdfText: string) {
+  const pageObjectMatches = pdfText.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+  const countMatches = [...pdfText.matchAll(/\/Count\s+(\d+)/g)]
+    .map((match) => Number(match[1]))
+    .filter((count) => Number.isFinite(count) && count > 0);
+  const treeCount = countMatches.length > 0 ? Math.max(...countMatches) : 0;
+  return Math.max(pageObjectMatches, treeCount);
+}
+
 function extractNativePdfText(buffer: Buffer, contentType?: string) {
   const pdfText = buffer.toString("latin1");
   const extractedSegments: string[] = [];
@@ -151,23 +170,42 @@ function extractNativePdfText(buffer: Buffer, contentType?: string) {
     extractedSegments.push(...getPdfContentStrings(content));
   }
 
-  if (extractedSegments.length === 0 && contentType?.includes("pdf")) {
+  if (extractedSegments.length === 0 && normalizeContentType(contentType)?.includes("pdf")) {
     extractedSegments.push(...getPdfContentStrings(pdfText));
   }
 
   const combined = normalizeKnowledgeMaterialText(extractedSegments.join(" "));
   const letters = (combined.match(/[A-Za-z]/g) ?? []).length;
   const words = combined ? combined.split(/\s+/).length : 0;
+  const pageCount = countPdfPages(pdfText);
   const adequate = words >= 20 || letters >= 120;
+  const likelyImageOnly =
+    pageCount > 0 &&
+    !adequate &&
+    (/\/Subtype\s*\/Image\b/.test(pdfText) || /\/XObject\b/.test(pdfText));
   return {
     text: combined,
     adequate,
+    pageCount,
+    likelyImageOnly,
   };
 }
 
 function extractReadableTextFromBuffer(buffer: Buffer, contentType?: string) {
-  if (contentType?.includes("pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-") {
+  const normalizedContentType = normalizeContentType(contentType);
+  const isPdf = normalizedContentType?.includes("pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+
+  if (isPdf) {
     const extracted = extractNativePdfText(buffer, contentType);
+
+    if (extracted.pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
+      return {
+        status: "failed" as const,
+        text: extracted.text,
+        errorMessage: `This PDF exceeds the ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES}-page limit for the planning library.`,
+      };
+    }
+
     if (extracted.adequate) {
       return {
         status: "ready" as const,
@@ -179,8 +217,9 @@ function extractReadableTextFromBuffer(buffer: Buffer, contentType?: string) {
     return {
       status: "ocr_needed" as const,
       text: extracted.text,
-      errorMessage:
-        "Native PDF text extraction was inadequate; OCR fallback is needed before indexing.",
+      errorMessage: extracted.likelyImageOnly
+        ? "This PDF appears to be image-only or scanned. OCR is not enabled in this workflow yet, so please upload a text-based PDF or TXT file."
+        : "Native PDF text extraction was not strong enough to index this file, and OCR is not enabled in this workflow yet.",
     };
   }
 
@@ -198,10 +237,10 @@ function extractReadableTextFromBuffer(buffer: Buffer, contentType?: string) {
   }
 
   return {
-    status: "ocr_needed" as const,
+    status: "failed" as const,
     text: normalized,
     errorMessage:
-      "The uploaded file did not produce enough readable text for native indexing; OCR fallback is needed.",
+      "The uploaded text file did not contain enough readable text to index.",
   };
 }
 

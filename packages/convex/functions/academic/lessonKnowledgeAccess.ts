@@ -35,6 +35,17 @@ export type KnowledgeMaterialTransitionScope = KnowledgeMaterialScope & {
   topicAttached?: boolean;
 };
 
+export type KnowledgeMaterialSourceScope = KnowledgeMaterialScope & {
+  searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
+  processingStatus:
+    | "awaiting_upload"
+    | "queued"
+    | "extracting"
+    | "ocr_needed"
+    | "ready"
+    | "failed";
+};
+
 export function assertKnowledgeSchoolBoundary(args: {
   expectedSchoolId: Id<"schools">;
   actualSchoolId: Id<"schools">;
@@ -187,4 +198,16 @@ export function canPromoteKnowledgeMaterial(
   }
 
   return false;
+}
+
+export function canUseKnowledgeMaterialAsLessonSource(
+  actor: KnowledgeActorContext,
+  material: KnowledgeMaterialSourceScope
+): boolean {
+  return (
+    canReadKnowledgeMaterialInStaffSurface(actor, material) &&
+    material.reviewStatus !== "archived" &&
+    material.processingStatus === "ready" &&
+    material.searchStatus === "indexed"
+  );
 }

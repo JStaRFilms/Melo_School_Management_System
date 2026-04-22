@@ -9,14 +9,17 @@ import {
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
   assertKnowledgeMaterialIngestionAccess,
+  assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
   buildMaterialSearchSeed,
   canManageKnowledgeMaterial,
   normalizeKnowledgeMaterialText,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
+  MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
   type KnowledgeMaterialIngestionSnapshot,
   type KnowledgeMaterialIngestionStatus,
+  type KnowledgeMaterialUploadIntent,
 } from "./lessonKnowledgeIngestionHelpers";
 
 const knowledgeAuditEventTypeValidator = v.union(
@@ -155,6 +158,8 @@ function buildKnowledgeMaterialRecord(args: {
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
   externalUrl?: string;
+  uploadIntent?: KnowledgeMaterialUploadIntent;
+  defaultsMode?: "actor_default" | "private_first";
 }) {
   const defaults = resolveKnowledgeMaterialDefaults({
     actor: {
@@ -164,6 +169,8 @@ function buildKnowledgeMaterialRecord(args: {
       isSchoolAdmin: args.actorRole === "admin",
     },
     sourceType: args.sourceType,
+    uploadIntent: args.uploadIntent,
+    defaultsMode: args.defaultsMode,
   });
 
   const searchText = buildMaterialSearchSeed({
@@ -321,6 +328,10 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
+    uploadIntent: v.optional(
+      v.union(v.literal("private_draft"), v.literal("request_review"), v.literal("staff_shared"))
+    ),
+    defaultsMode: v.optional(v.union(v.literal("actor_default"), v.literal("private_first"))),
   },
   returns: v.object({
     materialId: v.id("knowledgeMaterials"),
@@ -377,6 +388,8 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       level: normalizeRequiredText(args.level, "Level"),
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
+      ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
+      defaultsMode: args.defaultsMode,
     });
 
     const now = Date.now();
@@ -462,6 +475,47 @@ export const finalizeKnowledgeMaterialUpload = mutation({
       throw new ConvexError("Uploaded file not found");
     }
 
+    const validationError = (() => {
+      try {
+        assertKnowledgeMaterialUploadIsSupported({
+          contentType: storageMeta.contentType,
+          size: storageMeta.size,
+        });
+        return null;
+      } catch (error) {
+        return error instanceof ConvexError
+          ? error.message
+          : "Uploaded file is not supported";
+      }
+    })();
+
+    if (validationError) {
+      const failedAt = Date.now();
+      await ctx.db.patch(args.materialId, {
+        storageId: args.storageId,
+        processingStatus: "failed",
+        searchStatus: "failed",
+        ingestionErrorMessage: validationError,
+        updatedAt: failedAt,
+        updatedBy: userId,
+      });
+
+      await ctx.runMutation(
+        internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal,
+        {
+          schoolId,
+          actorUserId: userId,
+          actorRole,
+          eventType: "ingestion_failed",
+          entityType: "knowledgeMaterial",
+          materialId: args.materialId,
+          changeSummary: validationError,
+        }
+      );
+
+      throw new ConvexError(validationError);
+    }
+
     const now = Date.now();
     await ctx.db.patch(args.materialId, {
       storageId: args.storageId,
@@ -498,6 +552,10 @@ export const registerKnowledgeMaterialLink = mutation({
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
+    uploadIntent: v.optional(
+      v.union(v.literal("private_draft"), v.literal("request_review"), v.literal("staff_shared"))
+    ),
+    defaultsMode: v.optional(v.union(v.literal("actor_default"), v.literal("private_first"))),
   },
   returns: v.object({
     materialId: v.id("knowledgeMaterials"),
@@ -551,6 +609,8 @@ export const registerKnowledgeMaterialLink = mutation({
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
       externalUrl,
+      ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
+      defaultsMode: args.defaultsMode,
     });
 
     const now = Date.now();
@@ -634,6 +694,10 @@ export const retryKnowledgeMaterialIngestion = mutation({
 
     if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
       throw new ConvexError("This material does not need a retry");
+    }
+
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
     }
 
     const now = Date.now();
@@ -833,7 +897,8 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
           args.status === "ready"
             ? `Indexed ${args.chunks.length} material chunk(s) from the uploaded source.`
             : args.status === "ocr_needed"
-              ? "Native extraction was inadequate; OCR fallback is needed before the material can be indexed."
+              ? args.ingestionErrorMessage ??
+                "Native extraction was inadequate and OCR is not enabled in this workflow yet."
               : `Knowledge material ingestion failed: ${args.ingestionErrorMessage ?? "unknown error"}`,
       }
     );

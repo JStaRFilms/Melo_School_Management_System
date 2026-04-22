@@ -57,7 +57,14 @@ export const getTermsBySession = query({
 
 export const getTeacherAssignableClasses = query({
   args: {},
-  returns: v.array(v.object({ _id: v.id("classes"), name: v.string() })),
+  returns: v.array(
+    v.object({
+      _id: v.id("classes"),
+      name: v.string(),
+      gradeName: v.optional(v.string()),
+      classLabel: v.optional(v.string()),
+    })
+  ),
   handler: async (ctx: any) => {
     const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
 
@@ -77,6 +84,8 @@ export const getTeacherAssignableClasses = query({
             classLabel: classDoc.classLabel,
             name: classDoc.name,
           }),
+          gradeName: classDoc.gradeName ?? undefined,
+          classLabel: classDoc.classLabel ?? undefined,
         }));
     }
 
@@ -104,6 +113,8 @@ export const getTeacherAssignableClasses = query({
           classLabel: classDoc.classLabel,
           name: classDoc.name,
         }),
+        gradeName: classDoc.gradeName ?? undefined,
+        classLabel: classDoc.classLabel ?? undefined,
       }));
   },
 });

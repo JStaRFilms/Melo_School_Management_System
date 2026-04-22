@@ -6,8 +6,8 @@ import { hasConvexAuthEnv } from "@school/auth";
 import { getToken } from "@/lib/auth-server";
 
 export const metadata: Metadata = {
-  title: "Teacher Portal - Exam Recording",
-  description: "Teacher-side exam score entry for school management",
+  title: "Teacher Portal",
+  description: "Teacher workspace for planning, assessment, and enrollment workflows",
 };
 
 export default async function RootLayout({

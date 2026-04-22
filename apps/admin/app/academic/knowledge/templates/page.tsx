@@ -7,6 +7,18 @@ import { getUserFacingErrorMessage } from "@school/shared";
 import type { SubjectRecord } from "@/types";
 
 import { InstructionTemplateStudioScreen } from "./components/InstructionTemplateStudioScreen";
+
+interface ClassOptionRecord {
+  _id: string;
+  name: string;
+  gradeName: string;
+  classLabel?: string;
+}
+
+interface LevelOption {
+  value: string;
+  label: string;
+}
 import type {
   InstructionTemplateDraft,
   InstructionTemplateListResponse,
@@ -58,9 +70,27 @@ function parseWholeNumber(value: string, label: string, minimum: number) {
 
 export default function InstructionTemplateStudioPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
   const [outputType, setOutputType] = useState<InstructionTemplateOutputType>("lesson_plan");
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  const levelOptions = useMemo<LevelOption[]>(() => {
+    const seen = new Set<string>();
+    const options: LevelOption[] = [];
+
+    for (const classDoc of classes ?? []) {
+      const level = classDoc.gradeName.trim() || classDoc.name.trim();
+      if (!level || seen.has(level)) {
+        continue;
+      }
+
+      seen.add(level);
+      options.push({ value: level, label: level });
+    }
+
+    return options;
+  }, [classes]);
 
   const data = useQuery(
     "functions/academic/lessonKnowledgeTemplates:listInstructionTemplates" as never,
@@ -113,13 +143,14 @@ export default function InstructionTemplateStudioPage() {
     }
   };
 
-  if (!subjects || !data) {
+  if (!subjects || !classes || !data) {
     return <LoadingShell />;
   }
 
   return (
     <InstructionTemplateStudioScreen
       subjects={subjects}
+      levelOptions={levelOptions}
       templates={templates}
       summary={summary}
       outputType={outputType}

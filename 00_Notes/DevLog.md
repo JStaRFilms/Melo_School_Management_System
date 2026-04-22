@@ -78,3 +78,5 @@ pnpm --filter @school/admin dev
 - [ ] We need to modularize the student portal page. I think it's too monolithic as it stands, and as we start to expand later, it might become a problem.
 
 - [ ] There needs to be a proper way for schools to check and print invoices. They should be able to print invoices that include links and a QR code, and display the QR code in the UI. Schools should also be able to print a statement, like a bank statement, to show when people pay. Additionally, they should be able to see payment dates and times in the UI.
+
+- [ ] There are several UI issues on the knowledge templates page in the admin portal. One problem is the many duplicate entries; we need a cleaning option. When I click on a monitor, specifically the designer monitor, and change the template catalog, it returns me to the designer view. It should stay on the page I was on before clicking. Does that make sense?

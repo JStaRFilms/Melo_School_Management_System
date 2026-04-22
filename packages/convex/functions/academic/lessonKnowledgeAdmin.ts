@@ -541,6 +541,7 @@ export const getAdminKnowledgeMaterial = query({
       labelSuggestions: v.array(v.string()),
       chunkCount: v.number(),
       externalUrl: v.union(v.string(), v.null()),
+      indexedAt: v.union(v.number(), v.null()),
       storageId: v.union(v.id("_storage"), v.null()),
       searchText: v.string(),
       createdAt: v.number(),
