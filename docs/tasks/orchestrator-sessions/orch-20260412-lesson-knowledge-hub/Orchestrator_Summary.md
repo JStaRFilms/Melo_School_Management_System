@@ -19,9 +19,9 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Session Counts
 
-- Pending task files: `6`
+- Pending task files: `5`
 - In-progress task files: `0`
-- Completed task files: `9`
+- Completed task files: `10`
 
 ## Linked Blueprint
 
@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Re-run the live planning-library upload smoke test against the deployed parser-first ingestion path. If the upload flow is now trustworthy, proceed with `T10`.
+Proceed with `T11` once the teacher lesson-plan workspace smoke pass is acceptable and the lesson-plan generation flow is considered stable enough to build on.

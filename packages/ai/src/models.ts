@@ -2,8 +2,11 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 import type { DocumentOutputType } from "./contracts";
 
-const defaultDocumentModelId = "anthropic/claude-sonnet-4.6";
-const defaultAssessmentModelId = "openai/gpt-5.4";
+const defaultLessonPlanModelId = "minimax/minimax-m2.5:free";
+const defaultStudentNoteModelId = "inclusionai/ling-2.6-flash:free";
+const defaultAssignmentModelId = "inclusionai/ling-2.6-flash:free";
+const defaultQuestionBankModelId = "openai/gpt-oss-120b:free";
+const defaultCbtModelId = "openai/gpt-oss-120b:free";
 
 const documentModelEnvKeys = {
   lesson_plan: "SCHOOL_AI_LESSON_PLAN_MODEL",
@@ -31,31 +34,31 @@ export const documentModelRegistry = {
   lesson_plan: {
     kind: "lesson_plan",
     label: "Lesson plan generation",
-    defaultModelId: defaultDocumentModelId,
+    defaultModelId: defaultLessonPlanModelId,
     envKey: documentModelEnvKeys.lesson_plan,
   },
   student_note: {
     kind: "student_note",
     label: "Student note generation",
-    defaultModelId: defaultDocumentModelId,
+    defaultModelId: defaultStudentNoteModelId,
     envKey: documentModelEnvKeys.student_note,
   },
   assignment: {
     kind: "assignment",
     label: "Assignment generation",
-    defaultModelId: defaultDocumentModelId,
+    defaultModelId: defaultAssignmentModelId,
     envKey: documentModelEnvKeys.assignment,
   },
   question_bank_draft: {
     kind: "question_bank_draft",
     label: "Question bank draft generation",
-    defaultModelId: defaultAssessmentModelId,
+    defaultModelId: defaultQuestionBankModelId,
     envKey: documentModelEnvKeys.question_bank_draft,
   },
   cbt_draft: {
     kind: "cbt_draft",
     label: "CBT draft generation",
-    defaultModelId: defaultAssessmentModelId,
+    defaultModelId: defaultCbtModelId,
     envKey: documentModelEnvKeys.cbt_draft,
   },
 } as const satisfies Record<DocumentOutputType, DocumentModelDefinition>;
