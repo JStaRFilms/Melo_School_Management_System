@@ -22,6 +22,7 @@ Included:
 - cross-school isolation review
 - approval audit trail verification
 - failure-recovery review
+- cleanup review for superseded extraction code after the parser-first pivot
 
 Excluded:
 

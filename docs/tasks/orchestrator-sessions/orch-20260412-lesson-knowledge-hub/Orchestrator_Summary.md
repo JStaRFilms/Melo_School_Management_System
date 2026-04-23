@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Proceed with `T10` when ready to continue the teacher lane now that the private-first teacher library and publish flow are complete.
+Re-run the live planning-library upload smoke test against the deployed parser-first ingestion path. If the upload flow is now trustworthy, proceed with `T10`.

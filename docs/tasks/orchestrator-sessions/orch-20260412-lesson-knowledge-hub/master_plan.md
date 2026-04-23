@@ -113,7 +113,7 @@ The new baseline is:
 | `T03` | Completed | A | Curriculum input audit and sample-driven format notes |
 | `T04` | Completed | B | Shared `packages/ai` foundation with centralized OpenRouter AI SDK config, typed contracts, prompts, and retry helpers |
 | `T05` | Completed | B | Convex schema, ACL, visibility, and search foundation; added school-first indexes, access helpers, and focused tests |
-| `T06` | Completed | B | Ingestion pipeline and audit logging; added upload/link ingestion, native PDF-first extraction, chunk writes, status tracking, and audit events |
+| `T06` | Completed | B | Ingestion pipeline and audit logging; upload/link ingestion is now the home for the parser-first PDF extraction pivot, fallback extraction path, chunk writes, status tracking, and audit events |
 | `T07` | Completed | C | Admin library console; added `/academic/knowledge/library` with Convex-backed search, detail inspection, and admin override actions |
 | `T08` | Completed | C | Admin template studio; structured lesson template studio delivered at `/academic/knowledge/templates` |
 | `T09` | Completed | D | Teacher library and publish flow; `/planning/library` now supports private-first uploads, label editing, explicit publish-to-staff, and lesson-plan source handoff |
@@ -135,4 +135,6 @@ The new baseline is:
 
 - The teacher and portal apps currently have no lesson-planning or topic-view routes, so navigation updates must be staged carefully.
 - `packages/ai` now exists as the shared AI SDK foundation for later route handlers.
+- The T06 ingestion foundation now uses a real PDF parser plus guarded Gemini fallback extraction path instead of the old ad-hoc manual PDF stream parser.
+- Cleanup remains bounded: if another ingestion route later needs the same Gemini fallback, consolidate the request builder rather than reviving multiple extraction implementations.
 - The curriculum sample folder is spelled `School curriculim example` in the repo and task files must reference that exact path.

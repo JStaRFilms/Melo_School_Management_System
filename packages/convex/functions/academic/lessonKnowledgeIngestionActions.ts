@@ -5,252 +5,21 @@ import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
   buildKnowledgeMaterialSearchText,
+  buildMaterialSearchSeed,
   chunkKnowledgeMaterialText,
   estimateKnowledgeMaterialTokens,
-  MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
-  normalizeKnowledgeMaterialText,
   suggestKnowledgeMaterialLabels,
   type KnowledgeMaterialIngestionSnapshot,
 } from "./lessonKnowledgeIngestionHelpers";
-import { inflateSync } from "node:zlib";
-
-function decodePdfLiteralString(raw: string): string {
-  let output = "";
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw[index];
-    if (char !== "\\") {
-      output += char;
-      continue;
-    }
-
-    const next = raw[index + 1];
-    if (!next) {
-      break;
-    }
-
-    if (next === "n") {
-      output += "\n";
-      index += 1;
-      continue;
-    }
-    if (next === "r") {
-      output += "\r";
-      index += 1;
-      continue;
-    }
-    if (next === "t") {
-      output += "\t";
-      index += 1;
-      continue;
-    }
-    if (next === "b") {
-      output += "\b";
-      index += 1;
-      continue;
-    }
-    if (next === "f") {
-      output += "\f";
-      index += 1;
-      continue;
-    }
-    if (next === "(" || next === ")" || next === "\\") {
-      output += next;
-      index += 1;
-      continue;
-    }
-
-    if (/[0-7]/.test(next)) {
-      const octal = raw.slice(index + 1, index + 4).match(/^[0-7]{1,3}/)?.[0];
-      if (octal) {
-        output += String.fromCharCode(parseInt(octal, 8));
-        index += octal.length;
-        continue;
-      }
-    }
-
-    output += next;
-    index += 1;
-  }
-
-  return output;
-}
-
-function decodePdfStringBody(body: string) {
-  return decodePdfLiteralString(body)
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\u0000/g, "")
-    .trim();
-}
-
-function decodePdfHexString(hex: string): string {
-  if (!hex || hex.length % 2 !== 0) {
-    return "";
-  }
-
-  try {
-    const bytes = Buffer.from(hex, "hex");
-    if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-      const swapped = Buffer.alloc(bytes.length - 2);
-      for (let index = 2, out = 0; index + 1 < bytes.length; index += 2, out += 2) {
-        swapped[out] = bytes[index + 1];
-        swapped[out + 1] = bytes[index];
-      }
-      return swapped.toString("utf16le").trim();
-    }
-
-    return bytes.toString("utf8").trim();
-  } catch {
-    return "";
-  }
-}
-
-function getPdfContentStrings(content: string): string[] {
-  const collected: string[] = [];
-
-  for (const match of content.matchAll(/\((?:\\.|[^\\()])*\)\s*Tj/g)) {
-    const literal = match[0].slice(1, match[0].lastIndexOf(")"));
-    const decoded = decodePdfStringBody(literal);
-    if (decoded) collected.push(decoded);
-  }
-
-  for (const match of content.matchAll(/\[((?:\\.|[\s\S])*?)\]\s*TJ/g)) {
-    const block = match[1];
-    for (const stringMatch of block.matchAll(/\((?:\\.|[^\\()])*\)/g)) {
-      const literal = stringMatch[0].slice(1, -1);
-      const decoded = decodePdfStringBody(literal);
-      if (decoded) collected.push(decoded);
-    }
-  }
-
-  for (const match of content.matchAll(/<([0-9A-Fa-f\s]+)>\s*Tj/g)) {
-    const hex = match[1].replace(/\s+/g, "");
-    const decoded = decodePdfHexString(hex);
-    if (decoded) {
-      collected.push(decoded);
-    }
-  }
-
-  return collected;
-}
-
-function inflatePdfStream(streamContent: string) {
-  const buffer = Buffer.from(streamContent, "latin1");
-  return inflateSync(buffer).toString("latin1");
-}
-
-function normalizeContentType(contentType?: string) {
-  const normalized = contentType?.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized.split(";")[0].trim();
-}
-
-function countPdfPages(pdfText: string) {
-  const pageObjectMatches = pdfText.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
-  const countMatches = [...pdfText.matchAll(/\/Count\s+(\d+)/g)]
-    .map((match) => Number(match[1]))
-    .filter((count) => Number.isFinite(count) && count > 0);
-  const treeCount = countMatches.length > 0 ? Math.max(...countMatches) : 0;
-  return Math.max(pageObjectMatches, treeCount);
-}
-
-function extractNativePdfText(buffer: Buffer, contentType?: string) {
-  const pdfText = buffer.toString("latin1");
-  const extractedSegments: string[] = [];
-  const streamMatches = [...pdfText.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)];
-
-  for (const match of streamMatches) {
-    const streamBody = match[1];
-    const beforeStream = pdfText.slice(Math.max(0, (match.index ?? 0) - 256), match.index ?? 0);
-    const isFlateDecoded = /\/FlateDecode/.test(beforeStream);
-    const content = isFlateDecoded ? inflatePdfStream(streamBody) : streamBody;
-    extractedSegments.push(...getPdfContentStrings(content));
-  }
-
-  if (extractedSegments.length === 0 && normalizeContentType(contentType)?.includes("pdf")) {
-    extractedSegments.push(...getPdfContentStrings(pdfText));
-  }
-
-  const combined = normalizeKnowledgeMaterialText(extractedSegments.join(" "));
-  const letters = (combined.match(/[A-Za-z]/g) ?? []).length;
-  const words = combined ? combined.split(/\s+/).length : 0;
-  const pageCount = countPdfPages(pdfText);
-  const adequate = words >= 20 || letters >= 120;
-  const likelyImageOnly =
-    pageCount > 0 &&
-    !adequate &&
-    (/\/Subtype\s*\/Image\b/.test(pdfText) || /\/XObject\b/.test(pdfText));
-  return {
-    text: combined,
-    adequate,
-    pageCount,
-    likelyImageOnly,
-  };
-}
-
-function extractReadableTextFromBuffer(buffer: Buffer, contentType?: string) {
-  const normalizedContentType = normalizeContentType(contentType);
-  const isPdf = normalizedContentType?.includes("pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-";
-
-  if (isPdf) {
-    const extracted = extractNativePdfText(buffer, contentType);
-
-    if (extracted.pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
-      return {
-        status: "failed" as const,
-        text: extracted.text,
-        errorMessage: `This PDF exceeds the ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES}-page limit for the planning library.`,
-      };
-    }
-
-    if (extracted.adequate) {
-      return {
-        status: "ready" as const,
-        text: extracted.text,
-        errorMessage: null,
-      };
-    }
-
-    return {
-      status: "ocr_needed" as const,
-      text: extracted.text,
-      errorMessage: extracted.likelyImageOnly
-        ? "This PDF appears to be image-only or scanned. OCR is not enabled in this workflow yet, so please upload a text-based PDF or TXT file."
-        : "Native PDF text extraction was not strong enough to index this file, and OCR is not enabled in this workflow yet.",
-    };
-  }
-
-  const decoded = new TextDecoder().decode(buffer);
-  const normalized = normalizeKnowledgeMaterialText(decoded);
-  const letters = (normalized.match(/[A-Za-z]/g) ?? []).length;
-  const words = normalized ? normalized.split(/\s+/).length : 0;
-
-  if (words >= 20 || letters >= 120) {
-    return {
-      status: "ready" as const,
-      text: normalized,
-      errorMessage: null,
-    };
-  }
-
-  return {
-    status: "failed" as const,
-    text: normalized,
-    errorMessage:
-      "The uploaded text file did not contain enough readable text to index.",
-  };
-}
+import { extractReadableTextFromBuffer } from "./lessonKnowledgePdfExtraction";
 
 function buildSourceText(args: KnowledgeMaterialIngestionSnapshot) {
-  return buildKnowledgeMaterialSearchText([
-    args.title,
-    args.topicLabel,
-    args.description ?? undefined,
-    args.externalUrl ?? undefined,
-  ]);
+  return buildMaterialSearchSeed({
+    title: args.title,
+    topicLabel: args.topicLabel,
+    description: args.description,
+    externalUrl: args.externalUrl,
+  });
 }
 
 async function processExternalLink(args: KnowledgeMaterialIngestionSnapshot) {
@@ -267,10 +36,7 @@ async function processExternalLink(args: KnowledgeMaterialIngestionSnapshot) {
     extractedText: sourceText,
     externalUrl: args.externalUrl ?? undefined,
   });
-  const enrichedSearchText = buildKnowledgeMaterialSearchText([
-    sourceText,
-    ...labels,
-  ]);
+  const enrichedSearchText = buildKnowledgeMaterialSearchText([sourceText, ...labels]);
   const chunks = chunkKnowledgeMaterialText(sourceText, {
     chunkSize: 900,
     maxChunks: 3,
@@ -341,20 +107,17 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     try {
       if (args.externalUrl && !args.storageId) {
         const result = await processExternalLink(args);
-        await ctx.runMutation(
-          internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal,
-          {
-            materialId: args.materialId,
-            actorUserId: args.ownerUserId,
-            actorRole: args.ownerRole,
-            schoolId: args.schoolId,
-            status: result.status,
-            searchText: result.searchText,
-            labelSuggestions: result.labels,
-            chunks: result.chunks,
-            ingestionErrorMessage: result.ingestionErrorMessage,
-          }
-        );
+        await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal, {
+          materialId: args.materialId,
+          actorUserId: args.ownerUserId,
+          actorRole: args.ownerRole,
+          schoolId: args.schoolId,
+          status: result.status,
+          searchText: result.searchText,
+          labelSuggestions: result.labels,
+          chunks: result.chunks,
+          ingestionErrorMessage: result.ingestionErrorMessage,
+        });
         return null;
       }
 
@@ -374,16 +137,18 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      const extracted = extractReadableTextFromBuffer(buffer, args.storageContentType);
+      const extracted = await extractReadableTextFromBuffer(buffer, {
+        contentType: args.storageContentType,
+        geminiApiKey: process.env.GEMINI_API_KEY?.trim() || undefined,
+      });
 
       const labels = suggestKnowledgeMaterialLabels({
         title: args.title,
         topicLabel: args.topicLabel,
         description: args.description,
-        extractedText: extracted.text,
+        extractedText: extracted.status === "ready" ? extracted.text : undefined,
         externalUrl: args.externalUrl,
       });
-
       const searchText = buildKnowledgeMaterialSearchText([
         args.title,
         args.topicLabel,
@@ -392,7 +157,6 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         ...labels,
         extracted.status === "ready" ? extracted.text.slice(0, 1200) : undefined,
       ]);
-
       const chunks =
         extracted.status === "ready"
           ? chunkKnowledgeMaterialText(extracted.text, {
@@ -405,43 +169,37 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
             }))
           : [];
 
-      await ctx.runMutation(
-        internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal,
-        {
-          materialId: args.materialId,
-          actorUserId: args.ownerUserId,
-          actorRole: args.ownerRole,
-          schoolId: args.schoolId,
-          status: extracted.status,
-          searchText,
-          labelSuggestions: labels,
-          chunks,
-          ingestionErrorMessage: extracted.errorMessage,
-        }
-      );
+      await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal, {
+        materialId: args.materialId,
+        actorUserId: args.ownerUserId,
+        actorRole: args.ownerRole,
+        schoolId: args.schoolId,
+        status: extracted.status,
+        searchText,
+        labelSuggestions: labels,
+        chunks,
+        ingestionErrorMessage: extracted.errorMessage,
+      });
 
       return null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Knowledge material ingestion failed";
-      await ctx.runMutation(
-        internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal,
-        {
-          materialId: args.materialId,
-          actorUserId: args.ownerUserId,
-          actorRole: args.ownerRole,
-          schoolId: args.schoolId,
-          status: "failed",
-          searchText: buildSourceText(args),
-          labelSuggestions: suggestKnowledgeMaterialLabels({
-            title: args.title,
-            topicLabel: args.topicLabel,
-            description: args.description,
-            externalUrl: args.externalUrl,
-          }),
-          chunks: [],
-          ingestionErrorMessage: message,
-        }
-      );
+      await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal, {
+        materialId: args.materialId,
+        actorUserId: args.ownerUserId,
+        actorRole: args.ownerRole,
+        schoolId: args.schoolId,
+        status: "failed",
+        searchText: buildSourceText(args),
+        labelSuggestions: suggestKnowledgeMaterialLabels({
+          title: args.title,
+          topicLabel: args.topicLabel,
+          description: args.description,
+          externalUrl: args.externalUrl,
+        }),
+        chunks: [],
+        ingestionErrorMessage: message,
+      });
       return null;
     }
   },

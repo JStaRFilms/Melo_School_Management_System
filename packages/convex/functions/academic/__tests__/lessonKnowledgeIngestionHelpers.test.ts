@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Id, TableNames } from "../../../_generated/dataModel";
 
@@ -10,9 +11,71 @@ import {
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
 } from "../lessonKnowledgeIngestionHelpers";
+import { extractReadableTextFromBuffer } from "../lessonKnowledgePdfExtraction";
 
 function asId<TableName extends TableNames>(value: string): Id<TableName> {
   return value as Id<TableName>;
+}
+
+function buildBlankPdfBuffer() {
+  const header = "%PDF-1.4\n";
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>\nendobj\n",
+    "4 0 obj\n<< /Length 0 >>\nstream\nendstream\nendobj\n",
+  ];
+
+  let cursor = Buffer.byteLength(header, "latin1");
+  const offsets = objects.map((object) => {
+    const offset = cursor;
+    cursor += Buffer.byteLength(object, "latin1");
+    return offset;
+  });
+
+  const xref = [
+    "xref",
+    `0 ${objects.length + 1}`,
+    "0000000000 65535 f ",
+    ...offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
+    "trailer",
+    `<< /Size ${objects.length + 1} /Root 1 0 R >>`,
+    "startxref",
+    String(cursor),
+    "%%EOF",
+    "",
+  ].join("\n");
+
+  return Buffer.from(header + objects.join("") + xref, "latin1");
+}
+
+function createGeminiSuccessFetch(text: string) {
+  return async () =>
+    ({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text }],
+            },
+          },
+        ],
+      }),
+    }) as Response;
+}
+
+function createHangingFetch() {
+  return () => new Promise<Response>(() => undefined);
+}
+
+function createRateLimitedFetch() {
+  return async () =>
+    ({
+      ok: false,
+      status: 429,
+      json: async () => ({}),
+    }) as Response;
 }
 
 describe("lessonKnowledgeIngestionHelpers", () => {
@@ -133,11 +196,76 @@ describe("lessonKnowledgeIngestionHelpers", () => {
   });
 
   it("accepts only YouTube urls for link registration", () => {
-    expect(assertYouTubeUrl("https://www.youtube.com/watch?v=abc123")).toContain(
-      "youtube.com"
-    );
+    expect(assertYouTubeUrl("https://www.youtube.com/watch?v=abc123")).toContain("youtube.com");
     expect(() => assertYouTubeUrl("https://example.com/video")).toThrowError(
       "Only YouTube links can be registered here"
     );
+  });
+
+  it("reads a digital PDF with the parser before Gemini fallback", async () => {
+    const samplePdf = readFileSync(
+      new URL(
+        "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
+        import.meta.url
+      )
+    );
+
+    const result = await extractReadableTextFromBuffer(samplePdf, {
+      contentType: "application/pdf",
+      fetchImpl: async () => {
+        throw new Error("Gemini fallback should not be called for a readable PDF");
+      },
+    });
+
+    expect(result.status).toBe("ready");
+    expect(result.extractionPath).toBe("parser");
+    expect(result.text.length).toBeGreaterThan(1000);
+    expect(result.errorMessage).toBeNull();
+  });
+
+  it("classifies scanned-like PDFs honestly when Gemini is unavailable", async () => {
+    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
+      contentType: "application/pdf",
+      fetchImpl: async () => {
+        throw new Error("Gemini fallback should not be called without an API key");
+      },
+    });
+
+    expect(result.status).toBe("ocr_needed");
+    expect(result.extractionPath).toBe("none");
+    expect(result.fallbackReason).toBe("scanned_or_problematic");
+    expect(result.errorMessage).toContain("Gemini fallback is not configured");
+  });
+
+  it("fails without hanging when Gemini fallback never resolves", async () => {
+    const startedAt = Date.now();
+
+    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
+      contentType: "application/pdf",
+      geminiApiKey: "test-key",
+      fetchImpl: createHangingFetch(),
+      geminiTimeoutMs: 25,
+    });
+
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(elapsedMs).toBeLessThan(1000);
+    expect(result.status).toBe("ocr_needed");
+    expect(result.extractionPath).toBe("gemini");
+    expect(result.errorMessage).toContain("timed out");
+  });
+
+  it("returns a clear OCR-needed status when Gemini fallback is rate-limited", async () => {
+    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
+      contentType: "application/pdf",
+      geminiApiKey: "test-key",
+      fetchImpl: createRateLimitedFetch(),
+    });
+
+    expect(result.status).toBe("ocr_needed");
+    expect(result.extractionPath).toBe("none");
+    expect(result.fallbackReason).toBe("scanned_or_problematic");
+    expect(result.errorMessage).toContain("HTTP 429");
+    expect(result.errorMessage).toContain("OCR");
   });
 });

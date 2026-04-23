@@ -22,6 +22,8 @@ import {
   type KnowledgeMaterialUploadIntent,
 } from "./lessonKnowledgeIngestionHelpers";
 
+const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
+
 const knowledgeAuditEventTypeValidator = v.union(
   v.literal("approved"),
   v.literal("promoted"),
@@ -692,7 +694,16 @@ export const retryKnowledgeMaterialIngestion = mutation({
       throw new ConvexError("You cannot manage this material");
     }
 
-    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+    const now = Date.now();
+    const isStaleExtracting =
+      material.processingStatus === "extracting" &&
+      now - material.updatedAt >= MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS;
+
+    if (
+      material.processingStatus !== "ocr_needed" &&
+      material.processingStatus !== "failed" &&
+      !isStaleExtracting
+    ) {
       throw new ConvexError("This material does not need a retry");
     }
 
@@ -700,7 +711,6 @@ export const retryKnowledgeMaterialIngestion = mutation({
       throw new ConvexError("This material has reached the retry limit");
     }
 
-    const now = Date.now();
     await ctx.db.patch(args.materialId, {
       processingStatus: "queued",
       searchStatus: "not_indexed",
@@ -718,7 +728,9 @@ export const retryKnowledgeMaterialIngestion = mutation({
         eventType: "retry_requested",
         entityType: "knowledgeMaterial",
         materialId: args.materialId,
-        changeSummary: "Retrying the knowledge material ingestion pipeline.",
+        changeSummary: isStaleExtracting
+          ? "Retrying a stale knowledge material extraction job."
+          : "Retrying the knowledge material ingestion pipeline.",
       }
     );
 

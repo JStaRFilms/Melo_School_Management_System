@@ -34,7 +34,8 @@ Excluded:
 
 - Admin and teacher materials can enter the system with proper default visibility.
 - Processing states are trackable.
-- Native PDF text extraction is attempted first.
+- A real PDF parser is used for primary extraction instead of fragile ad-hoc stream parsing.
+- A guarded fallback path exists for parser failures or unreadable PDFs.
 - Failure states are recoverable and visible in stored status.
 
 ## Expected Artifacts
@@ -46,7 +47,8 @@ Excluded:
 
 ## Constraints
 
-- OCR fallback should only be invoked when native extraction is inadequate.
+- Parser-first extraction is the required baseline for PDFs.
+- Any fallback path must stay truthful about whether OCR/LLM extraction actually ran.
 - Generated artifacts and uploads must use the same material-domain contracts.
 
 ## Verification

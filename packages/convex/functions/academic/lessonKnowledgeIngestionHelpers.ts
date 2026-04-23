@@ -242,6 +242,39 @@ export function normalizeKnowledgeMaterialText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+export function isLikelyReadableKnowledgeMaterialText(value: string): boolean {
+  const normalized = normalizeKnowledgeMaterialText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  const tokens = normalized
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z]/g, ""))
+    .filter((token) => token.length >= 2);
+
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const letters = (normalized.match(/[A-Za-z]/g) ?? []).length;
+  const stopWordCount = tokens.filter((token) => STOP_WORDS.has(token)).length;
+  const vowelTokenCount = tokens.filter((token) => /[aeiou]/.test(token)).length;
+  const consonantOnlyTokens = tokens.filter((token) => !/[aeiou]/.test(token)).length;
+  const suspiciousCharCount = normalized.replace(/[\p{L}\p{N}\s.,;:'"?!()\-–—/%&]/gu, "").length;
+  const suspiciousCharRatio = suspiciousCharCount / normalized.length;
+  const hasNoiseRuns = /(.)\1{5,}/.test(normalized);
+
+  return (
+    letters >= 20 &&
+    suspiciousCharRatio <= 0.35 &&
+    !hasNoiseRuns &&
+    consonantOnlyTokens <= Math.max(2, Math.floor(tokens.length * 0.6)) &&
+    (stopWordCount >= 1 || vowelTokenCount >= Math.max(3, Math.ceil(tokens.length / 2)))
+  );
+}
+
 export function buildKnowledgeMaterialSearchText(parts: Array<string | undefined | null>) {
   const seen = new Set<string>();
   const segments: string[] = [];

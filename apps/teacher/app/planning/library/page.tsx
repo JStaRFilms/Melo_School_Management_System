@@ -325,6 +325,7 @@ function uploadIntentSuccessMessage(intent: UploadIntent) {
 }
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+const STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
 function inferUploadContentType(file: File) {
   const explicitType = file.type.trim().toLowerCase();
@@ -436,6 +437,9 @@ export default function TeacherLibraryPage() {
   );
   const publishMaterial = useMutation(
     "functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never
+  );
+  const retryMaterialIngestion = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never
   );
 
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
@@ -751,6 +755,32 @@ export default function TeacherLibraryPage() {
     [publishMaterial]
   );
 
+  const retryIngestion = useCallback(
+    async (material: TeacherLibraryMaterial) => {
+      setSavingMaterialId(material._id);
+      setNotice(null);
+
+      try {
+        await retryMaterialIngestion({ materialId: material._id as never } as never);
+        setNotice({
+          tone: "success",
+          message:
+            material.processingStatus === "extracting"
+              ? "The stuck extraction was re-queued. Give it a few seconds and refresh if needed."
+              : "The material was re-queued for extraction.",
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message: getUserFacingErrorMessage(error, "Retry failed."),
+        });
+      } finally {
+        setSavingMaterialId(null);
+      }
+    },
+    [retryMaterialIngestion]
+  );
+
   const clearFilters = useCallback(() => {
     setSearchQuery("");
     setVisibility(DEFAULT_FILTERS.visibility);
@@ -967,6 +997,7 @@ export default function TeacherLibraryPage() {
                   onChangeDraft={setDraft}
                   onSaveDraft={saveDraft}
                   onPublish={() => publishToStaff(material)}
+                  onRetryIngestion={() => retryIngestion(material)}
                 />
               ))
             )}
@@ -1325,6 +1356,7 @@ function LibraryMaterialCard({
   onChangeDraft,
   onSaveDraft,
   onPublish,
+  onRetryIngestion,
 }: {
   material: TeacherLibraryMaterial;
   isSelected: boolean;
@@ -1339,7 +1371,14 @@ function LibraryMaterialCard({
   onChangeDraft: (draft: MaterialDraft) => void;
   onSaveDraft: () => void;
   onPublish: () => void;
+  onRetryIngestion: () => void;
 }) {
+  const isStaleExtracting =
+    material.processingStatus === "extracting" && Date.now() - material.updatedAt >= STALE_EXTRACTION_MS;
+  const canRetryIngestion =
+    material.processingStatus === "failed" ||
+    material.processingStatus === "ocr_needed" ||
+    isStaleExtracting;
   const updatedLabel = formatTimestamp(material.updatedAt);
   const canSaveDraft = Boolean(draft && draft.title.trim() && draft.topicLabel.trim() && draft.level.trim() && draft.subjectId);
 
@@ -1486,16 +1525,22 @@ function LibraryMaterialCard({
           </div>
         ) : null}
 
-        {(material.processingStatus === "ocr_needed" || material.processingStatus === "failed") ? (
-          <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-800">
+        {material.processingStatus === "ocr_needed" || material.processingStatus === "failed" || isStaleExtracting ? (
+          <div className={`mt-5 rounded-2xl border p-4 text-sm ${isStaleExtracting ? "border-amber-100 bg-amber-50 text-amber-900" : "border-rose-100 bg-rose-50 text-rose-800"}`}>
             <p className="font-bold">
-              {material.processingStatus === "ocr_needed" ? "OCR needed" : "Ingestion failed"}
+              {isStaleExtracting
+                ? "Extraction looks stuck"
+                : material.processingStatus === "ocr_needed"
+                  ? "OCR needed"
+                  : "Ingestion failed"}
             </p>
             <p className="mt-1 leading-6">
-              {material.ingestionErrorMessage ??
-                (material.processingStatus === "ocr_needed"
-                  ? "This looks like a scanned or image-only PDF. OCR is not enabled in this workflow yet, so upload a text-based PDF or TXT file instead."
-                  : "This upload could not be processed. Check the file type, size, and page count before trying again.")}
+              {isStaleExtracting
+                ? "This file has been stuck on extracting for more than two minutes. You can safely retry it now."
+                : material.ingestionErrorMessage ??
+                  (material.processingStatus === "ocr_needed"
+                    ? "This looks like a scanned or image-only PDF. OCR is not enabled in this workflow yet, so upload a text-based PDF or TXT file instead."
+                    : "This upload could not be processed. Check the file type, size, and page count before trying again.")}
             </p>
           </div>
         ) : null}
@@ -1524,6 +1569,16 @@ function LibraryMaterialCard({
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Publish to staff
+              </button>
+            ) : canRetryIngestion ? (
+              <button
+                type="button"
+                onClick={onRetryIngestion}
+                disabled={isBusy}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+              >
+                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
+                {isStaleExtracting ? "Retry stuck extraction" : "Retry extraction"}
               </button>
             ) : (
               <span className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-500">
