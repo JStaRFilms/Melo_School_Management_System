@@ -46,6 +46,29 @@ const assessmentDraftModeValidator = v.union(
   v.literal("exam_draft")
 );
 
+const assessmentQuestionStyleValidator = v.union(
+  v.literal("balanced"),
+  v.literal("open_ended_heavy"),
+  v.literal("mixed_open_ended"),
+  v.literal("objective_heavy")
+);
+
+const assessmentGenerationSettingsValidator = v.object({
+  profileId: v.optional(v.id("assessmentGenerationProfiles")),
+  profileName: v.optional(v.string()),
+  questionStyle: assessmentQuestionStyleValidator,
+  totalQuestions: v.number(),
+  questionMix: v.object({
+    multiple_choice: v.number(),
+    short_answer: v.number(),
+    essay: v.number(),
+    true_false: v.number(),
+    fill_in_the_blank: v.number(),
+  }),
+  allowTeacherOverrides: v.boolean(),
+  overrideReason: v.optional(v.string()),
+});
+
 const knowledgeArtifactStatusValidator = v.union(
   v.literal("draft"),
   v.literal("active"),
@@ -1473,6 +1496,36 @@ export default defineSchema({
       "artifactId",
     ]),
 
+  assessmentGenerationProfiles: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    questionStyle: assessmentQuestionStyleValidator,
+    totalQuestions: v.number(),
+    questionMix: v.object({
+      multiple_choice: v.number(),
+      short_answer: v.number(),
+      essay: v.number(),
+      true_false: v.number(),
+      fill_in_the_blank: v.number(),
+    }),
+    allowTeacherOverrides: v.boolean(),
+    isDefault: v.boolean(),
+    isActive: v.boolean(),
+    searchText: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_is_default", ["schoolId", "isDefault"])
+    .index("by_school_and_is_active", ["schoolId", "isActive"])
+    .searchIndex("search_search_text", {
+      searchField: "searchText",
+      filterFields: ["schoolId", "questionStyle", "isDefault", "isActive"],
+    }),
+
   assessmentBanks: defineTable({
     schoolId: v.id("schools"),
     ownerUserId: v.id("users"),
@@ -1480,6 +1533,7 @@ export default defineSchema({
     outputType: knowledgeOutputTypeValidator,
     draftMode: v.optional(assessmentDraftModeValidator),
     sourceSelectionSnapshot: v.optional(v.string()),
+    effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
     bankStatus: knowledgeArtifactStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
@@ -1603,6 +1657,7 @@ export default defineSchema({
     targetAssessmentBankId: v.optional(v.id("assessmentBanks")),
     sourceSelectionSnapshot: v.string(),
     sourceCount: v.number(),
+    effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
     tokenPromptCount: v.optional(v.number()),
     tokenCompletionCount: v.optional(v.number()),
     costUsd: v.optional(v.number()),

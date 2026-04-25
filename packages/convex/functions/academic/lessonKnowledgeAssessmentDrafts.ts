@@ -77,6 +77,31 @@ const questionTypeValidator = v.union(
   v.literal("fill_in_the_blank")
 );
 
+const questionStyleValidator = v.union(
+  v.literal("balanced"),
+  v.literal("open_ended_heavy"),
+  v.literal("mixed_open_ended"),
+  v.literal("objective_heavy")
+);
+
+const questionMixValidator = v.object({
+  multiple_choice: v.number(),
+  short_answer: v.number(),
+  essay: v.number(),
+  true_false: v.number(),
+  fill_in_the_blank: v.number(),
+});
+
+const effectiveGenerationSettingsValidator = v.object({
+  profileId: v.optional(v.id("assessmentGenerationProfiles")),
+  profileName: v.optional(v.string()),
+  questionStyle: questionStyleValidator,
+  totalQuestions: v.number(),
+  questionMix: questionMixValidator,
+  allowTeacherOverrides: v.boolean(),
+  overrideReason: v.optional(v.string()),
+});
+
 const sourceValidator = v.object({
   _id: v.id("knowledgeMaterials"),
   title: v.string(),
@@ -139,6 +164,7 @@ const bankDraftValidator = v.object({
   level: v.union(v.string(), v.null()),
   topicLabel: v.union(v.string(), v.null()),
   sourceSelectionSnapshot: v.union(v.string(), v.null()),
+  effectiveGenerationSettings: v.union(effectiveGenerationSettingsValidator, v.null()),
   lastSavedAt: v.union(v.number(), v.null()),
   itemCount: v.number(),
 });
@@ -156,6 +182,18 @@ const workspaceValidator = v.object({
   inaccessibleSourceIds: v.array(v.string()),
   warnings: v.array(v.string()),
   sourceContext: sourceContextValidator,
+  profiles: v.array(v.object({
+    _id: v.id("assessmentGenerationProfiles"),
+    name: v.string(),
+    description: v.union(v.string(), v.null()),
+    questionStyle: questionStyleValidator,
+    totalQuestions: v.number(),
+    questionMix: questionMixValidator,
+    allowTeacherOverrides: v.boolean(),
+    isDefault: v.boolean(),
+    isActive: v.boolean(),
+    updatedAt: v.number(),
+  })),
   draft: bankDraftValidator,
   items: v.array(bankItemValidator),
   canGenerate: v.boolean(),
@@ -172,6 +210,7 @@ const saveResultValidator = v.object({
   sourceSelectionSnapshot: v.string(),
   itemCount: v.number(),
   savedAt: v.number(),
+  effectiveGenerationSettings: effectiveGenerationSettingsValidator,
 });
 
 const aiRunLogValidator = v.object({
@@ -189,6 +228,7 @@ const aiRunLogValidator = v.object({
   targetAssessmentBankId: v.optional(v.id("assessmentBanks")),
   sourceSelectionSnapshot: v.string(),
   sourceCount: v.number(),
+  effectiveGenerationSettings: v.optional(effectiveGenerationSettingsValidator),
   tokenPromptCount: v.optional(v.number()),
   tokenCompletionCount: v.optional(v.number()),
   errorCode: v.optional(v.string()),
@@ -219,6 +259,22 @@ type AssessmentOutputType = "question_bank_draft" | "cbt_draft";
 type WorkspaceBank = Doc<"assessmentBanks"> & {
   draftMode?: Doc<"assessmentBanks">["draftMode"];
   sourceSelectionSnapshot?: Doc<"assessmentBanks">["sourceSelectionSnapshot"];
+};
+
+type EffectiveGenerationSettings = {
+  profileId?: Id<"assessmentGenerationProfiles">;
+  profileName?: string;
+  questionStyle: "balanced" | "open_ended_heavy" | "mixed_open_ended" | "objective_heavy";
+  totalQuestions: number;
+  questionMix: {
+    multiple_choice: number;
+    short_answer: number;
+    essay: number;
+    true_false: number;
+    fill_in_the_blank: number;
+  };
+  allowTeacherOverrides: boolean;
+  overrideReason?: string;
 };
 
 type WorkspaceItem = {
@@ -314,6 +370,122 @@ function outputTypeLabel(outputType: AssessmentOutputType) {
 
 function defaultQuestionType(outputType: AssessmentOutputType) {
   return outputType === "cbt_draft" ? "multiple_choice" : "short_answer";
+}
+
+function defaultGenerationSettings(outputType: AssessmentOutputType): EffectiveGenerationSettings {
+  if (outputType === "cbt_draft") {
+    return {
+      questionStyle: "objective_heavy",
+      totalQuestions: 20,
+      questionMix: { multiple_choice: 16, true_false: 2, fill_in_the_blank: 2, short_answer: 0, essay: 0 },
+      allowTeacherOverrides: true,
+    };
+  }
+
+  return {
+    questionStyle: "mixed_open_ended",
+    totalQuestions: 10,
+    questionMix: { multiple_choice: 3, true_false: 1, fill_in_the_blank: 1, short_answer: 4, essay: 1 },
+    allowTeacherOverrides: true,
+  };
+}
+
+function normalizeGenerationSettings(settings: EffectiveGenerationSettings): EffectiveGenerationSettings {
+  const questionMix = {
+    multiple_choice: Math.max(0, Math.min(60, Math.trunc(settings.questionMix.multiple_choice))),
+    short_answer: Math.max(0, Math.min(60, Math.trunc(settings.questionMix.short_answer))),
+    essay: Math.max(0, Math.min(60, Math.trunc(settings.questionMix.essay))),
+    true_false: Math.max(0, Math.min(60, Math.trunc(settings.questionMix.true_false))),
+    fill_in_the_blank: Math.max(0, Math.min(60, Math.trunc(settings.questionMix.fill_in_the_blank))),
+  };
+  const totalQuestions = Object.values(questionMix).reduce((sum, value) => sum + value, 0);
+  if (totalQuestions < 1) {
+    throw new ConvexError("At least one question is required.");
+  }
+  return { ...settings, questionMix, totalQuestions };
+}
+
+function profileToEffectiveSettings(profile: Doc<"assessmentGenerationProfiles"> | null, outputType: AssessmentOutputType) {
+  if (!profile) {
+    return defaultGenerationSettings(outputType);
+  }
+  return normalizeGenerationSettings({
+    profileId: profile._id,
+    profileName: profile.name,
+    questionStyle: profile.questionStyle,
+    totalQuestions: profile.totalQuestions,
+    questionMix: profile.questionMix,
+    allowTeacherOverrides: profile.allowTeacherOverrides,
+  });
+}
+
+function sameGenerationSettingsShape(a: EffectiveGenerationSettings, b: EffectiveGenerationSettings) {
+  return (
+    a.questionStyle === b.questionStyle &&
+    a.totalQuestions === b.totalQuestions &&
+    a.questionMix.multiple_choice === b.questionMix.multiple_choice &&
+    a.questionMix.short_answer === b.questionMix.short_answer &&
+    a.questionMix.essay === b.questionMix.essay &&
+    a.questionMix.true_false === b.questionMix.true_false &&
+    a.questionMix.fill_in_the_blank === b.questionMix.fill_in_the_blank
+  );
+}
+
+async function resolveValidatedGenerationSettings(
+  ctx: QueryCtx | MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    outputType: AssessmentOutputType;
+    requestedSettings: EffectiveGenerationSettings;
+  }
+) {
+  const normalizedRequested = normalizeGenerationSettings(args.requestedSettings);
+  const defaultProfiles = await ctx.db
+    .query("assessmentGenerationProfiles")
+    .withIndex("by_school_and_is_default", (q) => q.eq("schoolId", args.schoolId).eq("isDefault", true))
+    .take(20);
+  const activeDefaultProfile = defaultProfiles.find((profile) => profile.isActive) ?? null;
+
+  if (!normalizedRequested.profileId) {
+    if (!activeDefaultProfile) {
+      return normalizedRequested;
+    }
+
+    const defaultSettings = profileToEffectiveSettings(activeDefaultProfile, args.outputType);
+    if (!activeDefaultProfile.allowTeacherOverrides) {
+      return defaultSettings;
+    }
+
+    if (sameGenerationSettingsShape(normalizedRequested, defaultSettings)) {
+      return defaultSettings;
+    }
+
+    return {
+      ...normalizedRequested,
+      overrideReason: normalizedRequested.overrideReason ?? "teacher_override",
+    } satisfies EffectiveGenerationSettings;
+  }
+
+  const profile = await ctx.db.get(normalizedRequested.profileId);
+  if (!profile || profile.schoolId !== args.schoolId || !profile.isActive) {
+    throw new ConvexError("Assessment generation profile not found");
+  }
+
+  const profileSettings = profileToEffectiveSettings(profile, args.outputType);
+  if (!profile.allowTeacherOverrides) {
+    return profileSettings;
+  }
+
+  return {
+    ...normalizedRequested,
+    profileId: profile._id,
+    profileName: profile.name,
+    allowTeacherOverrides: profile.allowTeacherOverrides,
+    overrideReason:
+      !sameGenerationSettingsShape(normalizedRequested, profileSettings)
+        ? normalizedRequested.overrideReason ?? "teacher_override"
+        : undefined,
+  } satisfies EffectiveGenerationSettings;
 }
 
 function buildSourceSelectionSnapshot(args: {
@@ -834,6 +1006,13 @@ export const getTeacherAssessmentBankWorkspace = query({
 
     const bankSourceIds = sourceSelectionSourceIds.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
     const bankItems = bank ? await fetchAssessmentBankItems(ctx, { schoolId, bankId: bank._id }) : [];
+    const profiles = await ctx.db
+      .query("assessmentGenerationProfiles")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .take(100);
+    const activeProfiles = profiles
+      .filter((profile) => profile.isActive)
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
 
     const draftMode = bank?.draftMode ?? args.draftMode;
     const inferredOutputType = outputTypeFromDraftMode(draftMode);
@@ -844,6 +1023,10 @@ export const getTeacherAssessmentBankWorkspace = query({
     });
     const lastSavedAt = bank?.updatedAt ?? null;
     const itemCount = bankItems.length;
+    const defaultProfile = activeProfiles.find((profile) => profile.isDefault) ?? activeProfiles[0] ?? null;
+    const effectiveGenerationSettings = bank?.effectiveGenerationSettings
+      ? normalizeGenerationSettings(bank.effectiveGenerationSettings as EffectiveGenerationSettings)
+      : profileToEffectiveSettings(defaultProfile, inferredOutputType);
 
     const canAutosave = Boolean(sourceContext.subjectId && sourceContext.level && (selectedSourceCount > 0 || bank));
     const canGenerate = Boolean(
@@ -866,6 +1049,18 @@ export const getTeacherAssessmentBankWorkspace = query({
       inaccessibleSourceIds: sourceBundle.inaccessibleSourceIds,
       warnings: sourceIssues,
       sourceContext,
+      profiles: activeProfiles.map((profile) => ({
+        _id: profile._id,
+        name: profile.name,
+        description: profile.description ?? null,
+        questionStyle: profile.questionStyle,
+        totalQuestions: profile.totalQuestions,
+        questionMix: profile.questionMix,
+        allowTeacherOverrides: profile.allowTeacherOverrides,
+        isDefault: profile.isDefault,
+        isActive: profile.isActive,
+        updatedAt: profile.updatedAt,
+      })),
       draft: {
         bankId: bank?._id ?? null,
         title,
@@ -881,6 +1076,7 @@ export const getTeacherAssessmentBankWorkspace = query({
         level: sourceContext.level,
         topicLabel: sourceContext.topicLabel,
         sourceSelectionSnapshot: bank?.sourceSelectionSnapshot ?? sourceSelectionSnapshot,
+        effectiveGenerationSettings,
         lastSavedAt,
         itemCount,
       },
@@ -900,6 +1096,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
     description: v.optional(v.union(v.string(), v.null())),
     sourceIds: v.array(v.id("knowledgeMaterials")),
     sourceSelectionSnapshot: v.string(),
+    effectiveGenerationSettings: effectiveGenerationSettingsValidator,
     subjectId: v.id("subjects"),
     level: v.string(),
     topicLabel: v.optional(v.union(v.string(), v.null())),
@@ -969,6 +1166,11 @@ export const saveTeacherAssessmentBankDraft = mutation({
     }
 
     const outputType = outputTypeFromDraftMode(args.draftMode);
+    const effectiveGenerationSettings = await resolveValidatedGenerationSettings(ctx, {
+      schoolId,
+      outputType,
+      requestedSettings: args.effectiveGenerationSettings as EffectiveGenerationSettings,
+    });
     const draftModeText = draftModeLabel(args.draftMode);
     const outputTypeText = outputTypeLabel(outputType);
     const topicLabel = normalizeOptionalText(args.topicLabel) ?? null;
@@ -1016,6 +1218,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       await ctx.db.patch(bankId, {
         draftMode: args.draftMode,
         sourceSelectionSnapshot: args.sourceSelectionSnapshot,
+        effectiveGenerationSettings,
         bankStatus: "draft",
         title: normalizedTitle,
         ...(normalizedDescription !== null ? { description: normalizedDescription } : {}),
@@ -1036,6 +1239,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
         outputType,
         draftMode: args.draftMode,
         sourceSelectionSnapshot: args.sourceSelectionSnapshot,
+        effectiveGenerationSettings,
         bankStatus: "draft",
         title: normalizedTitle,
         ...(normalizedDescription !== null ? { description: normalizedDescription } : {}),
@@ -1087,6 +1291,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       sourceSelectionSnapshot: args.sourceSelectionSnapshot,
       itemCount: args.items.length,
       savedAt: now,
+      effectiveGenerationSettings,
     };
   },
 });
@@ -1111,6 +1316,7 @@ export const recordTeacherAssessmentBankAiRun = mutation({
       ...(args.targetAssessmentBankId ? { targetAssessmentBankId: args.targetAssessmentBankId } : {}),
       sourceSelectionSnapshot: args.sourceSelectionSnapshot,
       sourceCount: args.sourceCount,
+      ...(args.effectiveGenerationSettings ? { effectiveGenerationSettings: args.effectiveGenerationSettings } : {}),
       ...(args.tokenPromptCount !== undefined ? { tokenPromptCount: args.tokenPromptCount } : {}),
       ...(args.tokenCompletionCount !== undefined ? { tokenCompletionCount: args.tokenCompletionCount } : {}),
       ...(args.errorCode ? { errorCode: args.errorCode } : {}),

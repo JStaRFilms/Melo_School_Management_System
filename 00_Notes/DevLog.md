@@ -84,3 +84,15 @@ pnpm --filter @school/admin dev
 - [ ] In future builds, if we create a study app later on, it would be nice for the app to work independently to some extent while still being able to use features from Melo, if available. That way, students whose schools have Melo can use their portal and access all the features, and students whose schools don’t have Melo can use it as a standalone, join a community of students, share resources, study together, and see their game scores and other metrics.
 
 - [ ] We need to confirm whether promotions are sorted out, like a child moving from one class to another. Does that actually work?
+
+- [ ] We need to work on the following:
+
+1. Academic Students page, improve how it loads parents and children, assigns emails, and handles editable fields.
+2. Knowledge Library on the admin page.
+3. Template Studio on the admin page.
+4. Assessment Profiles on the admin page.
+
+Next batch:
+
+- Teachers page library and all its subpages, including the video page.
+- Portal: the entire knowledge system at the bottom.

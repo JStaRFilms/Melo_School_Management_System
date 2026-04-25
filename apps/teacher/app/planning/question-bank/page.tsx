@@ -91,6 +91,7 @@ export default function QuestionBankPage() {
   };
 
   const handleSaveDraft = async (draft: {
+    effectiveGenerationSettings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>;
     title: string;
     description: string | null;
     items: Array<{
@@ -115,6 +116,7 @@ export default function QuestionBankPage() {
         description: draft.description,
         sourceIds: selectedSourceIds,
         sourceSelectionSnapshot: workspace.draft.sourceSelectionSnapshot ?? "",
+        effectiveGenerationSettings: draft.effectiveGenerationSettings,
         subjectId: workspace.sourceContext.subjectId,
         level: workspace.sourceContext.level,
         topicLabel: workspace.sourceContext.topicLabel ?? null,
@@ -130,7 +132,9 @@ export default function QuestionBankPage() {
     }
   };
 
-  const handleGenerateDraft = async () => {
+  const handleGenerateDraft = async (
+    effectiveGenerationSettings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>
+  ) => {
     try {
       const response = await fetch("/api/ai/question-bank/generate", {
         method: "POST",
@@ -140,6 +144,7 @@ export default function QuestionBankPage() {
         body: JSON.stringify({
           draftMode,
           sourceIds: selectedSourceIds,
+          effectiveGenerationSettings,
         }),
       });
 

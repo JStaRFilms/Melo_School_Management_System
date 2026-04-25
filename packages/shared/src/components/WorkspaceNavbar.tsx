@@ -136,6 +136,7 @@ export function WorkspaceNavbar({
                   "/academic/students",
                   "/academic/knowledge/library",
                   "/academic/knowledge/templates",
+                  "/academic/knowledge/assessment-profiles",
                 ].includes(section.href)
               ),
             },

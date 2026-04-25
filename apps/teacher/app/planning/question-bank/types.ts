@@ -7,6 +7,34 @@ export type AssessmentQuestionType =
   | "true_false"
   | "fill_in_the_blank";
 export type AssessmentQuestionDifficulty = "easy" | "medium" | "hard";
+export type AssessmentQuestionStyle = "balanced" | "open_ended_heavy" | "mixed_open_ended" | "objective_heavy";
+
+export interface AssessmentQuestionMix {
+  multiple_choice: number;
+  short_answer: number;
+  essay: number;
+  true_false: number;
+  fill_in_the_blank: number;
+}
+
+export interface AssessmentGenerationSettings {
+  profileId?: string;
+  profileName?: string;
+  questionStyle: AssessmentQuestionStyle;
+  totalQuestions: number;
+  questionMix: AssessmentQuestionMix;
+  allowTeacherOverrides: boolean;
+  overrideReason?: string;
+}
+
+export interface AssessmentGenerationProfile extends AssessmentGenerationSettings {
+  _id: string;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  updatedAt: number;
+}
 
 export interface AssessmentSource {
   _id: string;
@@ -66,6 +94,7 @@ export interface AssessmentDraftBank {
   level: string | null;
   topicLabel: string | null;
   sourceSelectionSnapshot: string | null;
+  effectiveGenerationSettings: AssessmentGenerationSettings | null;
   lastSavedAt: number | null;
   itemCount: number;
 }
@@ -83,6 +112,7 @@ export interface AssessmentWorkspaceData {
   inaccessibleSourceIds: string[];
   warnings: string[];
   sourceContext: AssessmentSourceContext;
+  profiles: AssessmentGenerationProfile[];
   draft: AssessmentDraftBank;
   items: AssessmentDraftItem[];
   canGenerate: boolean;
@@ -99,6 +129,7 @@ export interface AssessmentBankSaveResult {
   sourceSelectionSnapshot: string;
   itemCount: number;
   savedAt: number;
+  effectiveGenerationSettings: AssessmentGenerationSettings;
 }
 
 export interface AssessmentBankGenerationResult extends AssessmentBankSaveResult {

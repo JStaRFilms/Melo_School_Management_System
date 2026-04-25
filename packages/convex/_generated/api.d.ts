@@ -26,6 +26,7 @@ import type * as functions_academic_historicalTermTotals from "../functions/acad
 import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
 import type * as functions_academic_lessonKnowledgeAdmin from "../functions/academic/lessonKnowledgeAdmin.js";
 import type * as functions_academic_lessonKnowledgeAssessmentDrafts from "../functions/academic/lessonKnowledgeAssessmentDrafts.js";
+import type * as functions_academic_lessonKnowledgeAssessmentProfiles from "../functions/academic/lessonKnowledgeAssessmentProfiles.js";
 import type * as functions_academic_lessonKnowledgeIngestion from "../functions/academic/lessonKnowledgeIngestion.js";
 import type * as functions_academic_lessonKnowledgeIngestionActions from "../functions/academic/lessonKnowledgeIngestionActions.js";
 import type * as functions_academic_lessonKnowledgeIngestionHelpers from "../functions/academic/lessonKnowledgeIngestionHelpers.js";
@@ -90,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;
   "functions/academic/lessonKnowledgeAdmin": typeof functions_academic_lessonKnowledgeAdmin;
   "functions/academic/lessonKnowledgeAssessmentDrafts": typeof functions_academic_lessonKnowledgeAssessmentDrafts;
+  "functions/academic/lessonKnowledgeAssessmentProfiles": typeof functions_academic_lessonKnowledgeAssessmentProfiles;
   "functions/academic/lessonKnowledgeIngestion": typeof functions_academic_lessonKnowledgeIngestion;
   "functions/academic/lessonKnowledgeIngestionActions": typeof functions_academic_lessonKnowledgeIngestionActions;
   "functions/academic/lessonKnowledgeIngestionHelpers": typeof functions_academic_lessonKnowledgeIngestionHelpers;

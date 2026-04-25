@@ -21,7 +21,10 @@ import type {
   AssessmentWorkspaceData,
   AssessmentBankGenerationResult,
   AssessmentBankSaveResult,
+  AssessmentGenerationSettings,
   AssessmentQuestionDifficulty,
+  AssessmentQuestionMix,
+  AssessmentQuestionStyle,
   AssessmentQuestionType,
 } from "../types";
 import {
@@ -36,6 +39,7 @@ interface QuestionBankWorkspaceScreenProps {
   onRemoveSource: (sourceId: string) => void;
   onOpenLibrary: () => void;
   onSaveDraft: (draft: {
+    effectiveGenerationSettings: AssessmentGenerationSettings;
     title: string;
     description: string | null;
     items: Array<{
@@ -48,7 +52,7 @@ interface QuestionBankWorkspaceScreenProps {
       tags: string[];
     }>;
   }) => Promise<AssessmentBankSaveResult>;
-  onGenerateDraft: () => Promise<AssessmentBankGenerationResult>;
+  onGenerateDraft: (settings: AssessmentGenerationSettings) => Promise<AssessmentBankGenerationResult>;
 }
 
 function formatRelativeTime(timestamp: number | null) {
@@ -141,11 +145,13 @@ function serializeDraftForSignature(args: {
   description: string;
   draftMode: AssessmentDraftMode;
   items: AssessmentDraftItem[];
+  effectiveGenerationSettings: AssessmentGenerationSettings | null;
 }) {
   return JSON.stringify({
     title: args.title,
     description: args.description,
     draftMode: args.draftMode,
+    effectiveGenerationSettings: args.effectiveGenerationSettings,
     items: args.items.map((item) => ({
       itemOrder: item.itemOrder,
       questionType: item.questionType,
@@ -163,6 +169,79 @@ function itemLabel(item: AssessmentDraftItem) {
   return item.questionType.replace(/_/g, " ");
 }
 
+const questionStyleOptions: Array<{ value: AssessmentQuestionStyle; label: string }> = [
+  { value: "balanced", label: "Balanced" },
+  { value: "mixed_open_ended", label: "Mixed open-ended" },
+  { value: "open_ended_heavy", label: "Open-ended heavy" },
+  { value: "objective_heavy", label: "Objective heavy" },
+];
+
+const questionMixKeys: Array<{ key: keyof AssessmentQuestionMix; label: string }> = [
+  { key: "multiple_choice", label: "Multiple choice" },
+  { key: "short_answer", label: "Short answer" },
+  { key: "essay", label: "Essay" },
+  { key: "true_false", label: "True/false" },
+  { key: "fill_in_the_blank", label: "Fill blank" },
+];
+
+function mixTotal(questionMix: AssessmentQuestionMix) {
+  return Object.values(questionMix).reduce((sum, value) => sum + value, 0);
+}
+
+function getFallbackGenerationSettings(): AssessmentGenerationSettings {
+  return {
+    questionStyle: "mixed_open_ended",
+    totalQuestions: 10,
+    questionMix: { multiple_choice: 3, short_answer: 4, essay: 1, true_false: 1, fill_in_the_blank: 1 },
+    allowTeacherOverrides: true,
+  };
+}
+
+function getSettingsFromWorkspace(workspace: AssessmentWorkspaceData): AssessmentGenerationSettings {
+  const draftSettings = workspace.draft.effectiveGenerationSettings;
+  if (draftSettings?.profileId) {
+    const matchingProfile = workspace.profiles.find((profile) => profile._id === draftSettings.profileId);
+    if (matchingProfile && !matchingProfile.allowTeacherOverrides) {
+      return {
+        profileId: matchingProfile._id,
+        profileName: matchingProfile.name,
+        questionStyle: matchingProfile.questionStyle,
+        totalQuestions: matchingProfile.totalQuestions,
+        questionMix: matchingProfile.questionMix,
+        allowTeacherOverrides: matchingProfile.allowTeacherOverrides,
+      };
+    }
+  }
+
+  return draftSettings ?? workspace.profiles.find((profile) => profile.isDefault) ?? getFallbackGenerationSettings();
+}
+
+function buildQuestionMixForStyle(style: AssessmentQuestionStyle, totalQuestions: number): AssessmentQuestionMix {
+  const total = Math.max(1, Math.min(60, Math.round(totalQuestions || 1)));
+  const weightsByStyle: Record<AssessmentQuestionStyle, AssessmentQuestionMix> = {
+    balanced: { multiple_choice: 3, short_answer: 3, essay: 1, true_false: 2, fill_in_the_blank: 1 },
+    mixed_open_ended: { multiple_choice: 2, short_answer: 4, essay: 2, true_false: 1, fill_in_the_blank: 1 },
+    open_ended_heavy: { multiple_choice: 1, short_answer: 4, essay: 3, true_false: 1, fill_in_the_blank: 1 },
+    objective_heavy: { multiple_choice: 5, short_answer: 1, essay: 0, true_false: 3, fill_in_the_blank: 1 },
+  };
+  const weights = weightsByStyle[style];
+  const weightTotal = mixTotal(weights);
+  const entries = questionMixKeys.map(({ key }) => {
+    const raw = (weights[key] / weightTotal) * total;
+    return { key, value: Math.floor(raw), remainder: raw % 1 };
+  });
+  let remaining = total - entries.reduce((sum, entry) => sum + entry.value, 0);
+  for (const entry of [...entries].sort((a, b) => b.remainder - a.remainder)) {
+    if (remaining <= 0) break;
+    entry.value += 1;
+    remaining -= 1;
+  }
+  return entries.reduce(
+    (mix, entry) => ({ ...mix, [entry.key]: entry.value }),
+    { multiple_choice: 0, short_answer: 0, essay: 0, true_false: 0, fill_in_the_blank: 0 }
+  );
+}
+
 export function QuestionBankWorkspaceScreen({
   workspace,
   onDraftModeChange,
@@ -174,12 +253,16 @@ export function QuestionBankWorkspaceScreen({
   const [title, setTitle] = useState(workspace.draft.title);
   const [description, setDescription] = useState(workspace.draft.description ?? "");
   const [items, setItems] = useState<AssessmentDraftItem[]>(workspace.items.map(mapWorkspaceItem));
+  const [effectiveGenerationSettings, setEffectiveGenerationSettings] = useState<AssessmentGenerationSettings>(() =>
+    getSettingsFromWorkspace(workspace)
+  );
   const [lastSavedSignature, setLastSavedSignature] = useState(
     serializeDraftForSignature({
       title: workspace.draft.title,
       description: workspace.draft.description ?? "",
       draftMode: workspace.draftMode,
       items: workspace.items.map(mapWorkspaceItem),
+      effectiveGenerationSettings: getSettingsFromWorkspace(workspace),
     })
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -190,13 +273,55 @@ export function QuestionBankWorkspaceScreen({
   const retrySaveRef = useRef(false);
 
   const signature = useMemo(
-    () => serializeDraftForSignature({ title, description, draftMode: workspace.draftMode, items }),
-    [description, items, title, workspace.draftMode]
+    () => serializeDraftForSignature({ title, description, draftMode: workspace.draftMode, items, effectiveGenerationSettings }),
+    [description, effectiveGenerationSettings, items, title, workspace.draftMode]
   );
   const dirty = signature !== lastSavedSignature;
   const canGenerate = workspace.canGenerate && !isGenerating;
   const canAutosave = workspace.canAutosave;
   const modeOption = getAssessmentDraftModeOption(workspace.draftMode);
+  const workspaceSignature = useMemo(
+    () => serializeDraftForSignature({
+      title: workspace.draft.title,
+      description: workspace.draft.description ?? "",
+      draftMode: workspace.draftMode,
+      items: workspace.items.map(mapWorkspaceItem),
+      effectiveGenerationSettings: getSettingsFromWorkspace(workspace),
+    }),
+    [workspace]
+  );
+
+  useEffect(() => {
+    if (dirty) {
+      setEffectiveGenerationSettings((current) => {
+        if (!current.profileId) {
+          return current;
+        }
+
+        const refreshedProfile = workspace.profiles.find((profile) => profile._id === current.profileId);
+        if (!refreshedProfile) {
+          return { ...current, profileId: undefined, profileName: "Custom", allowTeacherOverrides: true };
+        }
+
+        return {
+          profileId: refreshedProfile._id,
+          profileName: refreshedProfile.name,
+          questionStyle: refreshedProfile.questionStyle,
+          totalQuestions: refreshedProfile.totalQuestions,
+          questionMix: refreshedProfile.questionMix,
+          allowTeacherOverrides: refreshedProfile.allowTeacherOverrides,
+        };
+      });
+      return;
+    }
+
+    setTitle(workspace.draft.title);
+    setDescription(workspace.draft.description ?? "");
+    setItems(workspace.items.map(mapWorkspaceItem));
+    setEffectiveGenerationSettings(getSettingsFromWorkspace(workspace));
+    setLastSavedSignature(workspaceSignature);
+    setSaveState("idle");
+  }, [dirty, workspace, workspaceSignature]);
 
   const pushNotice = useCallback((tone: "success" | "error", message: string) => {
     setNotice({ tone, message });
@@ -257,6 +382,7 @@ export function QuestionBankWorkspaceScreen({
       setSaveState("saving");
       try {
         const result = await onSaveDraft({
+          effectiveGenerationSettings,
           title,
           description: description.trim() ? description.trim() : null,
           items: items.map((item) => ({
@@ -272,12 +398,14 @@ export function QuestionBankWorkspaceScreen({
 
         setTitle(result.title);
         setDescription(result.description ?? "");
+        setEffectiveGenerationSettings(result.effectiveGenerationSettings);
         setLastSavedSignature(
           serializeDraftForSignature({
             title: result.title,
             description: result.description ?? "",
             draftMode: result.draftMode,
             items,
+            effectiveGenerationSettings: result.effectiveGenerationSettings,
           })
         );
         setSaveState("saved");
@@ -292,7 +420,7 @@ export function QuestionBankWorkspaceScreen({
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
       }
     },
-    [canAutosave, description, items, onSaveDraft, pushNotice, title, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
   useEffect(() => {
@@ -347,16 +475,18 @@ export function QuestionBankWorkspaceScreen({
 
     setIsGenerating(true);
     try {
-      const result = await onGenerateDraft();
+      const result = await onGenerateDraft(effectiveGenerationSettings);
       setTitle(result.title);
       setDescription(result.description ?? "");
       setItems(result.items);
+      setEffectiveGenerationSettings(result.effectiveGenerationSettings);
       setLastSavedSignature(
         serializeDraftForSignature({
           title: result.title,
           description: result.description ?? "",
           draftMode: result.draftMode,
           items: result.items,
+          effectiveGenerationSettings: result.effectiveGenerationSettings,
         })
       );
       setSaveState("saved");
@@ -367,7 +497,7 @@ export function QuestionBankWorkspaceScreen({
     } finally {
       setIsGenerating(false);
     }
-  }, [canGenerate, onGenerateDraft, pushNotice, workspace.outputTypeLabel]);
+  }, [canGenerate, effectiveGenerationSettings, onGenerateDraft, pushNotice, workspace.outputTypeLabel]);
 
   const handleModeChange = useCallback(
     (next: AssessmentDraftMode) => {
@@ -500,6 +630,88 @@ export function QuestionBankWorkspaceScreen({
                 );
               })}
             </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Generation profile</p>
+            <select
+              value={effectiveGenerationSettings.profileId ?? "custom"}
+              onChange={(event) => {
+                if (event.target.value === "custom") {
+                  setEffectiveGenerationSettings((current) => ({
+                    ...current,
+                    profileId: undefined,
+                    profileName: "Custom",
+                    allowTeacherOverrides: true,
+                  }));
+                  return;
+                }
+
+                const profile = workspace.profiles.find((item) => item._id === event.target.value);
+                if (profile) {
+                  setEffectiveGenerationSettings({
+                    profileId: profile._id,
+                    profileName: profile.name,
+                    questionStyle: profile.questionStyle,
+                    totalQuestions: profile.totalQuestions,
+                    questionMix: profile.questionMix,
+                    allowTeacherOverrides: profile.allowTeacherOverrides,
+                  });
+                }
+              }}
+              className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-950"
+            >
+              <option value="custom">Custom settings</option>
+              {workspace.profiles.map((profile) => (
+                <option key={profile._id} value={profile._id}>{profile.name}{profile.isDefault ? " • Default" : ""}</option>
+              ))}
+            </select>
+
+            <label className="mt-3 block text-xs font-bold text-slate-600" htmlFor="question-style">Question style</label>
+            <select
+              id="question-style"
+              value={effectiveGenerationSettings.questionStyle}
+              disabled={!effectiveGenerationSettings.allowTeacherOverrides}
+              onChange={(event) => {
+                const questionStyle = event.target.value as AssessmentQuestionStyle;
+                setEffectiveGenerationSettings((current) => ({
+                  ...current,
+                  profileId: undefined,
+                  profileName: "Custom",
+                  questionStyle,
+                  questionMix: buildQuestionMixForStyle(questionStyle, current.totalQuestions),
+                }));
+              }}
+              className="mt-1 h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:bg-slate-100"
+            >
+              {questionStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+
+            <div className="mt-3 space-y-2">
+              {questionMixKeys.map((item) => (
+                <label key={item.key} className="flex items-center justify-between gap-3 text-xs font-bold text-slate-600">
+                  <span>{item.label}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={effectiveGenerationSettings.questionMix[item.key]}
+                    disabled={!effectiveGenerationSettings.allowTeacherOverrides}
+                    onChange={(event) => {
+                      const nextValue = Math.max(0, Math.min(60, Number.parseInt(event.target.value || "0", 10)));
+                      setEffectiveGenerationSettings((current) => {
+                        const nextMix = { ...current.questionMix, [item.key]: nextValue };
+                        return { ...current, profileId: undefined, profileName: "Custom", questionMix: nextMix, totalQuestions: mixTotal(nextMix) };
+                      });
+                    }}
+                    className="h-9 w-20 rounded-xl border border-slate-200 px-2 text-right text-sm text-slate-800 disabled:bg-slate-100"
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              Total: {effectiveGenerationSettings.totalQuestions} • {effectiveGenerationSettings.questionStyle.replace(/_/g, " ")}
+            </p>
           </section>
         </aside>
 

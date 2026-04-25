@@ -1,11 +1,13 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import {
   BookOpenText,
   Clock3,
   Filter,
+  Settings2,
   Sparkles,
   ShieldCheck,
   X,
@@ -433,15 +435,24 @@ export default function KnowledgeLibraryPage() {
               title="Library Console"
               description="Inspect the school library, refine labels, and apply admin override actions without leaving the academic workspace."
               actions={
-                <StatGroup
-                  stats={[
-                    { label: "Loaded", value: summary.loaded, icon: <BookOpenText className="h-4 w-4" /> },
-                    { label: "Approved", value: summary.approved, icon: <ShieldCheck className="h-4 w-4" /> },
-                    { label: "Pending", value: summary.pendingReview, icon: <Clock3 className="h-4 w-4" /> },
-                    { label: "Needs attention", value: summary.needsAttention, icon: <Filter className="h-4 w-4" /> },
-                  ]}
-                  variant="wrap"
-                />
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Link
+                    href="/academic/knowledge/assessment-profiles"
+                    className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.16em] text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    Assessment profiles
+                  </Link>
+                  <StatGroup
+                    stats={[
+                      { label: "Loaded", value: summary.loaded, icon: <BookOpenText className="h-4 w-4" /> },
+                      { label: "Approved", value: summary.approved, icon: <ShieldCheck className="h-4 w-4" /> },
+                      { label: "Pending", value: summary.pendingReview, icon: <Clock3 className="h-4 w-4" /> },
+                      { label: "Needs attention", value: summary.needsAttention, icon: <Filter className="h-4 w-4" /> },
+                    ]}
+                    variant="wrap"
+                  />
+                </div>
               }
             />
 
