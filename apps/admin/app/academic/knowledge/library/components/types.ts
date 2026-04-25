@@ -80,6 +80,16 @@ export interface KnowledgeLibraryMaterialListItem {
   updatedAt: number;
 }
 
+export interface KnowledgeMaterialSourceProof {
+  originalFileState: "available" | "missing" | "orphaned";
+  originalFileUrl: string | null;
+  originalFileContentType: string | null;
+  originalFileSize: number | null;
+  originalFileNotice: string | null;
+  extractedTextPreview: string | null;
+  extractedTextChunkCount: number;
+}
+
 export interface KnowledgeLibraryMaterialDetail extends KnowledgeLibraryMaterialListItem {
   schoolId: string;
   storageId: string | null;
@@ -88,6 +98,7 @@ export interface KnowledgeLibraryMaterialDetail extends KnowledgeLibraryMaterial
   searchText: string;
   ownerEmail: string | null;
   subjectCode: string | null;
+  sourceProof: KnowledgeMaterialSourceProof;
 }
 
 export interface KnowledgeLibraryDetailResponse {

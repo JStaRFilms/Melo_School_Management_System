@@ -82,3 +82,5 @@ pnpm --filter @school/admin dev
 - [ ] There are several UI issues on the knowledge templates page in the admin portal. One problem is the many duplicate entries; we need a cleaning option. When I click on a monitor, specifically the designer monitor, and change the template catalog, it returns me to the designer view. It should stay on the page I was on before clicking. Does that make sense?
 
 - [ ] In future builds, if we create a study app later on, it would be nice for the app to work independently to some extent while still being able to use features from Melo, if available. That way, students whose schools have Melo can use their portal and access all the features, and students whose schools don’t have Melo can use it as a standalone, join a community of students, share resources, study together, and see their game scores and other metrics.
+
+- [ ] We need to confirm whether promotions are sorted out, like a child moving from one class to another. Does that actually work?

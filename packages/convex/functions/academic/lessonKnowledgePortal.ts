@@ -11,6 +11,12 @@ import {
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import { assertKnowledgeMaterialUploadIsSupported } from "./lessonKnowledgeIngestionHelpers";
+import {
+  knowledgeMaterialOriginalFileAccessValidator,
+  knowledgeMaterialSourceProofValidator,
+  readKnowledgeMaterialOriginalFileAccess,
+  readKnowledgeMaterialSourceProof,
+} from "./lessonKnowledgeSourceProof";
 
 const portalTopicValidator = v.object({
   _id: v.id("knowledgeTopics"),
@@ -48,6 +54,7 @@ const portalTopicApprovedMaterialValidator = v.object({
   externalUrl: v.union(v.string(), v.null()),
   topicId: v.union(v.id("knowledgeTopics"), v.null()),
   classId: v.union(v.id("classes"), v.null()),
+  sourceProof: knowledgeMaterialSourceProofValidator,
 });
 
 const portalTopicPageDataValidator = v.object({
@@ -197,47 +204,53 @@ export const getPortalTopicPageData = query({
     const studentLevel = (classDoc.gradeName ?? classDoc.name).trim().toLowerCase();
     const topicLevel = topic.level.trim().toLowerCase();
     const classEligible = studentLevel === topicLevel;
-    const approvedMaterials: Array<{
-      _id: Id<"knowledgeMaterials">;
-      title: string;
-      description: string | null;
-      sourceType: "file_upload" | "text_entry" | "youtube_link" | "student_upload" | "generated_resource";
-      visibility: "private_owner" | "staff_shared" | "class_scoped" | "student_approved";
-      reviewStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
-      externalUrl: string | null;
-      topicId: Id<"knowledgeTopics"> | null;
-      classId: Id<"classes"> | null;
-    }> = classEligibleMaterials
-      .filter((material) =>
-        canReadKnowledgeMaterialOnPortal(
-          { userId: student.userId, schoolId, role: "student", isSchoolAdmin: false },
-          material,
-          { classContextMatches: material.classEligible, topicAttached: true }
+    const approvedMaterials = await Promise.all(
+      classEligibleMaterials
+        .filter((material) =>
+          canReadKnowledgeMaterialOnPortal(
+            { userId: student.userId, schoolId, role: "student", isSchoolAdmin: false },
+            material,
+            { classContextMatches: material.classEligible, topicAttached: true }
+          )
         )
-      )
-      .map((material) => {
-        const sourceType: "file_upload" | "text_entry" | "youtube_link" | "student_upload" | "generated_resource" =
-          material.sourceType === "generated_draft"
-            ? "generated_resource"
-            : material.sourceType === "file_upload" ||
-                material.sourceType === "text_entry" ||
-                material.sourceType === "youtube_link" ||
-                material.sourceType === "student_upload"
-              ? material.sourceType
-              : "text_entry";
+        .map(async (material) => {
+          const sourceType:
+            | "file_upload"
+            | "text_entry"
+            | "youtube_link"
+            | "student_upload"
+            | "generated_resource" =
+            material.sourceType === "generated_draft"
+              ? "generated_resource"
+              : material.sourceType === "file_upload" ||
+                  material.sourceType === "text_entry" ||
+                  material.sourceType === "youtube_link" ||
+                  material.sourceType === "student_upload"
+                ? material.sourceType
+                : "text_entry";
 
-        return {
-          _id: material._id,
-          title: material.title,
-          description: material.description ?? null,
-          sourceType,
-          visibility: material.visibility,
-          reviewStatus: material.reviewStatus,
-          externalUrl: material.externalUrl ?? null,
-          topicId: material.topicId ?? null,
-          classId: student.classId,
-        };
-      });
+          const sourceProof = await readKnowledgeMaterialSourceProof(ctx, {
+            schoolId,
+            materialId: material._id,
+            storageId: material.storageId ?? null,
+            previewChunkCount: 2,
+            previewCharLimit: 320,
+          });
+
+          return {
+            _id: material._id,
+            title: material.title,
+            description: material.description ?? null,
+            sourceType,
+            visibility: material.visibility,
+            reviewStatus: material.reviewStatus,
+            externalUrl: material.externalUrl ?? null,
+            topicId: material.topicId ?? null,
+            classId: student.classId,
+            sourceProof,
+          };
+        })
+    );
     return {
       topic: {
         _id: topic._id,
@@ -255,8 +268,56 @@ export const getPortalTopicPageData = query({
   },
 });
 
+export const getPortalKnowledgeMaterialOriginalFileAccess = query({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+  },
+  returns: knowledgeMaterialOriginalFileAccessValidator,
+  handler: async (ctx, args) => {
+    const { schoolId, student } = await getStudentPortalContext(ctx);
+    const material = await ctx.db.get(args.materialId);
+    if (!material) {
+      throw new ConvexError("Knowledge material not found");
+    }
+
+    assertKnowledgeSchoolBoundary({ expectedSchoolId: schoolId, actualSchoolId: material.schoolId });
+
+    const bindings = await ctx.db
+      .query("knowledgeMaterialClassBindings")
+      .withIndex("by_school_and_material", (q) => q.eq("schoolId", schoolId).eq("materialId", material._id))
+      .collect();
+
+    const classEligible = bindings.some(
+      (binding) =>
+        binding.classId === student.classId &&
+        binding.bindingPurpose === "topic_attachment" &&
+        binding.bindingStatus === "active"
+    );
+
+    if (
+      !canReadKnowledgeMaterialOnPortal(
+        { userId: student.userId, schoolId, role: "student", isSchoolAdmin: false },
+        material,
+        { classContextMatches: classEligible, topicAttached: Boolean(material.topicId) }
+      )
+    ) {
+      throw new ConvexError("You cannot open this file");
+    }
+
+    return await readKnowledgeMaterialOriginalFileAccess(ctx, {
+      storageId: material.storageId ?? null,
+    });
+  },
+});
+
 export const requestPortalSupplementalUploadUrl = mutation({
-  args: { topicId: v.id("knowledgeTopics"), title: v.string(), description: v.optional(v.union(v.string(), v.null())) },
+  args: {
+    topicId: v.id("knowledgeTopics"),
+    title: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    fileContentType: v.string(),
+    fileSize: v.number(),
+  },
   returns: portalSupplementalUploadUrlValidator,
   handler: async (ctx, args) => {
     const { userId, schoolId, student } = await getStudentPortalContext(ctx);
@@ -273,6 +334,10 @@ export const requestPortalSupplementalUploadUrl = mutation({
     }
     const title = args.title.trim();
     if (!title) throw new ConvexError("Title is required");
+    assertKnowledgeMaterialUploadIsSupported({
+      contentType: args.fileContentType,
+      size: args.fileSize,
+    });
     const actor: KnowledgeActorContext = { userId, schoolId, role: "student", isSchoolAdmin: false };
     if (!canCreateKnowledgeMaterialDraft(actor, { visibility: "class_scoped", reviewStatus: "pending_review", classContextMatches: true })) {
       throw new ConvexError("Supplemental uploads are not available");
@@ -391,6 +456,8 @@ export const finalizePortalSupplementalUpload = mutation({
       const failedAt = Date.now();
       await ctx.db.patch(args.materialId, {
         storageId: args.storageId,
+        visibility: "private_owner",
+        reviewStatus: "draft",
         processingStatus: "failed",
         searchStatus: "failed",
         ingestionErrorMessage: message,

@@ -226,6 +226,7 @@ export function KnowledgeMaterialDetailPanel({
   const storageLabel = detail?.storage
     ? `${Math.max(1, Math.round(detail.storage.size / 1024))} KB`
     : "No file storage";
+  const sourceProof = detail?.material.sourceProof ?? null;
 
   const auditEvents = detail?.auditEvents ?? [];
   const auditCount = auditEvents.length;
@@ -533,6 +534,73 @@ export function KnowledgeMaterialDetailPanel({
         <MetaChip label="Updated" value={formatDate(material.updatedAt)} icon={<CalendarClock className="h-3.5 w-3.5 text-slate-400" />} />
         <MetaChip label="Storage" value={storageLabel} icon={<Link2 className="h-3.5 w-3.5 text-slate-400" />} />
       </div>
+
+      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
+        <div className="space-y-4 p-4 md:p-5">
+          {sectionLabel("Original file and extracted proof")}
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Original file
+                  </p>
+                  <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
+                    {sourceProof?.originalFileState === "available"
+                      ? "Available"
+                      : sourceProof?.originalFileState === "orphaned"
+                        ? "Missing from storage"
+                        : "Not stored"}
+                  </p>
+                </div>
+                {sourceProof?.originalFileUrl ? (
+                  <a
+                    href={sourceProof.originalFileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-slate-800"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Open file
+                  </a>
+                ) : null}
+              </div>
+              <div className="mt-3 space-y-2 text-[12px] font-medium leading-relaxed text-slate-500">
+                <p>{sourceProof?.originalFileNotice ?? "No original file access is available for this material."}</p>
+                <p>
+                  {sourceProof?.originalFileContentType ? `${sourceProof.originalFileContentType} • ` : ""}
+                  {sourceProof?.originalFileSize ? `${Math.max(1, Math.round(sourceProof.originalFileSize / 1024))} KB` : "No file size recorded"}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Extracted proof
+                  </p>
+                  <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
+                    {sourceProof?.extractedTextChunkCount ?? 0} chunk(s)
+                  </p>
+                </div>
+              </div>
+              {sourceProof?.extractedTextPreview ? (
+                <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-[12px] leading-6 text-slate-700">
+                  {sourceProof.extractedTextPreview}
+                </pre>
+              ) : (
+                <p className="mt-3 text-[12px] font-medium leading-relaxed text-slate-500">
+                  No extracted text proof is available yet. Once ingestion finishes, the proof preview will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="text-[11px] font-medium leading-relaxed text-slate-400">
+            The proof preview comes from stored extracted chunks, so it is a lightweight check rather than a full document reader.
+          </p>
+        </div>
+      </AdminSurface>
 
       <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
         <div className="space-y-4 p-4 md:p-5">

@@ -1,8 +1,30 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+
+const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+function isSupportedPortalUpload(file: File) {
+  const normalizedType = file.type.trim().toLowerCase();
+  return (
+    normalizedType === "application/pdf" ||
+    normalizedType === "application/x-pdf" ||
+    normalizedType.endsWith("+pdf") ||
+    normalizedType.startsWith("text/")
+  );
+}
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+
+interface PortalTopicMaterialSourceProof {
+  originalFileState: "available" | "missing" | "orphaned";
+  originalFileUrl: string | null;
+  originalFileContentType: string | null;
+  originalFileSize: number | null;
+  originalFileNotice: string | null;
+  extractedTextPreview: string | null;
+  extractedTextChunkCount: number;
+}
 
 interface PortalTopicMaterial {
   _id: string;
@@ -14,6 +36,7 @@ interface PortalTopicMaterial {
   externalUrl: string | null;
   topicId: string | null;
   classId: string | null;
+  sourceProof: PortalTopicMaterialSourceProof;
 }
 
 interface PortalTopicPageData {
@@ -32,6 +55,15 @@ interface PortalTopicPageData {
 }
 
 function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
+  const hasOriginalFile = material.sourceProof.originalFileUrl && material.sourceProof.originalFileState === "available";
+  const hasProofPreview = Boolean(material.sourceProof.extractedTextPreview);
+  const openLabel =
+    material.sourceType === "youtube_link"
+      ? "Open YouTube resource"
+      : material.sourceType === "file_upload"
+        ? "Open original file"
+        : "Open source proof";
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -43,10 +75,61 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
           Approved
         </span>
       </div>
-      {material.sourceType === "youtube_link" && material.externalUrl ? (
-        <a href={material.externalUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-blue-600">
-          Open YouTube resource
-        </a>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {material.sourceType === "youtube_link" && material.externalUrl ? (
+          <a
+            href={material.externalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-3.5 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            {openLabel}
+          </a>
+        ) : null}
+
+        {hasOriginalFile ? (
+          <a
+            href={material.sourceProof.originalFileUrl!}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            {openLabel}
+          </a>
+        ) : null}
+
+        {hasProofPreview || material.sourceProof.originalFileNotice ? (
+          <details className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
+              Read extracted proof
+            </summary>
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                {material.sourceProof.extractedTextChunkCount} extracted chunk(s)
+              </p>
+              {material.sourceProof.extractedTextPreview ? (
+                <p className="text-sm leading-6 text-slate-600">
+                  {material.sourceProof.extractedTextPreview}
+                </p>
+              ) : (
+                <p className="text-sm leading-6 text-slate-500">
+                  {material.sourceProof.originalFileNotice ?? "No extracted text proof is available yet."}
+                </p>
+              )}
+              <p className="text-xs leading-5 text-slate-400">
+                {material.sourceProof.originalFileContentType ? `${material.sourceProof.originalFileContentType} • ` : ""}
+                {material.sourceProof.originalFileSize ? `${Math.max(1, Math.round(material.sourceProof.originalFileSize / 1024))} KB` : "No file size recorded"}
+              </p>
+            </div>
+          </details>
+        ) : null}
+      </div>
+
+      {!hasOriginalFile && material.sourceType === "file_upload" ? (
+        <p className="mt-3 text-sm leading-6 text-amber-700">
+          This file-backed resource is approved, but the original file is not available right now.
+        </p>
       ) : null}
     </article>
   );
@@ -58,6 +141,8 @@ export function TopicPage({ topicId }: { topicId: string }) {
     topicId: string;
     title: string;
     description: string | null;
+    fileContentType: string;
+    fileSize: number;
   }) => Promise<{ materialId: string; uploadUrl: string }>;
   const finalizeUpload = useMutation("functions/academic/lessonKnowledgePortal:finalizePortalSupplementalUpload" as never) as unknown as (args: {
     materialId: string;
@@ -85,8 +170,20 @@ export function TopicPage({ topicId }: { topicId: string }) {
       if (!trimmedTitle) {
         throw new Error("Add a title before submitting.");
       }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        throw new Error("Uploaded file is too large. Keep uploads at or below 12 MB.");
+      }
+      if (!isSupportedPortalUpload(file)) {
+        throw new Error("Only PDF and text-based uploads are supported right now.");
+      }
 
-      const result = await requestUpload({ topicId, title: trimmedTitle, description: description || null });
+      const result = await requestUpload({
+        topicId,
+        title: trimmedTitle,
+        description: description || null,
+        fileContentType: file.type,
+        fileSize: file.size,
+      });
       const uploadResponse = await fetch(result.uploadUrl, { method: "POST", body: file });
       if (!uploadResponse.ok) {
         throw new Error("Upload failed");
@@ -138,11 +235,16 @@ export function TopicPage({ topicId }: { topicId: string }) {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <input className="w-full rounded-xl border border-slate-300 px-3 py-2" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resource title" />
           <textarea className="w-full rounded-xl border border-slate-300 px-3 py-2" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" rows={3} />
-          <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <input
+            type="file"
+            accept="application/pdf,application/x-pdf,.pdf,text/plain,text/markdown,text/csv,text/tab-separated-values,.txt,.md,.csv,.tsv"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
           <button disabled={!canUpload || busy} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {busy ? "Submitting…" : "Submit for review"}
           </button>
           {!canUpload ? <p className="text-sm text-amber-700">This topic is not yet eligible for class-scoped uploads.</p> : null}
+          <p className="text-sm text-slate-500">Only PDF and text-based files are accepted, up to 12 MB.</p>
           {status ? <p className="text-sm text-slate-600">{status}</p> : null}
         </form>
       </section>

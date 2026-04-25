@@ -58,6 +58,8 @@ interface TeacherLibraryMaterial {
   subjectCode: string;
   level: string;
   topicLabel: string;
+  topicId: string | null;
+  topicTitle: string | null;
   labelSuggestions: string[];
   chunkCount: number;
   externalUrl: string | null;
@@ -69,6 +71,16 @@ interface TeacherLibraryMaterial {
   canEdit: boolean;
   canPublish: boolean;
   canSelectAsSource: boolean;
+}
+
+interface TeacherKnowledgeTopic {
+  _id: string;
+  title: string;
+  subjectId: string;
+  subjectName: string;
+  level: string;
+  termId: string;
+  status: "draft" | "active" | "retired";
 }
 
 interface TeacherLibraryResponse {
@@ -106,6 +118,22 @@ interface MaterialDraft {
   subjectId: string;
   level: string;
   topicLabel: string;
+  topicId: string;
+}
+
+interface TeacherKnowledgeMaterialSourceProof {
+  originalFileState: "available" | "missing" | "orphaned";
+  originalFileUrl: string | null;
+  originalFileContentType: string | null;
+  originalFileSize: number | null;
+  originalFileNotice: string | null;
+  extractedTextPreview: string | null;
+  extractedTextChunkCount: number;
+}
+
+interface TeacherKnowledgeMaterialSourceProofResponse {
+  materialId: string;
+  sourceProof: TeacherKnowledgeMaterialSourceProof;
 }
 
 type UploadIntent = "private_draft" | "request_review" | "staff_shared";
@@ -285,6 +313,27 @@ function buildLevelOptionsWithCurrentValue(
   return [{ value: trimmed, label: `Legacy: ${trimmed}` }, ...options];
 }
 
+function buildTopicOptionsWithCurrentValue(
+  topics: TeacherKnowledgeTopic[],
+  currentTopicId: string,
+  currentTopicTitle: string | null
+): LevelOption[] {
+  const options = topics.map((topic) => ({
+    value: topic._id,
+    label: `${topic.title} • ${topic.subjectName} • ${topic.level}`,
+  }));
+  const trimmed = currentTopicId.trim();
+  if (!trimmed) {
+    return options;
+  }
+
+  if (options.some((option) => option.value === trimmed)) {
+    return options;
+  }
+
+  return [{ value: trimmed, label: currentTopicTitle ? `Attached: ${currentTopicTitle}` : `Attached topic: ${trimmed}` }, ...options];
+}
+
 function uploadIntentLabel(intent: UploadIntent) {
   switch (intent) {
     case "private_draft":
@@ -382,6 +431,7 @@ export default function TeacherLibraryPage() {
   const [draft, setDraft] = useState<MaterialDraft | null>(null);
   const [savingMaterialId, setSavingMaterialId] = useState<string | null>(null);
   const [notice, setNotice] = useState<UploadNotice | null>(null);
+  const [proofMaterialId, setProofMaterialId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deferredSearch = useDeferredValue(searchQuery);
@@ -435,6 +485,9 @@ export default function TeacherLibraryPage() {
   const updateMaterial = useMutation(
     "functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never
   );
+  const createTopic = useMutation(
+    "functions/academic/lessonKnowledgeTeacher:createTeacherKnowledgeTopic" as never
+  );
   const publishMaterial = useMutation(
     "functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never
   );
@@ -446,6 +499,21 @@ export default function TeacherLibraryPage() {
   );
 
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
+  const editingMaterial = useMemo(
+    () => (editingMaterialId ? materials.find((material) => material._id === editingMaterialId) ?? null : null),
+    [editingMaterialId, materials]
+  );
+  const topicQueryArgs = useMemo(
+    () =>
+      draft && draft.subjectId && draft.level
+        ? ({ subjectId: draft.subjectId as never, level: draft.level, limit: 50 } as never)
+        : ("skip" as never),
+    [draft]
+  );
+  const topicCandidates = useQuery(
+    "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
+    topicQueryArgs
+  ) as TeacherKnowledgeTopic[] | undefined;
   const summary = materialsData?.summary ?? {
     loaded: 0,
     privateOwner: 0,
@@ -460,6 +528,31 @@ export default function TeacherLibraryPage() {
     () => selectedSourceIds.map((materialId) => materialMap.get(materialId)).filter(Boolean) as TeacherLibraryMaterial[],
     [materialMap, selectedSourceIds]
   );
+  const proofMaterial = useMemo(
+    () => materials.find((material) => material._id === proofMaterialId) ?? null,
+    [materials, proofMaterialId]
+  );
+  const sourceProofData = useQuery(
+    "functions/academic/lessonKnowledgeTeacher:getTeacherKnowledgeMaterialSourceProof" as never,
+    proofMaterialId ? ({ materialId: proofMaterialId } as never) : ("skip" as never)
+  ) as TeacherKnowledgeMaterialSourceProofResponse | undefined;
+  const topicOptions = useMemo(
+    () => buildTopicOptionsWithCurrentValue(topicCandidates ?? [], draft?.topicId ?? "", editingMaterial?.topicTitle ?? null),
+    [draft?.topicId, editingMaterial?.topicTitle, topicCandidates]
+  );
+
+  useEffect(() => {
+    if (!proofMaterialId) {
+      return;
+    }
+
+    if (materials.some((material) => material._id === proofMaterialId)) {
+      return;
+    }
+
+    setProofMaterialId(null);
+  }, [materials, proofMaterialId]);
+
   const lessonPlanHref = buildTeacherLessonPlanHref({
     sourceIds: selectedSourceIds,
     sourceOrigin: "library",
@@ -499,6 +592,7 @@ export default function TeacherLibraryPage() {
       subjectId: material.subjectId,
       level: material.level,
       topicLabel: material.topicLabel,
+      topicId: material.topicId ?? "",
     });
   }, [editingMaterialId, materials]);
 
@@ -698,6 +792,7 @@ export default function TeacherLibraryPage() {
       subjectId: material.subjectId,
       level: material.level,
       topicLabel: material.topicLabel,
+      topicId: material.topicId ?? "",
     });
   }, []);
 
@@ -722,11 +817,12 @@ export default function TeacherLibraryPage() {
         subjectId: draft.subjectId as never,
         level: draft.level,
         topicLabel: draft.topicLabel,
+        topicId: draft.topicId || undefined,
       } as never);
 
       setNotice({
         tone: "success",
-        message: "Labels updated and the search snapshot was refreshed.",
+        message: "Changes saved and the search snapshot was refreshed.",
       });
       cancelEditing();
     } catch (error) {
@@ -738,6 +834,39 @@ export default function TeacherLibraryPage() {
       setSavingMaterialId(null);
     }
   }, [cancelEditing, draft, updateMaterial]);
+
+  const createTopicAndAttach = useCallback(async () => {
+    if (!draft) {
+      return;
+    }
+
+    setSavingMaterialId(draft.materialId);
+    setNotice(null);
+
+    try {
+      const createdTopic = (await createTopic({
+        title: draft.topicLabel,
+        summary: draft.description.trim() ? draft.description : null,
+        subjectId: draft.subjectId as never,
+        level: draft.level,
+        attachMaterialId: draft.materialId as never,
+      } as never)) as { _id: string };
+
+      setDraft((current) =>
+        current && current.materialId === draft.materialId
+          ? { ...current, topicId: createdTopic._id }
+          : current
+      );
+      setNotice({ tone: "success", message: "Real topic created and attached to this material." });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(error, "Could not create and attach the topic."),
+      });
+    } finally {
+      setSavingMaterialId(null);
+    }
+  }, [createTopic, draft]);
 
   const publishToStaff = useCallback(
     async (material: TeacherLibraryMaterial) => {
@@ -844,7 +973,7 @@ export default function TeacherLibraryPage() {
                   Planning sources, private-first by default.
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
-                  Upload source material, keep it private while you refine the labels, and choose whether it should stay private, request review, or start shared with staff. The next lesson-plan workspace receives the selected sources through a stable query string handoff.
+                  Upload source material, keep it private while you refine the labels, and choose whether it should stay private, request review, or start shared with staff. Free-text topic labels stay separate from real topic attachments, and the next lesson-plan workspace receives selected sources through a stable query string handoff.
                 </p>
               </div>
             </div>
@@ -1027,15 +1156,18 @@ export default function TeacherLibraryPage() {
                   draft={draft?.materialId === material._id ? draft : null}
                   subjects={readySubjects}
                   levelOptions={levelOptions}
+                  topicOptions={topicOptions}
                   isBusy={savingMaterialId === material._id}
                   onToggleSelection={() => toggleSourceSelection(material._id)}
                   onBeginEdit={() => beginEditing(material)}
                   onCancelEdit={cancelEditing}
                   onChangeDraft={setDraft}
                   onSaveDraft={saveDraft}
+                  onCreateTopicAndAttach={createTopicAndAttach}
                   onPublish={() => publishToStaff(material)}
                   onPromoteStudentUpload={() => promoteStudentUploadToTopic(material)}
                   onRetryIngestion={() => retryIngestion(material)}
+                  onOpenProof={() => setProofMaterialId(material._id)}
                 />
               ))
             )}
@@ -1089,7 +1221,7 @@ export default function TeacherLibraryPage() {
                   onChange={setUploadTitle}
                 />
                 <TextField
-                  label="Topic label"
+                  label="Topic label (free text)"
                   value={uploadTopicLabel}
                   placeholder="Community Safety"
                   onChange={setUploadTopicLabel}
@@ -1117,7 +1249,7 @@ export default function TeacherLibraryPage() {
                   options={uploadIntentOptions}
                 />
                 <p className="text-xs leading-5 text-slate-500">
-                  Private draft is the safe default. Request staff review keeps the file private but marked for review. {isAdmin ? "Admins can also start a file as staff shared." : ""}
+                  Private draft is the safe default. Request staff review keeps the file private but marked for review. The topic label is only a label here; attach a real topic from the material editor when needed. {isAdmin ? "Admins can also start a file as staff shared." : ""}
                 </p>
                 <label className="block">
                   <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1152,6 +1284,13 @@ export default function TeacherLibraryPage() {
               </button>
             </form>
           </section>
+
+          <KnowledgeMaterialSourceProofPanel
+            material={proofMaterial}
+            sourceProof={sourceProofData?.sourceProof ?? null}
+            isLoading={Boolean(proofMaterialId) && sourceProofData === undefined}
+            onClose={() => setProofMaterialId(null)}
+          />
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3">
@@ -1286,6 +1425,129 @@ function ProcessingStatusHelp() {
   );
 }
 
+function KnowledgeMaterialSourceProofPanel({
+  material,
+  sourceProof,
+  isLoading,
+  onClose,
+}: {
+  material: TeacherLibraryMaterial | null;
+  sourceProof: TeacherKnowledgeMaterialSourceProof | null;
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  if (!material) {
+    return (
+      <section className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+            <BookOpenText className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+              Source proof
+            </p>
+            <h2 className="text-lg font-black tracking-tight text-slate-950">
+              Pick a material to inspect its proof
+            </h2>
+          </div>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-500">
+          Open any source card to view the original file link and the extracted text proof that backs it.
+        </p>
+      </section>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 w-40 rounded-full bg-slate-100" />
+          <div className="h-24 rounded-2xl bg-slate-100" />
+          <div className="h-44 rounded-2xl bg-slate-100" />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+            Source proof
+          </p>
+          <h2 className="truncate text-lg font-black tracking-tight text-slate-950">
+            {material.title}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {material.sourceType.replace(/_/g, " ")} • {material.visibility.replace(/_/g, " ")} • {material.processingStatus.replace(/_/g, " ")}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 transition hover:border-slate-300 hover:text-slate-950"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+            Original file
+          </p>
+          <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
+            {sourceProof?.originalFileState === "available"
+              ? "Available"
+              : sourceProof?.originalFileState === "orphaned"
+                ? "Missing from storage"
+                : "Not stored"}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {sourceProof?.originalFileNotice ?? "No original file access is available for this material."}
+          </p>
+          <p className="mt-2 text-xs font-medium leading-relaxed text-slate-400">
+            {sourceProof?.originalFileContentType ? `${sourceProof.originalFileContentType} • ` : ""}
+            {sourceProof?.originalFileSize ? `${Math.max(1, Math.round(sourceProof.originalFileSize / 1024))} KB` : "No file size recorded"}
+          </p>
+          {sourceProof?.originalFileUrl ? (
+            <a
+              href={sourceProof.originalFileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
+            >
+              <BookOpenText className="h-4 w-4" />
+              Open original file
+            </a>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+            Extracted proof
+          </p>
+          <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
+            {sourceProof?.extractedTextChunkCount ?? 0} chunk(s)
+          </p>
+          {sourceProof?.extractedTextPreview ? (
+            <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-4 text-[12px] leading-6 text-slate-700">
+              {sourceProof.extractedTextPreview}
+            </pre>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              No extracted text proof is available yet. Once ingestion finishes, the proof preview will appear here.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FilterSelect({
   label,
   value,
@@ -1387,15 +1649,18 @@ function LibraryMaterialCard({
   draft,
   subjects,
   levelOptions,
+  topicOptions,
   isBusy,
   onToggleSelection,
   onBeginEdit,
   onCancelEdit,
   onChangeDraft,
   onSaveDraft,
+  onCreateTopicAndAttach,
   onPublish,
   onPromoteStudentUpload,
   onRetryIngestion,
+  onOpenProof,
 }: {
   material: TeacherLibraryMaterial;
   isSelected: boolean;
@@ -1403,15 +1668,18 @@ function LibraryMaterialCard({
   draft: MaterialDraft | null;
   subjects: TeacherLibrarySubject[];
   levelOptions: Array<{ value: string; label: string }>;
+  topicOptions: Array<{ value: string; label: string }>;
   isBusy: boolean;
   onToggleSelection: () => void;
   onBeginEdit: () => void;
   onCancelEdit: () => void;
   onChangeDraft: (draft: MaterialDraft) => void;
   onSaveDraft: () => void;
+  onCreateTopicAndAttach: () => void;
   onPublish: () => void;
   onPromoteStudentUpload: () => void;
   onRetryIngestion: () => void;
+  onOpenProof: () => void;
 }) {
   const isStaleExtracting =
     material.processingStatus === "extracting" && Date.now() - material.updatedAt >= STALE_EXTRACTION_MS;
@@ -1449,9 +1717,19 @@ function LibraryMaterialCard({
               <h3 className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-xl">
                 {material.title}
               </h3>
-              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
-                {material.description ?? material.topicLabel}
-              </p>
+              <div className="mt-1 space-y-2 text-sm leading-6 text-slate-500">
+                <p className="line-clamp-2">
+                  {material.description ?? "No description added yet."}
+                </p>
+                <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-500">
+                    Free-text label: {material.topicLabel}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-500">
+                    Real topic: {material.topicId ? material.topicTitle ?? "Attached topic" : "Not attached yet"}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -1491,7 +1769,15 @@ function LibraryMaterialCard({
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
             >
               <PencilLine className="h-4 w-4" />
-              Edit labels
+              Edit labels & topic
+            </button>
+            <button
+              type="button"
+              onClick={onOpenProof}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+            >
+              <BookOpenText className="h-4 w-4" />
+              View proof
             </button>
           </div>
         </div>
@@ -1532,11 +1818,44 @@ function LibraryMaterialCard({
                 placeholder="Choose level"
               />
               <TextField
-                label="Topic label"
+                label="Topic label (free text)"
                 value={draft.topicLabel}
                 placeholder="Community Safety"
                 onChange={(value) => onChangeDraft({ ...draft, topicLabel: value })}
               />
+            </div>
+
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
+              <div className="flex flex-col gap-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                  Real topic attachment
+                </p>
+                <p className="text-xs leading-5 text-slate-500">
+                  The free-text label above does not create a portal topic. Pick an existing topic or create one from this material when you are ready.
+                </p>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <SelectField
+                  label="Attached topic"
+                  value={draft.topicId}
+                  onChange={(value) => onChangeDraft({ ...draft, topicId: value })}
+                  options={topicOptions}
+                  placeholder="No real topic attached"
+                  disabled={topicOptions.length === 0}
+                />
+                <button
+                  type="button"
+                  onClick={onCreateTopicAndAttach}
+                  disabled={isBusy || !draft.topicLabel.trim() || !draft.subjectId || !draft.level.trim()}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-300"
+                >
+                  <BookOpenText className="h-4 w-4" />
+                  Create topic & attach
+                </button>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Attachments stay bounded to the material&apos;s subject and level so the approval flow can keep portal exposure safe.
+              </p>
             </div>
             <label className="mt-3 block">
               <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1565,7 +1884,7 @@ function LibraryMaterialCard({
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PencilLine className="h-4 w-4" />}
-                Save labels
+                Save changes
               </button>
             </div>
           </div>

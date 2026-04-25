@@ -11,6 +11,12 @@ import { normalizeHumanName, normalizePersonName, formatClassDisplayName } from 
 import { buildMaterialSearchSeed, suggestKnowledgeMaterialLabels } from "./lessonKnowledgeIngestionHelpers";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
 import { normalizeKnowledgeSearchQuery } from "./lessonKnowledgeSearch";
+import {
+  knowledgeMaterialOriginalFileAccessValidator,
+  knowledgeMaterialSourceProofValidator,
+  readKnowledgeMaterialOriginalFileAccess,
+  readKnowledgeMaterialSourceProof,
+} from "./lessonKnowledgeSourceProof";
 
 const knowledgeVisibilityValidator = v.union(
   v.literal("private_owner"),
@@ -179,6 +185,15 @@ type KnowledgeLibraryDetailResponse = {
     searchText: string;
     ownerEmail: string | null;
     subjectCode: string | null;
+    sourceProof: {
+      originalFileState: "available" | "missing" | "orphaned";
+      originalFileUrl: string | null;
+      originalFileContentType: string | null;
+      originalFileSize: number | null;
+      originalFileNotice: string | null;
+      extractedTextPreview: string | null;
+      extractedTextChunkCount: number;
+    };
   };
   storage: {
     _id: Id<"_storage">;
@@ -814,6 +829,7 @@ export const getAdminKnowledgeMaterial = query({
       updatedAt: v.number(),
       createdBy: v.id("users"),
       updatedBy: v.id("users"),
+      sourceProof: knowledgeMaterialSourceProofValidator,
     }),
     storage: v.union(
       v.object({
@@ -861,7 +877,13 @@ export const getAdminKnowledgeMaterial = query({
       throw new ConvexError("Knowledge material not found");
     }
 
-    const [owner, subject, storageMeta, classBindings, auditEvents] = await Promise.all([
+    const sourceProofPromise = readKnowledgeMaterialSourceProof(ctx, {
+      schoolId,
+      materialId: material._id,
+      storageId: material.storageId ?? null,
+    });
+
+    const [owner, subject, storageMeta, classBindings, auditEvents, sourceProof] = await Promise.all([
       ctx.db.get(material.ownerUserId),
       ctx.db.get(material.subjectId),
       material.storageId ? ctx.db.system.get("_storage", material.storageId) : Promise.resolve(null),
@@ -873,6 +895,7 @@ export const getAdminKnowledgeMaterial = query({
         .query("contentAuditEvents")
         .withIndex("by_school_and_material", (q) => q.eq("schoolId", schoolId).eq("materialId", material._id))
         .take(20),
+      sourceProofPromise,
     ]);
 
     const bindingClassIds = [...new Set(classBindings.map((binding) => String(binding.classId)))];
@@ -899,6 +922,7 @@ export const getAdminKnowledgeMaterial = query({
         searchText: material.searchText,
         ownerEmail: owner ? owner.email ?? null : null,
         subjectCode: subject ? subject.code ?? null : null,
+        sourceProof,
       },
       storage: storageMeta
         ? {
@@ -944,6 +968,26 @@ export const getAdminKnowledgeMaterial = query({
     };
 
     return detail;
+  },
+});
+
+export const getAdminKnowledgeMaterialOriginalFileAccess = query({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+  },
+  returns: knowledgeMaterialOriginalFileAccessValidator,
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+
+    return await readKnowledgeMaterialOriginalFileAccess(ctx, {
+      storageId: material.storageId ?? null,
+    });
   },
 });
 
