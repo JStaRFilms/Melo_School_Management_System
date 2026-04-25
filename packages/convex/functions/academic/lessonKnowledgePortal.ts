@@ -1,16 +1,18 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { query, mutation } from "../../_generated/server";
+import { query, mutation, type MutationCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
   canCreateKnowledgeMaterialDraft,
   canPromoteKnowledgeMaterial,
   canReadKnowledgeMaterialOnPortal,
   assertKnowledgeSchoolBoundary,
+  resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import { assertKnowledgeMaterialUploadIsSupported } from "./lessonKnowledgeIngestionHelpers";
+import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import {
   knowledgeMaterialOriginalFileAccessValidator,
   knowledgeMaterialSourceProofValidator,
@@ -120,6 +122,32 @@ async function getStudentPortalContext(ctx: Parameters<typeof getAuthenticatedSc
   return { userId, schoolId, role, isSchoolAdmin, student };
 }
 
+
+async function patchPortalPromotionChunksForState(
+  ctx: Pick<MutationCtx, "db">,
+  args: {
+    schoolId: Id<"schools">;
+    materialId: Id<"knowledgeMaterials">;
+    visibility: "student_approved";
+    reviewStatus: "approved";
+  }
+) {
+  const chunks = await ctx.db
+    .query("knowledgeMaterialChunks")
+    .withIndex("by_school_and_material", (q) =>
+      q.eq("schoolId", args.schoolId).eq("materialId", args.materialId)
+    )
+    .take(100);
+
+  const updatedAt = Date.now();
+  for (const chunk of chunks) {
+    await ctx.db.patch(chunk._id, {
+      visibility: args.visibility,
+      reviewStatus: args.reviewStatus,
+      updatedAt,
+    });
+  }
+}
 
 export const getPortalTopicIndexData = query({
   args: {},
@@ -342,6 +370,11 @@ export const requestPortalSupplementalUploadUrl = mutation({
     if (!canCreateKnowledgeMaterialDraft(actor, { visibility: "class_scoped", reviewStatus: "pending_review", classContextMatches: true })) {
       throw new ConvexError("Supplemental uploads are not available");
     }
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "portal_supplemental_upload_url",
+      schoolId,
+      actorUserId: userId,
+    });
     const now = Date.now();
     const materialId = await ctx.db.insert("knowledgeMaterials", {
       schoolId,
@@ -512,29 +545,72 @@ export const promotePortalStudentUpload = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    if (role !== "teacher" && role !== "admin" && !isSchoolAdmin) {
+      throw new ConvexError("Only teachers can promote uploads");
+    }
+
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
-    if (actorRole !== "teacher" && actorRole !== "admin") throw new ConvexError("Only teachers can promote uploads");
+    const actor: KnowledgeActorContext = { userId, schoolId, role: actorRole, isSchoolAdmin };
     const material = await ctx.db.get(args.materialId);
     if (!material) throw new ConvexError("Knowledge material not found");
     assertKnowledgeSchoolBoundary({ expectedSchoolId: schoolId, actualSchoolId: material.schoolId });
-    const bindings = await ctx.db
-      .query("knowledgeMaterialClassBindings")
-      .withIndex("by_school_and_material", (q) => q.eq("schoolId", schoolId).eq("materialId", args.materialId))
-      .take(20);
-    const classBinding = bindings.find((binding) => binding.bindingPurpose === "supplemental_upload" && binding.bindingStatus === "active");
-    const topicBinding = bindings.find((binding) => binding.bindingPurpose === "topic_attachment" && binding.bindingStatus === "active");
-    if (!classBinding || !topicBinding || !material.topicId) {
-      throw new ConvexError("Topic attachment and class scope are required before promotion");
+
+    if (
+      material.sourceType !== "student_upload" ||
+      material.ownerRole !== "student" ||
+      material.visibility !== "class_scoped" ||
+      material.reviewStatus !== "pending_review" ||
+      material.processingStatus !== "ready" ||
+      material.searchStatus !== "indexed" ||
+      !material.topicId
+    ) {
+      throw new ConvexError("Only ready pending student uploads attached to a topic can be promoted");
     }
-    const classContextMatches = Boolean(classBinding);
+
+    const topic = await ctx.db.get(material.topicId);
+    if (
+      !topic ||
+      topic.schoolId !== schoolId ||
+      topic.status !== "active" ||
+      String(topic.subjectId) !== String(material.subjectId) ||
+      topic.level.trim().toLowerCase() !== material.level.trim().toLowerCase()
+    ) {
+      throw new ConvexError("Active matching topic attachment is required before promotion");
+    }
+
+    const classAccess = await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, material, {
+      requiredBindingPurposes: ["supplemental_upload", "topic_attachment"],
+    });
+    if (!classAccess.classContextMatches) {
+      throw new ConvexError("Topic attachment and assignment-aware class scope are required before promotion");
+    }
+
     if (!canPromoteKnowledgeMaterial(
-      { userId, schoolId, role: actorRole, isSchoolAdmin },
+      actor,
       material,
-      { nextVisibility: "student_approved", nextReviewStatus: "approved", classContextMatches, topicAttached: true }
+      {
+        nextVisibility: "student_approved",
+        nextReviewStatus: "approved",
+        classContextMatches: classAccess.classContextMatches,
+        topicAttached: true,
+      }
     )) {
       throw new ConvexError("Not allowed to promote this material");
     }
-    await ctx.db.patch(args.materialId, { visibility: "student_approved", reviewStatus: "approved", updatedAt: Date.now() });
+
+    const now = Date.now();
+    await ctx.db.patch(args.materialId, {
+      visibility: "student_approved",
+      reviewStatus: "approved",
+      updatedAt: now,
+      updatedBy: userId,
+    });
+    await patchPortalPromotionChunksForState(ctx, {
+      schoolId,
+      materialId: args.materialId,
+      visibility: "student_approved",
+      reviewStatus: "approved",
+    });
     await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
       schoolId,
       actorUserId: userId,
@@ -542,7 +618,13 @@ export const promotePortalStudentUpload = mutation({
       eventType: "promoted",
       entityType: "knowledgeMaterial",
       materialId: args.materialId,
-      changeSummary: "Promoted a class-scoped supplemental upload to student-approved topic content.",
+      beforeVisibility: material.visibility,
+      afterVisibility: "student_approved",
+      beforeReviewStatus: material.reviewStatus,
+      afterReviewStatus: "approved",
+      beforeTopicId: material.topicId ?? null,
+      afterTopicId: material.topicId ?? null,
+      changeSummary: `Promoted ${material.title} from class-scoped student upload to student-approved topic content for ${classAccess.matchedClassIds.length} class scope${classAccess.matchedClassIds.length === 1 ? "" : "s"}.`,
     });
     return { materialId: args.materialId, visibility: "student_approved" as const, reviewStatus: "approved" as const };
   },

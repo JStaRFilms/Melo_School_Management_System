@@ -8,6 +8,7 @@ import {
 } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
+  assertActiveKnowledgeSubjectTopicScope,
   assertKnowledgeMaterialIngestionAccess,
   assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
@@ -21,6 +22,7 @@ import {
   type KnowledgeMaterialIngestionStatus,
   type KnowledgeMaterialUploadIntent,
 } from "./lessonKnowledgeIngestionHelpers";
+import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 
 const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
@@ -373,11 +375,25 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
     const title = normalizeRequiredText(args.title, "Title");
     const topicLabel = normalizeRequiredText(args.topicLabel, "Topic label");
     const description = normalizeOptionalText(args.description);
+    const level = normalizeRequiredText(args.level, "Level");
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {
       throw new ConvexError("Knowledge material ingestion is restricted to staff");
     }
+
+    await assertActiveKnowledgeSubjectTopicScope(ctx, {
+      schoolId,
+      subjectId: args.subjectId,
+      level,
+      topicId: args.topicId ?? null,
+    });
+
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_upload_url",
+      schoolId,
+      actorUserId: userId,
+    });
 
     const record = buildKnowledgeMaterialRecord({
       actorUserId: userId,
@@ -387,7 +403,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       title,
       ...(description ? { description } : {}),
       subjectId: args.subjectId,
-      level: normalizeRequiredText(args.level, "Level"),
+      level,
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
@@ -598,6 +614,20 @@ export const registerKnowledgeMaterialLink = mutation({
     const topicLabel = normalizeRequiredText(args.topicLabel, "Topic label");
     const description = normalizeOptionalText(args.description);
     const externalUrl = assertYouTubeUrl(args.externalUrl);
+    const level = normalizeRequiredText(args.level, "Level");
+
+    await assertActiveKnowledgeSubjectTopicScope(ctx, {
+      schoolId,
+      subjectId: args.subjectId,
+      level,
+      topicId: args.topicId ?? null,
+    });
+
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_link_registration",
+      schoolId,
+      actorUserId: userId,
+    });
 
     const record = buildKnowledgeMaterialRecord({
       actorUserId: userId,
@@ -607,7 +637,7 @@ export const registerKnowledgeMaterialLink = mutation({
       title,
       ...(description ? { description } : {}),
       subjectId: args.subjectId,
-      level: normalizeRequiredText(args.level, "Level"),
+      level,
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
       externalUrl,
@@ -710,6 +740,12 @@ export const retryKnowledgeMaterialIngestion = mutation({
     if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
       throw new ConvexError("This material has reached the retry limit");
     }
+
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ingestion_retry",
+      schoolId,
+      actorUserId: userId,
+    });
 
     await ctx.db.patch(args.materialId, {
       processingStatus: "queued",

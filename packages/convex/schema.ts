@@ -142,6 +142,15 @@ const knowledgeTopicStatusValidator = v.union(
   v.literal("retired")
 );
 
+const rateLimitActionValidator = v.union(
+  v.literal("teacher_lesson_plan_generation"),
+  v.literal("teacher_assessment_generation"),
+  v.literal("knowledge_material_upload_url"),
+  v.literal("knowledge_material_link_registration"),
+  v.literal("knowledge_material_ingestion_retry"),
+  v.literal("portal_supplemental_upload_url")
+);
+
 export default defineSchema({
   // Platform super admin accounts (not school-scoped)
   platformAdmins: defineTable({
@@ -1564,6 +1573,22 @@ export default defineSchema({
         "searchStatus",
       ],
     }),
+
+  rateLimitCounters: defineTable({
+    key: v.string(),
+    action: rateLimitActionValidator,
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    windowStartAt: v.number(),
+    windowExpiresAt: v.number(),
+    count: v.number(),
+    limit: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_school_and_action", ["schoolId", "action"])
+    .index("by_window_expires_at", ["windowExpiresAt"]),
 
   aiRunLogs: defineTable({
     schoolId: v.id("schools"),

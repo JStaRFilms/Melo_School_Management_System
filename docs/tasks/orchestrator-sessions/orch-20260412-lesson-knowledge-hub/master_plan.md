@@ -96,7 +96,7 @@ The new baseline is:
 3. `T07-T09` may overlap once the schema and ACL direction is stable.
 4. `T10-T13` start only after the ingestion and template layers are in place.
 5. `T16` depends on the assessment authoring baseline from `T11` and the admin template/settings lane from `T08`.
-6. `T14-T15` remain the hardening and handoff close-out tasks.
+6. `T14` is now complete; `T16` is the remaining implementation task before `T15` handoff.
 
 ## Parallel Opportunities
 
@@ -104,7 +104,7 @@ The new baseline is:
 - `T07-T09` can overlap after `T05`
 - `T10-T13` can partially overlap after `T06` and `T08`
 - `T16` can begin only after `T11` establishes the assessment authoring baseline
-- `T14-T15` stay sequential and last
+- `T15` stays last as the verification/docs/handoff close-out task
 
 ## Task Table
 
@@ -123,11 +123,11 @@ The new baseline is:
 | `T11` | Completed | D | Teacher question-bank workspace delivered at `/planning/question-bank` with item-by-item assessment draft persistence, AI generation, and editable quiz/CBT authoring |
 | `T12` | Completed | E | Teacher YouTube submissions delivered at `/planning/videos` with admin library-based approval integration and topic attachment support |
 | `T13` | Completed | E | Portal topic route delivered at `/learning/topics/[topicId]` with approved resource rendering, class-scoped student uploads, and teacher-side promotion flow |
-| `T14` | Pending | F | Security, rate limits, audit, and failure recovery |
+| `T14` | Completed | F | Security/rate-limit/audit hardening landed; portal promotion is staff-only and assignment-aware, lesson/assessment source eligibility is server-validated, referential validation is tightened, and Convex-backed abuse controls now gate generation/upload/retry paths |
 | `T15` | Pending | F | Verification, docs sync, and release-style handoff |
 | `T16` | Pending | D | Admin-defined assessment generation profiles plus teacher question-mix overrides for open-ended / mixed assessment authoring |
-| `T17` | Pending | E | Material viewing/source proof across admin, teacher, and portal surfaces so approved resources can be opened and inspected honestly |
-| `T18` | Pending | E | Teacher topic governance and creation so teachers can create/attach real topics within bounded classroom scope |
+| `T17` | Completed | E | Material viewing/source proof shipped across admin, teacher, and portal surfaces, including same-origin original-file access and extracted-text proof previews |
+| `T18` | Completed | E | Teacher topic governance and creation shipped in the planning library so teachers can create/attach real topics within bounded classroom scope |
 
 ## Exit Criteria
 

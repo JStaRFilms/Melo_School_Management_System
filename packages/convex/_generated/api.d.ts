@@ -32,6 +32,7 @@ import type * as functions_academic_lessonKnowledgeIngestionHelpers from "../fun
 import type * as functions_academic_lessonKnowledgeLessonPlans from "../functions/academic/lessonKnowledgeLessonPlans.js";
 import type * as functions_academic_lessonKnowledgePdfExtraction from "../functions/academic/lessonKnowledgePdfExtraction.js";
 import type * as functions_academic_lessonKnowledgePortal from "../functions/academic/lessonKnowledgePortal.js";
+import type * as functions_academic_lessonKnowledgeRateLimits from "../functions/academic/lessonKnowledgeRateLimits.js";
 import type * as functions_academic_lessonKnowledgeSearch from "../functions/academic/lessonKnowledgeSearch.js";
 import type * as functions_academic_lessonKnowledgeSourceProof from "../functions/academic/lessonKnowledgeSourceProof.js";
 import type * as functions_academic_lessonKnowledgeTeacher from "../functions/academic/lessonKnowledgeTeacher.js";
@@ -95,6 +96,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeLessonPlans": typeof functions_academic_lessonKnowledgeLessonPlans;
   "functions/academic/lessonKnowledgePdfExtraction": typeof functions_academic_lessonKnowledgePdfExtraction;
   "functions/academic/lessonKnowledgePortal": typeof functions_academic_lessonKnowledgePortal;
+  "functions/academic/lessonKnowledgeRateLimits": typeof functions_academic_lessonKnowledgeRateLimits;
   "functions/academic/lessonKnowledgeSearch": typeof functions_academic_lessonKnowledgeSearch;
   "functions/academic/lessonKnowledgeSourceProof": typeof functions_academic_lessonKnowledgeSourceProof;
   "functions/academic/lessonKnowledgeTeacher": typeof functions_academic_lessonKnowledgeTeacher;

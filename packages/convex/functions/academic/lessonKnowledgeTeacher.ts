@@ -14,6 +14,7 @@ import {
   canPromoteKnowledgeMaterial,
   canReadKnowledgeMaterialInStaffSurface,
   canUseKnowledgeMaterialAsLessonSource,
+  resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import { normalizeKnowledgeSearchQuery } from "./lessonKnowledgeSearch";
@@ -174,14 +175,28 @@ function assertTeacherLibraryAccess(actor: KnowledgeActorContext) {
   }
 }
 
+async function getTeacherLibraryClassAccessContext(
+  ctx: Pick<QueryCtx, "db">,
+  actor: KnowledgeActorContext,
+  material: Doc<"knowledgeMaterials">
+) {
+  if (material.visibility !== "class_scoped") {
+    return {};
+  }
+
+  const classAccess = await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, material);
+  return { classContextMatches: classAccess.classContextMatches };
+}
+
 function isTeacherLibraryVisibleToActor(
   actor: KnowledgeActorContext,
   material: Pick<Doc<"knowledgeMaterials">, "schoolId" | "ownerUserId" | "visibility" | "reviewStatus"> & {
     processingStatus: Doc<"knowledgeMaterials">["processingStatus"];
     searchStatus: Doc<"knowledgeMaterials">["searchStatus"];
-  }
+  },
+  args?: { classContextMatches?: boolean }
 ) {
-  return canReadKnowledgeMaterialInStaffSurface(actor, material);
+  return canReadKnowledgeMaterialInStaffSurface(actor, material, args);
 }
 
 function isTeacherLibrarySelectableSource(
@@ -189,9 +204,10 @@ function isTeacherLibrarySelectableSource(
   material: Pick<Doc<"knowledgeMaterials">, "schoolId" | "ownerUserId" | "visibility" | "reviewStatus"> & {
     processingStatus: Doc<"knowledgeMaterials">["processingStatus"];
     searchStatus: Doc<"knowledgeMaterials">["searchStatus"];
-  }
+  },
+  args?: { classContextMatches?: boolean }
 ) {
-  return canUseKnowledgeMaterialAsLessonSource(actor, material);
+  return canUseKnowledgeMaterialAsLessonSource(actor, material, args);
 }
 
 async function patchTeacherLibraryChunksForState(
@@ -386,43 +402,49 @@ async function readTeacherLibraryMaterials(
       .take(rawLimit);
   }
 
-  const accessibleRows = rows.filter((material) => {
-    if (!isTeacherLibraryVisibleToActor(actor, material)) {
-      return false;
+  const accessibleRows: Array<{
+    material: Doc<"knowledgeMaterials">;
+    accessContext: { classContextMatches?: boolean };
+  }> = [];
+
+  for (const material of rows) {
+    const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
+    if (!isTeacherLibraryVisibleToActor(actor, material, accessContext)) {
+      continue;
     }
 
     if (args.visibility && args.visibility !== "all" && material.visibility !== args.visibility) {
-      return false;
+      continue;
     }
 
     if (args.reviewStatus && args.reviewStatus !== "all" && material.reviewStatus !== args.reviewStatus) {
-      return false;
+      continue;
     }
 
     if (args.sourceType && args.sourceType !== "all" && material.sourceType !== args.sourceType) {
-      return false;
+      continue;
     }
 
     if (args.processingStatus && args.processingStatus !== "all" && material.processingStatus !== args.processingStatus) {
-      return false;
+      continue;
     }
 
-    return true;
-  });
+    accessibleRows.push({ material, accessContext });
+  }
 
   const sortedRows = normalizedSearch
     ? accessibleRows
     : [...accessibleRows].sort((a, b) => {
-        if (b.updatedAt !== a.updatedAt) {
-          return b.updatedAt - a.updatedAt;
+        if (b.material.updatedAt !== a.material.updatedAt) {
+          return b.material.updatedAt - a.material.updatedAt;
         }
 
-        return b.createdAt - a.createdAt;
+        return b.material.createdAt - a.material.createdAt;
       });
 
-  const ownerIds = [...new Set(sortedRows.map((material) => String(material.ownerUserId)))];
-  const subjectIds = [...new Set(sortedRows.map((material) => String(material.subjectId)))];
-  const topicIds = [...new Set(sortedRows.map((material) => String(material.topicId ?? "")).filter(Boolean))];
+  const ownerIds = [...new Set(sortedRows.map(({ material }) => String(material.ownerUserId)))];
+  const subjectIds = [...new Set(sortedRows.map(({ material }) => String(material.subjectId)))];
+  const topicIds = [...new Set(sortedRows.map(({ material }) => String(material.topicId ?? "")).filter(Boolean))];
 
   const [owners, subjects, topics] = await Promise.all([
     Promise.all(ownerIds.map((id) => ctx.db.get(id as Id<"users">))),
@@ -437,7 +459,7 @@ async function readTeacherLibraryMaterials(
   const topicMap = new Map<string, Doc<"knowledgeTopics"> | null>();
   topicIds.forEach((id, index) => topicMap.set(id, topics[index] as Doc<"knowledgeTopics"> | null));
 
-  const materials = sortedRows.slice(0, limit).map((material) => {
+  const materials = sortedRows.slice(0, limit).map(({ material, accessContext }) => {
     const owner = ownerMap.get(String(material.ownerUserId)) ?? null;
     const subject = subjectMap.get(String(material.subjectId)) ?? null;
     const topic = material.topicId ? topicMap.get(String(material.topicId)) ?? null : null;
@@ -481,7 +503,7 @@ async function readTeacherLibraryMaterials(
       isOwnedByMe,
       canEdit,
       canPublish,
-      canSelectAsSource: isTeacherLibrarySelectableSource(actor, material),
+      canSelectAsSource: isTeacherLibrarySelectableSource(actor, material, accessContext),
     };
   });
 
@@ -784,7 +806,8 @@ export const getTeacherKnowledgeMaterialSourceProof = query({
       throw new ConvexError("Knowledge material not found");
     }
 
-    if (!isTeacherLibraryVisibleToActor(actor, material)) {
+    const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
+    if (!isTeacherLibraryVisibleToActor(actor, material, accessContext)) {
       throw new ConvexError("You cannot inspect this material");
     }
 
@@ -822,7 +845,8 @@ export const getTeacherKnowledgeMaterialOriginalFileAccess = query({
       throw new ConvexError("Knowledge material not found");
     }
 
-    if (!isTeacherLibraryVisibleToActor(actor, material)) {
+    const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
+    if (!isTeacherLibraryVisibleToActor(actor, material, accessContext)) {
       throw new ConvexError("You cannot inspect this material");
     }
 

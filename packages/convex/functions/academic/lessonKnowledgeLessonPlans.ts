@@ -6,6 +6,7 @@ import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
   canUseKnowledgeMaterialAsLessonSource,
+  resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import {
@@ -15,6 +16,8 @@ import {
   type InstructionTemplateScope,
   type SupportedInstructionTemplateOutputType,
 } from "./lessonKnowledgeTemplatesHelpers";
+
+const MAX_GENERATION_SOURCE_COUNT = 12;
 
 const outputTypeValidator = v.union(
   v.literal("lesson_plan"),
@@ -290,6 +293,12 @@ function normalizeSourceIds(sourceIds: string[]) {
   return normalized;
 }
 
+function assertGenerationSourceCount(sourceIds: string[]) {
+  if (sourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
+    throw new ConvexError(`Select at most ${MAX_GENERATION_SOURCE_COUNT} source materials for generation.`);
+  }
+}
+
 function outputTypeLabel(outputType: SupportedInstructionTemplateOutputType) {
   switch (outputType) {
     case "lesson_plan":
@@ -542,21 +551,31 @@ async function loadSources(
   const inaccessibleSourceIds: string[] = [];
   const subjectIds = new Set<string>();
 
-  requestedRows.forEach((row, index) => {
+  for (let index = 0; index < requestedRows.length; index += 1) {
+    const row = requestedRows[index];
     const requestedId = sourceIds[index];
     if (!row) {
       missingSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
     if (row.schoolId !== actor.schoolId) {
       inaccessibleSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
-    if (!canUseKnowledgeMaterialAsLessonSource(actor, row)) {
+    const classAccess =
+      row.visibility === "class_scoped"
+        ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, row)
+        : null;
+
+    if (
+      !canUseKnowledgeMaterialAsLessonSource(actor, row, {
+        classContextMatches: classAccess?.classContextMatches,
+      })
+    ) {
       inaccessibleSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
     accessibleRows.push({
@@ -576,7 +595,7 @@ async function loadSources(
       canUseAsLessonSource: true,
     });
     subjectIds.add(String(row.subjectId));
-  });
+  }
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
@@ -1035,9 +1054,9 @@ export const getTeacherInstructionWorkspace = query({
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
-    const sourceIds = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId))).map(
-      (sourceId) => sourceId as Id<"knowledgeMaterials">
-    );
+    const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
+    assertGenerationSourceCount(sourceIdStrings);
+    const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
 
     const sourceBundle = await loadSources(ctx, actor, sourceIds);
     const currentArtifactBundle = await loadCurrentArtifactBundle(ctx, {
@@ -1218,7 +1237,10 @@ export const saveTeacherInstructionArtifactDraft = mutation({
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
-    await ensureSourceSchoolBoundary(ctx, { schoolId, sourceIds: args.sourceIds });
+    const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
+    assertGenerationSourceCount(sourceIdStrings);
+    const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
+    const sourceDocs = await ensureSelectableLessonSources(ctx, { actor, sourceIds });
 
     const normalizedTitle = normalizeOptionalText(args.title) ?? defaultTitle(args.outputType);
     const normalizedLevel = normalizeOptionalText(args.level);
@@ -1238,7 +1260,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
           schoolId,
           ownerUserId: userId,
           outputType: args.outputType,
-          sourceIds: args.sourceIds,
+          sourceIds,
         });
 
     let artifactId: Id<"instructionArtifacts">;
@@ -1284,10 +1306,12 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       fallbackTemplateId: existingArtifact?.templateId ?? null,
     });
 
-    const sourceTitles = args.sourceIds.map((sourceId) => String(sourceId));
+    const sourceTitles = sourceDocs
+      .map((source) => normalizeOptionalText(source.title) ?? "")
+      .filter((title) => Boolean(title));
     const sourceSelectionSnapshot = buildSourceSelectionSnapshot({
       outputType: args.outputType,
-      sourceIds: args.sourceIds,
+      sourceIds,
       subjectId: args.subjectId,
       level: normalizedLevel,
       topicLabel: normalizeOptionalText(args.topicLabel) ?? null,
@@ -1343,17 +1367,17 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       plainText: titleAppliedPlainText,
       templateId: template?._id ?? existingArtifact?.templateId ?? null,
       templateResolutionPath: template?.resolutionPath ?? existingArtifact?.templateResolutionPath ?? null,
-      sourceIds: args.sourceIds,
+      sourceIds,
       sourceSelectionSnapshot,
       revisionKind: args.revisionKind,
     });
 
-    if (args.sourceIds.length > 0) {
+    if (sourceIds.length > 0) {
       await syncArtifactSources({
         ctx,
         schoolId,
         artifactId,
-        sourceIds: args.sourceIds,
+        sourceIds,
         userId,
       });
     }
@@ -1365,7 +1389,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       eventType: existingArtifact ? "overridden" : "created",
       entityType: "instructionArtifactRevision",
       artifactId,
-      changeSummary: `${existingArtifact ? "Updated" : "Created"} ${outputTypeLabel(args.outputType).toLowerCase()} draft \"${normalizedTitle}\" using ${args.sourceIds.length} source${args.sourceIds.length === 1 ? "" : "s"}.`,
+      changeSummary: `${existingArtifact ? "Updated" : "Created"} ${outputTypeLabel(args.outputType).toLowerCase()} draft \"${normalizedTitle}\" using ${sourceIds.length} source${sourceIds.length === 1 ? "" : "s"}.`,
     });
 
     return {
@@ -1377,7 +1401,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       documentState: titleAppliedDocumentState,
       plainText: titleAppliedPlainText,
       outputType: args.outputType,
-      sourceIds: args.sourceIds,
+      sourceIds,
       sourceSelectionSnapshot,
       templateId: template?._id ?? existingArtifact?.templateId ?? null,
       templateResolutionPath: template?.resolutionPath ?? existingArtifact?.templateResolutionPath ?? null,
@@ -1419,14 +1443,36 @@ export const recordTeacherLessonPlanAiRun = mutation({
   },
 });
 
-async function ensureSourceSchoolBoundary(
+async function ensureSelectableLessonSources(
   ctx: MutationCtx,
-  args: { schoolId: Id<"schools">; sourceIds: Array<Id<"knowledgeMaterials">> }
-) {
+  args: { actor: KnowledgeActorContext; sourceIds: Array<Id<"knowledgeMaterials">> }
+): Promise<Array<Doc<"knowledgeMaterials">>> {
+  const sources: Array<Doc<"knowledgeMaterials">> = [];
+
   for (const sourceId of args.sourceIds) {
     const source = await ctx.db.get(sourceId);
-    if (source && source.schoolId !== args.schoolId) {
+    if (!source) {
+      throw new ConvexError("Source material not found");
+    }
+
+    if (source.schoolId !== args.actor.schoolId) {
       throw new ConvexError("Cross-school access denied");
     }
+
+    const classAccess = source.visibility === "class_scoped"
+      ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, args.actor, source)
+      : null;
+
+    if (
+      !canUseKnowledgeMaterialAsLessonSource(args.actor, source, {
+        classContextMatches: classAccess?.classContextMatches,
+      })
+    ) {
+      throw new ConvexError("You cannot use one or more selected sources for this draft");
+    }
+
+    sources.push(source);
   }
+
+  return sources;
 }

@@ -1,5 +1,7 @@
 import { ConvexError } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
+import { getTeacherAssignableSubjectIds } from "./auth";
 
 export type KnowledgeActorRole = "student" | "teacher" | "admin";
 
@@ -29,6 +31,24 @@ export type KnowledgeMaterialScope = {
   visibility: KnowledgeVisibility;
   reviewStatus: KnowledgeReviewStatus;
 };
+
+export type KnowledgeMaterialBindingPurpose =
+  | "review_queue"
+  | "supplemental_upload"
+  | "topic_attachment";
+
+export type KnowledgeClassScopedMaterialScope = KnowledgeMaterialScope & {
+  _id: Id<"knowledgeMaterials">;
+  subjectId: Id<"subjects">;
+};
+
+export type KnowledgeClassScopedStaffAccess = {
+  classContextMatches: boolean;
+  activeClassIds: Array<Id<"classes">>;
+  matchedClassIds: Array<Id<"classes">>;
+};
+
+type KnowledgeDbCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
 
 export type KnowledgeMaterialTransitionScope = KnowledgeMaterialScope & {
   classContextMatches?: boolean;
@@ -202,12 +222,107 @@ export function canPromoteKnowledgeMaterial(
 
 export function canUseKnowledgeMaterialAsLessonSource(
   actor: KnowledgeActorContext,
-  material: KnowledgeMaterialSourceScope
+  material: KnowledgeMaterialSourceScope,
+  args?: {
+    classContextMatches?: boolean;
+  }
 ): boolean {
   return (
-    canReadKnowledgeMaterialInStaffSurface(actor, material) &&
+    canReadKnowledgeMaterialInStaffSurface(actor, material, args) &&
     material.reviewStatus !== "archived" &&
     material.processingStatus === "ready" &&
     material.searchStatus === "indexed"
   );
+}
+
+export async function resolveClassScopedKnowledgeMaterialStaffAccess(
+  ctx: KnowledgeDbCtx,
+  actor: KnowledgeActorContext,
+  material: KnowledgeClassScopedMaterialScope,
+  args?: {
+    requiredBindingPurposes?: KnowledgeMaterialBindingPurpose[];
+  }
+): Promise<KnowledgeClassScopedStaffAccess> {
+  if (String(actor.schoolId) !== String(material.schoolId)) {
+    return { classContextMatches: false, activeClassIds: [], matchedClassIds: [] };
+  }
+
+  if (material.visibility !== "class_scoped") {
+    return { classContextMatches: true, activeClassIds: [], matchedClassIds: [] };
+  }
+
+  if (actor.role !== "teacher" && actor.role !== "admin" && !actor.isSchoolAdmin) {
+    return { classContextMatches: false, activeClassIds: [], matchedClassIds: [] };
+  }
+
+  const requiredPurposes = args?.requiredBindingPurposes ?? [];
+  const requiredPurposeSet = new Set(requiredPurposes);
+  const activeBindings: Array<Doc<"knowledgeMaterialClassBindings">> = [];
+
+  for await (const binding of ctx.db
+    .query("knowledgeMaterialClassBindings")
+    .withIndex("by_school_and_material", (q) =>
+      q.eq("schoolId", actor.schoolId).eq("materialId", material._id)
+    )) {
+    if (
+      binding.bindingStatus === "active" &&
+      (requiredPurposeSet.size === 0 || requiredPurposeSet.has(binding.bindingPurpose))
+    ) {
+      activeBindings.push(binding);
+    }
+  }
+
+  const activeClassIds = [...new Set(activeBindings.map((binding) => binding.classId))];
+
+  const purposeByClassId = new Map<string, Set<KnowledgeMaterialBindingPurpose>>();
+  for (const binding of activeBindings) {
+    const classKey = String(binding.classId);
+    const purposes = purposeByClassId.get(classKey) ?? new Set<KnowledgeMaterialBindingPurpose>();
+    purposes.add(binding.bindingPurpose);
+    purposeByClassId.set(classKey, purposes);
+  }
+
+  const candidateClassIds = activeClassIds.filter((classId) => {
+    if (requiredPurposes.length === 0) {
+      return true;
+    }
+
+    const purposes = purposeByClassId.get(String(classId));
+    return Boolean(purposes && requiredPurposes.every((purpose) => purposes.has(purpose)));
+  });
+
+  const validClassIds: Array<Id<"classes">> = [];
+  for (const classId of candidateClassIds) {
+    const classDoc = (await ctx.db.get(classId)) as Doc<"classes"> | null;
+    if (classDoc && String(classDoc.schoolId) === String(actor.schoolId) && !classDoc.isArchived) {
+      validClassIds.push(classId);
+    }
+  }
+
+  if (actor.isSchoolAdmin || actor.role === "admin") {
+    return {
+      classContextMatches: validClassIds.length > 0,
+      activeClassIds,
+      matchedClassIds: validClassIds,
+    };
+  }
+
+  const matchedClassIds: Array<Id<"classes">> = [];
+  for (const classId of validClassIds) {
+    const subjectIds = await getTeacherAssignableSubjectIds(
+      ctx,
+      actor.userId,
+      actor.schoolId,
+      classId
+    );
+    if (subjectIds.some((subjectId) => String(subjectId) === String(material.subjectId))) {
+      matchedClassIds.push(classId);
+    }
+  }
+
+  return {
+    classContextMatches: matchedClassIds.length > 0,
+    activeClassIds,
+    matchedClassIds,
+  };
 }

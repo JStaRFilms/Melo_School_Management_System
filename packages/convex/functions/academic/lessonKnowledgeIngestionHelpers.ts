@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { KnowledgeActorContext } from "./lessonKnowledgeAccess";
 import type {
   KnowledgeVisibility,
@@ -240,6 +241,47 @@ export function resolveKnowledgeMaterialDefaults(args: {
 
 export function normalizeKnowledgeMaterialText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeKnowledgeLevelKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export async function assertActiveKnowledgeSubjectTopicScope(
+  ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
+  args: {
+    schoolId: Id<"schools">;
+    subjectId: Id<"subjects">;
+    level: string;
+    topicId?: Id<"knowledgeTopics"> | null;
+  }
+): Promise<{
+  subject: Doc<"subjects">;
+  topic: Doc<"knowledgeTopics"> | null;
+}> {
+  const subject = await ctx.db.get(args.subjectId);
+  if (!subject || String(subject.schoolId) !== String(args.schoolId) || subject.isArchived) {
+    throw new ConvexError("Subject not found");
+  }
+
+  if (!args.topicId) {
+    return { subject, topic: null };
+  }
+
+  const topic = await ctx.db.get(args.topicId);
+  if (!topic || String(topic.schoolId) !== String(args.schoolId) || topic.status !== "active") {
+    throw new ConvexError("Knowledge topic not found");
+  }
+
+  if (String(topic.subjectId) !== String(args.subjectId)) {
+    throw new ConvexError("Topic must belong to the selected subject");
+  }
+
+  if (normalizeKnowledgeLevelKey(topic.level) !== normalizeKnowledgeLevelKey(args.level)) {
+    throw new ConvexError("Topic must match the selected level");
+  }
+
+  return { subject, topic };
 }
 
 export function isLikelyReadableKnowledgeMaterialText(value: string): boolean {

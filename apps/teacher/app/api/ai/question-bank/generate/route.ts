@@ -24,13 +24,30 @@ import {
   normalizeAssessmentSourceIds,
 } from "../../../../planning/question-bank/types";
 
+const MAX_GENERATION_SOURCE_COUNT = 12;
+
 const requestSchema = z.object({
   draftMode: z.enum(["practice_quiz", "class_test", "exam_draft"]),
-  sourceIds: z.array(z.string()).default([]),
+  sourceIds: z.array(z.string()).max(MAX_GENERATION_SOURCE_COUNT).default([]),
 });
 
 function getConvexUrl() {
   return process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL ?? null;
+}
+
+function rateLimitedResponse(args: { retryAfterMs: number; resetAt: number }) {
+  const retryAfterSeconds = Math.max(1, Math.ceil(args.retryAfterMs / 1000));
+  return NextResponse.json(
+    {
+      error: "Generation rate limit exceeded. Please try again later.",
+      retryAfterMs: args.retryAfterMs,
+      resetAt: args.resetAt,
+    },
+    {
+      status: 429,
+      headers: { "Retry-After": String(retryAfterSeconds) },
+    }
+  );
 }
 
 function buildSourceSelectionSnapshot(args: {
@@ -178,6 +195,12 @@ export async function POST(request: Request) {
 
   const draftMode = parsedBody.data.draftMode;
   const sourceIds = normalizeAssessmentSourceIds(parsedBody.data.sourceIds);
+  if (sourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
+    return NextResponse.json(
+      { error: `Select at most ${MAX_GENERATION_SOURCE_COUNT} source materials for generation.` },
+      { status: 400 }
+    );
+  }
   const outputType: DocumentOutputType = draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft";
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
@@ -199,6 +222,14 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    const rateLimit = await client.mutation(
+      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit,
+      {}
+    );
+    if (!rateLimit.allowed) {
+      return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
     }
 
     const promptClass = promptClassForDraftMode(draftMode);

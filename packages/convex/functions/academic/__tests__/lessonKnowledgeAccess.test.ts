@@ -62,6 +62,19 @@ const studentApprovedMaterial = {
   reviewStatus: "approved" as const,
 };
 
+const classScopedPendingMaterial = {
+  schoolId: asId<"schools">("school-a"),
+  ownerUserId: asId<"users">("user-student"),
+  visibility: "class_scoped" as const,
+  reviewStatus: "pending_review" as const,
+};
+
+const readyClassScopedMaterial = {
+  ...classScopedPendingMaterial,
+  processingStatus: "ready" as const,
+  searchStatus: "indexed" as const,
+};
+
 const readyPrivateMaterial = {
   ...privateOwnerMaterial,
   reviewStatus: "approved" as const,
@@ -93,6 +106,28 @@ describe("lesson knowledge access", () => {
         privateOwnerMaterial
       )
     ).toBe(false);
+  });
+
+  it("requires assignment-aware class context for class-scoped staff reads and source selection", () => {
+    expect(
+      canReadKnowledgeMaterialInStaffSurface(teacher, classScopedPendingMaterial)
+    ).toBe(false);
+
+    expect(
+      canReadKnowledgeMaterialInStaffSurface(teacher, classScopedPendingMaterial, {
+        classContextMatches: true,
+      })
+    ).toBe(true);
+
+    expect(
+      canUseKnowledgeMaterialAsLessonSource(teacher, readyClassScopedMaterial)
+    ).toBe(false);
+
+    expect(
+      canUseKnowledgeMaterialAsLessonSource(teacher, readyClassScopedMaterial, {
+        classContextMatches: true,
+      })
+    ).toBe(true);
   });
 
   it("keeps student-approved content portal-only for matching students and attached topics", () => {

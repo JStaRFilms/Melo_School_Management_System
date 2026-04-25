@@ -6,8 +6,11 @@ import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
   canUseKnowledgeMaterialAsLessonSource,
+  resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
+
+const MAX_GENERATION_SOURCE_COUNT = 12;
 
 const draftModeValidator = v.union(
   v.literal("practice_quiz"),
@@ -280,6 +283,12 @@ function normalizeSourceIds(sourceIds: string[]) {
   return normalized;
 }
 
+function assertGenerationSourceCount(sourceIds: string[]) {
+  if (sourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
+    throw new ConvexError(`Select at most ${MAX_GENERATION_SOURCE_COUNT} source materials for generation.`);
+  }
+}
+
 function outputTypeForDraftMode(
   draftMode: Doc<"assessmentBanks">["draftMode"] | null | undefined
 ): AssessmentOutputType {
@@ -506,21 +515,31 @@ async function loadSources(
   const inaccessibleSourceIds: string[] = [];
   const subjectIds = new Set<string>();
 
-  requestedRows.forEach((row, index) => {
+  for (let index = 0; index < requestedRows.length; index += 1) {
+    const row = requestedRows[index];
     const requestedId = sourceIds[index];
     if (!row) {
       missingSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
     if (row.schoolId !== actor.schoolId) {
       inaccessibleSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
-    if (!canUseKnowledgeMaterialAsLessonSource(actor, row)) {
+    const classAccess =
+      row.visibility === "class_scoped"
+        ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, row)
+        : null;
+
+    if (
+      !canUseKnowledgeMaterialAsLessonSource(actor, row, {
+        classContextMatches: classAccess?.classContextMatches,
+      })
+    ) {
       inaccessibleSourceIds.push(String(requestedId));
-      return;
+      continue;
     }
 
     accessibleRows.push({
@@ -540,7 +559,7 @@ async function loadSources(
       canUseAsLessonSource: true,
     });
     subjectIds.add(String(row.subjectId));
-  });
+  }
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
@@ -721,9 +740,9 @@ export const getTeacherAssessmentBankWorkspace = query({
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
-    const sourceIds = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId))).map(
-      (sourceId) => sourceId as Id<"knowledgeMaterials">
-    );
+    const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
+    assertGenerationSourceCount(sourceIdStrings);
+    const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
 
     const sourceBundle = await loadSources(ctx, actor, sourceIds);
     const outputType = outputTypeFromDraftMode(args.draftMode);
@@ -912,9 +931,9 @@ export const saveTeacherAssessmentBankDraft = mutation({
       throw new ConvexError("Level is required to save an assessment draft");
     }
 
-    const sourceIds = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId))).map(
-      (sourceId) => sourceId as Id<"knowledgeMaterials">
-    );
+    const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
+    assertGenerationSourceCount(sourceIdStrings);
+    const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
     const sourceDocs = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
     const sourceTitles = sourceDocs
       .map((source) => source?.title ?? "")
@@ -930,7 +949,15 @@ export const saveTeacherAssessmentBankDraft = mutation({
         if (source.schoolId !== schoolId) {
           throw new ConvexError("Cross-school access denied");
         }
-        if (!canUseKnowledgeMaterialAsLessonSource(actor, source)) {
+        const classAccess =
+          source.visibility === "class_scoped"
+            ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, source)
+            : null;
+        if (
+          !canUseKnowledgeMaterialAsLessonSource(actor, source, {
+            classContextMatches: classAccess?.classContextMatches,
+          })
+        ) {
           throw new ConvexError("You cannot use one or more selected sources for this draft");
         }
       })

@@ -8,7 +8,7 @@ import {
   type QueryCtx,
 } from "../../_generated/server";
 import { normalizeHumanName, normalizePersonName, formatClassDisplayName } from "@school/shared/name-format";
-import { buildMaterialSearchSeed, suggestKnowledgeMaterialLabels } from "./lessonKnowledgeIngestionHelpers";
+import { assertActiveKnowledgeSubjectTopicScope, buildMaterialSearchSeed, suggestKnowledgeMaterialLabels } from "./lessonKnowledgeIngestionHelpers";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
 import { normalizeKnowledgeSearchQuery } from "./lessonKnowledgeSearch";
 import {
@@ -648,6 +648,17 @@ export const createAdminKnowledgeTopic = mutation({
       updatedBy: userId,
     });
 
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId,
+      actorUserId: userId,
+      actorRole: role === "admin" ? "admin" : "teacher",
+      eventType: "created",
+      entityType: "knowledgeTopic",
+      topicId,
+      afterTopicId: topicId,
+      changeSummary: `Created active topic ${title} for ${normalizeHumanName(subject.name)} (${level}).`,
+    });
+
     return {
       _id: topicId,
       title,
@@ -1020,6 +1031,16 @@ export const updateAdminKnowledgeMaterialDetails = mutation({
     const level = normalizeRequiredText(args.level, "Level");
     const topicLabel = normalizeRequiredText(args.topicLabel, "Topic label");
     const description = normalizeOptionalText(args.description);
+    if (args.topicId === null) {
+      throw new ConvexError("Clearing topic attachment is not supported here");
+    }
+    const nextTopicId = args.topicId === undefined ? material.topicId ?? null : args.topicId;
+    await assertActiveKnowledgeSubjectTopicScope(ctx, {
+      schoolId,
+      subjectId: args.subjectId,
+      level,
+      topicId: nextTopicId,
+    });
     const nextDescription = description !== undefined ? description : material.description ?? undefined;
     const labelSuggestions = suggestKnowledgeMaterialLabels({
       title,
@@ -1052,15 +1073,10 @@ export const updateAdminKnowledgeMaterialDetails = mutation({
     }
 
     if (args.topicId !== undefined) {
-      if (args.topicId === null) {
-        throw new ConvexError("Clearing topic attachment is not supported here");
-      }
       patch.topicId = args.topicId;
     }
 
     await ctx.db.patch(args.materialId, patch);
-
-    const nextTopicId = args.topicId === undefined ? material.topicId ?? null : args.topicId;
 
     if (args.topicId !== undefined) {
       await patchMaterialChunksForState(ctx, args.materialId, schoolId, {
@@ -1131,8 +1147,17 @@ export const updateAdminKnowledgeMaterialState = mutation({
     const nextVisibility = args.visibility ?? material.visibility;
     const nextReviewStatus = args.reviewStatus ?? material.reviewStatus;
 
-    if (nextVisibility === "student_approved" && !material.topicId) {
-      throw new ConvexError("Student-approved visibility requires an attached topic");
+    if (nextVisibility === "student_approved") {
+      if (!material.topicId) {
+        throw new ConvexError("Student-approved visibility requires an attached topic");
+      }
+
+      await assertActiveKnowledgeSubjectTopicScope(ctx, {
+        schoolId,
+        subjectId: material.subjectId,
+        level: material.level,
+        topicId: material.topicId,
+      });
     }
 
     if (
