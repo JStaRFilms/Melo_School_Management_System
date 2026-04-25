@@ -31,6 +31,15 @@ import type {
 interface KnowledgeMaterialDetailPanelProps {
   detail: KnowledgeLibraryDetailResponse | null;
   subjects: SubjectRecord[];
+  topics: Array<{
+    _id: string;
+    title: string;
+    subjectId: string;
+    subjectName: string;
+    level: string;
+    termId: string;
+    status: string;
+  }>;
   onClose?: () => void;
   levelOptions: Array<{ value: string; label: string }>;
   onSaveDetails: (args: {
@@ -40,6 +49,7 @@ interface KnowledgeMaterialDetailPanelProps {
     subjectId: string;
     level: string;
     topicLabel: string;
+    topicId?: string;
   }) => Promise<void>;
   onSaveState: (args: {
     materialId: string;
@@ -160,6 +170,7 @@ function MetaChip({ label, value, icon }: { label: string; value: string; icon: 
 export function KnowledgeMaterialDetailPanel({
   detail,
   subjects,
+  topics,
   levelOptions,
   onClose,
   onSaveDetails,
@@ -174,6 +185,7 @@ export function KnowledgeMaterialDetailPanel({
   const [subjectId, setSubjectId] = useState("");
   const [level, setLevel] = useState("");
   const [topicLabel, setTopicLabel] = useState("");
+  const [topicId, setTopicId] = useState("");
   const [visibility, setVisibility] = useState<KnowledgeMaterialVisibility>("staff_shared");
   const [reviewStatus, setReviewStatus] = useState<KnowledgeMaterialReviewStatus>("draft");
   const [localNotice, setLocalNotice] = useState<string | null>(null);
@@ -188,6 +200,7 @@ export function KnowledgeMaterialDetailPanel({
     setSubjectId(material.subjectId);
     setLevel(material.level);
     setTopicLabel(material.topicLabel);
+    setTopicId(material.topicId ?? "");
     setVisibility(material.visibility);
     setReviewStatus(material.reviewStatus);
     setLocalNotice(null);
@@ -215,6 +228,7 @@ export function KnowledgeMaterialDetailPanel({
         subjectId,
         level,
         topicLabel,
+        topicId: topicId || undefined,
       });
       setLocalNotice("Details saved.");
     } catch {
@@ -272,17 +286,17 @@ export function KnowledgeMaterialDetailPanel({
         <div className="space-y-4 p-4 md:p-5">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(material.reviewStatus)}`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(reviewStatus)}`}>
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {formatStatusLabel(material.reviewStatus)}
+                {formatStatusLabel(reviewStatus)}
               </span>
               <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(material.processingStatus)}`}>
                 <Clock3 className="h-3.5 w-3.5" />
                 {formatStatusLabel(material.processingStatus)}
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-950 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                {visibilityIcon(material.visibility)}
-                {formatStatusLabel(material.visibility)}
+                {visibilityIcon(visibility)}
+                {formatStatusLabel(visibility)}
               </span>
             </div>
 
@@ -353,6 +367,18 @@ export function KnowledgeMaterialDetailPanel({
             <div>
               <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic label</label>
               <input value={topicLabel} onChange={(e) => setTopicLabel(e.target.value)} className={fieldClassName()} />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic attachment</label>
+              <select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={fieldClassName()}>
+                <option value="">No topic attached</option>
+                {topics.map((topic) => (
+                  <option key={topic._id} value={topic._id}>
+                    {topic.title} • {topic.subjectName} • {topic.level}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
@@ -434,7 +460,7 @@ export function KnowledgeMaterialDetailPanel({
           </div>
 
           <p className="text-[11px] font-medium leading-relaxed text-slate-400">
-            Portal exposure still requires the correct topic attachment and approval state. Visibility changes here round-trip through Convex and update search snapshots.
+            Portal exposure still requires the correct topic attachment and approval state. Admins can move a same-school record from private owner to staff shared here; teacher self-publish is just the normal teacher-side shortcut for their own materials.
           </p>
         </div>
       </AdminSurface>

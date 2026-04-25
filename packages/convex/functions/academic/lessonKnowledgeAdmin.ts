@@ -91,6 +91,7 @@ type KnowledgeMaterialDoc = Doc<"knowledgeMaterials">;
 type UserDoc = Doc<"users">;
 type SubjectDoc = Doc<"subjects">;
 type ClassDoc = Doc<"classes">;
+type KnowledgeTopicDoc = Doc<"knowledgeTopics">;
 
 type KnowledgeLibraryFilterArgs = {
   searchQuery?: string;
@@ -157,6 +158,16 @@ type KnowledgeLibraryListItem = {
   indexedAt: number | null;
   createdAt: number;
   updatedAt: number;
+};
+
+type KnowledgeLibraryTopicItem = {
+  _id: Id<"knowledgeTopics">;
+  title: string;
+  subjectId: Id<"subjects">;
+  subjectName: string;
+  level: string;
+  termId: Id<"academicTerms">;
+  status: KnowledgeTopicDoc["status"];
 };
 
 type KnowledgeLibraryDetailResponse = {
@@ -420,6 +431,48 @@ async function writeMaterialAuditEvent(
 function materialStateSummary(material: KnowledgeMaterialDoc) {
   return `${material.title} • ${material.visibility} / ${material.reviewStatus}`;
 }
+
+export const listAdminKnowledgeTopics = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("knowledgeTopics"),
+      title: v.string(),
+      subjectId: v.id("subjects"),
+      subjectName: v.string(),
+      level: v.string(),
+      termId: v.id("academicTerms"),
+      status: v.union(v.literal("draft"), v.literal("active"), v.literal("archived"), v.literal("retired")),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 300);
+    const topics = await ctx.db
+      .query("knowledgeTopics")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .take(limit);
+
+    const subjectIds = [...new Set(topics.map((topic) => String(topic.subjectId)))];
+    const subjects = await Promise.all(subjectIds.map((subjectId) => ctx.db.get(subjectId as Id<"subjects">)));
+    const subjectMap = new Map<string, SubjectDoc | null>();
+    subjectIds.forEach((subjectId, index) => subjectMap.set(subjectId, subjects[index] as SubjectDoc | null));
+
+    return topics.map((topic) => ({
+      _id: topic._id,
+      title: topic.title,
+      subjectId: topic.subjectId,
+      subjectName: subjectMap.get(String(topic.subjectId)) ? normalizeHumanName(subjectMap.get(String(topic.subjectId))!.name) : "Unknown subject",
+      level: topic.level,
+      termId: topic.termId,
+      status: topic.status,
+    }));
+  },
+});
 
 export const listAdminKnowledgeMaterials = query({
   args: {

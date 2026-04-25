@@ -152,6 +152,7 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 export default function KnowledgeLibraryPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
   const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
+  const topics = useQuery("functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeTopics" as never) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
 
   const [filters, setFilters] = useState<KnowledgeLibraryFilterState>(DEFAULT_FILTERS);
   const isMobile = useIsMobile();
@@ -249,6 +250,7 @@ export default function KnowledgeLibraryPage() {
     subjectId: string;
     level: string;
     topicLabel: string;
+    topicId?: string;
   }) => {
     setNotice(null);
     setIsSavingDetails(true);
@@ -260,6 +262,7 @@ export default function KnowledgeLibraryPage() {
         subjectId: args.subjectId,
         level: args.level,
         topicLabel: args.topicLabel,
+        ...(args.topicId ? { topicId: args.topicId } : {}),
       } as never);
       setNotice({ tone: "success", title: "Material updated", message: "Relabel changes were saved and the search snapshot was refreshed." });
     } catch (error) {
@@ -282,11 +285,31 @@ export default function KnowledgeLibraryPage() {
     setNotice(null);
     setIsSavingState(true);
     try {
-      await updateState({
+      const result = (await updateState({
         materialId: args.materialId,
         ...(args.visibility ? { visibility: args.visibility } : {}),
         ...(args.reviewStatus ? { reviewStatus: args.reviewStatus } : {}),
-      } as never);
+      } as never)) as {
+        materialId: string;
+        visibility: KnowledgeMaterialVisibility;
+        reviewStatus: KnowledgeMaterialReviewStatus;
+      };
+
+      setActiveDetail((current) => {
+        if (!current || current.material._id !== result.materialId) {
+          return current;
+        }
+
+        return {
+          ...current,
+          material: {
+            ...current.material,
+            visibility: result.visibility,
+            reviewStatus: result.reviewStatus,
+          },
+        };
+      });
+
       setNotice({ tone: "success", title: "Material state updated", message: "Visibility and review status were synchronized through Convex." });
     } catch (error) {
       setNotice({
@@ -331,6 +354,7 @@ export default function KnowledgeLibraryPage() {
         <KnowledgeMaterialDetailPanel
           detail={activeDetail}
           subjects={subjects}
+          topics={topics ?? []}
           levelOptions={levelOptions}
           variant="sheet"
           isSavingDetails={isSavingDetails}
@@ -346,6 +370,7 @@ export default function KnowledgeLibraryPage() {
           <KnowledgeMaterialDetailPanel
             detail={activeDetail}
             subjects={subjects}
+            topics={topics ?? []}
             levelOptions={levelOptions}
             isSavingDetails={isSavingDetails}
             isSavingState={isSavingState}

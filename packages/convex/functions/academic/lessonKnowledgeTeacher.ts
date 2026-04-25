@@ -108,6 +108,8 @@ const lessonLibrarySubjectValidator = v.object({
   code: v.string(),
 });
 
+const lessonVideoSubmissionValidator = lessonLibraryMaterialValidator;
+
 function normalizeOptionalText(value?: string | null): string | undefined {
   if (value === undefined || value === null) {
     return undefined;
@@ -509,6 +511,32 @@ export const listTeacherLibrarySubjects = query({
     assertTeacherLibraryAccess(actor);
 
     return await readTeacherLibrarySubjects(ctx, actor);
+  },
+});
+
+export const listTeacherYoutubeSubmissions = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  returns: v.object({
+    summary: lessonLibrarySummaryValidator,
+    materials: v.array(lessonVideoSubmissionValidator),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actor = buildActorContext({
+      userId,
+      schoolId,
+      role,
+      isSchoolAdmin,
+    });
+
+    assertTeacherLibraryAccess(actor);
+
+    return await readTeacherLibraryMaterials(ctx, actor, {
+      sourceType: "youtube_link",
+      limit: args.limit,
+    });
   },
 });
 

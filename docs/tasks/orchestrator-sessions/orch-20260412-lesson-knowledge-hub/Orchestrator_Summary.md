@@ -21,7 +21,7 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 - Pending task files: `4`
 - In-progress task files: `0`
-- Completed task files: `11`
+- Completed task files: `12`
 
 ## Linked Blueprint
 
@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Proceed with `T12` to add the video-link submission and approval lane once the new question-bank workspace smoke pass is acceptable.
+Proceed with `T13` to build the portal topic page and student-upload lane once the video-link submission and admin-approval flow smoke pass is acceptable. Keep `T16` queued as the follow-up for admin-defined assessment generation profiles and teacher question-mix overrides.

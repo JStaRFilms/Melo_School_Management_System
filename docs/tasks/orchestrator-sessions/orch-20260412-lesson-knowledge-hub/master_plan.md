@@ -95,13 +95,15 @@ The new baseline is:
 2. `T04-T06` establish the shared technical foundation.
 3. `T07-T09` may overlap once the schema and ACL direction is stable.
 4. `T10-T13` start only after the ingestion and template layers are in place.
-5. `T14-T15` close the session with hardening and handoff.
+5. `T16` depends on the assessment authoring baseline from `T11` and the admin template/settings lane from `T08`.
+6. `T14-T15` remain the hardening and handoff close-out tasks.
 
 ## Parallel Opportunities
 
 - `T04-T06` can run in parallel after `T03`
 - `T07-T09` can overlap after `T05`
 - `T10-T13` can partially overlap after `T06` and `T08`
+- `T16` can begin only after `T11` establishes the assessment authoring baseline
 - `T14-T15` stay sequential and last
 
 ## Task Table
@@ -119,10 +121,11 @@ The new baseline is:
 | `T09` | Completed | D | Teacher library and publish flow; `/planning/library` now supports private-first uploads, label editing, explicit publish-to-staff, and lesson-plan source handoff |
 | `T10` | Completed | D | Teacher lesson-plan workspace delivered at `/planning/lesson-plans` with source-aware loading, template resolution, autosave, revision snapshots, and bounded generation handlers |
 | `T11` | Completed | D | Teacher question-bank workspace delivered at `/planning/question-bank` with item-by-item assessment draft persistence, AI generation, and editable quiz/CBT authoring |
-| `T12` | Pending | E | YouTube link approval and topic attachment |
+| `T12` | Completed | E | Teacher YouTube submissions delivered at `/planning/videos` with admin library-based approval integration and topic attachment support |
 | `T13` | Pending | E | Portal topic view and student uploads |
 | `T14` | Pending | F | Security, rate limits, audit, and failure recovery |
 | `T15` | Pending | F | Verification, docs sync, and release-style handoff |
+| `T16` | Pending | D | Admin-defined assessment generation profiles plus teacher question-mix overrides for open-ended / mixed assessment authoring |
 
 ## Exit Criteria
 
