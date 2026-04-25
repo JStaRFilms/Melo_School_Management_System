@@ -119,7 +119,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       {
         href: "/planning/library",
         label: "Library",
-        matchers: ["/planning/library", "/planning/lesson-plans"],
+        matchers: ["/planning/library", "/planning/lesson-plans", "/planning/question-bank"],
       },
     ],
   },

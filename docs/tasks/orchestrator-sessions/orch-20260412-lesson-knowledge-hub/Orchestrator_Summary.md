@@ -19,9 +19,9 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Session Counts
 
-- Pending task files: `5`
+- Pending task files: `4`
 - In-progress task files: `0`
-- Completed task files: `10`
+- Completed task files: `11`
 
 ## Linked Blueprint
 
@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Proceed with `T11` once the teacher lesson-plan workspace smoke pass is acceptable and the lesson-plan generation flow is considered stable enough to build on.
+Proceed with `T12` to add the video-link submission and approval lane once the new question-bank workspace smoke pass is acceptable.

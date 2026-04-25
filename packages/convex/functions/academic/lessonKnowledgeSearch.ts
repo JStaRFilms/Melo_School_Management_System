@@ -70,7 +70,14 @@ export const KNOWLEDGE_SEARCH_CONTRACTS = {
     tableName: "assessmentBanks",
     indexName: "search_search_text",
     searchField: "searchText",
-    filterFields: ["schoolId", "visibility", "reviewStatus", "topicId", "outputType"],
+    filterFields: [
+      "schoolId",
+      "visibility",
+      "reviewStatus",
+      "topicId",
+      "outputType",
+      "draftMode",
+    ],
     requiresStaffAccess: true,
   },
   assessmentBankItems: {

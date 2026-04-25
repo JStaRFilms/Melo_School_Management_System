@@ -461,6 +461,10 @@ export default function TeacherLibraryPage() {
     sourceIds: selectedSourceIds,
     sourceOrigin: "library",
   });
+  const questionBankHref =
+    selectedSourceIds.length > 0
+      ? `/planning/question-bank?sourceIds=${selectedSourceIds.join(",")}&mode=practice_quiz`
+      : "/planning/question-bank";
 
   useEffect(() => {
     if (!uploadSubjectId && readySubjects.length > 0) {
@@ -971,6 +975,13 @@ export default function TeacherLibraryPage() {
                         Open lesson plan workspace
                       </Link>
                     ) : null}
+                    <Link
+                      href={questionBankHref}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      <Send className="h-4 w-4" />
+                      Open question bank workspace
+                    </Link>
                   </>
                 ) : null}
               </div>

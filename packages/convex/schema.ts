@@ -40,6 +40,12 @@ const knowledgeOutputTypeValidator = v.union(
   v.literal("cbt_draft")
 );
 
+const assessmentDraftModeValidator = v.union(
+  v.literal("practice_quiz"),
+  v.literal("class_test"),
+  v.literal("exam_draft")
+);
+
 const knowledgeArtifactStatusValidator = v.union(
   v.literal("draft"),
   v.literal("active"),
@@ -1463,6 +1469,8 @@ export default defineSchema({
     ownerUserId: v.id("users"),
     ownerRole: knowledgeOwnerRoleValidator,
     outputType: knowledgeOutputTypeValidator,
+    draftMode: v.optional(assessmentDraftModeValidator),
+    sourceSelectionSnapshot: v.optional(v.string()),
     bankStatus: knowledgeArtifactStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
@@ -1503,6 +1511,7 @@ export default defineSchema({
         "reviewStatus",
         "topicId",
         "outputType",
+        "draftMode",
         "searchStatus",
       ],
     }),
@@ -1516,6 +1525,7 @@ export default defineSchema({
     promptText: v.string(),
     answerText: v.string(),
     explanationText: v.string(),
+    marks: v.optional(v.number()),
     tags: v.array(v.string()),
     visibility: knowledgeVisibilityValidator,
     reviewStatus: knowledgeReviewStatusValidator,

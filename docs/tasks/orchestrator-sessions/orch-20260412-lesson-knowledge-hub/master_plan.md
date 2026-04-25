@@ -118,7 +118,7 @@ The new baseline is:
 | `T08` | Completed | C | Admin template studio; structured lesson template studio delivered at `/academic/knowledge/templates` |
 | `T09` | Completed | D | Teacher library and publish flow; `/planning/library` now supports private-first uploads, label editing, explicit publish-to-staff, and lesson-plan source handoff |
 | `T10` | Completed | D | Teacher lesson-plan workspace delivered at `/planning/lesson-plans` with source-aware loading, template resolution, autosave, revision snapshots, and bounded generation handlers |
-| `T11` | Pending | D | Question-bank and CBT draft flows |
+| `T11` | Completed | D | Teacher question-bank workspace delivered at `/planning/question-bank` with item-by-item assessment draft persistence, AI generation, and editable quiz/CBT authoring |
 | `T12` | Pending | E | YouTube link approval and topic attachment |
 | `T13` | Pending | E | Portal topic view and student uploads |
 | `T14` | Pending | F | Security, rate limits, audit, and failure recovery |

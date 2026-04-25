@@ -2,7 +2,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 import type { DocumentOutputType } from "./contracts";
 
-const defaultLessonPlanModelId = "minimax/minimax-m2.5:free";
+const defaultLessonPlanModelId = "nvidia/nemotron-3-super-120b-a12b:free";
 const defaultStudentNoteModelId = "inclusionai/ling-2.6-flash:free";
 const defaultAssignmentModelId = "inclusionai/ling-2.6-flash:free";
 const defaultQuestionBankModelId = "openai/gpt-oss-120b:free";
