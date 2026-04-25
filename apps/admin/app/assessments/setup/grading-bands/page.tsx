@@ -1,23 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { 
-  Trophy, 
-  Sparkles, 
-  ShieldCheck, 
-  Plus,
-  ChevronRight,
-  Loader2
-} from "lucide-react";
-import type { GradingBandDraft, BandValidationError, GradingBandResponse } from "@/types";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+import { isConvexConfigured } from "@/convex-runtime";
 import { validateBandsClient } from "@/exam-helpers";
+import { getMockGradingBands } from "@/mock-data";
+import type { BandValidationError,GradingBandDraft,GradingBandResponse } from "@/types";
+import { useMutation,useQuery } from "convex/react";
+import {
+ChevronRight,
+Plus,
+ShieldCheck,
+Trophy
+} from "lucide-react";
+import { useCallback,useEffect,useMemo,useState } from "react";
 import { BandTable } from "./components/BandTable";
 import { BandValidationBanner } from "./components/BandValidationBanner";
 import { BandsActionBar } from "./components/BandsActionBar";
-import { getMockGradingBands } from "@/mock-data";
-import { isConvexConfigured } from "@/convex-runtime";
-import { AdminSurface } from "@/components/ui/AdminSurface";
 
 export default function GradingBandsPage() {
   if (!isConvexConfigured()) {

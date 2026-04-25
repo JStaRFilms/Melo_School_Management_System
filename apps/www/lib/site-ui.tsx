@@ -1,9 +1,9 @@
 "use client";
 
+import { siteBrand,siteNavigation } from "@/site";
+import { ArrowRight,Mail,MapPin,Phone } from "lucide-react";
 import Link from "next/link";
-import { ArrowRight, Mail, MapPin, Menu, Phone, X } from "lucide-react";
 import type { ReactNode } from "react";
-import { siteBrand, siteNavigation } from "@/site";
 
 /* ─── Utilities ─── */
 export function cn(...parts: Array<string | false | null | undefined>): string {
@@ -98,10 +98,10 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 /* ─── Site Header ─── */
-import { useEffect, useState } from "react";
-import { motion, useScroll, useMotionValueEvent } from "framer-motion";
+import { motion,useMotionValueEvent,useScroll } from "framer-motion";
+import { CreditCard,Home,Zap } from "lucide-react";
+import { useState } from "react";
 import { AnimatedDock } from "../components/ui/animated-dock";
-import { Home, Zap, CreditCard } from "lucide-react";
 
 export function SiteHeader() {
   const { scrollY } = useScroll();

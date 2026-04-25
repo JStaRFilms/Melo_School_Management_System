@@ -1,19 +1,19 @@
-import React, { useMemo, useState } from "react";
-import { Check, Copy, ExternalLink, X, Search, Link2, Download, CreditCard, ReceiptText, Plus, Info } from "lucide-react";
-import { formatMoney } from "../utils";
-import type { 
-  BillingDashboardData, 
-  PaymentDraft, 
-  PaymentLinkDraft, 
-  PaymentLinkResult,
-  FeePlanDraft, 
-  FeePlanApplicationDraft, 
-  ClassOption, 
-  SessionOption, 
-  TermOption 
+import { Check,Copy,CreditCard,ExternalLink,Link2,Plus,ReceiptText } from "lucide-react";
+import React,{ useMemo,useState } from "react";
+import type {
+BillingDashboardData,
+ClassOption,
+FeePlanApplicationDraft,
+FeePlanDraft,
+PaymentDraft,
+PaymentLinkDraft,
+PaymentLinkResult,
+SessionOption,
+TermOption
 } from "../types";
-import { FeePlanForm } from "./forms/FeePlanForm";
+import { formatMoney } from "../utils";
 import { BulkApplicationForm } from "./forms/BulkApplicationForm";
+import { FeePlanForm } from "./forms/FeePlanForm";
 
 type BillingSidebarVariant = "arsenal" | "payment" | "invoice" | "application" | "link" | "plan";
 
@@ -42,7 +42,7 @@ interface BillingSidebarProps {
 }
 
 export function BillingSidebar({
-  onClose,
+
   variant,
   paymentDraft,
   onPaymentDraftChange,
@@ -65,25 +65,6 @@ export function BillingSidebar({
   feePlans,
   onVariantChange,
 }: BillingSidebarProps & { onVariantChange?: (variant: BillingSidebarVariant) => void }) {
-  const titles = {
-    arsenal: "Financial Hub",
-    payment: "Record Receipt",
-    invoice: "Generate Invoice",
-    application: "Bulk Distribution",
-    link: "Payment Handoff",
-    plan: "New Fee Plan",
-  };
-
-  const icons = {
-    arsenal: <Search className="h-4 w-4" />,
-    payment: <CreditCard className="h-4 w-4" />,
-    invoice: <ReceiptText className="h-4 w-4" />,
-    application: <ReceiptText className="h-4 w-4" />,
-    link: <Link2 className="h-4 w-4" />,
-    plan: <Plus className="h-4 w-4" />,
-  };
-
-  /* ── Shared form styles ─────────────────────────────────── */
   const labelCx = "text-[11px] font-bold uppercase tracking-[0.15em] text-slate-600";
   const inputCx = "w-full h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 outline-none transition-all placeholder:text-slate-400";
   const [copied, setCopied] = useState(false);

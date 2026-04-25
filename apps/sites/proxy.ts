@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildCanonicalPublicOrigin, resolveSiteRequest } from "@/site";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const resolution = resolveSiteRequest(request.headers);
 
   if (resolution.status !== "active" || !resolution.school || !resolution.template || !resolution.redirectToHostname) {

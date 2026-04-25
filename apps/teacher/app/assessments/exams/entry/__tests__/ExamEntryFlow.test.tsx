@@ -1,18 +1,17 @@
-import { describe, it, expect } from "vitest";
 import {
-  validateField,
-  validateAllDrafts,
-  computeDerivedValues,
-  hasAnyErrors,
-  countErrors,
-  buildErrorSummaries,
+buildErrorSummaries,
+computeDerivedValues,
+countErrors,
+hasAnyErrors,
+validateAllDrafts,
+validateField,
 } from "@/lib/exam-helpers";
 import type {
-  DraftScores,
-  ScoreField,
-  Id,
-  GradingBandResponse,
+DraftScores,
+GradingBandResponse,
+Id
 } from "@/lib/types";
+import { describe,expect,it } from "vitest";
 
 const standardBands: GradingBandResponse[] = [
   {

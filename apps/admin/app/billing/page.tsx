@@ -1,58 +1,58 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  X, 
-  Link2,
-} from "lucide-react";
 import { AdminSheet } from "@/components/ui/AdminSheet";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import {
+Filter,
+Link2,
+Plus,
+Search,
+X,
+} from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
 
 // Local Components
 import { BillingHeader } from "./components/BillingHeader";
-import { BillingTabs, type BillingTab } from "./components/BillingTabs";
+import { BillingSidebar } from "./components/BillingSidebar";
+import { BillingTabs,type BillingTab } from "./components/BillingTabs";
+import { DashboardSkeleton } from "./components/DashboardSkeleton";
+import { FeePlanList } from "./components/FeePlanList";
 import { InvoiceTable } from "./components/InvoiceTable";
 import { PaymentTable } from "./components/PaymentTable";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { BillingSidebar } from "./components/BillingSidebar";
-import { DashboardSkeleton } from "./components/DashboardSkeleton";
-import { FeePlanList } from "./components/FeePlanList";
 
 // Hooks & Utils
-import { useBillingData } from "./hooks/useBillingData";
 import { useBillingActions } from "./hooks/useBillingActions";
+import { useBillingData } from "./hooks/useBillingData";
 import { useBillingSortPreferences } from "./hooks/useBillingSortPreferences";
-import { 
-  initialFeePlanDraft, 
-  initialFeePlanApplicationDraft, 
-  initialInvoiceDraft, 
-  initialPaymentDraft, 
-  initialBillingSettingsDraft,
-  initialPaystackGatewayConfigDraft,
-  initialPaymentLinkDraft,
-  buildBillingSettingsDraft,
-  sortFeePlans,
-  sortInvoiceRows,
-  sortPaymentRows,
-  toggleSortDirection
-} from "./utils";
-import type { 
-  DashboardFilters, 
-  FeePlanDraft, 
-  FeePlanApplicationDraft, 
-  InvoiceDraft, 
-  PaymentDraft, 
-  BillingSettingsDraft,
-  PaystackGatewayConfigDraft,
-  PaymentLinkDraft,
-  PaymentLinkResult,
-  FeePlanSortKey,
-  InvoiceSortKey,
-  PaymentSortKey
+import type {
+BillingSettingsDraft,
+DashboardFilters,
+FeePlanApplicationDraft,
+FeePlanDraft,
+FeePlanSortKey,
+InvoiceDraft,
+InvoiceSortKey,
+PaymentDraft,
+PaymentLinkDraft,
+PaymentLinkResult,
+PaymentSortKey,
+PaystackGatewayConfigDraft
 } from "./types";
+import {
+buildBillingSettingsDraft,
+initialBillingSettingsDraft,
+initialFeePlanApplicationDraft,
+initialFeePlanDraft,
+initialInvoiceDraft,
+initialPaymentDraft,
+initialPaymentLinkDraft,
+initialPaystackGatewayConfigDraft,
+sortFeePlans,
+sortInvoiceRows,
+sortPaymentRows,
+toggleSortDirection
+} from "./utils";
 
 export default function BillingPage() {
   // 1. State Management
@@ -71,7 +71,7 @@ export default function BillingPage() {
   // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
-  const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
+  const [invoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
   const [billingSettingsDraft, setBillingSettingsDraft] = useState<BillingSettingsDraft>(initialBillingSettingsDraft());
   const [gatewayConfigDraft, setGatewayConfigDraft] = useState<PaystackGatewayConfigDraft>(initialPaystackGatewayConfigDraft());

@@ -2,7 +2,7 @@
 
 **Session ID:** `orch-20260412-lesson-knowledge-hub`  
 **Created:** `2026-04-13`  
-**Status:** Active  
+**Status:** Completed  
 **Mode:** Takomi Orchestrator
 
 ## Overview
@@ -96,7 +96,7 @@ The new baseline is:
 3. `T07-T09` may overlap once the schema and ACL direction is stable.
 4. `T10-T13` start only after the ingestion and template layers are in place.
 5. `T16` depends on the assessment authoring baseline from `T11` and the admin template/settings lane from `T08`.
-6. `T14` and `T16` are now complete; `T15` is the remaining handoff task.
+6. `T14`, `T16`, `T17`, `T18`, and final handoff task `T15` are complete.
 
 ## Parallel Opportunities
 
@@ -104,7 +104,7 @@ The new baseline is:
 - `T07-T09` can overlap after `T05`
 - `T10-T13` can partially overlap after `T06` and `T08`
 - `T16` built on the assessment authoring baseline from `T11`
-- `T15` stays last as the verification/docs/handoff close-out task
+- `T15` stayed last as the verification/docs/handoff close-out task and is now complete
 
 ## Task Table
 
@@ -124,22 +124,25 @@ The new baseline is:
 | `T12` | Completed | E | Teacher YouTube submissions delivered at `/planning/videos` with admin library-based approval integration and topic attachment support |
 | `T13` | Completed | E | Portal topic route delivered at `/learning/topics/[topicId]` with approved resource rendering, class-scoped student uploads, and teacher-side promotion flow |
 | `T14` | Completed | F | Security/rate-limit/audit hardening landed; portal promotion is staff-only and assignment-aware, lesson/assessment source eligibility is server-validated, referential validation is tightened, and Convex-backed abuse controls now gate generation/upload/retry paths |
-| `T15` | Pending | F | Verification, docs sync, and release-style handoff |
+| `T15` | Completed | F | Verification, docs sync, Convex deploy, task reconciliation, and release-style handoff completed |
 | `T16` | Completed | D | School-scoped assessment generation profiles and teacher question-mix overrides shipped into the question-bank authoring flow, with persistence in drafts and AI run logs plus server-side locked-profile enforcement |
 | `T17` | Completed | E | Material viewing/source proof shipped across admin, teacher, and portal surfaces, including same-origin original-file access and extracted-text proof previews |
 | `T18` | Completed | E | Teacher topic governance and creation shipped in the planning library so teachers can create/attach real topics within bounded classroom scope |
 
 ## Exit Criteria
 
-- The session queue is execution-ready and self-contained
+- The session queue is complete and self-contained
 - The feature blueprint exists in `docs/features/`
-- Each task file is specific enough for a build agent to execute without reopening product questions
+- Each task file has been archived in `completed/` with a paired result note
 - The session remains cleanly separated from the relaunch queue
+- Final verification and Convex deploy results are recorded in `completed/T15_verification_docs_and_handoff.result.md` and `Final_Handoff_Summary.md`
 
 ## Current Known Constraints
 
-- The teacher and portal apps currently have no lesson-planning or topic-view routes, so navigation updates must be staged carefully.
-- `packages/ai` now exists as the shared AI SDK foundation for later route handlers.
-- The T06 ingestion foundation now uses a real PDF parser plus guarded Gemini fallback extraction path instead of the old ad-hoc manual PDF stream parser.
+- The delivered route set now includes the Lesson Knowledge Hub admin, teacher, and portal topic surfaces listed in the task table; future navigation changes should still be staged carefully.
+- `packages/ai` exists as the shared AI SDK foundation for generation route handlers.
+- The T06 ingestion foundation uses a real PDF parser plus guarded Gemini fallback extraction path instead of the old ad-hoc manual PDF stream parser.
 - Cleanup remains bounded: if another ingestion route later needs the same Gemini fallback, consolidate the request builder rather than reviving multiple extraction implementations.
 - The curriculum sample folder is spelled `School curriculim example` in the repo and task files must reference that exact path.
+- Convex deploy succeeded during T15, but Convex reported AI files are out of date; run `npx convex ai-files update` in a separate maintenance task if desired.
+- Browser/E2E, live AI generation, and deployed upload/PDF extraction smoke checks were not run during T15 and should remain explicit until covered by a seeded QA pass.

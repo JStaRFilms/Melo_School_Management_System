@@ -1,6 +1,5 @@
-import React from "react";
+import type { BillingDashboardData,InvoiceSortKey,SortDirection } from "../types";
 import { formatMoney } from "../utils";
-import type { BillingDashboardData, InvoiceSortKey, SortDirection } from "../types";
 import { SortHeaderButton } from "./SortHeaderButton";
 
 interface InvoiceTableProps {
@@ -17,8 +16,7 @@ export function InvoiceTable({
   sortKey,
   sortDirection,
   onSortChange,
-  sortable = true,
-  onViewInvoice,
+  sortable = true,
 }: InvoiceTableProps) {
   return (
     <div className="overflow-x-auto scrollbar-hide">

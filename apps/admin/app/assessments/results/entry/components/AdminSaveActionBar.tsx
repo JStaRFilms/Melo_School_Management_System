@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2,X } from "lucide-react";
+import { useCallback,useState } from "react";
 
 interface AdminSaveActionBarProps {
   hasUnsavedChanges: boolean;
@@ -21,8 +21,7 @@ export function AdminSaveActionBar({
   onSave,
   onCancel,
   dirtyCount,
-  isEditingLocked = false,
-  lockMessage,
+  isEditingLocked = false,
 }: AdminSaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{

@@ -1,15 +1,5 @@
-import { useAction, useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import type { 
-  FeePlanDraft, 
-  FeePlanApplicationDraft, 
-  InvoiceDraft, 
-  PaymentDraft, 
-  BillingSettingsDraft, 
-  PaystackGatewayConfigDraft,
-  PaymentLinkDraft,
-  PaymentLinkResult
-} from "../types";
+import { useAction,useMutation } from "convex/react";
 
 export function useBillingActions(setNotice: (n: any) => void) {
   const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);

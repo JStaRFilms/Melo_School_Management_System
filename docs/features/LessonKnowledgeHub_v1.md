@@ -312,6 +312,26 @@ Use these as the reference pair for label extraction, topic naming, and expected
 - Do not add a general portal library or search surface in v1.
 - Do not introduce collaborative editing before a later Takomi task authorizes it.
 
+## Delivery and Verification Status
+
+The Takomi delivery session `docs/tasks/orchestrator-sessions/orch-20260412-lesson-knowledge-hub` is closed as completed.
+
+Final T15 verification recorded:
+
+- `pnpm typecheck` passed: `16 successful, 16 total`.
+- `pnpm lint` passed clean: `10 successful, 10 total` with zero warnings.
+- `pnpm build` passed clean after the final verification cleanup.
+- Targeted Convex lesson-knowledge helper tests passed: `2 passed`, `18 passed`.
+- `pnpm exec convex deploy --yes` deployed successfully to `https://outgoing-warbler-782.eu-west-1.convex.cloud`.
+
+Verification not covered in T15:
+
+- authenticated browser/E2E smoke for admin, teacher, and portal flows
+- live AI generation smoke against configured provider credentials
+- deployed upload/PDF extraction smoke
+
+Convex deploy noted that Convex AI files are out of date; `npx convex ai-files update` remains a separate maintenance follow-up.
+
 ## Scope Alignment
 
 This blueprint covers the lesson-workspace portion of FR-010 and the AI-assisted teacher tools portion of FR-016 without adding any v2 surface area.

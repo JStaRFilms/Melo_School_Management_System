@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
 import { SubjectSelectionDesktopTable } from "./SubjectSelectionDesktopTable";
 import { SubjectSelectionMobileEditor } from "./SubjectSelectionMobileEditor";
-import type { EnrollmentMatrix, ClassSummary, EnrollmentNotice } from "./types";
+import type { EnrollmentMatrix } from "./types";
 
 interface SubjectSelectionMatrixProps {
   matrix: EnrollmentMatrix | undefined;

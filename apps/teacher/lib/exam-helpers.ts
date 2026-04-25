@@ -1,20 +1,18 @@
-import { useCallback } from "react";
+import type { ExamInputMode } from "@school/shared";
 import {
-  validateScoreRanges,
-  examScaledScore as computeExamScaledScore,
-  total as computeTotal,
-  deriveGradeAndRemark,
+examScaledScore as computeExamScaledScore,
+total as computeTotal,
+deriveGradeAndRemark,
+validateScoreRanges,
 } from "@school/shared";
-import type { ExamInputMode, GradingBand } from "@school/shared";
 import type {
-  ScoreField,
-  DraftScores,
-  ValidationErrors,
-  StudentRosterEntry,
-  Id,
-  toGradingBand,
+DraftScores,
+GradingBandResponse,
+Id,
+ScoreField,
+StudentRosterEntry,
+ValidationErrors
 } from "./types";
-import type { GradingBandResponse } from "./types";
 
 /**
  * Validates a single field value and returns an error message or null.

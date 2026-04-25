@@ -1,12 +1,10 @@
 "use client";
 
-import { Container, SectionLabel, GoldButton } from "@/site-ui";
 import { capabilities } from "@/site";
-import { BookOpen, GraduationCap, CreditCard, Users, Zap, Calendar, ShieldCheck, BarChart3, Globe } from "lucide-react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { Container,GoldButton,SectionLabel } from "@/site-ui";
+import { motion,useScroll,useTransform } from "framer-motion";
+import { CreditCard,Globe,GraduationCap,ShieldCheck,Users,Zap } from "lucide-react";
 import { useRef } from "react";
-
-const icons = [BookOpen, GraduationCap, CreditCard, Users, Calendar, Zap];
 
 export function CapabilityComposition() {
   const containerRef = useRef<HTMLDivElement>(null);

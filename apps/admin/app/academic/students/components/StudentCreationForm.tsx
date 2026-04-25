@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent, RefObject } from "react";
-import { UserPlus, Sparkles } from "lucide-react";
+import { Sparkles,UserPlus } from "lucide-react";
+import type { FormEvent,RefObject } from "react";
 import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 
@@ -46,8 +46,7 @@ export function StudentCreationForm({
   guardianPhone,
   address,
   photoPreviewUrl,
-  isSubmitting,
-  variant = "inline",
+  isSubmitting,
   sectionRef,
   inputRef,
   onStudentNameChange,

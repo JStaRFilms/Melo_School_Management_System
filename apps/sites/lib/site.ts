@@ -1,5 +1,5 @@
+import type { Metadata,MetadataRoute } from "next";
 import type { CSSProperties } from "react";
-import type { Metadata, MetadataRoute } from "next";
 
 export type TemplateKey =
   | "modern-campus"
@@ -1374,10 +1374,6 @@ export function resolveRequestedPage(school: SchoolConfig, slugParts?: string[])
     content,
     canonicalPath: normalizedSlug ? `/${normalizedSlug}` : "/",
   };
-}
-
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function toSafeJsonLd(value: unknown): string {

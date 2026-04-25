@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { BookOpen, UserCog } from "lucide-react";
 import { humanNameFinalStrict } from "@/human-name";
+import { BookOpen,UserCog } from "lucide-react";
+import { useEffect,useState } from "react";
 import type { EnrollmentMatrix } from "./types";
 
 interface SubjectSelectionMobileEditorProps {
@@ -16,8 +16,7 @@ interface SubjectSelectionMobileEditorProps {
 export function SubjectSelectionMobileEditor({
   matrix,
   totalSubjects,
-  selectedStudentId,
-  onSelectStudent,
+  selectedStudentId,
   openUnifiedEditor,
 }: SubjectSelectionMobileEditorProps) {
   const [editorStudentId, setEditorStudentId] = useState<string | null>(

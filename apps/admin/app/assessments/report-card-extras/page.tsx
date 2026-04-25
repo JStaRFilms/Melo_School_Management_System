@@ -2,20 +2,19 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { useSearchParams } from "next/navigation";
-import { buildReportCardHref } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
-import { StatGroup } from "@/components/ui/StatGroup";
+import { buildReportCardHref } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
+import {
+AppWindow,
+BookOpen,
+CalendarDays,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { ExtrasSelectionBar } from "./components/ExtrasSelectionBar";
 import { ExtrasWorkspace } from "./components/ExtrasWorkspace";
-import type { ExtrasEntry, ExtrasSelection, SelectorOption } from "./components/types";
-import {
-  AppWindow,
-  BookOpen,
-  CalendarDays,
-} from "lucide-react";
+import type { ExtrasEntry,ExtrasSelection,SelectorOption } from "./components/types";
 
 export default function AdminReportCardExtrasPage() {
   const searchParams = useSearchParams();

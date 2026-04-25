@@ -1,14 +1,14 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import type { BundleDraft, BundleFieldDraft, BundleSectionDraft, ScaleTemplateRecord } from "../types";
+import { ChevronDown,ChevronUp,Trash2 } from "lucide-react";
+import type { BundleDraft,BundleFieldDraft,BundleSectionDraft,ScaleTemplateRecord } from "../types";
 import {
-  fieldSourceOptions,
-  fieldTypeOptions,
-  getCanonicalFieldConfig,
-  moveItem,
-  systemAttendanceFieldOptions,
-  systemTermFieldOptions,
+fieldSourceOptions,
+fieldTypeOptions,
+getCanonicalFieldConfig,
+moveItem,
+systemAttendanceFieldOptions,
+systemTermFieldOptions,
 } from "../utils";
 
 interface FieldEditorProps {
@@ -29,8 +29,7 @@ export function FieldEditor({
   draft,
   scaleTemplates,
   onChange,
-}: FieldEditorProps) {
-  const canonicalConfig = getCanonicalFieldConfig(field.systemKey);
+}: FieldEditorProps) {
   const canonicalOptions =
     field.source === "system_term"
       ? systemTermFieldOptions

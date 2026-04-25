@@ -1,25 +1,24 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { AdminSurface } from "@/components/ui/AdminSurface";
+import { StatGroup } from "@/components/ui/StatGroup";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import type { SessionRecord,SubjectRecord } from "@/types";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
 import {
-  CalendarDays,
-  Sparkles,
-  Layers,
-  X,
-  Hash,
-  ArrowRight,
+ArrowRight,
+CalendarDays,
+Layers,
+Sparkles,
+X
 } from "lucide-react";
 import Link from "next/link";
-import { AdminHeader } from "@/components/ui/AdminHeader";
-import { StatGroup } from "@/components/ui/StatGroup";
-import { AdminSurface } from "@/components/ui/AdminSurface";
+import { useEffect,useMemo,useState } from "react";
 import { SessionCreationForm } from "./components/SessionCreationForm";
-import { TermCreationForm } from "./components/TermCreationForm";
 import { SessionDirectory } from "./components/SessionDirectory";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import type { SessionRecord, SubjectRecord } from "@/types";
+import { TermCreationForm } from "./components/TermCreationForm";
 
 export default function SessionsPage() {
   const sessions = useQuery(

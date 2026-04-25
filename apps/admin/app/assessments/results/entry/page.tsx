@@ -1,40 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
-import { ChevronLeft } from "lucide-react";
-import type { ExamInputMode } from "@school/shared";
+import { AdminHeader } from "@/components/ui/AdminHeader";
+import { isConvexConfigured } from "@/convex-runtime";
+import {
+buildErrorSummaries,
+countErrors,
+hasAnyErrors,
+validateField,
+} from "@/exam-helpers";
+import { humanNameFinal } from "@/human-name";
+import {
+getMockSheet,
+mockClasses,
+mockSessions,
+mockSubjectsByClass,
+mockTermsBySession,
+} from "@/mock-data";
 import type {
-  DraftScores,
-  ExamEntrySheetResponse,
-  Id,
-  ScoreField,
-  SelectionState,
-  SelectorOption,
-  UpsertResponse,
-  ValidationErrors,
+DraftScores,
+ExamEntrySheetResponse,
+Id,
+ScoreField,
+SelectionState,
+SelectorOption,
+UpsertResponse,
+ValidationErrors,
 } from "@/types";
-import { AdminSelectionBar } from "./components/AdminSelectionBar";
+import type { ExamInputMode } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
+import { ChevronLeft } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useCallback,useEffect,useMemo,useState } from "react";
 import { AdminRosterGrid } from "./components/AdminRosterGrid";
 import { AdminSaveActionBar } from "./components/AdminSaveActionBar";
+import { AdminSelectionBar } from "./components/AdminSelectionBar";
 import { AdminValidationBanner } from "./components/AdminValidationBanner";
-import { AdminHeader } from "@/components/ui/AdminHeader";
-import {
-  buildErrorSummaries,
-  countErrors,
-  hasAnyErrors,
-  validateField,
-} from "@/exam-helpers";
-import {
-  getMockSheet,
-  mockClasses,
-  mockSessions,
-  mockSubjectsByClass,
-  mockTermsBySession,
-} from "@/mock-data";
-import { isConvexConfigured } from "@/convex-runtime";
-import { humanNameFinal } from "@/human-name";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -314,7 +314,8 @@ function AdminScoreEntryContent({
           return next;
         }
 
-        const { [field]: _removed, ...rest } = studentErrors;
+        const rest = { ...studentErrors };
+        delete rest[field];
         if (Object.keys(rest).length > 0) {
           next.set(studentId, rest);
         } else {

@@ -1,56 +1,54 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import {
-  AlertTriangle,
-  BookOpenText,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  GripVertical,
-  Layers3,
-  Loader2,
-  Monitor,
-  PencilLine,
-  Plus,
-  Save,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  X,
+AlertTriangle,
+BookOpenText,
+CheckCircle2,
+ChevronDown,
+ChevronRight,
+ChevronUp,
+GripVertical,
+Layers3,
+Loader2,
+Monitor,
+PencilLine,
+Plus,
+Save,
+Search,
+ShieldCheck,
+Sparkles,
+Trash2,
+X,
 } from "lucide-react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { cn } from "@/utils";
 
-import type { InstructionTemplateStudioScreenProps } from "../types";
-import {
-  createEmptyInstructionTemplateDraft,
-  createInstructionTemplateDraft,
-  createInstructionTemplateSectionDraftFromLabel,
-  getInstructionTemplateApplicabilitySummary,
-  getInstructionTemplateDraftApplicabilityMessage,
-  getInstructionTemplateDraftResolutionRank,
-  getInstructionTemplateResolutionPathLabel,
-  getInstructionTemplateScopeLabel,
-  instructionTemplateOutputTypeOptions,
-  instructionTemplateScopeOptions,
-  moveTemplateItem,
-  serializeInstructionTemplateDraft,
-  validateInstructionTemplateDraft,
-} from "../utils";
 import type {
-  InstructionTemplateDraft,
-  InstructionTemplateListItem,
-  InstructionTemplateOutputType,
-  InstructionTemplateScope,
-  InstructionTemplateSectionDraft,
+InstructionTemplateDraft,
+InstructionTemplateListItem,
+InstructionTemplateOutputType,
+InstructionTemplateScope,
+InstructionTemplateSectionDraft,InstructionTemplateStudioScreenProps
 } from "../types";
+import {
+createEmptyInstructionTemplateDraft,
+createInstructionTemplateDraft,
+createInstructionTemplateSectionDraftFromLabel,
+getInstructionTemplateApplicabilitySummary,
+getInstructionTemplateDraftResolutionRank,
+getInstructionTemplateResolutionPathLabel,
+getInstructionTemplateScopeLabel,
+instructionTemplateOutputTypeOptions,
+instructionTemplateScopeOptions,
+moveTemplateItem,
+serializeInstructionTemplateDraft,
+validateInstructionTemplateDraft
+} from "../utils";
 
 const editorModes = [
   { id: "designer", label: "Designer", icon: PencilLine },
@@ -280,7 +278,6 @@ export function InstructionTemplateStudioScreen({
   const scopeSummary = useMemo(() => getInstructionTemplateApplicabilitySummary(draft, subjects), [draft, subjects]);
   const currentTemplateLabel = selectedTemplate ? getInstructionTemplateScopeLabel(selectedTemplate) : "New template";
   const previewPathLabel = selectedTemplate ? getInstructionTemplateResolutionPathLabel(selectedTemplate) : scopeSummary;
-  const canSave = dirty && !validationIssue;
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/60">

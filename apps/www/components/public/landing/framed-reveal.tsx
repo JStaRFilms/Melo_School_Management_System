@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useRef } from "react";
-import { useScroll, useTransform, motion, MotionValue } from "framer-motion";
-import { Container } from "@/site-ui";
+import { motion,MotionValue,useScroll,useTransform } from "framer-motion";
+import React,{ useRef } from "react";
 
 export function FramedReveal() {
   const containerRef = useRef<HTMLDivElement>(null);

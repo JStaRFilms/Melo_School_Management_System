@@ -1,7 +1,7 @@
 # Orchestrator Summary
 
 **Session ID:** `orch-20260412-lesson-knowledge-hub`  
-**Status:** Active
+**Status:** Completed
 
 ## Purpose
 
@@ -19,14 +19,23 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Session Counts
 
-- Pending task files: `1`
+- Pending task files: `0`
 - In-progress task files: `0`
-- Completed task files: `17`
+- Completed task files: `18`
+- Completed result notes: `18`
 
 ## Linked Blueprint
 
 - `docs/features/LessonKnowledgeHub_v1.md`
 
-## Next Action
+## Final Verification Snapshot
 
-Proceed with `T15` for final verification, documentation sync, task reconciliation, and handoff.
+- `pnpm typecheck` passed: `16 successful, 16 total`.
+- `pnpm lint` passed clean: `10 successful, 10 total` with zero warnings.
+- `pnpm build` passed clean after the final verification cleanup.
+- Targeted Convex lesson-knowledge tests passed with `cd packages/convex && pnpm exec vitest run functions/academic/__tests__/lessonKnowledgeAccess.test.ts functions/academic/__tests__/lessonKnowledgeIngestionHelpers.test.ts`: `2 passed`, `18 passed`.
+- `pnpm exec convex deploy --yes` deployed successfully to `https://outgoing-warbler-782.eu-west-1.convex.cloud`.
+
+## Final Handoff
+
+The Lesson Knowledge Hub v1 Takomi session is closed. See `Final_Handoff_Summary.md` and `completed/T15_verification_docs_and_handoff.result.md` for exact verification results, skipped checks, and deferred gaps.

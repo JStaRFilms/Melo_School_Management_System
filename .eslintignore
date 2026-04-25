@@ -1,9 +1,0 @@
-node_modules/
-.next/
-.turbo/
-dist/
-coverage/
-*.tsbuildinfo
-packages/convex/_generated/
-apps/admin/convex/
-apps/teacher/convex/
