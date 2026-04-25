@@ -126,6 +126,8 @@ The new baseline is:
 | `T14` | Pending | F | Security, rate limits, audit, and failure recovery |
 | `T15` | Pending | F | Verification, docs sync, and release-style handoff |
 | `T16` | Pending | D | Admin-defined assessment generation profiles plus teacher question-mix overrides for open-ended / mixed assessment authoring |
+| `T17` | Pending | E | Material viewing/source proof across admin, teacher, and portal surfaces so approved resources can be opened and inspected honestly |
+| `T18` | Pending | E | Teacher topic governance and creation so teachers can create/attach real topics within bounded classroom scope |
 
 ## Exit Criteria
 

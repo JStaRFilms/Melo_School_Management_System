@@ -19,7 +19,7 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Session Counts
 
-- Pending task files: `3`
+- Pending task files: `5`
 - In-progress task files: `0`
 - Completed task files: `13`
 
@@ -29,4 +29,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Next Action
 
-Proceed with `T14` for security, rate limits, audit, and failure recovery after a smoke pass across the new portal topic page, student supplemental upload flow, and teacher promotion path. Keep `T16` queued as the follow-up for admin-defined assessment generation profiles and teacher question-mix overrides.
+Proceed with `T17` to add material viewing/source proof across admin, teacher, and portal surfaces, then take `T18` for teacher topic governance and creation before returning to `T14` hardening. Keep `T16` queued as the follow-up for admin-defined assessment generation profiles and teacher question-mix overrides.

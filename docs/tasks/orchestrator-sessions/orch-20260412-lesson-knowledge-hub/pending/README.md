@@ -8,6 +8,7 @@ Execution order:
 2. `T04-T06`
 3. `T07-T09`
 4. `T10-T13`
-5. `T14-T16`
+5. `T17-T18`
+6. `T14-T16`
 
 Agents should move completed tasks into `../completed/` with their result notes once the required implementation and verification are done.
