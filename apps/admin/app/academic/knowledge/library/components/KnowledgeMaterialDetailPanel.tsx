@@ -51,6 +51,20 @@ interface KnowledgeMaterialDetailPanelProps {
     topicLabel: string;
     topicId?: string;
   }) => Promise<void>;
+  onCreateTopic: (args: {
+    title: string;
+    summary?: string;
+    subjectId: string;
+    level: string;
+  }) => Promise<{
+    _id: string;
+    title: string;
+    subjectId: string;
+    subjectName: string;
+    level: string;
+    termId: string;
+    status: "draft" | "active" | "retired";
+  }>;
   onSaveState: (args: {
     materialId: string;
     visibility?: KnowledgeMaterialVisibility;
@@ -174,6 +188,7 @@ export function KnowledgeMaterialDetailPanel({
   levelOptions,
   onClose,
   onSaveDetails,
+  onCreateTopic,
   onSaveState,
   isSavingDetails = false,
   isSavingState = false,
@@ -233,6 +248,35 @@ export function KnowledgeMaterialDetailPanel({
       setLocalNotice("Details saved.");
     } catch {
       setLocalNotice("Could not save details just now.");
+    }
+  };
+
+  const handleCreateTopicAndAttach = async () => {
+    if (!material) return;
+
+    setLocalNotice(null);
+    try {
+      const createdTopic = await onCreateTopic({
+        title: topicLabel,
+        summary: description.trim() ? description : undefined,
+        subjectId,
+        level,
+      });
+
+      await onSaveDetails({
+        materialId: material._id,
+        title,
+        description: description.trim() ? description : undefined,
+        subjectId,
+        level,
+        topicLabel,
+        topicId: createdTopic._id,
+      });
+
+      setTopicId(createdTopic._id);
+      setLocalNotice("Topic created and attached.");
+    } catch {
+      setLocalNotice("Could not create and attach the topic just now.");
     }
   };
 
@@ -369,7 +413,7 @@ export function KnowledgeMaterialDetailPanel({
               <input value={topicLabel} onChange={(e) => setTopicLabel(e.target.value)} className={fieldClassName()} />
             </div>
 
-            <div>
+            <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic attachment</label>
               <select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={fieldClassName()}>
                 <option value="">No topic attached</option>
@@ -379,6 +423,22 @@ export function KnowledgeMaterialDetailPanel({
                   </option>
                 ))}
               </select>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[11px] font-medium text-slate-500">
+                  {topics.length > 0
+                    ? "If the topic does not exist yet, create it from the current subject, level, and topic label."
+                    : "No topics exist yet for this school. Create one from the current subject, level, and topic label."}
+                </p>
+                <button
+                  type="button"
+                  disabled={isSavingDetails || !topicLabel.trim() || !subjectId || !level.trim()}
+                  onClick={handleCreateTopicAndAttach}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <BookOpenText className="h-3.5 w-3.5" />
+                  {isSavingDetails ? "Working..." : "Create topic & attach"}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">

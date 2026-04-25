@@ -145,6 +145,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       },
       { href: "/results", label: "Result History", matchers: ["/results"] },
       {
+        href: "/learning/topics",
+        label: "Learning Topics",
+        matchers: ["/learning/topics"],
+      },
+      {
         href: "/notifications",
         label: "Notifications",
         matchers: ["/notifications"],

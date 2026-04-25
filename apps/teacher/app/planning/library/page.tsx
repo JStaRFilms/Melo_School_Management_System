@@ -438,6 +438,9 @@ export default function TeacherLibraryPage() {
   const publishMaterial = useMutation(
     "functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never
   );
+  const promoteStudentUpload = useMutation(
+    "functions/academic/lessonKnowledgePortal:promotePortalStudentUpload" as never
+  );
   const retryMaterialIngestion = useMutation(
     "functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never
   );
@@ -759,6 +762,29 @@ export default function TeacherLibraryPage() {
     [publishMaterial]
   );
 
+  const promoteStudentUploadToTopic = useCallback(
+    async (material: TeacherLibraryMaterial) => {
+      setSavingMaterialId(material._id);
+      setNotice(null);
+
+      try {
+        await promoteStudentUpload({ materialId: material._id as never } as never);
+        setNotice({
+          tone: "success",
+          message: "Student upload promoted to approved topic content.",
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message: getUserFacingErrorMessage(error, "Promotion failed."),
+        });
+      } finally {
+        setSavingMaterialId(null);
+      }
+    },
+    [promoteStudentUpload]
+  );
+
   const retryIngestion = useCallback(
     async (material: TeacherLibraryMaterial) => {
       setSavingMaterialId(material._id);
@@ -1008,6 +1034,7 @@ export default function TeacherLibraryPage() {
                   onChangeDraft={setDraft}
                   onSaveDraft={saveDraft}
                   onPublish={() => publishToStaff(material)}
+                  onPromoteStudentUpload={() => promoteStudentUploadToTopic(material)}
                   onRetryIngestion={() => retryIngestion(material)}
                 />
               ))
@@ -1367,6 +1394,7 @@ function LibraryMaterialCard({
   onChangeDraft,
   onSaveDraft,
   onPublish,
+  onPromoteStudentUpload,
   onRetryIngestion,
 }: {
   material: TeacherLibraryMaterial;
@@ -1382,6 +1410,7 @@ function LibraryMaterialCard({
   onChangeDraft: (draft: MaterialDraft) => void;
   onSaveDraft: () => void;
   onPublish: () => void;
+  onPromoteStudentUpload: () => void;
   onRetryIngestion: () => void;
 }) {
   const isStaleExtracting =
@@ -1390,6 +1419,12 @@ function LibraryMaterialCard({
     material.processingStatus === "failed" ||
     material.processingStatus === "ocr_needed" ||
     isStaleExtracting;
+  const canPromoteStudentUpload =
+    material.sourceType === "student_upload" &&
+    material.visibility === "class_scoped" &&
+    material.reviewStatus === "pending_review" &&
+    material.processingStatus === "ready" &&
+    material.searchStatus === "indexed";
   const updatedLabel = formatTimestamp(material.updatedAt);
   const canSaveDraft = Boolean(draft && draft.title.trim() && draft.topicLabel.trim() && draft.level.trim() && draft.subjectId);
 
@@ -1580,6 +1615,16 @@ function LibraryMaterialCard({
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Publish to staff
+              </button>
+            ) : canPromoteStudentUpload ? (
+              <button
+                type="button"
+                onClick={onPromoteStudentUpload}
+                disabled={isBusy}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Promote to topic
               </button>
             ) : canRetryIngestion ? (
               <button

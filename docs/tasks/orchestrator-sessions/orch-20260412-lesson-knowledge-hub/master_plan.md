@@ -122,7 +122,7 @@ The new baseline is:
 | `T10` | Completed | D | Teacher lesson-plan workspace delivered at `/planning/lesson-plans` with source-aware loading, template resolution, autosave, revision snapshots, and bounded generation handlers |
 | `T11` | Completed | D | Teacher question-bank workspace delivered at `/planning/question-bank` with item-by-item assessment draft persistence, AI generation, and editable quiz/CBT authoring |
 | `T12` | Completed | E | Teacher YouTube submissions delivered at `/planning/videos` with admin library-based approval integration and topic attachment support |
-| `T13` | Pending | E | Portal topic view and student uploads |
+| `T13` | Completed | E | Portal topic route delivered at `/learning/topics/[topicId]` with approved resource rendering, class-scoped student uploads, and teacher-side promotion flow |
 | `T14` | Pending | F | Security, rate limits, audit, and failure recovery |
 | `T15` | Pending | F | Verification, docs sync, and release-style handoff |
 | `T16` | Pending | D | Admin-defined assessment generation profiles plus teacher question-mix overrides for open-ended / mixed assessment authoring |

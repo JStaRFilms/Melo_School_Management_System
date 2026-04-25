@@ -432,6 +432,219 @@ function materialStateSummary(material: KnowledgeMaterialDoc) {
   return `${material.title} • ${material.visibility} / ${material.reviewStatus}`;
 }
 
+function slugifyKnowledgeTopic(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "topic";
+}
+
+function normalizeLevelKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function classMatchesKnowledgeLevel(classDoc: ClassDoc, level: string) {
+  const target = normalizeLevelKey(level);
+  const candidates = [classDoc.gradeName, classDoc.level, classDoc.name]
+    .map((entry) => entry?.trim().toLowerCase())
+    .filter((entry): entry is string => Boolean(entry));
+
+  return candidates.includes(target);
+}
+
+async function buildUniqueKnowledgeTopicSlug(
+  ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
+  schoolId: Id<"schools">,
+  baseLabel: string
+) {
+  const baseSlug = slugifyKnowledgeTopic(baseLabel);
+
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const candidate = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+    const existing = await ctx.db
+      .query("knowledgeTopics")
+      .withIndex("by_school_and_slug", (q) => q.eq("schoolId", schoolId).eq("slug", candidate))
+      .unique();
+
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  throw new ConvexError("Could not generate a unique topic slug");
+}
+
+async function syncMaterialTopicAttachmentBindings(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    actorUserId: Id<"users">;
+    materialId: Id<"knowledgeMaterials">;
+    level: string;
+    topicId: Id<"knowledgeTopics"> | null;
+  }
+) {
+  const bindings = await ctx.db
+    .query("knowledgeMaterialClassBindings")
+    .withIndex("by_school_and_material", (q) =>
+      q.eq("schoolId", args.schoolId).eq("materialId", args.materialId)
+    )
+    .collect();
+
+  const topicBindings = bindings.filter((binding) => binding.bindingPurpose === "topic_attachment");
+
+  if (!args.topicId) {
+    const revokedAt = Date.now();
+    for (const binding of topicBindings) {
+      if (binding.bindingStatus !== "revoked") {
+        await ctx.db.patch(binding._id, {
+          bindingStatus: "revoked",
+          updatedAt: revokedAt,
+          updatedBy: args.actorUserId,
+        });
+      }
+    }
+    return;
+  }
+
+  const schoolClasses = await ctx.db
+    .query("classes")
+    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    .collect();
+
+  const targetClassIds = new Set(
+    schoolClasses
+      .filter((classDoc) => !classDoc.isArchived && classMatchesKnowledgeLevel(classDoc, args.level))
+      .map((classDoc) => String(classDoc._id))
+  );
+
+  const now = Date.now();
+
+  for (const binding of topicBindings) {
+    const shouldStayActive = targetClassIds.has(String(binding.classId));
+    const nextStatus = shouldStayActive ? "active" : "revoked";
+
+    if (binding.bindingStatus !== nextStatus) {
+      await ctx.db.patch(binding._id, {
+        bindingStatus: nextStatus,
+        updatedAt: now,
+        updatedBy: args.actorUserId,
+      });
+    }
+  }
+
+  for (const classId of targetClassIds) {
+    const existing = topicBindings.find((binding) => String(binding.classId) === classId);
+    if (existing) {
+      continue;
+    }
+
+    await ctx.db.insert("knowledgeMaterialClassBindings", {
+      schoolId: args.schoolId,
+      materialId: args.materialId,
+      classId: classId as Id<"classes">,
+      bindingPurpose: "topic_attachment",
+      bindingStatus: "active",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: args.actorUserId,
+      updatedBy: args.actorUserId,
+    });
+  }
+}
+
+export const createAdminKnowledgeTopic = mutation({
+  args: {
+    title: v.string(),
+    summary: v.optional(v.union(v.string(), v.null())),
+    subjectId: v.id("subjects"),
+    level: v.string(),
+  },
+  returns: v.object({
+    _id: v.id("knowledgeTopics"),
+    title: v.string(),
+    subjectId: v.id("subjects"),
+    subjectName: v.string(),
+    level: v.string(),
+    termId: v.id("academicTerms"),
+    status: v.union(v.literal("draft"), v.literal("active"), v.literal("retired")),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const title = normalizeRequiredText(args.title, "Topic title");
+    const level = normalizeRequiredText(args.level, "Level");
+    const summary = normalizeOptionalText(args.summary);
+    const subject = await ctx.db.get(args.subjectId);
+    if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
+      throw new ConvexError("Subject not found");
+    }
+
+    const activeTerms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_school_active", (q) => q.eq("schoolId", schoolId).eq("isActive", true))
+      .collect();
+    const activeTerm = [...activeTerms].sort((a, b) => b.startDate - a.startDate)[0] ?? null;
+    if (!activeTerm) {
+      throw new ConvexError("Create or activate an academic term before creating portal topics");
+    }
+
+    const siblingTopics = await ctx.db
+      .query("knowledgeTopics")
+      .withIndex("by_school_and_subject_and_level_and_term", (q) =>
+        q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", activeTerm._id)
+      )
+      .collect();
+
+    const duplicate = siblingTopics.find(
+      (topic) => topic.title.trim().toLowerCase() === title.toLowerCase() && topic.status !== "retired"
+    );
+    if (duplicate) {
+      return {
+        _id: duplicate._id,
+        title: duplicate.title,
+        subjectId: duplicate.subjectId,
+        subjectName: normalizeHumanName(subject.name),
+        level: duplicate.level,
+        termId: duplicate.termId,
+        status: duplicate.status,
+      };
+    }
+
+    const slug = await buildUniqueKnowledgeTopicSlug(ctx, schoolId, `${subject.name}-${level}-${title}`);
+    const now = Date.now();
+    const topicId = await ctx.db.insert("knowledgeTopics", {
+      schoolId,
+      subjectId: args.subjectId,
+      level,
+      termId: activeTerm._id,
+      title,
+      slug,
+      summary,
+      searchText: [title, normalizeHumanName(subject.name), level, summary ?? ""].join(" ").trim(),
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    return {
+      _id: topicId,
+      title,
+      subjectId: args.subjectId,
+      subjectName: normalizeHumanName(subject.name),
+      level,
+      termId: activeTerm._id,
+      status: "active" as const,
+    };
+  },
+});
+
 export const listAdminKnowledgeTopics = query({
   args: {
     limit: v.optional(v.number()),
@@ -803,9 +1016,21 @@ export const updateAdminKnowledgeMaterialDetails = mutation({
 
     await ctx.db.patch(args.materialId, patch);
 
+    const nextTopicId = args.topicId === undefined ? material.topicId ?? null : args.topicId;
+
     if (args.topicId !== undefined) {
       await patchMaterialChunksForState(ctx, args.materialId, schoolId, {
         topicId: args.topicId,
+      });
+    }
+
+    if (nextTopicId) {
+      await syncMaterialTopicAttachmentBindings(ctx, {
+        schoolId,
+        actorUserId: userId,
+        materialId: args.materialId,
+        level,
+        topicId: nextTopicId,
       });
     }
 
@@ -864,6 +1089,20 @@ export const updateAdminKnowledgeMaterialState = mutation({
 
     if (nextVisibility === "student_approved" && !material.topicId) {
       throw new ConvexError("Student-approved visibility requires an attached topic");
+    }
+
+    if (
+      material.topicId &&
+      nextVisibility === "student_approved" &&
+      nextReviewStatus === "approved"
+    ) {
+      await syncMaterialTopicAttachmentBindings(ctx, {
+        schoolId,
+        actorUserId: userId,
+        materialId: args.materialId,
+        level: material.level,
+        topicId: material.topicId,
+      });
     }
 
     const now = Date.now();

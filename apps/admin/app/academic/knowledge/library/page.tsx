@@ -173,6 +173,7 @@ export default function KnowledgeLibraryPage() {
 
   const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
   const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
+  const createTopic = useMutation("functions/academic/lessonKnowledgeAdmin:createAdminKnowledgeTopic" as never);
 
   const detailQuery = useQuery(
     "functions/academic/lessonKnowledgeAdmin:getAdminKnowledgeMaterial" as never,
@@ -277,6 +278,49 @@ export default function KnowledgeLibraryPage() {
     }
   };
 
+  const handleCreateTopic = async (args: {
+    title: string;
+    summary?: string;
+    subjectId: string;
+    level: string;
+  }) => {
+    setNotice(null);
+    setIsSavingDetails(true);
+    try {
+      const result = (await createTopic({
+        title: args.title,
+        summary: args.summary ?? null,
+        subjectId: args.subjectId,
+        level: args.level,
+      } as never)) as {
+        _id: string;
+        title: string;
+        subjectId: string;
+        subjectName: string;
+        level: string;
+        termId: string;
+        status: "draft" | "active" | "retired";
+      };
+
+      setNotice({
+        tone: "success",
+        title: "Topic ready",
+        message: `Topic "${result.title}" is now available for attachment.`,
+      });
+
+      return result;
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        title: "Topic creation failed",
+        message: getUserFacingErrorMessage(error, "Failed to create the topic."),
+      });
+      throw error;
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
   const handleSaveState = async (args: {
     materialId: string;
     visibility?: KnowledgeMaterialVisibility;
@@ -360,6 +404,7 @@ export default function KnowledgeLibraryPage() {
           isSavingDetails={isSavingDetails}
           isSavingState={isSavingState}
           onSaveDetails={handleSaveDetails}
+          onCreateTopic={handleCreateTopic}
           onSaveState={handleSaveState}
           onClose={() => setSelectedMaterialId(null)}
         />
@@ -375,6 +420,7 @@ export default function KnowledgeLibraryPage() {
             isSavingDetails={isSavingDetails}
             isSavingState={isSavingState}
             onSaveDetails={handleSaveDetails}
+            onCreateTopic={handleCreateTopic}
             onSaveState={handleSaveState}
             onClose={() => setSelectedMaterialId(null)}
           />
