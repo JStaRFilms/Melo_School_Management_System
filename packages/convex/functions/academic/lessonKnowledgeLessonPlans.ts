@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { buildTopicPlanningContextKey } from "@school/shared/planning-context";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import {
@@ -99,6 +100,31 @@ const sourceContextValidator = v.object({
   topicLabel: v.union(v.string(), v.null()),
 });
 
+const topicPlanningContextValidator = v.object({
+  kind: v.literal("topic"),
+  classId: v.id("classes"),
+  termId: v.id("academicTerms"),
+  subjectId: v.id("subjects"),
+  level: v.string(),
+  topicId: v.id("knowledgeTopics"),
+});
+
+const topicPlanningContextSummaryValidator = v.object({
+  kind: v.literal("topic"),
+  classId: v.id("classes"),
+  className: v.string(),
+  termId: v.id("academicTerms"),
+  termName: v.string(),
+  subjectId: v.id("subjects"),
+  subjectName: v.string(),
+  subjectCode: v.string(),
+  level: v.string(),
+  topicId: v.id("knowledgeTopics"),
+  topicTitle: v.string(),
+  planningContextKey: v.string(),
+  compatibilityMode: v.boolean(),
+});
+
 const templateSectionValidator = v.object({
   id: v.string(),
   label: v.string(),
@@ -176,6 +202,7 @@ const workspaceValidator = v.object({
   inaccessibleSourceIds: v.array(v.string()),
   warnings: v.array(v.string()),
   sourceContext: sourceContextValidator,
+  planningContext: v.union(topicPlanningContextSummaryValidator, v.null()),
   template: templateValidator,
   draft: draftValidator,
   revisions: v.array(revisionValidator),
@@ -243,6 +270,25 @@ type WorkspaceRevision = {
   snippet: string;
 };
 
+type TopicPlanningContextArgs = {
+  kind: "topic";
+  classId: Id<"classes">;
+  termId: Id<"academicTerms">;
+  subjectId: Id<"subjects">;
+  level: string;
+  topicId: Id<"knowledgeTopics">;
+};
+
+type TopicPlanningContextRecord = TopicPlanningContextArgs & {
+  topicTitle: string;
+  className: string;
+  termName: string;
+  subjectName: string;
+  subjectCode: string;
+  planningContextKey: string;
+  compatibilityMode: boolean;
+};
+
 function buildActorContext(args: {
   userId: Id<"users">;
   schoolId: Id<"schools">;
@@ -265,6 +311,10 @@ function assertTeacherWorkspaceAccess(actor: KnowledgeActorContext) {
 
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function levelMatchesKnowledgeScope(levelA: string, levelB: string) {
+  return normalizeText(levelA).toLowerCase() === normalizeText(levelB).toLowerCase();
 }
 
 function normalizeOptionalText(value?: string | null) {
@@ -358,12 +408,25 @@ function parseSourceSelectionSnapshot(value?: string | null) {
 
   try {
     const parsed = JSON.parse(value) as {
+      version?: number;
+      planningContextKind?: "topic" | "legacy_source_set" | null;
+      planningContextKey?: string | null;
       sourceIds?: string[];
       primarySubjectId?: string | null;
       primaryLevel?: string | null;
       primaryTopicLabel?: string | null;
       templateId?: string | null;
       templateResolutionPath?: string | null;
+      subjectId?: string | null;
+      classId?: string | null;
+      termId?: string | null;
+      topicId?: string | null;
+      topicLabel?: string | null;
+      outputType?: WorkspaceOutputType;
+      compatibility?: {
+        isLegacy?: boolean;
+        requiresContextConfirmation?: boolean;
+      } | null;
     };
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
@@ -438,8 +501,12 @@ function buildSourceSelectionSnapshot(args: {
   topicLabel: string | null;
   templateId: Id<"instructionTemplates"> | null;
   templateResolutionPath: string | null;
+  planningContext?: TopicPlanningContextRecord | null;
 }) {
   return JSON.stringify({
+    version: args.planningContext ? 2 : 1,
+    planningContextKind: args.planningContext ? "topic" : "legacy_source_set",
+    planningContextKey: args.planningContext?.planningContextKey ?? null,
     outputType: args.outputType,
     sourceIds: args.sourceIds.map((sourceId) => String(sourceId)),
     sourceCount: args.sourceIds.length,
@@ -448,6 +515,15 @@ function buildSourceSelectionSnapshot(args: {
     primaryTopicLabel: args.topicLabel,
     templateId: args.templateId ? String(args.templateId) : null,
     templateResolutionPath: args.templateResolutionPath,
+    subjectId: String(args.subjectId),
+    classId: args.planningContext?.classId ?? null,
+    termId: args.planningContext?.termId ?? null,
+    topicId: args.planningContext?.topicId ?? null,
+    topicLabel: args.topicLabel,
+    compatibility: {
+      isLegacy: !args.planningContext,
+      requiresContextConfirmation: false,
+    },
   });
 }
 
@@ -628,6 +704,64 @@ async function loadSources(
   };
 }
 
+async function resolveTopicPlanningContext(
+  ctx: QueryCtx | MutationCtx,
+  schoolId: Id<"schools">,
+  input: TopicPlanningContextArgs,
+  outputType: SupportedInstructionTemplateOutputType
+): Promise<TopicPlanningContextRecord> {
+  const [topic, classDoc, term, subject] = await Promise.all([
+    ctx.db.get(input.topicId),
+    ctx.db.get(input.classId),
+    ctx.db.get(input.termId),
+    ctx.db.get(input.subjectId),
+  ]);
+
+  if (!topic || topic.schoolId !== schoolId || topic.status === "retired") {
+    throw new ConvexError("Topic not found");
+  }
+  if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
+    throw new ConvexError("Class not found");
+  }
+  if (!term || term.schoolId !== schoolId) {
+    throw new ConvexError("Academic term not found");
+  }
+  if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
+    throw new ConvexError("Subject not found");
+  }
+
+  if (
+    String(topic.subjectId) !== String(input.subjectId) ||
+    !levelMatchesKnowledgeScope(topic.level, input.level) ||
+    String(topic.termId) !== String(input.termId)
+  ) {
+    throw new ConvexError("Topic context does not match the selected subject, level, and term");
+  }
+
+  return {
+    kind: "topic",
+    classId: input.classId,
+    className: classDoc.name,
+    termId: input.termId,
+    termName: normalizeHumanName(term.name),
+    subjectId: input.subjectId,
+    subjectName: normalizeHumanName(subject.name),
+    subjectCode: subject.code,
+    level: topic.level,
+    topicId: input.topicId,
+    topicTitle: topic.title,
+    planningContextKey: buildTopicPlanningContextKey({
+      classId: String(input.classId),
+      termId: String(input.termId),
+      subjectId: String(input.subjectId),
+      level: topic.level,
+      topicId: String(input.topicId),
+      outputType,
+    }),
+    compatibilityMode: false,
+  };
+}
+
 async function loadCurrentArtifactBundle(
   ctx: QueryCtx,
   args: {
@@ -635,6 +769,7 @@ async function loadCurrentArtifactBundle(
     ownerUserId: Id<"users">;
     outputType: SupportedInstructionTemplateOutputType;
     sourceIds: Array<Id<"knowledgeMaterials">>;
+    planningContext?: TopicPlanningContextRecord | null;
   }
 ) {
   const candidateArtifacts = await ctx.db
@@ -655,14 +790,7 @@ async function loadCurrentArtifactBundle(
         q.eq("schoolId", args.schoolId).eq("artifactId", artifact._id)
       )
       .take(100);
-    const artifactSourceIds = sourceRows.map((row) => String(row.materialId));
-    const requestedSourceIds = args.sourceIds.map((id) => String(id));
 
-    if (!sameSourceSet(artifactSourceIds, requestedSourceIds)) {
-      continue;
-    }
-
-    const document = artifact.currentDocumentId ? await ctx.db.get(artifact.currentDocumentId) : null;
     const revisions = await ctx.db
       .query("instructionArtifactRevisions")
       .withIndex("by_school_and_artifact", (q) =>
@@ -670,13 +798,28 @@ async function loadCurrentArtifactBundle(
       )
       .order("desc")
       .take(10);
+    const sourceSnapshot = parseSourceSelectionSnapshot(revisions[0]?.sourceSelectionSnapshot ?? null);
+
+    if (args.planningContext) {
+      if (sourceSnapshot?.planningContextKey !== args.planningContext.planningContextKey) {
+        continue;
+      }
+    } else {
+      const artifactSourceIds = sourceRows.map((row) => String(row.materialId));
+      const requestedSourceIds = args.sourceIds.map((id) => String(id));
+      if (!sameSourceSet(artifactSourceIds, requestedSourceIds)) {
+        continue;
+      }
+    }
+
+    const document = artifact.currentDocumentId ? await ctx.db.get(artifact.currentDocumentId) : null;
 
     return {
       artifact,
       document,
       revisions,
       sourceIds: sourceRows.map((row) => row.materialId),
-      sourceSnapshot: parseSourceSelectionSnapshot(revisions[0]?.sourceSelectionSnapshot ?? null),
+      sourceSnapshot,
     };
   }
 
@@ -815,6 +958,7 @@ async function upsertArtifactDocument(args: {
   sourceSelectionSnapshot: string;
   sourceTitles: string[];
   topicLabel: string | null;
+  topicId?: Id<"knowledgeTopics"> | null;
 }) {
   const now = Date.now();
   const subject = await args.ctx.db.get(args.subjectId);
@@ -839,6 +983,7 @@ async function upsertArtifactDocument(args: {
     visibility: "private_owner" as const,
     reviewStatus: "draft" as const,
     outputType: args.outputType,
+    ...(args.topicId ? { topicId: args.topicId } : {}),
     searchStatus: "indexed" as const,
     createdAt: now,
     updatedAt: now,
@@ -857,6 +1002,7 @@ async function upsertArtifactDocument(args: {
   await args.ctx.db.patch(args.artifactId, {
     subjectId: args.subjectId,
     level: args.level,
+    ...(args.topicId ? { topicId: args.topicId } : {}),
     templateId: args.templateId ?? undefined,
     templateResolutionPath: args.templateResolutionPath ?? undefined,
     currentDocumentId: documentId,
@@ -1015,6 +1161,7 @@ async function findMatchingArtifact(args: {
   ownerUserId: Id<"users">;
   outputType: SupportedInstructionTemplateOutputType;
   sourceIds: Array<Id<"knowledgeMaterials">>;
+  planningContext?: TopicPlanningContextRecord | null;
 }) {
   const candidateArtifacts = await args.ctx.db
     .query("instructionArtifacts")
@@ -1025,6 +1172,22 @@ async function findMatchingArtifact(args: {
 
   for (const artifact of candidateArtifacts) {
     if (artifact.outputType !== args.outputType) {
+      continue;
+    }
+
+    const revisions = await args.ctx.db
+      .query("instructionArtifactRevisions")
+      .withIndex("by_school_and_artifact", (q) =>
+        q.eq("schoolId", args.schoolId).eq("artifactId", artifact._id)
+      )
+      .order("desc")
+      .take(1);
+    const sourceSnapshot = parseSourceSelectionSnapshot(revisions[0]?.sourceSelectionSnapshot ?? null);
+
+    if (args.planningContext) {
+      if (sourceSnapshot?.planningContextKey === args.planningContext.planningContextKey) {
+        return artifact;
+      }
       continue;
     }
 
@@ -1049,6 +1212,7 @@ export const getTeacherInstructionWorkspace = query({
   args: {
     outputType: outputTypeValidator,
     sourceIds: v.array(v.id("knowledgeMaterials")),
+    planningContext: v.optional(topicPlanningContextValidator),
   },
   returns: workspaceValidator,
   handler: async (ctx, args) => {
@@ -1058,37 +1222,50 @@ export const getTeacherInstructionWorkspace = query({
 
     const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
     assertGenerationSourceCount(sourceIdStrings);
-    const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
+    const requestedSourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
+    const planningContext = args.planningContext
+      ? await resolveTopicPlanningContext(ctx, schoolId, args.planningContext, args.outputType)
+      : null;
 
-    const sourceBundle = await loadSources(ctx, actor, sourceIds);
     const currentArtifactBundle = await loadCurrentArtifactBundle(ctx, {
       schoolId,
       ownerUserId: userId,
       outputType: args.outputType,
-      sourceIds,
+      sourceIds: requestedSourceIds,
+      planningContext,
     });
+    const effectiveSourceIds =
+      requestedSourceIds.length > 0 ? requestedSourceIds : currentArtifactBundle?.sourceIds ?? [];
+    const sourceBundle = await loadSources(ctx, actor, effectiveSourceIds);
 
     const school = await ctx.db.get(schoolId);
     const schoolName = school ? normalizeHumanName(school.name) : null;
     const currentArtifact = currentArtifactBundle?.artifact ?? null;
     const currentRevision = currentArtifactBundle?.revisions[0] ?? null;
-    const sourceContext =
-      sourceBundle.sourceContext ??
-      (currentArtifact
-        ? {
-            subjectId: currentArtifact.subjectId,
-            subjectName: null,
-            subjectCode: null,
-            level: currentArtifact.level,
-            topicLabel: currentArtifactBundle?.sourceSnapshot?.primaryTopicLabel ?? null,
-          }
-        : {
-            subjectId: null,
-            subjectName: null,
-            subjectCode: null,
-            level: null,
-            topicLabel: null,
-          });
+    const sourceContext = planningContext
+      ? {
+          subjectId: planningContext.subjectId,
+          subjectName: planningContext.subjectName,
+          subjectCode: planningContext.subjectCode,
+          level: planningContext.level,
+          topicLabel: planningContext.topicTitle,
+        }
+      : sourceBundle.sourceContext ??
+        (currentArtifact
+          ? {
+              subjectId: currentArtifact.subjectId,
+              subjectName: null,
+              subjectCode: null,
+              level: currentArtifact.level,
+              topicLabel: currentArtifactBundle?.sourceSnapshot?.primaryTopicLabel ?? null,
+            }
+          : {
+              subjectId: null,
+              subjectName: null,
+              subjectCode: null,
+              level: null,
+              topicLabel: null,
+            });
 
     const template = await resolveWorkspaceTemplate({
       ctx,
@@ -1139,7 +1316,7 @@ export const getTeacherInstructionWorkspace = query({
       );
     }
 
-    if (sourceCount === 0 && !currentArtifact) {
+    if (sourceCount === 0 && !currentArtifact && !planningContext) {
       warnings.push("Select at least one source material from the teacher library to start a draft.");
     }
 
@@ -1184,7 +1361,9 @@ export const getTeacherInstructionWorkspace = query({
       lastSavedAt: currentArtifact?.updatedAt ?? null,
     };
 
-    const canAutosave = Boolean(sourceContext.subjectId && sourceContext.level && (sourceCount > 0 || currentArtifact));
+    const canAutosave = Boolean(
+      sourceContext.subjectId && sourceContext.level && (sourceCount > 0 || currentArtifact || planningContext)
+    );
     const canGenerate = Boolean(
       template &&
         !hardSourceIssues &&
@@ -1197,13 +1376,14 @@ export const getTeacherInstructionWorkspace = query({
       schoolName,
       outputType: args.outputType,
       outputTypeLabel: outputTypeLabel(args.outputType),
-      sourceIds,
+      sourceIds: effectiveSourceIds,
       selectedSourceCount: sourceCount,
       accessibleSourceCount: sourceCount,
       missingSourceIds: sourceBundle.missingSourceIds,
       inaccessibleSourceIds: sourceBundle.inaccessibleSourceIds,
       warnings,
       sourceContext,
+      planningContext,
       template,
       draft,
       revisions: (currentArtifactBundle?.revisions ?? []).map((revision) => ({
@@ -1232,6 +1412,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
     subjectId: v.id("subjects"),
     level: v.string(),
     topicLabel: v.optional(v.union(v.string(), v.null())),
+    planningContext: v.optional(topicPlanningContextValidator),
     revisionKind: revisionKindValidator,
   },
   returns: saveResultValidator,
@@ -1255,6 +1436,17 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       throw new ConvexError("Subject not found");
     }
 
+    const planningContext = args.planningContext
+      ? await resolveTopicPlanningContext(ctx, schoolId, args.planningContext, args.outputType)
+      : null;
+    if (
+      planningContext &&
+      (String(planningContext.subjectId) !== String(args.subjectId) ||
+        !levelMatchesKnowledgeScope(planningContext.level, normalizedLevel))
+    ) {
+      throw new ConvexError("Planning context does not match the lesson workspace subject and level");
+    }
+
     const existingArtifact = args.artifactId
       ? await ctx.db.get(args.artifactId)
       : await findMatchingArtifact({
@@ -1263,6 +1455,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
           ownerUserId: userId,
           outputType: args.outputType,
           sourceIds,
+          planningContext,
         });
 
     let artifactId: Id<"instructionArtifacts">;
@@ -1290,6 +1483,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
         reviewStatus: "draft",
         subjectId: args.subjectId,
         level: normalizedLevel,
+        ...(planningContext ? { topicId: planningContext.topicId } : {}),
         searchStatus: "not_indexed",
         searchText: "",
         createdAt: Date.now(),
@@ -1316,9 +1510,10 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       sourceIds,
       subjectId: args.subjectId,
       level: normalizedLevel,
-      topicLabel: normalizeOptionalText(args.topicLabel) ?? null,
+      topicLabel: planningContext?.topicTitle ?? normalizeOptionalText(args.topicLabel) ?? null,
       templateId: template?._id ?? existingArtifact?.templateId ?? null,
       templateResolutionPath: template?.resolutionPath ?? existingArtifact?.templateResolutionPath ?? null,
+      planningContext,
     });
 
     const searchText = buildSearchText({
@@ -1327,7 +1522,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       subjectName: normalizeHumanName(subject.name),
       subjectCode: subject.code,
       level: normalizedLevel,
-      topicLabel: normalizeOptionalText(args.topicLabel) ?? null,
+      topicLabel: planningContext?.topicTitle ?? normalizeOptionalText(args.topicLabel) ?? null,
       templateTitle: template?.title ?? null,
       sourceTitles,
     });
@@ -1355,7 +1550,8 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       templateResolutionPath: template?.resolutionPath ?? existingArtifact?.templateResolutionPath ?? null,
       sourceSelectionSnapshot,
       sourceTitles,
-      topicLabel: normalizeOptionalText(args.topicLabel) ?? null,
+      topicLabel: planningContext?.topicTitle ?? normalizeOptionalText(args.topicLabel) ?? null,
+      topicId: planningContext?.topicId ?? null,
     });
 
     const revisionResult = await createRevision({

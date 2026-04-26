@@ -157,6 +157,10 @@ function getTemplateSectionLabels(template: LessonPlanWorkspaceTemplate | null) 
   return template?.sectionDefinitions.map((section) => section.label) ?? [];
 }
 
+function getSourceScopeLabel(source: LessonPlanWorkspaceSource) {
+  return source.sourceType === "imported_curriculum" ? "Broad reference" : source.topicLabel ? "Topic-bound" : "Unattached source";
+}
+
 export function LessonPlanWorkspaceScreen({
   workspace,
   onOutputTypeChange,
@@ -246,7 +250,7 @@ export function LessonPlanWorkspaceScreen({
         return;
       }
 
-      if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+      if (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level)) {
         return;
       }
 
@@ -396,8 +400,8 @@ export function LessonPlanWorkspaceScreen({
           <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Source sidebar</p>
-                <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Selected sources</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Source pane</p>
+                <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Repository attachments</h2>
               </div>
               <button
                 type="button"
@@ -405,17 +409,19 @@ export function LessonPlanWorkspaceScreen({
                 className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
               >
                 <ExternalLink className="h-4 w-4" />
-                Library
+                Add from library
               </button>
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <p className="font-bold text-slate-700">Context</p>
               <p className="mt-1">
-                {workspace.sourceContext.subjectName ?? workspace.sourceContext.subjectCode ?? "Unknown subject"}
-                {workspace.sourceContext.level ? ` • ${workspace.sourceContext.level}` : ""}
+                {workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName ?? workspace.sourceContext.subjectCode ?? "Unknown subject"}
+                {(workspace.planningContext?.level ?? workspace.sourceContext.level) ? ` • ${workspace.planningContext?.level ?? workspace.sourceContext.level}` : ""}
               </p>
-              {workspace.sourceContext.topicLabel ? (
+              {workspace.planningContext ? (
+                <p className="mt-1 text-slate-500">{workspace.planningContext.className} • {workspace.planningContext.termName} • {workspace.planningContext.topicTitle}</p>
+              ) : workspace.sourceContext.topicLabel ? (
                 <p className="mt-1 text-slate-500">Topic: {workspace.sourceContext.topicLabel}</p>
               ) : null}
             </div>
@@ -432,6 +438,9 @@ export function LessonPlanWorkspaceScreen({
                         <p className="text-sm font-bold text-slate-950">{getSourceLabel(source)}</p>
                         <p className="mt-1 text-xs text-slate-500">
                           {source.topicLabel} • {source.sourceType.replace(/_/g, " ")}
+                        </p>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          {getSourceScopeLabel(source)}
                         </p>
                       </div>
                       <button
@@ -453,7 +462,7 @@ export function LessonPlanWorkspaceScreen({
                 ))
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                  No accessible source materials were loaded.
+                  No accessible source materials were loaded yet. Add topic-bound materials or broad references from the repository.
                 </div>
               )}
             </div>
@@ -494,7 +503,9 @@ export function LessonPlanWorkspaceScreen({
                   {workspace.outputTypeLabel}
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  Source-grounded, editable, single-user drafting with autosave and revision snapshots.
+                  {workspace.planningContext
+                    ? "This workspace stays anchored to one topic context while repository attachments change around it."
+                    : "Source-grounded, editable, single-user drafting with autosave and revision snapshots."}
                 </p>
               </div>
 
@@ -692,8 +703,8 @@ export function LessonPlanWorkspaceScreen({
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Generation rules</p>
             <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">What this workspace supports</h2>
             <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-              <li>• Selected source ids are loaded from the query string handoff.</li>
-              <li>• Generation is source-grounded and template-aware.</li>
+              <li>• Topic context stays primary when the workspace was launched from the planning hub.</li>
+              <li>• Repository attachments can change without changing the draft identity.</li>
               <li>• Drafts stay editable even after generation and autosave snapshots are kept in Convex.</li>
               <li>• Student notes and assignments use the same selected sources and template fallback rules.</li>
             </ul>
@@ -701,15 +712,15 @@ export function LessonPlanWorkspaceScreen({
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Navigation</p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Back to library</h2>
+            <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Repository round-trip</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Adjust source selection in the teacher library and return when ready.
+              Adjust repository attachments in the planning library and return without losing this topic context.
             </p>
             <Link
               href="/planning/library"
               className="mt-4 inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
             >
-              Open library
+              Open repository
               <ChevronRight className="h-4 w-4" />
             </Link>
           </section>

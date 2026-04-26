@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getUserFacingErrorMessage } from "@school/shared";
+import {
+  buildTeacherPlanningLibraryAttachHref,
+  getUserFacingErrorMessage,
+  parsePlanningContextFromSearchParams,
+} from "@school/shared";
 
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
 import type {
@@ -47,18 +51,27 @@ export default function QuestionBankPage() {
     () => normalizeAssessmentSourceIds(sourceIdsParam),
     [sourceIdsParam]
   );
+  const planningContext = useMemo(
+    () => parsePlanningContextFromSearchParams(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
 
   const workspace = useQuery(
     "functions/academic/lessonKnowledgeAssessmentDrafts:getTeacherAssessmentBankWorkspace" as never,
     {
       draftMode,
       sourceIds: selectedSourceIds,
+      planningContext:
+        planningContext?.kind === "topic" || planningContext?.kind === "exam_scope"
+          ? planningContext
+          : undefined,
     } as never
   ) as AssessmentWorkspaceData | undefined;
 
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeAssessmentDrafts:saveTeacherAssessmentBankDraft" as never
   );
+  const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
 
   const updateSelectedSourceIds = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -81,21 +94,34 @@ export default function QuestionBankPage() {
   };
 
   const handleRemoveSource = (sourceId: string) => {
-    updateSelectedSourceIds(selectedSourceIds.filter((id) => id !== sourceId));
+    updateSelectedSourceIds(effectiveSourceIds.filter((id) => id !== sourceId));
   };
 
   const handleOpenLibrary = () => {
-    const href = selectedSourceIds.length > 0
-      ? `/planning/library?sourceIds=${selectedSourceIds.join(",")}`
-      : "/planning/library";
-    router.push(href);
+    const currentQuery = searchParams.toString();
+    const returnTo = currentQuery ? `${pathname}?${currentQuery}` : pathname;
+    router.push(
+      buildTeacherPlanningLibraryAttachHref({
+        returnTo,
+        sourceIds: effectiveSourceIds,
+      })
+    );
   };
 
-  const effectiveTopicLabel = workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+  const effectiveTopicLabel =
+    workspace?.planningContext?.kind === "topic"
+      ? workspace.planningContext.topicTitle
+      : workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+
+  useEffect(() => {
+    if (planningContext?.kind === "exam_scope" && draftMode !== "exam_draft") {
+      updateDraftMode("exam_draft");
+    }
+  }, [draftMode, planningContext]);
 
   useEffect(() => {
     setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
-  }, [workspace?.sourceContext.topicLabel, selectedSourceIds, draftMode]);
+  }, [workspace?.sourceContext.topicLabel, effectiveSourceIds, draftMode]);
 
   const handleSaveDraft = async (draft: {
     effectiveGenerationSettings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>;
@@ -111,11 +137,18 @@ export default function QuestionBankPage() {
       tags: string[];
     }>;
   }) => {
-    if (!workspace?.sourceContext.subjectId || !workspace.sourceContext.level) {
-      throw new Error("Select at least one accessible source with a subject and level before saving.");
+    if (!workspace) {
+      throw new Error("Workspace is still loading.");
     }
 
-    if (!effectiveTopicLabel) {
+    const effectiveSubjectId = workspace.planningContext?.subjectId ?? workspace.sourceContext.subjectId ?? null;
+    const effectiveLevel = workspace.planningContext?.level ?? workspace.sourceContext.level ?? null;
+
+    if (!effectiveSubjectId || !effectiveLevel) {
+      throw new Error("Resolve a valid subject and level before saving this draft.");
+    }
+
+    if (draftMode !== "exam_draft" && !effectiveTopicLabel) {
       throw new Error("Add a target topic before saving this draft.");
     }
 
@@ -125,12 +158,16 @@ export default function QuestionBankPage() {
         draftMode,
         title: draft.title,
         description: draft.description,
-        sourceIds: selectedSourceIds,
+        sourceIds: effectiveSourceIds,
         sourceSelectionSnapshot: workspace.draft.sourceSelectionSnapshot ?? "",
         effectiveGenerationSettings: draft.effectiveGenerationSettings,
-        subjectId: workspace.sourceContext.subjectId,
-        level: workspace.sourceContext.level,
+        subjectId: effectiveSubjectId,
+        level: effectiveLevel,
         topicLabel: effectiveTopicLabel,
+        planningContext:
+          planningContext?.kind === "topic" || planningContext?.kind === "exam_scope"
+            ? planningContext
+            : undefined,
         items: draft.items,
       } as never)) as AssessmentBankSaveResult;
 
@@ -154,8 +191,12 @@ export default function QuestionBankPage() {
         },
         body: JSON.stringify({
           draftMode,
-          sourceIds: selectedSourceIds,
+          sourceIds: effectiveSourceIds,
           targetTopicLabel: effectiveTopicLabel ?? undefined,
+          planningContext:
+            planningContext?.kind === "topic" || planningContext?.kind === "exam_scope"
+              ? planningContext
+              : undefined,
           effectiveGenerationSettings,
         }),
       });
@@ -206,7 +247,7 @@ export default function QuestionBankPage() {
         </Link>
       </div>
 
-      {workspace.sourceContext.topicLabel ? null : (
+      {workspace.planningContext?.kind === "topic" || workspace.sourceContext.topicLabel || draftMode === "exam_draft" ? null : (
         <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
           <input
@@ -222,7 +263,7 @@ export default function QuestionBankPage() {
       )}
 
       <QuestionBankWorkspaceScreen
-        key={`${draftMode}:${selectedSourceIds.join(",")}`}
+        key={`${draftMode}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
         workspace={workspace}
         onDraftModeChange={updateDraftMode}
         onRemoveSource={handleRemoveSource}

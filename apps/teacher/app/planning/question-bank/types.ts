@@ -99,6 +99,25 @@ export interface AssessmentDraftBank {
   itemCount: number;
 }
 
+export interface AssessmentPlanningContext {
+  kind: "topic" | "exam_scope";
+  classId: string;
+  className: string;
+  termId: string;
+  termName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  level: string;
+  topicId?: string;
+  topicTitle?: string;
+  scopeKind?: "full_subject_term" | "topic_subset";
+  topicIds?: string[];
+  topicTitles?: string[];
+  planningContextKey: string;
+  compatibilityMode: boolean;
+}
+
 export interface AssessmentWorkspaceData {
   schoolName: string | null;
   draftMode: AssessmentDraftMode;
@@ -112,6 +131,7 @@ export interface AssessmentWorkspaceData {
   inaccessibleSourceIds: string[];
   warnings: string[];
   sourceContext: AssessmentSourceContext;
+  planningContext: AssessmentPlanningContext | null;
   profiles: AssessmentGenerationProfile[];
   draft: AssessmentDraftBank;
   items: AssessmentDraftItem[];

@@ -619,7 +619,7 @@ async function readTeacherAssignableLevelLabels(ctx: Pick<QueryCtx, "db">, actor
 async function readTeacherKnowledgeTopics(
   ctx: Pick<QueryCtx, "db">,
   actor: KnowledgeActorContext,
-  args: { subjectId?: Id<"subjects">; level?: string; limit?: number }
+  args: { subjectId?: Id<"subjects">; level?: string; termId?: Id<"academicTerms">; limit?: number }
 ) {
   const limit = Math.min(Math.max(args.limit ?? 50, 1), 150);
   const levelFilter = args.level ? normalizeRequiredText(args.level, "Level") : undefined;
@@ -643,6 +643,10 @@ async function readTeacherKnowledgeTopics(
     }
 
     if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) {
+      return false;
+    }
+
+    if (args.termId && String(topic.termId) !== String(args.termId)) {
       return false;
     }
 
@@ -734,6 +738,7 @@ export const listTeacherKnowledgeTopics = query({
   args: {
     subjectId: v.optional(v.id("subjects")),
     level: v.optional(v.string()),
+    termId: v.optional(v.id("academicTerms")),
     limit: v.optional(v.number()),
   },
   returns: v.array(lessonLibraryTopicValidator),
@@ -751,6 +756,7 @@ export const listTeacherKnowledgeTopics = query({
     return await readTeacherKnowledgeTopics(ctx, actor, {
       subjectId: args.subjectId,
       level: args.level,
+      termId: args.termId,
       limit: args.limit,
     });
   },
@@ -999,6 +1005,7 @@ export const createTeacherKnowledgeTopic = mutation({
     summary: v.optional(v.union(v.string(), v.null())),
     subjectId: v.id("subjects"),
     level: v.string(),
+    termId: v.optional(v.id("academicTerms")),
     attachMaterialId: v.optional(v.id("knowledgeMaterials")),
   },
   returns: v.object({
@@ -1042,15 +1049,21 @@ export const createTeacherKnowledgeTopic = mutation({
       throw new ConvexError("You cannot use that level");
     }
 
+    const requestedTerm = args.termId ? await ctx.db.get(args.termId) : null;
+    if (args.termId && (!requestedTerm || requestedTerm.schoolId !== schoolId)) {
+      throw new ConvexError("Academic term not found");
+    }
+
     const activeTerm = await readActiveKnowledgeTerm(ctx, schoolId);
-    if (!activeTerm) {
+    const effectiveTerm = requestedTerm ?? activeTerm;
+    if (!effectiveTerm) {
       throw new ConvexError("Create or activate an academic term before creating topics");
     }
 
     const siblingTopics = await ctx.db
       .query("knowledgeTopics")
       .withIndex("by_school_and_subject_and_level_and_term", (q) =>
-        q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", activeTerm._id)
+        q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", effectiveTerm._id)
       )
       .collect();
 
@@ -1066,7 +1079,7 @@ export const createTeacherKnowledgeTopic = mutation({
         schoolId,
         subjectId: args.subjectId,
         level,
-        termId: activeTerm._id,
+        termId: effectiveTerm._id,
         title,
         slug,
         summary,
@@ -1137,7 +1150,7 @@ export const createTeacherKnowledgeTopic = mutation({
       subjectId: args.subjectId,
       subjectName: normalizeHumanName(subject.name),
       level: duplicate?.level ?? level,
-      termId: duplicate?.termId ?? activeTerm._id,
+      termId: duplicate?.termId ?? effectiveTerm._id,
       status: duplicate?.status ?? ("active" as const),
     };
   },

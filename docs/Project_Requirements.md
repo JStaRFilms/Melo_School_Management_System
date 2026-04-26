@@ -120,6 +120,7 @@
 - Payment integration provider-agnostic in structure but Paystack-first
 - Support access is read-only by default
 - Academic model supports both primary and secondary teaching patterns
+- Teacher planning launches from context first: `Subject -> Level/Class -> Term -> Topic` for lesson and quiz work, and `Subject -> Level/Class -> Term -> Exam scope` for exam drafting; the library remains a repository, not the primary authoring entry point.
 
 ## Definition of Done
 

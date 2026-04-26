@@ -23,10 +23,34 @@ import { getToken } from "@/lib/auth-server";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 
+type LessonPlanObjective = string;
+type LessonPlanPrerequisite = string;
+type LessonPlanMaterial = string;
+type LessonPlanTeacherMove = string;
+type LessonPlanLearnerActivity = string;
+type LessonPlanSourceNote = string;
+type LessonPlanKeyPoint = string;
+type LessonPlanReflectionQuestion = string;
+type LessonPlanSubmissionChecklistItem = string;
+type LessonPlanHint = string;
+type LessonPlanVocabularyEntry = StudentNoteDraft["vocabulary"][number];
+type LessonPlanFlowStep = LessonPlanDraft["lessonFlow"][number];
+type AssignmentTask = AssignmentDraft["tasks"][number];
+
+const topicPlanningContextSchema = z.object({
+  kind: z.literal("topic"),
+  classId: z.string().trim().min(1),
+  termId: z.string().trim().min(1),
+  subjectId: z.string().trim().min(1),
+  level: z.string().trim().min(1),
+  topicId: z.string().trim().min(1),
+});
+
 const requestSchema = z.object({
   outputType: z.enum(["lesson_plan", "student_note", "assignment"]),
   sourceIds: z.array(z.string()).max(MAX_GENERATION_SOURCE_COUNT).default([]),
   targetTopicLabel: z.string().trim().max(160).optional(),
+  planningContext: topicPlanningContextSchema.optional(),
 });
 
 function getConvexUrl() {
@@ -133,22 +157,22 @@ function renderLessonPlanMarkdown(draft: LessonPlanDraft) {
     draft.summary,
     "",
     "## Learning objectives",
-    ...draft.learningObjectives.map((objective) => `- ${objective}`),
+    ...draft.learningObjectives.map((objective: LessonPlanObjective) => `- ${objective}`),
     "",
     "## Prerequisites",
-    ...draft.prerequisites.map((item) => `- ${item}`),
+    ...draft.prerequisites.map((item: LessonPlanPrerequisite) => `- ${item}`),
     "",
     "## Materials",
-    ...draft.materials.map((item) => `- ${item}`),
+    ...draft.materials.map((item: LessonPlanMaterial) => `- ${item}`),
     "",
     "## Lesson flow",
-    ...draft.lessonFlow.flatMap((step, index) => [
+    ...draft.lessonFlow.flatMap((step: LessonPlanFlowStep, index: number) => [
       `### ${index + 1}. ${step.heading} (${step.durationMinutes} min)`,
       "**Teacher moves**",
-      ...step.teacherMoves.map((move) => `- ${move}`),
+      ...step.teacherMoves.map((move: LessonPlanTeacherMove) => `- ${move}`),
       "",
       "**Learner activities**",
-      ...step.learnerActivities.map((activity) => `- ${activity}`),
+      ...step.learnerActivities.map((activity: LessonPlanLearnerActivity) => `- ${activity}`),
       "",
       `**Checkpoint:** ${step.checkpoint}`,
       "",
@@ -163,7 +187,7 @@ function renderLessonPlanMarkdown(draft: LessonPlanDraft) {
     draft.differentiationNotes,
     "",
     "## Source notes",
-    ...draft.sourceNotes.map((note) => `- ${note}`),
+    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
   ]
     .filter(Boolean)
     .join("\n")
@@ -182,19 +206,19 @@ function renderStudentNoteMarkdown(draft: StudentNoteDraft) {
     draft.summary,
     "",
     "## Key points",
-    ...draft.keyPoints.map((item) => `- ${item}`),
+    ...draft.keyPoints.map((item: LessonPlanKeyPoint) => `- ${item}`),
     "",
     "## Vocabulary",
-    ...draft.vocabulary.flatMap((entry) => [`- **${entry.term}:** ${entry.meaning}`]),
+    ...draft.vocabulary.flatMap((entry: LessonPlanVocabularyEntry) => [`- **${entry.term}:** ${entry.meaning}`]),
     "",
     "## Worked example",
     draft.workedExample,
     "",
     "## Reflection questions",
-    ...draft.reflectionQuestions.map((question) => `- ${question}`),
+    ...draft.reflectionQuestions.map((question: LessonPlanReflectionQuestion) => `- ${question}`),
     "",
     "## Source notes",
-    ...draft.sourceNotes.map((note) => `- ${note}`),
+    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
   ]
     .filter(Boolean)
     .join("\n")
@@ -213,24 +237,24 @@ function renderAssignmentMarkdown(draft: AssignmentDraft) {
     draft.instructions,
     "",
     "## Tasks",
-    ...draft.tasks.flatMap((task, index) => [
+    ...draft.tasks.flatMap((task: AssignmentTask, index: number) => [
       `### Task ${index + 1} (${task.marks} marks, ${task.difficulty})`,
       task.prompt,
       "",
       `**Expected response:** ${task.expectedResponse}`,
       "",
       "**Hints**",
-      ...task.hints.map((hint) => `- ${hint}`),
+      ...task.hints.map((hint: LessonPlanHint) => `- ${hint}`),
       "",
     ]),
     "## Submission checklist",
-    ...draft.submissionChecklist.map((item) => `- [ ] ${item}`),
+    ...draft.submissionChecklist.map((item: LessonPlanSubmissionChecklistItem) => `- [ ] ${item}`),
     "",
     "## Marking guidance",
     draft.markingGuidance,
     "",
     "## Source notes",
-    ...draft.sourceNotes.map((note) => `- ${note}`),
+    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
   ]
     .filter(Boolean)
     .join("\n")
@@ -332,6 +356,7 @@ export async function POST(request: Request) {
       {
         outputType,
         sourceIds: sourceIds as never,
+        planningContext: parsedBody.data.planningContext as never,
       }
     );
 
@@ -346,7 +371,12 @@ export async function POST(request: Request) {
     }
 
     const promptClass = promptClassForOutputType(outputType);
-    const effectiveTopicLabel = targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
+    const effectiveTopicLabel =
+      workspace.planningContext?.topicTitle ?? targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
+    const effectiveSubjectId = workspace.planningContext?.subjectId ?? workspace.sourceContext.subjectId;
+    const effectiveSubjectName = workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName;
+    const effectiveLevel = workspace.planningContext?.level ?? workspace.sourceContext.level;
+
     if (!effectiveTopicLabel) {
       return NextResponse.json(
         { error: "Add a target topic before generating from broad planning sources." },
@@ -356,14 +386,14 @@ export async function POST(request: Request) {
     const sourceSelectionSnapshot = buildSourceSelectionSnapshot({
       outputType,
       sourceIds,
-      subjectId: workspace.sourceContext.subjectId ? String(workspace.sourceContext.subjectId) : null,
-      level: workspace.sourceContext.level,
+      subjectId: effectiveSubjectId ? String(effectiveSubjectId) : null,
+      level: effectiveLevel,
       topicLabel: effectiveTopicLabel,
       templateId: workspace.template?._id ? String(workspace.template._id) : null,
       templateResolutionPath: workspace.template?.resolutionPath ?? null,
     });
 
-    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+    if (!effectiveSubjectId || !effectiveLevel) {
       return NextResponse.json(
         { error: "The selected sources did not resolve a valid subject and level for generation." },
         { status: 400 }
@@ -394,8 +424,8 @@ export async function POST(request: Request) {
 
     const promptContext = {
       schoolName: workspace.schoolName ?? undefined,
-      subject: workspace.sourceContext.subjectName ?? undefined,
-      level: workspace.sourceContext.level ?? undefined,
+      subject: effectiveSubjectName ?? undefined,
+      level: effectiveLevel ?? undefined,
       topic: effectiveTopicLabel ?? undefined,
       templateName: workspace.template?.title ?? undefined,
       sourceMaterials,
@@ -403,7 +433,7 @@ export async function POST(request: Request) {
         ? [
             `Use at least ${workspace.template.objectiveMinimums.minimumSourceMaterials} source materials.`,
             `Cover the required sections in this order: ${workspace.template.sectionDefinitions
-              .map((section) => section.label)
+              .map((section: { label: string }) => section.label)
               .join(", ")}.`,
           ]
         : ["Use the selected source materials only.", "Keep the draft editable and concise."],
@@ -436,9 +466,10 @@ export async function POST(request: Request) {
         documentState,
         plainText,
         sourceIds: sourceIds as never,
-        subjectId: workspace.sourceContext.subjectId,
-        level: workspace.sourceContext.level,
+        subjectId: effectiveSubjectId,
+        level: effectiveLevel,
         topicLabel: effectiveTopicLabel,
+        planningContext: parsedBody.data.planningContext as never,
         revisionKind: "generated",
       }
     );

@@ -81,6 +81,22 @@ export interface LessonPlanWorkspaceDraft {
   lastSavedAt: number | null;
 }
 
+export interface LessonPlanPlanningContext {
+  kind: "topic";
+  classId: string;
+  className: string;
+  termId: string;
+  termName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  level: string;
+  topicId: string;
+  topicTitle: string;
+  planningContextKey: string;
+  compatibilityMode: boolean;
+}
+
 export interface LessonPlanWorkspaceData {
   schoolName: string | null;
   outputType: LessonPlanWorkspaceOutputType;
@@ -92,6 +108,7 @@ export interface LessonPlanWorkspaceData {
   inaccessibleSourceIds: string[];
   warnings: string[];
   sourceContext: LessonPlanWorkspaceSourceContext;
+  planningContext: LessonPlanPlanningContext | null;
   template: LessonPlanWorkspaceTemplate | null;
   draft: LessonPlanWorkspaceDraft;
   revisions: LessonPlanWorkspaceRevision[];
