@@ -26,6 +26,12 @@
       "@/*": [
         "./*"
       ],
+      "@school/ai": [
+        "../../packages/ai/src"
+      ],
+      "@school/ai/*": [
+        "../../packages/ai/src/*"
+      ],
       "@school/shared": [
         "../../packages/shared/src"
       ],
@@ -37,6 +43,9 @@
       ],
       "@school/convex/*": [
         "../../packages/convex/*"
+      ],
+      "ai": [
+        "../../node_modules/ai/dist/index.d.ts"
       ]
     }
   },

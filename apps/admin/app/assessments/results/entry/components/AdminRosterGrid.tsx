@@ -1,24 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import type { ExamInputMode } from "@school/shared";
-import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
-import type {
-  StudentRosterEntry,
-  ScoreField,
-  DraftScores,
-  ValidationErrors,
-  Id,
-  GradingBandResponse,
-} from "@/types";
-import { AdminRosterGridRow } from "./AdminRosterGridRow";
 import {
-  getEffectiveValue,
-  computeDerivedValues,
-  getInitials,
+computeDerivedValues,
+getEffectiveValue,
+getInitials,
 } from "@/exam-helpers";
 import { humanNameFinalStrict } from "@/human-name";
+import type {
+DraftScores,
+GradingBandResponse,
+Id,
+ScoreField,
+StudentRosterEntry,
+ValidationErrors,
+} from "@/types";
+import type { ExamInputMode } from "@school/shared";
+import { buildReportCardExtrasHref,buildReportCardHref } from "@school/shared";
+import Link from "next/link";
+import { useEffect,useState } from "react";
+import { AdminRosterGridRow } from "./AdminRosterGridRow";
 
 interface AdminRosterGridProps {
   roster: StudentRosterEntry[];
@@ -43,8 +43,7 @@ export function AdminRosterGrid({
   examInputMode,
   gradingBands,
   draftScores,
-  validationErrors,
-  sheetLabel,
+  validationErrors,
   sessionId,
   termId,
   classId,

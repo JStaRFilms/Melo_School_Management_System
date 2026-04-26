@@ -41,6 +41,21 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/students", label: "Students", matchers: ["/academic/students"] },
       {
+        href: "/academic/knowledge/library",
+        label: "Knowledge Library",
+        matchers: ["/academic/knowledge/library"],
+      },
+      {
+        href: "/academic/knowledge/templates",
+        label: "Template Studio",
+        matchers: ["/academic/knowledge/templates"],
+      },
+      {
+        href: "/academic/knowledge/assessment-profiles",
+        label: "Assessment Profiles",
+        matchers: ["/academic/knowledge/assessment-profiles"],
+      },
+      {
         href: "/academic/archived-records",
         label: "Archive Audit",
         matchers: ["/academic/archived-records"],
@@ -89,7 +104,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     switchPath: "/assessments/exams/entry",
     appBasePath: "/teacher",
     available: true,
-    description: "Open teacher workflows for exam entry and enrollment edits.",
+    description: "Open teacher workflows for exam entry, planning, and enrollment edits.",
     sections: [
       {
         href: "/assessments/exams/entry",
@@ -105,6 +120,16 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         href: "/enrollment/subjects",
         label: "Subject Selection",
         matchers: ["/enrollment/subjects"],
+      },
+      {
+        href: "/planning/library",
+        label: "Library",
+        matchers: ["/planning/library", "/planning/lesson-plans", "/planning/question-bank"],
+      },
+      {
+        href: "/planning/videos",
+        label: "Videos",
+        matchers: ["/planning/videos"],
       },
     ],
   },
@@ -124,6 +149,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/report-cards"],
       },
       { href: "/results", label: "Result History", matchers: ["/results"] },
+      {
+        href: "/learning/topics",
+        label: "Learning Topics",
+        matchers: ["/learning/topics"],
+      },
       {
         href: "/notifications",
         label: "Notifications",

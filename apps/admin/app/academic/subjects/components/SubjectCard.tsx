@@ -1,8 +1,8 @@
 "use client";
 
-import { BookOpenText, Archive } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { SubjectRecord } from "@/types";
+import { Archive } from "lucide-react";
 
 interface SubjectCardProps {
   subject: SubjectRecord;

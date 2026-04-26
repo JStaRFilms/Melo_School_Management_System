@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState, useDeferredValue } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
-import { 
-  Search, 
-  Layers3, 
-  X, 
-  LayoutGrid, 
-  ChevronRight, 
-  Sparkles,
-  Database
-} from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
-import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
+import { StatGroup } from "@/components/ui/StatGroup";
+import { getUserFacingErrorMessage } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
+import {
+Database,
+LayoutGrid,
+Search,
+Sparkles,
+X
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useDeferredValue,useEffect,useMemo,useState } from "react";
 import { ClassCreationForm } from "./components/ClassCreationForm";
 import { ClassEditForm } from "./components/ClassEditForm";
 import { ClassSection } from "./components/ClassSection";

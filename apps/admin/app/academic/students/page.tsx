@@ -1,28 +1,28 @@
 "use client";
 
+import { getUserFacingErrorMessage } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import { useMutation, useQuery } from "convex/react";
-import { 
-  Users, 
-  Sparkles, 
-  X, 
-  ArrowRight,
-  BookOpen,
-  Search,
+ArrowRight,
+BookOpen,
+Search,
+Sparkles,
+Users,
+X,
 } from "lucide-react";
 import Link from "next/link";
-import { getUserFacingErrorMessage } from "@school/shared";
+import {
+useCallback,
+useEffect,
+useMemo,
+useRef,
+useState,
+type FormEvent,
+} from "react";
 
 import {
-  humanNameFinalStrict,
-  humanNameTypingStrict,
+humanNameFinalStrict,
+humanNameTypingStrict,
 } from "@/human-name";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -30,14 +30,14 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
-import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
+import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import { uploadStudentPhoto } from "./components/studentPhotoUpload";
 import type {
-  ClassSummary,
-  EnrollmentMatrix,
-  EnrollmentNotice,
-  SessionSummary,
+ClassSummary,
+EnrollmentMatrix,
+EnrollmentNotice,
+SessionSummary,
 } from "./components/types";
 
 export default function StudentsPage() {
@@ -218,15 +218,12 @@ export default function StudentsPage() {
     setIsSubmitting(true);
     setNotice(null);
 
-    let uploadedPhoto = false;
     try {
       const uploadedPhotoMetadata = studentPhotoFile
         ? await uploadStudentPhoto(studentPhotoFile, () =>
             generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
-      uploadedPhoto = Boolean(uploadedPhotoMetadata);
-
       const createdStudentId = (await createStudent({
         name: normalizedStudentName,
         admissionNumber: admissionNumber.trim(),

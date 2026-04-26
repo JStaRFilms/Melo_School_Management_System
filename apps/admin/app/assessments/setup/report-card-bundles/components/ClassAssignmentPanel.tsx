@@ -1,10 +1,10 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { getUserFacingErrorMessage } from "@school/shared";
-import { Loader2, Search, Link2, CheckCircle2, Circle } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import type { BundleRecord, ClassAssignmentRecord, ClassSummary } from "../types";
+import { getUserFacingErrorMessage } from "@school/shared";
+import { CheckCircle2,Circle,Link2,Loader2,Search } from "lucide-react";
+import { memo,useCallback,useEffect,useMemo,useState } from "react";
+import type { BundleRecord,ClassAssignmentRecord,ClassSummary } from "../types";
 import { buildNextAssignedBundleIds } from "../utils";
 
 interface ClassAssignmentPanelProps {
@@ -43,7 +43,8 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [assignmentMap, setAssignmentMap] = useState<Record<string, ClassAssignmentRecord>>(initialAssignments);
   const [workingClassIds, setWorkingClassIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
+
 
   useEffect(() => {
     setAssignmentMap(initialAssignments);
@@ -51,7 +52,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
 
   const applyAssignment = useCallback(
     async (classId: string, bundleIds: string[]) => {
-      setError(null);
+
       setWorkingClassIds((current) => Array.from(new Set([...current, classId])));
       const previous = assignmentMap[classId] ?? { classId, bundleAssignments: [] };
       const nextAssignment = {
@@ -220,8 +221,8 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
                         void applyAssignment(classItem.id, Array.from(new Set(nextIds)));
                       }}
                       className={`px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded transition-all ${
-                        isChecked 
-                          ? "bg-slate-900 text-white" 
+                        isChecked
+                          ? "bg-slate-900 text-white"
                           : "bg-white text-slate-400 border border-slate-100 hover:border-slate-200 hover:text-slate-600"
                       }`}
                     >

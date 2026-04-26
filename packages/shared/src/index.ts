@@ -4,6 +4,7 @@ export * from "./name-format";
 export * from "./errors";
 export * from "./workspace-navigation";
 export * from "./report-card-routes";
+export * from "./planning-routes";
 
 // Components
 export { WorkspaceNavbar } from "./components/WorkspaceNavbar";

@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Container, GoldButton, ButtonLink } from "@/site-ui";
+import { ButtonLink,Container,GoldButton } from "@/site-ui";
 
 export default function NotFound() {
   return (

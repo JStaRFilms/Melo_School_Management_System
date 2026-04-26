@@ -1,6 +1,6 @@
+import { Info,Trash2 } from "lucide-react";
 import React from "react";
-import { Plus, Trash2, Info } from "lucide-react";
-import type { FeePlanDraft, ClassOption } from "../../types";
+import type { ClassOption,FeePlanDraft } from "../../types";
 
 interface FeePlanFormProps {
   draft: FeePlanDraft;
@@ -12,7 +12,7 @@ interface FeePlanFormProps {
 const labelCx = "text-[11px] font-bold uppercase tracking-[0.15em] text-slate-600";
 const inputCx = "w-full h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 outline-none transition-all placeholder:text-slate-400";
 
-export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormProps) {
+export function FeePlanForm({ draft, onChange, onSubmit }: FeePlanFormProps) {
   const addLineItem = () => {
     onChange({
       ...draft,

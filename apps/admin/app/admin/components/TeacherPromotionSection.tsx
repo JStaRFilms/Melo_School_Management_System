@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation } from "convex/react";
-import { ArrowRightLeft, Loader2, Sparkles } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { getUserFacingErrorMessage } from "@school/shared";
+import { useMutation } from "convex/react";
+import { ArrowRightLeft,Loader2,Sparkles } from "lucide-react";
+import { useState } from "react";
 
 interface TeacherRecord {
   _id: string;
@@ -48,7 +48,6 @@ export function TeacherPromotionSection({
     }
   };
 
-  const selectedTeacher = teachers.find((t) => t._id === selectedTeacherId);
 
   return (
     <AdminSurface intensity="low" rounded="lg" className="p-4 ring-1 ring-slate-950/5">

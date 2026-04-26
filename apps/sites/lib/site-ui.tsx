@@ -1,19 +1,18 @@
-import Link from "next/link";
-import { ArrowRight, Clock3, Mail, MapPin, Phone } from "lucide-react";
-import type { ReactNode } from "react";
 import {
-  buildSchoolStructuredData,
-  getSchoolNavigationPages,
-  siteThemeStyle,
-  type ContactItem,
-  type FaqItem,
-  type PageContent,
-  type PageKey,
-  type ResolvedPage,
-  type SchoolConfig,
-  type SchoolTemplateConfig,
-  type SummaryCard,
+buildSchoolStructuredData,
+getSchoolNavigationPages,
+siteThemeStyle,
+type ContactItem,
+type FaqItem,
+type PageContent,
+type ResolvedPage,
+type SchoolConfig,
+type SchoolTemplateConfig,
+type SummaryCard
 } from "@/site";
+import { ArrowRight,Clock3,Mail,MapPin,Phone } from "lucide-react";
+import Link from "next/link";
+import type { ReactNode } from "react";
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");

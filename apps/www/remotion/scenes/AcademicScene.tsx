@@ -1,7 +1,7 @@
 import React from 'react';
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
-import { PlatformMockShell } from '../components/PlatformMockShell';
+import { AbsoluteFill,Easing,interpolate,spring,useCurrentFrame,useVideoConfig } from 'remotion';
 import { Cursor } from '../components/Cursor';
+import { PlatformMockShell } from '../components/PlatformMockShell';
 
 export const AcademicScene: React.FC = () => {
   const frame = useCurrentFrame();
@@ -90,7 +90,7 @@ export const AcademicScene: React.FC = () => {
                          { sub: "English Language", ca: 30, ex: 48 },
                          { sub: "Basic Science", ca: 38, ex: 58 },
                          { sub: "Civic Education", ca: 35, ex: 52 },
-                       ].map((row, i) => (
+                       ].map((row) => (
                           <div key={row.sub} className="p-3 grid grid-cols-4 text-sm border-t border-slate-100">
                              <div className="col-span-2 font-bold text-slate-900">{row.sub}</div>
                              <div>{row.ca}</div>

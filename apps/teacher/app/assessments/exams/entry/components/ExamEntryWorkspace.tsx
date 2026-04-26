@@ -1,30 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ExamInputMode } from "@school/shared";
-import type {
-  DraftScores,
-  ExamEntrySheetResponse,
-  Id,
-  ScoreField,
-  SelectionState,
-  SelectorOption,
-  UpsertResponse,
-  ValidationErrors,
-} from "@/lib/types";
-import { SelectionBar } from "./SelectionBar";
-import { RosterGrid } from "./RosterGrid";
-import { SaveActionBar } from "./SaveActionBar";
-import { ValidationErrorBanner } from "./ValidationErrorBanner";
-import { LoadingSkeleton } from "./LoadingSkeleton";
-import { EmptyRoster } from "./EmptyRoster";
 import {
-  buildErrorSummaries,
-  countErrors,
-  hasAnyErrors,
-  validateField,
+buildErrorSummaries,
+countErrors,
+hasAnyErrors,
+validateField,
 } from "@/lib/exam-helpers";
 import { humanNameFinalStrict } from "@/lib/human-name";
+import type {
+DraftScores,
+ExamEntrySheetResponse,
+Id,
+ScoreField,
+SelectionState,
+SelectorOption,
+UpsertResponse,
+ValidationErrors,
+} from "@/lib/types";
+import type { ExamInputMode } from "@school/shared";
+import { useCallback,useEffect,useMemo,useState } from "react";
+import { EmptyRoster } from "./EmptyRoster";
+import { LoadingSkeleton } from "./LoadingSkeleton";
+import { RosterGrid } from "./RosterGrid";
+import { SaveActionBar } from "./SaveActionBar";
+import { SelectionBar } from "./SelectionBar";
+import { ValidationErrorBanner } from "./ValidationErrorBanner";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -129,7 +129,8 @@ export function ExamEntryWorkspace({
           return next;
         }
 
-        const { [field]: _removed, ...rest } = studentErrors;
+        const rest = { ...studentErrors };
+        delete rest[field];
         if (Object.keys(rest).length > 0) {
           next.set(studentId, rest);
         } else {

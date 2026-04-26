@@ -1,11 +1,11 @@
+import { Users } from "lucide-react";
 import React from "react";
-import { Info, Users } from "lucide-react";
-import type { 
-  FeePlanApplicationDraft, 
-  ClassOption, 
-  SessionOption, 
-  TermOption,
-  BillingDashboardData
+import type {
+BillingDashboardData,
+ClassOption,
+FeePlanApplicationDraft,
+SessionOption,
+TermOption
 } from "../../types";
 
 interface BulkApplicationFormProps {

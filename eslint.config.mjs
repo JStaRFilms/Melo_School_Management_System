@@ -9,6 +9,13 @@ const nextAppConfigs = [...nextCoreWebVitals, ...nextTypescript].map((config) =>
     config.name === "next/typescript"
       ? ["apps/**/*.ts", "apps/**/*.tsx"]
       : ["apps/**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+  settings: {
+    ...config.settings,
+    next: {
+      ...config.settings?.next,
+      rootDir: ["apps/admin", "apps/teacher", "apps/portal", "apps/www", "apps/sites"],
+    },
+  },
 }));
 
 export default [
@@ -33,6 +40,7 @@ export default [
     files: ["apps/**/*.{js,jsx,mjs,ts,tsx,mts,cts}", "packages/**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "@next/next/no-html-link-for-pages": "off",
       "react-hooks/purity": "off",
       "react-hooks/set-state-in-effect": "off",
     },

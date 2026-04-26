@@ -1,16 +1,16 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { BookOpenText, Shapes, Search, Plus, X } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
-import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
+import { StatGroup } from "@/components/ui/StatGroup";
+import type { SubjectRecord } from "@/types";
+import { getUserFacingErrorMessage } from "@school/shared";
+import { useMutation,useQuery } from "convex/react";
+import { BookOpenText,Plus,Search,Shapes,X } from "lucide-react";
+import { useDeferredValue,useEffect,useMemo,useState } from "react";
 import { SubjectCard } from "./components/SubjectCard";
 import { SubjectCreationForm } from "./components/SubjectCreationForm";
 import { SubjectEditForm } from "./components/SubjectEditForm";
-import type { SubjectRecord } from "@/types";
 
 export default function SubjectsPage() {
   const subjects = useQuery(
@@ -77,17 +77,14 @@ export default function SubjectsPage() {
     );
   }, [deferredSearch, subjects]);
 
-  const [subjectStats, oneWeekAgo] = useMemo(() => {
+  const subjectStats = useMemo(() => {
     const now = Date.now();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    if (!subjects) return [{ total: 0, recent: 0 }, weekAgo];
-    return [
-      {
-        total: subjects.length,
-        recent: subjects.filter((s) => s.createdAt >= weekAgo).length,
-      },
-      weekAgo,
-    ];
+    if (!subjects) return { total: 0, recent: 0 };
+    return {
+      total: subjects.length,
+      recent: subjects.filter((s) => s.createdAt >= weekAgo).length,
+    };
   }, [subjects]);
 
   const handleCreate = async (name: string, code: string) => {

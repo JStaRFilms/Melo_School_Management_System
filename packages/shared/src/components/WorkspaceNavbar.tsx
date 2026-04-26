@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   Landmark,
+  BookOpenText,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -64,52 +65,92 @@ export function WorkspaceNavbar({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  const isStudentPortalUser = userRole === "student";
+
   const groups =
     workspace === "portal"
       ? {
           overview: {
             label: "Overview",
             icon: <LayoutDashboard className="h-4 w-4" />,
-            links: sections.slice(0, 1),
+            links: sections.filter((section) => section.href === "/"),
           },
           records: {
             label: "Academic Records",
             icon: <GraduationCap className="h-4 w-4" />,
-            links: sections.slice(1, 3),
+            links: sections.filter((section) => ["/report-cards", "/results"].includes(section.href)),
           },
-          finance: {
-            label: "Finance",
-            icon: <Landmark className="h-4 w-4" />,
-            links: sections.slice(4, 5),
+          learning: {
+            label: "Learning",
+            icon: <BookOpenText className="h-4 w-4" />,
+            links: isStudentPortalUser
+              ? sections.filter((section) => section.href === "/learning/topics")
+              : [],
           },
           alerts: {
             label: "Alerts",
             icon: <ClipboardCheck className="h-4 w-4" />,
-            links: sections.slice(3, 4),
-          },
-        }
-      : {
-          management: {
-            label: "Management",
-            icon: <LayoutDashboard className="h-4 w-4" />,
-            links: sections.slice(0, 2),
-          },
-          academic: {
-            label: "Academic Operations",
-            icon: <GraduationCap className="h-4 w-4" />,
-            links: sections.slice(2, 8),
+            links: sections.filter((section) => section.href === "/notifications"),
           },
           finance: {
             label: "Finance",
             icon: <Landmark className="h-4 w-4" />,
-            links: sections.slice(8, 9),
+            links: sections.filter((section) => section.href === "/billing"),
           },
-          assessments: {
-            label: "Assessments & Exams",
-            icon: <ClipboardCheck className="h-4 w-4" />,
-            links: sections.slice(9),
-          },
-        };
+        }
+      : workspace === "teacher"
+        ? {
+            planning: {
+              label: "Planning Studio",
+              icon: <BookOpenText className="h-4 w-4" />,
+              links: sections.filter((section) => section.href.startsWith("/planning")),
+            },
+            classroom: {
+              label: "Classroom Ops",
+              icon: <ClipboardCheck className="h-4 w-4" />,
+              links: sections.filter((section) => section.href.startsWith("/assessments")),
+            },
+            enrollment: {
+              label: "Enrollment",
+              icon: <GraduationCap className="h-4 w-4" />,
+              links: sections.filter((section) => section.href.startsWith("/enrollment")),
+            },
+          }
+        : {
+            management: {
+              label: "Management",
+              icon: <LayoutDashboard className="h-4 w-4" />,
+              links: sections.filter((section) =>
+                ["/academic/teachers", "/admin", "/academic/archived-records"].includes(section.href)
+              ),
+            },
+            academic: {
+              label: "Academic Operations",
+              icon: <GraduationCap className="h-4 w-4" />,
+              links: sections.filter((section) =>
+                [
+                  "/academic/sessions",
+                  "/academic/events",
+                  "/academic/subjects",
+                  "/academic/classes",
+                  "/academic/students",
+                  "/academic/knowledge/library",
+                  "/academic/knowledge/templates",
+                  "/academic/knowledge/assessment-profiles",
+                ].includes(section.href)
+              ),
+            },
+            finance: {
+              label: "Finance",
+              icon: <Landmark className="h-4 w-4" />,
+              links: sections.filter((section) => section.href === "/billing"),
+            },
+            assessments: {
+              label: "Assessments & Exams",
+              icon: <ClipboardCheck className="h-4 w-4" />,
+              links: sections.filter((section) => section.href.startsWith("/assessments")),
+            },
+          };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

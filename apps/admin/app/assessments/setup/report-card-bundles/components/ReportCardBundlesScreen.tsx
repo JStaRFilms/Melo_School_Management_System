@@ -1,30 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { 
-  Library, 
-  Layers, 
-  ChevronRight,
-  Plus
+import {
+ChevronRight,
+Layers,
+Library,
+Plus
 } from "lucide-react";
-import { AdminHeader } from "@/components/ui/AdminHeader";
+import { useEffect,useMemo,useState } from "react";
+import type { ScreenProps } from "../types";
+import {
+createBundleDraft,
+createEmptyBundleDraft,
+createEmptyScaleDraft,
+createScaleDraft,
+serializeBundleDraft,
+serializeScaleDraft,
+validateBundleDraft,
+validateScaleDraft,
+} from "../utils";
 import { BundleEditor } from "./BundleEditor";
 import { BundleList } from "./BundleList";
 import { BundlePreview } from "./BundlePreview";
 import { EditorActionBar } from "./EditorActionBar";
 import { ScaleTemplateEditor } from "./ScaleTemplateEditor";
 import { TemplateList } from "./TemplateList";
-import type { ScreenProps } from "../types";
-import {
-  createBundleDraft,
-  createEmptyBundleDraft,
-  createEmptyScaleDraft,
-  createScaleDraft,
-  serializeBundleDraft,
-  serializeScaleDraft,
-  validateBundleDraft,
-  validateScaleDraft,
-} from "../utils";
 
 export function ReportCardBundlesScreen({
   scaleTemplates,

@@ -1,5 +1,5 @@
-import React, { ReactNode } from "react";
-import { ChevronRight, ShieldCheck, LayoutDashboard, GraduationCap, Landmark, ClipboardCheck, ChevronDown } from "lucide-react";
+import { ChevronDown,ChevronRight,ShieldCheck } from "lucide-react";
+import { ReactNode } from "react";
 
 export function PlatformMockShell({
   children,

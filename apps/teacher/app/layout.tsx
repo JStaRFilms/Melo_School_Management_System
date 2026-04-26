@@ -6,8 +6,8 @@ import { hasConvexAuthEnv } from "@school/auth";
 import { getToken } from "@/lib/auth-server";
 
 export const metadata: Metadata = {
-  title: "Teacher Portal - Exam Recording",
-  description: "Teacher-side exam score entry for school management",
+  title: "Teacher Portal",
+  description: "Teacher workspace for planning, assessment, and enrollment workflows",
 };
 
 export default async function RootLayout({
@@ -18,8 +18,8 @@ export default async function RootLayout({
   const initialToken = hasConvexAuthEnv() ? await getToken().catch(() => null) : null;
 
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
             {children}

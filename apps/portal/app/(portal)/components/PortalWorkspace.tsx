@@ -1,20 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useAction, useQuery } from "convex/react";
-import { ArrowRight, ChevronRight, ExternalLink, FileText, TrendingUp } from "lucide-react";
-import { getUserFacingErrorMessage, ReportCardPreview, ReportCardToolbar } from "@school/shared";
 import { isConvexConfigured } from "@/convex-runtime";
 import type {
-  PortalBillingData,
-  PortalBillingInvoice,
-  PortalHistoryItem,
-  PortalNotificationItem,
-  PortalWorkspaceData,
-  PortalWorkspaceMode,
+PortalBillingData,
+PortalBillingInvoice,
+PortalHistoryItem,
+PortalNotificationItem,
+PortalWorkspaceData,
+PortalWorkspaceMode,
 } from "@/portal-types";
+import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
+import { useAction,useQuery } from "convex/react";
+import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { usePathname,useRouter,useSearchParams } from "next/navigation";
+import { useMemo,useState } from "react";
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -235,7 +235,7 @@ function PortalWorkspaceContent({ mode }: { mode: PortalWorkspaceMode }) {
     return (
       <PortalReportCardLayout
         workspace={workspace}
-        activeHistoryItem={activeHistoryItem}
+
         onSelectHistoryItem={handleSelectHistoryItem}
         onSelectStudent={handleSelectStudent}
       />
@@ -514,12 +514,10 @@ function DashboardView({
 
 function PortalReportCardLayout({
   workspace,
-  activeHistoryItem,
   onSelectHistoryItem,
   onSelectStudent,
 }: {
   workspace: PortalWorkspaceData;
-  activeHistoryItem: PortalHistoryItem | null;
   onSelectHistoryItem: (item: PortalHistoryItem) => void;
   onSelectStudent: (studentId: string) => void;
 }) {

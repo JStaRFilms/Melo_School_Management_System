@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { UserPlus, Send, Copy, Check } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameTypingStrict, humanNameFinalStrict } from "@/human-name";
+import { humanNameFinalStrict,humanNameTypingStrict } from "@/human-name";
+import { Check,Copy,Send } from "lucide-react";
+import { useState } from "react";
 
 interface ProvisionResult {
   teacherId: string;

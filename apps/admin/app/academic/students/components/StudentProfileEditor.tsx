@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { UserCog, Trash2, CheckCircle2 } from "lucide-react";
+import { useMutation,useQuery } from "convex/react";
+import { CheckCircle2,Trash2,UserCog } from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
 
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import { StudentFamilyPanel } from "./StudentFamilyPanel";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
 import { uploadStudentPhoto } from "./studentPhotoUpload";
-import type { ClassSummary, EnrollmentNotice } from "./types";
+import type { ClassSummary,EnrollmentNotice } from "./types";
 
 interface StudentProfileEditorProps {
   studentId: string | null;
@@ -52,7 +52,7 @@ export function StudentProfileEditor({
   classes,
   onNotice,
   onStudentArchived,
-  variant = "inline",
+
 }: StudentProfileEditorProps) {
   const studentProfile = useQuery(
     "functions/academic/studentEnrollment:getStudentProfile" as never,
@@ -128,15 +128,12 @@ export function StudentProfileEditor({
 
   const handleSave = async () => {
     setIsSaving(true);
-    let uploadedPhoto = false;
     try {
       const uploadedPhotoMetadata = photoFile
         ? await uploadStudentPhoto(photoFile, () =>
             generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
-      uploadedPhoto = Boolean(uploadedPhotoMetadata);
-
       await updateStudent({
         studentId,
         name: displayName,

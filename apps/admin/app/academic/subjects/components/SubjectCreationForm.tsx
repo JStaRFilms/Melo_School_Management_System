@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, BookOpenText } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameTyping, humanNameFinal } from "@/human-name";
+import { humanNameFinal,humanNameTyping } from "@/human-name";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 
 interface SubjectCreationFormProps {
   onCreate: (name: string, code: string) => Promise<void>;

@@ -18,8 +18,8 @@ export default async function RootLayout({
   const initialToken = hasConvexAuthEnv() ? await getToken().catch(() => null) : null;
 
   return (
-    <html lang="en">
-      <body className="bg-slate-50 min-h-screen">
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-slate-50 min-h-screen" suppressHydrationWarning>
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
             {children}
