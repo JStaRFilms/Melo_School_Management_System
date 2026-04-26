@@ -59,10 +59,10 @@ This blueprint is implementation-grade and locked to v1. It is the source of tru
 
 | Route | Contract | Required inputs | Expected result |
 | :--- | :--- | :--- | :--- |
-| `POST /api/ai/lesson-plans/generate` | Generate a lesson-plan draft | School-scoped source material IDs, resolved template key, subject, level, and topic context (either resolved from selected sources or supplied explicitly when using broad planning references) | Creates or updates a draft artifact and records an AI run log. |
+| `POST /api/ai/lesson-plans/generate` | Generate a lesson-plan draft | School-scoped source material IDs, resolved template key, subject, level, and topic context (either resolved from selected sources or supplied explicitly when using broad planning references) | Creates or updates a draft artifact and records an AI run log after generation prechecks and quota checks pass. |
 | `POST /api/ai/student-notes/generate` | Generate a student-note draft | Same grounding inputs plus the target lesson-plan artifact | Creates an editable student-note artifact derived from approved sources. |
 | `POST /api/ai/assignments/generate` | Generate an assignment draft | Grounding sources, template context, and target topic | Creates an editable assignment artifact with a revision snapshot. |
-| `POST /api/ai/question-bank/generate` | Generate a question-bank or CBT draft | Grounding sources, subject/level context, topic context (resolved or explicit), and output constraints | Creates a structured assessment draft and logs the model output. |
+| `POST /api/ai/question-bank/generate` | Generate a question-bank or CBT draft | Grounding sources, subject/level context, topic context (resolved or explicit), and output constraints | Creates a structured assessment draft and logs the model output after generation prechecks and quota checks pass. |
 
 ## Actor Permissions
 
@@ -277,11 +277,12 @@ Additional rules:
 3. Ingestion actions extract text, suggest labels, chunk content, and update search/index status.
 4. Teachers search the library, explicitly choose grounding materials, and open the lesson workspace.
 5. Template resolution uses `subject + level`, then `subject only`, then `level only`, then school default.
-6. The generation route creates a draft artifact using only the selected materials and the resolved template constraints.
-7. Convex stores the current artifact document, source links, revision snapshots, and AI run logs.
-8. Teachers revise the artifact in the single-user rich-text-lite editor and save revision snapshots as needed.
-9. Teachers or admins approve the item, set the final visibility, and attach the content to a `knowledgeTopic` when portal exposure is intended.
-10. The portal topic page loads only approved content that matches the student’s class visibility and the topic attachment.
+6. The generation route validates topic, subject, level, and generation settings before consuming teacher quota.
+7. The generation route creates a draft artifact using only the selected materials and the resolved template constraints.
+8. Convex stores the current artifact document, source links, revision snapshots, and AI run logs.
+9. Teachers revise the artifact in the single-user rich-text-lite editor and save revision snapshots as needed.
+10. Teachers or admins approve the item, set the final visibility, and attach the content to a `knowledgeTopic` when portal exposure is intended.
+11. The portal topic page loads only approved content that matches the student's class visibility and the topic attachment.
 
 ## Portal Exposure Rules
 

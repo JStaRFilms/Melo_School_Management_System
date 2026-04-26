@@ -453,14 +453,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const rateLimit = await client.mutation(
-      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit,
-      {}
-    );
-    if (!rateLimit.allowed) {
-      return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
-    }
-
     const availableProfiles = await client.query(
       api.functions.academic.lessonKnowledgeAssessmentProfiles.listAssessmentGenerationProfiles,
       { includeInactive: false }
@@ -484,6 +476,14 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+      return NextResponse.json(
+        { error: "The selected sources did not resolve a valid subject and level for generation." },
+        { status: 400 }
+      );
+    }
+
     const sourceSelectionSnapshot = buildSourceSelectionSnapshot({
       draftMode,
       outputType,
@@ -492,6 +492,14 @@ export async function POST(request: Request) {
       level: workspace.sourceContext.level,
       topicLabel: effectiveTopicLabel,
     });
+
+    const rateLimit = await client.mutation(
+      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit,
+      {}
+    );
+    if (!rateLimit.allowed) {
+      return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
+    }
 
     await client.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.recordTeacherAssessmentBankAiRun, {
       outputType,
@@ -553,13 +561,6 @@ export async function POST(request: Request) {
       actual: generatedDraft.items.length,
       outputType,
     });
-
-    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
-      return NextResponse.json(
-        { error: "The selected sources did not resolve a valid subject and level for generation." },
-        { status: 400 }
-      );
-    }
 
     const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
     const saveResult = await client.mutation(

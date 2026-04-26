@@ -136,6 +136,9 @@ export async function consumeLessonKnowledgeRateLimit(
     })
   );
 
+  // Precheck every bucket before writing any counters. Convex commits the
+  // mutation transaction as one unit, so the later patches use the same
+  // serialized snapshot while avoiding partial quota consumption.
   for (const state of bucketStates) {
     if (state.existing && now < state.existing.windowExpiresAt && state.existing.count >= state.bucket.limit) {
       return {

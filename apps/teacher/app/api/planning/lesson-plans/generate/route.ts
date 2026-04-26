@@ -345,14 +345,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const rateLimit = await client.mutation(
-      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit,
-      {}
-    );
-    if (!rateLimit.allowed) {
-      return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
-    }
-
     const promptClass = promptClassForOutputType(outputType);
     const effectiveTopicLabel = targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
     if (!effectiveTopicLabel) {
@@ -370,6 +362,21 @@ export async function POST(request: Request) {
       templateId: workspace.template?._id ? String(workspace.template._id) : null,
       templateResolutionPath: workspace.template?.resolutionPath ?? null,
     });
+
+    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+      return NextResponse.json(
+        { error: "The selected sources did not resolve a valid subject and level for generation." },
+        { status: 400 }
+      );
+    }
+
+    const rateLimit = await client.mutation(
+      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit,
+      {}
+    );
+    if (!rateLimit.allowed) {
+      return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
+    }
 
     await client.mutation(api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun, {
       outputType,
@@ -417,13 +424,6 @@ export async function POST(request: Request) {
 
     const documentState = renderGeneratedMarkdown(outputType, generatedObject);
     const plainText = markdownToPlainText(documentState);
-
-    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
-      return NextResponse.json(
-        { error: "The selected sources did not resolve a valid subject and level for generation." },
-        { status: 400 }
-      );
-    }
 
     const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
 
