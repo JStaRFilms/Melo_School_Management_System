@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getUserFacingErrorMessage, parseTeacherLessonPlanSourceIds } from "@school/shared";
@@ -32,6 +32,7 @@ export default function LessonPlansPage() {
   const searchParams = useSearchParams();
   const [outputType, setOutputType] = useState<LessonPlanWorkspaceOutputType>("lesson_plan");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
   const selectedSourceIds = useMemo(
@@ -72,6 +73,12 @@ export default function LessonPlansPage() {
     router.push(href);
   };
 
+  const effectiveTopicLabel = workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+
+  useEffect(() => {
+    setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
+  }, [workspace?.sourceContext.topicLabel, selectedSourceIds, outputType]);
+
   const handleSaveDraft = async (draft: {
     title: string;
     documentState: string;
@@ -79,6 +86,10 @@ export default function LessonPlansPage() {
   }) => {
     if (!workspace?.sourceContext.subjectId || !workspace.sourceContext.level) {
       throw new Error("Select at least one accessible source with a subject and level before saving.");
+    }
+
+    if (!effectiveTopicLabel) {
+      throw new Error("Add a target topic before saving this draft.");
     }
 
     try {
@@ -91,7 +102,7 @@ export default function LessonPlansPage() {
         sourceIds: selectedSourceIds,
         subjectId: workspace.sourceContext.subjectId,
         level: workspace.sourceContext.level,
-        topicLabel: workspace.sourceContext.topicLabel ?? null,
+        topicLabel: effectiveTopicLabel,
         revisionKind: "manual_save",
       } as never)) as LessonPlanSaveResult;
 
@@ -114,6 +125,7 @@ export default function LessonPlansPage() {
         body: JSON.stringify({
           outputType,
           sourceIds: selectedSourceIds,
+          targetTopicLabel: effectiveTopicLabel ?? undefined,
         }),
       });
 
@@ -164,6 +176,21 @@ export default function LessonPlansPage() {
           Back to library
         </Link>
       </div>
+
+      {workspace.sourceContext.topicLabel ? null : (
+        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
+          <input
+            value={targetTopicLabel}
+            onChange={(event) => setTargetTopicLabel(event.target.value)}
+            placeholder="e.g. Fractions: adding unlike denominators"
+            className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-amber-500/20"
+          />
+          <p className="mt-2 text-xs leading-5 text-amber-900/80">
+            Your selected sources are broad planning references, so the workspace will not derive a topic from them. Add a target topic to steer this generation.
+          </p>
+        </div>
+      )}
 
       <LessonPlanWorkspaceScreen
         key={`${outputType}:${selectedSourceIds.join(",")}`}

@@ -608,13 +608,15 @@ async function loadSources(
     };
   });
 
-  const sourceContext = selectedSources[0]
+  const contextSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? selectedSources[0] ?? null;
+  const topicSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? null;
+  const sourceContext = contextSource
     ? {
-        subjectId: selectedSources[0].subjectId,
-        subjectName: selectedSources[0].subjectName,
-        subjectCode: selectedSources[0].subjectCode,
-        level: selectedSources[0].level,
-        topicLabel: selectedSources[0].topicLabel,
+        subjectId: contextSource.subjectId,
+        subjectName: contextSource.subjectName,
+        subjectCode: contextSource.subjectCode,
+        level: contextSource.level,
+        topicLabel: topicSource?.topicLabel ?? null,
       }
     : null;
 

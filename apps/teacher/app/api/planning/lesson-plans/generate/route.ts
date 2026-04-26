@@ -26,6 +26,7 @@ const MAX_GENERATION_SOURCE_COUNT = 12;
 const requestSchema = z.object({
   outputType: z.enum(["lesson_plan", "student_note", "assignment"]),
   sourceIds: z.array(z.string()).max(MAX_GENERATION_SOURCE_COUNT).default([]),
+  targetTopicLabel: z.string().trim().max(160).optional(),
 });
 
 function getConvexUrl() {
@@ -314,6 +315,7 @@ export async function POST(request: Request) {
   }
 
   const { outputType } = parsedBody.data;
+  const targetTopicLabel = parsedBody.data.targetTopicLabel || null;
   const sourceIds = normalizeSourceIds(parsedBody.data.sourceIds);
   if (sourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
     return NextResponse.json(
@@ -352,12 +354,19 @@ export async function POST(request: Request) {
     }
 
     const promptClass = promptClassForOutputType(outputType);
+    const effectiveTopicLabel = targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
+    if (!effectiveTopicLabel) {
+      return NextResponse.json(
+        { error: "Add a target topic before generating from broad planning sources." },
+        { status: 400 }
+      );
+    }
     const sourceSelectionSnapshot = buildSourceSelectionSnapshot({
       outputType,
       sourceIds,
       subjectId: workspace.sourceContext.subjectId ? String(workspace.sourceContext.subjectId) : null,
       level: workspace.sourceContext.level,
-      topicLabel: workspace.sourceContext.topicLabel,
+      topicLabel: effectiveTopicLabel,
       templateId: workspace.template?._id ? String(workspace.template._id) : null,
       templateResolutionPath: workspace.template?.resolutionPath ?? null,
     });
@@ -380,7 +389,7 @@ export async function POST(request: Request) {
       schoolName: workspace.schoolName ?? undefined,
       subject: workspace.sourceContext.subjectName ?? undefined,
       level: workspace.sourceContext.level ?? undefined,
-      topic: workspace.sourceContext.topicLabel ?? undefined,
+      topic: effectiveTopicLabel ?? undefined,
       templateName: workspace.template?.title ?? undefined,
       sourceMaterials,
       constraints: workspace.template
@@ -429,7 +438,7 @@ export async function POST(request: Request) {
         sourceIds: sourceIds as never,
         subjectId: workspace.sourceContext.subjectId,
         level: workspace.sourceContext.level,
-        topicLabel: workspace.sourceContext.topicLabel ?? null,
+        topicLabel: effectiveTopicLabel,
         revisionKind: "generated",
       }
     );

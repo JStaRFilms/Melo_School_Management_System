@@ -96,7 +96,7 @@ The new baseline is:
 3. `T07-T09` may overlap once the schema and ACL direction is stable.
 4. `T10-T13` start only after the ingestion and template layers are in place.
 5. `T16` depends on the assessment authoring baseline from `T11` and the admin template/settings lane from `T08`.
-6. `T14`, `T16`, `T17`, `T18`, and final handoff task `T15` are complete.
+6. `T14`, `T16`, `T17`, `T18`, final handoff task `T15`, and the post-handoff follow-up `T19` are complete.
 
 ## Parallel Opportunities
 
@@ -104,7 +104,8 @@ The new baseline is:
 - `T07-T09` can overlap after `T05`
 - `T10-T13` can partially overlap after `T06` and `T08`
 - `T16` built on the assessment authoring baseline from `T11`
-- `T15` stayed last as the verification/docs/handoff close-out task and is now complete
+- `T15` stayed last as the verification/docs/handoff close-out task
+- `T19` landed afterward as a bounded post-handoff follow-up for broad planning sources/curriculum references
 
 ## Task Table
 
@@ -128,6 +129,7 @@ The new baseline is:
 | `T16` | Completed | D | School-scoped assessment generation profiles and teacher question-mix overrides shipped into the question-bank authoring flow, with persistence in drafts and AI run logs plus server-side locked-profile enforcement |
 | `T17` | Completed | E | Material viewing/source proof shipped across admin, teacher, and portal surfaces, including same-origin original-file access and extracted-text proof previews |
 | `T18` | Completed | E | Teacher topic governance and creation shipped in the planning library so teachers can create/attach real topics within bounded classroom scope |
+| `T19` | Completed | D | Broad planning sources/curriculum references now use existing `imported_curriculum` semantics, avoid forced topic derivation, and allow teacher-provided target topics during lesson-plan/question-bank generation |
 
 ## Exit Criteria
 
@@ -146,3 +148,4 @@ The new baseline is:
 - The curriculum sample folder is spelled `School curriculim example` in the repo and task files must reference that exact path.
 - Convex deploy succeeded during T15, but Convex reported AI files are out of date; run `npx convex ai-files update` in a separate maintenance task if desired.
 - Browser/E2E, live AI generation, and deployed upload/PDF extraction smoke checks were not run during T15 and should remain explicit until covered by a seeded QA pass.
+- T19 intentionally stayed narrow: it supports broad planning references and target-topic overrides, but does not yet automate curriculum-to-topic breakdown.

@@ -424,6 +424,7 @@ export default function TeacherLibraryPage() {
   const [uploadSubjectId, setUploadSubjectId] = useState("");
   const [uploadLevel, setUploadLevel] = useState("");
   const [uploadTopicLabel, setUploadTopicLabel] = useState("");
+  const [isCurriculumReference, setIsCurriculumReference] = useState(false);
   const [uploadIntent, setUploadIntent] = useState<UploadIntent>("private_draft");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -654,6 +655,7 @@ export default function TeacherLibraryPage() {
     setUploadTitle("");
     setUploadDescription("");
     setUploadTopicLabel("");
+    setIsCurriculumReference(false);
     setUploadIntent("private_draft");
     setUploadFile(null);
     setUploading(false);
@@ -701,7 +703,7 @@ export default function TeacherLibraryPage() {
       }
 
       const title = uploadTitle.trim() || normalizeFileTitle(uploadFile.name);
-      const topicLabel = uploadTopicLabel.trim() || title;
+      const topicLabel = uploadTopicLabel.trim() || (isCurriculumReference ? "Curriculum / cross-topic planning reference" : title);
       const description = uploadDescription.trim();
       const level = uploadLevel.trim();
 
@@ -727,6 +729,7 @@ export default function TeacherLibraryPage() {
           subjectId: subject.id as never,
           level,
           topicLabel,
+          sourceType: isCurriculumReference ? "imported_curriculum" : "file_upload",
           uploadIntent,
         } as never)) as {
           materialId: string;
@@ -776,6 +779,7 @@ export default function TeacherLibraryPage() {
       uploadFile,
       uploadIntent,
       uploadLevel,
+      isCurriculumReference,
       uploadSubjectId,
       uploadTitle,
       uploadTopicLabel,
@@ -1221,11 +1225,25 @@ export default function TeacherLibraryPage() {
                   onChange={setUploadTitle}
                 />
                 <TextField
-                  label="Topic label (free text)"
+                  label={isCurriculumReference ? "Planning reference label (optional)" : "Topic label (free text)"}
                   value={uploadTopicLabel}
-                  placeholder="Community Safety"
+                  placeholder={isCurriculumReference ? "Year 7 Mathematics Curriculum" : "Community Safety"}
                   onChange={setUploadTopicLabel}
                 />
+                <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  <input
+                    type="checkbox"
+                    checked={isCurriculumReference}
+                    onChange={(event) => setIsCurriculumReference(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                  />
+                  <span>
+                    <span className="block font-bold">Curriculum / cross-topic planning reference</span>
+                    <span className="mt-1 block text-xs leading-5 text-amber-900/80">
+                      Store this as a planning-only curriculum source that can be reused across multiple topics. It does not need a real topic attachment.
+                    </span>
+                  </span>
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <SelectField
                     label="Subject"
@@ -1723,10 +1741,12 @@ function LibraryMaterialCard({
                 </p>
                 <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-500">
-                    Free-text label: {material.topicLabel}
+                    {material.sourceType === "imported_curriculum" ? "Planning label" : "Free-text label"}: {material.topicLabel}
                   </span>
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-500">
-                    Real topic: {material.topicId ? material.topicTitle ?? "Attached topic" : "Not attached yet"}
+                    {material.sourceType === "imported_curriculum"
+                      ? "Real topic: not required"
+                      : `Real topic: ${material.topicId ? material.topicTitle ?? "Attached topic" : "Not attached yet"}`}
                   </span>
                 </div>
               </div>
@@ -1825,38 +1845,49 @@ function LibraryMaterialCard({
               />
             </div>
 
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
-              <div className="flex flex-col gap-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                  Real topic attachment
+            {material.sourceType === "imported_curriculum" ? (
+              <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-700">
+                  Cross-topic planning reference
                 </p>
-                <p className="text-xs leading-5 text-slate-500">
-                  The free-text label above does not create a portal topic. Pick an existing topic or create one from this material when you are ready.
+                <p className="mt-2 text-xs leading-5 text-amber-900/80">
+                  This material is stored as a broad planning source. It does not need a real topic attachment and can be reused later with a target topic inside the lesson-plan or question-bank workspace.
                 </p>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <SelectField
-                  label="Attached topic"
-                  value={draft.topicId}
-                  onChange={(value) => onChangeDraft({ ...draft, topicId: value })}
-                  options={topicOptions}
-                  placeholder="No real topic attached"
-                  disabled={topicOptions.length === 0}
-                />
-                <button
-                  type="button"
-                  onClick={onCreateTopicAndAttach}
-                  disabled={isBusy || !draft.topicLabel.trim() || !draft.subjectId || !draft.level.trim()}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-300"
-                >
-                  <BookOpenText className="h-4 w-4" />
-                  Create topic & attach
-                </button>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                    Real topic attachment
+                  </p>
+                  <p className="text-xs leading-5 text-slate-500">
+                    The free-text label above does not create a portal topic. Pick an existing topic or create one from this material when you are ready.
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <SelectField
+                    label="Attached topic"
+                    value={draft.topicId}
+                    onChange={(value) => onChangeDraft({ ...draft, topicId: value })}
+                    options={topicOptions}
+                    placeholder="No real topic attached"
+                    disabled={topicOptions.length === 0}
+                  />
+                  <button
+                    type="button"
+                    onClick={onCreateTopicAndAttach}
+                    disabled={isBusy || !draft.topicLabel.trim() || !draft.subjectId || !draft.level.trim()}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-300"
+                  >
+                    <BookOpenText className="h-4 w-4" />
+                    Create topic & attach
+                  </button>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  Attachments stay bounded to the material&apos;s subject and level so the approval flow can keep portal exposure safe.
+                </p>
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Attachments stay bounded to the material&apos;s subject and level so the approval flow can keep portal exposure safe.
-              </p>
-            </div>
+            )}
             <label className="mt-3 block">
               <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
                 Description

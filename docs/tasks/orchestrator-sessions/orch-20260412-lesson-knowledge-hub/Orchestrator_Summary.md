@@ -21,8 +21,8 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 - Pending task files: `0`
 - In-progress task files: `0`
-- Completed task files: `18`
-- Completed result notes: `18`
+- Completed task files: `19`
+- Completed result notes: `19`
 
 ## Linked Blueprint
 
@@ -38,4 +38,4 @@ This session is the dedicated Takomi backlog for the Lesson Knowledge Hub v1 dom
 
 ## Final Handoff
 
-The Lesson Knowledge Hub v1 Takomi session is closed. See `Final_Handoff_Summary.md` and `completed/T15_verification_docs_and_handoff.result.md` for exact verification results, skipped checks, and deferred gaps.
+The Lesson Knowledge Hub v1 Takomi session is closed. The final follow-up slice also shipped `T19` for broad planning sources/curriculum references. See `Final_Handoff_Summary.md`, `completed/T15_verification_docs_and_handoff.result.md`, and `completed/T19_broad_planning_sources.result.md` for exact verification results and follow-up details.

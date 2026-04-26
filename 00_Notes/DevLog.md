@@ -96,3 +96,5 @@ Next batch:
 
 - Teachers page library and all its subpages, including the video page.
 - Portal: the entire knowledge system at the bottom.
+
+- [ ] we need to upgrade the PDF parser cuz rn it's too mid

@@ -9,6 +9,7 @@ import {
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_PDF_PARSE_TIMEOUT_MS = 20_000;
+const DEFAULT_PDF_PAGE_TEXT_TIMEOUT_MS = 3_000;
 const DEFAULT_GEMINI_TIMEOUT_MS = 20_000;
 
 type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -200,11 +201,16 @@ function withTimeout<T>(
 async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfParserOutcome> {
   const { getDocument } = await getPdfJsModule();
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const startedAt = Date.now();
+
+  function remainingTimeoutMs() {
+    return Math.max(1, timeoutMs - (Date.now() - startedAt));
+  }
 
   try {
     const documentProxy = await withTimeout(
       loadingTask.promise,
-      timeoutMs,
+      remainingTimeoutMs(),
       () => {
         void loadingTask.destroy();
       },
@@ -221,11 +227,30 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
 
     const pageTexts: string[] = [];
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
-      const page = await documentProxy.getPage(pageNumber);
-      const textContent = await page.getTextContent();
-      const pageText = getTextFromContent(textContent);
-      if (pageText) {
-        pageTexts.push(pageText);
+      if (remainingTimeoutMs() <= 1) {
+        break;
+      }
+
+      try {
+        const page = await withTimeout(
+          documentProxy.getPage(pageNumber),
+          Math.min(DEFAULT_PDF_PAGE_TEXT_TIMEOUT_MS, remainingTimeoutMs()),
+          () => undefined,
+          `PDF page ${pageNumber} loading timed out`
+        );
+        const textContent = await withTimeout(
+          page.getTextContent(),
+          Math.min(DEFAULT_PDF_PAGE_TEXT_TIMEOUT_MS, remainingTimeoutMs()),
+          () => undefined,
+          `PDF page ${pageNumber} text extraction timed out`
+        );
+        const pageText = getTextFromContent(textContent);
+        if (pageText) {
+          pageTexts.push(pageText);
+        }
+      } catch {
+        // Mixed PDFs can include image-heavy/problematic pages. Keep any native text
+        // extracted from other pages instead of escalating the whole PDF to OCR.
       }
 
       const currentQuality = evaluateTextQuality(pageTexts.join("\n\n"));

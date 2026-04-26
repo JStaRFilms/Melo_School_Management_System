@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -40,6 +40,7 @@ export default function QuestionBankPage() {
   const searchParams = useSearchParams();
   const [draftMode, setDraftMode] = useState<AssessmentDraftMode>(parseDraftMode(searchParams.get("mode")));
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
   const selectedSourceIds = useMemo(
@@ -90,6 +91,12 @@ export default function QuestionBankPage() {
     router.push(href);
   };
 
+  const effectiveTopicLabel = workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+
+  useEffect(() => {
+    setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
+  }, [workspace?.sourceContext.topicLabel, selectedSourceIds, draftMode]);
+
   const handleSaveDraft = async (draft: {
     effectiveGenerationSettings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>;
     title: string;
@@ -108,6 +115,10 @@ export default function QuestionBankPage() {
       throw new Error("Select at least one accessible source with a subject and level before saving.");
     }
 
+    if (!effectiveTopicLabel) {
+      throw new Error("Add a target topic before saving this draft.");
+    }
+
     try {
       const result = (await saveDraft({
         bankId: workspace.draft.bankId ?? null,
@@ -119,7 +130,7 @@ export default function QuestionBankPage() {
         effectiveGenerationSettings: draft.effectiveGenerationSettings,
         subjectId: workspace.sourceContext.subjectId,
         level: workspace.sourceContext.level,
-        topicLabel: workspace.sourceContext.topicLabel ?? null,
+        topicLabel: effectiveTopicLabel,
         items: draft.items,
       } as never)) as AssessmentBankSaveResult;
 
@@ -144,6 +155,7 @@ export default function QuestionBankPage() {
         body: JSON.stringify({
           draftMode,
           sourceIds: selectedSourceIds,
+          targetTopicLabel: effectiveTopicLabel ?? undefined,
           effectiveGenerationSettings,
         }),
       });
@@ -193,6 +205,21 @@ export default function QuestionBankPage() {
           Back to library
         </Link>
       </div>
+
+      {workspace.sourceContext.topicLabel ? null : (
+        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
+          <input
+            value={targetTopicLabel}
+            onChange={(event) => setTargetTopicLabel(event.target.value)}
+            placeholder="e.g. Photosynthesis and food chains"
+            className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-amber-500/20"
+          />
+          <p className="mt-2 text-xs leading-5 text-amber-900/80">
+            Your selected sources are broad planning references, so the workspace will not derive a topic from them. Add a target topic to steer this question-bank generation.
+          </p>
+        </div>
+      )}
 
       <QuestionBankWorkspaceScreen
         key={`${draftMode}:${selectedSourceIds.join(",")}`}

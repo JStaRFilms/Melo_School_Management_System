@@ -51,6 +51,7 @@ const effectiveGenerationSettingsSchema = z.object({
 const requestSchema = z.object({
   draftMode: z.enum(["practice_quiz", "class_test", "exam_draft"]),
   sourceIds: z.array(z.string()).max(MAX_GENERATION_SOURCE_COUNT).default([]),
+  targetTopicLabel: z.string().trim().max(160).optional(),
   effectiveGenerationSettings: effectiveGenerationSettingsSchema.optional(),
 });
 
@@ -420,6 +421,7 @@ export async function POST(request: Request) {
   }
 
   const draftMode = parsedBody.data.draftMode;
+  const targetTopicLabel = parsedBody.data.targetTopicLabel || null;
   const requestedGenerationSettings = parsedBody.data.effectiveGenerationSettings;
   const sourceIds = normalizeAssessmentSourceIds(parsedBody.data.sourceIds);
   if (sourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
@@ -475,13 +477,20 @@ export async function POST(request: Request) {
     });
 
     const promptClass = promptClassForDraftMode(draftMode, effectiveGenerationSettings.questionStyle);
+    const effectiveTopicLabel = targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
+    if (!effectiveTopicLabel) {
+      return NextResponse.json(
+        { error: "Add a target topic before generating from broad planning sources." },
+        { status: 400 }
+      );
+    }
     const sourceSelectionSnapshot = buildSourceSelectionSnapshot({
       draftMode,
       outputType,
       sourceIds,
       subjectId: workspace.sourceContext.subjectId ? String(workspace.sourceContext.subjectId) : null,
       level: workspace.sourceContext.level,
-      topicLabel: workspace.sourceContext.topicLabel,
+      topicLabel: effectiveTopicLabel,
     });
 
     await client.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.recordTeacherAssessmentBankAiRun, {
@@ -502,7 +511,7 @@ export async function POST(request: Request) {
       schoolName: workspace.schoolName ?? undefined,
       subject: workspace.sourceContext.subjectName ?? undefined,
       level: workspace.sourceContext.level ?? undefined,
-      topic: workspace.sourceContext.topicLabel ?? undefined,
+      topic: effectiveTopicLabel ?? undefined,
       sourceMaterials,
       constraints: [
         ...generationSettingConstraints(effectiveGenerationSettings),
@@ -565,7 +574,7 @@ export async function POST(request: Request) {
         effectiveGenerationSettings: effectiveGenerationSettings as never,
         subjectId: workspace.sourceContext.subjectId,
         level: workspace.sourceContext.level,
-        topicLabel: workspace.sourceContext.topicLabel ?? null,
+        topicLabel: effectiveTopicLabel,
         items: generatedDraft.items.map((item) => ({
           questionType: item.questionType,
           difficulty: item.difficulty,

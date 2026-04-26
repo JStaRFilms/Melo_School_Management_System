@@ -154,7 +154,7 @@ function buildKnowledgeMaterialRecord(args: {
   actorUserId: Id<"users">;
   actorRole: "teacher" | "admin";
   schoolId: Id<"schools">;
-  sourceType: "file_upload" | "youtube_link";
+  sourceType: "file_upload" | "youtube_link" | "imported_curriculum";
   title: string;
   description?: string;
   subjectId: Id<"subjects">;
@@ -332,6 +332,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
+    sourceType: v.optional(v.union(v.literal("file_upload"), v.literal("imported_curriculum"))),
     uploadIntent: v.optional(
       v.union(v.literal("private_draft"), v.literal("request_review"), v.literal("staff_shared"))
     ),
@@ -373,7 +374,8 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
     });
 
     const title = normalizeRequiredText(args.title, "Title");
-    const topicLabel = normalizeRequiredText(args.topicLabel, "Topic label");
+    const sourceType = args.sourceType ?? "file_upload";
+    const topicLabel = normalizeRequiredText(args.topicLabel, sourceType === "imported_curriculum" ? "Planning reference label" : "Topic label");
     const description = normalizeOptionalText(args.description);
     const level = normalizeRequiredText(args.level, "Level");
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
@@ -399,7 +401,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       actorUserId: userId,
       actorRole,
       schoolId,
-      sourceType: "file_upload",
+      sourceType,
       title,
       ...(description ? { description } : {}),
       subjectId: args.subjectId,
@@ -476,8 +478,8 @@ export const finalizeKnowledgeMaterialUpload = mutation({
       schoolId,
     });
 
-    if (material.sourceType !== "file_upload") {
-      throw new ConvexError("Only file uploads can be finalized here");
+    if (material.sourceType !== "file_upload" && material.sourceType !== "imported_curriculum") {
+      throw new ConvexError("Only uploaded files can be finalized here");
     }
 
     if (material.storageId && String(material.storageId) !== String(args.storageId)) {

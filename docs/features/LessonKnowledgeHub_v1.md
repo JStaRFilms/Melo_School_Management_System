@@ -44,7 +44,7 @@ This blueprint is implementation-grade and locked to v1. It is the source of tru
 
 | Route | Responsibility | Allowed actions | Notes |
 | :--- | :--- | :--- | :--- |
-| `/planning/library` | Teacher knowledge workspace | Search school materials, upload private source material, label resources, publish approved resources to staff-sharing, and choose grounding sources | Teacher-only. Private uploads remain private by default. |
+| `/planning/library` | Teacher knowledge workspace | Search school materials, upload private source material, label resources, publish approved resources to staff-sharing, and choose grounding sources | Teacher-only. Private uploads remain private by default. Broad planning references such as curriculum PDFs may be uploaded without a real topic attachment and reused across multiple topic generations. |
 | `/planning/lesson-plans` | Single-user lesson editor | Create, edit, save, and revise lesson plans, student notes, and assignments from selected sources | This is the first editor in v1 and it must remain single-user and rich-text-lite. |
 | `/planning/question-bank` | Assessment draft workspace | Create and edit question-bank drafts and CBT drafts from approved source materials | Teacher-only. No live CBT engine is introduced here. |
 | `/planning/videos` | YouTube submission queue | Submit YouTube URLs, track approval state, and attach approved links to topic records | External URLs only. No video storage or transcoding. |
@@ -59,10 +59,10 @@ This blueprint is implementation-grade and locked to v1. It is the source of tru
 
 | Route | Contract | Required inputs | Expected result |
 | :--- | :--- | :--- | :--- |
-| `POST /api/ai/lesson-plans/generate` | Generate a lesson-plan draft | School-scoped source material IDs, resolved template key, subject, level, topic context | Creates or updates a draft artifact and records an AI run log. |
+| `POST /api/ai/lesson-plans/generate` | Generate a lesson-plan draft | School-scoped source material IDs, resolved template key, subject, level, and topic context (either resolved from selected sources or supplied explicitly when using broad planning references) | Creates or updates a draft artifact and records an AI run log. |
 | `POST /api/ai/student-notes/generate` | Generate a student-note draft | Same grounding inputs plus the target lesson-plan artifact | Creates an editable student-note artifact derived from approved sources. |
 | `POST /api/ai/assignments/generate` | Generate an assignment draft | Grounding sources, template context, and target topic | Creates an editable assignment artifact with a revision snapshot. |
-| `POST /api/ai/question-bank/generate` | Generate a question-bank or CBT draft | Grounding sources, subject/level context, and output constraints | Creates a structured assessment draft and logs the model output. |
+| `POST /api/ai/question-bank/generate` | Generate a question-bank or CBT draft | Grounding sources, subject/level context, topic context (resolved or explicit), and output constraints | Creates a structured assessment draft and logs the model output. |
 
 ## Actor Permissions
 
