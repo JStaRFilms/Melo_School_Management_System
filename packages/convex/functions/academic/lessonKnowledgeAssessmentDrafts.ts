@@ -807,13 +807,32 @@ async function findMatchingAssessmentBank(args: {
     .filter((bank) => bank.outputType === args.outputType)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
+  const requestedSnapshot = parseSourceSelectionSnapshot(args.sourceSelectionSnapshot);
+  const requestedSourceIds = requestedSnapshot?.sourceIds ?? [];
   const exactMatch = sameContext.find((bank) => {
     const bankMode = bank.draftMode ?? null;
     const bankSnapshot = bank.sourceSelectionSnapshot ?? null;
     return bankMode === (args.draftMode ?? null) && bankSnapshot === args.sourceSelectionSnapshot;
   });
 
-  return exactMatch ?? null;
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return sameContext.find((bank) => {
+    const bankMode = bank.draftMode ?? null;
+    if (bankMode !== (args.draftMode ?? null)) {
+      return false;
+    }
+
+    const bankSnapshot = parseSourceSelectionSnapshot(bank.sourceSelectionSnapshot ?? null);
+    const bankSourceIds = bankSnapshot?.sourceIds ?? [];
+    return (
+      requestedSourceIds.length > 0 &&
+      bankSourceIds.length === requestedSourceIds.length &&
+      bankSourceIds.every((sourceId, index) => sourceId === requestedSourceIds[index])
+    );
+  }) ?? null;
 }
 
 async function syncAssessmentBankItems(args: {
