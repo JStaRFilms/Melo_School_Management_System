@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -85,13 +85,16 @@ export default function QuestionBankPage() {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   };
 
-  const updateDraftMode = (nextMode: AssessmentDraftMode) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("mode", nextMode);
-    const nextQuery = params.toString();
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-    setDraftMode(nextMode);
-  };
+  const updateDraftMode = useCallback(
+    (nextMode: AssessmentDraftMode) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("mode", nextMode);
+      const nextQuery = params.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+      setDraftMode(nextMode);
+    },
+    [pathname, router, searchParams]
+  );
 
   const handleRemoveSource = (sourceId: string) => {
     updateSelectedSourceIds(effectiveSourceIds.filter((id) => id !== sourceId));
@@ -117,7 +120,7 @@ export default function QuestionBankPage() {
     if (planningContext?.kind === "exam_scope" && draftMode !== "exam_draft") {
       updateDraftMode("exam_draft");
     }
-  }, [draftMode, planningContext]);
+  }, [draftMode, planningContext, updateDraftMode]);
 
   useEffect(() => {
     setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");

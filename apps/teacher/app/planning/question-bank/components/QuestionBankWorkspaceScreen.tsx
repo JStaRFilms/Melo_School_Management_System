@@ -452,7 +452,7 @@ export function QuestionBankWorkspaceScreen({
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
       }
     },
-    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
   useEffect(() => {

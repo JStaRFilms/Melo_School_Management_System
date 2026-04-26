@@ -555,6 +555,17 @@ export default function TeacherLibraryPage() {
     needsAttention: 0,
   };
   const readySubjects = useMemo(() => subjects ?? [], [subjects]);
+
+  useEffect(() => {
+    if (!attachPlanningContext) {
+      return;
+    }
+    setUploadSubjectId((current) => current || attachPlanningContext.subjectId);
+    setUploadLevel((current) => current || attachPlanningContext.level);
+    if (attachPlanningContext.kind === "exam_scope") {
+      setIsCurriculumReference(true);
+    }
+  }, [attachPlanningContext]);
   const materialMap = useMemo(() => new Map(materials.map((material) => [material._id, material])), [materials]);
   const selectedMaterials = useMemo(
     () => selectedSourceIds.map((materialId) => materialMap.get(materialId)).filter(Boolean) as TeacherLibraryMaterial[],
@@ -642,11 +653,8 @@ export default function TeacherLibraryPage() {
     const derived = normalizeFileTitle(uploadFile.name);
     if (derived) {
       setUploadTitle(derived);
-      if (!uploadTopicLabel) {
-        setUploadTopicLabel(derived);
-      }
     }
-  }, [uploadFile, uploadTitle, uploadTopicLabel]);
+  }, [uploadFile, uploadTitle]);
 
   const updateSelectedSourceIds = useCallback(
     (nextIds: string[]) => {
@@ -683,10 +691,7 @@ export default function TeacherLibraryPage() {
     if (derived && !uploadTitle) {
       setUploadTitle(derived);
     }
-    if (derived && !uploadTopicLabel) {
-      setUploadTopicLabel(derived);
-    }
-  }, [uploadTitle, uploadTopicLabel]);
+  }, [uploadTitle]);
 
   const clearUploadForm = useCallback(() => {
     setUploadTitle("");
@@ -748,10 +753,6 @@ export default function TeacherLibraryPage() {
         setNotice({ tone: "error", message: "Add a title for the material." });
         return;
       }
-      if (!topicLabel) {
-        setNotice({ tone: "error", message: "Add a topic label for the material." });
-        return;
-      }
       if (!level) {
         setNotice({ tone: "error", message: "Choose a level before uploading." });
         return;
@@ -793,9 +794,15 @@ export default function TeacherLibraryPage() {
           storageId: uploadPayload.storageId as never,
         } as never);
 
+        if (safeReturnTo && !selectedSourceIds.includes(uploadShell.materialId)) {
+          updateSelectedSourceIds([...selectedSourceIds, uploadShell.materialId]);
+        }
+
         setNotice({
           tone: "success",
-          message: uploadIntentSuccessMessage(uploadIntent),
+          message: safeReturnTo
+            ? `${uploadIntentSuccessMessage(uploadIntent)} It has also been selected for this workspace.`
+            : uploadIntentSuccessMessage(uploadIntent),
         });
         clearUploadForm();
       } catch (error) {
@@ -812,6 +819,9 @@ export default function TeacherLibraryPage() {
       finalizeUpload,
       readySubjects,
       requestUploadUrl,
+      safeReturnTo,
+      selectedSourceIds,
+      updateSelectedSourceIds,
       uploadDescription,
       uploadFile,
       uploadIntent,
@@ -908,7 +918,7 @@ export default function TeacherLibraryPage() {
     } finally {
       setSavingMaterialId(null);
     }
-  }, [createTopic, draft]);
+  }, [attachPlanningContext, createTopic, draft]);
 
   const publishToStaff = useCallback(
     async (material: TeacherLibraryMaterial) => {
@@ -1315,9 +1325,9 @@ export default function TeacherLibraryPage() {
                   onChange={setUploadTitle}
                 />
                 <TextField
-                  label={isCurriculumReference ? "Planning reference label (optional)" : "Topic label (free text)"}
+                  label={isCurriculumReference ? "Planning reference label (optional)" : "Topic label (optional)"}
                   value={uploadTopicLabel}
-                  placeholder={isCurriculumReference ? "Year 7 Mathematics Curriculum" : "Community Safety"}
+                  placeholder={isCurriculumReference ? "Optional: Year 7 Mathematics Curriculum" : "Optional: Community Safety"}
                   onChange={setUploadTopicLabel}
                 />
                 <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -1357,7 +1367,7 @@ export default function TeacherLibraryPage() {
                   options={uploadIntentOptions}
                 />
                 <p className="text-xs leading-5 text-slate-500">
-                  Private draft is the safe default. Request staff review keeps the file private but marked for review. The topic label is only a label here; attach a real topic from the material editor when needed. {isAdmin ? "Admins can also start a file as staff shared." : ""}
+                  Private draft is the safe default. Request staff review keeps the file private but marked for review. Title and topic label can be left blank at first: the library will use the file name and a safe planning-reference label. Attach a real topic from the material editor only when the source truly belongs to one topic. {isAdmin ? "Admins can also start a file as staff shared." : ""}
                 </p>
                 <label className="block">
                   <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">

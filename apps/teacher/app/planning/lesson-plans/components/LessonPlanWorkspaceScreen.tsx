@@ -271,7 +271,7 @@ export function LessonPlanWorkspaceScreen({
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
       }
     },
-    [canAutosave, documentState, onSaveDraft, plainText, pushNotice, title, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    [canAutosave, documentState, onSaveDraft, plainText, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
   useEffect(() => {

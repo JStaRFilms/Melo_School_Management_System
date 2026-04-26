@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery } from "convex/react";
-import { BookOpen, ClipboardList, FileText, FolderOpen, GraduationCap } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { AlertTriangle, BookOpen, CheckCircle2, ClipboardList, FileText, FolderOpen, GraduationCap, Plus, Search } from "lucide-react";
 import { buildTeacherPlanningWorkspaceHref } from "@school/shared";
 
 type ClassOption = {
@@ -105,6 +105,121 @@ function SelectField({
   );
 }
 
+function normalizeTopicTitle(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function topicSimilarityWarning(input: string, topics: TopicOption[]) {
+  const normalizedInput = normalizeTopicTitle(input).toLowerCase();
+  if (!normalizedInput) {
+    return null;
+  }
+
+  const closeTopic = topics.find((topic) => {
+    const title = topic.title.trim().toLowerCase();
+    return title !== normalizedInput && (title.includes(normalizedInput) || normalizedInput.includes(title));
+  });
+
+  return closeTopic ?? null;
+}
+
+function CreatableTopicField({
+  value,
+  inputValue,
+  topics,
+  disabled,
+  isCreating,
+  onInputChange,
+  onSelectTopic,
+  onCreateTopic,
+}: {
+  value: string;
+  inputValue: string;
+  topics: TopicOption[];
+  disabled?: boolean;
+  isCreating?: boolean;
+  onInputChange: (value: string) => void;
+  onSelectTopic: (topic: TopicOption) => void;
+  onCreateTopic: () => void;
+}) {
+  const normalizedInput = normalizeTopicTitle(inputValue);
+  const exactMatch = topics.find((topic) => topic.title.trim().toLowerCase() === normalizedInput.toLowerCase());
+  const closeMatch = exactMatch ? null : topicSimilarityWarning(inputValue, topics);
+  const visibleTopics = topics
+    .filter((topic) => !normalizedInput || topic.title.toLowerCase().includes(normalizedInput.toLowerCase()))
+    .slice(0, 8);
+  const canCreate = Boolean(normalizedInput && !exactMatch && !disabled);
+
+  return (
+    <div className="block md:col-span-2">
+      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+        Topic
+      </span>
+      <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-950/5">
+        <div className="flex items-center gap-2 px-2">
+          <Search className="h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(event) => onInputChange(event.target.value)}
+            disabled={disabled}
+            placeholder={disabled ? "Choose class, term, and subject first" : "Type a topic or choose an existing one"}
+            className="h-10 min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+          />
+          {value ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              selected
+            </span>
+          ) : null}
+        </div>
+
+        {closeMatch ? (
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Similar topic found: <button type="button" onClick={() => onSelectTopic(closeMatch)} className="font-black underline">{closeMatch.title}</button>. Select it if that is what you meant, or create a new topic if this is genuinely different.
+            </span>
+          </div>
+        ) : null}
+
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {visibleTopics.map((topic) => (
+            <button
+              key={topic._id}
+              type="button"
+              onClick={() => onSelectTopic(topic)}
+              className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold transition ${value === topic._id ? "border-slate-900 bg-slate-950 text-white" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"}`}
+            >
+              {topic.title}
+            </button>
+          ))}
+          {!disabled && topics.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+              No topics yet for this subject/term. Type one and create it.
+            </div>
+          ) : null}
+        </div>
+
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={onCreateTopic}
+            disabled={isCreating}
+            className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-300"
+          >
+            <Plus className="h-4 w-4" />
+            {isCreating ? "Creating topic..." : `Create “${normalizedInput}”`}
+          </button>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        Topics are no longer library-only. Type a new topic here, select an existing close match, then open the workspace from that teaching context.
+      </p>
+    </div>
+  );
+}
+
 export default function PlanningIndexPage() {
   const classes = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
@@ -117,6 +232,9 @@ export default function PlanningIndexPage() {
   const [topicTermId, setTopicTermId] = useState("");
   const [topicSubjectId, setTopicSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
+  const [topicInput, setTopicInput] = useState("");
+  const [creatingTopic, setCreatingTopic] = useState(false);
+  const [topicNotice, setTopicNotice] = useState<string | null>(null);
 
   const [examClassId, setExamClassId] = useState("");
   const [examTermId, setExamTermId] = useState("");
@@ -150,6 +268,9 @@ export default function PlanningIndexPage() {
       ? ({ subjectId: topicSubjectId, level: topicLevel, termId: topicTermId, limit: 80 } as never)
       : ("skip" as never)
   ) as TopicOption[] | undefined;
+  const createTopic = useMutation(
+    "functions/academic/lessonKnowledgeTeacher:createTeacherKnowledgeTopic" as never
+  );
   const examTopics = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
     examSubjectId && examLevel && examTermId
@@ -178,6 +299,8 @@ export default function PlanningIndexPage() {
   useEffect(() => {
     if (topicSubjects && !topicSubjects.some((subject) => subject.id === topicSubjectId)) {
       setTopicSubjectId(topicSubjects[0]?.id ?? "");
+      setTopicId("");
+      setTopicInput("");
     }
   }, [topicSubjectId, topicSubjects]);
 
@@ -188,8 +311,8 @@ export default function PlanningIndexPage() {
   }, [examSubjectId, examSubjects]);
 
   useEffect(() => {
-    if (topicOptions && !topicOptions.some((topic) => topic._id === topicId)) {
-      setTopicId(topicOptions[0]?._id ?? "");
+    if (topicOptions && topicId && !topicOptions.some((topic) => topic._id === topicId)) {
+      setTopicId("");
     }
   }, [topicId, topicOptions]);
 
@@ -222,10 +345,46 @@ export default function PlanningIndexPage() {
     () => (examSubjects ?? []).map((item) => ({ value: item.id, label: item.name })),
     [examSubjects]
   );
-  const topicPickerOptions = useMemo(
-    () => (topicOptions ?? []).map((item) => ({ value: item._id, label: item.title })),
-    [topicOptions]
-  );
+  const handleTopicInputChange = (nextValue: string) => {
+    setTopicInput(nextValue);
+    setTopicNotice(null);
+    const exactTopic = (topicOptions ?? []).find(
+      (topic) => topic.title.trim().toLowerCase() === normalizeTopicTitle(nextValue).toLowerCase()
+    );
+    setTopicId(exactTopic?._id ?? "");
+  };
+
+  const handleSelectTopic = (topic: TopicOption) => {
+    setTopicId(topic._id);
+    setTopicInput(topic.title);
+    setTopicNotice(null);
+  };
+
+  const handleCreateTopic = async () => {
+    const title = normalizeTopicTitle(topicInput);
+    if (!title || !topicSubjectId || !topicLevel || !topicTermId) {
+      setTopicNotice("Choose class, term, and subject, then type the new topic name.");
+      return;
+    }
+
+    setCreatingTopic(true);
+    setTopicNotice(null);
+    try {
+      const created = (await createTopic({
+        title,
+        subjectId: topicSubjectId as never,
+        level: topicLevel,
+        termId: topicTermId as never,
+      } as never)) as { topicId: string; title: string; duplicateOf?: string | null };
+      setTopicId(created.topicId);
+      setTopicInput(created.title);
+      setTopicNotice(created.duplicateOf ? "That topic already existed, so I selected it for you." : "Topic created and selected.");
+    } catch (error) {
+      setTopicNotice(error instanceof Error ? error.message : "Could not create the topic. Please try again.");
+    } finally {
+      setCreatingTopic(false);
+    }
+  };
 
   const topicContext =
     topicClassId && topicTermId && topicSubjectId && topicLevel && topicId
@@ -327,23 +486,54 @@ export default function PlanningIndexPage() {
             description="Choose class, term, subject, and topic first. Then branch into lesson writing or topic-level assessment drafting without losing your planning context."
           >
             <div className="grid gap-3 md:grid-cols-2">
-              <SelectField label="Class" value={topicClassId} onChange={setTopicClassId} options={classOptions} />
-              <SelectField label="Term" value={topicTermId} onChange={setTopicTermId} options={termOptions} />
+              <SelectField
+                label="Class"
+                value={topicClassId}
+                onChange={(value) => {
+                  setTopicClassId(value);
+                  setTopicId("");
+                  setTopicInput("");
+                }}
+                options={classOptions}
+              />
+              <SelectField
+                label="Term"
+                value={topicTermId}
+                onChange={(value) => {
+                  setTopicTermId(value);
+                  setTopicId("");
+                  setTopicInput("");
+                }}
+                options={termOptions}
+              />
               <SelectField
                 label="Subject"
                 value={topicSubjectId}
-                onChange={setTopicSubjectId}
+                onChange={(value) => {
+                  setTopicSubjectId(value);
+                  setTopicId("");
+                  setTopicInput("");
+                }}
                 options={topicSubjectOptions}
                 disabled={!topicClassId}
               />
-              <SelectField
-                label="Topic"
+              <CreatableTopicField
                 value={topicId}
-                onChange={setTopicId}
-                options={topicPickerOptions}
-                disabled={!topicSubjectId || !topicTermId}
+                inputValue={topicInput}
+                topics={topicOptions ?? []}
+                disabled={!topicSubjectId || !topicTermId || !topicLevel}
+                isCreating={creatingTopic}
+                onInputChange={handleTopicInputChange}
+                onSelectTopic={handleSelectTopic}
+                onCreateTopic={handleCreateTopic}
               />
             </div>
+
+            {topicNotice ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                {topicNotice}
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               <strong className="text-slate-900">Current level:</strong> {topicLevel || "Select a class"}
