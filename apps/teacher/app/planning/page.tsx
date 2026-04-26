@@ -34,6 +34,33 @@ type TopicOption = {
   status: "draft" | "active" | "retired";
 };
 
+type PlanningWorkItem = {
+  topicId: string;
+  topicTitle: string;
+  topicSummary: string | null;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  level: string;
+  termId: string;
+  termName: string;
+  preferredClassId: string | null;
+  preferredClassName: string | null;
+  sourceCount: number;
+  readySourceCount: number;
+  lessonCount: number;
+  questionBankCount: number;
+  latestUpdatedAt: number;
+  outputs: Array<{
+    kind: "lesson" | "question_bank";
+    id: string;
+    title: string;
+    outputType: "lesson_plan" | "student_note" | "assignment" | "question_bank_draft" | "cbt_draft";
+    draftMode: string | null;
+    updatedAt: number;
+  }>;
+};
+
 function readClassLevel(classDoc: ClassOption | null) {
   return (classDoc?.gradeName ?? classDoc?.name ?? "").trim();
 }
@@ -241,6 +268,7 @@ export default function PlanningIndexPage() {
   const [examSubjectId, setExamSubjectId] = useState("");
   const [examScopeKind, setExamScopeKind] = useState<"full_subject_term" | "topic_subset">("full_subject_term");
   const [examTopicIds, setExamTopicIds] = useState<string[]>([]);
+  const [workSearchQuery, setWorkSearchQuery] = useState("");
 
   const topicClass = useMemo(
     () => classes?.find((item) => item._id === topicClassId) ?? null,
@@ -277,6 +305,13 @@ export default function PlanningIndexPage() {
       ? ({ subjectId: examSubjectId, level: examLevel, termId: examTermId, limit: 80 } as never)
       : ("skip" as never)
   ) as TopicOption[] | undefined;
+  const planningWork = useQuery(
+    "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
+    {
+      searchQuery: workSearchQuery.trim() || undefined,
+      limit: 18,
+    } as never
+  ) as PlanningWorkItem[] | undefined;
 
   useEffect(() => {
     if (!topicClassId && classes?.[0]) {
@@ -470,6 +505,116 @@ export default function PlanningIndexPage() {
               </Link>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Continue work</p>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Find a topic, then see everything under it.</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              This is the return path after creating work. Search your teaching topics and jump back into lesson plans, notes, attached sources, or question banks without treating the source library as the starting point.
+            </p>
+          </div>
+          <label className="relative block w-full lg:w-96">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={workSearchQuery}
+              onChange={(event) => setWorkSearchQuery(event.target.value)}
+              placeholder="Search topics, lesson notes, or source context"
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-950/5"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 grid gap-3 xl:grid-cols-3">
+          {(planningWork ?? []).map((item) => {
+            const topicContext = item.preferredClassId
+              ? {
+                  kind: "topic" as const,
+                  classId: item.preferredClassId,
+                  termId: item.termId,
+                  subjectId: item.subjectId,
+                  level: item.level,
+                  topicId: item.topicId,
+                }
+              : null;
+            const lessonHref = topicContext
+              ? buildTeacherPlanningWorkspaceHref({ route: "lesson-plans", outputType: "lesson_plan", context: topicContext })
+              : null;
+            const questionHref = topicContext
+              ? buildTeacherPlanningWorkspaceHref({ route: "question-bank", mode: "practice_quiz", context: topicContext })
+              : null;
+            return (
+              <article key={item.topicId} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-black text-slate-950">{item.topicTitle}</h3>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      {item.subjectName} • {item.level} • {item.termName}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    {item.preferredClassName ?? "No class"}
+                  </span>
+                </div>
+                {item.topicSummary ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{item.topicSummary}</p> : null}
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-2xl bg-white px-2 py-3">
+                    <p className="text-lg font-black text-slate-950">{item.sourceCount}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">sources</p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-2 py-3">
+                    <p className="text-lg font-black text-slate-950">{item.lessonCount}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">lessons</p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-2 py-3">
+                    <p className="text-lg font-black text-slate-950">{item.questionBankCount}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">questions</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {item.outputs.slice(0, 3).map((output) => (
+                    <div key={`${output.kind}-${output.id}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                      {output.kind === "lesson" ? "Lesson" : "Question bank"}: {output.title}
+                    </div>
+                  ))}
+                  {item.outputs.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                      No saved lesson/question drafts yet. Open a workspace to start.
+                    </div>
+                  ) : null}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={lessonHref ?? "#"}
+                    aria-disabled={!lessonHref}
+                    className={`inline-flex h-10 items-center justify-center rounded-xl px-3 text-xs font-black ${lessonHref ? "bg-slate-950 text-white hover:bg-slate-800" : "cursor-not-allowed bg-slate-200 text-slate-500"}`}
+                  >
+                    Open lessons
+                  </Link>
+                  <Link
+                    href={questionHref ?? "#"}
+                    aria-disabled={!questionHref}
+                    className={`inline-flex h-10 items-center justify-center rounded-xl border px-3 text-xs font-black ${questionHref ? "border-slate-200 bg-white text-slate-800 hover:bg-slate-100" : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"}`}
+                  >
+                    Open questions
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+          {planningWork && planningWork.length === 0 ? (
+            <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500 xl:col-span-3">
+              No topic work found yet. Create a topic below, then your lesson notes, sources, and question drafts will appear here.
+            </div>
+          ) : null}
+          {!planningWork ? (
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-500 xl:col-span-3">
+              Loading your topic work...
+            </div>
+          ) : null}
         </div>
       </section>
 
