@@ -89,9 +89,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthProviderWithConvex>{children}</AuthProviderWithConvex>;
 }
 
-function AuthProviderWithConvex({ children }: { children: ReactNode }) {
+function useAuthClientActions() {
   const [authError, setAuthError] = useState<string | null>(null);
   const { data: session, isPending, error: sessionError } = authClient.useSession();
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInResult> => {
+      setAuthError(null);
+
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail || !password) {
+        const message = AUTH_ERROR_MESSAGES.missingCredentials;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
+      if (!isValidEmailAddress(normalizedEmail)) {
+        const message = AUTH_ERROR_MESSAGES.invalidEmail;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
+      try {
+        const result = await authClient.signIn.email({
+          email: normalizedEmail,
+          password,
+        });
+
+        if ((result as { error?: unknown } | undefined)?.error) {
+          const message = getSignInErrorMessage(
+            (result as { error?: unknown }).error
+          );
+          setAuthError(message);
+          return { success: false, error: message };
+        }
+
+        if (result?.data) {
+          return { success: true, error: null };
+        }
+
+        const message = AUTH_ERROR_MESSAGES.retry;
+        setAuthError(message);
+        return { success: false, error: message };
+      } catch (err) {
+        const message = getSignInErrorMessage(err);
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+    },
+    []
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      setAuthError(null);
+      await authClient.signOut();
+    } catch {}
+  }, []);
+
+  return { signIn, signOut, authError, sessionError, isPending, session };
+}
+
+function AuthProviderWithConvex({ children }: { children: ReactNode }) {
+  const { signIn, signOut, authError, sessionError, isPending, session } =
+    useAuthClientActions();
 
   // Fetch enriched viewer context from Convex when authenticated
   const viewerContext = useQuery(
@@ -122,60 +183,6 @@ function AuthProviderWithConvex({ children }: { children: ReactNode }) {
     return mappedSession?.user?.role === "platformAdmin";
   }, [mappedSession]);
 
-  const signIn = useCallback(
-    async (email: string, password: string): Promise<SignInResult> => {
-      setAuthError(null);
-
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!normalizedEmail || !password) {
-        const message = AUTH_ERROR_MESSAGES.missingCredentials;
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-
-      if (!isValidEmailAddress(normalizedEmail)) {
-        const message = AUTH_ERROR_MESSAGES.invalidEmail;
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-
-      try {
-        const result = await authClient.signIn.email({
-          email: normalizedEmail,
-          password,
-        });
-
-        if ((result as { error?: unknown } | undefined)?.error) {
-          const message = getSignInErrorMessage(
-            (result as { error?: unknown }).error
-          );
-          setAuthError(message);
-          return { success: false, error: message };
-        }
-
-        if (result?.data) {
-          return { success: true, error: null };
-        }
-
-        const message = AUTH_ERROR_MESSAGES.retry;
-        setAuthError(message);
-        return { success: false, error: message };
-      } catch (err) {
-        const message = getSignInErrorMessage(err);
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-    },
-    []
-  );
-
-  const signOut = useCallback(async () => {
-    try {
-      setAuthError(null);
-      await authClient.signOut();
-    } catch {}
-  }, []);
-
   const isLoading = isPending || (Boolean(session?.user) && !hasResolvedMembership);
 
   const value: AuthContextValue = {
@@ -192,68 +199,15 @@ function AuthProviderWithConvex({ children }: { children: ReactNode }) {
 }
 
 function AuthProviderWithoutConvex({ children }: { children: ReactNode }) {
-  const [authError, setAuthError] = useState<string | null>(null);
-  const { data: session, isPending, error: sessionError } = authClient.useSession();
+  const { signIn, signOut, authError, sessionError, isPending, session } =
+    useAuthClientActions();
 
   const mappedSession = useMemo(() => mapSession(session, null), [session]);
 
   const isPlatformAdmin = useMemo(() => {
+    // With Convex unconfigured, platform admin status is based solely on the raw auth session.
     return mappedSession?.user?.role === "platformAdmin";
   }, [mappedSession]);
-
-  const signIn = useCallback(
-    async (email: string, password: string): Promise<SignInResult> => {
-      setAuthError(null);
-
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!normalizedEmail || !password) {
-        const message = AUTH_ERROR_MESSAGES.missingCredentials;
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-
-      if (!isValidEmailAddress(normalizedEmail)) {
-        const message = AUTH_ERROR_MESSAGES.invalidEmail;
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-
-      try {
-        const result = await authClient.signIn.email({
-          email: normalizedEmail,
-          password,
-        });
-
-        if ((result as { error?: unknown } | undefined)?.error) {
-          const message = getSignInErrorMessage(
-            (result as { error?: unknown }).error
-          );
-          setAuthError(message);
-          return { success: false, error: message };
-        }
-
-        if (result?.data) {
-          return { success: true, error: null };
-        }
-
-        const message = AUTH_ERROR_MESSAGES.retry;
-        setAuthError(message);
-        return { success: false, error: message };
-      } catch (err) {
-        const message = getSignInErrorMessage(err);
-        setAuthError(message);
-        return { success: false, error: message };
-      }
-    },
-    []
-  );
-
-  const signOut = useCallback(async () => {
-    try {
-      setAuthError(null);
-      await authClient.signOut();
-    } catch {}
-  }, []);
 
   const value: AuthContextValue = {
     session: mappedSession,

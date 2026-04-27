@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 
@@ -159,23 +160,7 @@ function SchoolsCards({
   );
 }
 
-function SchoolsListPageWithConvex() {
-  // Fetch schools via Convex query
-  const schools = useQuery(
-    "functions/platform/index:listSchools" as never,
-    {} as never
-  ) as
-    | Array<{
-        _id: string;
-        name: string;
-        slug: string;
-        status: string;
-        createdAt: number;
-        adminName: string | null;
-        adminEmail: string | null;
-      }>
-    | undefined;
-
+function SchoolsPageChrome({ children }: { children: ReactNode }) {
   return (
     <div>
       {/* Page Header */}
@@ -207,6 +192,43 @@ function SchoolsListPageWithConvex() {
         </Link>
       </div>
 
+      {children}
+    </div>
+  );
+}
+
+function ConvexNotConfiguredNotice() {
+  return (
+    <div className="bg-white rounded-lg border border-amber-200 p-8 text-center">
+      <h2 className="text-lg font-bold text-slate-900 mb-2">
+        Convex Not Configured
+      </h2>
+      <p className="text-sm text-slate-600">
+        Set <code>NEXT_PUBLIC_CONVEX_URL</code> to load platform schools.
+      </p>
+    </div>
+  );
+}
+
+function SchoolsListPageWithConvex() {
+  // Fetch schools via Convex query
+  const schools = useQuery(
+    "functions/platform/index:listSchools" as never,
+    {} as never
+  ) as
+    | Array<{
+        _id: string;
+        name: string;
+        slug: string;
+        status: string;
+        createdAt: number;
+        adminName: string | null;
+        adminEmail: string | null;
+      }>
+    | undefined;
+
+  return (
+    <>
       {/* Loading State */}
       {schools === undefined && (
         <div className="bg-white rounded-lg border border-slate-200 p-8 text-center">
@@ -256,23 +278,18 @@ function SchoolsListPageWithConvex() {
           <SchoolsCards schools={schools} />
         </>
       )}
-    </div>
+    </>
   );
 }
 
 export default function SchoolsListPage() {
-  if (!isConvexConfigured()) {
-    return (
-      <div className="bg-white rounded-lg border border-amber-200 p-8 text-center">
-        <h2 className="text-lg font-bold text-slate-900 mb-2">
-          Convex Not Configured
-        </h2>
-        <p className="text-sm text-slate-600">
-          Set <code>NEXT_PUBLIC_CONVEX_URL</code> to load platform schools.
-        </p>
-      </div>
-    );
-  }
-
-  return <SchoolsListPageWithConvex />;
+  return (
+    <SchoolsPageChrome>
+      {isConvexConfigured() ? (
+        <SchoolsListPageWithConvex />
+      ) : (
+        <ConvexNotConfiguredNotice />
+      )}
+    </SchoolsPageChrome>
+  );
 }
