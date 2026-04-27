@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack --port 3002",
-    "build": "next build --webpack",
+    "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
     "start": "next start --port 3002",
     "lint": "pnpm -C ../.. exec eslint apps/admin",
     "typecheck": "tsc --noEmit",
