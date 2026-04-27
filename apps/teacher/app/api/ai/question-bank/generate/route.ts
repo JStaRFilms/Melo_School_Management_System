@@ -29,6 +29,9 @@ const MAX_SCHEMA_REPAIR_INPUT_CHARS = 24_000;
 
 type DraftObject = QuestionBankDraft | CbtDraft;
 type DraftGenerationResult = GenerateObjectResult<DraftObject>;
+type GeneratedQuestionBankQuestion = QuestionBankDraft["questions"][number];
+type GeneratedCbtSection = CbtDraft["sections"][number];
+type GeneratedCbtQuestion = GeneratedCbtSection["questions"][number];
 
 const questionMixSchema = z.object({
   multiple_choice: z.number(),
@@ -48,10 +51,30 @@ const effectiveGenerationSettingsSchema = z.object({
   overrideReason: z.string().optional(),
 });
 
+const topicPlanningContextSchema = z.object({
+  kind: z.literal("topic"),
+  classId: z.string().trim().min(1),
+  termId: z.string().trim().min(1),
+  subjectId: z.string().trim().min(1),
+  level: z.string().trim().min(1),
+  topicId: z.string().trim().min(1),
+});
+
+const examPlanningContextSchema = z.object({
+  kind: z.literal("exam_scope"),
+  classId: z.string().trim().min(1),
+  termId: z.string().trim().min(1),
+  subjectId: z.string().trim().min(1),
+  level: z.string().trim().min(1),
+  scopeKind: z.enum(["full_subject_term", "topic_subset"]),
+  topicIds: z.array(z.string().trim().min(1)).optional(),
+});
+
 const requestSchema = z.object({
   draftMode: z.enum(["practice_quiz", "class_test", "exam_draft"]),
   sourceIds: z.array(z.string()).max(MAX_GENERATION_SOURCE_COUNT).default([]),
   targetTopicLabel: z.string().trim().max(160).optional(),
+  planningContext: z.union([topicPlanningContextSchema, examPlanningContextSchema]).optional(),
   effectiveGenerationSettings: effectiveGenerationSettingsSchema.optional(),
 });
 
@@ -276,7 +299,7 @@ function mapQuestionBankDraft(
   return {
     title: generated.title,
     description: generated.blueprint,
-    items: generated.questions.map((question) => ({
+    items: generated.questions.map((question: GeneratedQuestionBankQuestion) => ({
       id: `q-${question.number}`,
       itemOrder: question.number - 1,
       questionType: questionTypePlan[question.number - 1] ?? defaultQuestionType,
@@ -298,8 +321,8 @@ function mapCbtDraft(
   const questionTypePlan = expandQuestionTypePlan(settings);
   const defaultQuestionType = defaultQuestionTypeForMode(draftMode);
   let itemOrder = 0;
-  const items = generated.sections.flatMap((section, sectionIndex) =>
-    section.questions.map((question) => {
+  const items = generated.sections.flatMap((section: GeneratedCbtSection, sectionIndex: number) =>
+    section.questions.map((question: GeneratedCbtQuestion) => {
       const currentOrder = itemOrder++;
       return {
         id: `s${sectionIndex + 1}-q${question.number}`,
@@ -323,11 +346,15 @@ function mapCbtDraft(
 }
 
 function isSchemaMismatchNoObjectError(error: unknown): error is NoObjectGeneratedError & { text: string } {
+  if (!NoObjectGeneratedError.isInstance(error)) {
+    return false;
+  }
+
+  const candidate = error as NoObjectGeneratedError & { text?: unknown };
   return (
-    NoObjectGeneratedError.isInstance(error) &&
-    error.message.includes("response did not match schema") &&
-    typeof error.text === "string" &&
-    error.text.trim().length > 0
+    candidate.message.includes("response did not match schema") &&
+    typeof candidate.text === "string" &&
+    candidate.text.trim().length > 0
   );
 }
 
@@ -440,6 +467,7 @@ export async function POST(request: Request) {
       {
         draftMode,
         sourceIds: sourceIds as never,
+        planningContext: parsedBody.data.planningContext as never,
       }
     );
 
@@ -469,15 +497,28 @@ export async function POST(request: Request) {
     });
 
     const promptClass = promptClassForDraftMode(draftMode, effectiveGenerationSettings.questionStyle);
-    const effectiveTopicLabel = targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
-    if (!effectiveTopicLabel) {
+    const effectiveTopicLabel =
+      workspace.planningContext?.kind === "topic"
+        ? workspace.planningContext.topicTitle ?? targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null
+        : targetTopicLabel ?? workspace.sourceContext.topicLabel ?? null;
+    const effectiveSubjectId = workspace.planningContext?.subjectId ?? workspace.sourceContext.subjectId;
+    const effectiveSubjectName = workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName;
+    const effectiveLevel = workspace.planningContext?.level ?? workspace.sourceContext.level;
+    const effectivePromptTopic =
+      workspace.planningContext?.kind === "exam_scope"
+        ? workspace.planningContext.scopeKind === "topic_subset"
+          ? workspace.planningContext.topicTitles?.join(", ") || "Selected topic subset"
+          : undefined
+        : effectiveTopicLabel ?? undefined;
+
+    if (draftMode !== "exam_draft" && !effectiveTopicLabel) {
       return NextResponse.json(
         { error: "Add a target topic before generating from broad planning sources." },
         { status: 400 }
       );
     }
 
-    if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+    if (!effectiveSubjectId || !effectiveLevel) {
       return NextResponse.json(
         { error: "The selected sources did not resolve a valid subject and level for generation." },
         { status: 400 }
@@ -488,8 +529,8 @@ export async function POST(request: Request) {
       draftMode,
       outputType,
       sourceIds,
-      subjectId: workspace.sourceContext.subjectId ? String(workspace.sourceContext.subjectId) : null,
-      level: workspace.sourceContext.level,
+      subjectId: effectiveSubjectId ? String(effectiveSubjectId) : null,
+      level: effectiveLevel,
       topicLabel: effectiveTopicLabel,
     });
 
@@ -517,9 +558,9 @@ export async function POST(request: Request) {
     const sourceMaterials = sourcePromptMaterials(workspace);
     const promptContext = {
       schoolName: workspace.schoolName ?? undefined,
-      subject: workspace.sourceContext.subjectName ?? undefined,
-      level: workspace.sourceContext.level ?? undefined,
-      topic: effectiveTopicLabel ?? undefined,
+      subject: effectiveSubjectName ?? undefined,
+      level: effectiveLevel ?? undefined,
+      topic: effectivePromptTopic,
       sourceMaterials,
       constraints: [
         ...generationSettingConstraints(effectiveGenerationSettings),
@@ -573,10 +614,11 @@ export async function POST(request: Request) {
         sourceIds: sourceIds as never,
         sourceSelectionSnapshot,
         effectiveGenerationSettings: effectiveGenerationSettings as never,
-        subjectId: workspace.sourceContext.subjectId,
-        level: workspace.sourceContext.level,
+        subjectId: effectiveSubjectId,
+        level: effectiveLevel,
         topicLabel: effectiveTopicLabel,
-        items: generatedDraft.items.map((item) => ({
+        planningContext: parsedBody.data.planningContext as never,
+        items: generatedDraft.items.map((item: (typeof generatedDraft.items)[number]) => ({
           questionType: item.questionType,
           difficulty: item.difficulty,
           promptText: item.promptText,

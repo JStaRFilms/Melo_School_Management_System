@@ -21,8 +21,11 @@ import {
   X,
 } from "lucide-react";
 import {
+  applyPlanningSourceIdsToReturnTo,
   buildTeacherLessonPlanHref,
+  buildTeacherPlanningWorkspaceHref,
   getUserFacingErrorMessage,
+  parsePlanningContextFromSearchParams,
   parseTeacherLessonPlanSourceIds,
 } from "@school/shared";
 
@@ -419,6 +422,9 @@ export default function TeacherLibraryPage() {
   const [processingStatus, setProcessingStatus] = useState<
     (typeof DEFAULT_FILTERS)["processingStatus"]
   >(DEFAULT_FILTERS.processingStatus);
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
+  const [contextFitFilter, setContextFitFilter] = useState<"all" | "topic_bound" | "broad_reference">("all");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadSubjectId, setUploadSubjectId] = useState("");
@@ -437,9 +443,15 @@ export default function TeacherLibraryPage() {
 
   const deferredSearch = useDeferredValue(searchQuery);
   const sourceIdsParam = searchParams.get("sourceIds");
+  const returnTo = searchParams.get("returnTo");
+  const safeReturnTo = returnTo && returnTo.startsWith("/planning/") ? returnTo : null;
   const selectedSourceIds = useMemo(
     () => parseTeacherLessonPlanSourceIds(sourceIdsParam),
     [sourceIdsParam]
+  );
+  const attachPlanningContext = useMemo(
+    () => (safeReturnTo ? parsePlanningContextFromSearchParams(new URL(safeReturnTo, "https://planning.local").searchParams) : null),
+    [safeReturnTo]
   );
   const selectedSourceIdSet = useMemo(() => new Set(selectedSourceIds), [selectedSourceIds]);
 
@@ -500,6 +512,25 @@ export default function TeacherLibraryPage() {
   );
 
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
+  const filteredMaterials = useMemo(
+    () =>
+      materials.filter((material) => {
+        if (subjectFilter !== "all" && material.subjectId !== subjectFilter) {
+          return false;
+        }
+        if (levelFilter !== "all" && material.level !== levelFilter) {
+          return false;
+        }
+        if (contextFitFilter === "topic_bound") {
+          return material.sourceType !== "imported_curriculum" && Boolean(material.topicId);
+        }
+        if (contextFitFilter === "broad_reference") {
+          return material.sourceType === "imported_curriculum";
+        }
+        return true;
+      }),
+    [contextFitFilter, levelFilter, materials, subjectFilter]
+  );
   const editingMaterial = useMemo(
     () => (editingMaterialId ? materials.find((material) => material._id === editingMaterialId) ?? null : null),
     [editingMaterialId, materials]
@@ -524,6 +555,17 @@ export default function TeacherLibraryPage() {
     needsAttention: 0,
   };
   const readySubjects = useMemo(() => subjects ?? [], [subjects]);
+
+  useEffect(() => {
+    if (!attachPlanningContext) {
+      return;
+    }
+    setUploadSubjectId((current) => current || attachPlanningContext.subjectId);
+    setUploadLevel((current) => current || attachPlanningContext.level);
+    if (attachPlanningContext.kind === "exam_scope") {
+      setIsCurriculumReference(true);
+    }
+  }, [attachPlanningContext]);
   const materialMap = useMemo(() => new Map(materials.map((material) => [material._id, material])), [materials]);
   const selectedMaterials = useMemo(
     () => selectedSourceIds.map((materialId) => materialMap.get(materialId)).filter(Boolean) as TeacherLibraryMaterial[],
@@ -558,10 +600,16 @@ export default function TeacherLibraryPage() {
     sourceIds: selectedSourceIds,
     sourceOrigin: "library",
   });
-  const questionBankHref =
-    selectedSourceIds.length > 0
-      ? `/planning/question-bank?sourceIds=${selectedSourceIds.join(",")}&mode=practice_quiz`
-      : "/planning/question-bank";
+  const questionBankHref = buildTeacherPlanningWorkspaceHref({
+    route: "question-bank",
+    mode: "practice_quiz",
+    sourceIds: selectedSourceIds,
+    sourceOrigin: "library",
+  });
+  const attachedReturnHref = useMemo(
+    () => (safeReturnTo ? applyPlanningSourceIdsToReturnTo(safeReturnTo, selectedSourceIds) : null),
+    [safeReturnTo, selectedSourceIds]
+  );
 
   useEffect(() => {
     if (!uploadSubjectId && readySubjects.length > 0) {
@@ -605,11 +653,8 @@ export default function TeacherLibraryPage() {
     const derived = normalizeFileTitle(uploadFile.name);
     if (derived) {
       setUploadTitle(derived);
-      if (!uploadTopicLabel) {
-        setUploadTopicLabel(derived);
-      }
     }
-  }, [uploadFile, uploadTitle, uploadTopicLabel]);
+  }, [uploadFile, uploadTitle]);
 
   const updateSelectedSourceIds = useCallback(
     (nextIds: string[]) => {
@@ -646,10 +691,7 @@ export default function TeacherLibraryPage() {
     if (derived && !uploadTitle) {
       setUploadTitle(derived);
     }
-    if (derived && !uploadTopicLabel) {
-      setUploadTopicLabel(derived);
-    }
-  }, [uploadTitle, uploadTopicLabel]);
+  }, [uploadTitle]);
 
   const clearUploadForm = useCallback(() => {
     setUploadTitle("");
@@ -711,10 +753,6 @@ export default function TeacherLibraryPage() {
         setNotice({ tone: "error", message: "Add a title for the material." });
         return;
       }
-      if (!topicLabel) {
-        setNotice({ tone: "error", message: "Add a topic label for the material." });
-        return;
-      }
       if (!level) {
         setNotice({ tone: "error", message: "Choose a level before uploading." });
         return;
@@ -756,9 +794,15 @@ export default function TeacherLibraryPage() {
           storageId: uploadPayload.storageId as never,
         } as never);
 
+        if (safeReturnTo && !selectedSourceIds.includes(uploadShell.materialId)) {
+          updateSelectedSourceIds([...selectedSourceIds, uploadShell.materialId]);
+        }
+
         setNotice({
           tone: "success",
-          message: uploadIntentSuccessMessage(uploadIntent),
+          message: safeReturnTo
+            ? `${uploadIntentSuccessMessage(uploadIntent)} It has also been selected for this workspace.`
+            : uploadIntentSuccessMessage(uploadIntent),
         });
         clearUploadForm();
       } catch (error) {
@@ -775,6 +819,9 @@ export default function TeacherLibraryPage() {
       finalizeUpload,
       readySubjects,
       requestUploadUrl,
+      safeReturnTo,
+      selectedSourceIds,
+      updateSelectedSourceIds,
       uploadDescription,
       uploadFile,
       uploadIntent,
@@ -853,6 +900,7 @@ export default function TeacherLibraryPage() {
         summary: draft.description.trim() ? draft.description : null,
         subjectId: draft.subjectId as never,
         level: draft.level,
+        termId: attachPlanningContext?.termId,
         attachMaterialId: draft.materialId as never,
       } as never)) as { _id: string };
 
@@ -870,7 +918,7 @@ export default function TeacherLibraryPage() {
     } finally {
       setSavingMaterialId(null);
     }
-  }, [createTopic, draft]);
+  }, [attachPlanningContext, createTopic, draft]);
 
   const publishToStaff = useCallback(
     async (material: TeacherLibraryMaterial) => {
@@ -950,6 +998,9 @@ export default function TeacherLibraryPage() {
     setReviewStatus(DEFAULT_FILTERS.reviewStatus);
     setSourceType(DEFAULT_FILTERS.sourceType);
     setProcessingStatus(DEFAULT_FILTERS.processingStatus);
+    setSubjectFilter("all");
+    setLevelFilter("all");
+    setContextFitFilter("all");
   }, []);
 
   const isLoading = !materialsData || !subjects || !assignableClasses;
@@ -1096,6 +1147,37 @@ export default function TeacherLibraryPage() {
                   { value: "failed", label: "Failed" },
                 ]}
               />
+
+              <FilterSelect
+                label="Subject"
+                value={subjectFilter}
+                onChange={setSubjectFilter}
+                options={[
+                  { value: "all", label: "All" },
+                  ...readySubjects.map((subject) => ({ value: subject.id, label: formatSubjectLabel(subject) })),
+                ]}
+              />
+
+              <FilterSelect
+                label="Level"
+                value={levelFilter}
+                onChange={setLevelFilter}
+                options={[
+                  { value: "all", label: "All" },
+                  ...levelOptions.map((level) => ({ value: level.value, label: level.label })),
+                ]}
+              />
+
+              <FilterSelect
+                label="Repository fit"
+                value={contextFitFilter}
+                onChange={(value) => setContextFitFilter(value as typeof contextFitFilter)}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "topic_bound", label: "Topic-bound" },
+                  { value: "broad_reference", label: "Broad references" },
+                ]}
+              />
             </div>
           </section>
 
@@ -1106,16 +1188,26 @@ export default function TeacherLibraryPage() {
                   Source handoff
                 </p>
                 <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
-                  {selectedSourceIds.length > 0 ? `${selectedSourceIds.length} source${selectedSourceIds.length === 1 ? "" : "s"} selected` : "Select source materials for the lesson-plan route"}
+                  {selectedSourceIds.length > 0 ? `${selectedSourceIds.length} source${selectedSourceIds.length === 1 ? "" : "s"} selected` : safeReturnTo ? "Attach repository sources to your workspace" : "Select repository sources for a planning workspace"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   {selectedPreview.length > 0
                     ? `${selectedPreview.join(" • ")}${selectedPreviewSuffix}`
-                    : "Use the checkboxes on each source card to prepare a future lesson-plan draft."}
+                    : safeReturnTo
+                      ? "Use the checkboxes on each source card, then return to the same lesson or assessment workspace with the updated selection."
+                      : "Use the checkboxes on each source card to prepare a lesson or assessment workspace."}
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
+                {attachedReturnHref ? (
+                  <Link
+                    href={attachedReturnHref}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    Return with selection
+                  </Link>
+                ) : null}
                 {selectedSourceIds.length > 0 ? (
                   <>
                     <button
@@ -1148,10 +1240,18 @@ export default function TeacherLibraryPage() {
           </section>
 
           <div className="space-y-4">
-            {materials.length === 0 ? (
+            {attachPlanningContext ? (
+              <section className="rounded-[2rem] border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-700">Attach mode</p>
+                <p className="mt-2 leading-6">
+                  Returning to {attachPlanningContext.kind === "topic" ? "a topic workspace" : "an exam workspace"} after you update this repository selection. This changes the workspace source set, not the draft identity.
+                </p>
+              </section>
+            ) : null}
+            {filteredMaterials.length === 0 ? (
               <EmptyState onPromptUpload={() => fileInputRef.current?.click()} />
             ) : (
-              materials.map((material) => (
+              filteredMaterials.map((material) => (
                 <LibraryMaterialCard
                   key={material._id}
                   material={material}
@@ -1225,9 +1325,9 @@ export default function TeacherLibraryPage() {
                   onChange={setUploadTitle}
                 />
                 <TextField
-                  label={isCurriculumReference ? "Planning reference label (optional)" : "Topic label (free text)"}
+                  label={isCurriculumReference ? "Planning reference label (optional)" : "Topic label (optional)"}
                   value={uploadTopicLabel}
-                  placeholder={isCurriculumReference ? "Year 7 Mathematics Curriculum" : "Community Safety"}
+                  placeholder={isCurriculumReference ? "Optional: Year 7 Mathematics Curriculum" : "Optional: Community Safety"}
                   onChange={setUploadTopicLabel}
                 />
                 <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -1267,7 +1367,7 @@ export default function TeacherLibraryPage() {
                   options={uploadIntentOptions}
                 />
                 <p className="text-xs leading-5 text-slate-500">
-                  Private draft is the safe default. Request staff review keeps the file private but marked for review. The topic label is only a label here; attach a real topic from the material editor when needed. {isAdmin ? "Admins can also start a file as staff shared." : ""}
+                  Private draft is the safe default. Request staff review keeps the file private but marked for review. Title and topic label can be left blank at first: the library will use the file name and a safe planning-reference label. Attach a real topic from the material editor only when the source truly belongs to one topic. {isAdmin ? "Admins can also start a file as staff shared." : ""}
                 </p>
                 <label className="block">
                   <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">

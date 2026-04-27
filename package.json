@@ -7,10 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "turbo build",
+    "build": "turbo build --concurrency=1",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
+    "typecheck": "turbo typecheck --concurrency=1",
     "test": "turbo test",
     "test:e2e": "playwright test",
     "test:e2e:build-gate": "turbo test:e2e",
@@ -21,8 +21,10 @@
     "setup:convex": "powershell -ExecutionPolicy Bypass -File scripts/setup-convex.ps1",
     "setup:convex:unix": "bash scripts/setup-convex.sh"
   },
+  "dependencies": {
+    "@playwright/test": "^1.59.1"
+  },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
     "@typescript-eslint/eslint-plugin": "^8.58.2",
     "@typescript-eslint/parser": "^8.58.2",
     "convex": "^1.34.0",
@@ -33,5 +35,5 @@
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@10.33.2"
 }

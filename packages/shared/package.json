@@ -7,6 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./name-format": "./src/name-format.ts",
+    "./planning-context": "./src/planning-context.ts",
+    "./planning-routes": "./src/planning-routes.ts",
     "./exam-recording": "./src/exam-recording/index.ts",
     "./subject-aggregation": "./src/subject-aggregation.ts"
   },

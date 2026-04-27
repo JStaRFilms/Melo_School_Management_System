@@ -8,6 +8,22 @@ import { PlatformAdminBootstrapFieldShell } from "./PlatformAdminBootstrapFieldS
 import { PlatformAdminBootstrapSuccess } from "./PlatformAdminBootstrapSuccess";
 
 export function PlatformAdminBootstrapForm() {
+  if (!isConvexConfigured()) {
+    return (
+      <div className="rounded-[1.5rem] border border-amber-300/30 bg-amber-400/5 p-6 text-amber-50">
+        <h2 className="text-xl font-semibold">Convex Not Configured</h2>
+        <p className="mt-2 text-sm text-amber-100/90">
+          Set <code>NEXT_PUBLIC_CONVEX_URL</code> before bootstrapping a platform
+          admin.
+        </p>
+      </div>
+    );
+  }
+
+  return <PlatformAdminBootstrapFormWithConvex />;
+}
+
+function PlatformAdminBootstrapFormWithConvex() {
   const router = useRouter();
   const bootstrapPlatformAdmin = useAction(
     "functions/platform/bootstrap:bootstrapPlatformAdmin" as never
@@ -50,11 +66,6 @@ export function PlatformAdminBootstrapForm() {
 
     if (!password || password.length < 8) {
       setError("Temporary password must be at least 8 characters.");
-      return;
-    }
-
-    if (!isConvexConfigured()) {
-      setError("Convex is not configured for this app.");
       return;
     }
 

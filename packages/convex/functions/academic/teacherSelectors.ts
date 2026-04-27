@@ -55,6 +55,27 @@ export const getTermsBySession = query({
   },
 });
 
+export const getTeacherActiveTerms = query({
+  args: {},
+  returns: v.array(v.object({ id: v.string(), name: v.string(), isActive: v.boolean() })),
+  handler: async (ctx: any) => {
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const terms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_school_active", (q: any) => q.eq("schoolId", schoolId).eq("isActive", true))
+      .collect();
+
+    return terms
+      .filter((term: any) => term.schoolId === schoolId)
+      .sort((a: any, b: any) => a.startDate - b.startDate)
+      .map((term: any) => ({
+        id: term._id,
+        name: normalizeHumanName(term.name),
+        isActive: term.isActive === true,
+      }));
+  },
+});
+
 export const getTeacherAssignableClasses = query({
   args: {},
   returns: v.array(

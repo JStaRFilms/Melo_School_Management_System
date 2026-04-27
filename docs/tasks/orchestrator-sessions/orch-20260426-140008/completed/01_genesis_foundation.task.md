@@ -1,7 +1,7 @@
 # Task: Genesis foundation
 **Task ID:** 01
 **Stage:** genesis
-**Status:** pending
+**Status:** completed
 **Role:** orchestrator
 **Preferred Agent:** orchestrator
 **Conversation ID:** orchestrator-01
@@ -18,11 +18,11 @@ Establish the project foundation, produce the required planning docs, and decide
 - Lock acceptance criteria and boundaries
 - Recommend whether Design and Build should stay compact or expand
 ## Checklist
-- [ ] Define the v2 planning model: topic-first for lesson/quiz work, subject-scope for exam work
-- [ ] Specify library vs topic workspace vs exam workspace responsibilities
-- [ ] Lock rules for broad planning references, topic-bound materials, and portal-facing resources
-- [ ] Define migration/backward-compatibility expectations for existing lesson-plan/question-bank flows
-- [ ] Recommend detailed Design and Build task fan-out for implementation
+- [x] Define the v2 planning model: topic-first for lesson/quiz work, subject-scope for exam work
+- [x] Specify library vs topic workspace vs exam workspace responsibilities
+- [x] Lock rules for broad planning references, topic-bound materials, and portal-facing resources
+- [x] Define migration/backward-compatibility expectations for existing lesson-plan/question-bank flows
+- [x] Recommend detailed Design and Build task fan-out for implementation
 ## Definition of Done
 - Required planning markdown files exist or are updated
 - Minimum usable state is explicit
@@ -42,3 +42,5 @@ User or orchestrator approves the foundation before expanding later stages.
 - leave a clear recommendation for how Design and Build should fan out
 ## Notes
 This session redesigns the Lesson Knowledge Hub from a source-first workflow into a context-first workflow. Primary planning flow should become Subject -> Level/Class -> Term -> Topic (or Subject -> Level/Class -> Term -> Exam scope for assessments). Broad planning references like curriculum PDFs remain library assets, but teacher authoring should launch from topic/exam context instead of from source selection alone. The library remains a library, while topic/exam workspaces pull in relevant sources and allow teachers to add more materials within that context.
+## Completion Notes
+- Completed through Takomi orchestration. See session artifacts and `T11_Verification_and_Rollout_Handoff.md` for implementation, verification, and manual UI test notes.

@@ -4,7 +4,12 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getUserFacingErrorMessage, parseTeacherLessonPlanSourceIds } from "@school/shared";
+import {
+  buildTeacherPlanningLibraryAttachHref,
+  getUserFacingErrorMessage,
+  parsePlanningContextFromSearchParams,
+  parseTeacherLessonPlanSourceIds,
+} from "@school/shared";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
 import type {
@@ -30,7 +35,9 @@ export default function LessonPlansPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [outputType, setOutputType] = useState<LessonPlanWorkspaceOutputType>("lesson_plan");
+  const [outputType, setOutputType] = useState<LessonPlanWorkspaceOutputType>(
+    (searchParams.get("outputType") as LessonPlanWorkspaceOutputType | null) ?? "lesson_plan"
+  );
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
@@ -39,18 +46,24 @@ export default function LessonPlansPage() {
     () => parseTeacherLessonPlanSourceIds(sourceIdsParam),
     [sourceIdsParam]
   );
+  const planningContext = useMemo(
+    () => parsePlanningContextFromSearchParams(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
 
   const workspace = useQuery(
     "functions/academic/lessonKnowledgeLessonPlans:getTeacherInstructionWorkspace" as never,
     {
       outputType,
       sourceIds: selectedSourceIds,
+      planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
     } as never
   ) as LessonPlanWorkspaceData | undefined;
 
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
   );
+  const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
 
   const updateSelectedSourceIds = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -65,27 +78,41 @@ export default function LessonPlansPage() {
   };
 
   const handleRemoveSource = (sourceId: string) => {
-    updateSelectedSourceIds(selectedSourceIds.filter((id) => id !== sourceId));
+    updateSelectedSourceIds(effectiveSourceIds.filter((id) => id !== sourceId));
   };
 
   const handleOpenLibrary = () => {
-    const href = selectedSourceIds.length > 0 ? `/planning/library?sourceIds=${selectedSourceIds.join(",")}` : "/planning/library";
-    router.push(href);
+    const currentQuery = searchParams.toString();
+    const returnTo = currentQuery ? `${pathname}?${currentQuery}` : pathname;
+    router.push(
+      buildTeacherPlanningLibraryAttachHref({
+        returnTo,
+        sourceIds: effectiveSourceIds,
+      })
+    );
   };
 
-  const effectiveTopicLabel = workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+  const effectiveTopicLabel =
+    workspace?.planningContext?.topicTitle ?? workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
 
   useEffect(() => {
     setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
-  }, [workspace?.sourceContext.topicLabel, selectedSourceIds, outputType]);
+  }, [workspace?.sourceContext.topicLabel, effectiveSourceIds, outputType]);
 
   const handleSaveDraft = async (draft: {
     title: string;
     documentState: string;
     plainText: string;
   }) => {
-    if (!workspace?.sourceContext.subjectId || !workspace.sourceContext.level) {
-      throw new Error("Select at least one accessible source with a subject and level before saving.");
+    if (!workspace) {
+      throw new Error("Workspace is still loading.");
+    }
+
+    const effectiveSubjectId = workspace.planningContext?.subjectId ?? workspace.sourceContext.subjectId ?? null;
+    const effectiveLevel = workspace.planningContext?.level ?? workspace.sourceContext.level ?? null;
+
+    if (!effectiveSubjectId || !effectiveLevel) {
+      throw new Error("Resolve a valid subject and level before saving this draft.");
     }
 
     if (!effectiveTopicLabel) {
@@ -99,10 +126,11 @@ export default function LessonPlansPage() {
         title: draft.title,
         documentState: draft.documentState,
         plainText: draft.plainText,
-        sourceIds: selectedSourceIds,
-        subjectId: workspace.sourceContext.subjectId,
-        level: workspace.sourceContext.level,
+        sourceIds: effectiveSourceIds,
+        subjectId: effectiveSubjectId,
+        level: effectiveLevel,
         topicLabel: effectiveTopicLabel,
+        planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
         revisionKind: "manual_save",
       } as never)) as LessonPlanSaveResult;
 
@@ -124,8 +152,9 @@ export default function LessonPlansPage() {
         },
         body: JSON.stringify({
           outputType,
-          sourceIds: selectedSourceIds,
+          sourceIds: effectiveSourceIds,
           targetTopicLabel: effectiveTopicLabel ?? undefined,
+          planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
         }),
       });
 
@@ -177,7 +206,7 @@ export default function LessonPlansPage() {
         </Link>
       </div>
 
-      {workspace.sourceContext.topicLabel ? null : (
+      {workspace.planningContext?.topicTitle || workspace.sourceContext.topicLabel ? null : (
         <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
           <input
@@ -193,7 +222,7 @@ export default function LessonPlansPage() {
       )}
 
       <LessonPlanWorkspaceScreen
-        key={`${outputType}:${selectedSourceIds.join(",")}`}
+        key={`${outputType}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
         workspace={workspace}
         onOutputTypeChange={setOutputType}
         onRemoveSource={handleRemoveSource}

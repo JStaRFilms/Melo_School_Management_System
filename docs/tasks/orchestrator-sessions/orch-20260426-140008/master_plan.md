@@ -7,16 +7,16 @@
 ## Lifecycle
 
 ### Genesis
-- Status: pending
+- Status: completed
 - Tasks: 01
 - Expandable: yes
 ### Design
-- Status: pending
+- Status: completed
 - Tasks: 02, 03, 04
 - Expandable: yes
 - Expanded At: 2026-04-26T13:00:46.787Z
 ### Build
-- Status: pending
+- Status: completed
 - Tasks: 05, 06, 07, 08, 09, 10, 11
 - Expandable: yes
 - Expanded At: 2026-04-26T13:01:13.878Z
@@ -24,17 +24,17 @@
 
 | ID | Stage | Title | Status | Role | Preferred Agent | Workflow | Model | Skills |
 |---|---|---|---|---|---|---|---|---|
-| 01 | genesis | Genesis foundation | pending | orchestrator | orchestrator | vibe-genesis | - | - |
-| 02 | design | Planning information architecture and workflow redesign | pending | architect | architect | vibe-design | oauth-router/gpt-5.5 | - |
-| 03 | design | Domain model and retrieval contract for context-first planning | pending | architect | architect | vibe-design | oauth-router/gpt-5.5 | - |
-| 04 | design | Implementation sequencing, migration, and UX risk review | pending | review | reviewer | vibe-design | oauth-router/gpt-5.5 | - |
-| 05 | build | Teacher planning hub and context launcher | pending | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
-| 06 | build | Context-aware query layer and draft identity refactor | pending | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
-| 07 | build | Topic workspace source pane and add-material flow | pending | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
-| 08 | build | Question bank workspace refactor for topic-first and exam-scope flows | pending | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
-| 09 | build | Lesson-plan workspace refactor for topic-first planning | pending | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
-| 10 | build | Library repositioning, filters, and classification cleanup | pending | code | coder | vibe-build | oauth-router/gpt-5.4-mini | - |
-| 11 | build | Migration pass, verification, and rollout handoff | pending | review | reviewer | vibe-build | oauth-router/gpt-5.5 | - |
+| 01 | genesis | Genesis foundation | completed | orchestrator | orchestrator | vibe-genesis | - | - |
+| 02 | design | Planning information architecture and workflow redesign | completed | architect | architect | vibe-design | oauth-router/gpt-5.5 | - |
+| 03 | design | Domain model and retrieval contract for context-first planning | completed | architect | architect | vibe-design | oauth-router/gpt-5.5 | - |
+| 04 | design | Implementation sequencing, migration, and UX risk review | completed | review | reviewer | vibe-design | oauth-router/gpt-5.5 | - |
+| 05 | build | Teacher planning hub and context launcher | completed | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
+| 06 | build | Context-aware query layer and draft identity refactor | completed | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
+| 07 | build | Topic workspace source pane and add-material flow | completed | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
+| 08 | build | Question bank workspace refactor for topic-first and exam-scope flows | completed | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
+| 09 | build | Lesson-plan workspace refactor for topic-first planning | completed | code | coder | vibe-build | oauth-router/gpt-5.5 | - |
+| 10 | build | Library repositioning, filters, and classification cleanup | completed | code | coder | vibe-build | oauth-router/gpt-5.4-mini | - |
+| 11 | build | Migration pass, verification, and rollout handoff | completed | review | reviewer | vibe-build | oauth-router/gpt-5.5 | - |
 
 ## Notes
 

@@ -122,9 +122,14 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/enrollment/subjects"],
       },
       {
+        href: "/planning",
+        label: "Planning",
+        matchers: ["/planning$", "/planning/lesson-plans", "/planning/question-bank"],
+      },
+      {
         href: "/planning/library",
         label: "Library",
-        matchers: ["/planning/library", "/planning/lesson-plans", "/planning/question-bank"],
+        matchers: ["/planning/library"],
       },
       {
         href: "/planning/videos",
@@ -181,9 +186,12 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
 }
 
 export function isWorkspaceSectionActive(section: WorkspaceSection, pathname: string) {
-  return section.matchers.some((matcher) =>
-    matcher === "/" ? pathname === "/" : pathname.startsWith(matcher)
-  );
+  return section.matchers.some((matcher) => {
+    if (matcher.endsWith("$")) {
+      return pathname === matcher.slice(0, -1);
+    }
+    return matcher === "/" ? pathname === "/" : pathname.startsWith(matcher);
+  });
 }
 
 export function resolveWorkspaceSwitchHref(

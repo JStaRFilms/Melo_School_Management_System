@@ -127,6 +127,41 @@ const lessonLibraryTopicValidator = v.object({
   status: v.union(v.literal("draft"), v.literal("active"), v.literal("retired")),
 });
 
+const teacherPlanningWorkItemValidator = v.object({
+  topicId: v.id("knowledgeTopics"),
+  topicTitle: v.string(),
+  topicSummary: v.union(v.string(), v.null()),
+  subjectId: v.id("subjects"),
+  subjectName: v.string(),
+  subjectCode: v.string(),
+  level: v.string(),
+  termId: v.id("academicTerms"),
+  termName: v.string(),
+  preferredClassId: v.union(v.id("classes"), v.null()),
+  preferredClassName: v.union(v.string(), v.null()),
+  sourceCount: v.number(),
+  readySourceCount: v.number(),
+  lessonCount: v.number(),
+  questionBankCount: v.number(),
+  latestUpdatedAt: v.number(),
+  outputs: v.array(
+    v.object({
+      kind: v.union(v.literal("lesson"), v.literal("question_bank")),
+      id: v.string(),
+      title: v.string(),
+      outputType: v.union(
+        v.literal("lesson_plan"),
+        v.literal("student_note"),
+        v.literal("assignment"),
+        v.literal("question_bank_draft"),
+        v.literal("cbt_draft")
+      ),
+      draftMode: v.union(v.string(), v.null()),
+      updatedAt: v.number(),
+    })
+  ),
+});
+
 const lessonVideoSubmissionValidator = lessonLibraryMaterialValidator;
 
 function normalizeOptionalText(value?: string | null): string | undefined {
@@ -619,7 +654,7 @@ async function readTeacherAssignableLevelLabels(ctx: Pick<QueryCtx, "db">, actor
 async function readTeacherKnowledgeTopics(
   ctx: Pick<QueryCtx, "db">,
   actor: KnowledgeActorContext,
-  args: { subjectId?: Id<"subjects">; level?: string; limit?: number }
+  args: { subjectId?: Id<"subjects">; level?: string; termId?: Id<"academicTerms">; limit?: number }
 ) {
   const limit = Math.min(Math.max(args.limit ?? 50, 1), 150);
   const levelFilter = args.level ? normalizeRequiredText(args.level, "Level") : undefined;
@@ -643,6 +678,10 @@ async function readTeacherKnowledgeTopics(
     }
 
     if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) {
+      return false;
+    }
+
+    if (args.termId && String(topic.termId) !== String(args.termId)) {
       return false;
     }
 
@@ -734,6 +773,7 @@ export const listTeacherKnowledgeTopics = query({
   args: {
     subjectId: v.optional(v.id("subjects")),
     level: v.optional(v.string()),
+    termId: v.optional(v.id("academicTerms")),
     limit: v.optional(v.number()),
   },
   returns: v.array(lessonLibraryTopicValidator),
@@ -751,8 +791,163 @@ export const listTeacherKnowledgeTopics = query({
     return await readTeacherKnowledgeTopics(ctx, actor, {
       subjectId: args.subjectId,
       level: args.level,
+      termId: args.termId,
       limit: args.limit,
     });
+  },
+});
+
+export const listTeacherPlanningTopicWork = query({
+  args: {
+    searchQuery: v.optional(v.string()),
+    subjectId: v.optional(v.id("subjects")),
+    level: v.optional(v.string()),
+    termId: v.optional(v.id("academicTerms")),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(teacherPlanningWorkItemValidator),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
+    assertTeacherLibraryAccess(actor);
+
+    const limit = Math.min(Math.max(args.limit ?? 24, 1), 80);
+    const search = normalizeKnowledgeSearchQuery(args.searchQuery ?? "");
+    const levelFilter = normalizeOptionalText(args.level);
+    const assignableClassIds = actor.isSchoolAdmin || actor.role === "admin"
+      ? null
+      : new Set((await getTeacherAssignableClassIds(ctx, userId, schoolId)).map(String));
+    const assignableSubjectIdsByClass = new Map<string, Set<string>>();
+
+    const classRows = actor.isSchoolAdmin || actor.role === "admin"
+      ? await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect()
+      : await Promise.all([...(assignableClassIds ?? new Set<string>())].map((id) => ctx.db.get(id as Id<"classes">)));
+    const classes: Doc<"classes">[] = [];
+    for (const classDoc of classRows) {
+      if (classDoc && !classDoc.isArchived) {
+        classes.push(classDoc);
+      }
+    }
+
+    for (const classDoc of classes) {
+      if (actor.isSchoolAdmin || actor.role === "admin") {
+        continue;
+      }
+      const subjectIds = await getTeacherAssignableSubjectIds(ctx, userId, schoolId, classDoc._id);
+      assignableSubjectIdsByClass.set(String(classDoc._id), new Set(subjectIds.map(String)));
+    }
+
+    const levelToClass = new Map<string, Doc<"classes">>();
+    for (const classDoc of classes) {
+      const levelKey = normalizeLevelKey((classDoc.gradeName ?? classDoc.name ?? "").trim());
+      if (levelKey && !levelToClass.has(levelKey)) {
+        levelToClass.set(levelKey, classDoc);
+      }
+    }
+
+    const topics = await ctx.db
+      .query("knowledgeTopics")
+      .withIndex("by_school_and_status", (q) => q.eq("schoolId", schoolId).eq("status", "active"))
+      .take(300);
+
+    const filteredTopics = topics.filter((topic) => {
+      if (args.subjectId && String(topic.subjectId) !== String(args.subjectId)) return false;
+      if (args.termId && String(topic.termId) !== String(args.termId)) return false;
+      if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
+      if (search && !normalizeKnowledgeSearchQuery(`${topic.title} ${topic.summary ?? ""}`).includes(search)) return false;
+
+      if (actor.isSchoolAdmin || actor.role === "admin") return true;
+      const classForLevel = levelToClass.get(normalizeLevelKey(topic.level));
+      if (!classForLevel) return false;
+      const subjectsForClass = assignableSubjectIdsByClass.get(String(classForLevel._id));
+      return subjectsForClass?.has(String(topic.subjectId)) ?? false;
+    });
+
+    const subjectIds = [...new Set(filteredTopics.map((topic) => String(topic.subjectId)))];
+    const termIds = [...new Set(filteredTopics.map((topic) => String(topic.termId)))];
+    const [subjects, terms] = await Promise.all([
+      Promise.all(subjectIds.map((id) => ctx.db.get(id as Id<"subjects">))),
+      Promise.all(termIds.map((id) => ctx.db.get(id as Id<"academicTerms">))),
+    ]);
+    const subjectMap = new Map<string, Doc<"subjects"> | null>();
+    subjectIds.forEach((id, index) => subjectMap.set(id, subjects[index] as Doc<"subjects"> | null));
+    const termMap = new Map<string, Doc<"academicTerms"> | null>();
+    termIds.forEach((id, index) => termMap.set(id, terms[index] as Doc<"academicTerms"> | null));
+
+    const rows = await Promise.all(filteredTopics.map(async (topic) => {
+      const [materials, artifacts, banks] = await Promise.all([
+        ctx.db.query("knowledgeMaterials").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(80),
+        ctx.db.query("instructionArtifacts").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(40),
+        ctx.db.query("assessmentBanks").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(40),
+      ]);
+
+      const visibleMaterials: Doc<"knowledgeMaterials">[] = [];
+      for (const material of materials) {
+        const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
+        if (isTeacherLibraryVisibleToActor(actor, material, accessContext)) {
+          visibleMaterials.push(material);
+        }
+      }
+
+      const visibleArtifacts = artifacts.filter((artifact) =>
+        actor.isSchoolAdmin || actor.role === "admin" || String(artifact.ownerUserId) === String(userId) || artifact.visibility !== "private_owner"
+      );
+      const visibleBanks = banks.filter((bank) =>
+        actor.isSchoolAdmin || actor.role === "admin" || String(bank.ownerUserId) === String(userId) || bank.visibility !== "private_owner"
+      );
+
+      const subject = subjectMap.get(String(topic.subjectId)) ?? null;
+      const term = termMap.get(String(topic.termId)) ?? null;
+      const preferredClass = levelToClass.get(normalizeLevelKey(topic.level)) ?? null;
+      const latestUpdatedAt = Math.max(
+        topic.updatedAt,
+        ...visibleMaterials.map((item) => item.updatedAt),
+        ...visibleArtifacts.map((item) => item.updatedAt),
+        ...visibleBanks.map((item) => item.updatedAt)
+      );
+      const outputs = [
+        ...visibleArtifacts.map((artifact) => ({
+          kind: "lesson" as const,
+          id: String(artifact._id),
+          title: artifact.outputType.replace(/_/g, " "),
+          outputType: artifact.outputType,
+          draftMode: null,
+          updatedAt: artifact.updatedAt,
+        })),
+        ...visibleBanks.map((bank) => ({
+          kind: "question_bank" as const,
+          id: String(bank._id),
+          title: bank.title,
+          outputType: bank.outputType,
+          draftMode: bank.draftMode ?? null,
+          updatedAt: bank.updatedAt,
+        })),
+      ].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
+
+      return {
+        topicId: topic._id,
+        topicTitle: topic.title,
+        topicSummary: topic.summary ?? null,
+        subjectId: topic.subjectId,
+        subjectName: subject ? normalizeHumanName(subject.name) : "Unknown subject",
+        subjectCode: subject?.code ?? "",
+        level: topic.level,
+        termId: topic.termId,
+        termName: term?.name ?? "Unknown term",
+        preferredClassId: preferredClass?._id ?? null,
+        preferredClassName: preferredClass?.name ?? null,
+        sourceCount: visibleMaterials.length,
+        readySourceCount: visibleMaterials.filter((item) => item.processingStatus === "ready" && item.searchStatus === "indexed").length,
+        lessonCount: visibleArtifacts.length,
+        questionBankCount: visibleBanks.length,
+        latestUpdatedAt,
+        outputs,
+      };
+    }));
+
+    return rows
+      .sort((a, b) => b.latestUpdatedAt - a.latestUpdatedAt)
+      .slice(0, limit);
   },
 });
 
@@ -999,6 +1194,7 @@ export const createTeacherKnowledgeTopic = mutation({
     summary: v.optional(v.union(v.string(), v.null())),
     subjectId: v.id("subjects"),
     level: v.string(),
+    termId: v.optional(v.id("academicTerms")),
     attachMaterialId: v.optional(v.id("knowledgeMaterials")),
   },
   returns: v.object({
@@ -1042,15 +1238,21 @@ export const createTeacherKnowledgeTopic = mutation({
       throw new ConvexError("You cannot use that level");
     }
 
+    const requestedTerm = args.termId ? await ctx.db.get(args.termId) : null;
+    if (args.termId && (!requestedTerm || requestedTerm.schoolId !== schoolId)) {
+      throw new ConvexError("Academic term not found");
+    }
+
     const activeTerm = await readActiveKnowledgeTerm(ctx, schoolId);
-    if (!activeTerm) {
+    const effectiveTerm = requestedTerm ?? activeTerm;
+    if (!effectiveTerm) {
       throw new ConvexError("Create or activate an academic term before creating topics");
     }
 
     const siblingTopics = await ctx.db
       .query("knowledgeTopics")
       .withIndex("by_school_and_subject_and_level_and_term", (q) =>
-        q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", activeTerm._id)
+        q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", effectiveTerm._id)
       )
       .collect();
 
@@ -1066,7 +1268,7 @@ export const createTeacherKnowledgeTopic = mutation({
         schoolId,
         subjectId: args.subjectId,
         level,
-        termId: activeTerm._id,
+        termId: effectiveTerm._id,
         title,
         slug,
         summary,
@@ -1137,7 +1339,7 @@ export const createTeacherKnowledgeTopic = mutation({
       subjectId: args.subjectId,
       subjectName: normalizeHumanName(subject.name),
       level: duplicate?.level ?? level,
-      termId: duplicate?.termId ?? activeTerm._id,
+      termId: duplicate?.termId ?? effectiveTerm._id,
       status: duplicate?.status ?? ("active" as const),
     };
   },

@@ -216,6 +216,27 @@ function getSettingsFromWorkspace(workspace: AssessmentWorkspaceData): Assessmen
   return draftSettings ?? workspace.profiles.find((profile) => profile.isDefault) ?? getFallbackGenerationSettings();
 }
 
+function getSourceScopeLabel(source: AssessmentWorkspaceData["selectedSources"][number]) {
+  return source.sourceType === "imported_curriculum" ? "Broad reference" : source.topicLabel ? "Topic-bound" : "Unattached source";
+}
+
+function getPlanningScopeLabel(workspace: AssessmentWorkspaceData) {
+  const planningContext = workspace.planningContext;
+  if (!planningContext) {
+    return workspace.sourceContext.topicLabel ?? "Compatibility context";
+  }
+
+  if (planningContext.kind === "topic") {
+    return planningContext.topicTitle ?? "Topic context";
+  }
+
+  if (planningContext.scopeKind === "topic_subset") {
+    return planningContext.topicTitles?.join(" • ") || "Topic subset";
+  }
+
+  return "Full subject term";
+}
+
 function buildQuestionMixForStyle(style: AssessmentQuestionStyle, totalQuestions: number): AssessmentQuestionMix {
   const total = Math.max(1, Math.min(60, Math.round(totalQuestions || 1)));
   const weightsByStyle: Record<AssessmentQuestionStyle, AssessmentQuestionMix> = {
@@ -280,6 +301,17 @@ export function QuestionBankWorkspaceScreen({
   const canGenerate = workspace.canGenerate && !isGenerating;
   const canAutosave = workspace.canAutosave;
   const modeOption = getAssessmentDraftModeOption(workspace.draftMode);
+  const modeOptions = useMemo(() => {
+    if (workspace.planningContext?.kind === "exam_scope") {
+      return assessmentDraftModeOptions.filter((option) => option.value === "exam_draft");
+    }
+
+    if (workspace.planningContext?.kind === "topic") {
+      return assessmentDraftModeOptions.filter((option) => option.value !== "exam_draft");
+    }
+
+    return assessmentDraftModeOptions;
+  }, [workspace.planningContext]);
   const workspaceSignature = useMemo(
     () => serializeDraftForSignature({
       title: workspace.draft.title,
@@ -375,7 +407,7 @@ export function QuestionBankWorkspaceScreen({
         return;
       }
 
-      if (!workspace.sourceContext.subjectId || !workspace.sourceContext.level) {
+      if (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level)) {
         return;
       }
 
@@ -420,7 +452,7 @@ export function QuestionBankWorkspaceScreen({
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
       }
     },
-    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
   useEffect(() => {
@@ -557,8 +589,8 @@ export function QuestionBankWorkspaceScreen({
           <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Source sidebar</p>
-                <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Selected sources</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Source pane</p>
+                <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Repository attachments</h2>
               </div>
               <BookOpenText className="h-5 w-5 text-slate-400" />
             </div>
@@ -574,6 +606,7 @@ export function QuestionBankWorkspaceScreen({
                       <div>
                         <p className="text-sm font-bold text-slate-950">{source.title}</p>
                         <p className="mt-1 text-xs text-slate-500">{source.subjectName} • {source.level}</p>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{getSourceScopeLabel(source)}</p>
                       </div>
                       <button
                         type="button"
@@ -589,7 +622,7 @@ export function QuestionBankWorkspaceScreen({
                 ))
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-sm text-slate-500">
-                  Select lesson sources from the library to generate a draft bank.
+                  Add repository materials to ground this draft. Topic-bound sources and broad references stay distinct here.
                 </div>
               )}
             </div>
@@ -599,14 +632,14 @@ export function QuestionBankWorkspaceScreen({
               onClick={onOpenLibrary}
               className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
             >
-              Open library
+              Add from library
             </button>
           </section>
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Draft mode</p>
             <div className="mt-2 space-y-2">
-              {assessmentDraftModeOptions.map((option) => {
+              {modeOptions.map((option) => {
                 const active = option.value === workspace.draftMode;
                 return (
                   <button
@@ -630,6 +663,15 @@ export function QuestionBankWorkspaceScreen({
                 );
               })}
             </div>
+            {workspace.planningContext?.kind === "topic" ? (
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Topic work stays topic-first here. Use the exam workspace when you need subject-scope exam drafting.
+              </p>
+            ) : workspace.planningContext?.kind === "exam_scope" ? (
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Exam mode is locked to the selected subject, class, and term scope.
+              </p>
+            ) : null}
           </section>
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
@@ -736,7 +778,11 @@ export function QuestionBankWorkspaceScreen({
                     {workspace.draft.title}
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                    Keep the generated items editable, tuned to the selected sources, and ready for teacher review.
+                    {workspace.planningContext?.kind === "exam_scope"
+                      ? "Draft against an explicit subject-scope exam context, then attach repository materials without changing draft identity."
+                      : workspace.planningContext?.kind === "topic"
+                        ? "Draft from one teaching topic first, then keep the question set editable as you refine repository sources."
+                        : "Keep the generated items editable, tuned to the selected sources, and ready for teacher review."}
                   </p>
                 </div>
               </div>
@@ -987,15 +1033,17 @@ export function QuestionBankWorkspaceScreen({
             <div className="mt-3 space-y-3 text-sm text-slate-600">
               <div className="rounded-2xl bg-slate-50 px-3 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Subject</p>
-                <p className="mt-1 font-semibold text-slate-950">{workspace.sourceContext.subjectName ?? "Not resolved"}</p>
+                <p className="mt-1 font-semibold text-slate-950">{workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName ?? "Not resolved"}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Level</p>
-                <p className="mt-1 font-semibold text-slate-950">{workspace.sourceContext.level ?? "Not resolved"}</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Class & term</p>
+                <p className="mt-1 font-semibold text-slate-950">
+                  {workspace.planningContext ? `${workspace.planningContext.className} • ${workspace.planningContext.termName}` : "Not resolved"}
+                </p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Topic</p>
-                <p className="mt-1 font-semibold text-slate-950">{workspace.sourceContext.topicLabel ?? "Not resolved"}</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Scope</p>
+                <p className="mt-1 font-semibold text-slate-950">{getPlanningScopeLabel(workspace)}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-3 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Saved</p>

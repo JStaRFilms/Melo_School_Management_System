@@ -82,37 +82,16 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  if (!isConvexConfigured()) {
+    return <AuthProviderWithoutConvex>{children}</AuthProviderWithoutConvex>;
+  }
+
+  return <AuthProviderWithConvex>{children}</AuthProviderWithConvex>;
+}
+
+function useAuthClientActions() {
   const [authError, setAuthError] = useState<string | null>(null);
   const { data: session, isPending, error: sessionError } = authClient.useSession();
-
-  // Fetch enriched viewer context from Convex when authenticated
-  const viewerContext = useQuery(
-    "functions/auth:getPlatformViewerContext" as never,
-    isConvexConfigured() && session?.user ? ({} as never) : ("skip" as never)
-  ) as { role?: string; schoolId?: string } | null | undefined;
-
-  const mappedSession = useMemo(
-    () => mapSession(session, viewerContext),
-    [session, viewerContext]
-  );
-  const sessionRole =
-    (session?.user as { role?: string } | undefined)?.role ?? null;
-
-  const hasResolvedMembership = useMemo(() => {
-    if (!isConvexConfigured()) {
-      return true;
-    }
-
-    if (!session?.user) {
-      return true;
-    }
-
-    return Boolean(viewerContext?.role ?? sessionRole);
-  }, [session, sessionRole, viewerContext]);
-
-  const isPlatformAdmin = useMemo(() => {
-    return mappedSession?.user?.role === "platformAdmin";
-  }, [mappedSession]);
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<SignInResult> => {
@@ -168,13 +147,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  const isLoading =
-    isPending ||
-    (isConvexConfigured() && Boolean(session?.user) && !hasResolvedMembership);
+  return { signIn, signOut, authError, sessionError, isPending, session };
+}
+
+function AuthProviderWithConvex({ children }: { children: ReactNode }) {
+  const { signIn, signOut, authError, sessionError, isPending, session } =
+    useAuthClientActions();
+
+  // Fetch enriched viewer context from Convex when authenticated
+  const viewerContext = useQuery(
+    "functions/auth:getPlatformViewerContext" as never,
+    isConvexConfigured() && session?.user ? ({} as never) : ("skip" as never)
+  ) as { role?: string; schoolId?: string } | null | undefined;
+
+  const mappedSession = useMemo(
+    () => mapSession(session, viewerContext),
+    [session, viewerContext]
+  );
+  const sessionRole =
+    (session?.user as { role?: string } | undefined)?.role ?? null;
+
+  const hasResolvedMembership = useMemo(() => {
+    if (!isConvexConfigured()) {
+      return true;
+    }
+
+    if (!session?.user) {
+      return true;
+    }
+
+    return Boolean(viewerContext?.role ?? sessionRole);
+  }, [session, sessionRole, viewerContext]);
+
+  const isPlatformAdmin = useMemo(() => {
+    return mappedSession?.user?.role === "platformAdmin";
+  }, [mappedSession]);
+
+  const isLoading = isPending || (Boolean(session?.user) && !hasResolvedMembership);
 
   const value: AuthContextValue = {
     session: mappedSession,
     isLoading,
+    isAuthenticated: Boolean(mappedSession),
+    isPlatformAdmin,
+    signIn,
+    signOut,
+    error: authError ?? sessionError?.message ?? null,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function AuthProviderWithoutConvex({ children }: { children: ReactNode }) {
+  const { signIn, signOut, authError, sessionError, isPending, session } =
+    useAuthClientActions();
+
+  const mappedSession = useMemo(() => mapSession(session, null), [session]);
+
+  const isPlatformAdmin = useMemo(() => {
+    // With Convex unconfigured, platform admin status is based solely on the raw auth session.
+    return mappedSession?.user?.role === "platformAdmin";
+  }, [mappedSession]);
+
+  const value: AuthContextValue = {
+    session: mappedSession,
+    isLoading: isPending,
     isAuthenticated: Boolean(mappedSession),
     isPlatformAdmin,
     signIn,
