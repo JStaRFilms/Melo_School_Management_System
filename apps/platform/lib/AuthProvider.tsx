@@ -82,6 +82,14 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  if (!isConvexConfigured()) {
+    return <AuthProviderWithoutConvex>{children}</AuthProviderWithoutConvex>;
+  }
+
+  return <AuthProviderWithConvex>{children}</AuthProviderWithConvex>;
+}
+
+function AuthProviderWithConvex({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const { data: session, isPending, error: sessionError } = authClient.useSession();
 
@@ -168,13 +176,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  const isLoading =
-    isPending ||
-    (isConvexConfigured() && Boolean(session?.user) && !hasResolvedMembership);
+  const isLoading = isPending || (Boolean(session?.user) && !hasResolvedMembership);
 
   const value: AuthContextValue = {
     session: mappedSession,
     isLoading,
+    isAuthenticated: Boolean(mappedSession),
+    isPlatformAdmin,
+    signIn,
+    signOut,
+    error: authError ?? sessionError?.message ?? null,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function AuthProviderWithoutConvex({ children }: { children: ReactNode }) {
+  const [authError, setAuthError] = useState<string | null>(null);
+  const { data: session, isPending, error: sessionError } = authClient.useSession();
+
+  const mappedSession = useMemo(() => mapSession(session, null), [session]);
+
+  const isPlatformAdmin = useMemo(() => {
+    return mappedSession?.user?.role === "platformAdmin";
+  }, [mappedSession]);
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInResult> => {
+      setAuthError(null);
+
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail || !password) {
+        const message = AUTH_ERROR_MESSAGES.missingCredentials;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
+      if (!isValidEmailAddress(normalizedEmail)) {
+        const message = AUTH_ERROR_MESSAGES.invalidEmail;
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+
+      try {
+        const result = await authClient.signIn.email({
+          email: normalizedEmail,
+          password,
+        });
+
+        if ((result as { error?: unknown } | undefined)?.error) {
+          const message = getSignInErrorMessage(
+            (result as { error?: unknown }).error
+          );
+          setAuthError(message);
+          return { success: false, error: message };
+        }
+
+        if (result?.data) {
+          return { success: true, error: null };
+        }
+
+        const message = AUTH_ERROR_MESSAGES.retry;
+        setAuthError(message);
+        return { success: false, error: message };
+      } catch (err) {
+        const message = getSignInErrorMessage(err);
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+    },
+    []
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      setAuthError(null);
+      await authClient.signOut();
+    } catch {}
+  }, []);
+
+  const value: AuthContextValue = {
+    session: mappedSession,
+    isLoading: isPending,
     isAuthenticated: Boolean(mappedSession),
     isPlatformAdmin,
     signIn,

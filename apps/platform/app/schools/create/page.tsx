@@ -218,6 +218,21 @@ function CreateSchoolForm() {
 }
 
 export default function CreateSchoolPage() {
+  if (!isConvexConfigured()) {
+    return (
+      <div className="max-w-lg mx-auto">
+        <div className="bg-white rounded-lg border border-amber-200 p-8 text-center">
+          <h2 className="text-lg font-bold text-slate-900 mb-2">
+            Convex Not Configured
+          </h2>
+          <p className="text-sm text-slate-600">
+            Set <code>NEXT_PUBLIC_CONVEX_URL</code> to enable school creation.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Suspense
       fallback={
