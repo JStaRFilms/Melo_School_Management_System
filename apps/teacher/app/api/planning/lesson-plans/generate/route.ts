@@ -146,7 +146,10 @@ function generationFailureMessage(error: unknown, args: { outputType: DocumentOu
 
   if (APICallError.isInstance(error)) {
     const status = error.statusCode ? ` Status ${error.statusCode}.` : "";
-    return `The AI provider rejected or failed the ${target} request.${status} This can happen when a free model is temporarily unavailable or does not reliably support structured JSON output. Try again or switch this document type to a more stable model.`;
+    const statusNote = error.statusCode === 200
+      ? " The provider returned HTTP 200, but the SDK could not turn the response into the required structured JSON object."
+      : "";
+    return `The AI provider rejected or failed the ${target} request.${status}${statusNote} This can happen when a free model is temporarily unavailable or does not reliably support structured JSON output. Try again or switch this document type to a more stable model.`;
   }
 
   switch (failure.kind) {
@@ -164,16 +167,21 @@ function generationFailureMessage(error: unknown, args: { outputType: DocumentOu
   }
 }
 
-function sourcePromptMaterials(workspace: {
-  selectedSources: Array<{
-    _id: string;
-    title: string;
-    sourceType: string;
-    visibility: string;
-    description: string | null;
-    topicLabel: string;
-  }>;
-}) {
+function sourcePromptMaterials(
+  workspace: {
+    selectedSources: Array<{
+      _id: string;
+      title: string;
+      sourceType: string;
+      visibility: string;
+      description: string | null;
+      topicLabel: string;
+    }>;
+  },
+  excerpts: Array<{ materialId: string; excerptText: string }>
+) {
+  const excerptByMaterialId = new Map(excerpts.map((excerpt) => [String(excerpt.materialId), excerpt.excerptText]));
+
   return workspace.selectedSources.map((source) => ({
     id: source._id,
     title: source.title,
@@ -181,6 +189,7 @@ function sourcePromptMaterials(workspace: {
     visibility: source.visibility,
     description: source.description ?? undefined,
     topicLabel: source.topicLabel,
+    excerpt: excerptByMaterialId.get(String(source._id)),
   }));
 }
 
@@ -188,9 +197,15 @@ function sectionWordCount(content: string) {
   return content.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function normalizeGeneratedTitle(title: string, fallbackTopic: string) {
+  const normalized = title.trim().replace(/^[:\-\s]+|[:\-\s]+$/g, "");
+  return normalized.length >= 3 ? normalized : fallbackTopic;
+}
+
 function normalizeGeneratedTemplateDraft(
   draft: TemplateBoundInstructionDraft,
-  templateSections: ResolvedTemplateSection[]
+  templateSections: ResolvedTemplateSection[],
+  fallbackTopic: string
 ): TemplateBoundInstructionDraft {
   if (templateSections.length === 0) {
     throw new Error("A resolved template is required before rendering generated instruction artifacts.");
@@ -254,6 +269,7 @@ function normalizeGeneratedTemplateDraft(
 
   return {
     ...draft,
+    title: normalizeGeneratedTitle(draft.title, fallbackTopic),
     sections: normalizedSections,
     sourceNotes: draft.sourceNotes.map((note) => note.trim()).filter(Boolean),
   };
@@ -407,6 +423,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const sourceExcerptBundle = await client.query(
+      api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionSourceExcerpts,
+      {
+        outputType,
+        sourceIds: sourceIds as never,
+        planningContext: parsedBody.data.planningContext as never,
+        targetTopicLabel: effectiveTopicLabel,
+      }
+    );
+
+    if (sourceExcerptBundle.excerpts.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No indexed source text excerpts were available for the selected sources. Re-ingest the materials before generating.",
+          warnings: sourceExcerptBundle.warnings,
+        },
+        { status: 400 }
+      );
+    }
+
     const rateLimit = await client.mutation(
       api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit,
       {}
@@ -429,7 +465,7 @@ export async function POST(request: Request) {
     });
 
     const model = createDocumentModel(outputType);
-    const sourceMaterials = sourcePromptMaterials(workspace);
+    const sourceMaterials = sourcePromptMaterials(workspace, sourceExcerptBundle.excerpts);
     const templateSections = workspace.template.sectionDefinitions
       .slice()
       .sort((a: ResolvedTemplateSection, b: ResolvedTemplateSection) => a.order - b.order);
@@ -486,7 +522,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections);
+      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections, effectiveTopicLabel);
     } catch (validationError) {
       if (!(validationError instanceof TemplateDraftValidationError) || MAX_TEMPLATE_REPAIR_ATTEMPTS < 1 || repaired) {
         throw validationError;
@@ -501,7 +537,7 @@ export async function POST(request: Request) {
         templateSections,
       });
       result = await generateDraftObject(model, repairPrompt);
-      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections);
+      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections, effectiveTopicLabel);
     }
 
     const documentState = renderGeneratedMarkdown(generatedObject);
@@ -546,6 +582,7 @@ export async function POST(request: Request) {
         attempts: repaired ? 2 : 1,
         repaired,
         validationIssues,
+        sourceExcerptWarnings: sourceExcerptBundle.warnings,
       },
     });
   } catch (error) {
