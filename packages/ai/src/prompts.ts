@@ -89,7 +89,7 @@ function formatContextLines(context: DocumentPromptContext) {
       );
       if (material.excerpt) {
         const excerpt = material.excerpt.length > 1800 ? `${material.excerpt.slice(0, 1800).trim()}...` : material.excerpt;
-        lines.push('  Excerpt: """', excerpt, '  """');
+        lines.push(`  Excerpt: """\n${excerpt}\n  """`);
       }
     }
   }
