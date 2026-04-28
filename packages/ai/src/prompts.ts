@@ -9,6 +9,7 @@ export interface DocumentSourceMaterialSummary {
   readonly visibility?: string;
   readonly description?: string;
   readonly topicLabel?: string;
+  readonly excerpt?: string;
 }
 
 export interface DocumentTemplateSectionSummary {
@@ -37,6 +38,7 @@ const documentGenerationSystemPrompt = [
   "Do not write chatty commentary, preambles, or markdown fences.",
   "A resolved school template is mandatory: if template details are missing or unclear, do not invent a replacement structure.",
   "Strictly follow the resolved template section names, order, required flags, and minimum word-count guidance.",
+  "Use provided source excerpts as the primary grounding material for factual content.",
   "Stay faithful to the selected sources and template constraints.",
   "Write classroom-ready educational content with enough detail for the stated school level; avoid shallow one-paragraph summaries unless the template explicitly asks for a summary.",
 ].join(" ");
@@ -85,6 +87,10 @@ function formatContextLines(context: DocumentPromptContext) {
           material.description ? ` — ${material.description}` : ""
         }`
       );
+      if (material.excerpt) {
+        const excerpt = material.excerpt.length > 1800 ? `${material.excerpt.slice(0, 1800).trim()}...` : material.excerpt;
+        lines.push(`  Excerpt: """\n${excerpt}\n  """`);
+      }
     }
   }
 
@@ -111,6 +117,8 @@ function buildDocumentPrompt(args: {
     "If the template has an Examples section, use concrete numbered or bulleted examples.",
     "If the template has a Class Activity section, describe an actionable classroom activity, not just a summary.",
     "If the template has an Assignment section, provide numbered questions or tasks unless the template label clearly asks for something else.",
+    "When source excerpts are provided, ground definitions, explanations, examples, tasks, and sourceNotes in those excerpts.",
+    "If excerpts are missing or thin, say so briefly in sourceNotes instead of pretending you reviewed the full source.",
     "",
     "Context:",
     formatContextLines(args.context) || "(none provided)",
@@ -203,7 +211,7 @@ export function buildTemplateRepairPrompt(args: {
       args.originalPrompt,
       "",
       "Previous draft JSON:",
-      JSON.stringify(args.previousDraft),
+      JSON.stringify(args.previousDraft).slice(0, 8000),
     ].join("\n"),
   };
 }

@@ -19,6 +19,11 @@ import {
 } from "./lessonKnowledgeTemplatesHelpers";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
+const MAX_PROMPT_CHUNKS_PER_SOURCE = 3;
+const MAX_PROMPT_CHARS_PER_CHUNK = 900;
+const MAX_PROMPT_CHARS_PER_SOURCE = 1800;
+const MAX_PROMPT_TOTAL_EXCERPT_CHARS = 12000;
+const MAX_PROMPT_CHUNK_CANDIDATES_PER_SOURCE = 50;
 
 const outputTypeValidator = v.union(
   v.literal("lesson_plan"),
@@ -189,6 +194,23 @@ const draftValidator = v.object({
   templateResolutionPath: v.union(v.string(), v.null()),
   sourceSelectionSnapshot: v.union(v.string(), v.null()),
   lastSavedAt: v.union(v.number(), v.null()),
+});
+
+const sourceExcerptValidator = v.object({
+  materialId: v.id("knowledgeMaterials"),
+  title: v.string(),
+  sourceType: sourceTypeValidator,
+  topicLabel: v.string(),
+  excerptText: v.string(),
+  chunkCountIncluded: v.number(),
+  tokenEstimate: v.number(),
+});
+
+const sourceExcerptBundleValidator = v.object({
+  excerpts: v.array(sourceExcerptValidator),
+  omittedSourceIds: v.array(v.string()),
+  warnings: v.array(v.string()),
+  totalTokenEstimate: v.number(),
 });
 
 const workspaceValidator = v.object({
@@ -599,6 +621,55 @@ async function fetchSubjectsById(ctx: QueryCtx, subjectIds: Array<Id<"subjects">
   });
 
   return subjectMap;
+}
+
+function truncateText(value: string, maxChars: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > maxChars ? `${normalized.slice(0, maxChars).trim()}...` : normalized;
+}
+
+async function assertUsableLessonSource(
+  ctx: QueryCtx,
+  actor: KnowledgeActorContext,
+  sourceId: Id<"knowledgeMaterials">,
+  planningContext?: TopicPlanningContextRecord | null
+) {
+  const row = await ctx.db.get(sourceId);
+  if (!row || row.schoolId !== actor.schoolId) {
+    return { source: null, issue: String(sourceId) };
+  }
+
+  const classAccess =
+    row.visibility === "class_scoped"
+      ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, row)
+      : null;
+
+  if (planningContext) {
+    if (String(row.subjectId) !== String(planningContext.subjectId) || !levelMatchesKnowledgeScope(row.level, planningContext.level)) {
+      return { source: null, issue: String(sourceId) };
+    }
+
+    if (row.topicId && String(row.topicId) !== String(planningContext.topicId) && row.sourceType !== "imported_curriculum") {
+      return { source: null, issue: String(sourceId) };
+    }
+
+    if (
+      row.visibility === "class_scoped" &&
+      !classAccess?.matchedClassIds.some((classId) => String(classId) === String(planningContext.classId))
+    ) {
+      return { source: null, issue: String(sourceId) };
+    }
+  }
+
+  if (
+    !canUseKnowledgeMaterialAsLessonSource(actor, row, {
+      classContextMatches: classAccess?.classContextMatches,
+    })
+  ) {
+    return { source: null, issue: String(sourceId) };
+  }
+
+  return { source: row, issue: null };
 }
 
 async function loadSources(
@@ -1207,6 +1278,169 @@ async function findMatchingArtifact(args: {
 
   return null;
 }
+
+function normalizeSearchTerms(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3);
+}
+
+function scoreChunkForTopic(chunkText: string, searchTerms: string[]): number {
+  if (searchTerms.length === 0) {
+    return 0;
+  }
+
+  const normalizedChunk = chunkText.toLowerCase();
+  return searchTerms.reduce((score, term) => {
+    const matches = normalizedChunk.split(term).length - 1;
+    return score + matches;
+  }, 0);
+}
+
+function orderChunksForExcerpt(
+  chunks: Array<Doc<"knowledgeMaterialChunks">>,
+  searchTerms: string[]
+): Array<Doc<"knowledgeMaterialChunks">> {
+  const nonEmptyChunks = chunks.filter((chunk) => chunk.chunkText.trim().length > 0);
+
+  if (searchTerms.length === 0) {
+    return nonEmptyChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  }
+
+  return nonEmptyChunks.sort((a, b) => {
+    const scoreDifference = scoreChunkForTopic(b.chunkText, searchTerms) - scoreChunkForTopic(a.chunkText, searchTerms);
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+    return a.chunkIndex - b.chunkIndex;
+  });
+}
+
+export const getTeacherInstructionSourceExcerpts = query({
+  args: {
+    outputType: outputTypeValidator,
+    sourceIds: v.array(v.id("knowledgeMaterials")),
+    planningContext: v.optional(topicPlanningContextValidator),
+    targetTopicLabel: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: sourceExcerptBundleValidator,
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
+    assertTeacherWorkspaceAccess(actor);
+
+    const planningContext = args.planningContext
+      ? await resolveTopicPlanningContext(ctx, schoolId, args.planningContext, args.outputType)
+      : null;
+
+    const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
+    assertGenerationSourceCount(sourceIdStrings);
+    const requestedSourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
+
+    const excerptSearchTerms = [
+      ...normalizeSearchTerms(args.targetTopicLabel),
+      ...normalizeSearchTerms(planningContext?.topicTitle),
+    ];
+
+    const excerpts: Array<{
+      materialId: Id<"knowledgeMaterials">;
+      title: string;
+      sourceType: Doc<"knowledgeMaterials">["sourceType"];
+      topicLabel: string;
+      excerptText: string;
+      chunkCountIncluded: number;
+      tokenEstimate: number;
+    }> = [];
+    const omittedSourceIds: string[] = [];
+    const warnings: string[] = [];
+    let totalChars = 0;
+    let totalTokenEstimate = 0;
+
+    for (const sourceId of requestedSourceIds) {
+      if (totalChars >= MAX_PROMPT_TOTAL_EXCERPT_CHARS) {
+        omittedSourceIds.push(String(sourceId));
+        warnings.push("Some source excerpts were omitted because the prompt grounding limit was reached.");
+        continue;
+      }
+
+      const { source, issue } = await assertUsableLessonSource(ctx, actor, sourceId, planningContext);
+      if (!source) {
+        omittedSourceIds.push(issue ?? String(sourceId));
+        warnings.push(`Source ${String(sourceId)} is no longer available for generation.`);
+        continue;
+      }
+
+      const chunks = await ctx.db
+        .query("knowledgeMaterialChunks")
+        .withIndex("by_school_and_material_and_chunk_index", (q) =>
+          q.eq("schoolId", schoolId).eq("materialId", source._id)
+        )
+        .order("asc")
+        .take(MAX_PROMPT_CHUNK_CANDIDATES_PER_SOURCE);
+
+      const usableChunks = orderChunksForExcerpt(
+        chunks.filter(
+          (chunk) =>
+            chunk.searchStatus === "indexed" &&
+            chunk.visibility === source.visibility &&
+            chunk.reviewStatus === source.reviewStatus
+        ),
+        excerptSearchTerms
+      ).slice(0, MAX_PROMPT_CHUNKS_PER_SOURCE);
+
+      if (usableChunks.length === 0) {
+        omittedSourceIds.push(String(source._id));
+        warnings.push(`No indexed excerpt was available for source: ${source.title}.`);
+        continue;
+      }
+
+      const remainingChars = Math.max(0, MAX_PROMPT_TOTAL_EXCERPT_CHARS - totalChars);
+      const sourceLimit = Math.min(MAX_PROMPT_CHARS_PER_SOURCE, remainingChars);
+      const excerptText = truncateText(
+        usableChunks
+          .map((chunk) => truncateText(chunk.chunkText, MAX_PROMPT_CHARS_PER_CHUNK))
+          .join("\n\n"),
+        sourceLimit
+      );
+
+      if (!excerptText) {
+        omittedSourceIds.push(String(source._id));
+        warnings.push(`No usable excerpt text was available for source: ${source.title}.`);
+        continue;
+      }
+
+      const tokenEstimate = usableChunks.reduce((sum, chunk) => sum + (chunk.tokenEstimate ?? 0), 0);
+      excerpts.push({
+        materialId: source._id,
+        title: source.title,
+        sourceType: source.sourceType,
+        topicLabel: source.topicLabel,
+        excerptText,
+        chunkCountIncluded: usableChunks.length,
+        tokenEstimate,
+      });
+      totalChars += excerptText.length;
+      totalTokenEstimate += tokenEstimate;
+    }
+
+    if (totalChars >= MAX_PROMPT_TOTAL_EXCERPT_CHARS) {
+      warnings.push("Source excerpts were truncated to fit prompt limits.");
+    }
+
+    return {
+      excerpts,
+      omittedSourceIds,
+      warnings: [...new Set(warnings)],
+      totalTokenEstimate,
+    };
+  },
+});
 
 export const getTeacherInstructionWorkspace = query({
   args: {

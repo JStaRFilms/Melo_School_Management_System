@@ -121,6 +121,7 @@ export interface LessonPlanGenerationMeta {
   attempts: number;
   repaired: boolean;
   validationIssues: string[];
+  sourceExcerptWarnings?: string[];
 }
 
 export interface LessonPlanSaveResult {
