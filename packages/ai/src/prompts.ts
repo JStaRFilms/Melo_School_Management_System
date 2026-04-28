@@ -38,7 +38,7 @@ const documentGenerationSystemPrompt = [
   "A resolved school template is mandatory: if template details are missing or unclear, do not invent a replacement structure.",
   "Strictly follow the resolved template section names, order, required flags, and minimum word-count guidance.",
   "Stay faithful to the selected sources and template constraints.",
-  "Prefer concise, school-appropriate language that a teacher can edit later.",
+  "Write classroom-ready educational content with enough detail for the stated school level; avoid shallow one-paragraph summaries unless the template explicitly asks for a summary.",
 ].join(" ");
 
 function formatContextLines(context: DocumentPromptContext) {
@@ -105,7 +105,12 @@ function buildDocumentPrompt(args: {
     "Include optional template sections when they are useful; if included, keep their exact sectionId and label values.",
     "Do not add unknown sections, rename sections, merge sections, or nest sections inside other sections.",
     "Write each section's content directly for that section; do not nest a complete document inside a section.",
-    "Keep the JSON compact: content should be useful but concise, and never repeat the whole draft inside a section.",
+    "Keep the JSON syntax clean and parseable, but make the educational content rich enough for classroom use.",
+    "Use markdown inside section content when helpful: subheadings, numbered examples, bullet lists, and question lists are allowed.",
+    "If the template has sections like Main Note, Content, Presentation, or Lesson Body, make those the richest sections with clear subheadings and multiple explanatory paragraphs.",
+    "If the template has an Examples section, use concrete numbered or bulleted examples.",
+    "If the template has a Class Activity section, describe an actionable classroom activity, not just a summary.",
+    "If the template has an Assignment section, provide numbered questions or tasks unless the template label clearly asks for something else.",
     "",
     "Context:",
     formatContextLines(args.context) || "(none provided)",
@@ -130,10 +135,11 @@ export function buildLessonPlanPrompt(
   return buildDocumentPrompt({
     kind: "lesson_plan",
     purpose:
-      "Draft a teacher-facing lesson plan with objectives, lesson flow, assessment, and homework.",
+      "Draft a teacher-facing lesson plan with objectives, lesson flow, assessment, teacher activities, learner activities, evaluation, and homework where the template allows.",
     context,
     extraInstructions: [
       "Make the lesson flow usable in a single class period.",
+      "Include practical teacher actions, learner actions, assessment checkpoints, and materials where relevant.",
       "Keep the language practical for a teacher editor to refine later.",
     ],
   });
@@ -145,10 +151,15 @@ export function buildStudentNotePrompt(
   return buildDocumentPrompt({
     kind: "student_note",
     purpose:
-      "Draft a learner-facing note that explains the topic clearly and can be approved for topic-page use later.",
+      "Draft a full learner-facing classroom note that explains the topic clearly and can be approved for topic-page use later.",
     context,
     extraInstructions: [
-      "Use student-friendly explanations.",
+      "Use student-friendly explanations appropriate for the stated level.",
+      "Do not write a short overview only; write enough detail for a learner to revise from the note.",
+      "For Main Note or similar sections, include definitions, explanations, categories/types, benefits/importance, safety rules, officials, processes, or other relevant subtopics based on the topic.",
+      "Use markdown subheadings inside long sections to make the note easy to read.",
+      "Examples should be concrete and preferably numbered.",
+      "Assignments should be numbered questions or tasks that test recall, understanding, and application.",
       "Avoid teacher-only shorthand and keep the tone instructional.",
     ],
   });
@@ -207,6 +218,7 @@ export function buildAssignmentPrompt(
     context,
     extraInstructions: [
       "Make the tasks progressively more challenging.",
+      "Use numbered questions/tasks with clear instructions and enough items for meaningful practice.",
       "Keep the assignment editable and school appropriate.",
     ],
   });
