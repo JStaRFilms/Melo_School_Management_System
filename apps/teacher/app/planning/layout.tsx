@@ -54,6 +54,7 @@ export default function PlanningLayout({
     <WorkspaceNavbar
       workspace="teacher"
       currentPath={pathname}
+      fullBleed={true}
       userName={session?.user?.name}
       userRole={session?.user?.role}
       onSignOut={handleSignOut}

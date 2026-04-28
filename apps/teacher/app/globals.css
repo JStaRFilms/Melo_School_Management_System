@@ -107,7 +107,8 @@ h6 {
 
 /* Custom Scrollbar (from mockup) */
 .custom-scrollbar::-webkit-scrollbar {
-  height: 4px;
+  width: 3px;
+  height: 3px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #e2e8f0;

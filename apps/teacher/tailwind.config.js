@@ -22,6 +22,11 @@ module.exports = {
           900: "#0f172a",
           950: "#020617",
         },
+        surface: {
+          50: "#ffffff",
+          100: "#fcfcfd",
+          200: "#f8fafc",
+        },
       },
       fontFamily: {
         heading: ["Outfit", "sans-serif"],
