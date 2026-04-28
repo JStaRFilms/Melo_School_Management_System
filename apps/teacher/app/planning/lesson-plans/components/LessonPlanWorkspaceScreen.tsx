@@ -59,6 +59,14 @@ const outputTypeOptions: Array<{
   },
 ];
 
+const generationStatusMessages = [
+  "Resolving the school template...",
+  "Generating the first draft...",
+  "Checking template sections...",
+  "Repairing section issues if needed...",
+  "Saving the validated draft...",
+] as const;
+
 const toolbarActions = [
   { id: "heading1", label: "Heading 1", icon: Heading1 },
   { id: "heading2", label: "Heading 2", icon: Heading2 },
@@ -178,6 +186,8 @@ export function LessonPlanWorkspaceScreen({
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatusIndex, setGenerationStatusIndex] = useState(0);
+  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -191,6 +201,8 @@ export function LessonPlanWorkspaceScreen({
   const dirty = signature !== lastSavedSignature;
   const canGenerate = workspace.canGenerate && !isGenerating;
   const canAutosave = workspace.canAutosave;
+  const generationStatusMessage = generationStatusMessages[generationStatusIndex] ?? generationStatusMessages[0];
+  const generationElapsedSeconds = generationStartedAt ? Math.max(0, Math.floor((Date.now() - generationStartedAt) / 1000)) : 0;
 
   const pushNotice = useCallback((tone: "success" | "error", message: string) => {
     setNotice({ tone, message });
@@ -319,12 +331,28 @@ export function LessonPlanWorkspaceScreen({
     await persistDraft("manual");
   }, [dirty, persistDraft, pushNotice]);
 
+  useEffect(() => {
+    if (!isGenerating) {
+      setGenerationStatusIndex(0);
+      setGenerationStartedAt(null);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setGenerationStatusIndex((current) => (current + 1) % generationStatusMessages.length);
+    }, 3200);
+
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
+
   const handleGenerate = useCallback(async () => {
     if (!canGenerate) {
       return;
     }
 
     setIsGenerating(true);
+    setGenerationStatusIndex(0);
+    setGenerationStartedAt(Date.now());
     try {
       const result = await onGenerateDraft();
       setRevisionNumber(result.revisionNumber);
@@ -333,7 +361,8 @@ export function LessonPlanWorkspaceScreen({
       setPlainText(result.plainText);
       setLastSavedSignature(JSON.stringify({ title: result.title, documentState: result.documentState }));
       setSaveState("saved");
-      pushNotice("success", `Generated ${workspace.outputTypeLabel.toLowerCase()} revision ${result.revisionNumber}.`);
+      const repairSuffix = result.generationMeta?.repaired ? " Automatically repaired to match the school template." : "";
+      pushNotice("success", `Generated ${workspace.outputTypeLabel.toLowerCase()} revision ${result.revisionNumber}.${repairSuffix}`);
     } catch (error) {
       setSaveState("error");
       pushNotice("error", getUserFacingErrorMessage(error, "Generation failed."));
@@ -597,6 +626,21 @@ export function LessonPlanWorkspaceScreen({
                 placeholder="Write the lesson draft here."
               />
 
+              {isGenerating ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>{generationStatusMessage}</span>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-amber-100">
+                    <div className="h-full w-1/3 animate-pulse rounded-full bg-amber-500" />
+                  </div>
+                  <p className="mt-2 text-xs font-medium text-amber-800">
+                    Still working{generationElapsedSeconds > 0 ? ` (${generationElapsedSeconds}s elapsed)` : ""}. The app may make one automatic repair pass if the model misses a required template section.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <BookOpenText className="h-4 w-4" />
@@ -621,7 +665,7 @@ export function LessonPlanWorkspaceScreen({
                     className="inline-flex h-11 items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 text-sm font-bold text-amber-900 shadow-sm transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    Generate {workspace.outputTypeLabel.toLowerCase()}
+                    {isGenerating ? "Generating..." : `Generate ${workspace.outputTypeLabel.toLowerCase()}`}
                   </button>
                 </div>
               </div>

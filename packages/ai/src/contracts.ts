@@ -120,7 +120,63 @@ export type LessonPlanDraft = z.infer<typeof lessonPlanDraftSchema>;
 export type StudentNoteDraft = z.infer<typeof studentNoteDraftSchema>;
 export type AssignmentDraft = z.infer<typeof assignmentDraftSchema>;
 export type QuestionBankDraft = z.infer<typeof questionBankDraftSchema>;
+export const templateBoundSectionDraftSchema = z.object({
+  sectionId: z.string(),
+  label: z.string(),
+  content: z.string(),
+});
+
+export const templateBoundInstructionDraftSchema = z.object({
+  title: z.string(),
+  subject: z.string(),
+  level: z.string(),
+  topic: z.string(),
+  sections: z.array(templateBoundSectionDraftSchema).min(1),
+  sourceNotes: z.array(z.string()).min(1),
+});
+
+export function createTemplateBoundInstructionDraftSchema(
+  templateSections: Array<{ id: string; label: string; required: boolean }>
+) {
+  const allowedSectionIds = new Set(templateSections.map((section) => section.id));
+  const requiredSectionIds = new Set(templateSections.filter((section) => section.required).map((section) => section.id));
+
+  return templateBoundInstructionDraftSchema.superRefine((draft, ctx) => {
+    const seenSectionIds = new Set<string>();
+
+    for (const section of draft.sections) {
+      if (!allowedSectionIds.has(section.sectionId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sections"],
+          message: `Unknown template section id: ${section.sectionId}`,
+        });
+      }
+
+      if (seenSectionIds.has(section.sectionId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sections"],
+          message: `Duplicate template section id: ${section.sectionId}`,
+        });
+      }
+      seenSectionIds.add(section.sectionId);
+    }
+
+    for (const sectionId of requiredSectionIds) {
+      if (!seenSectionIds.has(sectionId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sections"],
+          message: `Missing required template section id: ${sectionId}`,
+        });
+      }
+    }
+  });
+}
+
 export type CbtDraft = z.infer<typeof cbtDraftSchema>;
+export type TemplateBoundInstructionDraft = z.infer<typeof templateBoundInstructionDraftSchema>;
 
 export interface DocumentGenerationContract<OutputShape> {
   readonly kind: DocumentOutputType;

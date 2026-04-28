@@ -1,41 +1,48 @@
 import { ConvexHttpClient } from "convex/browser";
-import { generateObject } from "ai";
+import { APICallError, generateObject, NoObjectGeneratedError, type GenerateObjectResult } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   buildAssignmentPrompt,
   buildLessonPlanPrompt,
   buildStudentNotePrompt,
+  buildTemplateRepairPrompt,
   createDocumentModel,
-  lessonPlanDraftSchema,
-  studentNoteDraftSchema,
-  assignmentDraftSchema,
   resolveDocumentModelId,
-  type AssignmentDraft,
+  templateBoundInstructionDraftSchema,
+  getDocumentGenerationRetryDelayMs,
+  normalizeDocumentGenerationFailure,
+  shouldRetryDocumentGeneration,
   type DocumentOutputType,
-  type LessonPlanDraft,
-  type StudentNoteDraft,
+  type TemplateBoundInstructionDraft,
 } from "@school/ai";
 import { api } from "@school/convex/_generated/api";
-import { getUserFacingErrorMessage } from "@school/shared";
-
 import { getToken } from "@/lib/auth-server";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
+const MAX_TEMPLATE_REPAIR_ATTEMPTS = 1;
+const MAX_PROVIDER_RETRY_ATTEMPTS = 1;
+const MAX_FAILED_RESPONSE_REPAIR_CHARS = 8000;
 
-type LessonPlanObjective = string;
-type LessonPlanPrerequisite = string;
-type LessonPlanMaterial = string;
-type LessonPlanTeacherMove = string;
-type LessonPlanLearnerActivity = string;
-type LessonPlanSourceNote = string;
-type LessonPlanKeyPoint = string;
-type LessonPlanReflectionQuestion = string;
-type LessonPlanSubmissionChecklistItem = string;
-type LessonPlanHint = string;
-type LessonPlanVocabularyEntry = StudentNoteDraft["vocabulary"][number];
-type LessonPlanFlowStep = LessonPlanDraft["lessonFlow"][number];
-type AssignmentTask = AssignmentDraft["tasks"][number];
+type TemplateGenerationResult = GenerateObjectResult<TemplateBoundInstructionDraft>;
+
+class TemplateDraftValidationError extends Error {
+  readonly issues: string[];
+
+  constructor(issues: string[]) {
+    super(issues.join(" "));
+    this.name = "TemplateDraftValidationError";
+    this.issues = issues;
+  }
+}
+
+type ResolvedTemplateSection = {
+  id: string;
+  label: string;
+  order: number;
+  required: boolean;
+  minimumWordCount: number | null;
+};
 
 const topicPlanningContextSchema = z.object({
   kind: z.literal("topic"),
@@ -125,6 +132,38 @@ function buildSourceSelectionSnapshot(args: {
   });
 }
 
+function isNoObjectGeneratedError(error: unknown): error is NoObjectGeneratedError & { text?: string } {
+  return NoObjectGeneratedError.isInstance(error);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function generationFailureMessage(error: unknown, args: { outputType: DocumentOutputType; modelId: string }) {
+  const failure = normalizeDocumentGenerationFailure(error);
+  const target = `${args.outputType.replaceAll("_", " ")} model (${args.modelId})`;
+
+  if (APICallError.isInstance(error)) {
+    const status = error.statusCode ? ` Status ${error.statusCode}.` : "";
+    return `The AI provider rejected or failed the ${target} request.${status} This can happen when a free model is temporarily unavailable or does not reliably support structured JSON output. Try again or switch this document type to a more stable model.`;
+  }
+
+  switch (failure.kind) {
+    case "rate_limit":
+      return `The AI provider is rate-limiting the ${target} right now. Please wait a moment and try again.`;
+    case "timeout":
+    case "transient_provider":
+      return `The AI provider returned a temporary error for the ${target}. Please try again, or switch models if it keeps happening.`;
+    case "invalid_output":
+      return `The ${target} returned output that could not be shaped into the school template. Please try again.`;
+    case "configuration":
+      return `The ${target} request was rejected by the provider. Check the configured model for this document type, or try another model.`;
+    default:
+      return failure.message || "Generation failed.";
+  }
+}
+
 function sourcePromptMaterials(workspace: {
   selectedSources: Array<{
     _id: string;
@@ -145,133 +184,96 @@ function sourcePromptMaterials(workspace: {
   }));
 }
 
-function renderLessonPlanMarkdown(draft: LessonPlanDraft) {
-  return [
-    `# ${draft.title}`,
-    "",
-    `**Subject:** ${draft.subject}`,
-    `**Level:** ${draft.level}`,
-    `**Topic:** ${draft.topic}`,
-    "",
-    "## Summary",
-    draft.summary,
-    "",
-    "## Learning objectives",
-    ...draft.learningObjectives.map((objective: LessonPlanObjective) => `- ${objective}`),
-    "",
-    "## Prerequisites",
-    ...draft.prerequisites.map((item: LessonPlanPrerequisite) => `- ${item}`),
-    "",
-    "## Materials",
-    ...draft.materials.map((item: LessonPlanMaterial) => `- ${item}`),
-    "",
-    "## Lesson flow",
-    ...draft.lessonFlow.flatMap((step: LessonPlanFlowStep, index: number) => [
-      `### ${index + 1}. ${step.heading} (${step.durationMinutes} min)`,
-      "**Teacher moves**",
-      ...step.teacherMoves.map((move: LessonPlanTeacherMove) => `- ${move}`),
-      "",
-      "**Learner activities**",
-      ...step.learnerActivities.map((activity: LessonPlanLearnerActivity) => `- ${activity}`),
-      "",
-      `**Checkpoint:** ${step.checkpoint}`,
-      "",
-    ]),
-    "## Assessment",
-    draft.assessment,
-    "",
-    "## Homework",
-    draft.homework,
-    "",
-    "## Differentiation notes",
-    draft.differentiationNotes,
-    "",
-    "## Source notes",
-    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+function sectionWordCount(content: string) {
+  return content.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function renderStudentNoteMarkdown(draft: StudentNoteDraft) {
-  return [
-    `# ${draft.title}`,
-    "",
-    `**Subject:** ${draft.subject}`,
-    `**Level:** ${draft.level}`,
-    `**Topic:** ${draft.topic}`,
-    "",
-    "## Summary",
-    draft.summary,
-    "",
-    "## Key points",
-    ...draft.keyPoints.map((item: LessonPlanKeyPoint) => `- ${item}`),
-    "",
-    "## Vocabulary",
-    ...draft.vocabulary.flatMap((entry: LessonPlanVocabularyEntry) => [`- **${entry.term}:** ${entry.meaning}`]),
-    "",
-    "## Worked example",
-    draft.workedExample,
-    "",
-    "## Reflection questions",
-    ...draft.reflectionQuestions.map((question: LessonPlanReflectionQuestion) => `- ${question}`),
-    "",
-    "## Source notes",
-    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function renderAssignmentMarkdown(draft: AssignmentDraft) {
-  return [
-    `# ${draft.title}`,
-    "",
-    `**Subject:** ${draft.subject}`,
-    `**Level:** ${draft.level}`,
-    `**Topic:** ${draft.topic}`,
-    "",
-    "## Instructions",
-    draft.instructions,
-    "",
-    "## Tasks",
-    ...draft.tasks.flatMap((task: AssignmentTask, index: number) => [
-      `### Task ${index + 1} (${task.marks} marks, ${task.difficulty})`,
-      task.prompt,
-      "",
-      `**Expected response:** ${task.expectedResponse}`,
-      "",
-      "**Hints**",
-      ...task.hints.map((hint: LessonPlanHint) => `- ${hint}`),
-      "",
-    ]),
-    "## Submission checklist",
-    ...draft.submissionChecklist.map((item: LessonPlanSubmissionChecklistItem) => `- [ ] ${item}`),
-    "",
-    "## Marking guidance",
-    draft.markingGuidance,
-    "",
-    "## Source notes",
-    ...draft.sourceNotes.map((note: LessonPlanSourceNote) => `- ${note}`),
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function renderGeneratedMarkdown(outputType: DocumentOutputType, draft: unknown): string {
-  switch (outputType) {
-    case "lesson_plan":
-      return renderLessonPlanMarkdown(draft as LessonPlanDraft);
-    case "student_note":
-      return renderStudentNoteMarkdown(draft as StudentNoteDraft);
-    case "assignment":
-      return renderAssignmentMarkdown(draft as AssignmentDraft);
-    default:
-      throw new Error(`Unsupported output type: ${String(outputType)}`);
+function normalizeGeneratedTemplateDraft(
+  draft: TemplateBoundInstructionDraft,
+  templateSections: ResolvedTemplateSection[]
+): TemplateBoundInstructionDraft {
+  if (templateSections.length === 0) {
+    throw new Error("A resolved template is required before rendering generated instruction artifacts.");
   }
+
+  const issues: string[] = [];
+  const allowedSectionIds = new Set(templateSections.map((section) => section.id));
+  const unknownIds = draft.sections.map((section) => section.sectionId).filter((sectionId) => !allowedSectionIds.has(sectionId));
+  if (unknownIds.length > 0) {
+    issues.push(`Generated draft used unknown template section ids: ${[...new Set(unknownIds)].join(", ")}.`);
+  }
+
+  const sectionsById = new Map(draft.sections.map((section) => [section.sectionId, section]));
+  const duplicateIds = draft.sections
+    .map((section) => section.sectionId)
+    .filter((sectionId, index, sectionIds) => sectionIds.indexOf(sectionId) !== index);
+
+  if (duplicateIds.length > 0) {
+    issues.push(`Generated draft repeated template section ids: ${[...new Set(duplicateIds)].join(", ")}.`);
+  }
+
+  const normalizedSections = templateSections.map((templateSection) => {
+    const generatedSection = sectionsById.get(templateSection.id);
+    if (!generatedSection) {
+      if (!templateSection.required) {
+        return {
+          sectionId: templateSection.id,
+          label: templateSection.label,
+          content: "",
+        };
+      }
+      issues.push(`Generated draft omitted required template section: ${templateSection.label}.`);
+      return {
+        sectionId: templateSection.id,
+        label: templateSection.label,
+        content: "",
+      };
+    }
+
+    const content = generatedSection.content.trim();
+    if (templateSection.required && !content) {
+      issues.push(`Generated draft left required template section empty: ${templateSection.label}.`);
+    }
+
+    if (content && templateSection.minimumWordCount && sectionWordCount(content) < templateSection.minimumWordCount) {
+      issues.push(
+        `Generated draft section "${templateSection.label}" is below the minimum word count of ${templateSection.minimumWordCount}.`
+      );
+    }
+
+    return {
+      sectionId: templateSection.id,
+      label: templateSection.label,
+      content,
+    };
+  });
+
+  if (issues.length > 0) {
+    throw new TemplateDraftValidationError(issues);
+  }
+
+  return {
+    ...draft,
+    sections: normalizedSections,
+    sourceNotes: draft.sourceNotes.map((note) => note.trim()).filter(Boolean),
+  };
+}
+
+function renderGeneratedMarkdown(draft: TemplateBoundInstructionDraft): string {
+  const metadata = [`**Subject:** ${draft.subject}`, `**Level:** ${draft.level}`, `**Topic:** ${draft.topic}`];
+
+  return [
+    `# ${draft.title}`,
+    "",
+    ...metadata,
+    "",
+    ...draft.sections.flatMap((section) => [`## ${section.label}`, section.content, ""]),
+    "## Source notes",
+    ...draft.sourceNotes.map((note) => `- ${note}`),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 }
 
 function promptClassForOutputType(outputType: DocumentOutputType): string {
@@ -288,38 +290,36 @@ function promptClassForOutputType(outputType: DocumentOutputType): string {
 }
 
 async function generateDraftObject(
-  outputType: DocumentOutputType,
   model: ReturnType<typeof createDocumentModel>,
   prompt: { system?: unknown; prompt?: unknown }
-) {
+): Promise<TemplateGenerationResult> {
   const system = typeof prompt.system === "string" ? prompt.system : undefined;
   const promptText = typeof prompt.prompt === "string" ? prompt.prompt : "";
 
-  switch (outputType) {
-    case "lesson_plan":
-      return generateObject({
+  for (let attempt = 0; attempt <= MAX_PROVIDER_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await generateObject({
         model,
-        schema: lessonPlanDraftSchema,
+        schema: templateBoundInstructionDraftSchema,
         ...(system ? { system } : {}),
         prompt: promptText,
       });
-    case "student_note":
-      return generateObject({
-        model,
-        schema: studentNoteDraftSchema,
-        ...(system ? { system } : {}),
-        prompt: promptText,
-      });
-    case "assignment":
-      return generateObject({
-        model,
-        schema: assignmentDraftSchema,
-        ...(system ? { system } : {}),
-        prompt: promptText,
-      });
-    default:
-      throw new Error(`Unsupported output type: ${String(outputType)}`);
+    } catch (error) {
+      const failure = normalizeDocumentGenerationFailure(error);
+      const shouldRetryProvider =
+        attempt < MAX_PROVIDER_RETRY_ATTEMPTS &&
+        shouldRetryDocumentGeneration(failure) &&
+        (failure.kind === "rate_limit" || failure.kind === "timeout" || failure.kind === "transient_provider");
+
+      if (!shouldRetryProvider) {
+        throw error;
+      }
+
+      await sleep(getDocumentGenerationRetryDelayMs(failure, attempt + 1));
+    }
   }
+
+  throw new Error("Generation failed after provider retry.");
 }
 
 export async function POST(request: Request) {
@@ -400,6 +400,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!workspace.template) {
+      return NextResponse.json(
+        { error: "No active template resolved for this lesson-planning context. Ask an admin to set a template first." },
+        { status: 400 }
+      );
+    }
+
     const rateLimit = await client.mutation(
       api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit,
       {}
@@ -408,11 +415,13 @@ export async function POST(request: Request) {
       return rateLimitedResponse({ retryAfterMs: rateLimit.retryAfterMs, resetAt: rateLimit.resetAt });
     }
 
+    const modelId = resolveDocumentModelId(outputType);
+
     await client.mutation(api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun, {
       outputType,
       promptClass,
       status: "running",
-      model: resolveDocumentModelId(outputType),
+      model: modelId,
       provider: "openrouter",
       sourceSelectionSnapshot,
       sourceCount: sourceIds.length,
@@ -421,22 +430,23 @@ export async function POST(request: Request) {
 
     const model = createDocumentModel(outputType);
     const sourceMaterials = sourcePromptMaterials(workspace);
+    const templateSections = workspace.template.sectionDefinitions
+      .slice()
+      .sort((a: ResolvedTemplateSection, b: ResolvedTemplateSection) => a.order - b.order);
 
     const promptContext = {
       schoolName: workspace.schoolName ?? undefined,
       subject: effectiveSubjectName ?? undefined,
       level: effectiveLevel ?? undefined,
       topic: effectiveTopicLabel ?? undefined,
-      templateName: workspace.template?.title ?? undefined,
+      templateName: workspace.template.title,
+      templateSections,
       sourceMaterials,
-      constraints: workspace.template
-        ? [
-            `Use at least ${workspace.template.objectiveMinimums.minimumSourceMaterials} source materials.`,
-            `Cover the required sections in this order: ${workspace.template.sectionDefinitions
-              .map((section: { label: string }) => section.label)
-              .join(", ")}.`,
-          ]
-        : ["Use the selected source materials only.", "Keep the draft editable and concise."],
+      constraints: [
+        `Use at least ${workspace.template.objectiveMinimums.minimumSourceMaterials} source materials.`,
+        `Cover the required sections in this exact order: ${templateSections.map((section) => section.label).join(", ")}.`,
+        "Do not replace the resolved template with a generic lesson-plan, student-note, or assignment outline.",
+      ],
       revisionNotes: workspace.draft.title && workspace.draft.title !== workspace.template?.title
         ? `Refresh the current draft while preserving the teacher's working title: ${workspace.draft.title}`
         : undefined,
@@ -449,10 +459,52 @@ export async function POST(request: Request) {
           ? buildStudentNotePrompt(promptContext)
           : buildAssignmentPrompt(promptContext);
 
-    const result = await generateDraftObject(outputType, model, prompt);
-    const generatedObject = result.object as LessonPlanDraft | StudentNoteDraft | AssignmentDraft;
+    let result: TemplateGenerationResult;
+    let generatedObject: TemplateBoundInstructionDraft;
+    let repaired = false;
+    let validationIssues: string[] = [];
 
-    const documentState = renderGeneratedMarkdown(outputType, generatedObject);
+    try {
+      result = await generateDraftObject(model, prompt);
+    } catch (generationError) {
+      if (!isNoObjectGeneratedError(generationError) || MAX_TEMPLATE_REPAIR_ATTEMPTS < 1) {
+        throw generationError;
+      }
+
+      validationIssues = [
+        "The model returned text that was not parseable as the required JSON object.",
+        "Return only a complete JSON object with title, subject, level, topic, sections, and sourceNotes.",
+      ];
+      repaired = true;
+      const repairPrompt = buildTemplateRepairPrompt({
+        originalPrompt: typeof prompt.prompt === "string" ? prompt.prompt : "",
+        previousDraft: (generationError.text ?? generationError.message).slice(0, MAX_FAILED_RESPONSE_REPAIR_CHARS),
+        validationErrors: validationIssues,
+        templateSections,
+      });
+      result = await generateDraftObject(model, repairPrompt);
+    }
+
+    try {
+      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections);
+    } catch (validationError) {
+      if (!(validationError instanceof TemplateDraftValidationError) || MAX_TEMPLATE_REPAIR_ATTEMPTS < 1 || repaired) {
+        throw validationError;
+      }
+
+      validationIssues = validationError.issues;
+      repaired = true;
+      const repairPrompt = buildTemplateRepairPrompt({
+        originalPrompt: typeof prompt.prompt === "string" ? prompt.prompt : "",
+        previousDraft: result.object,
+        validationErrors: validationIssues,
+        templateSections,
+      });
+      result = await generateDraftObject(model, repairPrompt);
+      generatedObject = normalizeGeneratedTemplateDraft(result.object, templateSections);
+    }
+
+    const documentState = renderGeneratedMarkdown(generatedObject);
     const plainText = markdownToPlainText(documentState);
 
     const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
@@ -478,7 +530,7 @@ export async function POST(request: Request) {
       outputType,
       promptClass,
       status: "succeeded",
-      model: resolveDocumentModelId(outputType),
+      model: modelId,
       provider: "openrouter",
       targetArtifactId: saveResult.artifactId,
       sourceSelectionSnapshot,
@@ -488,15 +540,23 @@ export async function POST(request: Request) {
       finishedAt: Date.now(),
     });
 
-    return NextResponse.json(saveResult);
+    return NextResponse.json({
+      ...saveResult,
+      generationMeta: {
+        attempts: repaired ? 2 : 1,
+        repaired,
+        validationIssues,
+      },
+    });
   } catch (error) {
-    const errorMessage = getUserFacingErrorMessage(error, "Lesson-plan generation failed.");
+    const failedModelId = resolveDocumentModelId(outputType);
+    const errorMessage = generationFailureMessage(error, { outputType, modelId: failedModelId });
     await client
       .mutation(api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun, {
         outputType,
         promptClass: promptClassForOutputType(outputType),
         status: "failed",
-        model: resolveDocumentModelId(outputType),
+        model: failedModelId,
         provider: "openrouter",
         sourceSelectionSnapshot: buildSourceSelectionSnapshot({
           outputType,

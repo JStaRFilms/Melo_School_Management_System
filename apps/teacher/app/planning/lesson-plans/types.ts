@@ -117,6 +117,12 @@ export interface LessonPlanWorkspaceData {
   selectedSources: LessonPlanWorkspaceSource[];
 }
 
+export interface LessonPlanGenerationMeta {
+  attempts: number;
+  repaired: boolean;
+  validationIssues: string[];
+}
+
 export interface LessonPlanSaveResult {
   artifactId: string;
   documentId: string;
@@ -131,4 +137,5 @@ export interface LessonPlanSaveResult {
   templateId: string | null;
   templateResolutionPath: string | null;
   savedAt: number;
+  generationMeta?: LessonPlanGenerationMeta;
 }
