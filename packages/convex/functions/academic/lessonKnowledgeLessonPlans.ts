@@ -23,6 +23,7 @@ const MAX_PROMPT_CHUNKS_PER_SOURCE = 3;
 const MAX_PROMPT_CHARS_PER_CHUNK = 900;
 const MAX_PROMPT_CHARS_PER_SOURCE = 1800;
 const MAX_PROMPT_TOTAL_EXCERPT_CHARS = 12000;
+const MAX_PROMPT_CHUNK_CANDIDATES_PER_SOURCE = 50;
 
 const outputTypeValidator = v.union(
   v.literal("lesson_plan"),
@@ -1278,6 +1279,49 @@ async function findMatchingArtifact(args: {
   return null;
 }
 
+function normalizeSearchTerms(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3);
+}
+
+function scoreChunkForTopic(chunkText: string, searchTerms: string[]): number {
+  if (searchTerms.length === 0) {
+    return 0;
+  }
+
+  const normalizedChunk = chunkText.toLowerCase();
+  return searchTerms.reduce((score, term) => {
+    const matches = normalizedChunk.split(term).length - 1;
+    return score + matches;
+  }, 0);
+}
+
+function orderChunksForExcerpt(
+  chunks: Array<Doc<"knowledgeMaterialChunks">>,
+  searchTerms: string[]
+): Array<Doc<"knowledgeMaterialChunks">> {
+  const nonEmptyChunks = chunks.filter((chunk) => chunk.chunkText.trim().length > 0);
+
+  if (searchTerms.length === 0) {
+    return nonEmptyChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  }
+
+  return nonEmptyChunks.sort((a, b) => {
+    const scoreDifference = scoreChunkForTopic(b.chunkText, searchTerms) - scoreChunkForTopic(a.chunkText, searchTerms);
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+    return a.chunkIndex - b.chunkIndex;
+  });
+}
+
 export const getTeacherInstructionSourceExcerpts = query({
   args: {
     outputType: outputTypeValidator,
@@ -1298,6 +1342,11 @@ export const getTeacherInstructionSourceExcerpts = query({
     const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
     assertGenerationSourceCount(sourceIdStrings);
     const requestedSourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
+
+    const excerptSearchTerms = [
+      ...normalizeSearchTerms(args.targetTopicLabel),
+      ...normalizeSearchTerms(planningContext?.topicTitle),
+    ];
 
     const excerpts: Array<{
       materialId: Id<"knowledgeMaterials">;
@@ -1333,16 +1382,17 @@ export const getTeacherInstructionSourceExcerpts = query({
           q.eq("schoolId", schoolId).eq("materialId", source._id)
         )
         .order("asc")
-        .take(MAX_PROMPT_CHUNKS_PER_SOURCE * 2);
+        .take(MAX_PROMPT_CHUNK_CANDIDATES_PER_SOURCE);
 
-      const usableChunks = chunks
-        .filter(
+      const usableChunks = orderChunksForExcerpt(
+        chunks.filter(
           (chunk) =>
             chunk.searchStatus === "indexed" &&
             chunk.visibility === source.visibility &&
             chunk.reviewStatus === source.reviewStatus
-        )
-        .slice(0, MAX_PROMPT_CHUNKS_PER_SOURCE);
+        ),
+        excerptSearchTerms
+      ).slice(0, MAX_PROMPT_CHUNKS_PER_SOURCE);
 
       if (usableChunks.length === 0) {
         omittedSourceIds.push(String(source._id));
