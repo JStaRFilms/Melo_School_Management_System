@@ -41,7 +41,7 @@ export function TeacherSheet({
         if (typeof document !== "undefined") {
           document.body.style.overflow = prevOverflowRef.current;
         }
-      }, 500);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
@@ -63,26 +63,30 @@ export function TeacherSheet({
   if (!shouldRender) return null;
 
   return (
-    <div className={`fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-500 ease-out ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+    <div className={`fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-400 ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
       {/* Overlay */}
       <div
-        className={`absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] transition-opacity duration-500 ease-out ${isAnimating ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] transition-opacity duration-400 ${isAnimating ? "opacity-100" : "opacity-0"}`}
         onClick={onClose}
       />
 
       {/* Sheet / Modal */}
       <div
-        className={`relative flex w-full flex-col bg-white shadow-2xl ring-1 ring-slate-950/10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
+        className={`relative flex w-full flex-col bg-white shadow-2xl ring-1 ring-slate-950/10
           rounded-t-[1.5rem] sm:rounded-xl sm:max-w-lg
-          ${isAnimating ? "translate-y-0" : "translate-y-full sm:translate-y-12 sm:scale-95"}
+          transition-all
+          ${isAnimating 
+            ? "translate-y-0 sm:translate-y-0 sm:scale-100 opacity-100 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]" 
+            : "translate-y-full sm:translate-y-8 sm:scale-[0.97] opacity-0 duration-300 ease-[cubic-bezier(0.4,0,1,1)]"
+          }
         `}
       >
         {/* Handle for mobile swipe feel */}
-        <div className="flex justify-center py-4 sm:hidden">
-          <div className="h-1.5 w-12 rounded-full bg-slate-200/60" />
+        <div className="flex justify-center py-3 sm:hidden">
+          <div className="h-1.5 w-10 rounded-full bg-slate-200/80" />
         </div>
 
-        <div className="flex items-start justify-between px-6 pb-4 pt-2 sm:pt-6 border-b border-slate-50">
+        <div className="flex items-start justify-between px-6 pb-4 pt-1 sm:pt-6 border-b border-slate-100/80">
           <div className="space-y-1">
             <h2 className="font-display text-lg font-bold tracking-tight text-slate-950 uppercase">{title}</h2>
             {description && (
@@ -91,13 +95,13 @@ export function TeacherSheet({
           </div>
           <button
             onClick={onClose}
-            className="rounded-full p-2 hover:bg-slate-50 transition-colors"
+            className="rounded-full p-2 hover:bg-slate-100 active:bg-slate-200 transition-colors"
           >
-            <X className="h-5 w-5 text-slate-300" />
+            <X className="h-5 w-5 text-slate-400" />
           </button>
         </div>
 
-        <div className="max-h-[80vh] overflow-y-auto px-6 pb-10 pt-4 sm:pb-8">
+        <div className="max-h-[80vh] overflow-y-auto px-6 pb-8 pt-5 sm:pb-6 custom-scrollbar">
           {children}
         </div>
       </div>

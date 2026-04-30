@@ -468,10 +468,10 @@ export default function PlanningIndexPage() {
         {creationSidebar}
       </TeacherSheet>
 
-      <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 lg:overflow-hidden">
         {/* Main Content Area */}
-        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-6 md:py-8 custom-scrollbar">
-          <div className="max-w-[1200px] mx-auto space-y-8">
+        <main className="flex-1 min-w-0 w-full lg:h-full lg:overflow-y-auto px-4 py-6 md:px-6 md:py-8 custom-scrollbar">
+          <div className="w-full max-w-[1200px] mx-auto space-y-8">
             <TeacherHeader
               title="Planning Studio"
               label="Academic Engine"
@@ -516,7 +516,7 @@ export default function PlanningIndexPage() {
             </div>
 
             {/* Work Grid */}
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid w-full gap-5 md:grid-cols-2 xl:grid-cols-3">
               {(planningWork ?? []).map((item) => {
                 const itemContext = item.preferredClassId
                   ? {

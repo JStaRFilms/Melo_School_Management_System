@@ -15,60 +15,60 @@ export function PlanningWorkCard({
   questionHref: string | null; 
 }) {
   return (
-    <article className="group relative flex flex-col gap-4 rounded-lg border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:ring-1 hover:ring-slate-950/5">
+    <article className="group relative flex flex-col gap-4 rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:ring-1 hover:ring-slate-950/5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-[15px] font-black text-slate-950">{item.topicTitle}</h3>
           </div>
-          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
             {item.subjectName} • {item.level}
           </p>
         </div>
-        <div className="shrink-0 rounded-lg bg-slate-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border border-slate-100">
+        <div className="shrink-0 max-w-[100px] truncate rounded-lg bg-slate-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border border-slate-100">
           {item.preferredClassName ?? "No class"}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 border-y border-slate-50 py-3">
+      <div className="grid grid-cols-3 gap-1 border-y border-slate-50 py-3 sm:gap-2">
         <div className="text-center">
           <p className="text-sm font-black text-slate-950">{item.sourceCount}</p>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Sources</p>
+          <p className="text-[8px] font-bold uppercase tracking-normal text-slate-400 sm:text-[9px] sm:tracking-widest">Sources</p>
         </div>
         <div className="text-center border-x border-slate-50">
           <p className="text-sm font-black text-slate-950">{item.lessonCount}</p>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Lessons</p>
+          <p className="text-[8px] font-bold uppercase tracking-normal text-slate-400 sm:text-[9px] sm:tracking-widest">Lessons</p>
         </div>
         <div className="text-center">
           <p className="text-sm font-black text-slate-950">{item.questionBankCount}</p>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Questions</p>
+          <p className="text-[8px] font-bold uppercase tracking-normal text-slate-400 sm:text-[9px] sm:tracking-widest">Questions</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-row gap-2 pt-1">
         <Link
           href={lessonHref ?? "#"}
           className={cn(
-            "flex-1 inline-flex h-9 items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all",
+            "flex-1 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
             lessonHref 
               ? "bg-slate-950 text-white hover:bg-slate-800" 
               : "cursor-not-allowed bg-slate-100 text-slate-400"
           )}
         >
-          <FileText className="h-3.5 w-3.5" />
-          Lessons
+          <FileText className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Lessons</span>
         </Link>
         <Link
           href={questionHref ?? "#"}
           className={cn(
-            "flex-1 inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 text-[11px] font-black uppercase tracking-wider transition-all",
+            "flex-1 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-slate-200 text-[10px] font-black uppercase tracking-wider transition-all",
             questionHref 
               ? "bg-white text-slate-900 hover:bg-slate-50" 
               : "cursor-not-allowed bg-slate-50 text-slate-300"
           )}
         >
-          <ClipboardList className="h-3.5 w-3.5" />
-          Practice
+          <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Practice</span>
         </Link>
       </div>
     </article>
