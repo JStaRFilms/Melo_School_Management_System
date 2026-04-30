@@ -18,48 +18,38 @@ export function SubjectSelectionMatrix({
   onSetStudentSubjects,
 }: SubjectSelectionMatrixProps) {
   return (
-    <section className="space-y-4">
-      <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Subject Selection
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            On phones, open a student card and edit subjects with larger tap
-            targets. On bigger screens, the full matrix stays available.
-          </p>
-        </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-300 md:hidden">
-          Tap a student to edit subjects
+    <section className="space-y-6">
+      <div className="flex items-center justify-between border-b border-slate-950/5 pb-2">
+        <h3 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+          Roster Matrix
+        </h3>
+        <p className="hidden px-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:block">
+          Live Update
         </p>
       </div>
 
-      {studentsWithNoSubjects > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <span className="font-semibold">
-            {studentsWithNoSubjects}{" "}
-            {studentsWithNoSubjects === 1
-              ? "student still needs"
-              : "students still need"}{" "}
-            at least one subject.
-          </span>{" "}
-          Review the incomplete students below.
-        </div>
-      ) : null}
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5">
         {!matrix ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            Loading subject grid...
+          <div className="flex flex-col items-center justify-center p-20 text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Loading Matrix...
+            </p>
           </div>
         ) : matrix.subjects.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No subjects are offered for this class yet.
+          <div className="p-12 text-center">
+            <p className="text-sm font-medium text-slate-500">
+              No subjects are offered for this class yet.
+            </p>
           </div>
         ) : matrix.students.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No students are in this class yet. Admin will need to add them to
-            the roster first.
+          <div className="p-12 text-center">
+            <p className="text-sm font-medium text-slate-500">
+              No students are in this class yet.
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Admin will need to add students to the roster first.
+            </p>
           </div>
         ) : (
           <>
@@ -78,9 +68,9 @@ export function SubjectSelectionMatrix({
                 onSetStudentSubjects={onSetStudentSubjects}
               />
             </div>
-            <div className="border-t border-slate-100 bg-slate-50/60 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
-                Showing {matrix.students.length} students • {matrix.subjects.length} subjects
+            <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400/80">
+                {matrix.students.length} Students • {matrix.subjects.length} Subjects
               </p>
             </div>
           </>

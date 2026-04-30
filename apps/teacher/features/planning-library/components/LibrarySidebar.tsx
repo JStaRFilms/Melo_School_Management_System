@@ -321,12 +321,12 @@ export function LibrarySidebar({
 
           {!isEmbedded && (
             <div className="mt-8 pt-6 border-t border-slate-100">
-              <div className="flex items-start gap-3 opacity-60">
-                 <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-                 <p className="text-[10px] font-medium leading-relaxed text-slate-400">
-                   Materials are private by default. Request review to share with other teachers.
-                 </p>
-              </div>
+               <div className="flex items-start gap-3 opacity-60">
+                  <Shield className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-bold leading-relaxed text-slate-400 uppercase tracking-widest">
+                    Encrypted Storage • Staff Isolation Active
+                  </p>
+               </div>
             </div>
           )}
         </div>
