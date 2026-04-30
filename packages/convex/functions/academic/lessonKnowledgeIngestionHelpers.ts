@@ -36,6 +36,7 @@ export type KnowledgeMaterialUploadIntent =
 
 export const MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES = 12 * 1024 * 1024;
 export const MAX_KNOWLEDGE_MATERIAL_PDF_PAGES = 80;
+export const MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES = 30;
 export const MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS = 3;
 
 export type KnowledgeMaterialIngestionOwnerRole =
@@ -60,6 +61,8 @@ export type KnowledgeMaterialIngestionSnapshot = {
   topicId?: Id<"knowledgeTopics">;
   storageId?: Id<"_storage">;
   storageContentType?: string;
+  selectedPageRanges?: string;
+  selectedPageNumbers?: number[];
   externalUrl?: string;
   searchText: string;
   processingStatus: KnowledgeMaterialIngestionStatus;
@@ -284,6 +287,65 @@ export async function assertActiveKnowledgeSubjectTopicScope(
   return { subject, topic };
 }
 
+
+export function normalizePdfPageRangeInput(value?: string | null): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const normalized = value.trim().replace(/\s+/g, "");
+  return normalized ? normalized : undefined;
+}
+
+export function parsePdfPageRanges(value: string): number[] {
+  const normalized = normalizePdfPageRangeInput(value);
+  if (!normalized) return [];
+  if (normalized.length > 120) {
+    throw new ConvexError("Page range input is too long");
+  }
+  const pages = new Set<number>();
+  const parts = normalized.split(",");
+  if (parts.some((part) => part.length === 0)) {
+    throw new ConvexError("Page ranges must use numbers like 1-5,7-8,70-72");
+  }
+  for (const part of parts) {
+    const range = part.match(/^(\d+)-(\d+)$/);
+    const single = part.match(/^(\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < 1 || start > end) {
+        throw new ConvexError("Page ranges must use positive ascending numbers");
+      }
+      for (let page = start; page <= end; page += 1) pages.add(page);
+    } else if (single) {
+      const page = Number(single[1]);
+      if (!Number.isSafeInteger(page) || page < 1) {
+        throw new ConvexError("Page numbers must be positive whole numbers");
+      }
+      pages.add(page);
+    } else {
+      throw new ConvexError("Page ranges must use numbers like 1-5,7-8,70-72");
+    }
+    if (pages.size > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
+      throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+    }
+  }
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
+export function assertPdfPageSelectionWithinLimit(args: {
+  selectedPageNumbers: number[];
+  maxPageCount?: number;
+}) {
+  if (args.selectedPageNumbers.length > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
+    throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+  }
+  if (args.maxPageCount !== undefined) {
+    const invalid = args.selectedPageNumbers.find((page) => page > args.maxPageCount!);
+    if (invalid !== undefined) {
+      throw new ConvexError(`Selected page ${invalid} is outside this PDF's ${args.maxPageCount} pages.`);
+    }
+  }
+}
+
 export function isLikelyReadableKnowledgeMaterialText(value: string): boolean {
   const normalized = normalizeKnowledgeMaterialText(value);
   if (!normalized) {
@@ -380,6 +442,64 @@ export function chunkKnowledgeMaterialText(
     cursor = nextCursor > cursor ? nextCursor : cursor + 1;
   }
 
+  return chunks;
+}
+
+
+export function chunkKnowledgeMaterialPages(
+  pages: Array<{ pageNumber: number; text: string }>,
+  args?: { chunkSize?: number; maxChunks?: number }
+): Array<{ chunkIndex: number; chunkText: string; pageStart: number; pageEnd: number; pageNumbers: number[] }> {
+  const chunkSize = args?.chunkSize ?? 1200;
+  const maxChunks = args?.maxChunks ?? 24;
+  const chunks: Array<{ chunkIndex: number; chunkText: string; pageStart: number; pageEnd: number; pageNumbers: number[] }> = [];
+  let candidate = "";
+  let candidatePages: number[] = [];
+
+  function flush() {
+    const chunkText = normalizeKnowledgeMaterialText(candidate);
+    const pageNumbers = Array.from(new Set(candidatePages)).sort((a, b) => a - b);
+    if (chunkText && pageNumbers.length > 0 && chunks.length < maxChunks) {
+      chunks.push({
+        chunkIndex: chunks.length,
+        chunkText,
+        pageStart: Math.min(...pageNumbers),
+        pageEnd: Math.max(...pageNumbers),
+        pageNumbers,
+      });
+    }
+    candidate = "";
+    candidatePages = [];
+  }
+
+  for (const page of pages.sort((a, b) => a.pageNumber - b.pageNumber)) {
+    const text = normalizeKnowledgeMaterialText(page.text);
+    if (!text || chunks.length >= maxChunks) continue;
+    const tentative = candidate ? `${candidate} ${text}` : text;
+    if (candidate && tentative.length > chunkSize) {
+      flush();
+    }
+    candidate = candidate ? `${candidate} ${text}` : text;
+    candidatePages.push(page.pageNumber);
+    while (candidate.length > chunkSize && chunks.length < maxChunks) {
+      const words = candidate.split(/\s+/);
+      let partial = "";
+      let consumed = 0;
+      for (const word of words) {
+        const next = partial ? `${partial} ${word}` : word;
+        if (next.length > chunkSize && partial) break;
+        partial = next;
+        consumed += 1;
+      }
+      const remaining = words.slice(consumed).join(" ");
+      const currentPages = candidatePages;
+      candidate = partial;
+      flush();
+      candidate = remaining;
+      candidatePages = remaining ? currentPages : [];
+    }
+  }
+  flush();
   return chunks;
 }
 

@@ -15,6 +15,7 @@ export const knowledgeMaterialSourceProofValidator = v.object({
   originalFileNotice: v.union(v.string(), v.null()),
   extractedTextPreview: v.union(v.string(), v.null()),
   extractedTextChunkCount: v.number(),
+  indexedPageSummary: v.union(v.string(), v.null()),
 });
 
 export type KnowledgeMaterialSourceProof = {
@@ -25,6 +26,7 @@ export type KnowledgeMaterialSourceProof = {
   originalFileNotice: string | null;
   extractedTextPreview: string | null;
   extractedTextChunkCount: number;
+  indexedPageSummary: string | null;
 };
 
 export const knowledgeMaterialOriginalFileAccessValidator = v.object({
@@ -116,6 +118,8 @@ export async function readKnowledgeMaterialSourceProof(
   const extractedTextPreview = extractedTextPreviewRaw
     ? normalizeKnowledgeMaterialText(extractedTextPreviewRaw).slice(0, previewCharLimit)
     : null;
+  const pageNumbers = Array.from(new Set(chunks.flatMap((chunk) => chunk.pageNumbers ?? []))).sort((a, b) => a - b);
+  const indexedPageSummary = pageNumbers.length ? `Pages ${pageNumbers.join(", ")}` : null;
 
   return {
     originalFileState,
@@ -125,5 +129,6 @@ export async function readKnowledgeMaterialSourceProof(
     originalFileNotice,
     extractedTextPreview,
     extractedTextChunkCount: chunks.length,
+    indexedPageSummary,
   };
 }

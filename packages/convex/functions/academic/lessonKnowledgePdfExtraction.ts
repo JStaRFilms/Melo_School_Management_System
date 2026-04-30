@@ -3,6 +3,7 @@
 import type { TextContent } from "pdfjs-dist/types/src/display/api";
 import {
   MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+  assertPdfPageSelectionWithinLimit,
   isLikelyReadableKnowledgeMaterialText,
   normalizeKnowledgeMaterialText,
 } from "./lessonKnowledgeIngestionHelpers";
@@ -72,6 +73,7 @@ type PdfParserOutcome =
   | {
       kind: "success";
       text: string;
+      pages: Array<{ pageNumber: number; text: string }>;
       quality: PdfQuality;
       pageCount: number;
     }
@@ -106,6 +108,8 @@ type GeminiFallbackOutcome =
 export type KnowledgeMaterialTextExtractionResult = {
   status: "ready" | "ocr_needed" | "failed";
   text: string;
+  pages?: Array<{ pageNumber: number; text: string }>;
+  pageCount?: number;
   errorMessage: string | null;
   extractionPath: "parser" | "gemini" | "plain_text" | "none";
   fallbackReason:
@@ -122,6 +126,7 @@ export type KnowledgeMaterialTextExtractionOptions = {
   fetchImpl?: typeof fetch;
   pdfParseTimeoutMs?: number;
   geminiTimeoutMs?: number;
+  selectedPageNumbers?: number[];
 };
 
 function normalizeContentType(contentType?: string | null) {
@@ -198,9 +203,10 @@ function withTimeout<T>(
   });
 }
 
-async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfParserOutcome> {
+async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; selectedPageNumbers?: number[] }): Promise<PdfParserOutcome> {
   const { getDocument } = await getPdfJsModule();
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const timeoutMs = options.timeoutMs;
   const startedAt = Date.now();
 
   function remainingTimeoutMs() {
@@ -218,7 +224,11 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
     );
 
     const pageCount = documentProxy.numPages;
-    if (pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
+    const selectedPageNumbers = options.selectedPageNumbers?.length ? Array.from(new Set(options.selectedPageNumbers)).sort((a, b) => a - b) : undefined;
+    if (selectedPageNumbers) {
+      assertPdfPageSelectionWithinLimit({ selectedPageNumbers, maxPageCount: pageCount });
+    }
+    if (!selectedPageNumbers && pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
       return {
         kind: "page_limit",
         pageCount,
@@ -226,7 +236,9 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
     }
 
     const pageTexts: string[] = [];
-    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    const pages: Array<{ pageNumber: number; text: string }> = [];
+    const pagesToRead = selectedPageNumbers ?? Array.from({ length: pageCount }, (_, index) => index + 1);
+    for (const pageNumber of pagesToRead) {
       if (remainingTimeoutMs() <= 1) {
         break;
       }
@@ -247,6 +259,7 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
         const pageText = getTextFromContent(textContent);
         if (pageText) {
           pageTexts.push(pageText);
+          pages.push({ pageNumber, text: pageText });
         }
       } catch {
         // Mixed PDFs can include image-heavy/problematic pages. Keep any native text
@@ -258,6 +271,7 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
         return {
           kind: "success",
           text: currentQuality.normalizedText,
+          pages,
           quality: currentQuality,
           pageCount,
         };
@@ -268,6 +282,7 @@ async function parsePdfBuffer(buffer: Buffer, timeoutMs: number): Promise<PdfPar
     return {
       kind: "success",
       text: quality.normalizedText,
+      pages,
       quality,
       pageCount,
     };
@@ -416,6 +431,8 @@ async function extractPdfTextWithGemini(args: {
 function buildResultFromQuality(args: {
   status: "ready" | "ocr_needed" | "failed";
   text: string;
+  pages?: Array<{ pageNumber: number; text: string }>;
+  pageCount?: number;
   errorMessage: string | null;
   extractionPath: "parser" | "gemini" | "plain_text" | "none";
   fallbackReason: KnowledgeMaterialTextExtractionResult["fallbackReason"];
@@ -492,10 +509,10 @@ export async function extractReadableTextFromBuffer(
     });
   }
 
-  const parserResult = await parsePdfBuffer(
-    buffer,
-    options.pdfParseTimeoutMs ?? DEFAULT_PDF_PARSE_TIMEOUT_MS
-  );
+  const parserResult = await parsePdfBuffer(buffer, {
+    timeoutMs: options.pdfParseTimeoutMs ?? DEFAULT_PDF_PARSE_TIMEOUT_MS,
+    selectedPageNumbers: options.selectedPageNumbers,
+  });
 
   if (parserResult.kind === "page_limit") {
     return buildResultFromQuality({
@@ -508,6 +525,16 @@ export async function extractReadableTextFromBuffer(
   }
 
   if (parserResult.kind === "error") {
+    if (options.selectedPageNumbers?.length) {
+      return buildResultFromQuality({
+        status: "failed",
+        text: "",
+        errorMessage: parserResult.errorMessage,
+        extractionPath: "parser",
+        fallbackReason: "parser_error",
+      });
+    }
+
     const geminiApiKey = options.geminiApiKey?.trim();
 
     if (!geminiApiKey) {
@@ -566,6 +593,8 @@ export async function extractReadableTextFromBuffer(
     return buildResultFromQuality({
       status: "ready",
       text: quality.normalizedText,
+      pages: parserResult.pages,
+      pageCount: parserResult.pageCount,
       errorMessage: null,
       extractionPath: "parser",
       fallbackReason: "none",
@@ -583,8 +612,22 @@ export async function extractReadableTextFromBuffer(
     return buildResultFromQuality({
       status: "failed",
       text: quality.normalizedText,
+      pages: parserResult.pages,
+      pageCount: parserResult.pageCount,
       errorMessage:
         "The PDF text was readable but too short to index. Please upload a fuller PDF or a different source.",
+      extractionPath: "parser",
+      fallbackReason,
+    });
+  }
+
+  if (options.selectedPageNumbers?.length) {
+    return buildResultFromQuality({
+      status: "ocr_needed",
+      text: quality.normalizedText,
+      pages: parserResult.pages,
+      pageCount: parserResult.pageCount,
+      errorMessage: "Selected pages could not be fully extracted with native PDF text. Upload an OCR'd PDF or retry without page selection.",
       extractionPath: "parser",
       fallbackReason,
     });

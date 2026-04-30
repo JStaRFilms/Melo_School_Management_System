@@ -6,6 +6,7 @@ import { internalAction } from "../../_generated/server";
 import {
   buildKnowledgeMaterialSearchText,
   buildMaterialSearchSeed,
+  chunkKnowledgeMaterialPages,
   chunkKnowledgeMaterialText,
   estimateKnowledgeMaterialTokens,
   suggestKnowledgeMaterialLabels,
@@ -90,6 +91,8 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     topicId: v.optional(v.id("knowledgeTopics")),
     storageId: v.optional(v.id("_storage")),
     storageContentType: v.optional(v.string()),
+    selectedPageRanges: v.optional(v.string()),
+    selectedPageNumbers: v.optional(v.array(v.number())),
     externalUrl: v.optional(v.string()),
     searchText: v.string(),
     processingStatus: v.union(
@@ -140,6 +143,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       const extracted = await extractReadableTextFromBuffer(buffer, {
         contentType: args.storageContentType,
         geminiApiKey: process.env.GEMINI_API_KEY?.trim() || undefined,
+        selectedPageNumbers: args.selectedPageNumbers,
       });
 
       const labels = suggestKnowledgeMaterialLabels({
@@ -159,14 +163,22 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       ]);
       const chunks =
         extracted.status === "ready"
-          ? chunkKnowledgeMaterialText(extracted.text, {
-              chunkSize: 1200,
-              maxChunks: 24,
-            }).map((chunkText, index) => ({
-              chunkIndex: index,
-              chunkText,
-              tokenEstimate: estimateKnowledgeMaterialTokens(chunkText),
-            }))
+          ? extracted.pages?.length
+            ? chunkKnowledgeMaterialPages(extracted.pages, {
+                chunkSize: 1200,
+                maxChunks: 24,
+              }).map((chunk) => ({
+                ...chunk,
+                tokenEstimate: estimateKnowledgeMaterialTokens(chunk.chunkText),
+              }))
+            : chunkKnowledgeMaterialText(extracted.text, {
+                chunkSize: 1200,
+                maxChunks: 24,
+              }).map((chunkText, index) => ({
+                chunkIndex: index,
+                chunkText,
+                tokenEstimate: estimateKnowledgeMaterialTokens(chunkText),
+              }))
           : [];
 
       await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal, {
@@ -178,6 +190,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         searchText,
         labelSuggestions: labels,
         chunks,
+        ...(extracted.pageCount !== undefined ? { pdfPageCount: extracted.pageCount } : {}),
         ingestionErrorMessage: extracted.errorMessage,
       });
 

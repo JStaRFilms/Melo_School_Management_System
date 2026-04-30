@@ -15,6 +15,8 @@ import {
   buildMaterialSearchSeed,
   canManageKnowledgeMaterial,
   normalizeKnowledgeMaterialText,
+  normalizePdfPageRangeInput,
+  parsePdfPageRanges,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
   MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
@@ -94,6 +96,9 @@ type MaterialState = {
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
   storageId?: Id<"_storage">;
+  selectedPageRanges?: string;
+  selectedPageNumbers?: number[];
+  pdfPageCount?: number;
   externalUrl?: string;
   searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
   searchText: string;
@@ -162,6 +167,8 @@ function buildKnowledgeMaterialRecord(args: {
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
   externalUrl?: string;
+  selectedPageRanges?: string;
+  selectedPageNumbers?: number[];
   uploadIntent?: KnowledgeMaterialUploadIntent;
   defaultsMode?: "actor_default" | "private_first";
 }) {
@@ -205,6 +212,8 @@ function buildKnowledgeMaterialRecord(args: {
     topicLabel: args.topicLabel,
     ...(args.topicId ? { topicId: args.topicId } : {}),
     ...(args.externalUrl ? { externalUrl: args.externalUrl } : {}),
+    ...(args.selectedPageRanges ? { selectedPageRanges: args.selectedPageRanges } : {}),
+    ...(args.selectedPageNumbers?.length ? { selectedPageNumbers: args.selectedPageNumbers } : {}),
     searchStatus: "not_indexed" as const,
     searchText,
     processingStatus: defaults.processingStatus,
@@ -337,6 +346,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       v.union(v.literal("private_draft"), v.literal("request_review"), v.literal("staff_shared"))
     ),
     defaultsMode: v.optional(v.union(v.literal("actor_default"), v.literal("private_first"))),
+    selectedPageRanges: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.object({
     materialId: v.id("knowledgeMaterials"),
@@ -391,6 +401,9 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       topicId: args.topicId ?? null,
     });
 
+    const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
+    const selectedPageNumbers = selectedPageRanges ? parsePdfPageRanges(selectedPageRanges) : undefined;
+
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "knowledge_material_upload_url",
       schoolId,
@@ -408,6 +421,8 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       level,
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
+      ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      ...(selectedPageNumbers?.length ? { selectedPageNumbers } : {}),
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       defaultsMode: args.defaultsMode,
     });
@@ -493,6 +508,11 @@ export const finalizeKnowledgeMaterialUpload = mutation({
 
     if (!storageMeta) {
       throw new ConvexError("Uploaded file not found");
+    }
+
+    const normalizedContentType = storageMeta.contentType?.toLowerCase() ?? "";
+    if (material.selectedPageNumbers?.length && !normalizedContentType.includes("pdf")) {
+      throw new ConvexError("Page selection is only available for PDF uploads.");
     }
 
     const validationError = (() => {
@@ -850,6 +870,8 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       ...(material.topicId ? { topicId: material.topicId } : {}),
       ...(material.storageId ? { storageId: material.storageId } : {}),
       ...(storageMeta?.contentType ? { storageContentType: storageMeta.contentType } : {}),
+      ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
+      ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
       ...(material.externalUrl ? { externalUrl: material.externalUrl } : {}),
       searchText: material.searchText,
       processingStatus: "extracting",
@@ -884,9 +906,13 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
         chunkIndex: v.number(),
         chunkText: v.string(),
         tokenEstimate: v.optional(v.number()),
+        pageStart: v.optional(v.number()),
+        pageEnd: v.optional(v.number()),
+        pageNumbers: v.optional(v.array(v.number())),
       })
     ),
     ingestionErrorMessage: v.union(v.string(), v.null()),
+    pdfPageCount: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -911,6 +937,9 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
           reviewStatus: material.reviewStatus,
           searchStatus: "indexed",
           ...(chunk.tokenEstimate !== undefined ? { tokenEstimate: chunk.tokenEstimate } : {}),
+          ...(chunk.pageStart !== undefined ? { pageStart: chunk.pageStart } : {}),
+          ...(chunk.pageEnd !== undefined ? { pageEnd: chunk.pageEnd } : {}),
+          ...(chunk.pageNumbers !== undefined ? { pageNumbers: chunk.pageNumbers } : {}),
           createdAt: now,
           updatedAt: now,
         });
@@ -924,6 +953,7 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
       labelSuggestions: args.labelSuggestions,
       chunkCount: args.chunks.length,
       indexedAt: args.status === "ready" ? now : null,
+      ...(args.pdfPageCount !== undefined ? { pdfPageCount: args.pdfPageCount } : {}),
       ingestionErrorMessage: args.ingestionErrorMessage,
       updatedAt: now,
       updatedBy: args.actorUserId,

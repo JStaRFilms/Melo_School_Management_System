@@ -6,7 +6,9 @@ import {
   assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
   buildKnowledgeMaterialSearchText,
+  chunkKnowledgeMaterialPages,
   chunkKnowledgeMaterialText,
+  parsePdfPageRanges,
   MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
@@ -193,6 +195,35 @@ describe("lessonKnowledgeIngestionHelpers", () => {
 
     expect(labels[0]).toBe("Community Safety");
     expect(labels).toContain("Road");
+  });
+
+  it("parses advanced PDF page range selections", () => {
+    expect(parsePdfPageRanges("1")).toEqual([1]);
+    expect(parsePdfPageRanges("1-5")).toEqual([1, 2, 3, 4, 5]);
+    expect(parsePdfPageRanges("1-5,7-8,70-72")).toEqual([1, 2, 3, 4, 5, 7, 8, 70, 71, 72]);
+    expect(parsePdfPageRanges(" 1 - 3 , 5, 3 ")).toEqual([1, 2, 3, 5]);
+
+    expect(() => parsePdfPageRanges("0")).toThrowError();
+    expect(() => parsePdfPageRanges("8-7")).toThrowError();
+    expect(() => parsePdfPageRanges("1,,3")).toThrowError();
+    expect(() => parsePdfPageRanges("abc")).toThrowError();
+    expect(() => parsePdfPageRanges("1.5")).toThrowError();
+  });
+
+  it("builds page-aware chunks with exact source pages", () => {
+    const chunks = chunkKnowledgeMaterialPages(
+      [
+        { pageNumber: 1, text: "Community safety starts with clean homes and roads." },
+        { pageNumber: 2, text: "Teachers explain road signs and safe crossing." },
+        { pageNumber: 7, text: "Emergency helpers protect the community." },
+      ],
+      { chunkSize: 80, maxChunks: 4 }
+    );
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0].pageStart).toBe(1);
+    expect(chunks[0].pageNumbers).toContain(1);
+    expect(chunks.some((chunk) => chunk.pageNumbers.includes(7))).toBe(true);
   });
 
   it("accepts only YouTube urls for link registration", () => {

@@ -227,6 +227,7 @@ export default function TeacherLibraryPage() {
         topicLabel: data.topicLabel || data.title,
         sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",
         uploadIntent: data.uploadIntent,
+        selectedPageRanges: uploadContentType.includes("pdf") ? data.selectedPageRanges?.trim() || null : null,
       } as never)) as { materialId: string; uploadUrl: string };
 
       const response = await fetch(uploadShell.uploadUrl, {

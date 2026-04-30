@@ -95,7 +95,7 @@ export function LibrarySidebar({
 
   const handleUploadSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!uploadFile) return;
+    if (!uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel) return;
 
     const contentType = inferUploadContentType(uploadFile);
     if (!isSupportedUploadContentType(contentType) || uploadFile.size > MAX_UPLOAD_BYTES) {
@@ -271,6 +271,7 @@ export function LibrarySidebar({
                     value={uploadTitle}
                     onChange={(e) => setUploadTitle(e.target.value)}
                     placeholder="e.g. Newton's Laws"
+                    required
                     className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
                   />
                 </div>
@@ -281,6 +282,7 @@ export function LibrarySidebar({
                     <select
                       value={uploadSubjectId}
                       onChange={(e) => setUploadSubjectId(e.target.value)}
+                      required
                       className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-2 text-[11px] font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
                     >
                       <option value="">Select...</option>
@@ -294,6 +296,7 @@ export function LibrarySidebar({
                     <select
                       value={uploadLevel}
                       onChange={(e) => setUploadLevel(e.target.value)}
+                      required
                       className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-2 text-[11px] font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
                     >
                       <option value="">Select...</option>
@@ -315,9 +318,35 @@ export function LibrarySidebar({
                       className="h-10 w-full rounded-xl border border-sky-100 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 placeholder:text-slate-300"
                     />
                     <p className="text-[10px] font-semibold leading-relaxed text-sky-700">
-                      Leave blank to index the whole PDF. If you enter ranges, Teach Us indexes only those pages and ignores the rest for search and AI generation.
+                      Leave blank to index the whole PDF. If you enter ranges, the teacher library indexes only those pages and ignores the rest for search and AI generation.
                     </p>
                   </div>
+                )}
+
+                {isPdfUpload && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCurriculumReference((value) => !value)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-all",
+                      isCurriculumReference
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-slate-100 bg-white text-slate-500 hover:border-slate-200"
+                    )}
+                  >
+                    <span className={cn(
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-black",
+                      isCurriculumReference ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-transparent"
+                    )}>
+                      ✓
+                    </span>
+                    <span className="space-y-1">
+                      <span className="block text-[10px] font-black uppercase tracking-[0.16em]">Curriculum / planning reference</span>
+                      <span className="block text-[10px] font-semibold leading-relaxed opacity-80">
+                        Use this when uploading curriculum PDFs or broad source material that may support multiple topics.
+                      </span>
+                    </span>
+                  </button>
                 )}
 
                 <div className="space-y-1.5">
@@ -360,10 +389,10 @@ export function LibrarySidebar({
 
               <button
                 type="submit"
-                disabled={isUploading || !uploadFile}
+                disabled={isUploading || !uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel}
                 className={cn(
                   "flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all",
-                  isUploading || !uploadFile ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-950 text-white hover:bg-slate-800 shadow-lg shadow-slate-950/10"
+                  isUploading || !uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-950 text-white hover:bg-slate-800 shadow-lg shadow-slate-950/10"
                 )}
               >
                 {isUploading ? "Uploading..." : "Publish Material"}
