@@ -143,6 +143,7 @@ export const saveAssessmentGenerationProfile = mutation({
 
     const normalized = validateProfile(args);
     const description = normalizeOptionalText(args.description);
+    const isDefault = args.isActive ? args.isDefault : false;
     const now = Date.now();
 
     if (args.profileId) {
@@ -157,7 +158,7 @@ export const saveAssessmentGenerationProfile = mutation({
         totalQuestions: normalized.totalQuestions,
         questionMix: normalized.questionMix,
         allowTeacherOverrides: args.allowTeacherOverrides,
-        isDefault: args.isDefault,
+        isDefault,
         isActive: args.isActive,
         searchText: searchText({ name: normalized.name, description, questionStyle: args.questionStyle }),
         updatedAt: now,
@@ -172,7 +173,7 @@ export const saveAssessmentGenerationProfile = mutation({
         totalQuestions: normalized.totalQuestions,
         questionMix: normalized.questionMix,
         allowTeacherOverrides: args.allowTeacherOverrides,
-        isDefault: args.isDefault,
+        isDefault,
         isActive: args.isActive,
         searchText: searchText({ name: normalized.name, description, questionStyle: args.questionStyle }),
         createdAt: now,
@@ -182,7 +183,7 @@ export const saveAssessmentGenerationProfile = mutation({
       });
     }
 
-    if (args.isDefault) {
+    if (isDefault) {
       const defaults = await ctx.db
         .query("assessmentGenerationProfiles")
         .withIndex("by_school_and_is_default", (q) => q.eq("schoolId", schoolId).eq("isDefault", true))

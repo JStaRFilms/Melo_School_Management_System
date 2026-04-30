@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/utils";
 
 type LucideIconProps = {
   size?: number;
@@ -52,22 +53,23 @@ export function Stat({ label, value, icon, description, className = "" }: StatPr
 interface StatGroupProps {
   stats: StatProps[];
   className?: string;
-  variant?: "scroll" | "wrap" | "double-row";
+  variant?: "scroll" | "wrap" | "double-row" | "grid";
 }
 
 export function StatGroup({ stats, className = "", variant = "scroll" }: StatGroupProps) {
   const isScroll = variant === "scroll";
   const isDoubleRow = variant === "double-row";
+  const isGrid = variant === "grid";
   
   return (
-    <div className={`
-      flex w-full px-0.5 py-1
-      ${isScroll ? "items-center overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2" : ""}
-      ${isDoubleRow ? "grid grid-rows-2 grid-flow-col overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2 h-[120px] sm:h-auto" : ""}
-      ${variant === "wrap" ? "items-center flex-wrap gap-2" : ""}
-      sm:px-0 sm:py-0 
-      sm:gap-2.5 ${className}
-    `}>
+    <div className={cn(
+      "flex w-full px-0.5 py-1 sm:px-0 sm:py-0 sm:gap-2.5",
+      isScroll && "items-center overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2",
+      isDoubleRow && "grid grid-rows-2 grid-flow-col overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-2 h-[120px] sm:h-auto",
+      variant === "wrap" && "items-center flex-wrap gap-2",
+      isGrid && "grid grid-cols-2 sm:grid-cols-3 gap-2",
+      className
+    )}>
       {stats.map((stat) => (
         <div 
           key={stat.id ?? stat.label} 

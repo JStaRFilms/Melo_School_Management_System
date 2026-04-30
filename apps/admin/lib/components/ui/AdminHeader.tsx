@@ -7,6 +7,7 @@ interface AdminHeaderProps {
   label?: string;
   actions?: ReactNode;
   className?: string;
+  compact?: boolean;
 }
 
 export function AdminHeader({
@@ -15,6 +16,7 @@ export function AdminHeader({
   label,
   actions,
   className = "",
+  compact = false,
 }: AdminHeaderProps) {
   return (
     <header className={cn("flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between", className)}>
@@ -24,11 +26,17 @@ export function AdminHeader({
             {label}
           </p>
         )}
-        <h1 className="font-display text-xl font-extrabold tracking-tight text-slate-950 lg:text-3xl">
+        <h1 className={cn(
+          "font-display font-extrabold tracking-tight text-slate-950",
+          compact ? "text-lg" : "text-xl lg:text-3xl"
+        )}>
           {title}
         </h1>
         {description && (
-          <p className="max-w-2xl text-[12px] font-medium leading-tight text-slate-500/80">
+          <p className={cn(
+            "max-w-2xl font-medium leading-tight text-slate-500/80",
+            compact ? "text-[10px]" : "text-[12px]"
+          )}>
             {description}
           </p>
         )}
