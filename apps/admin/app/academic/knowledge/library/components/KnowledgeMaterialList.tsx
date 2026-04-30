@@ -33,7 +33,7 @@ export function KnowledgeMaterialList({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-2">
+    <div className="flex flex-col gap-2">
       {materials.map((material) => (
         <KnowledgeMaterialCard
           key={material._id}
@@ -43,17 +43,6 @@ export function KnowledgeMaterialList({
         />
       ))}
 
-      {materials.length >= 2 && (
-        <div className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white/70 p-4 text-[12px] font-medium leading-relaxed text-slate-500 shadow-sm ring-1 ring-slate-950/5">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            <Archive className="h-3.5 w-3.5" />
-            Review lane
-          </div>
-          <p className="mt-2">
-            Each card is the canonical view of a material record. Select one to inspect audit history and apply admin overrides.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

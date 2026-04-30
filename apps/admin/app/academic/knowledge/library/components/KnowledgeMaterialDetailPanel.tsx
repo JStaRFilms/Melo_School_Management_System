@@ -11,13 +11,18 @@ import {
   Database,
   Eye,
   EyeOff,
+  FileText,
   Link2,
   Save,
+  ScanText,
   Shield,
+  ShieldAlert,
   Sparkles,
+  Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { SubjectRecord } from "@/types";
@@ -70,8 +75,10 @@ interface KnowledgeMaterialDetailPanelProps {
     visibility?: KnowledgeMaterialVisibility;
     reviewStatus?: KnowledgeMaterialReviewStatus;
   }) => Promise<void>;
+  onArchiveMaterial?: (materialId: string) => Promise<void>;
   isSavingDetails?: boolean;
   isSavingState?: boolean;
+  isActionLoading?: boolean;
   variant?: "sidebar" | "sheet";
 }
 
@@ -94,8 +101,17 @@ function statusTone(value: string) {
   }
 }
 
+function badgeTone(value: string) {
+  return statusTone(value);
+}
+
 function visibilityIcon(visibility: KnowledgeMaterialVisibility) {
-  return visibility === "private_owner" ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />;
+  switch (visibility) {
+    case "private_owner":
+      return <EyeOff className="h-3.5 w-3.5" />;
+    default:
+      return <Eye className="h-3.5 w-3.5" />;
+  }
 }
 
 function formatStatusLabel(value: string) {
@@ -109,28 +125,6 @@ function formatDate(value: number) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function fieldClassName(
-  base = "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-950 outline-none transition-all placeholder:text-slate-300 focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
-) {
-  return base;
-}
-
-function buildLevelOptionsWithCurrentValue(
-  levelOptions: Array<{ value: string; label: string }>,
-  currentLevel: string
-) {
-  const trimmed = currentLevel.trim();
-  if (!trimmed) {
-    return levelOptions;
-  }
-
-  if (levelOptions.some((option) => option.value === trimmed)) {
-    return levelOptions;
-  }
-
-  return [{ value: trimmed, label: `Legacy: ${trimmed}` }, ...levelOptions];
 }
 
 function sectionLabel(text: string) {
@@ -169,14 +163,14 @@ function DetailPlaceholder({ onClose }: { onClose?: () => void }) {
   );
 }
 
-function MetaChip({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+function InfoRow({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-950/5">
-      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-        {icon}
-        {label}
+    <div className="flex items-center justify-between py-1.5 border-b border-slate-950/5 last:border-0">
+      <div className="flex items-center gap-2">
+        <div className="text-slate-400 opacity-60">{icon}</div>
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
       </div>
-      <p className="mt-1.5 text-sm font-bold tracking-tight text-slate-950">{value}</p>
+      <span className="text-[10px] font-bold text-slate-900">{value}</span>
     </div>
   );
 }
@@ -190,8 +184,10 @@ export function KnowledgeMaterialDetailPanel({
   onSaveDetails,
   onCreateTopic,
   onSaveState,
+  onArchiveMaterial,
   isSavingDetails = false,
   isSavingState = false,
+  isActionLoading = false,
   variant = "sidebar",
 }: KnowledgeMaterialDetailPanelProps) {
   const material = detail?.material ?? null;
@@ -204,6 +200,7 @@ export function KnowledgeMaterialDetailPanel({
   const [visibility, setVisibility] = useState<KnowledgeMaterialVisibility>("staff_shared");
   const [reviewStatus, setReviewStatus] = useState<KnowledgeMaterialReviewStatus>("draft");
   const [localNotice, setLocalNotice] = useState<string | null>(null);
+  const [showFullText, setShowFullText] = useState(false);
 
   useEffect(() => {
     if (!material) {
@@ -221,83 +218,50 @@ export function KnowledgeMaterialDetailPanel({
     setLocalNotice(null);
   }, [material]);
 
-  const subjectOptions = useMemo(() => subjects.filter((subject) => !subject.name.startsWith("Archived ")), [subjects]);
-
-  const storageLabel = detail?.storage
-    ? `${Math.max(1, Math.round(detail.storage.size / 1024))} KB`
-    : "No file storage";
   const sourceProof = detail?.material.sourceProof ?? null;
-
   const auditEvents = detail?.auditEvents ?? [];
   const auditCount = auditEvents.length;
 
-  const handleSaveDetails = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleReview = async (status: KnowledgeMaterialReviewStatus) => {
     if (!material) return;
-
-    setLocalNotice(null);
-    try {
-      await onSaveDetails({
-        materialId: material._id,
-        title,
-        description: description.trim() ? description : undefined,
-        subjectId,
-        level,
-        topicLabel,
-        topicId: topicId || undefined,
-      });
-      setLocalNotice("Details saved.");
-    } catch {
-      setLocalNotice("Could not save details just now.");
-    }
-  };
-
-  const handleCreateTopicAndAttach = async () => {
-    if (!material) return;
-
-    setLocalNotice(null);
-    try {
-      const createdTopic = await onCreateTopic({
-        title: topicLabel,
-        summary: description.trim() ? description : undefined,
-        subjectId,
-        level,
-      });
-
-      await onSaveDetails({
-        materialId: material._id,
-        title,
-        description: description.trim() ? description : undefined,
-        subjectId,
-        level,
-        topicLabel,
-        topicId: createdTopic._id,
-      });
-
-      setTopicId(createdTopic._id);
-      setLocalNotice("Topic created and attached.");
-    } catch {
-      setLocalNotice("Could not create and attach the topic just now.");
-    }
-  };
-
-  const handleApplyState = async (next: {
-    visibility?: KnowledgeMaterialVisibility;
-    reviewStatus?: KnowledgeMaterialReviewStatus;
-  }) => {
-    if (!material) return;
-
     setLocalNotice(null);
     try {
       await onSaveState({
         materialId: material._id,
-        ...next,
+        reviewStatus: status,
       });
-      setVisibility(next.visibility ?? visibility);
-      setReviewStatus(next.reviewStatus ?? reviewStatus);
-      setLocalNotice("State updated.");
+      setReviewStatus(status);
+      setLocalNotice(`Status set to ${status}.`);
     } catch {
-      setLocalNotice("Could not update state just now.");
+      setLocalNotice("Review action failed.");
+    }
+  };
+
+  const handleVisibility = async (v: KnowledgeMaterialVisibility) => {
+    if (!material) return;
+    setLocalNotice(null);
+    try {
+      await onSaveState({
+        materialId: material._id,
+        visibility: v,
+      });
+      setVisibility(v);
+      setLocalNotice(`Visibility set to ${v.replace(/_/g, " ")}.`);
+    } catch {
+      setLocalNotice("Visibility update failed.");
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!material || !onArchiveMaterial) return;
+    if (!window.confirm("Archive this material? This will remove it from all libraries.")) return;
+    
+    setLocalNotice(null);
+    try {
+      await onArchiveMaterial(material._id);
+      onClose?.();
+    } catch {
+      setLocalNotice("Archive failed.");
     }
   };
 
@@ -306,367 +270,296 @@ export function KnowledgeMaterialDetailPanel({
   }
 
   return (
-    <div className="space-y-5">
-      {variant === "sheet" && onClose && (
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-          <div className="space-y-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-              Knowledge Library
+    <div className="space-y-6 pb-12">
+      {variant === "sidebar" && (
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+          <div className="space-y-0.5">
+            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">
+              Academic Engine
             </p>
-            <h2 className="font-display text-xl font-black tracking-tight text-slate-950">
-              Material Detail
+            <h2 className="font-display text-lg font-black tracking-tight text-slate-950">
+              Material Inspector
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-2 text-slate-300 transition-colors hover:bg-slate-50 hover:text-slate-950"
-          >
-            <XCircle className="h-5 w-5" />
-          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1.5 text-slate-300 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          )}
         </div>
       )}
 
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <div className="space-y-4 p-4 md:p-5">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(reviewStatus)}`}>
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {formatStatusLabel(reviewStatus)}
-              </span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(material.processingStatus)}`}>
-                <Clock3 className="h-3.5 w-3.5" />
-                {formatStatusLabel(material.processingStatus)}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-950 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                {visibilityIcon(visibility)}
-                {formatStatusLabel(visibility)}
-              </span>
-            </div>
+      {localNotice && (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700">
+          {localNotice}
+        </div>
+      )}
 
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                {material.subjectName} • {material.level}
-              </p>
-              <h3 className="mt-1 font-display text-2xl font-black tracking-tight text-slate-950">
-                {material.title}
-              </h3>
-              <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-500">
-                {material.description ?? material.topicLabel}
+      {/* Content & Source Access */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-1.5 rounded-full bg-slate-900" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">Content Access</h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {sourceProof?.originalFileUrl && (
+            <a
+              href={sourceProof.originalFileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
+            >
+              <FileText className="h-4 w-4 text-indigo-500" />
+              Open Source
+            </a>
+          )}
+          {material.externalUrl && (
+            <a
+              href={material.externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
+            >
+              <Link2 className="h-4 w-4 text-blue-500" />
+              External Link
+            </a>
+          )}
+          {!sourceProof?.originalFileUrl && !material.externalUrl && (
+             <div className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                No external source linked
+             </div>
+          )}
+        </div>
+
+        {sourceProof?.extractedTextPreview && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Extracted Preview</span>
+              <span className="text-[8px] font-bold text-slate-300 uppercase">{sourceProof.extractedTextChunkCount} Chunks</span>
+            </div>
+            <div className="relative group">
+              <div className="max-h-[160px] overflow-y-auto text-[11px] font-medium leading-relaxed text-slate-600 custom-scrollbar pr-1">
+                {sourceProof.extractedTextPreview}
+                <div className="h-8 w-full bg-gradient-to-t from-white to-transparent sticky bottom-0 pointer-events-none" />
+              </div>
+              <p 
+                onClick={() => setShowFullText(true)}
+                className="mt-2 text-[10px] font-bold text-indigo-600 cursor-pointer hover:underline"
+              >
+                View full extracted record →
               </p>
             </div>
           </div>
+        )}
+      </section>
 
-          {localNotice && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-[11px] font-bold text-emerald-700">
-              {localNotice}
-            </div>
-          )}
-        </div>
-      </AdminSurface>
-
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <form className="space-y-4 p-4 md:p-5" onSubmit={handleSaveDetails}>
-          {sectionLabel("Relabel material")}
-          <div className="space-y-4">
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Title</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} className={fieldClassName()} />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className={`${fieldClassName("min-h-[92px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950 outline-none transition-all placeholder:text-slate-300 focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5")}`}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Subject</label>
-                <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={fieldClassName()}>
-                  {subjectOptions.map((subject) => (
-                    <option key={subject._id} value={subject._id}>
-                      {subject.name} ({subject.code})
-                    </option>
-                  ))}
-                </select>
+      {/* Full Text Overlay - Portaled to Body to avoid clipping */}
+      {showFullText && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div 
+            className="fixed inset-0" 
+            onClick={() => setShowFullText(false)} 
+          />
+          <div className="relative w-full max-w-2xl flex flex-col max-h-[85vh] rounded-2xl border border-slate-200 bg-white shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+              <div className="space-y-0.5">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Database Record</p>
+                <h3 className="font-display text-base font-black tracking-tight text-slate-950 truncate max-w-[400px]">
+                  {material.title}
+                </h3>
               </div>
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Level</label>
-                <select value={level} onChange={(e) => setLevel(e.target.value)} className={fieldClassName()}>
-                  <option value="">Select level</option>
-                  {buildLevelOptionsWithCurrentValue(levelOptions, level).map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic label</label>
-              <input value={topicLabel} onChange={(e) => setTopicLabel(e.target.value)} className={fieldClassName()} />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic attachment</label>
-              <select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={fieldClassName()}>
-                <option value="">No topic attached</option>
-                {topics.map((topic) => (
-                  <option key={topic._id} value={topic._id}>
-                    {topic.title} • {topic.subjectName} • {topic.level}
-                  </option>
-                ))}
-              </select>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-medium text-slate-500">
-                  {topics.length > 0
-                    ? "If the topic does not exist yet, create it from the current subject, level, and topic label."
-                    : "No topics exist yet for this school. Create one from the current subject, level, and topic label."}
-                </p>
-                <button
-                  type="button"
-                  disabled={isSavingDetails || !topicLabel.trim() || !subjectId || !level.trim()}
-                  onClick={handleCreateTopicAndAttach}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <BookOpenText className="h-3.5 w-3.5" />
-                  {isSavingDetails ? "Working..." : "Create topic & attach"}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="submit"
-                disabled={isSavingDetails}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              <button 
+                onClick={() => setShowFullText(false)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-950 transition-colors"
               >
-                <Save className="h-3.5 w-3.5" />
-                {isSavingDetails ? "Saving..." : "Save relabel"}
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 knowledge-scrollbar">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Full Extracted Text</p>
+                  <div className="whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-slate-700 selection:bg-indigo-50 font-sans">
+                    {detail?.material.searchText || "No extracted text found."}
+                  </div>
+                </div>
+                
+                {sourceProof?.originalFileNotice && (
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-1.5">Processing Note</p>
+                    <p className="text-[12px] font-bold text-amber-900 leading-relaxed">
+                      {sourceProof.originalFileNotice}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="border-t border-slate-100 p-5 flex justify-end">
+              <button
+                onClick={() => setShowFullText(false)}
+                className="h-10 px-6 rounded-xl bg-slate-950 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-900 transition-shadow hover:shadow-lg hover:shadow-slate-950/20 active:scale-95 transition-all"
+              >
+                Close Record
               </button>
             </div>
           </div>
-        </form>
-      </AdminSurface>
+        </div>,
+        document.body
+      )}
 
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <div className="space-y-4 p-4 md:p-5">
-          {sectionLabel("Visibility & review")}
-          <div className="grid gap-3 sm:grid-cols-2">
+      {/* Primary Identity Info */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Database className="h-3.5 w-3.5 text-slate-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">Material attributes</h2>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="space-y-3">
             <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Visibility</label>
-              <select value={visibility} onChange={(e) => setVisibility(e.target.value as KnowledgeMaterialVisibility)} className={fieldClassName()}>
-                <option value="private_owner">Private owner</option>
-                <option value="staff_shared">Staff shared</option>
-                <option value="class_scoped">Class scoped</option>
-                <option value="student_approved">Student approved</option>
-              </select>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Title</span>
+              <p className="text-sm font-black leading-tight text-slate-950">{material.title}</p>
             </div>
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Review status</label>
-              <select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value as KnowledgeMaterialReviewStatus)} className={fieldClassName()}>
-                <option value="draft">Draft</option>
-                <option value="pending_review">Pending review</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="archived">Archived</option>
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Subject</span>
+                <p className="text-[11px] font-bold text-slate-700">{material.subjectName}</p>
+              </div>
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Level</span>
+                <p className="text-[11px] font-bold text-slate-700">{material.level}</p>
+              </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="flex flex-wrap gap-2 pt-1">
+      {/* Review Action */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Shield className="h-3.5 w-3.5 text-slate-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">Verification</h2>
+        </div>
+        
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-2.5">
+          <div className="flex gap-2">
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${badgeTone(material.reviewStatus)}`}>
+              {material.reviewStatus.replace(/_/g, " ")}
+            </span>
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${badgeTone(material.processingStatus)}`}>
+              {material.processingStatus.replace(/_/g, " ")}
+            </span>
+          </div>
+          <div className="flex gap-1">
             <button
-              type="button"
-              disabled={isSavingState}
-              onClick={() => handleApplyState({ visibility, reviewStatus })}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => handleReview("approved")}
+              disabled={isActionLoading || material.reviewStatus === "approved"}
+              className="h-7 items-center rounded-lg bg-slate-900 px-3 text-[9px] font-black uppercase tracking-widest text-white transition hover:bg-slate-950 disabled:opacity-30"
             >
-              <Shield className="h-3.5 w-3.5" />
-              {isSavingState ? "Saving..." : "Apply state"}
-            </button>
-            <button
-              type="button"
-              disabled={isSavingState}
-              onClick={() => handleApplyState({ reviewStatus: "approved" })}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
               Approve
             </button>
             <button
-              type="button"
-              disabled={isSavingState}
-              onClick={() => handleApplyState({ reviewStatus: "rejected" })}
-              className="inline-flex items-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => handleReview("rejected")}
+              disabled={isActionLoading || material.reviewStatus === "rejected"}
+              className="h-7 items-center rounded-lg border border-rose-200 bg-white px-3 text-[9px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-50 disabled:opacity-30"
             >
-              <XCircle className="h-3.5 w-3.5" />
               Reject
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Deployment */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Database className="h-3.5 w-3.5 text-slate-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">Deployment scope</h2>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5">
+          {(["private_owner", "staff_shared", "class_scoped", "student_approved"] as const).map((v) => (
             <button
-              type="button"
-              disabled={isSavingState}
-              onClick={() => handleApplyState({ reviewStatus: "archived" })}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              key={v}
+              onClick={() => handleVisibility(v)}
+              disabled={isActionLoading || material.visibility === v}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+                material.visibility === v
+                  ? "bg-slate-950 text-white shadow-sm"
+                  : "bg-white text-slate-500 hover:bg-slate-50"
+              }`}
             >
-              <Archive className="h-3.5 w-3.5" />
-              Archive
-            </button>
-          </div>
-
-          <p className="text-[11px] font-medium leading-relaxed text-slate-400">
-            Portal exposure still requires the correct topic attachment and approval state. Admins can move a same-school record from private owner to staff shared here; teacher self-publish is just the normal teacher-side shortcut for their own materials.
-          </p>
-        </div>
-      </AdminSurface>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <MetaChip label="Owner" value={`${material.ownerName} • ${material.ownerRole}`} icon={<BadgeCheck className="h-3.5 w-3.5 text-slate-400" />} />
-        <MetaChip label="Source" value={formatStatusLabel(material.sourceType)} icon={<Sparkles className="h-3.5 w-3.5 text-slate-400" />} />
-        <MetaChip label="Processing" value={formatStatusLabel(material.processingStatus)} icon={<Clock3 className="h-3.5 w-3.5 text-slate-400" />} />
-        <MetaChip label="Search index" value={`${formatStatusLabel(material.searchStatus)} • ${material.chunkCount} chunk(s)`} icon={<Database className="h-3.5 w-3.5 text-slate-400" />} />
-        <MetaChip label="Updated" value={formatDate(material.updatedAt)} icon={<CalendarClock className="h-3.5 w-3.5 text-slate-400" />} />
-        <MetaChip label="Storage" value={storageLabel} icon={<Link2 className="h-3.5 w-3.5 text-slate-400" />} />
-      </div>
-
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <div className="space-y-4 p-4 md:p-5">
-          {sectionLabel("Original file and extracted proof")}
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                    Original file
-                  </p>
-                  <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
-                    {sourceProof?.originalFileState === "available"
-                      ? "Available"
-                      : sourceProof?.originalFileState === "orphaned"
-                        ? "Missing from storage"
-                        : "Not stored"}
-                  </p>
-                </div>
-                {sourceProof?.originalFileUrl ? (
-                  <a
-                    href={sourceProof.originalFileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-slate-800"
-                  >
-                    <Link2 className="h-3.5 w-3.5" />
-                    Open file
-                  </a>
-                ) : null}
-              </div>
-              <div className="mt-3 space-y-2 text-[12px] font-medium leading-relaxed text-slate-500">
-                <p>{sourceProof?.originalFileNotice ?? "No original file access is available for this material."}</p>
-                <p>
-                  {sourceProof?.originalFileContentType ? `${sourceProof.originalFileContentType} • ` : ""}
-                  {sourceProof?.originalFileSize ? `${Math.max(1, Math.round(sourceProof.originalFileSize / 1024))} KB` : "No file size recorded"}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                    Extracted proof
-                  </p>
-                  <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
-                    {sourceProof?.extractedTextChunkCount ?? 0} chunk(s)
-                  </p>
-                </div>
-              </div>
-              {sourceProof?.extractedTextPreview ? (
-                <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-[12px] leading-6 text-slate-700">
-                  {sourceProof.extractedTextPreview}
-                </pre>
-              ) : (
-                <p className="mt-3 text-[12px] font-medium leading-relaxed text-slate-500">
-                  No extracted text proof is available yet. Once ingestion finishes, the proof preview will appear here.
-                </p>
-              )}
-            </div>
-          </div>
-          <p className="text-[11px] font-medium leading-relaxed text-slate-400">
-            The proof preview comes from stored extracted chunks, so it is a lightweight check rather than a full document reader.
-          </p>
-        </div>
-      </AdminSurface>
-
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <div className="space-y-4 p-4 md:p-5">
-          {sectionLabel("Labels and links")}
-          <div className="flex flex-wrap gap-2">
-            {material.labelSuggestions.length > 0 ? (
-              material.labelSuggestions.map((label) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500"
-                >
-                  {label}
-                </span>
-              ))
-            ) : (
-              <span className="rounded-full border border-dashed border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                No label suggestions
+              {visibilityIcon(v)}
+              <span className="text-[9px] font-black uppercase tracking-tight">
+                {v.split("_")[0]}
               </span>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Topic attachment</p>
-              <p className="mt-1 text-sm font-bold tracking-tight text-slate-950">
-                {material.topicId ?? "No topic attached"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">External URL</p>
-              <p className="mt-1 break-all text-sm font-bold tracking-tight text-slate-950">
-                {material.externalUrl ?? "No external link"}
-              </p>
-            </div>
-          </div>
+              {material.visibility === v && <CheckCircle2 className="h-3 w-3 ml-auto text-emerald-400" />}
+            </button>
+          ))}
         </div>
-      </AdminSurface>
+      </section>
 
-      <AdminSurface as="section" rounded="2xl" className="overflow-hidden border-slate-200 bg-white">
-        <div className="space-y-4 p-4 md:p-5">
-          {sectionLabel(`Audit trail (${auditCount})`)}
-          <div className="space-y-3">
-            {auditEvents.length > 0 ? (
-              auditEvents.map((event) => (
-                <div key={event._id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-950/5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                        {event.actorName} • {event.actorRole} • {formatDate(event.createdAt)}
-                      </p>
-                      <p className="text-sm font-bold tracking-tight text-slate-950">{event.changeSummary}</p>
-                    </div>
-                    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(event.eventType)}`}>
-                      {formatStatusLabel(event.eventType)}
+      {/* Metadata */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Database className="h-3.5 w-3.5 text-slate-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">System attributes</h2>
+        </div>
+        <div className="space-y-0 rounded-xl border border-slate-200 bg-white px-3 py-1 shadow-sm">
+          <InfoRow label="Owner" value={`${material.ownerName} (${material.ownerRole})`} icon={<BadgeCheck className="h-3.5 w-3.5" />} />
+          <InfoRow label="Search index" value={`${material.chunkCount} chunks • ${material.searchStatus}`} icon={<Database className="h-3.5 w-3.5" />} />
+          <InfoRow label="Modified" value={formatDate(material.updatedAt)} icon={<CalendarClock className="h-3.5 w-3.5" />} />
+          <InfoRow label="Storage" value={material.storageId ? "Linked" : "Local"} icon={<Link2 className="h-3.5 w-3.5" />} />
+        </div>
+      </section>
+
+      {/* Timeline */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-950">Audit log</h2>
+        </div>
+
+        <div className="relative space-y-4 pl-3 before:absolute before:left-0 before:top-2 before:h-[calc(100%-8px)] before:w-px before:bg-slate-100">
+          {auditEvents.length > 0 ? (
+            auditEvents.slice(0, 5).map((event) => (
+              <div key={event._id} className="relative group">
+                <div className="absolute -left-[13px] top-1.5 h-1.5 w-1.5 rounded-full border-2 border-white bg-slate-400 group-first:bg-indigo-500" />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                      {event.actorName} • {formatDate(event.createdAt)}
+                    </p>
+                    <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border ${statusTone(event.eventType)}`}>
+                      {event.eventType}
                     </span>
                   </div>
+                  <p className="text-[11px] font-bold leading-tight text-slate-800">
+                    {event.changeSummary}
+                  </p>
                 </div>
-              ))
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-[13px] font-medium text-slate-500">
-                No audit events recorded yet.
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <p className="text-[10px] font-medium text-slate-400 italic">No events recorded.</p>
+          )}
         </div>
-      </AdminSurface>
+      </section>
+
+      {/* Destructive */}
+      <div className="pt-4 border-t border-slate-100">
+        <button
+          onClick={handleArchive}
+          disabled={isActionLoading}
+          className="flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-4 text-[9px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-100 disabled:opacity-30"
+        >
+          <Trash2 className="h-3 w-3" />
+          Archive Record
+        </button>
+      </div>
     </div>
   );
 }

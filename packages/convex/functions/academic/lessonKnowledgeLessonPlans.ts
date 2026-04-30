@@ -1635,6 +1635,40 @@ export const getTeacherInstructionWorkspace = query({
   },
 });
 
+export const getTeacherInstructionArtifactRevisionContent = query({
+  args: {
+    revisionId: v.id("instructionArtifactRevisions"),
+  },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
+    assertTeacherWorkspaceAccess(actor);
+
+    const revision = await ctx.db.get(args.revisionId);
+    if (!revision) {
+      throw new ConvexError("Revision not found");
+    }
+
+    const artifact = await ctx.db.get(revision.artifactId);
+    if (!artifact || artifact.schoolId !== schoolId) {
+      throw new ConvexError("Artifact not found or access denied");
+    }
+
+    if (artifact.ownerUserId !== userId && !isSchoolAdmin && role !== "admin") {
+      throw new ConvexError("You do not have access to this revision");
+    }
+
+    const template = artifact.templateId ? await ctx.db.get(artifact.templateId) : null;
+    const fallbackTitle = template?.title ?? defaultTitle(artifact.outputType as SupportedInstructionTemplateOutputType);
+
+    return {
+      title: extractTitleFromMarkdown(revision.documentState, fallbackTitle),
+      documentState: revision.documentState,
+      plainText: revision.plainText,
+    };
+  },
+});
+
 export const saveTeacherInstructionArtifactDraft = mutation({
   args: {
     artifactId: v.optional(v.union(v.id("instructionArtifacts"), v.null())),

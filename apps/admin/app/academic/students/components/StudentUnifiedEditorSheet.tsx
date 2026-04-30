@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, UserCog, BookOpen } from "lucide-react";
+import { Check, X, UserCog, BookOpen, Users } from "lucide-react";
 import { humanNameFinalStrict } from "@/human-name";
 import { StudentProfileEditor } from "./StudentProfileEditor";
 import type { EnrollmentMatrix, ClassSummary, EnrollmentNotice } from "./types";
@@ -18,7 +18,7 @@ interface StudentUnifiedEditorSheetProps {
   classes: ClassSummary[];
   onNotice: (notice: EnrollmentNotice) => void;
   onStudentArchived?: (studentId: string) => void;
-  initialTab?: "subjects" | "profile";
+  initialTab?: "subjects" | "profile" | "family";
 }
 
 export function StudentUnifiedEditorSheet({
@@ -34,7 +34,7 @@ export function StudentUnifiedEditorSheet({
   onStudentArchived,
   initialTab = "subjects",
 }: StudentUnifiedEditorSheetProps) {
-  const [activeTab, setActiveTab] = useState<"subjects" | "profile">(initialTab);
+  const [activeTab, setActiveTab] = useState<"subjects" | "profile" | "family">(initialTab);
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -123,6 +123,17 @@ export function StudentUnifiedEditorSheet({
               <UserCog className="h-3.5 w-3.5" />
               Profile
             </button>
+            <button
+              onClick={() => setActiveTab("family")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === "family"
+                  ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                  : "text-slate-400 select-none active:text-slate-600"
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              Family
+            </button>
           </div>
         </div>
 
@@ -201,6 +212,7 @@ export function StudentUnifiedEditorSheet({
                 onNotice={onNotice}
                 onStudentArchived={onStudentArchived}
                 variant="inline"
+                activeTab={activeTab === "family" ? "family" : "profile"}
               />
             </div>
           )}

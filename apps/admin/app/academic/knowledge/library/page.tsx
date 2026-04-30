@@ -10,6 +10,7 @@ import {
   Settings2,
   Sparkles,
   ShieldCheck,
+  Search,
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -111,7 +112,7 @@ function useKnowledgeLibraryQueryArgs(filters: KnowledgeLibraryFilterState, defe
       ownerRole: filters.ownerRole,
       subjectId: filters.subjectId,
       level: filters.level,
-      limit: 250,
+      limit: 1000,
     }),
     [
       deferredSearch,
@@ -172,6 +173,7 @@ export default function KnowledgeLibraryPage() {
   const [notice, setNotice] = useState<{ tone: "success" | "error"; title: string; message: string } | null>(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isSavingState, setIsSavingState] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
   const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
@@ -392,6 +394,30 @@ export default function KnowledgeLibraryPage() {
       `}</style>
 
       <AdminSheet
+        isOpen={isFiltersOpen && isMobile}
+        onClose={() => setIsFiltersOpen(false)}
+        title="Library Filters"
+        description="Filter by visibility, review state, or source type."
+      >
+        <div className="pt-4">
+          <KnowledgeLibraryFilters
+            filters={filters}
+            subjects={subjects}
+            onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+            onClear={handleClearFilters}
+          />
+          <div className="mt-8">
+            <button
+              onClick={() => setIsFiltersOpen(false)}
+              className="w-full h-11 rounded-xl bg-slate-950 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all"
+            >
+              Apply Filters
+            </button>
+          </div>
+        </div>
+      </AdminSheet>
+
+      <AdminSheet
         isOpen={Boolean(selectedMaterialId) && isMobile}
         onClose={() => setSelectedMaterialId(null)}
         title="Library inspector"
@@ -413,7 +439,7 @@ export default function KnowledgeLibraryPage() {
       </AdminSheet>
 
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row-reverse">
-        <aside className="w-full border-l bg-white/40 backdrop-blur-xl p-4 md:p-6 lg:h-full lg:w-[420px] lg:overflow-y-auto knowledge-scrollbar shrink-0">
+        <aside className="hidden lg:block w-full border-l bg-white/40 backdrop-blur-xl p-4 md:p-6 lg:h-full lg:w-[420px] lg:overflow-y-auto knowledge-scrollbar shrink-0">
           <KnowledgeMaterialDetailPanel
             detail={activeDetail}
             subjects={subjects}
@@ -428,70 +454,92 @@ export default function KnowledgeLibraryPage() {
           />
         </aside>
 
-        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto knowledge-scrollbar p-4 md:p-8">
-          <div className="mx-auto max-w-[1400px] space-y-6 md:space-y-8">
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto knowledge-scrollbar p-4 md:p-5">
+          <div className="mx-auto max-w-[1400px] space-y-1.5">
             <AdminHeader
-              label="Academic Knowledge"
+              label="Academic Engine"
               title="Library Console"
-              description="Inspect the school library, refine labels, and apply admin override actions without leaving the academic workspace."
+              description="Review and manage school-wide knowledge materials and ingestion status."
+              className="gap-1.5"
               actions={
-                <div className="flex flex-wrap items-center justify-end gap-3">
-                  <Link
-                    href="/academic/knowledge/assessment-profiles"
-                    className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.16em] text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    <Settings2 className="h-4 w-4" />
-                    Assessment profiles
-                  </Link>
-                  <StatGroup
-                    stats={[
-                      { label: "Loaded", value: summary.loaded, icon: <BookOpenText className="h-4 w-4" /> },
-                      { label: "Approved", value: summary.approved, icon: <ShieldCheck className="h-4 w-4" /> },
-                      { label: "Pending", value: summary.pendingReview, icon: <Clock3 className="h-4 w-4" /> },
-                      { label: "Needs attention", value: summary.needsAttention, icon: <Filter className="h-4 w-4" /> },
-                    ]}
-                    variant="wrap"
-                  />
-                </div>
+                <Link
+                  href="/academic/knowledge/assessment-profiles"
+                  className="group flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 shadow-sm transition-all hover:border-slate-950 hover:bg-slate-950 hover:text-white"
+                >
+                  <Settings2 className="h-3 w-3 opacity-40 group-hover:opacity-100" />
+                  Profiles
+                </Link>
               }
             />
 
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-1.5">
+              <StatGroup
+                stats={[
+                  { label: "Loaded", value: summary.loaded, icon: <BookOpenText className="h-3.5 w-3.5" /> },
+                  { label: "Approved", value: summary.approved, icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+                  { label: "Pending", value: summary.pendingReview, icon: <Clock3 className="h-3.5 w-3.5" /> },
+                  { label: "Needs attention", value: summary.needsAttention, icon: <Filter className="h-3.5 w-3.5" /> },
+                ]}
+                variant="scroll"
+              />
+            </div>
+
             {notice && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
+              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-3 shadow-lg transition-all border-white bg-white ${
                 notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
               }`}>
-                <div className="flex items-center justify-between gap-6">
+                <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">
                       {notice.title}
                     </p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
+                    <p className="text-[13px] font-bold tracking-tight text-slate-950">{notice.message}</p>
                   </div>
                   <button onClick={() => setNotice(null)} className="rounded-full p-1.5 hover:bg-slate-50 transition-colors">
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
+                    <X className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />
                   </button>
                 </div>
               </div>
             )}
 
-            <KnowledgeLibraryFilters
-              filters={filters}
-              subjects={subjects}
-              onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
-              onClear={handleClearFilters}
-            />
+            <div className="space-y-2.5">
+              {!isMobile ? (
+                <KnowledgeLibraryFilters
+                  filters={filters}
+                  subjects={subjects}
+                  onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+                  onClear={handleClearFilters}
+                />
+              ) : (
+                <div className="flex items-center gap-2 py-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
+                    <input
+                      value={filters.searchQuery}
+                      onChange={(e) => setFilters(curr => ({ ...curr, searchQuery: e.target.value }))}
+                      placeholder="Search title, owner..."
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-950 outline-none transition-all placeholder:text-slate-300 focus:border-slate-950 shadow-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setIsFiltersOpen(true)}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-950 hover:text-slate-950"
+                  >
+                    <Filter className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
 
-            <div className="flex items-center justify-between border-b border-slate-950/5 pb-3">
-              <div>
-                <h2 className="font-display text-sm font-black uppercase tracking-[0.2em] text-slate-400">Library results</h2>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  Search matches the material search snapshot; filters stay aligned with stored visibility and review state.
-                </p>
+              <div className="flex items-center justify-between border-b border-slate-950/5 pb-1">
+                <div className="flex items-center gap-1">
+                  <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                  <h2 className="font-display text-[9px] font-black uppercase tracking-[0.2em] text-slate-950">Resource Catalog</h2>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  <Sparkles className="h-2 w-2 text-slate-400" />
+                  {filteredMaterials.length} Documents
+                </span>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                <Sparkles className="h-3.5 w-3.5 text-slate-400" />
-                {filteredMaterials.length} result{filteredMaterials.length === 1 ? "" : "s"}
-              </span>
             </div>
 
             <KnowledgeMaterialList

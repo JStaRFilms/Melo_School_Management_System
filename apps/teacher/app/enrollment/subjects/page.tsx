@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ShieldCheck } from "lucide-react";
+import { BookOpen, ShieldAlert, Sparkles, Users } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import { humanNameFinalStrict } from "@/lib/human-name";
+import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
+import { StatGroup } from "@/lib/components/ui/StatGroup";
 
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FloatingNotice } from "./components/FloatingNotice";
@@ -158,71 +160,86 @@ export default function TeacherSubjectSelectionPage() {
 
   if (sessions === undefined || classes === undefined) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-6">
-        <div className="text-slate-500">Loading...</div>
+      <div className="mx-auto max-w-[1400px] px-4 py-8 animate-pulse space-y-8">
+        <div className="h-24 w-1/3 rounded-2xl bg-slate-100" />
+        <div className="h-20 rounded-2xl bg-slate-50" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6">
+    <main className="mx-auto max-w-[1440px] space-y-8 p-3 sm:p-5 lg:p-6">
       <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
 
-      <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                Teacher Subject Selection
-              </p>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-                Edit the live class matrix, not a staged draft.
-              </h1>
-              <p className="max-w-3xl text-sm text-slate-500">
-                You can update subject ticks for <span className="font-semibold text-slate-700">{selectedClassName}</span> in{" "}
-                <span className="font-semibold text-slate-700">{selectedSessionName}</span>.
-                Students are added by the admin; your edits save instantly.
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
-        <p className="text-sm text-slate-500">
-          Roster changes are admin-only. Your job here is just to keep each
-          student&apos;s subject selection accurate.
-        </p>
-      </section>
-
-      <EnrollmentFilters
-        classes={classes}
-        sessions={sessions}
-        selectedClassId={selectedClassId}
-        selectedSessionId={selectedSessionId}
-        onClassChange={setSelectedClassId}
-        onSessionChange={setSelectedSessionId}
-      />
-
-      {selectedClassId && selectedSessionId ? (
-        <SubjectSelectionMatrix
-          matrix={matrix}
-          studentsWithNoSubjects={studentsWithNoSubjects}
-          onToggle={(studentId, subjectId) => {
-            void handleToggleSubject(studentId, subjectId);
-          }}
-          onSetStudentSubjects={(studentId, subjectIds) => {
-            void handleSetStudentSubjects(studentId, subjectIds);
-          }}
+      <div className="space-y-8">
+        <TeacherHeader
+          label="Enrollment"
+          title="Subject Selection"
+          description={`Manage subject enrollments for ${selectedClassName}. Your updates are live and save instantly to the academic records.`}
         />
-      ) : (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500">
-          Select a class and session to load the subject grid.
-        </section>
-      )}
-    </div>
+
+        <StatGroup
+          stats={[
+            {
+              label: "Total Students",
+              value: matrix?.students.length ?? 0,
+              icon: <Users />,
+            },
+            {
+              label: "Subjects Offered",
+              value: matrix?.subjects.length ?? 0,
+              icon: <BookOpen />,
+            },
+            {
+              label: "Action Needed",
+              value: studentsWithNoSubjects,
+              icon: <ShieldAlert />,
+              description: studentsWithNoSubjects === 1 ? "Student" : "Students",
+              className: studentsWithNoSubjects > 0 ? "border-amber-200 bg-amber-50/50" : "",
+            },
+            {
+              label: "Active Session",
+              value: selectedSessionName,
+              icon: <Sparkles />,
+            },
+          ]}
+        />
+
+        <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+          <EnrollmentFilters
+            classes={classes}
+            sessions={sessions}
+            selectedClassId={selectedClassId}
+            selectedSessionId={selectedSessionId}
+            onClassChange={setSelectedClassId}
+            onSessionChange={setSelectedSessionId}
+          />
+        </div>
+      </div>
+
+      <div className="pt-2">
+        {selectedClassId && selectedSessionId ? (
+          <SubjectSelectionMatrix
+            matrix={matrix}
+            studentsWithNoSubjects={studentsWithNoSubjects}
+            onToggle={(studentId, subjectId) => {
+              void handleToggleSubject(studentId, subjectId);
+            }}
+            onSetStudentSubjects={(studentId, subjectIds) => {
+              void handleSetStudentSubjects(studentId, subjectIds);
+            }}
+          />
+        ) : (
+          <section className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 py-24 text-center">
+            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-300">
+              No Context Selected
+            </p>
+            <p className="mt-2 text-sm font-medium text-slate-400">
+              Select a class and session above to view the enrollment matrix.
+            </p>
+          </section>
+        )}
+      </div>
+    </main>
   );
 }

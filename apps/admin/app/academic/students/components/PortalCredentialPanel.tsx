@@ -9,7 +9,7 @@ import type { EnrollmentNotice } from "./types";
 
 interface PortalCredentialPanelProps {
   title: string;
-  description: string;
+  description?: string;
   userId: string;
   userName: string;
   email: string;
@@ -106,7 +106,7 @@ export function PortalCredentialPanel({
 
   if (result) {
     return (
-      <section className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+      <section className="space-y-4 pt-6 border-t border-slate-200/60">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <BadgeCheck className="h-4 w-4 text-emerald-700" />
@@ -115,12 +115,14 @@ export function PortalCredentialPanel({
             </p>
           </div>
           <h4 className="text-sm font-black text-emerald-950">{title}</h4>
-          <p className="text-xs font-medium leading-relaxed text-emerald-900/75">
-            {description}
-          </p>
+          {description && (
+            <p className="text-xs font-medium leading-relaxed text-emerald-900/75">
+              {description}
+            </p>
+          )}
         </div>
 
-        <div className="space-y-2 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+        <div className="space-y-2 rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
               Login Email
@@ -159,7 +161,7 @@ export function PortalCredentialPanel({
   }
 
   return (
-    <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <section className="space-y-4 pt-6 border-t border-slate-200/60">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-slate-500" />
@@ -203,4 +205,4 @@ export function PortalCredentialPanel({
 }
 
 const fieldInputClassName =
-  "h-10 w-full rounded-xl border border-slate-200 bg-white/90 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300";
+  "h-10 w-full rounded-lg border border-slate-200 bg-white/90 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300";

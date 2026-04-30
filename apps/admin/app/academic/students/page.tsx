@@ -1,10 +1,12 @@
 "use client";
 
+import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { useMutation,useQuery } from "convex/react";
 import {
 ArrowRight,
 BookOpen,
+Plus,
 Search,
 Sparkles,
 Users,
@@ -29,6 +31,7 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { StudentCreationForm } from "./components/StudentCreationForm";
+import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
@@ -57,10 +60,14 @@ export default function StudentsPage() {
   const setStudentSubjectSelections = useMutation(
     "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
+  const upsertStudentFamilyLink = useMutation(
+    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
+  );
 
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState("");
+  const [studentFirstName, setStudentFirstName] = useState("");
+  const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
@@ -68,6 +75,12 @@ export default function StudentsPage() {
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [parentFirstName, setParentFirstName] = useState("");
+  const [parentLastName, setParentLastName] = useState("");
+  const [parentEmail, setParentEmail] = useState("");
+  const [parentPhone, setParentPhone] = useState("");
+  const [parentRelationship, setParentRelationship] = useState("");
+  const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -77,6 +90,9 @@ export default function StudentsPage() {
   // New states for Unified Editor
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
   const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">("subjects");
+  const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
+  const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
+  const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -124,7 +140,7 @@ export default function StudentsPage() {
     setSelectedStudentId((current) =>
       current && matrix.students.some((student) => student._id === current)
         ? current
-        : matrix.students[0]?._id ?? null
+        : null
     );
   }, [matrix]);
 
@@ -179,7 +195,8 @@ export default function StudentsPage() {
   }, [studentPhotoFile, studentPhotoPreviewUrl]);
 
   const resetStudentCreationForm = useCallback(() => {
-    setStudentName("");
+    setStudentFirstName("");
+    setStudentLastName("");
     setAdmissionNumber("");
     setGender("");
     setHouseName("");
@@ -187,16 +204,34 @@ export default function StudentsPage() {
     setGuardianName("");
     setGuardianPhone("");
     setAddress("");
+    setParentFirstName("");
+    setParentLastName("");
+    setParentEmail("");
+    setParentPhone("");
+    setParentRelationship("");
+    setIsParentPrimaryContact(true);
     setStudentPhotoFile(null);
   }, []);
 
   const handleCreateStudent = async (event: FormEvent) => {
     event.preventDefault();
-    const normalizedStudentName = humanNameFinalStrict(studentName);
+    const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
+    const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
+    const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
     const trimmedHouseName = houseName.trim();
     const trimmedGuardianName = guardianName.trim();
     const trimmedGuardianPhone = guardianPhone.trim();
     const trimmedAddress = address.trim();
+    const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
+    const normalizedParentLastName = humanNameFinalStrict(parentLastName);
+    const normalizedParentEmail = parentEmail.trim().toLowerCase();
+    const shouldLinkParent = [
+      parentFirstName,
+      parentLastName,
+      parentEmail,
+      parentPhone,
+      parentRelationship,
+    ].some((value) => value.trim().length > 0);
     const missingOptionalFields = [
       !trimmedHouseName ? "house" : null,
       !dateOfBirth ? "date of birth" : null,
@@ -213,6 +248,24 @@ export default function StudentsPage() {
       !gender.trim()
     ) {
       return;
+    }
+
+    if (shouldLinkParent) {
+      if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
+        setNotice({
+          tone: "error",
+          message: "Parent first name, last name, and email are required to link family details during admission.",
+        });
+        return;
+      }
+
+      if (!isValidEmailAddress(normalizedParentEmail)) {
+        setNotice({
+          tone: "error",
+          message: "Enter a valid parent email address before linking family details.",
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -238,14 +291,27 @@ export default function StudentsPage() {
         photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
         photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
       } as never)) as string;
+      if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
+        await upsertStudentFamilyLink({
+          studentId: createdStudentId,
+          firstName: normalizedParentFirstName,
+          lastName: normalizedParentLastName,
+          email: normalizedParentEmail,
+          phone: parentPhone.trim() || null,
+          relationship: parentRelationship.trim() || null,
+          isPrimaryContact: isParentPrimaryContact,
+        } as never);
+      }
+
       resetStudentCreationForm();
+      setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       setNotice({
         tone: missingOptionalFields.length > 0 ? "warning" : "success",
         message:
           missingOptionalFields.length > 0
             ? `${normalizedStudentName} added. Missing: ${joinFieldLabels(missingOptionalFields)}.`
-            : `${normalizedStudentName} added successfully to ${selectedClassName}.`,
+            : `${normalizedStudentName} added successfully to ${selectedClassName}${shouldLinkParent ? " · family linked" : ""}.`,
       });
       if (!isMobile) {
         studentNameInputRef.current?.focus();
@@ -347,6 +413,18 @@ export default function StudentsPage() {
     setIsUnifiedSheetOpen(true);
   }, []);
 
+  const handleNewAdmission = useCallback(() => {
+    setSelectedStudentId(null);
+    setActiveTab("profile");
+    setCreationTab("quick");
+    resetStudentCreationForm();
+    if (isMobile) {
+      setIsCreationSheetOpen(true);
+      return;
+    }
+    window.setTimeout(() => studentNameInputRef.current?.focus(), 0);
+  }, [isMobile, resetStudentCreationForm]);
+
   if (classes === undefined || sessions === undefined) {
     return (
       <div className="mx-auto max-w-[1600px] px-2.5 py-6 md:px-6 animate-pulse">
@@ -360,7 +438,7 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 overflow-x-hidden">
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
@@ -394,35 +472,46 @@ export default function StudentsPage() {
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Main Bucket - Content Primary */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-6 lg:order-1">
-          <div className="max-w-[1400px] mx-auto space-y-6">
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 overflow-x-hidden">
+          <div className="max-w-[1400px] mx-auto space-y-8">
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <AdminHeader
                 title="Student Enrollment"
+                actions={
+                  <div className="flex w-full flex-col items-end gap-2 sm:w-auto">
+                    <StatGroup
+                      stats={[
+                        {
+                          label: "Registered",
+                          value: matrixSummary.totalStudents,
+                          icon: <Users className="h-4 w-4" />,
+                        },
+                        {
+                          label: "Subjects",
+                          value: matrixSummary.totalSubjects,
+                          icon: <BookOpen className="h-4 w-4" />,
+                        },
+                        {
+                          label: "Session",
+                          value: activeSessionName,
+                          icon: <Sparkles className="h-4 w-4" />,
+                        },
+                      ]}
+                    />
+                    {isMobile && (
+                      <Link 
+                        href="/academic/students/onboarding"
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 animate-in fade-in slide-in-from-right-4 duration-700"
+                      >
+                        Bulk Onboarding <ArrowRight className="h-2.5 w-2.5" />
+                      </Link>
+                    )}
+                  </div>
+                }
               />
 
-              <StatGroup
-                stats={[
-                  {
-                    label: "Total Registered",
-                    value: matrixSummary.totalStudents,
-                    icon: <Users className="h-4 w-4" />,
-                  },
-                  {
-                    label: "Subjects Offered",
-                    value: matrixSummary.totalSubjects,
-                    icon: <BookOpen className="h-4 w-4" />,
-                  },
-                  {
-                    label: "Active Session",
-                    value: activeSessionName,
-                    icon: <Sparkles className="h-4 w-4" />,
-                  },
-                ]}
-              />
-
-              <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
                 <EnrollmentFilters
                   classes={classes}
                   sessions={sessions}
@@ -451,59 +540,20 @@ export default function StudentsPage() {
             )}
 
             <div className="space-y-8">
-              {/* MOBILE ONLY: New Admission trigger follows the context block */}
-              {isMobile && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
-                  <StudentCreationForm
-                    selectedClassName={selectedClassName}
-                    studentName={studentName}
-                    admissionNumber={admissionNumber}
-                    gender={gender}
-                    houseName={houseName}
-                    dateOfBirth={dateOfBirth}
-                    guardianName={guardianName}
-                    guardianPhone={guardianPhone}
-                    address={address}
-                    photoPreviewUrl={studentPhotoPreviewUrl}
-                    isSubmitting={isSubmitting}
-                    sectionRef={studentFormRef}
-                    inputRef={studentNameInputRef}
-                    onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
-                    onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
-                    onAdmissionNumberChange={setAdmissionNumber}
-                    onGenderChange={setGender}
-                    onHouseNameChange={setHouseName}
-                    onDateOfBirthChange={setDateOfBirth}
-                    onGuardianNameChange={setGuardianName}
-                    onGuardianPhoneChange={setGuardianPhone}
-                    onAddressChange={setAddress}
-                    onPhotoChange={setStudentPhotoFile}
-                    onRemovePhoto={() => setStudentPhotoFile(null)}
-                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
-                    onSubmit={handleCreateStudent}
-                  />
-                </div>
-              )}
 
               {selectedClassId && selectedSessionId ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-950/5 pb-2">
-                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 px-1">Roster Matrix</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block px-1">Live Update</p>
-                  </div>
-                  <SubjectSelectionMatrix
-                    matrix={matrix}
-                    totalStudents={matrixSummary.totalStudents}
-                    totalSubjects={matrixSummary.totalSubjects}
-                    isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
-                    studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
-                    selectedStudentId={selectedStudentId}
-                    onSelectStudent={setSelectedStudentId}
-                    onOpenUnifiedEditor={openUnifiedEditor}
-                    onToggle={handleToggleSubject}
-                    onSetStudentSubjects={handleSetStudentSubjects}
-                  />
-                </div>
+                <SubjectSelectionMatrix
+                  matrix={matrix}
+                  totalStudents={matrixSummary.totalStudents}
+                  totalSubjects={matrixSummary.totalSubjects}
+                  isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
+                  studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
+                  selectedStudentId={selectedStudentId}
+                  onSelectStudent={setSelectedStudentId}
+                  onOpenUnifiedEditor={openUnifiedEditor}
+                  onToggle={handleToggleSubject}
+                  onSetStudentSubjects={handleSetStudentSubjects}
+                />
               ) : (
                 <div className="py-20 flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 text-center">
                   <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-xl ring-1 ring-slate-950/5 animate-in fade-in zoom-in duration-700">
@@ -518,61 +568,288 @@ export default function StudentsPage() {
         </main>
 
         {/* Sidebar Bucket - Desktop Management */}
-        <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-5 lg:order-2">
+        <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-8">
           <div className="space-y-6">
+            <div className="sticky top-0 z-10 -mx-2 flex items-center justify-between gap-2 border-b border-slate-200/70 bg-white/90 px-2 pb-3 pt-1 backdrop-blur-xl">
+              <button
+                type="button"
+                onClick={handleNewAdmission}
+                className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-xs font-bold transition-all active:scale-[0.98] ${
+                  selectedStudentId
+                    ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    : "bg-slate-900 text-white shadow-lg shadow-slate-950/10"
+                }`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New Admission
+              </button>
+              <Link
+                href="/academic/students/onboarding"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-wider text-indigo-700 transition-colors hover:bg-indigo-100"
+              >
+                Bulk Onboarding <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
             {selectedStudentId ? (
               <StudentProfileEditor
                 studentId={selectedStudentId}
                 classes={classes}
                 onNotice={setNotice}
                 onStudentArchived={() => setSelectedStudentId(null)}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
               />
             ) : (
-              <StudentCreationForm
-                selectedClassName={selectedClassName}
-                studentName={studentName}
-                admissionNumber={admissionNumber}
-                gender={gender}
-                houseName={houseName}
-                dateOfBirth={dateOfBirth}
-                guardianName={guardianName}
-                guardianPhone={guardianPhone}
-                address={address}
-                photoPreviewUrl={studentPhotoPreviewUrl}
-                isSubmitting={isSubmitting}
-                sectionRef={studentFormRef}
-                inputRef={studentNameInputRef}
-                onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
-                onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
-                onAdmissionNumberChange={setAdmissionNumber}
-                onGenderChange={setGender}
-                onHouseNameChange={setHouseName}
-                onDateOfBirthChange={setDateOfBirth}
-                onGuardianNameChange={setGuardianName}
-                onGuardianPhoneChange={setGuardianPhone}
-                onAddressChange={setAddress}
-                onPhotoChange={setStudentPhotoFile}
-                onRemovePhoto={() => setStudentPhotoFile(null)}
-                onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
-                onSubmit={handleCreateStudent}
-              />
+              <div className="space-y-6">
+                <div className="flex rounded-xl bg-slate-100/60 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setCreationTab("quick")}
+                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
+                      creationTab === "quick"
+                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    Quick Admission
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreationTab("family")}
+                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
+                      creationTab === "family"
+                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    Family Onboarding
+                  </button>
+                </div>
+
+                {creationTab === "quick" ? (
+                  <StudentCreationForm
+                    selectedClassName={selectedClassName}
+                    studentFirstName={studentFirstName}
+                    studentLastName={studentLastName}
+                    admissionNumber={admissionNumber}
+                    gender={gender}
+                    houseName={houseName}
+                    dateOfBirth={dateOfBirth}
+                    guardianName={guardianName}
+                    guardianPhone={guardianPhone}
+                    address={address}
+                    photoPreviewUrl={studentPhotoPreviewUrl}
+                    isSubmitting={isSubmitting}
+                    sectionRef={studentFormRef}
+                    inputRef={studentNameInputRef}
+                    onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                    onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                    onAdmissionNumberChange={setAdmissionNumber}
+                    onGenderChange={setGender}
+                    onHouseNameChange={setHouseName}
+                    onDateOfBirthChange={setDateOfBirth}
+                    onGuardianNameChange={setGuardianName}
+                    onGuardianPhoneChange={setGuardianPhone}
+                    onAddressChange={setAddress}
+                    onPhotoChange={setStudentPhotoFile}
+                    onRemovePhoto={() => setStudentPhotoFile(null)}
+                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                    onSubmit={handleCreateStudent}
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    onClassIdChange={setSelectedClassId}
+                  />
+                ) : (
+                  <FamilyOnboardingForm
+                    selectedClassName={selectedClassName}
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    onClassIdChange={setSelectedClassId}
+                    studentFirstName={studentFirstName}
+                    onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                    studentLastName={studentLastName}
+                    onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                    admissionNumber={admissionNumber}
+                    onAdmissionNumberChange={setAdmissionNumber}
+                    gender={gender}
+                    onGenderChange={setGender}
+                    parentFirstName={parentFirstName}
+                    onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
+                    onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
+                    parentLastName={parentLastName}
+                    onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
+                    onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
+                    parentEmail={parentEmail}
+                    onParentEmailChange={setParentEmail}
+                    parentPhone={parentPhone}
+                    onParentPhoneChange={setParentPhone}
+                    parentRelationship={parentRelationship}
+                    onParentRelationshipChange={setParentRelationship}
+                    isParentPrimaryContact={isParentPrimaryContact}
+                    onIsParentPrimaryContactChange={setIsParentPrimaryContact}
+                    isSubmitting={isSubmitting}
+                    onSubmit={handleCreateStudent}
+                    inputRef={studentNameInputRef}
+                  />
+                )}
+              </div>
             )}
 
             <div className="pt-6 border-t border-slate-200/60 group">
               <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-300 group-hover:text-slate-500 transition-colors">Quick Reference</h4>
               <p className="mt-2 text-xs leading-relaxed font-medium text-slate-400">
-                Enrollment changes are pushed live. Updates to student profile details will reflect across all academic reports for the active session.
+                Enrollment changes are pushed live. Updates to identity, family links, and subject selections reflect across academic records for the active session.
               </p>
-              <Link 
-                href="/academic/students/onboarding"
-                className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-              >
-                Access Bulk Onboarding <ArrowRight className="h-3 w-3" />
-              </Link>
             </div>
           </div>
         </aside>
       </div>
+
+      {/* MOBILE FAB: New Admission */}
+      {isMobile && !isCreationSheetOpen && !isUnifiedSheetOpen && (
+        <div className="fixed bottom-8 right-6 z-50">
+          <button
+            onClick={handleNewAdmission}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-950/40 ring-4 ring-white active:scale-95 transition-all"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </div>
+      )}
+
+      {/* MOBILE Creation Sheet */}
+      {isMobile && isCreationSheetOpen && (
+        <div className="fixed inset-0 z-[70]">
+          <div 
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => setIsCreationSheetOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-in slide-in-from-bottom duration-500 ease-out">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
+              <div className="space-y-1">
+                <h3 className="text-xl font-black tracking-tight text-slate-950">New Admission</h3>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  Enrolling to {selectedClassName}
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsCreationSheetOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-400"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
+              <div className="mb-6 flex rounded-xl bg-slate-100/60 p-1">
+                <button
+                  type="button"
+                  onClick={() => setCreationTab("quick")}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                    creationTab === "quick"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Quick Admission
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationTab("family")}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                    creationTab === "family"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Family Onboarding
+                </button>
+              </div>
+
+              {creationTab === "quick" ? (
+                <StudentCreationForm
+                  selectedClassName={selectedClassName}
+                  studentFirstName={studentFirstName}
+                  studentLastName={studentLastName}
+                  admissionNumber={admissionNumber}
+                  gender={gender}
+                  houseName={houseName}
+                  dateOfBirth={dateOfBirth}
+                  guardianName={guardianName}
+                  guardianPhone={guardianPhone}
+                  address={address}
+                  photoPreviewUrl={studentPhotoPreviewUrl}
+                  isSubmitting={isSubmitting}
+                  sectionRef={studentFormRef}
+                  inputRef={studentNameInputRef}
+                  onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                  onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                  onAdmissionNumberChange={setAdmissionNumber}
+                  onGenderChange={setGender}
+                  onHouseNameChange={setHouseName}
+                  onDateOfBirthChange={setDateOfBirth}
+                  onGuardianNameChange={setGuardianName}
+                  onGuardianPhoneChange={setGuardianPhone}
+                  onAddressChange={setAddress}
+                  onPhotoChange={setStudentPhotoFile}
+                  onRemovePhoto={() => setStudentPhotoFile(null)}
+                  onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                  onSubmit={async (e) => {
+                    await handleCreateStudent(e);
+                    setIsCreationSheetOpen(false);
+                  }}
+                  classes={classes}
+                  selectedClassId={selectedClassId}
+                  onClassIdChange={setSelectedClassId}
+                />
+              ) : (
+                <FamilyOnboardingForm
+                  selectedClassName={selectedClassName}
+                  classes={classes}
+                  selectedClassId={selectedClassId}
+                  onClassIdChange={setSelectedClassId}
+                  studentFirstName={studentFirstName}
+                  onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                  studentLastName={studentLastName}
+                  onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                  admissionNumber={admissionNumber}
+                  onAdmissionNumberChange={setAdmissionNumber}
+                  gender={gender}
+                  onGenderChange={setGender}
+                  parentFirstName={parentFirstName}
+                  onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
+                  onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
+                  parentLastName={parentLastName}
+                  onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
+                  onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
+                  parentEmail={parentEmail}
+                  onParentEmailChange={setParentEmail}
+                  parentPhone={parentPhone}
+                  onParentPhoneChange={setParentPhone}
+                  parentRelationship={parentRelationship}
+                  onParentRelationshipChange={setParentRelationship}
+                  isParentPrimaryContact={isParentPrimaryContact}
+                  onIsParentPrimaryContactChange={setIsParentPrimaryContact}
+                  isSubmitting={isSubmitting}
+                  onSubmit={async (e) => {
+                    await handleCreateStudent(e);
+                    setIsCreationSheetOpen(false);
+                  }}
+                  inputRef={studentNameInputRef}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   parsePlanningContextFromSearchParams,
   parseTeacherLessonPlanSourceIds,
 } from "@school/shared";
+import { X } from "lucide-react";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
 import type {
@@ -17,6 +18,26 @@ import type {
   LessonPlanWorkspaceData,
   LessonPlanWorkspaceOutputType,
 } from "./types";
+
+function getPlanningSourceSyncKey(planningContext: ReturnType<typeof parsePlanningContextFromSearchParams>) {
+  if (!planningContext) {
+    return null;
+  }
+
+  if (planningContext.kind === "topic") {
+    return [
+      "teacher-planning-sources",
+      "topic",
+      planningContext.classId,
+      planningContext.termId,
+      planningContext.subjectId,
+      planningContext.level,
+      planningContext.topicId,
+    ].join(":");
+  }
+
+  return null;
+}
 
 function LoadingShell() {
   return (
@@ -64,6 +85,32 @@ export default function LessonPlansPage() {
     "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
   );
   const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
+  const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || selectedSourceIds.length > 0) {
+      return;
+    }
+
+    const syncedValue = window.localStorage.getItem(sourceSyncKey);
+    const syncedSourceIds = parseTeacherLessonPlanSourceIds(syncedValue);
+    if (syncedSourceIds.length === 0) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sourceIds", syncedSourceIds.join(","));
+    params.set("sourceOrigin", "workspace_sync");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, selectedSourceIds.length, sourceSyncKey]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || effectiveSourceIds.length === 0) {
+      return;
+    }
+
+    window.localStorage.setItem(sourceSyncKey, effectiveSourceIds.join(","));
+  }, [effectiveSourceIds, sourceSyncKey]);
 
   const updateSelectedSourceIds = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -184,52 +231,57 @@ export default function LessonPlansPage() {
   }
 
   return (
-    <div className="space-y-4">
-      {workspaceError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm">
-          {workspaceError}
-        </div>
-      ) : null}
+    <div className="min-h-screen bg-slate-50/50">
+      <div className="mx-auto max-w-[1600px] px-4 py-8 md:px-8">
+        <div className="space-y-6">
+          {workspaceError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-800 shadow-sm">
+              {workspaceError}
+            </div>
+          ) : null}
 
-      <div className="flex items-center justify-between gap-3 rounded-[2rem] border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Teacher planning</p>
-          <h1 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-            Lesson plan workspace
-          </h1>
-        </div>
-        <Link
-          href="/planning/library"
-          className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
-        >
-          Back to library
-        </Link>
-      </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/planning/library"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 shadow-sm"
+              >
+                <X className="h-4 w-4" />
+              </Link>
+              <h1 className="text-xl font-black tracking-tight text-slate-950 uppercase">
+                Planning Workspace
+              </h1>
+            </div>
+            
+            <div className="hidden items-center gap-4 xl:flex">
+               <div className="h-1 w-1 rounded-full bg-slate-300" />
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Planning Hub</p>
+            </div>
+          </div>
 
-      {workspace.planningContext?.topicTitle || workspace.sourceContext.topicLabel ? null : (
-        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
-          <input
-            value={targetTopicLabel}
-            onChange={(event) => setTargetTopicLabel(event.target.value)}
-            placeholder="e.g. Fractions: adding unlike denominators"
-            className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-amber-500/20"
+          {workspace.planningContext?.topicTitle || workspace.sourceContext.topicLabel ? null : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+              <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-amber-700">Target Topic for Generation</label>
+              <input
+                value={targetTopicLabel}
+                onChange={(event) => setTargetTopicLabel(event.target.value)}
+                placeholder="e.g. Fractions: adding unlike denominators"
+                className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-4 focus:ring-amber-500/10 transition-all"
+              />
+            </div>
+          )}
+
+          <LessonPlanWorkspaceScreen
+            key={`${outputType}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
+            workspace={workspace}
+            onOutputTypeChange={setOutputType}
+            onRemoveSource={handleRemoveSource}
+            onOpenLibrary={handleOpenLibrary}
+            onSaveDraft={handleSaveDraft}
+            onGenerateDraft={handleGenerateDraft}
           />
-          <p className="mt-2 text-xs leading-5 text-amber-900/80">
-            Your selected sources are broad planning references, so the workspace will not derive a topic from them. Add a target topic to steer this generation.
-          </p>
         </div>
-      )}
-
-      <LessonPlanWorkspaceScreen
-        key={`${outputType}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
-        workspace={workspace}
-        onOutputTypeChange={setOutputType}
-        onRemoveSource={handleRemoveSource}
-        onOpenLibrary={handleOpenLibrary}
-        onSaveDraft={handleSaveDraft}
-        onGenerateDraft={handleGenerateDraft}
-      />
+      </div>
     </div>
   );
 }

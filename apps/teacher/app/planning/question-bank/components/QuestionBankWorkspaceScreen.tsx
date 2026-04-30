@@ -11,7 +11,10 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Settings2,
 } from "lucide-react";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import type {
@@ -111,7 +114,7 @@ function textToTags(value: string) {
 
 function createBlankItem(index: number, outputType: AssessmentOutputType, mode: AssessmentDraftMode): AssessmentDraftItem {
   return {
-    id: `new-${crypto.randomUUID()}`,
+    id: `new-${typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2, 11)}`,
     itemOrder: index,
     questionType:
       outputType === "cbt_draft"
@@ -166,7 +169,7 @@ function serializeDraftForSignature(args: {
 }
 
 function itemLabel(item: AssessmentDraftItem) {
-  return item.questionType.replace(/_/g, " ");
+  return item.questionType?.replace(/_/g, " ") ?? "Question Item";
 }
 
 const questionStyleOptions: Array<{ value: AssessmentQuestionStyle; label: string }> = [
@@ -479,7 +482,7 @@ export function QuestionBankWorkspaceScreen({
           saveInFlightRef.current = false;
           if (retrySaveRef.current) {
             retrySaveRef.current = false;
-            setSaveState((current) => (current === "error" ? current : "idle"));
+            void persistDraft("autosave");
           }
         });
     }, 1200);
@@ -570,169 +573,144 @@ export function QuestionBankWorkspaceScreen({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  return (
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const isMobile = useIsMobile();
+
+  const SidebarContent = (
     <div className="space-y-6">
-      {notice ? (
-        <div
-          className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm ${
-            notice.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}
-        >
-          {notice.message}
+      {/* REVISION HYGIENE & STATUS */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5">
+        <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Revision Status
+            </h3>
+            <BookOpenText className="h-3.5 w-3.5 text-slate-400" />
+          </div>
         </div>
-      ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Source pane</p>
-                <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">Repository attachments</h2>
-              </div>
-              <BookOpenText className="h-5 w-5 text-slate-400" />
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Autosave</p>
+              <p className="text-[10px] font-medium text-slate-500">
+                {canAutosave ? "Active" : "Paused"}
+              </p>
             </div>
+            <div className={`h-2 w-2 rounded-full ${canAutosave ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+          </div>
 
-            <div className="mt-4 space-y-2">
-              {workspace.selectedSources.length > 0 ? (
-                workspace.selectedSources.map((source) => (
-                  <div
-                    key={source._id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-bold text-slate-950">{source.title}</p>
-                        <p className="mt-1 text-xs text-slate-500">{source.subjectName} • {source.level}</p>
-                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{getSourceScopeLabel(source)}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSource(source._id)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
-                        aria-label={`Remove ${source.title}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">{source.topicLabel}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-sm text-slate-500">
-                  Add repository materials to ground this draft. Topic-bound sources and broad references stay distinct here.
-                </div>
-              )}
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Last Synced</p>
+              <p className="text-[10px] font-medium text-slate-500">
+                {formatRelativeTime(workspace.draft.lastSavedAt)}
+              </p>
             </div>
+            <Save className="h-3.5 w-3.5 text-slate-300" />
+          </div>
 
+          <div className="pt-4 border-t border-slate-100">
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase tracking-wider">
+                {workspace.outputTypeLabel}
+              </span>
+              <span className="inline-flex rounded-md bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-inset ring-slate-900/10 uppercase tracking-wider">
+                {modeOption.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="button"
-              onClick={onOpenLibrary}
-              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
+              onClick={handleManualSave}
+              disabled={!dirty || !canAutosave || saveState === "saving"}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-950 transition hover:bg-slate-50 disabled:opacity-50"
             >
-              Add from library
+              {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Save
             </button>
-          </section>
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Draft mode</p>
-            <div className="mt-2 space-y-2">
-              {modeOptions.map((option) => {
-                const active = option.value === workspace.draftMode;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleModeChange(option.value)}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                      active
-                        ? "border-slate-950 bg-slate-950 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-bold">{option.label}</span>
-                      <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${active ? "text-white/70" : "text-slate-400"}`}>
-                        {option.outputType === "cbt_draft" ? "CBT" : "Bank"}
-                      </span>
-                    </div>
-                    <p className={`mt-1 text-xs ${active ? "text-white/70" : "text-slate-500"}`}>{option.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-            {workspace.planningContext?.kind === "topic" ? (
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Topic work stays topic-first here. Use the exam workspace when you need subject-scope exam drafting.
-              </p>
-            ) : workspace.planningContext?.kind === "exam_scope" ? (
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Exam mode is locked to the selected subject, class, and term scope.
-              </p>
-            ) : null}
-          </section>
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Generation profile</p>
-            <select
-              value={effectiveGenerationSettings.profileId ?? "custom"}
-              onChange={(event) => {
-                if (event.target.value === "custom") {
-                  setEffectiveGenerationSettings((current) => ({
-                    ...current,
-                    profileId: undefined,
-                    profileName: "Custom",
-                    allowTeacherOverrides: true,
-                  }));
-                  return;
-                }
-
-                const profile = workspace.profiles.find((item) => item._id === event.target.value);
-                if (profile) {
-                  setEffectiveGenerationSettings({
-                    profileId: profile._id,
-                    profileName: profile.name,
-                    questionStyle: profile.questionStyle,
-                    totalQuestions: profile.totalQuestions,
-                    questionMix: profile.questionMix,
-                    allowTeacherOverrides: profile.allowTeacherOverrides,
-                  });
-                }
-              }}
-              className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-950"
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!canGenerate}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
-              <option value="custom">Custom settings</option>
-              {workspace.profiles.map((profile) => (
-                <option key={profile._id} value={profile._id}>{profile.name}{profile.isDefault ? " • Default" : ""}</option>
-              ))}
-            </select>
+              {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Generate
+            </button>
+          </div>
+        </div>
+      </section>
 
-            <label className="mt-3 block text-xs font-bold text-slate-600" htmlFor="question-style">Question style</label>
-            <select
-              id="question-style"
-              value={effectiveGenerationSettings.questionStyle}
-              disabled={!effectiveGenerationSettings.allowTeacherOverrides}
-              onChange={(event) => {
-                const questionStyle = event.target.value as AssessmentQuestionStyle;
+      {/* GENERATION PROFILE */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5">
+        <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+          <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+            Generation Profile
+          </h3>
+        </div>
+        <div className="p-4 space-y-4">
+          <select
+            value={effectiveGenerationSettings.profileId ?? "custom"}
+            onChange={(event) => {
+              if (event.target.value === "custom") {
                 setEffectiveGenerationSettings((current) => ({
                   ...current,
                   profileId: undefined,
                   profileName: "Custom",
-                  questionStyle,
-                  questionMix: buildQuestionMixForStyle(questionStyle, current.totalQuestions),
+                  allowTeacherOverrides: true,
                 }));
-              }}
-              className="mt-1 h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:bg-slate-100"
-            >
-              {questionStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+                return;
+              }
 
-            <div className="mt-3 space-y-2">
+              const profile = workspace.profiles.find((item) => item._id === event.target.value);
+              if (profile) {
+                setEffectiveGenerationSettings({
+                  profileId: profile._id,
+                  profileName: profile.name,
+                  questionStyle: profile.questionStyle,
+                  totalQuestions: profile.totalQuestions,
+                  questionMix: profile.questionMix,
+                  allowTeacherOverrides: profile.allowTeacherOverrides,
+                });
+              }
+            }}
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-slate-950"
+          >
+            <option value="custom">Custom settings</option>
+            {workspace.profiles.map((profile) => (
+              <option key={profile._id} value={profile._id}>{profile.name}{profile.isDefault ? " • Default" : ""}</option>
+            ))}
+          </select>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Style</span>
+              <select
+                value={effectiveGenerationSettings.questionStyle}
+                disabled={!effectiveGenerationSettings.allowTeacherOverrides}
+                onChange={(event) => {
+                  const questionStyle = event.target.value as AssessmentQuestionStyle;
+                  setEffectiveGenerationSettings((current) => ({
+                    ...current,
+                    profileId: undefined,
+                    profileName: "Custom",
+                    questionStyle,
+                    questionMix: buildQuestionMixForStyle(questionStyle, current.totalQuestions),
+                  }));
+                }}
+                className="h-8 rounded-md border-none bg-slate-100 px-2 text-[11px] font-bold text-slate-700 disabled:opacity-50"
+              >
+                {questionStyleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1.5 pt-2">
               {questionMixKeys.map((item) => (
-                <label key={item.key} className="flex items-center justify-between gap-3 text-xs font-bold text-slate-600">
-                  <span>{item.label}</span>
+                <div key={item.key} className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-medium text-slate-500">{item.label}</span>
                   <input
                     type="number"
                     min={0}
@@ -746,338 +724,432 @@ export function QuestionBankWorkspaceScreen({
                         return { ...current, profileId: undefined, profileName: "Custom", questionMix: nextMix, totalQuestions: mixTotal(nextMix) };
                       });
                     }}
-                    className="h-9 w-20 rounded-xl border border-slate-200 px-2 text-right text-sm text-slate-800 disabled:bg-slate-100"
+                    className="h-7 w-12 rounded bg-slate-50 text-right text-[11px] font-bold text-slate-950 ring-1 ring-slate-950/5 disabled:opacity-50"
                   />
-                </label>
+                </div>
               ))}
             </div>
-            <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              Total: {effectiveGenerationSettings.totalQuestions} • {effectiveGenerationSettings.questionStyle.replace(/_/g, " ")}
-            </p>
-          </section>
-        </aside>
+          </div>
+        </div>
+      </section>
 
-        <main className="space-y-4">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    {workspace.draftModeLabel}
-                  </span>
-                  <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">
-                    {workspace.outputTypeLabel}
-                  </span>
-                  <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    {items.length} item{items.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assessment draft editor</p>
-                  <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-                    {workspace.draft.title}
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                    {workspace.planningContext?.kind === "exam_scope"
-                      ? "Draft against an explicit subject-scope exam context, then attach repository materials without changing draft identity."
-                      : workspace.planningContext?.kind === "topic"
-                        ? "Draft from one teaching topic first, then keep the question set editable as you refine repository sources."
-                        : "Keep the generated items editable, tuned to the selected sources, and ready for teacher review."}
+      {/* REPOSITORY ATTACHMENTS */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5">
+        <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Sources ({workspace.selectedSources.length})
+            </h3>
+            <button 
+              onClick={onOpenLibrary}
+              className="text-[10px] font-bold text-blue-600 hover:underline uppercase tracking-wider"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+
+        <div className="p-3 space-y-2">
+          {workspace.selectedSources.map((source) => (
+            <div key={source._id} className="group relative rounded-lg border border-slate-100 bg-white p-3 transition-colors hover:bg-slate-50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold text-slate-900">{source.title}</p>
+                  <p className="mt-0.5 text-[10px] font-medium text-slate-400 uppercase tracking-tight">
+                    {source.subjectName} • {source.level}
                   </p>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 lg:justify-end">
                 <button
-                  type="button"
-                  onClick={handleManualSave}
-                  disabled={!dirty || !canAutosave || saveState === "saving"}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-950 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => handleRemoveSource(source._id)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-300 hover:text-rose-500"
                 >
-                  {saveState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save draft
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={!canGenerate}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Generate draft
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
+          ))}
+          
+          {workspace.selectedSources.length === 0 && (
+            <p className="py-4 text-center text-xs font-medium text-slate-400 italic">No sources attached.</p>
+          )}
+          
+          <button
+            type="button"
+            onClick={onOpenLibrary}
+            className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 text-[11px] font-bold text-slate-500 transition hover:bg-slate-100"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Source
+          </button>
+        </div>
+      </section>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <label className="space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Title</span>
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                />
-              </label>
-              <label className="space-y-2 sm:col-span-2 xl:col-span-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Description</span>
-                <input
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Optional note, blueprint, or exam instructions"
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                />
-              </label>
+      {/* DRAFT CONTEXT */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5">
+        <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+          <h3 className="font-display text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+            Academic Context
+          </h3>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="space-y-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Subject & Level</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-900 truncate">
+                {workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName ?? "N/A"} • {workspace.planningContext?.level ?? workspace.sourceContext.level ?? "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Class & Term</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-900 truncate">
+                {workspace.planningContext ? `${workspace.planningContext.className} • ${workspace.planningContext.termName}` : "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Scope</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-900 truncate">
+                {getPlanningScopeLabel(workspace)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+      {notice ? (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm ${
+            notice.tone === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          {notice.message}
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start">
+        {/* RIGHT SIDEBAR: WORKBENCH & CONTEXT */}
+        {!isMobile && (
+          <aside className="w-full space-y-6 lg:sticky lg:top-8 lg:w-[380px] lg:shrink-0">
+            {SidebarContent}
+          </aside>
+        )}
+
+        {isMobile && (
+          <TeacherSheet
+            isOpen={isSheetOpen}
+            onClose={() => setIsSheetOpen(false)}
+            title="Workbench Settings"
+          >
+            <div className="p-6 space-y-8">
+              {SidebarContent}
+            </div>
+          </TeacherSheet>
+        )}
+
+        {/* MAIN WORKSPACE: EDITOR & ITEMS */}
+        <main className="flex-1 space-y-8 min-w-0">
+          {/* EDITOR HEADER */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5 p-5 lg:p-8">
+            <div className="space-y-8">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-display text-xl font-black tracking-tight text-slate-950 uppercase">
+                      Bank Identity
+                    </h2>
+                    {isMobile && (
+                      <button
+                        onClick={() => setIsSheetOpen(true)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs font-medium text-slate-500 max-w-md leading-relaxed">
+                    Set the core identity for this collection. Changes here affect how it's categorized in your library.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-2 sm:pb-0 scrollbar-none">
+                  {modeOptions.map((option) => {
+                    const active = option.value === workspace.draftMode;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleModeChange(option.value)}
+                        className={`whitespace-nowrap rounded-lg px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                          active
+                            ? "bg-slate-950 text-white shadow-lg shadow-slate-950/20 ring-1 ring-slate-950"
+                            : "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Draft Title</label>
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="e.g. Mid-term Physics Quiz"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-8 focus:ring-slate-950/5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contextual description</label>
+                  <input
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="e.g. Covering chapters 1-4"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-950 outline-none transition focus:border-slate-950 focus:ring-8 focus:ring-slate-950/5"
+                  />
+                </div>
+              </div>
+
+              {workspace.warnings.length > 0 && (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 shrink-0" />
+                  <div className="space-y-1.5 text-[11px] font-medium text-amber-900 leading-relaxed">
+                    {workspace.warnings.map((warning, i) => <p key={i}>{warning}</p>)}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
-          {workspace.warnings.length > 0 ? (
-            <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
-                <div className="space-y-2 text-sm text-amber-900">
-                  {workspace.warnings.map((warning) => (
-                    <p key={warning}>{warning}</p>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Question items</p>
-                <h3 className="mt-1 text-lg font-black tracking-tight text-slate-950">Editable bank rows</h3>
+          {/* QUESTION ITEMS */}
+          <section className="space-y-6">
+            <div className="flex items-end justify-between px-2">
+              <div className="space-y-1">
+                <h3 className="font-display text-xl sm:text-2xl font-black tracking-tight text-slate-950 uppercase">Drafted Items</h3>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  {items.length} {items.length === 1 ? "question" : "questions"} generated
+                </p>
               </div>
               <button
                 type="button"
                 onClick={addItem}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
+                className="hidden sm:inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-[11px] font-bold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800 active:scale-95"
               >
-                <Plus className="h-4 w-4" />
-                Add item
+                <Plus className="h-3.5 w-3.5" />
+                Add Question
               </button>
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="space-y-6 pb-24 lg:pb-0">
               {items.length > 0 ? (
                 items.map((item, index) => (
-                  <article key={item.id} className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                          Item {index + 1}
-                        </p>
-                        <p className="mt-1 text-sm font-bold text-slate-950">{itemLabel(item)}</p>
+                  <article key={item.id} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5 transition-all hover:shadow-xl hover:ring-slate-950/10">
+                    <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-3">
+                      <div className="flex items-center gap-4">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-[12px] font-black text-white shadow-lg shadow-slate-950/20 ring-4 ring-slate-950/5">
+                          {index + 1}
+                        </span>
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-950">
+                            {itemLabel(item)}
+                          </p>
+                          <div className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            ID: {item.id?.slice(0, 6) ?? "NEW"}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           type="button"
                           onClick={() => moveItem(item.id, -1)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950 disabled:opacity-40"
                           disabled={index === 0}
-                          aria-label="Move item up"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 disabled:opacity-30"
                         >
                           <ChevronUp className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => moveItem(item.id, 1)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950 disabled:opacity-40"
                           disabled={index === items.length - 1}
-                          aria-label="Move item down"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 disabled:opacity-30"
                         >
                           <ChevronDown className="h-4 w-4" />
                         </button>
+                        <div className="mx-1 h-5 w-px bg-slate-200" />
                         <button
                           type="button"
                           onClick={() => removeItem(item.id)}
-                          className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-rose-700 transition hover:border-rose-200 hover:bg-rose-50"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Remove
                         </button>
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <label className="space-y-2 lg:col-span-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Question type</span>
-                        <select
-                          value={item.questionType}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              questionType: event.target.value as AssessmentQuestionType,
-                            }))
-                          }
-                          className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400"
-                        >
-                          <option value="multiple_choice">Multiple choice</option>
-                          <option value="short_answer">Short answer</option>
-                          <option value="essay">Essay</option>
-                          <option value="true_false">True / false</option>
-                          <option value="fill_in_the_blank">Fill in the blank</option>
-                        </select>
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Difficulty</span>
-                        <select
-                          value={item.difficulty}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              difficulty: event.target.value as AssessmentQuestionDifficulty,
-                            }))
-                          }
-                          className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400"
-                        >
-                          <option value="easy">Easy</option>
-                          <option value="medium">Medium</option>
-                          <option value="hard">Hard</option>
-                        </select>
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Marks</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={item.marks ?? ""}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              marks: event.target.value === "" ? null : Number(event.target.value),
-                            }))
-                          }
-                          className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400"
-                        />
-                      </label>
-                    </div>
+                    <div className="p-6 space-y-6">
+                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="space-y-2 lg:col-span-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Question Type</label>
+                          <select
+                            value={item.questionType}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                questionType: event.target.value as AssessmentQuestionType,
+                              }))
+                            }
+                            className="h-10 w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 text-xs font-bold text-slate-950 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5"
+                          >
+                            <option value="multiple_choice">Multiple choice</option>
+                            <option value="short_answer">Short answer</option>
+                            <option value="essay">Essay</option>
+                            <option value="true_false">True / false</option>
+                            <option value="fill_in_the_blank">Fill in the blank</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Difficulty</label>
+                          <select
+                            value={item.difficulty}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                difficulty: event.target.value as AssessmentQuestionDifficulty,
+                              }))
+                            }
+                            className="h-10 w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 text-xs font-bold text-slate-950 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5"
+                          >
+                            <option value="easy">Easy</option>
+                            <option value="medium">Medium</option>
+                            <option value="hard">Hard</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Marks</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.marks ?? ""}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                marks: event.target.value === "" ? null : Number(event.target.value),
+                              }))
+                            }
+                            className="h-10 w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 text-xs font-bold text-slate-950 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5"
+                          />
+                        </div>
+                      </div>
 
-                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Question text</span>
-                        <textarea
-                          value={item.promptText}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              promptText: event.target.value,
-                            }))
-                          }
-                          rows={4}
-                          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                        />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Answer</span>
-                        <textarea
-                          value={item.answerText}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              answerText: event.target.value,
-                            }))
-                          }
-                          rows={4}
-                          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                        />
-                      </label>
-                    </div>
+                      <div className="grid gap-6 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Question Prompt</label>
+                          <textarea
+                            value={item.promptText}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                promptText: event.target.value,
+                              }))
+                            }
+                            rows={4}
+                            className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5 leading-relaxed"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Detailed Answer Key</label>
+                          <textarea
+                            value={item.answerText}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                answerText: event.target.value,
+                              }))
+                            }
+                            rows={4}
+                            className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5 leading-relaxed"
+                          />
+                        </div>
+                      </div>
 
-                    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Explanation</span>
-                        <textarea
-                          value={item.explanationText}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              explanationText: event.target.value,
-                            }))
-                          }
-                          rows={3}
-                          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                        />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Tags</span>
-                        <textarea
-                          value={tagsToText(item.tags)}
-                          onChange={(event) =>
-                            updateItem(item.id, (current) => ({
-                              ...current,
-                              tags: textToTags(event.target.value),
-                            }))
-                          }
-                          rows={3}
-                          placeholder="comma-separated tags"
-                          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400"
-                        />
-                      </label>
+                      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Teacher Explanation</label>
+                          <textarea
+                            value={item.explanationText}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                explanationText: event.target.value,
+                              }))
+                            }
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 text-[11px] font-medium text-slate-500 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5 leading-relaxed"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Search Tags</label>
+                          <input
+                            value={tagsToText(item.tags)}
+                            onChange={(event) =>
+                              updateItem(item.id, (current) => ({
+                                ...current,
+                                tags: textToTags(event.target.value),
+                              }))
+                            }
+                            placeholder="logic, algebra, exam-2024"
+                            className="h-11 w-full rounded-xl border border-slate-100 bg-slate-50/50 px-4 text-[11px] font-medium text-slate-500 outline-none transition focus:bg-white focus:ring-4 focus:ring-slate-950/5"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </article>
                 ))
               ) : (
-                <div className="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                  No items yet. Add a question row to begin building the draft.
+                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-20 text-center px-6">
+                   <div className="rounded-2xl bg-white p-5 text-slate-200 shadow-xl ring-1 ring-slate-950/5">
+                    <Plus className="h-10 w-10" />
+                  </div>
+                  <p className="mt-8 text-xs font-black uppercase tracking-[0.3em] text-slate-400">Empty Draft State</p>
+                  <p className="mt-3 text-sm font-medium text-slate-400 max-w-[280px] leading-relaxed">
+                    Use the workbench tools on the right to generate your first draft based on the attached repository sources.
+                  </p>
                 </div>
               )}
             </div>
           </section>
         </main>
-
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Draft context</p>
-            <div className="mt-3 space-y-3 text-sm text-slate-600">
-              <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Subject</p>
-                <p className="mt-1 font-semibold text-slate-950">{workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName ?? "Not resolved"}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Class & term</p>
-                <p className="mt-1 font-semibold text-slate-950">
-                  {workspace.planningContext ? `${workspace.planningContext.className} • ${workspace.planningContext.termName}` : "Not resolved"}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Scope</p>
-                <p className="mt-1 font-semibold text-slate-950">{getPlanningScopeLabel(workspace)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Saved</p>
-                <p className="mt-1 font-semibold text-slate-950">{formatRelativeTime(workspace.draft.lastSavedAt)}</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Revision hygiene</p>
-                <h3 className="mt-1 text-lg font-black tracking-tight text-slate-950">Status</h3>
-              </div>
-              <BookOpenText className="h-5 w-5 text-slate-400" />
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm text-slate-600">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="font-semibold text-slate-950">Autosave</p>
-                <p className="mt-1 text-xs text-slate-500">{canAutosave ? "Enabled" : "Blocked until context resolves"}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="font-semibold text-slate-950">Generation</p>
-                <p className="mt-1 text-xs text-slate-500">{canGenerate ? "Ready to generate" : "Blocked until sources are ready"}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="font-semibold text-slate-950">Output shape</p>
-                <p className="mt-1 text-xs text-slate-500">{workspace.outputTypeLabel} • {modeOption.label}</p>
-              </div>
-            </div>
-          </section>
-        </aside>
       </div>
+
+      {/* MOBILE STICKY ACTIONS */}
+      {isMobile && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/80 p-4 pb-8 backdrop-blur-xl">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={addItem}
+              className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm active:scale-95"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+            <button
+              onClick={handleManualSave}
+              disabled={!dirty || !canAutosave || saveState === "saving"}
+              className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 text-[11px] font-bold text-white shadow-lg shadow-slate-950/20 active:scale-95 disabled:opacity-50"
+            >
+              {saveState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save Progress
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

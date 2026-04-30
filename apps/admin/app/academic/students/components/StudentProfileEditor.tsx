@@ -2,7 +2,7 @@
 
 import { getUserFacingErrorMessage } from "@school/shared";
 import { useMutation,useQuery } from "convex/react";
-import { CheckCircle2,Trash2,UserCog } from "lucide-react";
+import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect,useMemo,useState } from "react";
 
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
@@ -18,6 +18,8 @@ interface StudentProfileEditorProps {
   onNotice: (notice: EnrollmentNotice) => void;
   onStudentArchived?: (studentId: string) => void;
   variant?: "inline" | "sheet";
+  activeTab?: "profile" | "family";
+  onTabChange?: (tab: "profile" | "family") => void;
 }
 
 type StudentProfile = {
@@ -52,7 +54,9 @@ export function StudentProfileEditor({
   classes,
   onNotice,
   onStudentArchived,
-
+  variant,
+  activeTab = "profile",
+  onTabChange,
 }: StudentProfileEditorProps) {
   const studentProfile = useQuery(
     "functions/academic/studentEnrollment:getStudentProfile" as never,
@@ -188,98 +192,150 @@ export function StudentProfileEditor({
     }
   };
 
+  const isSidebar = variant !== "inline";
+
   return (
     <div className="space-y-6 pb-10">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-            <UserCog className="h-4 w-4" />
-          </div>
-          <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
-            Edit Identity
-          </h2>
+      {/* Tab Switcher - Only in Sidebar/Default Desktop mode */}
+      {isSidebar && (
+        <div className="flex p-1 bg-slate-100/60 rounded-xl mb-2">
+          <button
+            type="button"
+            onClick={() => onTabChange?.("profile")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+              activeTab === "profile"
+                ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            <UserCog className="h-3.5 w-3.5" />
+            Identity
+          </button>
+          <button
+            type="button"
+            onClick={() => onTabChange?.("family")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+              activeTab === "family"
+                ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            Family
+          </button>
         </div>
-        <p className="text-xs font-medium text-slate-500 line-clamp-2">
-          Modify core records and credentials for <span className="font-bold text-slate-900">{displayName}</span>.
-        </p>
-      </div>
+      )}
 
-      <div className="space-y-6">
-        <StudentPhotoPanel
-          name={displayName}
-          previewUrl={previewUrl}
-          onPhotoChange={(file) => {
-            setPhotoFile(file);
-            setClearPhoto(false);
-          }}
-          onRemovePhoto={() => {
-            setPhotoFile(null);
-            setClearPhoto(true);
-          }}
-          onValidationError={(m) => onNotice({ tone: "error", message: m })}
-        />
+      {activeTab === "profile" ? (
+        <div className="space-y-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                <UserCog className="h-4 w-4" />
+              </div>
+              <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+                Edit Identity
+              </h2>
+            </div>
+            <p className="text-xs font-medium text-slate-500 line-clamp-2">
+              Modify core records and credentials for <span className="font-bold text-slate-900">{displayName}</span>.
+            </p>
+          </div>
 
-        <StudentProfileFormFields
-          firstName={firstName}
-          lastName={lastName}
-          admissionNumber={admissionNumber}
-          classId={classId}
-          houseName={houseName}
-          gender={gender}
-          dateOfBirth={dateOfBirth}
-          guardianName={guardianName}
-          guardianPhone={guardianPhone}
-          address={address}
-          classes={classes}
-          onFirstNameChange={setFirstName}
-          onLastNameChange={setLastName}
-          onAdmissionNumberChange={setAdmissionNumber}
-          onClassIdChange={setClassId}
-          onHouseNameChange={setHouseName}
-          onGenderChange={setGender}
-          onDateOfBirthChange={setDateOfBirth}
-          onGuardianNameChange={setGuardianName}
-          onGuardianPhoneChange={setGuardianPhone}
-          onAddressChange={setAddress}
-        />
+          <div className="space-y-6">
+            <StudentPhotoPanel
+              name={displayName}
+              previewUrl={previewUrl}
+              onPhotoChange={(file) => {
+                setPhotoFile(file);
+                setClearPhoto(false);
+              }}
+              onRemovePhoto={() => {
+                setPhotoFile(null);
+                setClearPhoto(true);
+              }}
+              onValidationError={(m) => onNotice({ tone: "error", message: m })}
+            />
 
-        <StudentFamilyPanel
-          studentId={studentProfile._id}
-          studentName={displayName}
-          onNotice={onNotice}
-        />
+            <StudentProfileFormFields
+              firstName={firstName}
+              lastName={lastName}
+              admissionNumber={admissionNumber}
+              classId={classId}
+              houseName={houseName}
+              gender={gender}
+              dateOfBirth={dateOfBirth}
+              guardianName={guardianName}
+              guardianPhone={guardianPhone}
+              address={address}
+              classes={classes}
+              onFirstNameChange={setFirstName}
+              onLastNameChange={setLastName}
+              onAdmissionNumberChange={setAdmissionNumber}
+              onClassIdChange={setClassId}
+              onHouseNameChange={setHouseName}
+              onGenderChange={setGender}
+              onDateOfBirthChange={setDateOfBirth}
+              onGuardianNameChange={setGuardianName}
+              onGuardianPhoneChange={setGuardianPhone}
+              onAddressChange={setAddress}
+            />
 
-        <PortalCredentialPanel
-          title="Student Portal Access"
-          description="Provision or refresh the portal login used by this student for the parent/student portal test flow."
-          userId={studentProfile.userId}
-          userName={studentProfile.displayName}
-          email={studentProfile.email}
-          defaultPassword="Student123!Pass"
-          onNotice={onNotice}
-        />
-      </div>
+            <PortalCredentialPanel
+              title="Student Portal Access"
+              description="Provision or refresh the portal login used by this student for the parent/student portal test flow."
+              userId={studentProfile.userId}
+              userName={studentProfile.displayName}
+              email={studentProfile.email}
+              defaultPassword="Student123!Pass"
+              onNotice={onNotice}
+            />
+          </div>
 
-      <div className="flex flex-col gap-3 pt-4 border-t border-slate-200/60">
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={isSaving || isArchiving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
-        >
-          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          <span>{isSaving ? "Saving Changes..." : "Save Identity"}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleArchive()}
-          disabled={isSaving || isArchiving}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 text-sm font-bold text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" />
-          <span>{isArchiving ? "Archiving..." : "Archive Record"}</span>
-        </button>
-      </div>
+          <div className="flex flex-col gap-3 pt-4 border-t border-slate-200/60">
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={isSaving || isArchiving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <span>{isSaving ? "Saving Changes..." : "Save Identity"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleArchive()}
+              disabled={isSaving || isArchiving}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-6 text-sm font-bold text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>{isArchiving ? "Archiving..." : "Archive Record"}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                <Users className="h-4 w-4" />
+              </div>
+              <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+                Household record
+              </h2>
+            </div>
+            <p className="text-xs font-medium text-slate-500 line-clamp-2">
+              Manage parents and household links for <span className="font-bold text-slate-900">{displayName}</span>.
+            </p>
+          </div>
+
+          <StudentFamilyPanel
+            studentId={studentProfile._id}
+            studentName={displayName}
+            onNotice={onNotice}
+          />
+        </div>
+      )}
     </div>
   );
 }
