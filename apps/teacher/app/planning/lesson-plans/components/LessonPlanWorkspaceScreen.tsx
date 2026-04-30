@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -186,7 +186,19 @@ export function LessonPlanWorkspaceScreen({
   );
   const convex = useConvex();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDrawerClosing, setIsDrawerClosing] = useState(false);
   const [drawerTab, setDrawerTab] = useState<"sources" | "history">("sources");
+
+  const closeDrawer = useCallback(() => {
+    setIsDrawerClosing(true);
+  }, []);
+
+  const handleDrawerAnimationEnd = useCallback((e: AnimationEvent<HTMLDivElement>) => {
+    if (isDrawerClosing && e.animationName === "slide-out-to-bottom") {
+      setIsSidebarOpen(false);
+      setIsDrawerClosing(false);
+    }
+  }, [isDrawerClosing]);
   const [isRestoring, setIsRestoring] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -691,8 +703,19 @@ export function LessonPlanWorkspaceScreen({
       </div>
 
       {isSidebarOpen && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-slate-950/40 backdrop-blur-md xl:hidden">
-          <div className="mt-auto flex max-h-[85vh] w-full flex-col rounded-t-[2.5rem] bg-white shadow-[0_-20px_50px_-12px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom duration-300">
+        <div
+          className={`fixed inset-0 z-[9999] flex flex-col bg-slate-950/40 backdrop-blur-md xl:hidden ${
+            isDrawerClosing ? "animate-out fade-out duration-250" : "animate-in fade-in duration-300"
+          }`}
+          onClick={closeDrawer}
+        >
+          <div
+            className={`mt-auto flex max-h-[85vh] w-full flex-col rounded-t-[2.5rem] bg-white shadow-[0_-20px_50px_-12px_rgba(0,0,0,0.3)] ${
+              isDrawerClosing ? "animate-out slide-out-to-bottom duration-250" : "animate-in slide-in-from-bottom duration-300"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+            onAnimationEnd={handleDrawerAnimationEnd}
+          >
             {/* Handle Bar */}
             <div className="mx-auto mt-3 h-1 w-12 rounded-full bg-slate-200" />
             
@@ -715,7 +738,7 @@ export function LessonPlanWorkspaceScreen({
                 </button>
               </div>
               <button
-                onClick={() => setIsSidebarOpen(false)}
+                onClick={closeDrawer}
                 className="rounded-full bg-slate-100 p-2 text-slate-950 transition-all active:scale-90"
               >
                 <X className="h-4 w-4" />
@@ -751,7 +774,7 @@ export function LessonPlanWorkspaceScreen({
                     {workspace.revisions.map(rev => (
                       <button
                          key={rev._id}
-                         onClick={() => { handleRestoreRevision(rev._id); setIsSidebarOpen(false); }}
+                         onClick={() => { handleRestoreRevision(rev._id); closeDrawer(); }}
                          className="w-full text-left rounded-2xl border border-slate-100 bg-slate-50/50 p-4 transition-all active:bg-white active:ring-4 active:ring-slate-950/5"
                        >
                         <div className="flex justify-between items-center">
