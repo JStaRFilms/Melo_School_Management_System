@@ -19,6 +19,26 @@ import type {
   LessonPlanWorkspaceOutputType,
 } from "./types";
 
+function getPlanningSourceSyncKey(planningContext: ReturnType<typeof parsePlanningContextFromSearchParams>) {
+  if (!planningContext) {
+    return null;
+  }
+
+  if (planningContext.kind === "topic") {
+    return [
+      "teacher-planning-sources",
+      "topic",
+      planningContext.classId,
+      planningContext.termId,
+      planningContext.subjectId,
+      planningContext.level,
+      planningContext.topicId,
+    ].join(":");
+  }
+
+  return null;
+}
+
 function LoadingShell() {
   return (
     <div className="space-y-4">
@@ -65,6 +85,32 @@ export default function LessonPlansPage() {
     "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
   );
   const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
+  const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || selectedSourceIds.length > 0) {
+      return;
+    }
+
+    const syncedValue = window.localStorage.getItem(sourceSyncKey);
+    const syncedSourceIds = parseTeacherLessonPlanSourceIds(syncedValue);
+    if (syncedSourceIds.length === 0) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sourceIds", syncedSourceIds.join(","));
+    params.set("sourceOrigin", "workspace_sync");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, selectedSourceIds.length, sourceSyncKey]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || effectiveSourceIds.length === 0) {
+      return;
+    }
+
+    window.localStorage.setItem(sourceSyncKey, effectiveSourceIds.join(","));
+  }, [effectiveSourceIds, sourceSyncKey]);
 
   const updateSelectedSourceIds = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());

@@ -10,6 +10,7 @@ import {
   parsePlanningContextFromSearchParams,
 } from "@school/shared";
 
+import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
 import type {
   AssessmentBankGenerationResult,
@@ -18,6 +19,26 @@ import type {
   AssessmentWorkspaceData,
 } from "./types";
 import { normalizeAssessmentSourceIds, assessmentDraftModeOptions } from "./types";
+
+function getPlanningSourceSyncKey(planningContext: ReturnType<typeof parsePlanningContextFromSearchParams>) {
+  if (!planningContext) {
+    return null;
+  }
+
+  if (planningContext.kind === "topic") {
+    return [
+      "teacher-planning-sources",
+      "topic",
+      planningContext.classId,
+      planningContext.termId,
+      planningContext.subjectId,
+      planningContext.level,
+      planningContext.topicId,
+    ].join(":");
+  }
+
+  return null;
+}
 
 function LoadingShell() {
   return (
@@ -71,7 +92,38 @@ export default function QuestionBankPage() {
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeAssessmentDrafts:saveTeacherAssessmentBankDraft" as never
   );
-  const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
+  const effectiveSourceIds =
+    selectedSourceIds.length > 0
+      ? selectedSourceIds
+      : workspace?.sourceIds.length
+        ? workspace.sourceIds
+        : workspace?.selectedSources.map((source) => source._id) ?? [];
+  const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || selectedSourceIds.length > 0) {
+      return;
+    }
+
+    const syncedValue = window.localStorage.getItem(sourceSyncKey);
+    const syncedSourceIds = normalizeAssessmentSourceIds(syncedValue);
+    if (syncedSourceIds.length === 0) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sourceIds", syncedSourceIds.join(","));
+    params.set("sourceOrigin", "workspace_sync");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, selectedSourceIds.length, sourceSyncKey]);
+
+  useEffect(() => {
+    if (!sourceSyncKey || effectiveSourceIds.length === 0) {
+      return;
+    }
+
+    window.localStorage.setItem(sourceSyncKey, effectiveSourceIds.join(","));
+  }, [effectiveSourceIds, sourceSyncKey]);
 
   const updateSelectedSourceIds = (nextIds: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -228,38 +280,39 @@ export default function QuestionBankPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <main className="min-h-screen space-y-8 px-4 py-6 md:px-6 md:py-8">
       {workspaceError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm">
           {workspaceError}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 rounded-[2rem] border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Teacher planning</p>
-          <h1 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-            Question bank workspace
-          </h1>
-        </div>
-        <Link
-          href="/planning/library"
-          className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800"
-        >
-          Back to library
-        </Link>
-      </div>
+      <TeacherHeader
+        title="Question Bank Workspace"
+        label="Teacher Planning"
+        description="Design and refine assessment collections using your course repository and AI-driven generation profiles."
+        actions={
+          <div className="flex items-center gap-2">
+            <Link
+              href="/planning/library"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+            >
+              Back to library
+            </Link>
+          </div>
+        }
+      />
 
       {workspace.planningContext?.kind === "topic" || workspace.sourceContext.topicLabel || draftMode === "exam_draft" ? null : (
-        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <label className="block text-xs font-black uppercase tracking-[0.22em] text-amber-700">Target topic for generation</label>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm ring-1 ring-amber-950/5">
+          <label className="block text-[10px] font-black uppercase tracking-widest text-amber-700">Target topic for generation</label>
           <input
             value={targetTopicLabel}
             onChange={(event) => setTargetTopicLabel(event.target.value)}
             placeholder="e.g. Photosynthesis and food chains"
-            className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-amber-500/20"
+            className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-950 outline-none focus:ring-4 focus:ring-amber-500/10"
           />
-          <p className="mt-2 text-xs leading-5 text-amber-900/80">
+          <p className="mt-2 text-[11px] font-medium leading-relaxed text-amber-900/60">
             Your selected sources are broad planning references, so the workspace will not derive a topic from them. Add a target topic to steer this question-bank generation.
           </p>
         </div>
@@ -274,6 +327,6 @@ export default function QuestionBankPage() {
         onSaveDraft={handleSaveDraft}
         onGenerateDraft={handleGenerateDraft}
       />
-    </div>
+    </main>
   );
 }
