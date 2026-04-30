@@ -516,7 +516,7 @@ export default function PlanningIndexPage() {
             </div>
 
             {/* Work Grid */}
-            <div className="grid w-full gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid w-full min-w-0 gap-5 md:grid-cols-2 xl:grid-cols-3">
               {(planningWork ?? []).map((item) => {
                 const itemContext = item.preferredClassId
                   ? {

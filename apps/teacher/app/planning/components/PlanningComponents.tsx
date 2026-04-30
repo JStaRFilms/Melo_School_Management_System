@@ -15,7 +15,7 @@ export function PlanningWorkCard({
   questionHref: string | null; 
 }) {
   return (
-    <article className="group relative flex flex-col gap-4 rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:ring-1 hover:ring-slate-950/5">
+    <article className="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:ring-1 hover:ring-slate-950/5 min-w-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
