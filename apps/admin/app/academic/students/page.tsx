@@ -31,6 +31,7 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { StudentCreationForm } from "./components/StudentCreationForm";
+import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
@@ -437,7 +438,7 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 overflow-x-hidden">
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
@@ -471,14 +472,14 @@ export default function StudentsPage() {
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Main Bucket - Content Primary */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8">
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 overflow-x-hidden">
           <div className="max-w-[1400px] mx-auto space-y-8">
             
             <div className="space-y-4">
               <AdminHeader
                 title="Student Enrollment"
                 actions={
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex w-full flex-col items-end gap-2 sm:w-auto">
                     <StatGroup
                       stats={[
                         {
@@ -662,177 +663,39 @@ export default function StudentsPage() {
                     onClassIdChange={setSelectedClassId}
                   />
                 ) : (
-                  <form onSubmit={(event) => void handleCreateStudent(event)} className="space-y-6">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                          <Users className="h-4 w-4" />
-                        </div>
-                        <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
-                          Family Onboarding
-                        </h2>
-                      </div>
-                      <p className="text-xs font-medium leading-relaxed text-slate-500">
-                        Create the student and link a parent/household in the same admission.
-                      </p>
-                    </div>
-
-                    {!selectedClassId && (
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                          Target Class
-                        </label>
-                        <select
-                          value={selectedClassId ?? ""}
-                          onChange={(event) => setSelectedClassId(event.target.value)}
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                          required
-                        >
-                          <option value="">Select a class</option>
-                          {classes.map((classDoc) => (
-                            <option key={classDoc._id} value={classDoc._id}>
-                              {classDoc.name} ({classDoc.level})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <section className="space-y-4 border-b border-slate-200/70 pb-5">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Student identity</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">First Name</label>
-                          <input
-                            ref={studentNameInputRef}
-                            type="text"
-                            value={studentFirstName}
-                            onChange={(event) => setStudentFirstName(humanNameTypingStrict(event.target.value))}
-                            onBlur={(event) => setStudentFirstName(humanNameFinalStrict(event.target.value))}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="Maryam"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Last Name</label>
-                          <input
-                            type="text"
-                            value={studentLastName}
-                            onChange={(event) => setStudentLastName(humanNameTypingStrict(event.target.value))}
-                            onBlur={(event) => setStudentLastName(humanNameFinalStrict(event.target.value))}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="Hassan"
-                            required
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Admission ID</label>
-                          <input
-                            type="text"
-                            value={admissionNumber}
-                            onChange={(event) => setAdmissionNumber(event.target.value)}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="4A-0951"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Gender</label>
-                          <select
-                            value={gender}
-                            onChange={(event) => setGender(event.target.value)}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            required
-                          >
-                            <option value="">Select</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                          </select>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="space-y-4">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Family link</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent First Name</label>
-                          <input
-                            type="text"
-                            value={parentFirstName}
-                            onChange={(event) => setParentFirstName(humanNameTypingStrict(event.target.value))}
-                            onBlur={(event) => setParentFirstName(humanNameFinalStrict(event.target.value))}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="James"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent Last Name</label>
-                          <input
-                            type="text"
-                            value={parentLastName}
-                            onChange={(event) => setParentLastName(humanNameTypingStrict(event.target.value))}
-                            onBlur={(event) => setParentLastName(humanNameFinalStrict(event.target.value))}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="Brown"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent Email</label>
-                        <input
-                          type="email"
-                          value={parentEmail}
-                          onChange={(event) => setParentEmail(event.target.value)}
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                          placeholder="parent@example.com"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</label>
-                          <input
-                            type="tel"
-                            value={parentPhone}
-                            onChange={(event) => setParentPhone(event.target.value)}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="+234..."
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Relationship</label>
-                          <input
-                            type="text"
-                            value={parentRelationship}
-                            onChange={(event) => setParentRelationship(event.target.value)}
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-                            placeholder="Father"
-                          />
-                        </div>
-                      </div>
-                      <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white/70 p-3 text-xs font-bold text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={isParentPrimaryContact}
-                          onChange={(event) => setIsParentPrimaryContact(event.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
-                        />
-                        Mark this parent as the primary family contact.
-                      </label>
-                    </section>
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !studentFirstName.trim() || !studentLastName.trim() || !admissionNumber.trim() || !gender.trim() || !selectedClassId}
-                      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      <Sparkles className="h-4 w-4 text-emerald-400" />
-                      <span>{isSubmitting ? "Processing..." : "Complete Admission + Family Link"}</span>
-                    </button>
-                  </form>
+                  <FamilyOnboardingForm
+                    selectedClassName={selectedClassName}
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    onClassIdChange={setSelectedClassId}
+                    studentFirstName={studentFirstName}
+                    onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                    studentLastName={studentLastName}
+                    onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                    admissionNumber={admissionNumber}
+                    onAdmissionNumberChange={setAdmissionNumber}
+                    gender={gender}
+                    onGenderChange={setGender}
+                    parentFirstName={parentFirstName}
+                    onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
+                    onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
+                    parentLastName={parentLastName}
+                    onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
+                    onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
+                    parentEmail={parentEmail}
+                    onParentEmailChange={setParentEmail}
+                    parentPhone={parentPhone}
+                    onParentPhoneChange={setParentPhone}
+                    parentRelationship={parentRelationship}
+                    onParentRelationshipChange={setParentRelationship}
+                    isParentPrimaryContact={isParentPrimaryContact}
+                    onIsParentPrimaryContactChange={setIsParentPrimaryContact}
+                    isSubmitting={isSubmitting}
+                    onSubmit={handleCreateStudent}
+                    inputRef={studentNameInputRef}
+                  />
                 )}
               </div>
             )}
@@ -882,43 +745,107 @@ export default function StudentsPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
-              <StudentCreationForm
-                selectedClassName={selectedClassName}
-                studentFirstName={studentFirstName}
-                studentLastName={studentLastName}
-                admissionNumber={admissionNumber}
-                gender={gender}
-                houseName={houseName}
-                dateOfBirth={dateOfBirth}
-                guardianName={guardianName}
-                guardianPhone={guardianPhone}
-                address={address}
-                photoPreviewUrl={studentPhotoPreviewUrl}
-                isSubmitting={isSubmitting}
-                sectionRef={studentFormRef}
-                inputRef={studentNameInputRef}
-                onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
-                onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
-                onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
-                onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
-                onAdmissionNumberChange={setAdmissionNumber}
-                onGenderChange={setGender}
-                onHouseNameChange={setHouseName}
-                onDateOfBirthChange={setDateOfBirth}
-                onGuardianNameChange={setGuardianName}
-                onGuardianPhoneChange={setGuardianPhone}
-                onAddressChange={setAddress}
-                onPhotoChange={setStudentPhotoFile}
-                onRemovePhoto={() => setStudentPhotoFile(null)}
-                onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
-                onSubmit={async (e) => {
-                  await handleCreateStudent(e);
-                  setIsCreationSheetOpen(false);
-                }}
-                classes={classes}
-                selectedClassId={selectedClassId}
-                onClassIdChange={setSelectedClassId}
-              />
+              <div className="mb-6 flex rounded-xl bg-slate-100/60 p-1">
+                <button
+                  type="button"
+                  onClick={() => setCreationTab("quick")}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                    creationTab === "quick"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Quick Admission
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationTab("family")}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
+                    creationTab === "family"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  Family Onboarding
+                </button>
+              </div>
+
+              {creationTab === "quick" ? (
+                <StudentCreationForm
+                  selectedClassName={selectedClassName}
+                  studentFirstName={studentFirstName}
+                  studentLastName={studentLastName}
+                  admissionNumber={admissionNumber}
+                  gender={gender}
+                  houseName={houseName}
+                  dateOfBirth={dateOfBirth}
+                  guardianName={guardianName}
+                  guardianPhone={guardianPhone}
+                  address={address}
+                  photoPreviewUrl={studentPhotoPreviewUrl}
+                  isSubmitting={isSubmitting}
+                  sectionRef={studentFormRef}
+                  inputRef={studentNameInputRef}
+                  onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                  onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                  onAdmissionNumberChange={setAdmissionNumber}
+                  onGenderChange={setGender}
+                  onHouseNameChange={setHouseName}
+                  onDateOfBirthChange={setDateOfBirth}
+                  onGuardianNameChange={setGuardianName}
+                  onGuardianPhoneChange={setGuardianPhone}
+                  onAddressChange={setAddress}
+                  onPhotoChange={setStudentPhotoFile}
+                  onRemovePhoto={() => setStudentPhotoFile(null)}
+                  onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                  onSubmit={async (e) => {
+                    await handleCreateStudent(e);
+                    setIsCreationSheetOpen(false);
+                  }}
+                  classes={classes}
+                  selectedClassId={selectedClassId}
+                  onClassIdChange={setSelectedClassId}
+                />
+              ) : (
+                <FamilyOnboardingForm
+                  selectedClassName={selectedClassName}
+                  classes={classes}
+                  selectedClassId={selectedClassId}
+                  onClassIdChange={setSelectedClassId}
+                  studentFirstName={studentFirstName}
+                  onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                  studentLastName={studentLastName}
+                  onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                  admissionNumber={admissionNumber}
+                  onAdmissionNumberChange={setAdmissionNumber}
+                  gender={gender}
+                  onGenderChange={setGender}
+                  parentFirstName={parentFirstName}
+                  onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
+                  onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
+                  parentLastName={parentLastName}
+                  onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
+                  onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
+                  parentEmail={parentEmail}
+                  onParentEmailChange={setParentEmail}
+                  parentPhone={parentPhone}
+                  onParentPhoneChange={setParentPhone}
+                  parentRelationship={parentRelationship}
+                  onParentRelationshipChange={setParentRelationship}
+                  isParentPrimaryContact={isParentPrimaryContact}
+                  onIsParentPrimaryContactChange={setIsParentPrimaryContact}
+                  isSubmitting={isSubmitting}
+                  onSubmit={async (e) => {
+                    await handleCreateStudent(e);
+                    setIsCreationSheetOpen(false);
+                  }}
+                  inputRef={studentNameInputRef}
+                />
+              )}
             </div>
           </div>
         </div>

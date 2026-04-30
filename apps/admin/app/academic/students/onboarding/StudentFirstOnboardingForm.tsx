@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
-import { ArrowLeft, CheckCircle2, Copy, Fingerprint, Home, Info, KeyRound, LayoutGrid, Search, Shield, Upload, UserPlus, Users, AlertCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Copy, Fingerprint, Home, Info, KeyRound, LayoutGrid, Search, Shield, Upload, UserPlus, Users, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -131,6 +131,7 @@ export function StudentFirstOnboardingForm({
   onSubmit,
 }: StudentFirstOnboardingFormProps) {
   const [classSearch, setClassSearch] = useState("");
+  const [isClassSelectOpen, setIsClassSelectOpen] = useState(false);
   const deferredClassSearch = useDeferredValue(classSearch);
 
   const parentReview = useQuery(
@@ -225,6 +226,90 @@ export function StudentFirstOnboardingForm({
         <main className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 bg-slate-50/30">
           <div className="mx-auto max-w-4xl space-y-10">
 
+            {/* Target Placement Section — Mobile Only */}
+            <section className="space-y-4 lg:hidden animate-in fade-in slide-in-from-top-4 duration-700">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <LayoutGrid className="h-4 w-4 text-slate-950" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Target Placement</h2>
+                  <p className="text-[10px] font-medium text-slate-400">Select the class for this student</p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsClassSelectOpen(!isClassSelectOpen)}
+                  className={cn(
+                    "flex h-12 w-full items-center justify-between rounded-xl border px-4 transition-all",
+                    selectedClassId ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-950/10" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                  )}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <Search className={cn("h-4 w-4 shrink-0", selectedClassId ? "text-slate-400" : "text-slate-300")} />
+                    <span className="truncate text-xs font-black uppercase tracking-wider">
+                      {selectedClassName || "Select a class..."}
+                    </span>
+                  </div>
+                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-300", isClassSelectOpen && "rotate-180")} />
+                </button>
+
+                {isClassSelectOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40 lg:hidden" 
+                      onClick={() => setIsClassSelectOpen(false)} 
+                    />
+                    <div className="absolute inset-x-0 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-300 overflow-hidden">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-300" />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={classSearch}
+                          onChange={(e) => setClassSearch(e.target.value)}
+                          placeholder="Search classes..."
+                          className="h-9 w-full rounded-lg border border-slate-100 bg-slate-50/50 pl-9 pr-3 text-[11px] font-bold text-slate-950 outline-none"
+                        />
+                      </div>
+                      <div className="max-h-[240px] overflow-y-auto custom-scrollbar space-y-4 p-1">
+                        {classesByLevel.map((group) => (
+                          <div key={group.level} className="space-y-1.5">
+                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-300 pl-2">{group.level}</p>
+                            <div className="grid gap-1">
+                              {group.classes.map((c) => (
+                                <button
+                                  key={c._id}
+                                  type="button"
+                                  onClick={() => {
+                                    onClassIdChange(c._id);
+                                    setIsClassSelectOpen(false);
+                                    setClassSearch("");
+                                  }}
+                                  className={cn(
+                                    "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
+                                    selectedClassId === c._id ? "bg-slate-900 text-white shadow-md" : "text-slate-600 hover:bg-slate-50"
+                                  )}
+                                >
+                                  <span className="text-[10px] font-bold uppercase truncate">{c.name}</span>
+                                  {selectedClassId === c._id && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        {filteredClasses.length === 0 && (
+                          <p className="py-8 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">No matching classes</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
+
             {/* Profile Core */}
             <section className="space-y-6">
               <div className="flex items-center gap-3">
@@ -238,7 +323,7 @@ export function StudentFirstOnboardingForm({
 
               <div className="grid gap-6 lg:grid-cols-12">
                 {/* Photo Panel */}
-                <div className="lg:col-span-3">
+                <div className="lg:col-span-3 order-2 lg:order-1">
                   <div className="group relative flex aspect-[3/4] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-400 shadow-sm">
                     {photoPreviewUrl ? (
                       <>
@@ -278,7 +363,7 @@ export function StudentFirstOnboardingForm({
                   </div>
                 </div>
 
-                <div className="lg:col-span-9 grid gap-4 sm:grid-cols-2">
+                <div className="lg:col-span-9 grid gap-4 sm:grid-cols-2 order-1 lg:order-2">
                   <Field label="First Name">
                     <input
                       ref={firstNameInputRef}
@@ -620,7 +705,7 @@ export function StudentFirstOnboardingForm({
           </div>
         </main>
 
-        {/* Configuration Sidebar */}
+        {/* Configuration Sidebar — Desktop Only */}
         <aside className="hidden lg:flex w-[340px] shrink-0 border-l border-slate-200 bg-white flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
             <div className="space-y-4">
@@ -706,50 +791,7 @@ export function StudentFirstOnboardingForm({
           </div>
         </aside>
 
-        {/* Mobile Overlay Sections (Since aside is hidden on mobile) */}
-        <div className="lg:hidden p-6 border-t border-slate-200 bg-slate-50">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Class Placement</p>
-                <h3 className="text-lg font-black text-slate-950">Target Placement</h3>
-              </div>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
-                <input
-                  type="text"
-                  value={classSearch}
-                  onChange={(e) => setClassSearch(e.target.value)}
-                  placeholder="Search classes..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-950 outline-none"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
-              {filteredClasses.map((c: ClassSummary) => (
-                <button
-                  key={c._id}
-                  type="button"
-                  onClick={() => onClassIdChange(c._id)}
-                  className={cn(
-                    "px-3 py-3 rounded-xl border text-[10px] font-black uppercase text-left transition-all truncate",
-                    selectedClassId === c._id
-                      ? "bg-slate-950 border-slate-950 text-white shadow-lg"
-                      : "bg-white border-slate-100 text-slate-500"
-                  )}
-                >
-                  {c.name}
-                </button>
-              ))}
-              {filteredClasses.length === 0 && (
-                <p className="col-span-2 py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  No matching classes
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Mobile Sticky Action Bar */}
         <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-xl lg:hidden">

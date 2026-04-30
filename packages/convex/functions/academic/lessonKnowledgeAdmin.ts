@@ -280,7 +280,7 @@ async function readMaterialList(
   schoolId: Id<"schools">,
   args: KnowledgeLibraryFilterArgs
 ): Promise<KnowledgeLibraryListItem[]> {
-  const limit = Math.min(Math.max(args.limit ?? 150, 1), 300);
+  const limit = Math.min(Math.max(args.limit ?? 150, 1), 1000);
   const normalizedSearch = normalizeKnowledgeSearchQuery(args.searchQuery ?? "");
 
   let rows: KnowledgeMaterialDoc[] = [];

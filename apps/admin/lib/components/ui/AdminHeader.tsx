@@ -18,17 +18,17 @@ export function AdminHeader({
 }: AdminHeaderProps) {
   return (
     <header className={cn("flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between", className)}>
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {label && (
-          <p className="font-display text-xs font-bold uppercase tracking-[0.25em] text-slate-400/80">
+          <p className="font-display text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400/80">
             {label}
           </p>
         )}
-        <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-950 lg:text-4xl">
+        <h1 className="font-display text-xl font-extrabold tracking-tight text-slate-950 lg:text-3xl">
           {title}
         </h1>
         {description && (
-          <p className="max-w-2xl text-[13px] font-medium leading-relaxed text-slate-500/90">
+          <p className="max-w-2xl text-[12px] font-medium leading-tight text-slate-500/80">
             {description}
           </p>
         )}

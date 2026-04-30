@@ -313,7 +313,7 @@ export function WorkspaceNavbar({
 
         {/* ── MAIN SCROLL AREA ── */}
         <main
-          className={`flex-1 overflow-y-auto w-full relative custom-scrollbar scrollbar-hide ${
+          className={`flex-1 overflow-y-auto overflow-x-hidden w-full relative custom-scrollbar scrollbar-hide ${
             fullBleed ? "" : "p-4 sm:p-6 lg:p-8"
           }`}
         >
