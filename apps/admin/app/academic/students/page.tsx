@@ -5,6 +5,7 @@ import { useMutation,useQuery } from "convex/react";
 import {
 ArrowRight,
 BookOpen,
+Plus,
 Search,
 Sparkles,
 Users,
@@ -77,6 +78,8 @@ export default function StudentsPage() {
   // New states for Unified Editor
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
   const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">("subjects");
+  const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
+  const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -394,35 +397,36 @@ export default function StudentsPage() {
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Main Bucket - Content Primary */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-6 lg:order-1">
-          <div className="max-w-[1400px] mx-auto space-y-6">
+        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8">
+          <div className="max-w-[1400px] mx-auto space-y-8">
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <AdminHeader
                 title="Student Enrollment"
+                actions={
+                  <StatGroup
+                    stats={[
+                      {
+                        label: "Registered",
+                        value: matrixSummary.totalStudents,
+                        icon: <Users className="h-4 w-4" />,
+                      },
+                      {
+                        label: "Subjects",
+                        value: matrixSummary.totalSubjects,
+                        icon: <BookOpen className="h-4 w-4" />,
+                      },
+                      {
+                        label: "Session",
+                        value: activeSessionName,
+                        icon: <Sparkles className="h-4 w-4" />,
+                      },
+                    ]}
+                  />
+                }
               />
 
-              <StatGroup
-                stats={[
-                  {
-                    label: "Total Registered",
-                    value: matrixSummary.totalStudents,
-                    icon: <Users className="h-4 w-4" />,
-                  },
-                  {
-                    label: "Subjects Offered",
-                    value: matrixSummary.totalSubjects,
-                    icon: <BookOpen className="h-4 w-4" />,
-                  },
-                  {
-                    label: "Active Session",
-                    value: activeSessionName,
-                    icon: <Sparkles className="h-4 w-4" />,
-                  },
-                ]}
-              />
-
-              <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
                 <EnrollmentFilters
                   classes={classes}
                   sessions={sessions}
@@ -451,59 +455,20 @@ export default function StudentsPage() {
             )}
 
             <div className="space-y-8">
-              {/* MOBILE ONLY: New Admission trigger follows the context block */}
-              {isMobile && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
-                  <StudentCreationForm
-                    selectedClassName={selectedClassName}
-                    studentName={studentName}
-                    admissionNumber={admissionNumber}
-                    gender={gender}
-                    houseName={houseName}
-                    dateOfBirth={dateOfBirth}
-                    guardianName={guardianName}
-                    guardianPhone={guardianPhone}
-                    address={address}
-                    photoPreviewUrl={studentPhotoPreviewUrl}
-                    isSubmitting={isSubmitting}
-                    sectionRef={studentFormRef}
-                    inputRef={studentNameInputRef}
-                    onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
-                    onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
-                    onAdmissionNumberChange={setAdmissionNumber}
-                    onGenderChange={setGender}
-                    onHouseNameChange={setHouseName}
-                    onDateOfBirthChange={setDateOfBirth}
-                    onGuardianNameChange={setGuardianName}
-                    onGuardianPhoneChange={setGuardianPhone}
-                    onAddressChange={setAddress}
-                    onPhotoChange={setStudentPhotoFile}
-                    onRemovePhoto={() => setStudentPhotoFile(null)}
-                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
-                    onSubmit={handleCreateStudent}
-                  />
-                </div>
-              )}
 
               {selectedClassId && selectedSessionId ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-950/5 pb-2">
-                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 px-1">Roster Matrix</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block px-1">Live Update</p>
-                  </div>
-                  <SubjectSelectionMatrix
-                    matrix={matrix}
-                    totalStudents={matrixSummary.totalStudents}
-                    totalSubjects={matrixSummary.totalSubjects}
-                    isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
-                    studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
-                    selectedStudentId={selectedStudentId}
-                    onSelectStudent={setSelectedStudentId}
-                    onOpenUnifiedEditor={openUnifiedEditor}
-                    onToggle={handleToggleSubject}
-                    onSetStudentSubjects={handleSetStudentSubjects}
-                  />
-                </div>
+                <SubjectSelectionMatrix
+                  matrix={matrix}
+                  totalStudents={matrixSummary.totalStudents}
+                  totalSubjects={matrixSummary.totalSubjects}
+                  isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
+                  studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
+                  selectedStudentId={selectedStudentId}
+                  onSelectStudent={setSelectedStudentId}
+                  onOpenUnifiedEditor={openUnifiedEditor}
+                  onToggle={handleToggleSubject}
+                  onSetStudentSubjects={handleSetStudentSubjects}
+                />
               ) : (
                 <div className="py-20 flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 text-center">
                   <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-xl ring-1 ring-slate-950/5 animate-in fade-in zoom-in duration-700">
@@ -518,7 +483,7 @@ export default function StudentsPage() {
         </main>
 
         {/* Sidebar Bucket - Desktop Management */}
-        <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-5 lg:order-2">
+        <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-8">
           <div className="space-y-6">
             {selectedStudentId ? (
               <StudentProfileEditor
@@ -526,6 +491,8 @@ export default function StudentsPage() {
                 classes={classes}
                 onNotice={setNotice}
                 onStudentArchived={() => setSelectedStudentId(null)}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
               />
             ) : (
               <StudentCreationForm
@@ -573,6 +540,77 @@ export default function StudentsPage() {
           </div>
         </aside>
       </div>
+
+      {/* MOBILE FAB: New Admission */}
+      {isMobile && !selectedStudentId && selectedClassId && (
+        <div className="fixed bottom-8 right-6 z-50">
+          <button
+            onClick={() => setIsCreationSheetOpen(true)}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-950/40 ring-4 ring-white active:scale-95 transition-all"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </div>
+      )}
+
+      {/* MOBILE Creation Sheet */}
+      {isMobile && isCreationSheetOpen && (
+        <div className="fixed inset-0 z-[70]">
+          <div 
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => setIsCreationSheetOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-in slide-in-from-bottom duration-500 ease-out">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
+              <div className="space-y-1">
+                <h3 className="text-xl font-black tracking-tight text-slate-950">New Admission</h3>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  Enrolling to {selectedClassName}
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsCreationSheetOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-400"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
+              <StudentCreationForm
+                selectedClassName={selectedClassName}
+                studentName={studentName}
+                admissionNumber={admissionNumber}
+                gender={gender}
+                houseName={houseName}
+                dateOfBirth={dateOfBirth}
+                guardianName={guardianName}
+                guardianPhone={guardianPhone}
+                address={address}
+                photoPreviewUrl={studentPhotoPreviewUrl}
+                isSubmitting={isSubmitting}
+                sectionRef={studentFormRef}
+                inputRef={studentNameInputRef}
+                onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
+                onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
+                onAdmissionNumberChange={setAdmissionNumber}
+                onGenderChange={setGender}
+                onHouseNameChange={setHouseName}
+                onDateOfBirthChange={setDateOfBirth}
+                onGuardianNameChange={setGuardianName}
+                onGuardianPhoneChange={setGuardianPhone}
+                onAddressChange={setAddress}
+                onPhotoChange={setStudentPhotoFile}
+                onRemovePhoto={() => setStudentPhotoFile(null)}
+                onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                onSubmit={async (e) => {
+                  await handleCreateStudent(e);
+                  setIsCreationSheetOpen(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

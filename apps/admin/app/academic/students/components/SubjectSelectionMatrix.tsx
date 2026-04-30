@@ -31,19 +31,15 @@ export function SubjectSelectionMatrix({
 }: SubjectSelectionMatrixProps) {
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Subject Selection
+      <div className="flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-0.5">
+          <h2 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">
+            Roster Matrix
           </h2>
-          <p className="mt-1 text-sm text-slate-500 font-medium">
-            On phones, edit one student at a time with larger tap targets. On
-            bigger screens, the full class matrix stays available.
+          <p className="text-xs font-medium text-slate-500">
+            Manage subject enrollments for the active session.
           </p>
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-300 md:hidden">
-          Tap a student to edit subjects
-        </p>
       </div>
 
       {isIssueVisible ? (
@@ -59,7 +55,7 @@ export function SubjectSelectionMatrix({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white/50 shadow-sm">
         {!matrix ? (
           <div className="p-8 text-center text-sm text-slate-500">
             Loading enrollment data...
