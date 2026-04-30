@@ -1,5 +1,6 @@
 "use client";
 
+import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { useMutation,useQuery } from "convex/react";
 import {
@@ -58,10 +59,14 @@ export default function StudentsPage() {
   const setStudentSubjectSelections = useMutation(
     "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
+  const upsertStudentFamilyLink = useMutation(
+    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
+  );
 
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState("");
+  const [studentFirstName, setStudentFirstName] = useState("");
+  const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
@@ -69,6 +74,12 @@ export default function StudentsPage() {
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [parentFirstName, setParentFirstName] = useState("");
+  const [parentLastName, setParentLastName] = useState("");
+  const [parentEmail, setParentEmail] = useState("");
+  const [parentPhone, setParentPhone] = useState("");
+  const [parentRelationship, setParentRelationship] = useState("");
+  const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -79,6 +90,7 @@ export default function StudentsPage() {
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
   const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">("subjects");
   const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
+  const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
@@ -127,7 +139,7 @@ export default function StudentsPage() {
     setSelectedStudentId((current) =>
       current && matrix.students.some((student) => student._id === current)
         ? current
-        : matrix.students[0]?._id ?? null
+        : null
     );
   }, [matrix]);
 
@@ -182,7 +194,8 @@ export default function StudentsPage() {
   }, [studentPhotoFile, studentPhotoPreviewUrl]);
 
   const resetStudentCreationForm = useCallback(() => {
-    setStudentName("");
+    setStudentFirstName("");
+    setStudentLastName("");
     setAdmissionNumber("");
     setGender("");
     setHouseName("");
@@ -190,16 +203,34 @@ export default function StudentsPage() {
     setGuardianName("");
     setGuardianPhone("");
     setAddress("");
+    setParentFirstName("");
+    setParentLastName("");
+    setParentEmail("");
+    setParentPhone("");
+    setParentRelationship("");
+    setIsParentPrimaryContact(true);
     setStudentPhotoFile(null);
   }, []);
 
   const handleCreateStudent = async (event: FormEvent) => {
     event.preventDefault();
-    const normalizedStudentName = humanNameFinalStrict(studentName);
+    const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
+    const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
+    const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
     const trimmedHouseName = houseName.trim();
     const trimmedGuardianName = guardianName.trim();
     const trimmedGuardianPhone = guardianPhone.trim();
     const trimmedAddress = address.trim();
+    const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
+    const normalizedParentLastName = humanNameFinalStrict(parentLastName);
+    const normalizedParentEmail = parentEmail.trim().toLowerCase();
+    const shouldLinkParent = [
+      parentFirstName,
+      parentLastName,
+      parentEmail,
+      parentPhone,
+      parentRelationship,
+    ].some((value) => value.trim().length > 0);
     const missingOptionalFields = [
       !trimmedHouseName ? "house" : null,
       !dateOfBirth ? "date of birth" : null,
@@ -216,6 +247,24 @@ export default function StudentsPage() {
       !gender.trim()
     ) {
       return;
+    }
+
+    if (shouldLinkParent) {
+      if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
+        setNotice({
+          tone: "error",
+          message: "Parent first name, last name, and email are required to link family details during admission.",
+        });
+        return;
+      }
+
+      if (!isValidEmailAddress(normalizedParentEmail)) {
+        setNotice({
+          tone: "error",
+          message: "Enter a valid parent email address before linking family details.",
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -241,14 +290,27 @@ export default function StudentsPage() {
         photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
         photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
       } as never)) as string;
+      if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
+        await upsertStudentFamilyLink({
+          studentId: createdStudentId,
+          firstName: normalizedParentFirstName,
+          lastName: normalizedParentLastName,
+          email: normalizedParentEmail,
+          phone: parentPhone.trim() || null,
+          relationship: parentRelationship.trim() || null,
+          isPrimaryContact: isParentPrimaryContact,
+        } as never);
+      }
+
       resetStudentCreationForm();
+      setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       setNotice({
         tone: missingOptionalFields.length > 0 ? "warning" : "success",
         message:
           missingOptionalFields.length > 0
             ? `${normalizedStudentName} added. Missing: ${joinFieldLabels(missingOptionalFields)}.`
-            : `${normalizedStudentName} added successfully to ${selectedClassName}.`,
+            : `${normalizedStudentName} added successfully to ${selectedClassName}${shouldLinkParent ? " · family linked" : ""}.`,
       });
       if (!isMobile) {
         studentNameInputRef.current?.focus();
@@ -350,6 +412,18 @@ export default function StudentsPage() {
     setIsUnifiedSheetOpen(true);
   }, []);
 
+  const handleNewAdmission = useCallback(() => {
+    setSelectedStudentId(null);
+    setActiveTab("profile");
+    setCreationTab("quick");
+    resetStudentCreationForm();
+    if (isMobile) {
+      setIsCreationSheetOpen(true);
+      return;
+    }
+    window.setTimeout(() => studentNameInputRef.current?.focus(), 0);
+  }, [isMobile, resetStudentCreationForm]);
+
   if (classes === undefined || sessions === undefined) {
     return (
       <div className="mx-auto max-w-[1600px] px-2.5 py-6 md:px-6 animate-pulse">
@@ -404,25 +478,35 @@ export default function StudentsPage() {
               <AdminHeader
                 title="Student Enrollment"
                 actions={
-                  <StatGroup
-                    stats={[
-                      {
-                        label: "Registered",
-                        value: matrixSummary.totalStudents,
-                        icon: <Users className="h-4 w-4" />,
-                      },
-                      {
-                        label: "Subjects",
-                        value: matrixSummary.totalSubjects,
-                        icon: <BookOpen className="h-4 w-4" />,
-                      },
-                      {
-                        label: "Session",
-                        value: activeSessionName,
-                        icon: <Sparkles className="h-4 w-4" />,
-                      },
-                    ]}
-                  />
+                  <div className="flex flex-col items-end gap-2">
+                    <StatGroup
+                      stats={[
+                        {
+                          label: "Registered",
+                          value: matrixSummary.totalStudents,
+                          icon: <Users className="h-4 w-4" />,
+                        },
+                        {
+                          label: "Subjects",
+                          value: matrixSummary.totalSubjects,
+                          icon: <BookOpen className="h-4 w-4" />,
+                        },
+                        {
+                          label: "Session",
+                          value: activeSessionName,
+                          icon: <Sparkles className="h-4 w-4" />,
+                        },
+                      ]}
+                    />
+                    {isMobile && (
+                      <Link 
+                        href="/academic/students/onboarding"
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 animate-in fade-in slide-in-from-right-4 duration-700"
+                      >
+                        Bulk Onboarding <ArrowRight className="h-2.5 w-2.5" />
+                      </Link>
+                    )}
+                  </div>
                 }
               />
 
@@ -485,6 +569,27 @@ export default function StudentsPage() {
         {/* Sidebar Bucket - Desktop Management */}
         <aside className="hidden lg:block w-[450px] h-full overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-8">
           <div className="space-y-6">
+            <div className="sticky top-0 z-10 -mx-2 flex items-center justify-between gap-2 border-b border-slate-200/70 bg-white/90 px-2 pb-3 pt-1 backdrop-blur-xl">
+              <button
+                type="button"
+                onClick={handleNewAdmission}
+                className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-xs font-bold transition-all active:scale-[0.98] ${
+                  selectedStudentId
+                    ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    : "bg-slate-900 text-white shadow-lg shadow-slate-950/10"
+                }`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New Admission
+              </button>
+              <Link
+                href="/academic/students/onboarding"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-wider text-indigo-700 transition-colors hover:bg-indigo-100"
+              >
+                Bulk Onboarding <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
             {selectedStudentId ? (
               <StudentProfileEditor
                 studentId={selectedStudentId}
@@ -495,57 +600,258 @@ export default function StudentsPage() {
                 onTabChange={setActiveTab}
               />
             ) : (
-              <StudentCreationForm
-                selectedClassName={selectedClassName}
-                studentName={studentName}
-                admissionNumber={admissionNumber}
-                gender={gender}
-                houseName={houseName}
-                dateOfBirth={dateOfBirth}
-                guardianName={guardianName}
-                guardianPhone={guardianPhone}
-                address={address}
-                photoPreviewUrl={studentPhotoPreviewUrl}
-                isSubmitting={isSubmitting}
-                sectionRef={studentFormRef}
-                inputRef={studentNameInputRef}
-                onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
-                onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
-                onAdmissionNumberChange={setAdmissionNumber}
-                onGenderChange={setGender}
-                onHouseNameChange={setHouseName}
-                onDateOfBirthChange={setDateOfBirth}
-                onGuardianNameChange={setGuardianName}
-                onGuardianPhoneChange={setGuardianPhone}
-                onAddressChange={setAddress}
-                onPhotoChange={setStudentPhotoFile}
-                onRemovePhoto={() => setStudentPhotoFile(null)}
-                onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
-                onSubmit={handleCreateStudent}
-              />
+              <div className="space-y-6">
+                <div className="flex rounded-xl bg-slate-100/60 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setCreationTab("quick")}
+                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
+                      creationTab === "quick"
+                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    Quick Admission
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreationTab("family")}
+                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
+                      creationTab === "family"
+                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    Family Onboarding
+                  </button>
+                </div>
+
+                {creationTab === "quick" ? (
+                  <StudentCreationForm
+                    selectedClassName={selectedClassName}
+                    studentFirstName={studentFirstName}
+                    studentLastName={studentLastName}
+                    admissionNumber={admissionNumber}
+                    gender={gender}
+                    houseName={houseName}
+                    dateOfBirth={dateOfBirth}
+                    guardianName={guardianName}
+                    guardianPhone={guardianPhone}
+                    address={address}
+                    photoPreviewUrl={studentPhotoPreviewUrl}
+                    isSubmitting={isSubmitting}
+                    sectionRef={studentFormRef}
+                    inputRef={studentNameInputRef}
+                    onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                    onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                    onAdmissionNumberChange={setAdmissionNumber}
+                    onGenderChange={setGender}
+                    onHouseNameChange={setHouseName}
+                    onDateOfBirthChange={setDateOfBirth}
+                    onGuardianNameChange={setGuardianName}
+                    onGuardianPhoneChange={setGuardianPhone}
+                    onAddressChange={setAddress}
+                    onPhotoChange={setStudentPhotoFile}
+                    onRemovePhoto={() => setStudentPhotoFile(null)}
+                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                    onSubmit={handleCreateStudent}
+                    classes={classes}
+                    selectedClassId={selectedClassId}
+                    onClassIdChange={setSelectedClassId}
+                  />
+                ) : (
+                  <form onSubmit={(event) => void handleCreateStudent(event)} className="space-y-6">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                          <Users className="h-4 w-4" />
+                        </div>
+                        <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+                          Family Onboarding
+                        </h2>
+                      </div>
+                      <p className="text-xs font-medium leading-relaxed text-slate-500">
+                        Create the student and link a parent/household in the same admission.
+                      </p>
+                    </div>
+
+                    {!selectedClassId && (
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                          Target Class
+                        </label>
+                        <select
+                          value={selectedClassId ?? ""}
+                          onChange={(event) => setSelectedClassId(event.target.value)}
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                          required
+                        >
+                          <option value="">Select a class</option>
+                          {classes.map((classDoc) => (
+                            <option key={classDoc._id} value={classDoc._id}>
+                              {classDoc.name} ({classDoc.level})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <section className="space-y-4 border-b border-slate-200/70 pb-5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Student identity</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">First Name</label>
+                          <input
+                            ref={studentNameInputRef}
+                            type="text"
+                            value={studentFirstName}
+                            onChange={(event) => setStudentFirstName(humanNameTypingStrict(event.target.value))}
+                            onBlur={(event) => setStudentFirstName(humanNameFinalStrict(event.target.value))}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="Maryam"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Last Name</label>
+                          <input
+                            type="text"
+                            value={studentLastName}
+                            onChange={(event) => setStudentLastName(humanNameTypingStrict(event.target.value))}
+                            onBlur={(event) => setStudentLastName(humanNameFinalStrict(event.target.value))}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="Hassan"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Admission ID</label>
+                          <input
+                            type="text"
+                            value={admissionNumber}
+                            onChange={(event) => setAdmissionNumber(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="4A-0951"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Gender</label>
+                          <select
+                            value={gender}
+                            onChange={(event) => setGender(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            required
+                          >
+                            <option value="">Select</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                          </select>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Family link</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent First Name</label>
+                          <input
+                            type="text"
+                            value={parentFirstName}
+                            onChange={(event) => setParentFirstName(humanNameTypingStrict(event.target.value))}
+                            onBlur={(event) => setParentFirstName(humanNameFinalStrict(event.target.value))}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="James"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent Last Name</label>
+                          <input
+                            type="text"
+                            value={parentLastName}
+                            onChange={(event) => setParentLastName(humanNameTypingStrict(event.target.value))}
+                            onBlur={(event) => setParentLastName(humanNameFinalStrict(event.target.value))}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="Brown"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent Email</label>
+                        <input
+                          type="email"
+                          value={parentEmail}
+                          onChange={(event) => setParentEmail(event.target.value)}
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                          placeholder="parent@example.com"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</label>
+                          <input
+                            type="tel"
+                            value={parentPhone}
+                            onChange={(event) => setParentPhone(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="+234..."
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Relationship</label>
+                          <input
+                            type="text"
+                            value={parentRelationship}
+                            onChange={(event) => setParentRelationship(event.target.value)}
+                            className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                            placeholder="Father"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white/70 p-3 text-xs font-bold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={isParentPrimaryContact}
+                          onChange={(event) => setIsParentPrimaryContact(event.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
+                        />
+                        Mark this parent as the primary family contact.
+                      </label>
+                    </section>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !studentFirstName.trim() || !studentLastName.trim() || !admissionNumber.trim() || !gender.trim() || !selectedClassId}
+                      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      <Sparkles className="h-4 w-4 text-emerald-400" />
+                      <span>{isSubmitting ? "Processing..." : "Complete Admission + Family Link"}</span>
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
 
             <div className="pt-6 border-t border-slate-200/60 group">
               <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-300 group-hover:text-slate-500 transition-colors">Quick Reference</h4>
               <p className="mt-2 text-xs leading-relaxed font-medium text-slate-400">
-                Enrollment changes are pushed live. Updates to student profile details will reflect across all academic reports for the active session.
+                Enrollment changes are pushed live. Updates to identity, family links, and subject selections reflect across academic records for the active session.
               </p>
-              <Link 
-                href="/academic/students/onboarding"
-                className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-              >
-                Access Bulk Onboarding <ArrowRight className="h-3 w-3" />
-              </Link>
             </div>
           </div>
         </aside>
       </div>
 
       {/* MOBILE FAB: New Admission */}
-      {isMobile && !selectedStudentId && selectedClassId && (
+      {isMobile && !isCreationSheetOpen && !isUnifiedSheetOpen && (
         <div className="fixed bottom-8 right-6 z-50">
           <button
-            onClick={() => setIsCreationSheetOpen(true)}
+            onClick={handleNewAdmission}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-950/40 ring-4 ring-white active:scale-95 transition-all"
           >
             <Plus className="h-6 w-6" />
@@ -578,7 +884,8 @@ export default function StudentsPage() {
             <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
               <StudentCreationForm
                 selectedClassName={selectedClassName}
-                studentName={studentName}
+                studentFirstName={studentFirstName}
+                studentLastName={studentLastName}
                 admissionNumber={admissionNumber}
                 gender={gender}
                 houseName={houseName}
@@ -590,8 +897,10 @@ export default function StudentsPage() {
                 isSubmitting={isSubmitting}
                 sectionRef={studentFormRef}
                 inputRef={studentNameInputRef}
-                onStudentNameChange={(v) => setStudentName(humanNameTypingStrict(v))}
-                onStudentNameBlur={(v) => setStudentName(humanNameFinalStrict(v))}
+                onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
+                onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
+                onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                 onAdmissionNumberChange={setAdmissionNumber}
                 onGenderChange={setGender}
                 onHouseNameChange={setHouseName}
@@ -606,6 +915,9 @@ export default function StudentsPage() {
                   await handleCreateStudent(e);
                   setIsCreationSheetOpen(false);
                 }}
+                classes={classes}
+                selectedClassId={selectedClassId}
+                onClassIdChange={setSelectedClassId}
               />
             </div>
           </div>

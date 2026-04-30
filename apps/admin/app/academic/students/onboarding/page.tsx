@@ -60,6 +60,7 @@ export default function StudentOnboardingPage() {
   const [parentEmail, setParentEmail] = useState("");
   const [parentPhone, setParentPhone] = useState("");
   const [parentRelationship, setParentRelationship] = useState("");
+  const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
   const [provisionStudentPortalAccess, setProvisionStudentPortalAccess] = useState(false);
   const [provisionParentPortalAccess, setProvisionParentPortalAccess] = useState(false);
   const [studentTemporaryPassword, setStudentTemporaryPassword] = useState("Student123!Pass");
@@ -104,8 +105,13 @@ export default function StudentOnboardingPage() {
 
   if (classes === undefined) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6 text-slate-500 md:px-6">
-        Loading onboarding...
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center space-y-2">
+          <div className="h-8 w-8 mx-auto rounded-xl bg-slate-100 animate-pulse" />
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            Loading onboarding
+          </p>
+        </div>
       </div>
     );
   }
@@ -127,6 +133,7 @@ export default function StudentOnboardingPage() {
     setParentEmail("");
     setParentPhone("");
     setParentRelationship("");
+    setIsParentPrimaryContact(true);
     setProvisionStudentPortalAccess(false);
     setProvisionParentPortalAccess(false);
     setStudentTemporaryPassword("Student123!Pass");
@@ -238,7 +245,7 @@ export default function StudentOnboardingPage() {
           email: normalizedParentEmail,
           phone: parentPhone.trim() || null,
           relationship: parentRelationship.trim() || null,
-          isPrimaryContact: true,
+          isPrimaryContact: isParentPrimaryContact,
         } as never)) as FamilyLinkResult;
       }
 
@@ -279,7 +286,7 @@ export default function StudentOnboardingPage() {
       resetForm();
       setNotice({
         tone: "success",
-        message: `${normalizedFirstName} ${normalizedLastName} was added to ${selectedClassName}${shouldLinkParent ? ", linked to a parent" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? ", and portal access was prepared" : ""}.`,
+        message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
       });
       firstNameInputRef.current?.focus();
     } catch (error) {
@@ -298,7 +305,7 @@ export default function StudentOnboardingPage() {
   };
 
   return (
-    <>
+    <div className="h-screen flex flex-col">
       <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
       <StudentFirstOnboardingForm
         classes={classes}
@@ -317,6 +324,7 @@ export default function StudentOnboardingPage() {
         parentEmail={parentEmail}
         parentPhone={parentPhone}
         parentRelationship={parentRelationship}
+        isParentPrimaryContact={isParentPrimaryContact}
         provisionStudentPortalAccess={provisionStudentPortalAccess}
         provisionParentPortalAccess={provisionParentPortalAccess}
         studentTemporaryPassword={studentTemporaryPassword}
@@ -341,6 +349,7 @@ export default function StudentOnboardingPage() {
         onParentEmailChange={setParentEmail}
         onParentPhoneChange={setParentPhone}
         onParentRelationshipChange={setParentRelationship}
+        onIsParentPrimaryContactChange={setIsParentPrimaryContact}
         onProvisionStudentPortalAccessChange={setProvisionStudentPortalAccess}
         onProvisionParentPortalAccessChange={setProvisionParentPortalAccess}
         onStudentTemporaryPasswordChange={setStudentTemporaryPassword}
@@ -356,6 +365,7 @@ export default function StudentOnboardingPage() {
         }
         onSubmit={handleSubmit}
       />
-    </>
+    </div>
   );
 }
+

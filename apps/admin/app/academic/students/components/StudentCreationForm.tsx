@@ -4,10 +4,12 @@ import { Sparkles,UserPlus } from "lucide-react";
 import type { FormEvent,RefObject } from "react";
 import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
+import type { ClassSummary } from "./types";
 
 interface StudentCreationFormProps {
   selectedClassName: string;
-  studentName: string;
+  studentFirstName: string;
+  studentLastName: string;
   admissionNumber: string;
   gender: string;
   houseName: string;
@@ -17,11 +19,16 @@ interface StudentCreationFormProps {
   address: string;
   photoPreviewUrl: string | null;
   isSubmitting: boolean;
+  classes?: ClassSummary[];
+  selectedClassId?: string | null;
+  onClassIdChange?: (value: string) => void;
   variant?: "inline" | "sheet";
   sectionRef: RefObject<HTMLDivElement>;
   inputRef: RefObject<HTMLInputElement>;
-  onStudentNameChange: (value: string) => void;
-  onStudentNameBlur: (value: string) => void;
+  onStudentFirstNameChange: (value: string) => void;
+  onStudentFirstNameBlur: (value: string) => void;
+  onStudentLastNameChange: (value: string) => void;
+  onStudentLastNameBlur: (value: string) => void;
   onAdmissionNumberChange: (value: string) => void;
   onGenderChange: (value: string) => void;
   onHouseNameChange: (value: string) => void;
@@ -37,7 +44,8 @@ interface StudentCreationFormProps {
 
 export function StudentCreationForm({
   selectedClassName,
-  studentName,
+  studentFirstName,
+  studentLastName,
   admissionNumber,
   gender,
   houseName,
@@ -46,11 +54,16 @@ export function StudentCreationForm({
   guardianPhone,
   address,
   photoPreviewUrl,
-  isSubmitting,
+  isSubmitting,
+  classes,
+  selectedClassId,
+  onClassIdChange,
   sectionRef,
   inputRef,
-  onStudentNameChange,
-  onStudentNameBlur,
+  onStudentFirstNameChange,
+  onStudentFirstNameBlur,
+  onStudentLastNameChange,
+  onStudentLastNameBlur,
   onAdmissionNumberChange,
   onGenderChange,
   onHouseNameChange,
@@ -80,21 +93,58 @@ export function StudentCreationForm({
       </div>
 
       <form onSubmit={(event) => void onSubmit(event)} className="space-y-5">
-        <div className="space-y-4">
-          <div>
+        {!selectedClassId && classes && onClassIdChange && (
+          <div className="animate-in fade-in slide-in-from-top-1">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-              Student Full Name
+              Target Class
             </label>
-            <input
-              ref={inputRef}
-              type="text"
-              value={studentName}
-              onChange={(event) => onStudentNameChange(event.target.value)}
-              onBlur={(event) => onStudentNameBlur(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white/50 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5 placeholder:text-slate-300"
-              placeholder="e.g. Maryam Hassan"
+            <select
+              value={selectedClassId ?? ""}
+              onChange={(e) => onClassIdChange(e.target.value)}
+              className="h-10 w-full rounded-lg border border-indigo-100 bg-indigo-50/30 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5"
               required
-            />
+            >
+              <option value="">Select a class</option>
+              {classes.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.name} ({c.level})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                First Name
+              </label>
+              <input
+                ref={inputRef}
+                type="text"
+                value={studentFirstName}
+                onChange={(event) => onStudentFirstNameChange(event.target.value)}
+                onBlur={(event) => onStudentFirstNameBlur(event.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white/50 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5 placeholder:text-slate-300"
+                placeholder="Maryam"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                Last Name
+              </label>
+              <input
+                type="text"
+                value={studentLastName}
+                onChange={(event) => onStudentLastNameChange(event.target.value)}
+                onBlur={(event) => onStudentLastNameBlur(event.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white/50 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5 placeholder:text-slate-300"
+                placeholder="Hassan"
+                required
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -130,7 +180,7 @@ export function StudentCreationForm({
         </div>
 
         <StudentPhotoPanel
-          name={studentName || "Student photo"}
+          name={[studentFirstName, studentLastName].filter(Boolean).join(" ") || "Student photo"}
           previewUrl={photoPreviewUrl}
           onPhotoChange={onPhotoChange}
           onRemovePhoto={onRemovePhoto}
@@ -156,9 +206,11 @@ export function StudentCreationForm({
             type="submit"
             disabled={
               isSubmitting ||
-              !studentName.trim() ||
+              !studentFirstName.trim() ||
+              !studentLastName.trim() ||
               !admissionNumber.trim() ||
-              !gender.trim()
+              !gender.trim() ||
+              (!selectedClassId && !classes)
             }
             className="group relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
           >
