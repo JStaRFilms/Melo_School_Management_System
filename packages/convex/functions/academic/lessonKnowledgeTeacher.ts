@@ -82,7 +82,7 @@ const lessonLibraryMaterialValidator = v.object({
     v.literal("indexed"),
     v.literal("failed")
   ),
-  subjectId: v.id("subjects"),
+  subjectId: v.union(v.id("subjects"), v.null()),
   subjectName: v.string(),
   subjectCode: v.string(),
   level: v.string(),
@@ -481,7 +481,7 @@ async function readTeacherLibraryMaterials(
       });
 
   const ownerIds = [...new Set(sortedRows.map(({ material }) => String(material.ownerUserId)))];
-  const subjectIds = [...new Set(sortedRows.map(({ material }) => String(material.subjectId)))];
+  const subjectIds = [...new Set(sortedRows.map(({ material }) => material.subjectId ? String(material.subjectId) : "").filter(Boolean))];
   const topicIds = [...new Set(sortedRows.map(({ material }) => String(material.topicId ?? "")).filter(Boolean))];
 
   const [owners, subjects, topics] = await Promise.all([
@@ -499,7 +499,7 @@ async function readTeacherLibraryMaterials(
 
   const materials = sortedRows.slice(0, limit).map(({ material, accessContext }) => {
     const owner = ownerMap.get(String(material.ownerUserId)) ?? null;
-    const subject = subjectMap.get(String(material.subjectId)) ?? null;
+    const subject = material.subjectId ? subjectMap.get(String(material.subjectId)) ?? null : null;
     const topic = material.topicId ? topicMap.get(String(material.topicId)) ?? null : null;
     const isOwnedByMe = String(material.ownerUserId) === String(actor.userId);
     const canEdit = canManageKnowledgeMaterial(actor, material);
@@ -524,8 +524,8 @@ async function readTeacherLibraryMaterials(
       reviewStatus: material.reviewStatus,
       processingStatus: material.processingStatus,
       searchStatus: material.searchStatus,
-      subjectId: material.subjectId,
-      subjectName: subject ? normalizeHumanName(subject.name) : "Unknown subject",
+      subjectId: material.subjectId ?? null,
+      subjectName: subject ? normalizeHumanName(subject.name) : "General material",
       subjectCode: subject?.code ?? "",
       level: material.level,
       topicLabel: material.topicLabel,

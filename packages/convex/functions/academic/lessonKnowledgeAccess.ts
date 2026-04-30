@@ -39,7 +39,7 @@ export type KnowledgeMaterialBindingPurpose =
 
 export type KnowledgeClassScopedMaterialScope = KnowledgeMaterialScope & {
   _id: Id<"knowledgeMaterials">;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
 };
 
 export type KnowledgeClassScopedStaffAccess = {

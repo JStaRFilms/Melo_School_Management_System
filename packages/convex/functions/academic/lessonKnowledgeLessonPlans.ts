@@ -89,7 +89,7 @@ const sourceValidator = v.object({
   reviewStatus: reviewStatusValidator,
   processingStatus: processingStatusValidator,
   searchStatus: searchStatusValidator,
-  subjectId: v.id("subjects"),
+  subjectId: v.union(v.id("subjects"), v.null()),
   subjectName: v.string(),
   subjectCode: v.string(),
   level: v.string(),
@@ -687,7 +687,7 @@ async function loadSources(
     reviewStatus: Doc<"knowledgeMaterials">["reviewStatus"];
     processingStatus: Doc<"knowledgeMaterials">["processingStatus"];
     searchStatus: Doc<"knowledgeMaterials">["searchStatus"];
-    subjectId: Id<"subjects">;
+    subjectId: Id<"subjects"> | null;
     subjectName: string;
     subjectCode: string;
     level: string;
@@ -734,23 +734,23 @@ async function loadSources(
       reviewStatus: row.reviewStatus,
       processingStatus: row.processingStatus,
       searchStatus: row.searchStatus,
-      subjectId: row.subjectId,
+      subjectId: row.subjectId ?? null,
       subjectName: "",
       subjectCode: "",
       level: row.level,
       topicLabel: row.topicLabel,
       canUseAsLessonSource: true,
     });
-    subjectIds.add(String(row.subjectId));
+    if (row.subjectId) subjectIds.add(String(row.subjectId));
   }
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
   const selectedSources = accessibleRows.map((row) => {
-    const subject = subjectMap.get(String(row.subjectId));
+    const subject = row.subjectId ? subjectMap.get(String(row.subjectId)) : null;
     return {
       ...row,
-      subjectName: subject ? normalizeHumanName(subject.name) : "Unknown subject",
+      subjectName: subject ? normalizeHumanName(subject.name) : "General material",
       subjectCode: subject?.code ?? "",
     };
   });

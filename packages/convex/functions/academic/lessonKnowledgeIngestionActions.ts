@@ -85,7 +85,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     ),
     title: v.string(),
     description: v.optional(v.string()),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.id("subjects")),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),

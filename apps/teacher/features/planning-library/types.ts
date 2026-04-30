@@ -25,7 +25,7 @@ export interface TeacherLibraryMaterial {
   reviewStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
   processingStatus: "awaiting_upload" | "queued" | "extracting" | "ocr_needed" | "ready" | "failed";
   searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
-  subjectId: string;
+  subjectId: string | null;
   subjectName: string;
   subjectCode: string;
   level: string;

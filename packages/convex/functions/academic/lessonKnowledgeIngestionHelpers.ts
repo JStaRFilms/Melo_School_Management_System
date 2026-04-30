@@ -55,7 +55,7 @@ export type KnowledgeMaterialIngestionSnapshot = {
   reviewStatus: KnowledgeReviewStatus;
   title: string;
   description?: string;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
   level: string;
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
@@ -254,21 +254,25 @@ export async function assertActiveKnowledgeSubjectTopicScope(
   ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
   args: {
     schoolId: Id<"schools">;
-    subjectId: Id<"subjects">;
+    subjectId?: Id<"subjects"> | null;
     level: string;
     topicId?: Id<"knowledgeTopics"> | null;
   }
 ): Promise<{
-  subject: Doc<"subjects">;
+  subject: Doc<"subjects"> | null;
   topic: Doc<"knowledgeTopics"> | null;
 }> {
-  const subject = await ctx.db.get(args.subjectId);
-  if (!subject || String(subject.schoolId) !== String(args.schoolId) || subject.isArchived) {
+  const subject = args.subjectId ? await ctx.db.get(args.subjectId) : null;
+  if (args.subjectId && (!subject || String(subject.schoolId) !== String(args.schoolId) || subject.isArchived)) {
     throw new ConvexError("Subject not found");
   }
 
   if (!args.topicId) {
     return { subject, topic: null };
+  }
+
+  if (!args.subjectId || !subject) {
+    throw new ConvexError("Subject is required when attaching a specific topic");
   }
 
   const topic = await ctx.db.get(args.topicId);

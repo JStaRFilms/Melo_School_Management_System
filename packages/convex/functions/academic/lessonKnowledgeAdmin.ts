@@ -153,7 +153,7 @@ type KnowledgeLibraryListItem = {
   reviewStatus: KnowledgeReviewStatus;
   processingStatus: KnowledgeProcessingStatus;
   searchStatus: KnowledgeMaterialDoc["searchStatus"];
-  subjectId: Id<"subjects">;
+  subjectId: Id<"subjects"> | null;
   subjectName: string;
   level: string;
   topicLabel: string;
@@ -262,8 +262,8 @@ function mapKnowledgeMaterialListItem(args: {
     reviewStatus: args.material.reviewStatus,
     processingStatus: args.material.processingStatus,
     searchStatus: args.material.searchStatus,
-    subjectId: args.material.subjectId,
-    subjectName: args.subject ? normalizeHumanName(args.subject.name) : "Unknown subject",
+    subjectId: args.material.subjectId ?? null,
+    subjectName: args.subject ? normalizeHumanName(args.subject.name) : "General material",
     level: args.material.level,
     topicLabel: args.material.topicLabel,
     topicId: args.material.topicId ?? null,
@@ -753,7 +753,7 @@ export const listAdminKnowledgeMaterials = query({
           v.literal("indexed"),
           v.literal("failed")
         ),
-        subjectId: v.id("subjects"),
+        subjectId: v.union(v.id("subjects"), v.null()),
         subjectName: v.string(),
         level: v.string(),
         topicLabel: v.string(),
@@ -825,7 +825,7 @@ export const getAdminKnowledgeMaterial = query({
         v.literal("failed")
       ),
       schoolId: v.id("schools"),
-      subjectId: v.id("subjects"),
+      subjectId: v.union(v.id("subjects"), v.null()),
       subjectName: v.string(),
       subjectCode: v.union(v.string(), v.null()),
       level: v.string(),
@@ -897,7 +897,7 @@ export const getAdminKnowledgeMaterial = query({
 
     const [owner, subject, storageMeta, classBindings, auditEvents, sourceProof] = await Promise.all([
       ctx.db.get(material.ownerUserId),
-      ctx.db.get(material.subjectId),
+      material.subjectId ? ctx.db.get(material.subjectId) : Promise.resolve(null),
       material.storageId ? ctx.db.system.get("_storage", material.storageId) : Promise.resolve(null),
       ctx.db
         .query("knowledgeMaterialClassBindings")
@@ -933,7 +933,7 @@ export const getAdminKnowledgeMaterial = query({
         updatedBy: material.updatedBy,
         searchText: material.searchText,
         ownerEmail: owner ? owner.email ?? null : null,
-        subjectCode: subject ? subject.code ?? null : null,
+        subjectCode: subject && "code" in subject ? subject.code ?? null : null,
         sourceProof,
       },
       storage: storageMeta

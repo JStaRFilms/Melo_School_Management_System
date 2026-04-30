@@ -91,7 +91,7 @@ type MaterialState = {
   reviewStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
   title: string;
   description?: string;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
   level: string;
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
@@ -162,7 +162,7 @@ function buildKnowledgeMaterialRecord(args: {
   sourceType: "file_upload" | "youtube_link" | "imported_curriculum";
   title: string;
   description?: string;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
   level: string;
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
@@ -207,7 +207,7 @@ function buildKnowledgeMaterialRecord(args: {
     reviewStatus: defaults.reviewStatus,
     title: args.title,
     ...(args.description ? { description: args.description } : {}),
-    subjectId: args.subjectId,
+    ...(args.subjectId ? { subjectId: args.subjectId } : {}),
     level: args.level,
     topicLabel: args.topicLabel,
     ...(args.topicId ? { topicId: args.topicId } : {}),
@@ -337,7 +337,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.union(v.id("subjects"), v.null())),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
@@ -394,9 +394,13 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       throw new ConvexError("Knowledge material ingestion is restricted to staff");
     }
 
+    if (sourceType !== "imported_curriculum" && !args.subjectId) {
+      throw new ConvexError("Subject is required unless this upload is a curriculum or planning reference");
+    }
+
     await assertActiveKnowledgeSubjectTopicScope(ctx, {
       schoolId,
-      subjectId: args.subjectId,
+      subjectId: args.subjectId ?? null,
       level,
       topicId: args.topicId ?? null,
     });
@@ -417,7 +421,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       sourceType,
       title,
       ...(description ? { description } : {}),
-      subjectId: args.subjectId,
+      ...(args.subjectId ? { subjectId: args.subjectId } : {}),
       level,
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
@@ -864,7 +868,7 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       reviewStatus: material.reviewStatus,
       title: material.title,
       ...(material.description ? { description: material.description } : {}),
-      subjectId: material.subjectId,
+      ...(material.subjectId ? { subjectId: material.subjectId } : {}),
       level: material.level,
       topicLabel: material.topicLabel,
       ...(material.topicId ? { topicId: material.topicId } : {}),

@@ -222,7 +222,7 @@ export default function TeacherLibraryPage() {
       const uploadShell = (await requestUploadUrl({
         title: data.title,
         description: data.description || null,
-        subjectId: data.subjectId as never,
+        subjectId: data.subjectId ? (data.subjectId as never) : null,
         level: data.level,
         topicLabel: data.topicLabel || data.title,
         sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",

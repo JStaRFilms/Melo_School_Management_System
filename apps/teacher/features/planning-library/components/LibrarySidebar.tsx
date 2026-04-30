@@ -95,7 +95,7 @@ export function LibrarySidebar({
 
   const handleUploadSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel) return;
+    if (!uploadFile || !uploadTitle.trim() || !uploadLevel || (!isCurriculumReference && !uploadSubjectId)) return;
 
     const contentType = inferUploadContentType(uploadFile);
     if (!isSupportedUploadContentType(contentType) || uploadFile.size > MAX_UPLOAD_BYTES) {
@@ -278,14 +278,13 @@ export function LibrarySidebar({
 
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Subject</label>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">{isCurriculumReference ? "Subject optional" : "Subject"}</label>
                     <select
                       value={uploadSubjectId}
                       onChange={(e) => setUploadSubjectId(e.target.value)}
-                      required
                       className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-2 text-[11px] font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
                     >
-                      <option value="">Select...</option>
+                      <option value="">{isCurriculumReference ? "General / no subject" : "Select..."}</option>
                       {subjectsReady.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
@@ -327,18 +326,19 @@ export function LibrarySidebar({
                   <button
                     type="button"
                     onClick={() => setIsCurriculumReference((value) => !value)}
+                    aria-pressed={isCurriculumReference}
                     className={cn(
-                      "flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-all",
+                      "flex w-full items-start gap-3 rounded-2xl border-2 p-3 text-left transition-all",
                       isCurriculumReference
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        : "border-slate-100 bg-white text-slate-500 hover:border-slate-200"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm shadow-emerald-500/10"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
                     )}
                   >
                     <span className={cn(
-                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-black",
-                      isCurriculumReference ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-transparent"
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-black transition-all",
+                      isCurriculumReference ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-white"
                     )}>
-                      ✓
+                      {isCurriculumReference ? "✓" : ""}
                     </span>
                     <span className="space-y-1">
                       <span className="block text-[10px] font-black uppercase tracking-[0.16em]">Curriculum / planning reference</span>
@@ -389,10 +389,10 @@ export function LibrarySidebar({
 
               <button
                 type="submit"
-                disabled={isUploading || !uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel}
+                disabled={isUploading || !uploadFile || !uploadTitle.trim() || !uploadLevel || (!isCurriculumReference && !uploadSubjectId)}
                 className={cn(
                   "flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all",
-                  isUploading || !uploadFile || !uploadTitle.trim() || !uploadSubjectId || !uploadLevel ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-950 text-white hover:bg-slate-800 shadow-lg shadow-slate-950/10"
+                  isUploading || !uploadFile || !uploadTitle.trim() || !uploadLevel || (!isCurriculumReference && !uploadSubjectId) ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-950 text-white hover:bg-slate-800 shadow-lg shadow-slate-950/10"
                 )}
               >
                 {isUploading ? "Uploading..." : "Publish Material"}
