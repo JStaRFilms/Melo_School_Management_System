@@ -37,6 +37,9 @@ export interface TeacherLibraryMaterial {
   externalUrl: string | null;
   indexedAt: number | null;
   ingestionErrorMessage: string | null;
+  selectedPageRanges: string | null;
+  selectedPageNumbers: number[] | null;
+  pdfPageCount: number | null;
   createdAt: number;
   updatedAt: number;
   isOwnedByMe: boolean;
@@ -90,7 +93,7 @@ export interface MaterialDraft {
   subjectId: string;
   level: string;
   topicLabel: string;
-  topicId: string;
+  topicId: string | null;
 }
 
 export interface TeacherKnowledgeMaterialSourceProof {
@@ -101,6 +104,7 @@ export interface TeacherKnowledgeMaterialSourceProof {
   originalFileNotice: string | null;
   extractedTextPreview: string | null;
   extractedTextChunkCount: number;
+  indexedPageSummary: string | null;
 }
 
 export interface TeacherKnowledgeMaterialSourceProofResponse {

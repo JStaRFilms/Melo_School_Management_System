@@ -118,7 +118,7 @@ export default function QuestionBankPage() {
   }, [pathname, router, searchParams, selectedSourceIds.length, sourceSyncKey]);
 
   useEffect(() => {
-    if (!sourceSyncKey || effectiveSourceIds.length === 0) {
+    if (!sourceSyncKey) {
       return;
     }
 

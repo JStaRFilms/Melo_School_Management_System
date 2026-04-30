@@ -1,15 +1,18 @@
 # Blueprint: Template Studio Redesign
 
 ## Goal
+
 Redesign the `/academic/knowledge/templates` route to improve information density, reduce card-bloat, and remove redundant explanations, aligning with the high-end admin dashboard aesthetic.
 
 ## Aesthetic Direction: "Technical Elegance"
+
 - **Brutally Minimalist yet Informative**: Focus on data and tools, not instructions.
 - **High Density**: Reduce whitespace in sidebars and headers.
 - **Glassmorphism & Depth**: Use subtle blurs and gradients for a premium feel.
 - **Refined Typography**: Use weights and tracking instead of long descriptions.
 
 ## Components Structure
+
 - `InstructionTemplateStudioScreen.tsx`: Main orchestrator.
 - `TemplateListPanel.tsx`: Sidebar catalog with search and filters.
 - `TemplateEditor.tsx`: Designer workspace for template configuration.
@@ -18,11 +21,13 @@ Redesign the `/academic/knowledge/templates` route to improve information densit
 - `TemplateActionBar.tsx`: Bottom action area for saving/discarding.
 
 ## Data Flow
+
 - Unified `draft` state in `InstructionTemplateStudioScreen`.
 - Mutations handled at the page level.
 - Real-time validation and "Resolution Rank" calculation.
 
 ## Changes
+
 1. **Header**: Compact `AdminHeader` with streamlined `StatGroup`.
 2. **Catalog Sidebar**:
    - Denser list items.
@@ -38,5 +43,6 @@ Redesign the `/academic/knowledge/templates` route to improve information densit
    - Simplified "Resolution Ladder".
 
 ## Verification
+
 - Run `npx tsc --noEmit` in `apps/admin`.
 - Visual check of all screen sizes.

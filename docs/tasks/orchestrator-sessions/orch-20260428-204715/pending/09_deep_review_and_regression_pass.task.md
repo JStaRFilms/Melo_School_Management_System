@@ -1,4 +1,5 @@
 # Task: Deep review and regression pass
+
 **Task ID:** 09
 **Stage:** build
 **Status:** pending
@@ -7,20 +8,28 @@
 **Conversation ID:** reviewer-09
 **Workflow:** vibe-build
 **Model Override:** gpt-5.5
+
 ## Context
+
 Parent session: orch-20260428-204715
 
 Task title: Deep review and regression pass
+
 ## Objective
+
 Perform final review for correctness, regressions, UX consistency, and architecture compliance.
+
 ## Scope
+
 - Shared toast API
 - All modified root layouts
 - All modified pages/components
 - Direct Sonner import scan
 - Notification center separation
 - Typecheck/lint/build results
+
 ## Checklist
+
 - [ ] Review shared toast API for architecture compliance
 - [ ] Scan for direct Sonner imports outside shared toast module
 - [ ] Check root layouts for duplicate toasters
@@ -33,23 +42,33 @@ Perform final review for correctness, regressions, UX consistency, and architect
 - [ ] Run build
 - [ ] Document all verification results
 - [ ] Route any P0/P1 fixes back to responsible task/agent
+
 ## Definition of Done
+
 - No P0/P1 issues remain
 - Build/typecheck/lint status is documented
 - Direct Sonner usage is limited to shared toast module unless intentionally justified
 - Final review notes are captured in orchestration docs
+
 ## Expected Artifacts
+
 - Review notes in orchestration session
 - Any required fixes routed back to relevant task/agent
+
 ## Dependencies
+
 - 04
 - 05
 - 06
 - 07
 - 08
+
 ## Review Checkpoint
+
 Final approval before user handoff.
+
 ## Instructions
+
 - Use GPT-5.5 for deep judgment
 - Check server/client boundaries carefully
 - Check for duplicate toasters

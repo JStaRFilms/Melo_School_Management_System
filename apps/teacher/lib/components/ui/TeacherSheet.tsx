@@ -26,25 +26,30 @@ export function TeacherSheet({
     if (isOpen) {
       if (typeof document !== "undefined") {
         prevOverflowRef.current = document.body.style.overflow;
-        setShouldRender(true);
-        const timer = setTimeout(() => setIsAnimating(true), 20);
         document.body.style.overflow = "hidden";
-        return () => {
-          clearTimeout(timer);
-          document.body.style.overflow = prevOverflowRef.current;
-        };
       }
-    } else {
-      setIsAnimating(false);
-      const timer = setTimeout(() => {
-        setShouldRender(false);
-        if (typeof document !== "undefined") {
-          document.body.style.overflow = prevOverflowRef.current;
-        }
-      }, 300);
+      setShouldRender(true);
+      const timer = setTimeout(() => setIsAnimating(true), 20);
       return () => clearTimeout(timer);
     }
+
+    setIsAnimating(false);
+    const timer = setTimeout(() => {
+      setShouldRender(false);
+      if (typeof document !== "undefined") {
+        document.body.style.overflow = prevOverflowRef.current;
+      }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof document !== "undefined") {
+        document.body.style.overflow = prevOverflowRef.current;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!shouldRender) return;
@@ -63,7 +68,13 @@ export function TeacherSheet({
   if (!shouldRender) return null;
 
   return (
-    <div className={`fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-400 ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="teacher-sheet-title"
+      aria-describedby={description ? "teacher-sheet-description" : undefined}
+      className={`fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-400 ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+    >
       {/* Overlay */}
       <div
         className={`absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] transition-opacity duration-400 ${isAnimating ? "opacity-100" : "opacity-0"}`}
@@ -88,12 +99,14 @@ export function TeacherSheet({
 
         <div className="flex items-start justify-between px-6 pb-4 pt-1 sm:pt-6 border-b border-slate-100/80">
           <div className="space-y-1">
-            <h2 className="font-display text-lg font-bold tracking-tight text-slate-950 uppercase">{title}</h2>
+            <h2 id="teacher-sheet-title" className="font-display text-lg font-bold tracking-tight text-slate-950 uppercase">{title}</h2>
             {description && (
-              <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">{description}</p>
+              <p id="teacher-sheet-description" className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">{description}</p>
             )}
           </div>
           <button
+            type="button"
+            aria-label="Close sheet"
             onClick={onClose}
             className="rounded-full p-2 hover:bg-slate-100 active:bg-slate-200 transition-colors"
           >

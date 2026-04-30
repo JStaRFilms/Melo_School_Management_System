@@ -222,6 +222,7 @@ export function LessonPlanWorkspaceScreen({
         setTitle(content.title);
         setDocumentState(content.documentState);
         setPlainText(content.plainText);
+        setLastSavedSignature(JSON.stringify({ title: content.title, documentState: content.documentState }));
         setSaveState("idle");
       }
     } catch (error) {

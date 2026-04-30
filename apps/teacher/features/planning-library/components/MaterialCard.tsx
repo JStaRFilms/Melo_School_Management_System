@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import { FileText, Clock, User, CheckCircle2, MoreVertical } from "lucide-react";
 import { TeacherLibraryMaterial } from "../types";
 import { badgeTone, formatTimestamp } from "../constants";
@@ -22,10 +23,21 @@ export function MaterialCard({
   onInspect,
   className,
 }: MaterialCardProps) {
+  const handlePrimaryKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect();
+    }
+  };
+
   return (
     <article
       id={`material-${material._id}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected || isSelectedAsSource}
       onClick={onSelect}
+      onKeyDown={handlePrimaryKeyDown}
       className={cn(
         "group relative flex flex-col gap-3 rounded-xl border p-3.5 transition-all cursor-pointer",
         isSelectedAsSource

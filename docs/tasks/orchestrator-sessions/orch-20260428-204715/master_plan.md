@@ -7,19 +7,25 @@
 ## Lifecycle
 
 ### Genesis
+
 - Status: completed
 - Tasks: 01
 - Expandable: yes
+
 ### Design
+
 - Status: pending
 - Tasks: 02, 03
 - Expandable: yes
 - Expanded At: 2026-04-28T19:57:54.368Z
+
 ### Build
+
 - Status: pending
 - Tasks: 04, 05, 06, 07, 08, 09
 - Expandable: yes
 - Expanded At: 2026-04-28T19:58:10.251Z
+
 ## Tasks
 
 | ID | Stage | Title | Status | Role | Preferred Agent | Workflow | Model | Skills |

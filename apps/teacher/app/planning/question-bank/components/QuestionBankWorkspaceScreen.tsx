@@ -482,7 +482,7 @@ export function QuestionBankWorkspaceScreen({
           saveInFlightRef.current = false;
           if (retrySaveRef.current) {
             retrySaveRef.current = false;
-            setSaveState((current) => (current === "error" ? current : "idle"));
+            void persistDraft("autosave");
           }
         });
     }, 1200);

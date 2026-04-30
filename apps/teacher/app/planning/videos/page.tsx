@@ -102,7 +102,19 @@ function formatDate(value: number) {
 function normalizeYouTubeUrl(url: string) {
   const trimmed = url.trim();
   if (!trimmed) return "";
-  return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const isYouTubeHost = host === "youtube.com" || host === "www.youtube.com" || host === "youtu.be";
+    if ((parsed.protocol === "https:" || parsed.protocol === "http:") && isYouTubeHost) {
+      return parsed.toString();
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
 }
 
 function buildLevelOptions(classes: TeacherVideoClassSummary[] | undefined): LevelOption[] {
@@ -361,11 +373,12 @@ export default function TeacherVideosPage() {
                         {video.subjectName} • {video.level}
                       </p>
                     </div>
-                    {video.externalUrl && (
-                      <a 
-                        href={video.externalUrl} 
+                    {normalizeYouTubeUrl(video.externalUrl ?? "") && (
+                      <a
+                        href={normalizeYouTubeUrl(video.externalUrl ?? "")}
                         target="_blank" 
                         rel="noreferrer"
+                        aria-label={`Open ${video.title} on YouTube`}
                         className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 text-slate-400 border border-slate-100 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-100 transition-all"
                       >
                         <ExternalLink className="h-4 w-4" />
@@ -404,7 +417,14 @@ export default function TeacherVideosPage() {
                   <div className="space-y-1">
                     <p className="text-[13px] font-black text-slate-950 uppercase tracking-wider">No Submissions Found</p>
                     <p className="text-[12px] font-medium text-slate-400 max-w-[240px]">
-                      {search ? "Adjust your search to find what you're looking for." : "Start by submitting your first YouTube link on the right."}
+                      {search ? (
+                        "Adjust your search to find what you're looking for."
+                      ) : (
+                        <>
+                          <span className="inline sm:hidden">Tap the + button to submit your first YouTube link.</span>
+                          <span className="hidden sm:inline">Start by submitting your first YouTube link on the right.</span>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -422,6 +442,8 @@ export default function TeacherVideosPage() {
 
         <div className="lg:hidden fixed bottom-6 right-6 z-50">
           <button
+            type="button"
+            aria-label="Submit video"
             onClick={() => setActiveForm("submit")}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl active:scale-95 transition-transform"
           >

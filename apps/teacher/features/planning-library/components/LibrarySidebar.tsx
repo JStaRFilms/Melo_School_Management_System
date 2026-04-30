@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, Upload, X, Filter, Info, FileUp, Sparkles, CheckCircle2, Shield, Plus } from "lucide-react";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { 
   TeacherLibrarySubject, 
   LevelOption, 
@@ -39,6 +39,7 @@ interface LibrarySidebarProps {
     topicLabel: string;
     isCurriculumReference: boolean;
     uploadIntent: UploadIntent;
+    selectedPageRanges: string;
   }) => Promise<void>;
   isUploading: boolean;
   notice: UploadNotice | null;
@@ -74,11 +75,17 @@ export function LibrarySidebar({
   const [uploadTopicLabel, setUploadTopicLabel] = useState("");
   const [isCurriculumReference, setIsCurriculumReference] = useState(false);
   const [uploadIntent, setUploadIntent] = useState<UploadIntent>("private_draft");
+  const [selectedPageRanges, setSelectedPageRanges] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+    if (file && (!isSupportedUploadContentType(inferUploadContentType(file)) || file.size > MAX_UPLOAD_BYTES)) {
+      e.target.value = "";
+      setUploadFile(null);
+      return;
+    }
     setUploadFile(file);
     if (file && !uploadTitle) {
       setUploadTitle(normalizeFileTitle(file.name));
@@ -86,9 +93,18 @@ export function LibrarySidebar({
     onClearNotice();
   };
 
-  const handleUploadSubmit = async (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!uploadFile) return;
+
+    const contentType = inferUploadContentType(uploadFile);
+    if (!isSupportedUploadContentType(contentType) || uploadFile.size > MAX_UPLOAD_BYTES) {
+      setUploadFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
     
     await onUpload({
       file: uploadFile,
@@ -99,11 +115,27 @@ export function LibrarySidebar({
       topicLabel: uploadTopicLabel,
       isCurriculumReference,
       uploadIntent,
+      selectedPageRanges,
     });
+  };
+
+  const handleFilePickerKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      fileInputRef.current?.click();
+    }
+  };
+
+  const clearUploadFile = () => {
+    setUploadFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const showFilters = view === "all" || view === "filters";
   const showUpload = view === "all" || view === "upload";
+  const isPdfUpload = uploadFile ? inferUploadContentType(uploadFile).includes("pdf") : false;
 
   const isEmbedded = view !== "all";
 
@@ -190,7 +222,11 @@ export function LibrarySidebar({
             <form onSubmit={handleUploadSubmit} className="space-y-4">
               {/* File Dropzone / Button */}
               <div 
+                role="button"
+                tabIndex={0}
+                aria-label="Choose material file"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={handleFilePickerKeyDown}
                 className={cn(
                   "relative group flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all cursor-pointer",
                   uploadFile ? "border-emerald-200 bg-emerald-50/30" : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
@@ -211,7 +247,7 @@ export function LibrarySidebar({
                     <p className="text-[11px] font-bold text-emerald-600 truncate max-w-full px-4">{uploadFile.name}</p>
                     <button 
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setUploadFile(null); }}
+                      onClick={(e) => { e.stopPropagation(); clearUploadFile(); }}
                       className="mt-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500"
                     >
                       Change File
@@ -267,6 +303,22 @@ export function LibrarySidebar({
                     </select>
                   </div>
                 </div>
+
+
+                {isPdfUpload && (
+                  <div className="space-y-1.5 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-sky-700">Pages to index optional</label>
+                    <input
+                      value={selectedPageRanges}
+                      onChange={(e) => setSelectedPageRanges(e.target.value)}
+                      placeholder="1-5,7-8,70-72"
+                      className="h-10 w-full rounded-xl border border-sky-100 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 placeholder:text-slate-300"
+                    />
+                    <p className="text-[10px] font-semibold leading-relaxed text-sky-700">
+                      Leave blank to index the whole PDF. If you enter ranges, Teach Us indexes only those pages and ignores the rest for search and AI generation.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Upload As</label>

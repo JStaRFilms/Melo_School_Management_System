@@ -195,6 +195,28 @@ export default function PlanningIndexPage() {
     }
   }, [topicSubjectId, topicSubjects]);
 
+  useEffect(() => {
+    if (topicOptions && topicId && !topicOptions.some((topic) => topic._id === topicId)) {
+      setTopicId("");
+      setTopicInput("");
+    }
+  }, [topicId, topicOptions]);
+
+  useEffect(() => {
+    if (examSubjects && !examSubjects.some((subject) => subject.id === examSubjectId)) {
+      setExamSubjectId(examSubjects[0]?.id ?? "");
+      setExamTopicIds([]);
+    }
+  }, [examSubjectId, examSubjects]);
+
+  useEffect(() => {
+    if (!examTopics) {
+      setExamTopicIds([]);
+      return;
+    }
+    setExamTopicIds((prev) => prev.filter((id) => examTopics.some((topic) => topic._id === id)));
+  }, [examTopics]);
+
   const classOptions = useMemo(
     () => (classes ?? []).map((item) => ({ value: item._id, label: item.name })),
     [classes]

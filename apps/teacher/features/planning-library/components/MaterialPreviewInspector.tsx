@@ -16,7 +16,7 @@ import {
   FileSearch,
 } from "lucide-react";
 import { TeacherKnowledgeMaterialSourceProofResponse, TeacherLibraryMaterial } from "../types";
-import { badgeTone, formatTimestamp } from "../constants";
+import { badgeTone, formatTimestamp, isSupportedUploadContentType } from "../constants";
 import { cn } from "@/lib/utils";
 
 interface MaterialPreviewInspectorProps {
@@ -73,7 +73,7 @@ export function MaterialPreviewInspector({
   const canMiniPreview = Boolean(
     originalUrl &&
       proof?.originalFileContentType &&
-      (proof.originalFileContentType.startsWith("image/") || proof.originalFileContentType === "application/pdf")
+      (proof.originalFileContentType.startsWith("image/") || isSupportedUploadContentType(proof.originalFileContentType))
   );
 
   return (
@@ -128,6 +128,9 @@ export function MaterialPreviewInspector({
           <MetaRow icon={<Clock className="h-3.5 w-3.5" />} label="Added" value={formatTimestamp(material.createdAt)} />
           <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Topic" value={material.topicTitle ?? material.topicLabel} />
           <MetaRow icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Index" value={`${material.chunkCount} chunks indexed`} />
+          {material.selectedPageRanges && (
+            <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Indexed pages" value={`${material.selectedPageRanges}${material.pdfPageCount ? ` of ${material.pdfPageCount}` : ""}`} />
+          )}
           {material.description && (
             <p className="pt-2 text-[12px] font-medium leading-relaxed text-slate-500">{material.description}</p>
           )}
@@ -173,7 +176,7 @@ export function MaterialPreviewInspector({
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Extracted Content</p>
             </div>
-            <p className="text-[10px] font-black text-slate-950 tabular-nums">{proof?.extractedTextChunkCount ?? 0} segments</p>
+            <p className="text-[10px] font-black text-slate-950 tabular-nums">{proof?.indexedPageSummary ?? `${proof?.extractedTextChunkCount ?? 0} segments`}</p>
           </div>
 
           {proof?.extractedTextPreview ? (
