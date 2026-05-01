@@ -99,6 +99,8 @@ type MaterialState = {
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
   pdfPageCount?: number;
+  sourceFileMode?: "original" | "selected_pages";
+  sourcePdfPageCount?: number;
   externalUrl?: string;
   searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
   searchText: string;
@@ -754,11 +756,14 @@ export const retryKnowledgeMaterialIngestion = mutation({
     const isStaleExtracting =
       material.processingStatus === "extracting" &&
       now - material.updatedAt >= MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS;
+    const needsSelectedPagePdfTrim =
+      Boolean(material.selectedPageNumbers?.length) && material.sourceFileMode !== "selected_pages";
 
     if (
       material.processingStatus !== "ocr_needed" &&
       material.processingStatus !== "failed" &&
-      !isStaleExtracting
+      !isStaleExtracting &&
+      !needsSelectedPagePdfTrim
     ) {
       throw new ConvexError("This material does not need a retry");
     }
@@ -790,9 +795,11 @@ export const retryKnowledgeMaterialIngestion = mutation({
         eventType: "retry_requested",
         entityType: "knowledgeMaterial",
         materialId: args.materialId,
-        changeSummary: isStaleExtracting
-          ? "Retrying a stale knowledge material extraction job."
-          : "Retrying the knowledge material ingestion pipeline.",
+        changeSummary: needsSelectedPagePdfTrim
+          ? "Retrying ingestion to trim the stored PDF to selected pages."
+          : isStaleExtracting
+            ? "Retrying a stale knowledge material extraction job."
+            : "Retrying the knowledge material ingestion pipeline.",
       }
     );
 
@@ -876,6 +883,7 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       ...(storageMeta?.contentType ? { storageContentType: storageMeta.contentType } : {}),
       ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
       ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      ...(material.sourceFileMode ? { sourceFileMode: material.sourceFileMode } : {}),
       ...(material.externalUrl ? { externalUrl: material.externalUrl } : {}),
       searchText: material.searchText,
       processingStatus: "extracting",
@@ -888,6 +896,35 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       snapshot
     );
 
+    return null;
+  },
+});
+
+export const replaceKnowledgeMaterialStorageInternal = internalMutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    previousStorageId: v.id("_storage"),
+    nextStorageId: v.id("_storage"),
+    actorUserId: v.id("users"),
+    sourcePdfPageCount: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== args.schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+
+    await ctx.db.patch(args.materialId, {
+      storageId: args.nextStorageId,
+      sourceFileMode: "selected_pages",
+      sourcePdfPageCount: args.sourcePdfPageCount,
+      updatedAt: Date.now(),
+      updatedBy: args.actorUserId,
+    });
+
+    await ctx.storage.delete(args.previousStorageId);
     return null;
   },
 });

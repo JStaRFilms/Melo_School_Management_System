@@ -306,7 +306,7 @@ export default function TeacherLibraryPage() {
   };
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 relative">
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 relative overflow-x-hidden">
       <MaterialEditSheet
         isOpen={Boolean(editingMaterialId)}
         onClose={() => {
@@ -347,6 +347,7 @@ export default function TeacherLibraryPage() {
               setIsMobilePreviewOpen(false);
             }}
             onClose={() => setIsMobilePreviewOpen(false)}
+            onRetry={async () => { await retryMaterialIngestion({ materialId: activeMaterial._id as never } as never); }}
             variant="sheet"
             className="-mx-6 -mb-6 h-[calc(100vh-7rem)]"
           />
@@ -382,6 +383,7 @@ export default function TeacherLibraryPage() {
               onToggleSelection={() => handleToggleSelection(previewMaterial._id)}
               onEdit={() => setEditingMaterialId(previewMaterial._id)}
               onClose={() => setPreviewMaterialId(null)}
+              onRetry={async () => { await retryMaterialIngestion({ materialId: previewMaterial._id as never } as never); }}
             />
           ) : (
             <LibrarySidebar {...sidebarProps} />
@@ -389,7 +391,7 @@ export default function TeacherLibraryPage() {
         </aside>
 
         {/* Main Resource Catalog */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-10">
+        <main className="flex-1 lg:h-full lg:overflow-y-auto overflow-x-hidden custom-scrollbar p-4 md:p-8 lg:p-10">
           <div className="max-w-[1200px] mx-auto space-y-8 lg:space-y-12">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-1">
@@ -416,8 +418,8 @@ export default function TeacherLibraryPage() {
             <div className="space-y-6 lg:space-y-8">
               {/* Toolbar */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-200/60 pb-6">
-                 <div className="space-y-1.5">
-                   <h3 className="font-display text-lg lg:text-xl font-black tracking-tight text-slate-950 uppercase">
+                 <div className="space-y-1.5 min-w-0">
+                   <h3 className="font-display text-lg lg:text-xl font-black tracking-tight text-slate-950 uppercase truncate">
                      {searchQuery ? "Search Results" : "Live Library"}
                    </h3>
                    <div className="flex items-center gap-2">
@@ -428,8 +430,8 @@ export default function TeacherLibraryPage() {
                    </div>
                  </div>
                  
-                 <div className="flex gap-3">
-                    <div className="relative w-full sm:w-72">
+                 <div className="flex gap-2.5 sm:gap-3 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:w-72">
                       <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
                       <input
                         value={searchQuery}
@@ -441,7 +443,7 @@ export default function TeacherLibraryPage() {
                     {/* Mobile Filters Toggle */}
                     <button 
                       onClick={() => setIsMobileFiltersOpen(true)}
-                      className="lg:hidden h-11 w-11 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-950 shadow-sm"
+                      className="lg:hidden h-11 w-11 shrink-0 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-950 shadow-sm"
                     >
                       <Filter className="h-4 w-4" />
                     </button>
@@ -450,7 +452,7 @@ export default function TeacherLibraryPage() {
 
               {/* Resource Grid */}
               {filteredMaterials.length > 0 ? (
-                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid w-full gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredMaterials.map((m) => (
                     <MaterialCard
                       key={m._id}

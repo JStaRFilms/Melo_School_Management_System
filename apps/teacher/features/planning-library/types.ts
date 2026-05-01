@@ -40,6 +40,8 @@ export interface TeacherLibraryMaterial {
   selectedPageRanges: string | null;
   selectedPageNumbers: number[] | null;
   pdfPageCount: number | null;
+  sourceFileMode: "original" | "selected_pages" | null;
+  sourcePdfPageCount: number | null;
   createdAt: number;
   updatedAt: number;
   isOwnedByMe: boolean;

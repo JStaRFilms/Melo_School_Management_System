@@ -50,7 +50,7 @@ export function MaterialCard({
       onClick={handlePrimaryAction}
       onKeyDown={handlePrimaryKeyDown}
       className={cn(
-        "group relative flex flex-col gap-3 rounded-xl border p-3.5 transition-all cursor-pointer",
+        "group relative flex flex-col gap-3 rounded-xl border p-3.5 transition-all cursor-pointer min-w-0",
         isSelectedAsSource
           ? "border-emerald-300 bg-emerald-50/30 shadow-md ring-2 ring-emerald-500/10"
           : isSelected

@@ -1,6 +1,7 @@
 "use node";
 
 import { ConvexError, v } from "convex/values";
+import { PDFDocument } from "pdf-lib";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
@@ -21,6 +22,30 @@ function buildSourceText(args: KnowledgeMaterialIngestionSnapshot) {
     description: args.description,
     externalUrl: args.externalUrl,
   });
+}
+
+async function buildSelectedPagesPdfBuffer(args: {
+  buffer: Buffer;
+  selectedPageNumbers: number[];
+}) {
+  const sourcePdf = await PDFDocument.load(new Uint8Array(args.buffer), { ignoreEncryption: true });
+  const pageCount = sourcePdf.getPageCount();
+  const invalidPage = args.selectedPageNumbers.find((pageNumber) => pageNumber < 1 || pageNumber > pageCount);
+  if (invalidPage !== undefined) {
+    throw new ConvexError(`Selected page ${invalidPage} is outside this PDF's ${pageCount} pages.`);
+  }
+
+  const outputPdf = await PDFDocument.create();
+  const copiedPages = await outputPdf.copyPages(
+    sourcePdf,
+    args.selectedPageNumbers.map((pageNumber) => pageNumber - 1)
+  );
+  for (const page of copiedPages) {
+    outputPdf.addPage(page);
+  }
+
+  const bytes = await outputPdf.save();
+  return Buffer.from(bytes);
 }
 
 async function processExternalLink(args: KnowledgeMaterialIngestionSnapshot) {
@@ -93,6 +118,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     storageContentType: v.optional(v.string()),
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     externalUrl: v.optional(v.string()),
     searchText: v.string(),
     processingStatus: v.union(
@@ -140,6 +166,25 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+
+      if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
+        const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
+          buffer,
+          selectedPageNumbers: args.selectedPageNumbers,
+        });
+        const selectedStorageId = await ctx.storage.store(
+          new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
+        );
+        await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
+          materialId: args.materialId,
+          schoolId: args.schoolId,
+          previousStorageId: args.storageId,
+          nextStorageId: selectedStorageId,
+          actorUserId: args.ownerUserId,
+          sourcePdfPageCount: args.selectedPageNumbers.length,
+        });
+      }
+
       const extracted = await extractReadableTextFromBuffer(buffer, {
         contentType: args.storageContentType,
         geminiApiKey: process.env.GEMINI_API_KEY?.trim() || undefined,

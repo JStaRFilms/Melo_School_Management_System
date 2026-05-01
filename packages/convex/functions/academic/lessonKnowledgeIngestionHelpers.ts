@@ -63,6 +63,7 @@ export type KnowledgeMaterialIngestionSnapshot = {
   storageContentType?: string;
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
+  sourceFileMode?: "original" | "selected_pages";
   externalUrl?: string;
   searchText: string;
   processingStatus: KnowledgeMaterialIngestionStatus;

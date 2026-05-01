@@ -1166,6 +1166,8 @@ export default defineSchema({
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
     pdfPageCount: v.optional(v.number()),
+    sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
+    sourcePdfPageCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
