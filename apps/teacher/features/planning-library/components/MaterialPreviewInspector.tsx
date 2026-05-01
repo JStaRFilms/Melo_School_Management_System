@@ -27,6 +27,7 @@ interface MaterialPreviewInspectorProps {
   onToggleSelection: () => void;
   onEdit: () => void;
   onClose: () => void;
+  variant?: "default" | "sheet";
   className?: string;
 }
 
@@ -48,8 +49,10 @@ export function MaterialPreviewInspector({
   onToggleSelection,
   onEdit,
   onClose,
+  variant = "default",
   className,
 }: MaterialPreviewInspectorProps) {
+  const isSheetVariant = variant === "sheet";
   if (!material) {
     return (
       <aside className={cn("flex h-full flex-col items-center justify-center bg-surface-200 p-8", className)}>
@@ -79,51 +82,84 @@ export function MaterialPreviewInspector({
   return (
     <aside className={cn("flex h-full flex-col bg-surface-200", className)}>
       {/* ── Sticky Header: Identity + Close ── */}
-      <div className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/90 backdrop-blur-md px-6 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
-                <FileText className="h-4 w-4" />
+      {!isSheetVariant && (
+        <div className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/90 backdrop-blur-md px-6 py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  {material.subjectCode || material.subjectName} · {material.level}
+                </p>
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {material.subjectCode || material.subjectName} · {material.level}
-              </p>
+              <h2 className="font-display text-lg font-black tracking-tight text-slate-950 leading-tight line-clamp-2">
+                {material.title}
+              </h2>
             </div>
-            <h2 className="font-display text-lg font-black tracking-tight text-slate-950 leading-tight line-clamp-2">
-              {material.title}
-            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:text-slate-950 hover:border-slate-300"
+              aria-label="Close preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:text-slate-950 hover:border-slate-300"
-            aria-label="Close preview"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        {/* Badges – inline with header */}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
-            {statusLabel(material.visibility)}
-          </span>
-          <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
-            {statusLabel(material.processingStatus)}
-          </span>
-          {material.reviewStatus !== "approved" && (
-            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
-              {statusLabel(material.reviewStatus)}
+          {/* Badges – inline with header */}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
+              {statusLabel(material.visibility)}
             </span>
-          )}
+            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
+              {statusLabel(material.processingStatus)}
+            </span>
+            {material.reviewStatus !== "approved" && (
+              <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
+                {statusLabel(material.reviewStatus)}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Scrollable Body ── */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {isSheetVariant && (
+          <div className="border-b border-slate-100 bg-white px-4 py-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  {material.subjectCode || material.subjectName} · {material.level}
+                </p>
+                <h2 className="mt-1 font-display text-base font-black leading-tight tracking-tight text-slate-950 line-clamp-2">
+                  {material.title}
+                </h2>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
+                    {statusLabel(material.visibility)}
+                  </span>
+                  <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
+                    {statusLabel(material.processingStatus)}
+                  </span>
+                  {material.reviewStatus !== "approved" && (
+                    <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
+                      {statusLabel(material.reviewStatus)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Inline Metadata */}
-        <div className="border-b border-slate-100 px-6 py-4 space-y-2.5">
+        <div className={cn("border-b border-slate-100 space-y-2.5", isSheetVariant ? "px-4 py-3" : "px-6 py-4")}>
           <MetaRow icon={<User className="h-3.5 w-3.5" />} label="Owner" value={material.ownerName} />
           <MetaRow icon={<Clock className="h-3.5 w-3.5" />} label="Added" value={formatTimestamp(material.createdAt)} />
           <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Topic" value={material.topicTitle ?? material.topicLabel} />

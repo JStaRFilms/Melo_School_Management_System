@@ -82,6 +82,7 @@ export default function TeacherLibraryPage() {
   const returnTo = searchParams.get("returnTo");
   const safeReturnTo = returnTo && returnTo.startsWith("/planning/") ? returnTo : null;
 
+  const isSelectionMode = Boolean(safeReturnTo);
   const selectedSourceIds = useMemo(
     () => parseTeacherLessonPlanSourceIds(sourceIdsParam),
     [sourceIdsParam]
@@ -331,7 +332,7 @@ export default function TeacherLibraryPage() {
         isOpen={isMobilePreviewOpen}
         onClose={() => setIsMobilePreviewOpen(false)}
         title="Material Insight"
-        description="Inspect and manage this library entry."
+        description="Preview source content and actions."
       >
         {activeMaterial && (
           <MaterialPreviewInspector
@@ -346,7 +347,8 @@ export default function TeacherLibraryPage() {
               setIsMobilePreviewOpen(false);
             }}
             onClose={() => setIsMobilePreviewOpen(false)}
-            className="-mx-6 -mb-6 h-[calc(100vh-8rem)]"
+            variant="sheet"
+            className="-mx-6 -mb-6 h-[calc(100vh-7rem)]"
           />
         )}
       </TeacherSheet>
@@ -457,6 +459,7 @@ export default function TeacherLibraryPage() {
                       isSelectedAsSource={selectedSourceIdSet.has(m._id)}
                       onSelect={() => handleToggleSelection(m._id)}
                       onInspect={() => handleOpenPreview(m._id)}
+                      isSelectionMode={isSelectionMode}
                     />
                   ))}
                 </div>
