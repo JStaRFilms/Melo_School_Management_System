@@ -1062,7 +1062,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
     materialId: v.id("knowledgeMaterials"),
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.union(v.id("subjects"), v.null())),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
@@ -1096,8 +1096,13 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
       throw new ConvexError("Archived materials cannot be edited");
     }
 
+    const subjectId = args.subjectId ?? null;
+    if (material.sourceType !== "imported_curriculum" && !subjectId) {
+      throw new ConvexError("Subject is required unless this material is a curriculum or planning reference");
+    }
+
     const accessibleSubjects = await readTeacherLibrarySubjects(ctx, actor);
-    if (!accessibleSubjects.some((subject) => subject.id === String(args.subjectId))) {
+    if (subjectId && !accessibleSubjects.some((subject) => subject.id === String(subjectId))) {
       throw new ConvexError("You cannot use that subject");
     }
 
@@ -1132,7 +1137,8 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
       }
 
       if (
-        String(topic.subjectId) !== String(args.subjectId) ||
+        !subjectId ||
+        String(topic.subjectId) !== String(subjectId) ||
         !levelMatchesKnowledgeScope(topic.level, level)
       ) {
         throw new ConvexError("Topic must match the selected subject and level");
@@ -1143,7 +1149,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
 
     const patch: Partial<Doc<"knowledgeMaterials">> = {
       title,
-      subjectId: args.subjectId,
+      ...(subjectId ? { subjectId } : { subjectId: undefined }),
       level,
       topicLabel,
       searchText,

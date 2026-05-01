@@ -261,7 +261,7 @@ export default function TeacherLibraryPage() {
         materialId: draft.materialId as never,
         title: draft.title,
         description: draft.description || null,
-        subjectId: draft.subjectId as never,
+        subjectId: draft.subjectId ? (draft.subjectId as never) : null,
         level: draft.level,
         topicLabel: draft.topicLabel,
         topicId: draft.topicId || undefined,
