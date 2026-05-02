@@ -92,7 +92,7 @@ export interface MaterialDraft {
   materialId: string;
   title: string;
   description: string;
-  subjectId: string;
+  subjectId: string | null;
   level: string;
   topicLabel: string;
   topicId: string | null;

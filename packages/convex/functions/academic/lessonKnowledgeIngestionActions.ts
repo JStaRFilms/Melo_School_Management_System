@@ -167,7 +167,8 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       let extractionBuffer = buffer;
-      let extractionSelectedPageNumbers = args.selectedPageNumbers;
+      let extractionSelectedPageNumbers =
+        args.sourceFileMode === "selected_pages" ? undefined : args.selectedPageNumbers;
 
       if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
         const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
@@ -194,6 +195,18 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         contentType: args.storageContentType,
         selectedPageNumbers: extractionSelectedPageNumbers,
       });
+      const extractedPages =
+        extracted.status === "ready" &&
+        extracted.pages?.length &&
+        args.selectedPageNumbers?.length === extracted.pages.length &&
+        extractionSelectedPageNumbers === undefined
+          ? extracted.pages.map((page, index) => ({
+              ...page,
+              pageNumber: args.selectedPageNumbers![index],
+            }))
+          : extracted.status === "ready"
+            ? extracted.pages
+            : undefined;
 
       const labels = suggestKnowledgeMaterialLabels({
         title: args.title,
@@ -212,8 +225,8 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       ]);
       const chunks =
         extracted.status === "ready"
-          ? extracted.pages?.length
-            ? chunkKnowledgeMaterialPages(extracted.pages, {
+          ? extractedPages?.length
+            ? chunkKnowledgeMaterialPages(extractedPages, {
                 chunkSize: 1200,
                 maxChunks: 24,
               }).map((chunk) => ({

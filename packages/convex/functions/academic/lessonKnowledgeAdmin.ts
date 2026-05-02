@@ -374,7 +374,14 @@ async function readMaterialList(
   });
 
   const ownerIds = [...new Set(sortedRows.map((material) => String(material.ownerUserId)))];
-  const subjectIds = [...new Set(sortedRows.map((material) => String(material.subjectId)))];
+  const subjectIds = [
+    ...new Set(
+      sortedRows
+        .map((material) => material.subjectId)
+        .filter((subjectId): subjectId is Id<"subjects"> => subjectId !== undefined && subjectId !== null)
+        .map((subjectId) => String(subjectId))
+    ),
+  ];
 
   const [owners, subjects] = await Promise.all([
     Promise.all(ownerIds.map((id) => ctx.db.get(id as Id<"users">))),
@@ -390,7 +397,7 @@ async function readMaterialList(
     mapKnowledgeMaterialListItem({
       material,
       owner: ownerMap.get(String(material.ownerUserId)) ?? null,
-      subject: subjectMap.get(String(material.subjectId)) ?? null,
+      subject: material.subjectId ? (subjectMap.get(String(material.subjectId)) ?? null) : null,
     })
   );
 }

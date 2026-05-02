@@ -24,10 +24,18 @@ type NormalizedOcrPage = {
   confidence?: number;
 };
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+function withTimeout<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  const controller = new AbortController();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise.then(
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(message));
+    }, timeoutMs);
+    start(controller.signal).then(
       (value) => {
         clearTimeout(timer);
         resolve(value);
@@ -180,8 +188,9 @@ function buildOpenRouterOcrBody(args: { fileData: string }) {
 
 async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string }) {
   const response = await withTimeout(
-    fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+    (signal) => fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${args.apiKey}`,
@@ -233,6 +242,18 @@ function resolveSelectedOcrPages(args: { pages: NormalizedOcrPage[]; selectedPag
   if (!selectedPageNumbers?.length) return args.pages;
 
   if (args.pages.length === selectedPageNumbers.length) {
+    const pageNumbers = args.pages.map((page) => page.pageNumber);
+    const selectedPageSet = new Set(selectedPageNumbers);
+    const providerReturnedSelectedPages = pageNumbers.every((pageNumber) => selectedPageSet.has(pageNumber));
+    if (providerReturnedSelectedPages) {
+      return args.pages;
+    }
+    const providerReturnedSequentialPlaceholders = pageNumbers.every(
+      (pageNumber, index) => pageNumber === index + 1
+    );
+    if (!providerReturnedSequentialPlaceholders) {
+      throw new ConvexError("OCR provider returned page numbers that do not match the selected PDF pages");
+    }
     return args.pages.map((page, index) => ({
       ...page,
       pageNumber: selectedPageNumbers[index],

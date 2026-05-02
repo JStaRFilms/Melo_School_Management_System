@@ -12,7 +12,7 @@ import {
   suggestKnowledgeMaterialLabels,
 } from "./lessonKnowledgeIngestionHelpers";
 
-const OPENROUTER_OCR_MODEL = "baidu/qianfan-ocr-fast:free";
+const OPENROUTER_OCR_MODEL = process.env.OPENROUTER_OCR_MODEL?.trim() || "google/gemma-4-31b-it:free";
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_OCR_TIMEOUT_MS = 30_000;
 
@@ -22,10 +22,18 @@ type OcrImage = {
   contentType: "image/jpeg" | "image/png" | "image/webp";
 };
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+function withTimeout<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  const controller = new AbortController();
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-    promise.then(
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+    start(controller.signal).then(
       (value) => {
         clearTimeout(timer);
         resolve(value);
@@ -70,8 +78,9 @@ async function extractOcrTextFromImages(args: {
   for (const image of args.images) {
     const base64 = Buffer.from(image.bytes).toString("base64");
     const response = await withTimeout(
-      fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+      (signal) => fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
         method: "POST",
+        signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${args.apiKey}`,

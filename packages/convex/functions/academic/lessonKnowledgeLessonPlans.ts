@@ -746,7 +746,7 @@ async function loadSources(
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
-  const selectedSources = accessibleRows.map((row) => {
+  const selectedSources = accessibleRows.filter((row) => row.subjectId !== null).map((row) => {
     const subject = row.subjectId ? subjectMap.get(String(row.subjectId)) : null;
     return {
       ...row,

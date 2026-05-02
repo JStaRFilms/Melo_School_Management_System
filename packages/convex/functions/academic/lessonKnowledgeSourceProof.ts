@@ -106,19 +106,20 @@ export async function readKnowledgeMaterialSourceProof(
     originalFileNotice = "No original file was stored for this material.";
   }
 
-  const chunks = await ctx.db
+  const indexedChunks = await ctx.db
     .query("knowledgeMaterialChunks")
     .withIndex("by_school_and_material", (q) =>
       q.eq("schoolId", args.schoolId).eq("materialId", args.materialId)
     )
     .order("asc")
-    .take(previewChunkCount);
+    .take(100);
+  const chunks = indexedChunks.slice(0, previewChunkCount);
 
   const extractedTextPreviewRaw = chunks.map((chunk) => chunk.chunkText).join(" ").trim();
   const extractedTextPreview = extractedTextPreviewRaw
     ? normalizeKnowledgeMaterialText(extractedTextPreviewRaw).slice(0, previewCharLimit)
     : null;
-  const pageNumbers = Array.from(new Set(chunks.flatMap((chunk) => chunk.pageNumbers ?? []))).sort((a, b) => a - b);
+  const pageNumbers = Array.from(new Set(indexedChunks.flatMap((chunk) => chunk.pageNumbers ?? []))).sort((a, b) => a - b);
   const indexedPageSummary = pageNumbers.length ? `Pages ${pageNumbers.join(", ")}` : null;
 
   return {

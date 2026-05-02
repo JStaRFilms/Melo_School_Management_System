@@ -315,7 +315,10 @@ export async function resolveClassScopedKnowledgeMaterialStaffAccess(
       actor.schoolId,
       classId
     );
-    if (subjectIds.some((subjectId) => String(subjectId) === String(material.subjectId))) {
+    if (
+      material.subjectId === undefined ||
+      subjectIds.some((subjectId) => String(subjectId) === String(material.subjectId))
+    ) {
       matchedClassIds.push(classId);
     }
   }

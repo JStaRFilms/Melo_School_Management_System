@@ -50,7 +50,7 @@ export function MaterialEditSheet({
         materialId: material._id,
         title: material.title,
         description: material.description ?? "",
-        subjectId: material.subjectId ?? "",
+        subjectId: material.subjectId,
         level: material.level,
         topicLabel: material.topicLabel,
         topicId: material.topicId ?? "",
