@@ -98,7 +98,7 @@ export function MaterialEditSheet({
               <p className="text-[12px] font-medium text-slate-500 leading-relaxed">
                 {renderMaterial.ingestionErrorMessage || "Document has been successfully parsed and contextually indexed."}
               </p>
-              {renderMaterial.processingStatus === "failed" && (
+              {(renderMaterial.processingStatus === "failed" || renderMaterial.processingStatus === "ocr_needed") && (
                 <button 
                   onClick={() => onRetry(renderMaterial._id)}
                   className="mt-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-950 hover:bg-white hover:shadow-sm px-3 py-2 rounded-lg border border-slate-200 transition-all"

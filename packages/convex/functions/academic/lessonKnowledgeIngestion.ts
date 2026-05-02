@@ -711,6 +711,175 @@ export const registerKnowledgeMaterialLink = mutation({
   },
 });
 
+const browserOcrImageContentTypeValidator = v.union(
+  v.literal("image/jpeg"),
+  v.literal("image/png"),
+  v.literal("image/webp")
+);
+
+export const requestKnowledgeMaterialBrowserOcrImageUploadUrls = mutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    pageNumbers: v.array(v.number()),
+    imageContentType: browserOcrImageContentTypeValidator,
+  },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    uploads: v.array(v.object({ pageNumber: v.number(), uploadUrl: v.string() })),
+    maxPages: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!canManageKnowledgeMaterial({ userId, schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("Browser OCR retry is only available for failed or OCR-needed material");
+    }
+    const uniquePageNumbers = Array.from(new Set(args.pageNumbers)).sort((a, b) => a - b);
+    if (uniquePageNumbers.length === 0) {
+      throw new ConvexError("Select at least one page for OCR");
+    }
+    if (uniquePageNumbers.length > 8) {
+      throw new ConvexError("Browser OCR retry supports up to 8 pages at a time");
+    }
+    if (uniquePageNumbers.some((pageNumber) => !Number.isInteger(pageNumber) || pageNumber < 1)) {
+      throw new ConvexError("OCR page numbers must be positive whole numbers");
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ingestion_retry",
+      schoolId,
+      actorUserId: userId,
+    });
+    const uploads = [];
+    for (const pageNumber of uniquePageNumbers) {
+      uploads.push({ pageNumber, uploadUrl: await ctx.storage.generateUploadUrl() });
+    }
+    return { materialId: args.materialId, uploads, maxPages: 8 };
+  },
+});
+
+export const startKnowledgeMaterialBrowserOcrRetryInternal = internalMutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    actorSubject: v.string(),
+    images: v.array(v.object({
+      storageId: v.id("_storage"),
+      pageNumber: v.number(),
+      contentType: browserOcrImageContentTypeValidator,
+    })),
+  },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    actorRole: teacherOrAdminRoleValidator,
+    ownerUserId: v.id("users"),
+    ownerRole: teacherOrAdminRoleValidator,
+    title: v.string(),
+    description: v.union(v.string(), v.null()),
+    topicLabel: v.string(),
+    visibility: v.union(v.literal("private_owner"), v.literal("staff_shared"), v.literal("class_scoped"), v.literal("student_approved")),
+    reviewStatus: v.union(v.literal("draft"), v.literal("pending_review"), v.literal("approved"), v.literal("rejected"), v.literal("archived")),
+    processingAttemptCount: v.number(),
+    images: v.array(v.object({
+      storageId: v.id("_storage"),
+      pageNumber: v.number(),
+      contentType: browserOcrImageContentTypeValidator,
+    })),
+  }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.query("users").withIndex("by_auth", (q) => q.eq("authId", args.actorSubject)).unique();
+    if (!user || user.isArchived) {
+      throw new ConvexError("Unauthorized");
+    }
+    const actorRole: "admin" | "teacher" = user.role === "admin" || user.isSchoolAdmin === true ? "admin" : "teacher";
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== user.schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!canManageKnowledgeMaterial({ userId: user._id, schoolId: user.schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("Browser OCR retry is only available for failed or OCR-needed material");
+    }
+    if (args.images.length < 1 || args.images.length > 8) {
+      throw new ConvexError("Browser OCR retry supports up to 8 pages at a time");
+    }
+    const seenPages = new Set<number>();
+    for (const image of args.images) {
+      if (!Number.isInteger(image.pageNumber) || image.pageNumber < 1 || seenPages.has(image.pageNumber)) {
+        throw new ConvexError("OCR image pages must be unique positive whole numbers");
+      }
+      seenPages.add(image.pageNumber);
+      const metadata = await ctx.db.system.get("_storage", image.storageId);
+      if (!metadata) {
+        throw new ConvexError("OCR image upload was not found");
+      }
+      if (metadata.contentType !== image.contentType) {
+        throw new ConvexError("OCR image content type did not match the uploaded file");
+      }
+      if (!metadata.contentType?.startsWith("image/")) {
+        throw new ConvexError("OCR uploads must be image files");
+      }
+      if (metadata.size > 2_500_000) {
+        throw new ConvexError("Each OCR page image must be 2.5 MB or smaller");
+      }
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ingestion_retry",
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+    });
+
+    const now = Date.now();
+    await ctx.db.patch(args.materialId, {
+      processingStatus: "extracting",
+      searchStatus: "indexing",
+      ingestionErrorMessage: null,
+      ingestionAttemptCount: material.ingestionAttemptCount + 1,
+      updatedAt: now,
+      updatedBy: user._id,
+    });
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+      actorRole,
+      eventType: "retry_requested",
+      entityType: "knowledgeMaterial",
+      materialId: args.materialId,
+      changeSummary: "Retrying ingestion with browser-prepared OCR page images.",
+    });
+    return {
+      materialId: material._id,
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+      actorRole,
+      ownerUserId: material.ownerUserId,
+      ownerRole: material.ownerRole,
+      title: material.title,
+      description: material.description ?? null,
+      topicLabel: material.topicLabel,
+      visibility: material.visibility,
+      reviewStatus: material.reviewStatus,
+      processingAttemptCount: material.ingestionAttemptCount + 1,
+      images: args.images,
+    };
+  },
+});
+
 export const retryKnowledgeMaterialIngestion = mutation({
   args: {
     materialId: v.id("knowledgeMaterials"),

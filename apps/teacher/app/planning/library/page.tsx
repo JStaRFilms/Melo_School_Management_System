@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useEffect, useRef } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import { 
@@ -39,6 +39,7 @@ import { MaterialCard } from "../../../features/planning-library/components/Mate
 import { LibrarySidebar } from "../../../features/planning-library/components/LibrarySidebar";
 import { MaterialEditSheet } from "../../../features/planning-library/components/MaterialEditSheet";
 import { MaterialPreviewInspector } from "../../../features/planning-library/components/MaterialPreviewInspector";
+import { renderPdfPagesToOcrImages } from "../../../features/planning-library/utils/browserPdfOcr";
 
 // UI Components
 import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
@@ -122,6 +123,8 @@ export default function TeacherLibraryPage() {
   const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
   const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
   const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
+  const requestBrowserOcrUploadUrls = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialBrowserOcrImageUploadUrls" as never);
+  const runBrowserPreparedOcrRetry = useAction("functions/academic/lessonKnowledgeBrowserOcrActions:runKnowledgeMaterialBrowserPreparedOcrRetry" as never);
 
   // Derived Data
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
@@ -276,6 +279,83 @@ export default function TeacherLibraryPage() {
     }
   };
 
+  const promptForPdfFile = (material: TeacherLibraryMaterial) =>
+    new Promise<File>((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/pdf,.pdf";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) {
+          reject(new Error("Choose the original PDF to prepare OCR."));
+          return;
+        }
+        const isPdf = file.type.includes("pdf") || file.name.toLowerCase().endsWith(".pdf");
+        if (!isPdf) {
+          reject(new Error("Choose a PDF file for OCR retry."));
+          return;
+        }
+        resolve(file);
+      };
+      input.click();
+    });
+
+  const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
+    try {
+      if (material.processingStatus !== "ocr_needed") {
+        await retryMaterialIngestion({ materialId: material._id as never } as never);
+        setNotice({ tone: "success", message: "Extraction retry queued." });
+        return;
+      }
+
+      setNotice({ tone: "success", message: "Choose the original PDF so this browser can prepare OCR pages." });
+      const file = await promptForPdfFile(material);
+      setNotice({ tone: "success", message: "Rendering PDF pages in your browser for OCR..." });
+      const renderedImages = await renderPdfPagesToOcrImages({
+        file,
+        pageNumbers: material.selectedPageNumbers,
+        onProgress: ({ completed, total }) => {
+          setNotice({ tone: "success", message: `Preparing OCR pages ${completed}/${total}...` });
+        },
+      });
+      const uploadPlan = (await requestBrowserOcrUploadUrls({
+        materialId: material._id as never,
+        pageNumbers: renderedImages.map((image) => image.pageNumber),
+        imageContentType: "image/jpeg",
+      } as never)) as { uploads: Array<{ pageNumber: number; uploadUrl: string }> };
+
+      const images = [] as Array<{ storageId: string; pageNumber: number; contentType: "image/jpeg" }>;
+      for (const renderedImage of renderedImages) {
+        const upload = uploadPlan.uploads.find((candidate) => candidate.pageNumber === renderedImage.pageNumber);
+        if (!upload) throw new Error("OCR upload plan did not include every rendered page.");
+        const response = await fetch(upload.uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": "image/jpeg" },
+          body: renderedImage.blob,
+        });
+        if (!response.ok) throw new Error("OCR page image upload failed.");
+        const payload = await response.json();
+        if (!payload.storageId) throw new Error("OCR image storage ID missing.");
+        images.push({ storageId: payload.storageId, pageNumber: renderedImage.pageNumber, contentType: "image/jpeg" });
+      }
+
+      setNotice({ tone: "success", message: "Running OCR on prepared page images..." });
+      const result = (await runBrowserPreparedOcrRetry({
+        materialId: material._id as never,
+        images: images as never,
+      } as never)) as { processingStatus: "ready" | "ocr_needed" | "failed"; chunkCount: number };
+      setNotice({
+        tone: result.processingStatus === "ready" ? "success" : "error",
+        message:
+          result.processingStatus === "ready"
+            ? `OCR complete. Indexed ${result.chunkCount} chunks.`
+            : "OCR finished but the text was still not readable enough.",
+      });
+    } catch (err) {
+      setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "OCR retry failed.") });
+    }
+  };
+
   const handleArchive = async (id: string) => {
      console.log("Archive material:", id);
   };
@@ -320,7 +400,10 @@ export default function TeacherLibraryPage() {
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
         onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
-        onRetry={async (id) => { await retryMaterialIngestion({ materialId: id as never } as never); }}
+        onRetry={async (id) => {
+          const material = materials.find((candidate) => candidate._id === id);
+          if (material) await handleRetryMaterial(material);
+        }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}
@@ -347,7 +430,7 @@ export default function TeacherLibraryPage() {
               setIsMobilePreviewOpen(false);
             }}
             onClose={() => setIsMobilePreviewOpen(false)}
-            onRetry={async () => { await retryMaterialIngestion({ materialId: activeMaterial._id as never } as never); }}
+            onRetry={async () => { await handleRetryMaterial(activeMaterial); }}
             variant="sheet"
             className="-mx-6 -mb-6 h-[calc(100vh-7rem)]"
           />
@@ -383,7 +466,7 @@ export default function TeacherLibraryPage() {
               onToggleSelection={() => handleToggleSelection(previewMaterial._id)}
               onEdit={() => setEditingMaterialId(previewMaterial._id)}
               onClose={() => setPreviewMaterialId(null)}
-              onRetry={async () => { await retryMaterialIngestion({ materialId: previewMaterial._id as never } as never); }}
+              onRetry={async () => { await handleRetryMaterial(previewMaterial); }}
             />
           ) : (
             <LibrarySidebar {...sidebarProps} />

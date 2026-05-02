@@ -8,10 +8,11 @@ import {
   normalizeKnowledgeMaterialText,
 } from "./lessonKnowledgeIngestionHelpers";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
+const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_PDF_PARSE_TIMEOUT_MS = 20_000;
 const DEFAULT_PDF_PAGE_TEXT_TIMEOUT_MS = 3_000;
-const DEFAULT_GEMINI_TIMEOUT_MS = 20_000;
+const DEFAULT_OPENROUTER_TIMEOUT_MS = 20_000;
 
 type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 type PdfWorkerModule = {
@@ -87,7 +88,7 @@ type PdfParserOutcome =
       errorMessage: string;
     };
 
-type GeminiFallbackOutcome =
+type OpenRouterFallbackOutcome =
   | {
       kind: "success";
       text: string;
@@ -111,7 +112,7 @@ export type KnowledgeMaterialTextExtractionResult = {
   pages?: Array<{ pageNumber: number; text: string }>;
   pageCount?: number;
   errorMessage: string | null;
-  extractionPath: "parser" | "gemini" | "plain_text" | "none";
+  extractionPath: "parser" | "openrouter" | "plain_text" | "none";
   fallbackReason:
   | "none"
   | "parser_error"
@@ -122,10 +123,10 @@ export type KnowledgeMaterialTextExtractionResult = {
 
 export type KnowledgeMaterialTextExtractionOptions = {
   contentType?: string | null;
-  geminiApiKey?: string | null;
+  openRouterApiKey?: string | null;
   fetchImpl?: typeof fetch;
   pdfParseTimeoutMs?: number;
-  geminiTimeoutMs?: number;
+  openRouterTimeoutMs?: number;
   selectedPageNumbers?: number[];
 };
 
@@ -298,98 +299,112 @@ async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; sele
   }
 }
 
-function buildGeminiRequestBody(buffer: Buffer) {
+function buildOpenRouterRequestBody(buffer: Buffer) {
   return {
-    contents: [
+    model: OPENROUTER_MODEL,
+    messages: [
       {
         role: "user",
-        parts: [
+        content: [
           {
+            type: "text",
             text:
               "Extract the visible text from this school PDF. Return only the text, preserve headings and line breaks, and do not summarize or add commentary.",
           },
           {
-            inlineData: {
-              mimeType: "application/pdf",
-              data: buffer.toString("base64"),
+            type: "file",
+            file: {
+              filename: "knowledge-material.pdf",
+              file_data: `data:application/pdf;base64,${buffer.toString("base64")}`,
             },
           },
         ],
       },
     ],
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 8192,
-    },
+    temperature: 0,
+    max_tokens: 8192,
+    plugins: [
+      {
+        id: "file-parser",
+        pdf: {
+          engine: "cloudflare-ai",
+        },
+      },
+    ],
   };
 }
 
-function parseGeminiTextResponse(value: unknown): string {
+function parseOpenRouterTextResponse(value: unknown): string {
   if (!value || typeof value !== "object") {
     return "";
   }
 
-  const candidates = (value as { candidates?: unknown }).candidates;
-  if (!Array.isArray(candidates)) {
+  const choices = (value as { choices?: unknown }).choices;
+  if (!Array.isArray(choices)) {
     return "";
   }
 
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") {
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") {
       continue;
     }
 
-    const content = (candidate as { content?: unknown }).content;
-    if (!content || typeof content !== "object") {
+    const message = (choice as { message?: unknown }).message;
+    if (!message || typeof message !== "object") {
       continue;
     }
 
-    const parts = (content as { parts?: unknown }).parts;
-    if (!Array.isArray(parts)) {
-      continue;
+    const content = (message as { content?: unknown }).content;
+    if (typeof content === "string") {
+      const normalized = normalizeKnowledgeMaterialText(content);
+      if (normalized) {
+        return normalized;
+      }
     }
 
-    const text = parts
-      .map((part) => {
-        if (!part || typeof part !== "object") {
-          return "";
-        }
+    if (Array.isArray(content)) {
+      const text = content
+        .map((part) => {
+          if (!part || typeof part !== "object") {
+            return "";
+          }
 
-        const partText = (part as { text?: unknown }).text;
-        return typeof partText === "string" ? partText : "";
-      })
-      .join(" ");
-
-    const normalized = normalizeKnowledgeMaterialText(text);
-    if (normalized) {
-      return normalized;
+          const partText = (part as { text?: unknown }).text;
+          return typeof partText === "string" ? partText : "";
+        })
+        .join(" ");
+      const normalized = normalizeKnowledgeMaterialText(text);
+      if (normalized) {
+        return normalized;
+      }
     }
   }
 
   return "";
 }
 
-async function extractPdfTextWithGemini(args: {
+async function extractPdfTextWithOpenRouter(args: {
   buffer: Buffer;
   apiKey: string;
   fetchImpl: typeof fetch;
   timeoutMs: number;
-}): Promise<GeminiFallbackOutcome> {
+  selectedPageNumbers?: number[];
+}): Promise<OpenRouterFallbackOutcome> {
   try {
-    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`);
-    url.searchParams.set("key", args.apiKey);
-
     const response = await withTimeout(
-      args.fetchImpl(url, {
+      args.fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${args.apiKey}`,
+          "HTTP-Referer": "https://school-management-system.local",
+          "X-Title": "School Management System",
         },
-        body: JSON.stringify(buildGeminiRequestBody(args.buffer)),
+        body: JSON.stringify(buildOpenRouterRequestBody(args.buffer)),
       }),
       args.timeoutMs,
       () => undefined,
-      "Gemini fallback timed out"
+      "OpenRouter OCR fallback timed out"
     );
 
     if (!response.ok) {
@@ -397,22 +412,31 @@ async function extractPdfTextWithGemini(args: {
         return {
           kind: "rate_limited",
           errorMessage:
-            "Gemini fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.",
+            "OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.",
         };
+      }
+
+      const errorText = await response.text().catch(() => "");
+      let providerMessage = errorText;
+      try {
+        const payload = JSON.parse(errorText) as { error?: { message?: string; metadata?: { raw?: string } } };
+        providerMessage = payload.error?.metadata?.raw || payload.error?.message || errorText;
+      } catch {
+        providerMessage = errorText;
       }
 
       return {
         kind: "error",
-        errorMessage: `Gemini fallback request failed with HTTP ${response.status}`,
+        errorMessage: `OpenRouter OCR fallback request failed with HTTP ${response.status}${providerMessage ? `: ${providerMessage.slice(0, 500)}` : ""}`,
       };
     }
 
     const payload = (await response.json()) as unknown;
-    const text = parseGeminiTextResponse(payload);
+    const text = parseOpenRouterTextResponse(payload);
     if (!text) {
       return {
         kind: "empty",
-        errorMessage: "Gemini fallback returned no readable text",
+        errorMessage: "OpenRouter OCR fallback returned no readable text",
       };
     }
 
@@ -423,7 +447,7 @@ async function extractPdfTextWithGemini(args: {
   } catch (error) {
     return {
       kind: "error",
-      errorMessage: error instanceof Error ? error.message : "Gemini fallback timed out",
+      errorMessage: error instanceof Error ? error.message : "OpenRouter OCR fallback failed",
     };
   }
 }
@@ -434,7 +458,7 @@ function buildResultFromQuality(args: {
   pages?: Array<{ pageNumber: number; text: string }>;
   pageCount?: number;
   errorMessage: string | null;
-  extractionPath: "parser" | "gemini" | "plain_text" | "none";
+  extractionPath: "parser" | "openrouter" | "plain_text" | "none";
   fallbackReason: KnowledgeMaterialTextExtractionResult["fallbackReason"];
 }): KnowledgeMaterialTextExtractionResult {
   return args;
@@ -446,10 +470,10 @@ function buildUnavailableFallbackResult(args: {
 }): KnowledgeMaterialTextExtractionResult {
   const errorMessage =
     args.fallbackReason === "scanned_or_problematic"
-      ? "This PDF appears scanned or image-only. OCR is still needed because Gemini fallback is not configured in this environment."
+      ? "This PDF appears scanned or image-only. OCR is still needed because OpenRouter OCR fallback is not configured in this environment."
       : args.fallbackReason === "unreadable_text"
-        ? "The PDF text was unreadable after native extraction, and OCR is still needed because Gemini fallback is not configured in this environment."
-        : "Native PDF parsing failed, and Gemini fallback is not configured in this environment.";
+        ? "The PDF text was unreadable after native extraction, and OCR is still needed because OpenRouter OCR fallback is not configured in this environment."
+        : "Native PDF parsing failed, and OpenRouter OCR fallback is not configured in this environment.";
 
   return buildResultFromQuality({
     status: args.status,
@@ -466,8 +490,8 @@ function buildRateLimitedFallbackResult(args: {
 }): KnowledgeMaterialTextExtractionResult {
   const errorMessage =
     args.fallbackReason === "scanned_or_problematic" || args.fallbackReason === "unreadable_text"
-      ? "This PDF still needs OCR, but Gemini fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF."
-      : "Native PDF parsing failed, and Gemini fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.";
+      ? "This PDF still needs OCR, but OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF."
+      : "Native PDF parsing failed, and OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.";
 
   return buildResultFromQuality({
     status: args.status,
@@ -525,40 +549,31 @@ export async function extractReadableTextFromBuffer(
   }
 
   if (parserResult.kind === "error") {
-    if (options.selectedPageNumbers?.length) {
-      return buildResultFromQuality({
-        status: "failed",
-        text: "",
-        errorMessage: parserResult.errorMessage,
-        extractionPath: "parser",
-        fallbackReason: "parser_error",
-      });
-    }
+    const openRouterApiKey = options.openRouterApiKey?.trim();
 
-    const geminiApiKey = options.geminiApiKey?.trim();
-
-    if (!geminiApiKey) {
+    if (!openRouterApiKey) {
       return buildUnavailableFallbackResult({
         fallbackReason: "parser_error",
         status: "failed",
       });
     }
 
-    const geminiResult = await extractPdfTextWithGemini({
+    const openRouterResult = await extractPdfTextWithOpenRouter({
       buffer,
-      apiKey: geminiApiKey,
+      apiKey: openRouterApiKey,
       fetchImpl: options.fetchImpl ?? fetch,
-      timeoutMs: options.geminiTimeoutMs ?? DEFAULT_GEMINI_TIMEOUT_MS,
+      timeoutMs: options.openRouterTimeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS,
+      selectedPageNumbers: options.selectedPageNumbers,
     });
 
-    if (geminiResult.kind === "success") {
-      const quality = evaluateTextQuality(geminiResult.text);
+    if (openRouterResult.kind === "success") {
+      const quality = evaluateTextQuality(openRouterResult.text);
       if (quality.adequate) {
         return buildResultFromQuality({
           status: "ready",
           text: quality.normalizedText,
           errorMessage: null,
-          extractionPath: "gemini",
+          extractionPath: "openrouter",
           fallbackReason: "none",
         });
       }
@@ -566,13 +581,13 @@ export async function extractReadableTextFromBuffer(
       return buildResultFromQuality({
         status: "failed",
         text: quality.normalizedText,
-        errorMessage: "Gemini fallback returned text that was still too short to index.",
-        extractionPath: "gemini",
+        errorMessage: "OpenRouter OCR fallback returned text that was still too short to index.",
+        extractionPath: "openrouter",
         fallbackReason: "insufficient_text",
       });
     }
 
-    if (geminiResult.kind === "rate_limited") {
+    if (openRouterResult.kind === "rate_limited") {
       return buildRateLimitedFallbackResult({
         fallbackReason: "parser_error",
         status: "failed",
@@ -582,8 +597,8 @@ export async function extractReadableTextFromBuffer(
     return buildResultFromQuality({
       status: "failed",
       text: "",
-      errorMessage: geminiResult.errorMessage,
-      extractionPath: "gemini",
+      errorMessage: openRouterResult.errorMessage,
+      extractionPath: "openrouter",
       fallbackReason: "parser_error",
     });
   }
@@ -621,55 +636,44 @@ export async function extractReadableTextFromBuffer(
     });
   }
 
-  if (options.selectedPageNumbers?.length) {
-    return buildResultFromQuality({
-      status: "ocr_needed",
-      text: quality.normalizedText,
-      pages: parserResult.pages,
-      pageCount: parserResult.pageCount,
-      errorMessage: "Selected pages could not be fully extracted with native PDF text. Upload an OCR'd PDF or retry without page selection.",
-      extractionPath: "parser",
-      fallbackReason,
-    });
-  }
-
-  const geminiApiKey = options.geminiApiKey?.trim();
-  if (!geminiApiKey) {
+  const openRouterApiKey = options.openRouterApiKey?.trim();
+  if (!openRouterApiKey) {
     return buildUnavailableFallbackResult({
       fallbackReason,
       status: "ocr_needed",
     });
   }
 
-  const geminiResult = await extractPdfTextWithGemini({
+  const openRouterResult = await extractPdfTextWithOpenRouter({
     buffer,
-    apiKey: geminiApiKey,
+    apiKey: openRouterApiKey,
     fetchImpl: options.fetchImpl ?? fetch,
-    timeoutMs: options.geminiTimeoutMs ?? DEFAULT_GEMINI_TIMEOUT_MS,
+    timeoutMs: options.openRouterTimeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS,
+    selectedPageNumbers: options.selectedPageNumbers,
   });
 
-  if (geminiResult.kind === "success") {
-    const geminiQuality = evaluateTextQuality(geminiResult.text);
-    if (geminiQuality.adequate) {
+  if (openRouterResult.kind === "success") {
+    const openRouterQuality = evaluateTextQuality(openRouterResult.text);
+    if (openRouterQuality.adequate) {
       return buildResultFromQuality({
         status: "ready",
-        text: geminiQuality.normalizedText,
+        text: openRouterQuality.normalizedText,
         errorMessage: null,
-        extractionPath: "gemini",
+        extractionPath: "openrouter",
         fallbackReason: "none",
       });
     }
 
     return buildResultFromQuality({
       status: "ocr_needed",
-      text: geminiQuality.normalizedText,
-      errorMessage: "Gemini fallback returned text that was still too short to index.",
-      extractionPath: "gemini",
+      text: openRouterQuality.normalizedText,
+      errorMessage: "OpenRouter OCR fallback returned text that was still too short to index.",
+      extractionPath: "openrouter",
       fallbackReason,
     });
   }
 
-  if (geminiResult.kind === "rate_limited") {
+  if (openRouterResult.kind === "rate_limited") {
     return buildRateLimitedFallbackResult({
       fallbackReason,
       status: "ocr_needed",
@@ -680,10 +684,10 @@ export async function extractReadableTextFromBuffer(
     status: "ocr_needed",
     text: quality.normalizedText,
     errorMessage:
-      geminiResult.kind === "empty"
-        ? geminiResult.errorMessage
-        : `Gemini fallback failed: ${geminiResult.errorMessage}`,
-    extractionPath: "gemini",
+      openRouterResult.kind === "empty"
+        ? openRouterResult.errorMessage
+        : `OpenRouter OCR fallback failed: ${openRouterResult.errorMessage}`,
+    extractionPath: "openrouter",
     fallbackReason,
   });
 }

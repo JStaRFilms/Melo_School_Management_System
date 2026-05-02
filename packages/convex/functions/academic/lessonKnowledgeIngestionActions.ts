@@ -166,12 +166,17 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+      let extractionBuffer = buffer;
+      let extractionSelectedPageNumbers = args.selectedPageNumbers;
 
       if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
         const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
           buffer,
           selectedPageNumbers: args.selectedPageNumbers,
         });
+        extractionBuffer = selectedPdfBuffer;
+        extractionSelectedPageNumbers = undefined;
+
         const selectedStorageId = await ctx.storage.store(
           new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
         );
@@ -185,10 +190,10 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         });
       }
 
-      const extracted = await extractReadableTextFromBuffer(buffer, {
+      const extracted = await extractReadableTextFromBuffer(extractionBuffer, {
         contentType: args.storageContentType,
-        geminiApiKey: process.env.GEMINI_API_KEY?.trim() || undefined,
-        selectedPageNumbers: args.selectedPageNumbers,
+        openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || undefined,
+        selectedPageNumbers: extractionSelectedPageNumbers,
       });
 
       const labels = suggestKnowledgeMaterialLabels({
@@ -223,6 +228,13 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
                 chunkIndex: index,
                 chunkText,
                 tokenEstimate: estimateKnowledgeMaterialTokens(chunkText),
+                ...(args.selectedPageNumbers?.length
+                  ? {
+                      pageStart: Math.min(...args.selectedPageNumbers),
+                      pageEnd: Math.max(...args.selectedPageNumbers),
+                      pageNumbers: args.selectedPageNumbers,
+                    }
+                  : {}),
               }))
           : [];
 

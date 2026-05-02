@@ -51,15 +51,15 @@ function buildBlankPdfBuffer() {
   return Buffer.from(header + objects.join("") + xref, "latin1");
 }
 
-function createGeminiSuccessFetch(text: string) {
+function createOpenRouterSuccessFetch(text: string) {
   return async () =>
     ({
       ok: true,
       json: async () => ({
-        candidates: [
+        choices: [
           {
-            content: {
-              parts: [{ text }],
+            message: {
+              content: text,
             },
           },
         ],
@@ -233,7 +233,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     );
   });
 
-  it("reads a digital PDF with the parser before Gemini fallback", async () => {
+  it("reads a digital PDF with the parser before OpenRouter OCR fallback", async () => {
     const samplePdf = readFileSync(
       new URL(
         "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
@@ -244,7 +244,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     const result = await extractReadableTextFromBuffer(samplePdf, {
       contentType: "application/pdf",
       fetchImpl: async () => {
-        throw new Error("Gemini fallback should not be called for a readable PDF");
+        throw new Error("OpenRouter OCR fallback should not be called for a readable PDF");
       },
     });
 
@@ -254,42 +254,59 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.errorMessage).toBeNull();
   });
 
-  it("classifies scanned-like PDFs honestly when Gemini is unavailable", async () => {
+  it("classifies scanned-like PDFs honestly when OpenRouter is unavailable", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
       fetchImpl: async () => {
-        throw new Error("Gemini fallback should not be called without an API key");
+        throw new Error("OpenRouter OCR fallback should not be called without an API key");
       },
     });
 
     expect(result.status).toBe("ocr_needed");
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
-    expect(result.errorMessage).toContain("Gemini fallback is not configured");
+    expect(result.errorMessage).toContain("OpenRouter OCR fallback is not configured");
   });
 
-  it("fails without hanging when Gemini fallback never resolves", async () => {
+  it("uses OpenRouter OCR fallback for scanned-like selected-page PDFs", async () => {
+    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
+      contentType: "application/pdf",
+      openRouterApiKey: "test-key",
+      selectedPageNumbers: [1],
+      fetchImpl: createOpenRouterSuccessFetch(
+        "Lesson Note: Social Studies. This page explains community values, cooperation, family roles, citizenship, and classroom discussion activities for students."
+      ),
+    });
+
+    expect(result.status).toBe("ready");
+    expect(result.extractionPath).toBe("openrouter");
+    expect(result.fallbackReason).toBe("none");
+    expect(result.text).toContain("Social Studies");
+    expect(result.errorMessage).toBeNull();
+  });
+
+  it("fails without hanging when OpenRouter OCR fallback never resolves", async () => {
     const startedAt = Date.now();
 
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      geminiApiKey: "test-key",
+      openRouterApiKey: "test-key",
       fetchImpl: createHangingFetch(),
-      geminiTimeoutMs: 25,
+      openRouterTimeoutMs: 25,
     });
 
     const elapsedMs = Date.now() - startedAt;
 
     expect(elapsedMs).toBeLessThan(1000);
     expect(result.status).toBe("ocr_needed");
-    expect(result.extractionPath).toBe("gemini");
+    expect(result.extractionPath).toBe("openrouter");
     expect(result.errorMessage).toContain("timed out");
   });
 
-  it("returns a clear OCR-needed status when Gemini fallback is rate-limited", async () => {
+  it("returns a clear OCR-needed status when OpenRouter OCR fallback is rate-limited", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      geminiApiKey: "test-key",
+      openRouterApiKey: "test-key",
       fetchImpl: createRateLimitedFetch(),
     });
 

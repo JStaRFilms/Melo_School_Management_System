@@ -37,7 +37,7 @@ export type KnowledgeMaterialUploadIntent =
 export const MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES = 12 * 1024 * 1024;
 export const MAX_KNOWLEDGE_MATERIAL_PDF_PAGES = 80;
 export const MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES = 30;
-export const MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS = 3;
+export const MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS = 8;
 
 export type KnowledgeMaterialIngestionOwnerRole =
   | "teacher"

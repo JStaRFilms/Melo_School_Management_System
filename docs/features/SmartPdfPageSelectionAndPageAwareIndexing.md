@@ -21,6 +21,7 @@ A teacher can upload one PDF and enter ranges such as `1-5,7-8,70-72`. The teach
 - One visible `knowledgeMaterials` row per upload.
 - Store selected page metadata on the material.
 - Extract text only from selected PDF pages when page ranges are provided.
+- For image-heavy/scanned PDFs, fall back to OpenRouter PDF processing with `google/gemma-4-31b-it:free` when `OPENROUTER_API_KEY` is configured. The OpenRouter request explicitly enables the `file-parser` PDF plugin with the free `cloudflare-ai` engine; `mistral-ocr` can be configured later if paid scanned-document OCR is needed.
 - Store page metadata on generated chunks.
 - Show selected/indexed page summary in teacher UI and source proof.
 - Preserve existing full-document upload behavior when no page range is provided.
@@ -28,8 +29,8 @@ A teacher can upload one PDF and enter ranges such as `1-5,7-8,70-72`. The teach
 ## Out Of Scope For This Slice
 
 - Visual PDF page thumbnails.
-- Creating a compact selected-pages PDF file.
-- Page-aware Gemini OCR fallback.
+- User-facing management of compact selected-pages PDF files. The backend may create an internal trimmed PDF for safer selected-page OCR and preview.
+- Advanced multi-provider OCR routing beyond the current OpenRouter fallback.
 - Multiple visible child materials for one upload.
 - Student-facing citation UI changes.
 
@@ -63,4 +64,5 @@ All fields are optional for backward compatibility.
 - Selected pages outside the PDF page count fail with a clear error.
 - Page-aware chunks record source page metadata.
 - Existing text and full-PDF uploads continue to work.
+- Selected-page scanned/image-heavy PDFs use the trimmed selected-pages PDF for OCR fallback instead of sending the original full PDF.
 - Teacher material detail shows selected page summary when available.
