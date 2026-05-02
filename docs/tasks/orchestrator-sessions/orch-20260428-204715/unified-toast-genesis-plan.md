@@ -28,6 +28,13 @@ Create a consistent app-wide toast notification system that displays global succ
 
 Use a shared Sonner-based toast abstraction rather than direct Sonner usage throughout the app.
 
+The implementation must be modular in two layers:
+
+1. System layer: the stable notification API and behavior policy.
+2. UI layer: the tweakable toast renderer/component.
+
+The system layer should be safe to call from app UI code without exposing Sonner directly. The UI layer should be isolated so the visual design can be revised later by editing `AppToaster` and its styling without touching every page that calls `appToast`.
+
 Proposed shared API:
 
 ```ts
@@ -48,7 +55,24 @@ packages/shared/src/toast/
   index.ts
   app-toast.ts
   error-message.ts
+  toast-types.ts
+  toast-defaults.ts
   AppToaster.tsx
+```
+
+Layer ownership:
+
+```txt
+System layer
+  app-toast.ts
+  error-message.ts
+  toast-types.ts
+  toast-defaults.ts
+  index.ts
+
+UI layer
+  AppToaster.tsx
+  any toast-specific CSS/classes/theme mapping
 ```
 
 Root layouts should mount one shared toaster:
@@ -67,6 +91,8 @@ apps/portal/app/layout.tsx
 - Toasts must not require scrolling to see.
 - Toasts should include a close button.
 - Toasts should support title + detailed description.
+- Toast call sites should not contain visual styling decisions.
+- Visual appearance should be centralized in `AppToaster` or toast-specific shared UI helpers.
 - Success/info: about 5 seconds.
 - Warning: about 8 seconds.
 - Error: long-lived or persistent depending on severity.
@@ -152,6 +178,9 @@ Possible outcomes:
 ## Acceptance Criteria
 
 - [ ] Shared toast API exists in `packages/shared`.
+- [ ] Toast system logic and toast UI component are separated cleanly.
+- [ ] App pages import the shared API, not Sonner directly.
+- [ ] Visual styling can be adjusted in `AppToaster` without changing app call sites.
 - [ ] Each root app layout renders one global toaster.
 - [ ] Toasts are visible regardless of page scroll.
 - [ ] Toasts appear above app content.
@@ -181,7 +210,8 @@ Possible outcomes:
 
 - Role: Coder
 - Model: GPT-5.4
-- Purpose: Add shared toast files and root layout integration.
+- Purpose: Add shared toast system files and isolated UI component.
+- Ownership split: one agent may own the system layer and another may own the UI layer, or one agent may implement both while preserving the layer boundary.
 
 ### Task 3 — High-Impact Error UI Replacement
 

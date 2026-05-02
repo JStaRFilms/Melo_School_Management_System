@@ -34,6 +34,8 @@ Apply the validation UX policy to validation-heavy pages without losing detailed
 - [ ] Add toast alert only where validation blocks submit/save
 - [ ] Preserve inline field/table/row validation details
 - [ ] Avoid duplicate noisy error messaging
+- [ ] Keep validation toast calls on the shared appToast API
+- [ ] Keep validation toast visuals centralized in AppToaster
 - [ ] Run tsc --noEmit after each TS/TSX edit
 - [ ] Document verification result
 
@@ -42,6 +44,7 @@ Apply the validation UX policy to validation-heavy pages without losing detailed
 - Validation blocking actions trigger appropriate toast alerts where useful
 - Detailed inline validation remains where needed
 - No duplicate noisy error surfaces are introduced
+- Validation toast behavior follows the shared system policy instead of local one-off styling
 
 ## Expected Artifacts
 
@@ -62,3 +65,4 @@ Designer/reviewer confirms validation UX is clear and non-regressive.
 - Preserve row/field-level correction guidance
 - Use toast for awareness when submit/save is blocked
 - Do not convert every validation detail into a toast
+- Do not replace persistent validation summaries with transient-only feedback when users need correction detail

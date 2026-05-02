@@ -35,6 +35,8 @@ Mount the shared toaster once in each application root layout.
 - [ ] Add AppToaster to platform layout
 - [ ] Add AppToaster to portal layout
 - [ ] Confirm exactly one toaster per app
+- [ ] Confirm layouts import AppToaster from the shared toast package, not from Sonner
+- [ ] Confirm no page-level toaster instances are introduced
 - [ ] Run tsc --noEmit after each TS/TSX edit
 - [ ] Document verification result
 
@@ -43,6 +45,7 @@ Mount the shared toaster once in each application root layout.
 - Each target app has exactly one AppToaster mounted
 - No duplicate toasters are introduced
 - Server/client component constraints are respected
+- The toaster remains a shared UI component so visual changes stay centralized
 
 ## Expected Artifacts
 
@@ -61,3 +64,4 @@ Reviewer confirms no duplicate providers/toasters and no layout regressions.
 - Do not alter unrelated layout structure
 - Respect existing providers and ordering
 - Ensure toaster appears above app content
+- Do not add toast styling or Sonner options directly in app layouts unless the design blueprint explicitly requires a per-app override

@@ -46,3 +46,9 @@
 - Machine state lives in `.pi/takomi/orchestrator/<sessionId>.json`.
 - Sending a task back to the same agent should reuse its conversationId when continuity is helpful.
 - Sessions follow the Genesis -> Design -> Build lifecycle, but each stage may stay compact or expand into more tasks.
+- The notification work must remain modular in two explicit layers:
+  - System layer: `appToast`, typed options, error-message normalization, default durations, privacy rules, and import/export boundaries.
+  - UI layer: `AppToaster` and any visual styling or theme tokens. The UI must be isolated enough that a later agent can redesign the toast appearance without changing the system API or app call sites.
+- If multiple agents are used, assign the system layer and UI layer as separate ownership areas. If one agent implements both, require a final self-check that the UI can be changed by editing the component only.
+- Toasts are for transient action feedback. They must not replace the persistent notification center or remove useful inline validation guidance.
+- Before Build starts, the design blueprint must explicitly identify the shared files, root layout targets, migration targets, validation policy, and verification commands.

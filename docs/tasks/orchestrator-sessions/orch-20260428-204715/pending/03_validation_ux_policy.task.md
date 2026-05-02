@@ -32,6 +32,7 @@ Define how validation banners, inline errors, and global toast alerts should coe
 - [ ] Classify each validation case as inline-only, toast-only, or both
 - [ ] Define validation-blocked submit/save toast pattern
 - [ ] Define message tone and detail level for validation failures
+- [ ] Confirm validation toast behavior uses the shared system API and does not require local styling
 - [ ] Confirm inline row/field guidance remains where useful
 - [ ] Add validation policy to docs/features/unified-toast-system.md
 - [ ] List files that need validation-specific implementation treatment
@@ -59,3 +60,4 @@ Orchestrator confirms validation policy before replacement work starts.
 - Do not remove inline validation conceptually unless clearly redundant
 - Global operation failure should use toast
 - Field-specific correction should remain near the field or row
+- Validation toast copy should be brief and action-oriented; detailed correction stays inline
