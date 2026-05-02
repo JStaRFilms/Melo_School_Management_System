@@ -82,6 +82,7 @@ export default function TeacherLibraryPage() {
   const returnTo = searchParams.get("returnTo");
   const safeReturnTo = returnTo && returnTo.startsWith("/planning/") ? returnTo : null;
 
+  const isSelectionMode = Boolean(safeReturnTo);
   const selectedSourceIds = useMemo(
     () => parseTeacherLessonPlanSourceIds(sourceIdsParam),
     [sourceIdsParam]
@@ -121,6 +122,7 @@ export default function TeacherLibraryPage() {
   const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
   const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
   const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
+  const requestProviderOcr = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialProviderOcr" as never);
 
   // Derived Data
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
@@ -222,11 +224,12 @@ export default function TeacherLibraryPage() {
       const uploadShell = (await requestUploadUrl({
         title: data.title,
         description: data.description || null,
-        subjectId: data.subjectId as never,
+        subjectId: data.subjectId ? (data.subjectId as never) : null,
         level: data.level,
         topicLabel: data.topicLabel || data.title,
         sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",
         uploadIntent: data.uploadIntent,
+        selectedPageRanges: uploadContentType.includes("pdf") ? data.selectedPageRanges?.trim() || null : null,
       } as never)) as { materialId: string; uploadUrl: string };
 
       const response = await fetch(uploadShell.uploadUrl, {
@@ -260,7 +263,7 @@ export default function TeacherLibraryPage() {
         materialId: draft.materialId as never,
         title: draft.title,
         description: draft.description || null,
-        subjectId: draft.subjectId as never,
+        subjectId: draft.subjectId ? (draft.subjectId as never) : null,
         level: draft.level,
         topicLabel: draft.topicLabel,
         topicId: draft.topicId || undefined,
@@ -271,6 +274,26 @@ export default function TeacherLibraryPage() {
       setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "Save failed.") });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
+    try {
+      if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
+        await requestProviderOcr({ materialId: material._id as never } as never);
+        setNotice({
+          tone: "success",
+          message: material.selectedPageNumbers?.length
+            ? "Provider OCR queued for the stored selected-page PDF."
+            : "Provider OCR queued for the stored PDF.",
+        });
+        return;
+      }
+
+      await retryMaterialIngestion({ materialId: material._id as never } as never);
+      setNotice({ tone: "success", message: "Extraction retry queued." });
+    } catch (err) {
+      setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "OCR retry failed.") });
     }
   };
 
@@ -304,7 +327,7 @@ export default function TeacherLibraryPage() {
   };
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 relative">
+    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 relative overflow-x-hidden">
       <MaterialEditSheet
         isOpen={Boolean(editingMaterialId)}
         onClose={() => {
@@ -318,7 +341,10 @@ export default function TeacherLibraryPage() {
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
         onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
-        onRetry={async (id) => { await retryMaterialIngestion({ materialId: id as never } as never); }}
+        onRetry={async (id) => {
+          const material = materials.find((candidate) => candidate._id === id);
+          if (material) await handleRetryMaterial(material);
+        }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}
@@ -330,7 +356,7 @@ export default function TeacherLibraryPage() {
         isOpen={isMobilePreviewOpen}
         onClose={() => setIsMobilePreviewOpen(false)}
         title="Material Insight"
-        description="Inspect and manage this library entry."
+        description="Preview source content and actions."
       >
         {activeMaterial && (
           <MaterialPreviewInspector
@@ -345,7 +371,9 @@ export default function TeacherLibraryPage() {
               setIsMobilePreviewOpen(false);
             }}
             onClose={() => setIsMobilePreviewOpen(false)}
-            className="-mx-6 -mb-6 h-[calc(100vh-8rem)]"
+            onRetry={async () => { await handleRetryMaterial(activeMaterial); }}
+            variant="sheet"
+            className="-mx-6 -mb-6 h-[calc(100vh-7rem)]"
           />
         )}
       </TeacherSheet>
@@ -379,6 +407,7 @@ export default function TeacherLibraryPage() {
               onToggleSelection={() => handleToggleSelection(previewMaterial._id)}
               onEdit={() => setEditingMaterialId(previewMaterial._id)}
               onClose={() => setPreviewMaterialId(null)}
+              onRetry={async () => { await handleRetryMaterial(previewMaterial); }}
             />
           ) : (
             <LibrarySidebar {...sidebarProps} />
@@ -386,7 +415,7 @@ export default function TeacherLibraryPage() {
         </aside>
 
         {/* Main Resource Catalog */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-10">
+        <main className="flex-1 lg:h-full lg:overflow-y-auto overflow-x-hidden custom-scrollbar p-4 md:p-8 lg:p-10">
           <div className="max-w-[1200px] mx-auto space-y-8 lg:space-y-12">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-1">
@@ -413,8 +442,8 @@ export default function TeacherLibraryPage() {
             <div className="space-y-6 lg:space-y-8">
               {/* Toolbar */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-200/60 pb-6">
-                 <div className="space-y-1.5">
-                   <h3 className="font-display text-lg lg:text-xl font-black tracking-tight text-slate-950 uppercase">
+                 <div className="space-y-1.5 min-w-0">
+                   <h3 className="font-display text-lg lg:text-xl font-black tracking-tight text-slate-950 uppercase truncate">
                      {searchQuery ? "Search Results" : "Live Library"}
                    </h3>
                    <div className="flex items-center gap-2">
@@ -425,8 +454,8 @@ export default function TeacherLibraryPage() {
                    </div>
                  </div>
                  
-                 <div className="flex gap-3">
-                    <div className="relative w-full sm:w-72">
+                 <div className="flex gap-2.5 sm:gap-3 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:w-72">
                       <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
                       <input
                         value={searchQuery}
@@ -438,7 +467,7 @@ export default function TeacherLibraryPage() {
                     {/* Mobile Filters Toggle */}
                     <button 
                       onClick={() => setIsMobileFiltersOpen(true)}
-                      className="lg:hidden h-11 w-11 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-950 shadow-sm"
+                      className="lg:hidden h-11 w-11 shrink-0 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-950 shadow-sm"
                     >
                       <Filter className="h-4 w-4" />
                     </button>
@@ -447,7 +476,7 @@ export default function TeacherLibraryPage() {
 
               {/* Resource Grid */}
               {filteredMaterials.length > 0 ? (
-                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid w-full gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredMaterials.map((m) => (
                     <MaterialCard
                       key={m._id}
@@ -456,6 +485,7 @@ export default function TeacherLibraryPage() {
                       isSelectedAsSource={selectedSourceIdSet.has(m._id)}
                       onSelect={() => handleToggleSelection(m._id)}
                       onInspect={() => handleOpenPreview(m._id)}
+                      isSelectionMode={isSelectionMode}
                     />
                   ))}
                 </div>

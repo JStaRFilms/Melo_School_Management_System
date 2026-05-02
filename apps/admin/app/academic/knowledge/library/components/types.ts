@@ -88,6 +88,7 @@ export interface KnowledgeMaterialSourceProof {
   originalFileNotice: string | null;
   extractedTextPreview: string | null;
   extractedTextChunkCount: number;
+  indexedPageSummary: string | null;
 }
 
 export interface KnowledgeLibraryMaterialDetail extends KnowledgeLibraryMaterialListItem {

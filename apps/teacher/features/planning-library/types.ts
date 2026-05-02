@@ -25,7 +25,7 @@ export interface TeacherLibraryMaterial {
   reviewStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
   processingStatus: "awaiting_upload" | "queued" | "extracting" | "ocr_needed" | "ready" | "failed";
   searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
-  subjectId: string;
+  subjectId: string | null;
   subjectName: string;
   subjectCode: string;
   level: string;
@@ -40,6 +40,8 @@ export interface TeacherLibraryMaterial {
   selectedPageRanges: string | null;
   selectedPageNumbers: number[] | null;
   pdfPageCount: number | null;
+  sourceFileMode: "original" | "selected_pages" | null;
+  sourcePdfPageCount: number | null;
   createdAt: number;
   updatedAt: number;
   isOwnedByMe: boolean;
@@ -90,7 +92,7 @@ export interface MaterialDraft {
   materialId: string;
   title: string;
   description: string;
-  subjectId: string;
+  subjectId: string | null;
   level: string;
   topicLabel: string;
   topicId: string | null;

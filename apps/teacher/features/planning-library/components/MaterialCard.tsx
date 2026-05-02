@@ -12,6 +12,7 @@ interface MaterialCardProps {
   isSelectedAsSource: boolean;
   onSelect: () => void;
   onInspect: () => void;
+  isSelectionMode?: boolean;
   className?: string;
 }
 
@@ -21,12 +22,23 @@ export function MaterialCard({
   isSelectedAsSource,
   onSelect,
   onInspect,
+  isSelectionMode = false,
   className,
 }: MaterialCardProps) {
+  const handlePrimaryAction = () => {
+    if (isSelectionMode) {
+      onSelect();
+      return;
+    }
+
+    onInspect();
+  };
+
   const handlePrimaryKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      onSelect();
+      handlePrimaryAction();
     }
   };
 
@@ -35,11 +47,11 @@ export function MaterialCard({
       id={`material-${material._id}`}
       role="button"
       tabIndex={0}
-      aria-pressed={isSelected || isSelectedAsSource}
-      onClick={onSelect}
+      aria-pressed={isSelectionMode ? isSelectedAsSource : isSelected}
+      onClick={handlePrimaryAction}
       onKeyDown={handlePrimaryKeyDown}
       className={cn(
-        "group relative flex flex-col gap-3 rounded-xl border p-3.5 transition-all cursor-pointer",
+        "group relative flex flex-col gap-3 rounded-xl border p-3.5 transition-all cursor-pointer min-w-0",
         isSelectedAsSource
           ? "border-emerald-300 bg-emerald-50/30 shadow-md ring-2 ring-emerald-500/10"
           : isSelected
@@ -76,17 +88,20 @@ export function MaterialCard({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onInspect();
-          }}
-          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
-          aria-label={`Inspect ${material.title}`}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
+        {isSelectionMode && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onInspect();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
+            aria-label={`Inspect ${material.title}`}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5">

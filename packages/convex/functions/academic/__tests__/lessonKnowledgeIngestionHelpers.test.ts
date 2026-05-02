@@ -6,7 +6,9 @@ import {
   assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
   buildKnowledgeMaterialSearchText,
+  chunkKnowledgeMaterialPages,
   chunkKnowledgeMaterialText,
+  parsePdfPageRanges,
   MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
@@ -49,15 +51,15 @@ function buildBlankPdfBuffer() {
   return Buffer.from(header + objects.join("") + xref, "latin1");
 }
 
-function createGeminiSuccessFetch(text: string) {
+function createOpenRouterSuccessFetch(text: string) {
   return async () =>
     ({
       ok: true,
       json: async () => ({
-        candidates: [
+        choices: [
           {
-            content: {
-              parts: [{ text }],
+            message: {
+              content: text,
             },
           },
         ],
@@ -195,6 +197,35 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(labels).toContain("Road");
   });
 
+  it("parses advanced PDF page range selections", () => {
+    expect(parsePdfPageRanges("1")).toEqual([1]);
+    expect(parsePdfPageRanges("1-5")).toEqual([1, 2, 3, 4, 5]);
+    expect(parsePdfPageRanges("1-5,7-8,70-72")).toEqual([1, 2, 3, 4, 5, 7, 8, 70, 71, 72]);
+    expect(parsePdfPageRanges(" 1 - 3 , 5, 3 ")).toEqual([1, 2, 3, 5]);
+
+    expect(() => parsePdfPageRanges("0")).toThrowError();
+    expect(() => parsePdfPageRanges("8-7")).toThrowError();
+    expect(() => parsePdfPageRanges("1,,3")).toThrowError();
+    expect(() => parsePdfPageRanges("abc")).toThrowError();
+    expect(() => parsePdfPageRanges("1.5")).toThrowError();
+  });
+
+  it("builds page-aware chunks with exact source pages", () => {
+    const chunks = chunkKnowledgeMaterialPages(
+      [
+        { pageNumber: 1, text: "Community safety starts with clean homes and roads." },
+        { pageNumber: 2, text: "Teachers explain road signs and safe crossing." },
+        { pageNumber: 7, text: "Emergency helpers protect the community." },
+      ],
+      { chunkSize: 80, maxChunks: 4 }
+    );
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0].pageStart).toBe(1);
+    expect(chunks[0].pageNumbers).toContain(1);
+    expect(chunks.some((chunk) => chunk.pageNumbers.includes(7))).toBe(true);
+  });
+
   it("accepts only YouTube urls for link registration", () => {
     expect(assertYouTubeUrl("https://www.youtube.com/watch?v=abc123")).toContain("youtube.com");
     expect(() => assertYouTubeUrl("https://example.com/video")).toThrowError(
@@ -202,7 +233,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     );
   });
 
-  it("reads a digital PDF with the parser before Gemini fallback", async () => {
+  it("reads a digital PDF with the native parser", async () => {
     const samplePdf = readFileSync(
       new URL(
         "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
@@ -212,9 +243,6 @@ describe("lessonKnowledgeIngestionHelpers", () => {
 
     const result = await extractReadableTextFromBuffer(samplePdf, {
       contentType: "application/pdf",
-      fetchImpl: async () => {
-        throw new Error("Gemini fallback should not be called for a readable PDF");
-      },
     });
 
     expect(result.status).toBe("ready");
@@ -223,49 +251,26 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.errorMessage).toBeNull();
   });
 
-  it("classifies scanned-like PDFs honestly when Gemini is unavailable", async () => {
+  it("classifies scanned-like PDFs as needing provider-backed OCR", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      fetchImpl: async () => {
-        throw new Error("Gemini fallback should not be called without an API key");
-      },
     });
 
     expect(result.status).toBe("ocr_needed");
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
-    expect(result.errorMessage).toContain("Gemini fallback is not configured");
+    expect(result.errorMessage).toContain("Provider-backed OCR is needed");
   });
 
-  it("fails without hanging when Gemini fallback never resolves", async () => {
-    const startedAt = Date.now();
-
+  it("keeps selected-page scanned PDFs in the OCR-needed path", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      geminiApiKey: "test-key",
-      fetchImpl: createHangingFetch(),
-      geminiTimeoutMs: 25,
-    });
-
-    const elapsedMs = Date.now() - startedAt;
-
-    expect(elapsedMs).toBeLessThan(1000);
-    expect(result.status).toBe("ocr_needed");
-    expect(result.extractionPath).toBe("gemini");
-    expect(result.errorMessage).toContain("timed out");
-  });
-
-  it("returns a clear OCR-needed status when Gemini fallback is rate-limited", async () => {
-    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
-      contentType: "application/pdf",
-      geminiApiKey: "test-key",
-      fetchImpl: createRateLimitedFetch(),
+      selectedPageNumbers: [1],
     });
 
     expect(result.status).toBe("ocr_needed");
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
-    expect(result.errorMessage).toContain("HTTP 429");
-    expect(result.errorMessage).toContain("OCR");
+    expect(result.errorMessage).toContain("Provider-backed OCR is needed");
   });
 });

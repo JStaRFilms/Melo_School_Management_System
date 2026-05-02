@@ -155,6 +155,10 @@ const knowledgeAuditEventTypeValidator = v.union(
   v.literal("ingestion_started"),
   v.literal("extraction_completed"),
   v.literal("ocr_needed"),
+  v.literal("ocr_requested"),
+  v.literal("ocr_started"),
+  v.literal("ocr_succeeded"),
+  v.literal("ocr_failed"),
   v.literal("ingestion_failed"),
   v.literal("retry_requested")
 );
@@ -171,6 +175,7 @@ const rateLimitActionValidator = v.union(
   v.literal("knowledge_material_upload_url"),
   v.literal("knowledge_material_link_registration"),
   v.literal("knowledge_material_ingestion_retry"),
+  v.literal("knowledge_material_ocr_retry"),
   v.literal("portal_supplemental_upload_url")
 );
 
@@ -1149,7 +1154,7 @@ export default defineSchema({
     reviewStatus: knowledgeReviewStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.id("subjects")),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
@@ -1163,6 +1168,11 @@ export default defineSchema({
     labelSuggestions: v.array(v.string()),
     chunkCount: v.number(),
     indexedAt: v.union(v.number(), v.null()),
+    selectedPageRanges: v.optional(v.string()),
+    selectedPageNumbers: v.optional(v.array(v.number())),
+    pdfPageCount: v.optional(v.number()),
+    sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
+    sourcePdfPageCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
@@ -1228,6 +1238,36 @@ export default defineSchema({
     ])
     .index("by_school_and_binding_purpose", ["schoolId", "bindingPurpose"]),
 
+  knowledgeOcrJobs: defineTable({
+    schoolId: v.id("schools"),
+    materialId: v.id("knowledgeMaterials"),
+    storageId: v.id("_storage"),
+    requestedByUserId: v.id("users"),
+    provider: v.union(v.literal("openrouter_mistral_ocr"), v.literal("mistral")),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    attempt: v.number(),
+    maxAttempts: v.number(),
+    selectedPageRanges: v.optional(v.string()),
+    selectedPageNumbers: v.optional(v.array(v.number())),
+    providerJobId: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_material_and_status", ["materialId", "status"]),
+
   knowledgeMaterialChunks: defineTable({
     schoolId: v.id("schools"),
     materialId: v.id("knowledgeMaterials"),
@@ -1239,6 +1279,9 @@ export default defineSchema({
     reviewStatus: knowledgeReviewStatusValidator,
     searchStatus: knowledgeSearchStatusValidator,
     tokenEstimate: v.optional(v.number()),
+    pageStart: v.optional(v.number()),
+    pageEnd: v.optional(v.number()),
+    pageNumbers: v.optional(v.array(v.number())),
     chunkHash: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),

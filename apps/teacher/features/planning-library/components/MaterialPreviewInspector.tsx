@@ -27,6 +27,8 @@ interface MaterialPreviewInspectorProps {
   onToggleSelection: () => void;
   onEdit: () => void;
   onClose: () => void;
+  onRetry?: () => void;
+  variant?: "default" | "sheet";
   className?: string;
 }
 
@@ -48,8 +50,11 @@ export function MaterialPreviewInspector({
   onToggleSelection,
   onEdit,
   onClose,
+  onRetry,
+  variant = "default",
   className,
 }: MaterialPreviewInspectorProps) {
+  const isSheetVariant = variant === "sheet";
   if (!material) {
     return (
       <aside className={cn("flex h-full flex-col items-center justify-center bg-surface-200 p-8", className)}>
@@ -75,61 +80,107 @@ export function MaterialPreviewInspector({
       proof?.originalFileContentType &&
       (proof.originalFileContentType.startsWith("image/") || isSupportedUploadContentType(proof.originalFileContentType))
   );
+  const hasTrimmedSourcePdf = material.sourceFileMode === "selected_pages";
+  const isTrimmingSelectedPdf = Boolean(
+    material.selectedPageRanges &&
+      !hasTrimmedSourcePdf &&
+      (material.processingStatus === "queued" || material.processingStatus === "extracting")
+  );
+  const previewKey = [
+    material._id,
+    material.sourceFileMode ?? "original",
+    material.sourcePdfPageCount ?? "unknown-pages",
+    material.processingStatus,
+    originalUrl ?? "no-url",
+  ].join(":" );
 
   return (
     <aside className={cn("flex h-full flex-col bg-surface-200", className)}>
       {/* ── Sticky Header: Identity + Close ── */}
-      <div className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/90 backdrop-blur-md px-6 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
-                <FileText className="h-4 w-4" />
+      {!isSheetVariant && (
+        <div className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/90 backdrop-blur-md px-6 py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  {material.subjectCode || material.subjectName} · {material.level}
+                </p>
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {material.subjectCode || material.subjectName} · {material.level}
-              </p>
+              <h2 className="font-display text-lg font-black tracking-tight text-slate-950 leading-tight line-clamp-2">
+                {material.title}
+              </h2>
             </div>
-            <h2 className="font-display text-lg font-black tracking-tight text-slate-950 leading-tight line-clamp-2">
-              {material.title}
-            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:text-slate-950 hover:border-slate-300"
+              aria-label="Close preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:text-slate-950 hover:border-slate-300"
-            aria-label="Close preview"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        {/* Badges – inline with header */}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
-            {statusLabel(material.visibility)}
-          </span>
-          <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
-            {statusLabel(material.processingStatus)}
-          </span>
-          {material.reviewStatus !== "approved" && (
-            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
-              {statusLabel(material.reviewStatus)}
+          {/* Badges – inline with header */}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
+              {statusLabel(material.visibility)}
             </span>
-          )}
+            <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
+              {statusLabel(material.processingStatus)}
+            </span>
+            {material.reviewStatus !== "approved" && (
+              <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
+                {statusLabel(material.reviewStatus)}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Scrollable Body ── */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {isSheetVariant && (
+          <div className="border-b border-slate-100 bg-white px-4 py-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  {material.subjectCode || material.subjectName} · {material.level}
+                </p>
+                <h2 className="mt-1 font-display text-base font-black leading-tight tracking-tight text-slate-950 line-clamp-2">
+                  {material.title}
+                </h2>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("visibility", material.visibility))}>
+                    {statusLabel(material.visibility)}
+                  </span>
+                  <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("processing", material.processingStatus))}>
+                    {statusLabel(material.processingStatus)}
+                  </span>
+                  {material.reviewStatus !== "approved" && (
+                    <span className={cn("inline-flex h-5 items-center rounded-md border px-1.5 text-[9px] font-black uppercase tracking-[0.12em]", badgeTone("review", material.reviewStatus))}>
+                      {statusLabel(material.reviewStatus)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Inline Metadata */}
-        <div className="border-b border-slate-100 px-6 py-4 space-y-2.5">
+        <div className={cn("border-b border-slate-100 space-y-2.5", isSheetVariant ? "px-4 py-3" : "px-6 py-4")}>
           <MetaRow icon={<User className="h-3.5 w-3.5" />} label="Owner" value={material.ownerName} />
           <MetaRow icon={<Clock className="h-3.5 w-3.5" />} label="Added" value={formatTimestamp(material.createdAt)} />
           <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Topic" value={material.topicTitle ?? material.topicLabel} />
           <MetaRow icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Index" value={`${material.chunkCount} chunks indexed`} />
           {material.selectedPageRanges && (
-            <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Indexed pages" value={`${material.selectedPageRanges}${material.pdfPageCount ? ` of ${material.pdfPageCount}` : ""}`} />
+            <MetaRow icon={<Layers className="h-3.5 w-3.5" />} label="Indexed pages" value={`Pages ${material.selectedPageRanges}${material.pdfPageCount ? ` from ${material.pdfPageCount}-page PDF` : ""}`} />
           )}
           {material.description && (
             <p className="pt-2 text-[12px] font-medium leading-relaxed text-slate-500">{material.description}</p>
@@ -147,11 +198,32 @@ export function MaterialPreviewInspector({
 
           {canMiniPreview ? (
             <div className="bg-slate-50 border-t border-slate-100">
+              {material.selectedPageRanges && (
+                <div className={cn(
+                  "border-b px-6 py-2 text-[10px] font-bold leading-relaxed",
+                  hasTrimmedSourcePdf
+                    ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+                    : "border-amber-100 bg-amber-50 text-amber-800"
+                )}>
+                  {hasTrimmedSourcePdf
+                    ? `Preview is the trimmed source PDF for selected pages ${material.selectedPageRanges}.`
+                    : isTrimmingSelectedPdf
+                      ? `Trimming the stored PDF to selected pages ${material.selectedPageRanges}. The preview will refresh automatically.`
+                      : `Selected pages ${material.selectedPageRanges} were indexed, but this stored PDF has not been trimmed yet. Retry ingestion to convert it.`}
+                </div>
+              )}
               {proof?.originalFileContentType?.startsWith("image/") ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={originalUrl ?? undefined} alt={`Preview of ${material.title}`} className="max-h-72 w-full object-contain" />
+                <img key={previewKey} src={originalUrl ?? undefined} alt={`Preview of ${material.title}`} className="max-h-72 w-full object-contain" />
+              ) : isTrimmingSelectedPdf ? (
+                <div className="flex h-72 flex-col items-center justify-center gap-3 bg-white text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                  <p className="max-w-[220px] text-[11px] font-bold leading-relaxed text-slate-500">
+                    Preparing the trimmed PDF preview. This will update when processing completes.
+                  </p>
+                </div>
               ) : (
-                <iframe title={`Preview of ${material.title}`} src={originalUrl ?? undefined} className="h-72 w-full bg-white" />
+                <iframe key={previewKey} title={`Preview of ${material.title}`} src={originalUrl ?? undefined} className="h-72 w-full bg-white" />
               )}
             </div>
           ) : !isSourceProofLoading && proof && proof.originalFileState !== "available" ? (
@@ -207,8 +279,18 @@ export function MaterialPreviewInspector({
               className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-slate-800 shadow-md shadow-slate-950/10"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              Open Original
+              {material.selectedPageRanges && hasTrimmedSourcePdf ? "Open Trimmed PDF" : "Open Original"}
             </a>
+          )}
+          {material.selectedPageRanges && !hasTrimmedSourcePdf && !isTrimmingSelectedPdf && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-[0.15em] text-amber-700 transition hover:bg-amber-100"
+            >
+              <Loader2 className="h-3.5 w-3.5" />
+              Trim Stored PDF
+            </button>
           )}
           <div className="grid grid-cols-2 gap-2">
             <button

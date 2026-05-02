@@ -121,7 +121,7 @@ const sourceValidator = v.object({
     v.literal("indexed"),
     v.literal("failed")
   ),
-  subjectId: v.id("subjects"),
+  subjectId: v.union(v.id("subjects"), v.null()),
   subjectName: v.string(),
   subjectCode: v.string(),
   level: v.string(),
@@ -293,7 +293,7 @@ type WorkspaceSource = {
   reviewStatus: Doc<"knowledgeMaterials">["reviewStatus"];
   processingStatus: Doc<"knowledgeMaterials">["processingStatus"];
   searchStatus: Doc<"knowledgeMaterials">["searchStatus"];
-  subjectId: Id<"subjects">;
+  subjectId: Id<"subjects"> | null;
   subjectName: string;
   subjectCode: string;
   level: string;
@@ -792,7 +792,7 @@ async function loadSources(
     reviewStatus: Doc<"knowledgeMaterials">["reviewStatus"];
     processingStatus: Doc<"knowledgeMaterials">["processingStatus"];
     searchStatus: Doc<"knowledgeMaterials">["searchStatus"];
-    subjectId: Id<"subjects">;
+    subjectId: Id<"subjects"> | null;
     subjectName: string;
     subjectCode: string;
     level: string;
@@ -839,29 +839,32 @@ async function loadSources(
       reviewStatus: row.reviewStatus,
       processingStatus: row.processingStatus,
       searchStatus: row.searchStatus,
-      subjectId: row.subjectId,
+      subjectId: row.subjectId ?? null,
       subjectName: "",
       subjectCode: "",
       level: row.level,
       topicLabel: row.topicLabel,
       canUseAsLessonSource: true,
     });
-    subjectIds.add(String(row.subjectId));
+    if (row.subjectId) subjectIds.add(String(row.subjectId));
   }
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
   const selectedSources: WorkspaceSource[] = accessibleRows.map((row) => {
-    const subject = subjectMap.get(String(row.subjectId));
+    const subject = row.subjectId ? subjectMap.get(String(row.subjectId)) : null;
     return {
       ...row,
-      subjectName: subject ? normalizeHumanName(subject.name) : "Unknown subject",
+      subjectName: subject ? normalizeHumanName(subject.name) : "General material",
       subjectCode: subject?.code ?? "",
     };
   });
 
-  const contextSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? selectedSources[0] ?? null;
-  const topicSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? null;
+  const contextSource =
+    selectedSources.find((source) => source.subjectId !== null && source.sourceType !== "imported_curriculum") ??
+    selectedSources.find((source) => source.subjectId !== null) ??
+    null;
+  const topicSource = selectedSources.find((source) => source.subjectId !== null && source.sourceType !== "imported_curriculum") ?? null;
   const sourceContext = contextSource
     ? {
         subjectId: contextSource.subjectId,

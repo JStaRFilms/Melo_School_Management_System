@@ -83,6 +83,10 @@ const contentAuditEventTypeValidator = v.union(
   v.literal("ingestion_started"),
   v.literal("extraction_completed"),
   v.literal("ocr_needed"),
+  v.literal("ocr_requested"),
+  v.literal("ocr_started"),
+  v.literal("ocr_succeeded"),
+  v.literal("ocr_failed"),
   v.literal("ingestion_failed"),
   v.literal("retry_requested")
 );
@@ -125,6 +129,10 @@ type ContentAuditEventType =
   | "ingestion_started"
   | "extraction_completed"
   | "ocr_needed"
+  | "ocr_requested"
+  | "ocr_started"
+  | "ocr_succeeded"
+  | "ocr_failed"
   | "ingestion_failed"
   | "retry_requested";
 
@@ -153,7 +161,7 @@ type KnowledgeLibraryListItem = {
   reviewStatus: KnowledgeReviewStatus;
   processingStatus: KnowledgeProcessingStatus;
   searchStatus: KnowledgeMaterialDoc["searchStatus"];
-  subjectId: Id<"subjects">;
+  subjectId: Id<"subjects"> | null;
   subjectName: string;
   level: string;
   topicLabel: string;
@@ -193,6 +201,7 @@ type KnowledgeLibraryDetailResponse = {
       originalFileNotice: string | null;
       extractedTextPreview: string | null;
       extractedTextChunkCount: number;
+      indexedPageSummary: string | null;
     };
   };
   storage: {
@@ -261,8 +270,8 @@ function mapKnowledgeMaterialListItem(args: {
     reviewStatus: args.material.reviewStatus,
     processingStatus: args.material.processingStatus,
     searchStatus: args.material.searchStatus,
-    subjectId: args.material.subjectId,
-    subjectName: args.subject ? normalizeHumanName(args.subject.name) : "Unknown subject",
+    subjectId: args.material.subjectId ?? null,
+    subjectName: args.subject ? normalizeHumanName(args.subject.name) : "General material",
     level: args.material.level,
     topicLabel: args.material.topicLabel,
     topicId: args.material.topicId ?? null,
@@ -365,7 +374,14 @@ async function readMaterialList(
   });
 
   const ownerIds = [...new Set(sortedRows.map((material) => String(material.ownerUserId)))];
-  const subjectIds = [...new Set(sortedRows.map((material) => String(material.subjectId)))];
+  const subjectIds = [
+    ...new Set(
+      sortedRows
+        .map((material) => material.subjectId)
+        .filter((subjectId): subjectId is Id<"subjects"> => subjectId !== undefined && subjectId !== null)
+        .map((subjectId) => String(subjectId))
+    ),
+  ];
 
   const [owners, subjects] = await Promise.all([
     Promise.all(ownerIds.map((id) => ctx.db.get(id as Id<"users">))),
@@ -381,7 +397,7 @@ async function readMaterialList(
     mapKnowledgeMaterialListItem({
       material,
       owner: ownerMap.get(String(material.ownerUserId)) ?? null,
-      subject: subjectMap.get(String(material.subjectId)) ?? null,
+      subject: material.subjectId ? (subjectMap.get(String(material.subjectId)) ?? null) : null,
     })
   );
 }
@@ -752,7 +768,7 @@ export const listAdminKnowledgeMaterials = query({
           v.literal("indexed"),
           v.literal("failed")
         ),
-        subjectId: v.id("subjects"),
+        subjectId: v.union(v.id("subjects"), v.null()),
         subjectName: v.string(),
         level: v.string(),
         topicLabel: v.string(),
@@ -824,7 +840,7 @@ export const getAdminKnowledgeMaterial = query({
         v.literal("failed")
       ),
       schoolId: v.id("schools"),
-      subjectId: v.id("subjects"),
+      subjectId: v.union(v.id("subjects"), v.null()),
       subjectName: v.string(),
       subjectCode: v.union(v.string(), v.null()),
       level: v.string(),
@@ -896,7 +912,7 @@ export const getAdminKnowledgeMaterial = query({
 
     const [owner, subject, storageMeta, classBindings, auditEvents, sourceProof] = await Promise.all([
       ctx.db.get(material.ownerUserId),
-      ctx.db.get(material.subjectId),
+      material.subjectId ? ctx.db.get(material.subjectId) : Promise.resolve(null),
       material.storageId ? ctx.db.system.get("_storage", material.storageId) : Promise.resolve(null),
       ctx.db
         .query("knowledgeMaterialClassBindings")
@@ -932,7 +948,7 @@ export const getAdminKnowledgeMaterial = query({
         updatedBy: material.updatedBy,
         searchText: material.searchText,
         ownerEmail: owner ? owner.email ?? null : null,
-        subjectCode: subject ? subject.code ?? null : null,
+        subjectCode: subject && "code" in subject ? subject.code ?? null : null,
         sourceProof,
       },
       storage: storageMeta

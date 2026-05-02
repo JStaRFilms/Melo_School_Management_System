@@ -1,11 +1,13 @@
 "use node";
 
 import { ConvexError, v } from "convex/values";
+import { PDFDocument } from "pdf-lib";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
   buildKnowledgeMaterialSearchText,
   buildMaterialSearchSeed,
+  chunkKnowledgeMaterialPages,
   chunkKnowledgeMaterialText,
   estimateKnowledgeMaterialTokens,
   suggestKnowledgeMaterialLabels,
@@ -20,6 +22,30 @@ function buildSourceText(args: KnowledgeMaterialIngestionSnapshot) {
     description: args.description,
     externalUrl: args.externalUrl,
   });
+}
+
+async function buildSelectedPagesPdfBuffer(args: {
+  buffer: Buffer;
+  selectedPageNumbers: number[];
+}) {
+  const sourcePdf = await PDFDocument.load(new Uint8Array(args.buffer), { ignoreEncryption: true });
+  const pageCount = sourcePdf.getPageCount();
+  const invalidPage = args.selectedPageNumbers.find((pageNumber) => pageNumber < 1 || pageNumber > pageCount);
+  if (invalidPage !== undefined) {
+    throw new ConvexError(`Selected page ${invalidPage} is outside this PDF's ${pageCount} pages.`);
+  }
+
+  const outputPdf = await PDFDocument.create();
+  const copiedPages = await outputPdf.copyPages(
+    sourcePdf,
+    args.selectedPageNumbers.map((pageNumber) => pageNumber - 1)
+  );
+  for (const page of copiedPages) {
+    outputPdf.addPage(page);
+  }
+
+  const bytes = await outputPdf.save();
+  return Buffer.from(bytes);
 }
 
 async function processExternalLink(args: KnowledgeMaterialIngestionSnapshot) {
@@ -84,12 +110,15 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     ),
     title: v.string(),
     description: v.optional(v.string()),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.id("subjects")),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
     storageId: v.optional(v.id("_storage")),
     storageContentType: v.optional(v.string()),
+    selectedPageRanges: v.optional(v.string()),
+    selectedPageNumbers: v.optional(v.array(v.number())),
+    sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     externalUrl: v.optional(v.string()),
     searchText: v.string(),
     processingStatus: v.union(
@@ -137,10 +166,47 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      const extracted = await extractReadableTextFromBuffer(buffer, {
+      let extractionBuffer = buffer;
+      let extractionSelectedPageNumbers =
+        args.sourceFileMode === "selected_pages" ? undefined : args.selectedPageNumbers;
+
+      if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
+        const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
+          buffer,
+          selectedPageNumbers: args.selectedPageNumbers,
+        });
+        extractionBuffer = selectedPdfBuffer;
+        extractionSelectedPageNumbers = undefined;
+
+        const selectedStorageId = await ctx.storage.store(
+          new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
+        );
+        await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
+          materialId: args.materialId,
+          schoolId: args.schoolId,
+          previousStorageId: args.storageId,
+          nextStorageId: selectedStorageId,
+          actorUserId: args.ownerUserId,
+          sourcePdfPageCount: args.selectedPageNumbers.length,
+        });
+      }
+
+      const extracted = await extractReadableTextFromBuffer(extractionBuffer, {
         contentType: args.storageContentType,
-        geminiApiKey: process.env.GEMINI_API_KEY?.trim() || undefined,
+        selectedPageNumbers: extractionSelectedPageNumbers,
       });
+      const extractedPages =
+        extracted.status === "ready" &&
+        extracted.pages?.length &&
+        args.selectedPageNumbers?.length === extracted.pages.length &&
+        extractionSelectedPageNumbers === undefined
+          ? extracted.pages.map((page, index) => ({
+              ...page,
+              pageNumber: args.selectedPageNumbers![index],
+            }))
+          : extracted.status === "ready"
+            ? extracted.pages
+            : undefined;
 
       const labels = suggestKnowledgeMaterialLabels({
         title: args.title,
@@ -159,14 +225,29 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       ]);
       const chunks =
         extracted.status === "ready"
-          ? chunkKnowledgeMaterialText(extracted.text, {
-              chunkSize: 1200,
-              maxChunks: 24,
-            }).map((chunkText, index) => ({
-              chunkIndex: index,
-              chunkText,
-              tokenEstimate: estimateKnowledgeMaterialTokens(chunkText),
-            }))
+          ? extractedPages?.length
+            ? chunkKnowledgeMaterialPages(extractedPages, {
+                chunkSize: 1200,
+                maxChunks: 24,
+              }).map((chunk) => ({
+                ...chunk,
+                tokenEstimate: estimateKnowledgeMaterialTokens(chunk.chunkText),
+              }))
+            : chunkKnowledgeMaterialText(extracted.text, {
+                chunkSize: 1200,
+                maxChunks: 24,
+              }).map((chunkText, index) => ({
+                chunkIndex: index,
+                chunkText,
+                tokenEstimate: estimateKnowledgeMaterialTokens(chunkText),
+                ...(args.selectedPageNumbers?.length
+                  ? {
+                      pageStart: Math.min(...args.selectedPageNumbers),
+                      pageEnd: Math.max(...args.selectedPageNumbers),
+                      pageNumbers: args.selectedPageNumbers,
+                    }
+                  : {}),
+              }))
           : [];
 
       await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.applyKnowledgeMaterialIngestionResultInternal, {
@@ -178,6 +259,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         searchText,
         labelSuggestions: labels,
         chunks,
+        ...(extracted.pageCount !== undefined ? { pdfPageCount: extracted.pageCount } : {}),
         ingestionErrorMessage: extracted.errorMessage,
       });
 

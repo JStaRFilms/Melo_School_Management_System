@@ -15,6 +15,8 @@ import {
   buildMaterialSearchSeed,
   canManageKnowledgeMaterial,
   normalizeKnowledgeMaterialText,
+  normalizePdfPageRangeInput,
+  parsePdfPageRanges,
   resolveKnowledgeMaterialDefaults,
   suggestKnowledgeMaterialLabels,
   MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
@@ -40,6 +42,10 @@ const knowledgeAuditEventTypeValidator = v.union(
   v.literal("ingestion_started"),
   v.literal("extraction_completed"),
   v.literal("ocr_needed"),
+  v.literal("ocr_requested"),
+  v.literal("ocr_started"),
+  v.literal("ocr_succeeded"),
+  v.literal("ocr_failed"),
   v.literal("ingestion_failed"),
   v.literal("retry_requested")
 );
@@ -89,11 +95,16 @@ type MaterialState = {
   reviewStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
   title: string;
   description?: string;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
   level: string;
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
   storageId?: Id<"_storage">;
+  selectedPageRanges?: string;
+  selectedPageNumbers?: number[];
+  pdfPageCount?: number;
+  sourceFileMode?: "original" | "selected_pages";
+  sourcePdfPageCount?: number;
   externalUrl?: string;
   searchStatus: "not_indexed" | "indexing" | "indexed" | "failed";
   searchText: string;
@@ -157,11 +168,13 @@ function buildKnowledgeMaterialRecord(args: {
   sourceType: "file_upload" | "youtube_link" | "imported_curriculum";
   title: string;
   description?: string;
-  subjectId: Id<"subjects">;
+  subjectId?: Id<"subjects">;
   level: string;
   topicLabel: string;
   topicId?: Id<"knowledgeTopics">;
   externalUrl?: string;
+  selectedPageRanges?: string;
+  selectedPageNumbers?: number[];
   uploadIntent?: KnowledgeMaterialUploadIntent;
   defaultsMode?: "actor_default" | "private_first";
 }) {
@@ -200,11 +213,13 @@ function buildKnowledgeMaterialRecord(args: {
     reviewStatus: defaults.reviewStatus,
     title: args.title,
     ...(args.description ? { description: args.description } : {}),
-    subjectId: args.subjectId,
+    ...(args.subjectId ? { subjectId: args.subjectId } : {}),
     level: args.level,
     topicLabel: args.topicLabel,
     ...(args.topicId ? { topicId: args.topicId } : {}),
     ...(args.externalUrl ? { externalUrl: args.externalUrl } : {}),
+    ...(args.selectedPageRanges ? { selectedPageRanges: args.selectedPageRanges } : {}),
+    ...(args.selectedPageNumbers?.length ? { selectedPageNumbers: args.selectedPageNumbers } : {}),
     searchStatus: "not_indexed" as const,
     searchText,
     processingStatus: defaults.processingStatus,
@@ -328,7 +343,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.union(v.id("subjects"), v.null())),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
@@ -337,6 +352,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       v.union(v.literal("private_draft"), v.literal("request_review"), v.literal("staff_shared"))
     ),
     defaultsMode: v.optional(v.union(v.literal("actor_default"), v.literal("private_first"))),
+    selectedPageRanges: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.object({
     materialId: v.id("knowledgeMaterials"),
@@ -384,12 +400,19 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       throw new ConvexError("Knowledge material ingestion is restricted to staff");
     }
 
+    if (sourceType !== "imported_curriculum" && !args.subjectId) {
+      throw new ConvexError("Subject is required unless this upload is a curriculum or planning reference");
+    }
+
     await assertActiveKnowledgeSubjectTopicScope(ctx, {
       schoolId,
-      subjectId: args.subjectId,
+      subjectId: args.subjectId ?? null,
       level,
       topicId: args.topicId ?? null,
     });
+
+    const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
+    const selectedPageNumbers = selectedPageRanges ? parsePdfPageRanges(selectedPageRanges) : undefined;
 
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "knowledge_material_upload_url",
@@ -404,10 +427,12 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       sourceType,
       title,
       ...(description ? { description } : {}),
-      subjectId: args.subjectId,
+      ...(args.subjectId ? { subjectId: args.subjectId } : {}),
       level,
       topicLabel,
       ...(args.topicId ? { topicId: args.topicId } : {}),
+      ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      ...(selectedPageNumbers?.length ? { selectedPageNumbers } : {}),
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       defaultsMode: args.defaultsMode,
     });
@@ -493,6 +518,11 @@ export const finalizeKnowledgeMaterialUpload = mutation({
 
     if (!storageMeta) {
       throw new ConvexError("Uploaded file not found");
+    }
+
+    const normalizedContentType = storageMeta.contentType?.toLowerCase() ?? "";
+    if (material.selectedPageNumbers?.length && !normalizedContentType.includes("pdf")) {
+      throw new ConvexError("Page selection is only available for PDF uploads.");
     }
 
     const validationError = (() => {
@@ -685,6 +715,382 @@ export const registerKnowledgeMaterialLink = mutation({
   },
 });
 
+const browserOcrImageContentTypeValidator = v.union(
+  v.literal("image/jpeg"),
+  v.literal("image/png"),
+  v.literal("image/webp")
+);
+
+export const requestKnowledgeMaterialBrowserOcrImageUploadUrls = mutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    pageNumbers: v.array(v.number()),
+    imageContentType: browserOcrImageContentTypeValidator,
+  },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    uploads: v.array(v.object({ pageNumber: v.number(), uploadUrl: v.string() })),
+    maxPages: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!canManageKnowledgeMaterial({ userId, schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("Browser OCR retry is only available for failed or OCR-needed material");
+    }
+    const uniquePageNumbers = Array.from(new Set(args.pageNumbers)).sort((a, b) => a - b);
+    if (uniquePageNumbers.length === 0) {
+      throw new ConvexError("Select at least one page for OCR");
+    }
+    if (uniquePageNumbers.length > 8) {
+      throw new ConvexError("Browser OCR retry supports up to 8 pages at a time");
+    }
+    if (uniquePageNumbers.some((pageNumber) => !Number.isInteger(pageNumber) || pageNumber < 1)) {
+      throw new ConvexError("OCR page numbers must be positive whole numbers");
+    }
+    const actualPageCount = material.pdfPageCount ?? material.sourcePdfPageCount ?? null;
+    if (
+      actualPageCount !== null &&
+      uniquePageNumbers.some((pageNumber) => pageNumber > actualPageCount)
+    ) {
+      throw new ConvexError("OCR image page number exceeds document page count");
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ingestion_retry",
+      schoolId,
+      actorUserId: userId,
+    });
+    const uploads = [];
+    for (const pageNumber of uniquePageNumbers) {
+      uploads.push({ pageNumber, uploadUrl: await ctx.storage.generateUploadUrl() });
+    }
+    return { materialId: args.materialId, uploads, maxPages: 8 };
+  },
+});
+
+export const startKnowledgeMaterialBrowserOcrRetryInternal = internalMutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    actorSubject: v.string(),
+    images: v.array(v.object({
+      storageId: v.id("_storage"),
+      pageNumber: v.number(),
+      contentType: browserOcrImageContentTypeValidator,
+    })),
+  },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    actorRole: teacherOrAdminRoleValidator,
+    ownerUserId: v.id("users"),
+    ownerRole: teacherOrAdminRoleValidator,
+    title: v.string(),
+    description: v.union(v.string(), v.null()),
+    topicLabel: v.string(),
+    visibility: v.union(v.literal("private_owner"), v.literal("staff_shared"), v.literal("class_scoped"), v.literal("student_approved")),
+    reviewStatus: v.union(v.literal("draft"), v.literal("pending_review"), v.literal("approved"), v.literal("rejected"), v.literal("archived")),
+    processingAttemptCount: v.number(),
+    images: v.array(v.object({
+      storageId: v.id("_storage"),
+      pageNumber: v.number(),
+      contentType: browserOcrImageContentTypeValidator,
+    })),
+  }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.query("users").withIndex("by_auth", (q) => q.eq("authId", args.actorSubject)).unique();
+    if (!user || user.isArchived) {
+      throw new ConvexError("Unauthorized");
+    }
+    const actorRole: "admin" | "teacher" = user.role === "admin" || user.isSchoolAdmin === true ? "admin" : "teacher";
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== user.schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!canManageKnowledgeMaterial({ userId: user._id, schoolId: user.schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("Browser OCR retry is only available for failed or OCR-needed material");
+    }
+    if (args.images.length < 1 || args.images.length > 8) {
+      throw new ConvexError("Browser OCR retry supports up to 8 pages at a time");
+    }
+    const seenPages = new Set<number>();
+    const actualPageCount = material.pdfPageCount ?? material.sourcePdfPageCount ?? null;
+    for (const image of args.images) {
+      if (!Number.isInteger(image.pageNumber) || image.pageNumber < 1 || seenPages.has(image.pageNumber)) {
+        throw new ConvexError("OCR image pages must be unique positive whole numbers");
+      }
+      if (actualPageCount !== null && image.pageNumber > actualPageCount) {
+        throw new ConvexError("OCR image page number exceeds document page count");
+      }
+      seenPages.add(image.pageNumber);
+      const metadata = await ctx.db.system.get("_storage", image.storageId);
+      if (!metadata) {
+        throw new ConvexError("OCR image upload was not found");
+      }
+      if (metadata.contentType !== image.contentType) {
+        throw new ConvexError("OCR image content type did not match the uploaded file");
+      }
+      if (!metadata.contentType?.startsWith("image/")) {
+        throw new ConvexError("OCR uploads must be image files");
+      }
+      if (metadata.size > 2_500_000) {
+        throw new ConvexError("Each OCR page image must be 2.5 MB or smaller");
+      }
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ingestion_retry",
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+    });
+
+    const now = Date.now();
+    await ctx.db.patch(args.materialId, {
+      processingStatus: "extracting",
+      searchStatus: "indexing",
+      ingestionErrorMessage: null,
+      ingestionAttemptCount: material.ingestionAttemptCount + 1,
+      updatedAt: now,
+      updatedBy: user._id,
+    });
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+      actorRole,
+      eventType: "retry_requested",
+      entityType: "knowledgeMaterial",
+      materialId: args.materialId,
+      changeSummary: "Retrying ingestion with browser-prepared OCR page images.",
+    });
+    return {
+      materialId: material._id,
+      schoolId: user.schoolId,
+      actorUserId: user._id,
+      actorRole,
+      ownerUserId: material.ownerUserId,
+      ownerRole: material.ownerRole,
+      title: material.title,
+      description: material.description ?? null,
+      topicLabel: material.topicLabel,
+      visibility: material.visibility,
+      reviewStatus: material.reviewStatus,
+      processingAttemptCount: material.ingestionAttemptCount + 1,
+      images: args.images,
+    };
+  },
+});
+
+export const requestKnowledgeMaterialProviderOcr = mutation({
+  args: { materialId: v.id("knowledgeMaterials") },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    jobId: v.id("knowledgeOcrJobs"),
+    processingStatus: v.union(v.literal("queued"), v.literal("extracting")),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+    if (actorRole !== "teacher" && actorRole !== "admin") {
+      throw new ConvexError("Knowledge material OCR is restricted to staff");
+    }
+
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!material.storageId) {
+      throw new ConvexError("This material does not have a stored file to OCR");
+    }
+    if (!canManageKnowledgeMaterial({ userId, schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("OCR can only be queued for OCR-needed or failed material");
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+
+    const queuedJobs = await ctx.db
+      .query("knowledgeOcrJobs")
+      .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "queued"))
+      .collect();
+    const queuedJob = queuedJobs.find((job) => job.storageId === material.storageId);
+    if (queuedJob) {
+      await ctx.db.patch(args.materialId, {
+        processingStatus: "queued",
+        searchStatus: "not_indexed",
+        ingestionErrorMessage: null,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      });
+      return { materialId: args.materialId, jobId: queuedJob._id, processingStatus: "queued" as const };
+    }
+
+    const processingJobs = await ctx.db
+      .query("knowledgeOcrJobs")
+      .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "processing"))
+      .collect();
+    const processingJob = processingJobs.find((job) => job.storageId === material.storageId);
+    if (processingJob) {
+      await ctx.db.patch(args.materialId, {
+        processingStatus: "extracting",
+        searchStatus: "indexing",
+        ingestionErrorMessage: null,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      });
+      return { materialId: args.materialId, jobId: processingJob._id, processingStatus: "extracting" as const };
+    }
+
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ocr_retry",
+      schoolId,
+      actorUserId: userId,
+    });
+
+    const now = Date.now();
+    const jobId = await ctx.db.insert("knowledgeOcrJobs", {
+      schoolId,
+      materialId: args.materialId,
+      storageId: material.storageId,
+      requestedByUserId: userId,
+      provider: "openrouter_mistral_ocr",
+      status: "queued",
+      attempt: material.ingestionAttemptCount + 1,
+      maxAttempts: MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
+      ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
+      ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(args.materialId, {
+      processingStatus: "queued",
+      searchStatus: "not_indexed",
+      ingestionErrorMessage: null,
+      ingestionAttemptCount: material.ingestionAttemptCount + 1,
+      updatedAt: now,
+      updatedBy: userId,
+    });
+
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId,
+      actorUserId: userId,
+      actorRole,
+      eventType: "ocr_requested",
+      entityType: "knowledgeMaterial",
+      materialId: args.materialId,
+      changeSummary: "Queued provider-backed OCR for the stored PDF.",
+    });
+
+    await ctx.scheduler.runAfter(0, internal.functions.academic.lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal, { jobId });
+    return { materialId: args.materialId, jobId, processingStatus: "queued" as const };
+  },
+});
+
+export const startKnowledgeMaterialOcrJobInternal = internalMutation({
+  args: { jobId: v.id("knowledgeOcrJobs") },
+  returns: v.object({
+    jobId: v.id("knowledgeOcrJobs"),
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    storageId: v.id("_storage"),
+    requestedByUserId: v.id("users"),
+    actorRole: teacherOrAdminRoleValidator,
+    title: v.string(),
+    description: v.union(v.string(), v.null()),
+    topicLabel: v.string(),
+    selectedPageNumbers: v.optional(v.array(v.number())),
+  }),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new ConvexError("OCR job not found");
+    if (job.status !== "queued") throw new ConvexError("OCR job is not queued");
+    const material = await ctx.db.get(job.materialId);
+    if (!material || material.schoolId !== job.schoolId) throw new ConvexError("Knowledge material not found");
+    const requester = await ctx.db.get(job.requestedByUserId);
+    if (!requester || requester.schoolId !== job.schoolId || requester.isArchived) throw new ConvexError("OCR requester not found");
+    const actorRole: "admin" | "teacher" = requester.role === "admin" || requester.isSchoolAdmin === true ? "admin" : "teacher";
+    const now = Date.now();
+    await ctx.db.patch(args.jobId, { status: "processing", startedAt: now, updatedAt: now });
+    await ctx.db.patch(job.materialId, { processingStatus: "extracting", searchStatus: "indexing", updatedAt: now, updatedBy: job.requestedByUserId });
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: job.schoolId,
+      actorUserId: job.requestedByUserId,
+      actorRole,
+      eventType: "ocr_started",
+      entityType: "knowledgeMaterial",
+      materialId: job.materialId,
+      changeSummary: "Started provider-backed OCR for the stored PDF.",
+    });
+    return {
+      jobId: job._id,
+      materialId: job.materialId,
+      schoolId: job.schoolId,
+      storageId: job.storageId,
+      requestedByUserId: job.requestedByUserId,
+      actorRole,
+      title: material.title,
+      description: material.description ?? null,
+      topicLabel: material.topicLabel,
+      ...(job.selectedPageNumbers?.length ? { selectedPageNumbers: job.selectedPageNumbers } : {}),
+    };
+  },
+});
+
+export const completeKnowledgeMaterialOcrJobInternal = internalMutation({
+  args: {
+    jobId: v.id("knowledgeOcrJobs"),
+    status: v.union(v.literal("succeeded"), v.literal("failed")),
+    errorCode: v.union(v.string(), v.null()),
+    errorMessage: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new ConvexError("OCR job not found");
+    if (job.status !== "processing") {
+      throw new ConvexError("OCR job is not processing");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.jobId, {
+      status: args.status,
+      completedAt: now,
+      updatedAt: now,
+      ...(args.errorCode ? { errorCode: args.errorCode } : {}),
+      ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+    });
+    const requester = await ctx.db.get(job.requestedByUserId);
+    const actorRole: "admin" | "teacher" = requester?.role === "admin" || requester?.isSchoolAdmin === true ? "admin" : "teacher";
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: job.schoolId,
+      actorUserId: job.requestedByUserId,
+      actorRole,
+      eventType: args.status === "succeeded" ? "ocr_succeeded" : "ocr_failed",
+      entityType: "knowledgeMaterial",
+      materialId: job.materialId,
+      changeSummary: args.status === "succeeded" ? "Provider-backed OCR succeeded." : args.errorMessage ?? "Provider-backed OCR failed.",
+    });
+    return null;
+  },
+});
+
 export const retryKnowledgeMaterialIngestion = mutation({
   args: {
     materialId: v.id("knowledgeMaterials"),
@@ -730,11 +1136,17 @@ export const retryKnowledgeMaterialIngestion = mutation({
     const isStaleExtracting =
       material.processingStatus === "extracting" &&
       now - material.updatedAt >= MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS;
+    const needsSelectedPagePdfTrim =
+      Boolean(material.selectedPageNumbers?.length) && material.sourceFileMode !== "selected_pages";
+    const canTrimSelectedPagePdf =
+      needsSelectedPagePdfTrim &&
+      (material.processingStatus !== "extracting" || isStaleExtracting);
 
     if (
       material.processingStatus !== "ocr_needed" &&
       material.processingStatus !== "failed" &&
-      !isStaleExtracting
+      !isStaleExtracting &&
+      !canTrimSelectedPagePdf
     ) {
       throw new ConvexError("This material does not need a retry");
     }
@@ -766,9 +1178,11 @@ export const retryKnowledgeMaterialIngestion = mutation({
         eventType: "retry_requested",
         entityType: "knowledgeMaterial",
         materialId: args.materialId,
-        changeSummary: isStaleExtracting
-          ? "Retrying a stale knowledge material extraction job."
-          : "Retrying the knowledge material ingestion pipeline.",
+        changeSummary: needsSelectedPagePdfTrim
+          ? "Retrying ingestion to trim the stored PDF to selected pages."
+          : isStaleExtracting
+            ? "Retrying a stale knowledge material extraction job."
+            : "Retrying the knowledge material ingestion pipeline.",
       }
     );
 
@@ -844,12 +1258,15 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       reviewStatus: material.reviewStatus,
       title: material.title,
       ...(material.description ? { description: material.description } : {}),
-      subjectId: material.subjectId,
+      ...(material.subjectId ? { subjectId: material.subjectId } : {}),
       level: material.level,
       topicLabel: material.topicLabel,
       ...(material.topicId ? { topicId: material.topicId } : {}),
       ...(material.storageId ? { storageId: material.storageId } : {}),
       ...(storageMeta?.contentType ? { storageContentType: storageMeta.contentType } : {}),
+      ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
+      ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      ...(material.sourceFileMode ? { sourceFileMode: material.sourceFileMode } : {}),
       ...(material.externalUrl ? { externalUrl: material.externalUrl } : {}),
       searchText: material.searchText,
       processingStatus: "extracting",
@@ -862,6 +1279,41 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       snapshot
     );
 
+    return null;
+  },
+});
+
+export const replaceKnowledgeMaterialStorageInternal = internalMutation({
+  args: {
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    previousStorageId: v.id("_storage"),
+    nextStorageId: v.id("_storage"),
+    actorUserId: v.id("users"),
+    sourcePdfPageCount: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== args.schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!material.storageId || material.storageId !== args.previousStorageId) {
+      throw new ConvexError("Knowledge material storage changed before replacement");
+    }
+    if (args.previousStorageId === args.nextStorageId) {
+      throw new ConvexError("Replacement storage must differ from previous storage");
+    }
+
+    await ctx.db.patch(args.materialId, {
+      storageId: args.nextStorageId,
+      sourceFileMode: "selected_pages",
+      sourcePdfPageCount: args.sourcePdfPageCount,
+      updatedAt: Date.now(),
+      updatedBy: args.actorUserId,
+    });
+
+    await ctx.storage.delete(args.previousStorageId);
     return null;
   },
 });
@@ -884,9 +1336,13 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
         chunkIndex: v.number(),
         chunkText: v.string(),
         tokenEstimate: v.optional(v.number()),
+        pageStart: v.optional(v.number()),
+        pageEnd: v.optional(v.number()),
+        pageNumbers: v.optional(v.array(v.number())),
       })
     ),
     ingestionErrorMessage: v.union(v.string(), v.null()),
+    pdfPageCount: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -911,6 +1367,9 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
           reviewStatus: material.reviewStatus,
           searchStatus: "indexed",
           ...(chunk.tokenEstimate !== undefined ? { tokenEstimate: chunk.tokenEstimate } : {}),
+          ...(chunk.pageStart !== undefined ? { pageStart: chunk.pageStart } : {}),
+          ...(chunk.pageEnd !== undefined ? { pageEnd: chunk.pageEnd } : {}),
+          ...(chunk.pageNumbers !== undefined ? { pageNumbers: chunk.pageNumbers } : {}),
           createdAt: now,
           updatedAt: now,
         });
@@ -924,6 +1383,7 @@ export const applyKnowledgeMaterialIngestionResultInternal = internalMutation({
       labelSuggestions: args.labelSuggestions,
       chunkCount: args.chunks.length,
       indexedAt: args.status === "ready" ? now : null,
+      ...(args.pdfPageCount !== undefined ? { pdfPageCount: args.pdfPageCount } : {}),
       ingestionErrorMessage: args.ingestionErrorMessage,
       updatedAt: now,
       updatedBy: args.actorUserId,

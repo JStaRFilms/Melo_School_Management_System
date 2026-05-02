@@ -24,6 +24,7 @@ interface PortalTopicMaterialSourceProof {
   originalFileNotice: string | null;
   extractedTextPreview: string | null;
   extractedTextChunkCount: number;
+  indexedPageSummary?: string | null;
 }
 
 interface PortalTopicMaterial {

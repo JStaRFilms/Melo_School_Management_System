@@ -82,7 +82,7 @@ const lessonLibraryMaterialValidator = v.object({
     v.literal("indexed"),
     v.literal("failed")
   ),
-  subjectId: v.id("subjects"),
+  subjectId: v.union(v.id("subjects"), v.null()),
   subjectName: v.string(),
   subjectCode: v.string(),
   level: v.string(),
@@ -94,6 +94,11 @@ const lessonLibraryMaterialValidator = v.object({
   externalUrl: v.union(v.string(), v.null()),
   indexedAt: v.union(v.number(), v.null()),
   ingestionErrorMessage: v.union(v.string(), v.null()),
+  selectedPageRanges: v.union(v.string(), v.null()),
+  selectedPageNumbers: v.union(v.array(v.number()), v.null()),
+  pdfPageCount: v.union(v.number(), v.null()),
+  sourceFileMode: v.union(v.literal("original"), v.literal("selected_pages"), v.null()),
+  sourcePdfPageCount: v.union(v.number(), v.null()),
   createdAt: v.number(),
   updatedAt: v.number(),
   isOwnedByMe: v.boolean(),
@@ -478,7 +483,7 @@ async function readTeacherLibraryMaterials(
       });
 
   const ownerIds = [...new Set(sortedRows.map(({ material }) => String(material.ownerUserId)))];
-  const subjectIds = [...new Set(sortedRows.map(({ material }) => String(material.subjectId)))];
+  const subjectIds = [...new Set(sortedRows.map(({ material }) => material.subjectId ? String(material.subjectId) : "").filter(Boolean))];
   const topicIds = [...new Set(sortedRows.map(({ material }) => String(material.topicId ?? "")).filter(Boolean))];
 
   const [owners, subjects, topics] = await Promise.all([
@@ -496,7 +501,7 @@ async function readTeacherLibraryMaterials(
 
   const materials = sortedRows.slice(0, limit).map(({ material, accessContext }) => {
     const owner = ownerMap.get(String(material.ownerUserId)) ?? null;
-    const subject = subjectMap.get(String(material.subjectId)) ?? null;
+    const subject = material.subjectId ? subjectMap.get(String(material.subjectId)) ?? null : null;
     const topic = material.topicId ? topicMap.get(String(material.topicId)) ?? null : null;
     const isOwnedByMe = String(material.ownerUserId) === String(actor.userId);
     const canEdit = canManageKnowledgeMaterial(actor, material);
@@ -521,8 +526,8 @@ async function readTeacherLibraryMaterials(
       reviewStatus: material.reviewStatus,
       processingStatus: material.processingStatus,
       searchStatus: material.searchStatus,
-      subjectId: material.subjectId,
-      subjectName: subject ? normalizeHumanName(subject.name) : "Unknown subject",
+      subjectId: material.subjectId ?? null,
+      subjectName: subject ? normalizeHumanName(subject.name) : "General material",
       subjectCode: subject?.code ?? "",
       level: material.level,
       topicLabel: material.topicLabel,
@@ -533,6 +538,11 @@ async function readTeacherLibraryMaterials(
       externalUrl: material.externalUrl ?? null,
       indexedAt: material.indexedAt,
       ingestionErrorMessage: material.ingestionErrorMessage,
+      selectedPageRanges: material.selectedPageRanges ?? null,
+      selectedPageNumbers: material.selectedPageNumbers ?? null,
+      pdfPageCount: material.pdfPageCount ?? null,
+      sourceFileMode: material.sourceFileMode ?? null,
+      sourcePdfPageCount: material.sourcePdfPageCount ?? null,
       createdAt: material.createdAt,
       updatedAt: material.updatedAt,
       isOwnedByMe,
@@ -1056,7 +1066,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
     materialId: v.id("knowledgeMaterials"),
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
-    subjectId: v.id("subjects"),
+    subjectId: v.optional(v.union(v.id("subjects"), v.null())),
     level: v.string(),
     topicLabel: v.string(),
     topicId: v.optional(v.id("knowledgeTopics")),
@@ -1090,8 +1100,13 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
       throw new ConvexError("Archived materials cannot be edited");
     }
 
+    const subjectId = args.subjectId ?? null;
+    if (material.sourceType !== "imported_curriculum" && !subjectId) {
+      throw new ConvexError("Subject is required unless this material is a curriculum or planning reference");
+    }
+
     const accessibleSubjects = await readTeacherLibrarySubjects(ctx, actor);
-    if (!accessibleSubjects.some((subject) => subject.id === String(args.subjectId))) {
+    if (subjectId && !accessibleSubjects.some((subject) => subject.id === String(subjectId))) {
       throw new ConvexError("You cannot use that subject");
     }
 
@@ -1126,7 +1141,8 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
       }
 
       if (
-        String(topic.subjectId) !== String(args.subjectId) ||
+        !subjectId ||
+        String(topic.subjectId) !== String(subjectId) ||
         !levelMatchesKnowledgeScope(topic.level, level)
       ) {
         throw new ConvexError("Topic must match the selected subject and level");
@@ -1137,7 +1153,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
 
     const patch: Partial<Doc<"knowledgeMaterials">> = {
       title,
-      subjectId: args.subjectId,
+      ...(subjectId ? { subjectId } : {}),
       level,
       topicLabel,
       searchText,

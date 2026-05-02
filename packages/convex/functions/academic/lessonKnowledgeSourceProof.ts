@@ -15,6 +15,7 @@ export const knowledgeMaterialSourceProofValidator = v.object({
   originalFileNotice: v.union(v.string(), v.null()),
   extractedTextPreview: v.union(v.string(), v.null()),
   extractedTextChunkCount: v.number(),
+  indexedPageSummary: v.union(v.string(), v.null()),
 });
 
 export type KnowledgeMaterialSourceProof = {
@@ -25,6 +26,7 @@ export type KnowledgeMaterialSourceProof = {
   originalFileNotice: string | null;
   extractedTextPreview: string | null;
   extractedTextChunkCount: number;
+  indexedPageSummary: string | null;
 };
 
 export const knowledgeMaterialOriginalFileAccessValidator = v.object({
@@ -104,18 +106,21 @@ export async function readKnowledgeMaterialSourceProof(
     originalFileNotice = "No original file was stored for this material.";
   }
 
-  const chunks = await ctx.db
+  const indexedChunks = await ctx.db
     .query("knowledgeMaterialChunks")
     .withIndex("by_school_and_material", (q) =>
       q.eq("schoolId", args.schoolId).eq("materialId", args.materialId)
     )
     .order("asc")
-    .take(previewChunkCount);
+    .take(100);
+  const chunks = indexedChunks.slice(0, previewChunkCount);
 
   const extractedTextPreviewRaw = chunks.map((chunk) => chunk.chunkText).join(" ").trim();
   const extractedTextPreview = extractedTextPreviewRaw
     ? normalizeKnowledgeMaterialText(extractedTextPreviewRaw).slice(0, previewCharLimit)
     : null;
+  const pageNumbers = Array.from(new Set(indexedChunks.flatMap((chunk) => chunk.pageNumbers ?? []))).sort((a, b) => a - b);
+  const indexedPageSummary = pageNumbers.length ? `Pages ${pageNumbers.join(", ")}` : null;
 
   return {
     originalFileState,
@@ -125,5 +130,6 @@ export async function readKnowledgeMaterialSourceProof(
     originalFileNotice,
     extractedTextPreview,
     extractedTextChunkCount: chunks.length,
+    indexedPageSummary,
   };
 }

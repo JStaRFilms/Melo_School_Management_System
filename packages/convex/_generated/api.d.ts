@@ -27,10 +27,12 @@ import type * as functions_academic_lessonKnowledgeAccess from "../functions/aca
 import type * as functions_academic_lessonKnowledgeAdmin from "../functions/academic/lessonKnowledgeAdmin.js";
 import type * as functions_academic_lessonKnowledgeAssessmentDrafts from "../functions/academic/lessonKnowledgeAssessmentDrafts.js";
 import type * as functions_academic_lessonKnowledgeAssessmentProfiles from "../functions/academic/lessonKnowledgeAssessmentProfiles.js";
+import type * as functions_academic_lessonKnowledgeBrowserOcrActions from "../functions/academic/lessonKnowledgeBrowserOcrActions.js";
 import type * as functions_academic_lessonKnowledgeIngestion from "../functions/academic/lessonKnowledgeIngestion.js";
 import type * as functions_academic_lessonKnowledgeIngestionActions from "../functions/academic/lessonKnowledgeIngestionActions.js";
 import type * as functions_academic_lessonKnowledgeIngestionHelpers from "../functions/academic/lessonKnowledgeIngestionHelpers.js";
 import type * as functions_academic_lessonKnowledgeLessonPlans from "../functions/academic/lessonKnowledgeLessonPlans.js";
+import type * as functions_academic_lessonKnowledgeOcrActions from "../functions/academic/lessonKnowledgeOcrActions.js";
 import type * as functions_academic_lessonKnowledgePdfExtraction from "../functions/academic/lessonKnowledgePdfExtraction.js";
 import type * as functions_academic_lessonKnowledgePortal from "../functions/academic/lessonKnowledgePortal.js";
 import type * as functions_academic_lessonKnowledgeRateLimits from "../functions/academic/lessonKnowledgeRateLimits.js";
@@ -92,10 +94,12 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeAdmin": typeof functions_academic_lessonKnowledgeAdmin;
   "functions/academic/lessonKnowledgeAssessmentDrafts": typeof functions_academic_lessonKnowledgeAssessmentDrafts;
   "functions/academic/lessonKnowledgeAssessmentProfiles": typeof functions_academic_lessonKnowledgeAssessmentProfiles;
+  "functions/academic/lessonKnowledgeBrowserOcrActions": typeof functions_academic_lessonKnowledgeBrowserOcrActions;
   "functions/academic/lessonKnowledgeIngestion": typeof functions_academic_lessonKnowledgeIngestion;
   "functions/academic/lessonKnowledgeIngestionActions": typeof functions_academic_lessonKnowledgeIngestionActions;
   "functions/academic/lessonKnowledgeIngestionHelpers": typeof functions_academic_lessonKnowledgeIngestionHelpers;
   "functions/academic/lessonKnowledgeLessonPlans": typeof functions_academic_lessonKnowledgeLessonPlans;
+  "functions/academic/lessonKnowledgeOcrActions": typeof functions_academic_lessonKnowledgeOcrActions;
   "functions/academic/lessonKnowledgePdfExtraction": typeof functions_academic_lessonKnowledgePdfExtraction;
   "functions/academic/lessonKnowledgePortal": typeof functions_academic_lessonKnowledgePortal;
   "functions/academic/lessonKnowledgeRateLimits": typeof functions_academic_lessonKnowledgeRateLimits;
