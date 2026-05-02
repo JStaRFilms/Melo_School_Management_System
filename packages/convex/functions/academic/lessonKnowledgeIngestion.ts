@@ -920,6 +920,13 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "queued"))
       .unique();
     if (queuedJob) {
+      await ctx.db.patch(args.materialId, {
+        processingStatus: "queued",
+        searchStatus: "not_indexed",
+        ingestionErrorMessage: null,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      });
       return { materialId: args.materialId, jobId: queuedJob._id, processingStatus: "queued" as const };
     }
 
@@ -928,6 +935,13 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "processing"))
       .unique();
     if (processingJob) {
+      await ctx.db.patch(args.materialId, {
+        processingStatus: "extracting",
+        searchStatus: "indexing",
+        ingestionErrorMessage: null,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      });
       return { materialId: args.materialId, jobId: processingJob._id, processingStatus: "extracting" as const };
     }
 
