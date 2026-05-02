@@ -233,7 +233,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     );
   });
 
-  it("reads a digital PDF with the parser before OpenRouter OCR fallback", async () => {
+  it("reads a digital PDF with the native parser", async () => {
     const samplePdf = readFileSync(
       new URL(
         "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
@@ -243,9 +243,6 @@ describe("lessonKnowledgeIngestionHelpers", () => {
 
     const result = await extractReadableTextFromBuffer(samplePdf, {
       contentType: "application/pdf",
-      fetchImpl: async () => {
-        throw new Error("OpenRouter OCR fallback should not be called for a readable PDF");
-      },
     });
 
     expect(result.status).toBe("ready");
@@ -254,66 +251,26 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.errorMessage).toBeNull();
   });
 
-  it("classifies scanned-like PDFs honestly when OpenRouter is unavailable", async () => {
+  it("classifies scanned-like PDFs as needing provider-backed OCR", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      fetchImpl: async () => {
-        throw new Error("OpenRouter OCR fallback should not be called without an API key");
-      },
     });
 
     expect(result.status).toBe("ocr_needed");
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
-    expect(result.errorMessage).toContain("OpenRouter OCR fallback is not configured");
+    expect(result.errorMessage).toContain("Provider-backed OCR is needed");
   });
 
-  it("uses OpenRouter OCR fallback for scanned-like selected-page PDFs", async () => {
+  it("keeps selected-page scanned PDFs in the OCR-needed path", async () => {
     const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
       contentType: "application/pdf",
-      openRouterApiKey: "test-key",
       selectedPageNumbers: [1],
-      fetchImpl: createOpenRouterSuccessFetch(
-        "Lesson Note: Social Studies. This page explains community values, cooperation, family roles, citizenship, and classroom discussion activities for students."
-      ),
-    });
-
-    expect(result.status).toBe("ready");
-    expect(result.extractionPath).toBe("openrouter");
-    expect(result.fallbackReason).toBe("none");
-    expect(result.text).toContain("Social Studies");
-    expect(result.errorMessage).toBeNull();
-  });
-
-  it("fails without hanging when OpenRouter OCR fallback never resolves", async () => {
-    const startedAt = Date.now();
-
-    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
-      contentType: "application/pdf",
-      openRouterApiKey: "test-key",
-      fetchImpl: createHangingFetch(),
-      openRouterTimeoutMs: 25,
-    });
-
-    const elapsedMs = Date.now() - startedAt;
-
-    expect(elapsedMs).toBeLessThan(1000);
-    expect(result.status).toBe("ocr_needed");
-    expect(result.extractionPath).toBe("openrouter");
-    expect(result.errorMessage).toContain("timed out");
-  });
-
-  it("returns a clear OCR-needed status when OpenRouter OCR fallback is rate-limited", async () => {
-    const result = await extractReadableTextFromBuffer(buildBlankPdfBuffer(), {
-      contentType: "application/pdf",
-      openRouterApiKey: "test-key",
-      fetchImpl: createRateLimitedFetch(),
     });
 
     expect(result.status).toBe("ocr_needed");
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
-    expect(result.errorMessage).toContain("HTTP 429");
-    expect(result.errorMessage).toContain("OCR");
+    expect(result.errorMessage).toContain("Provider-backed OCR is needed");
   });
 });

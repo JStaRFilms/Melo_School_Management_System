@@ -9,6 +9,7 @@ export const lessonKnowledgeRateLimitActionValidator = v.union(
   v.literal("knowledge_material_upload_url"),
   v.literal("knowledge_material_link_registration"),
   v.literal("knowledge_material_ingestion_retry"),
+  v.literal("knowledge_material_ocr_retry"),
   v.literal("portal_supplemental_upload_url")
 );
 
@@ -27,6 +28,7 @@ type LessonKnowledgeRateLimitAction =
   | "knowledge_material_upload_url"
   | "knowledge_material_link_registration"
   | "knowledge_material_ingestion_retry"
+  | "knowledge_material_ocr_retry"
   | "portal_supplemental_upload_url";
 
 type LessonKnowledgeRateLimitBucket = {
@@ -77,6 +79,12 @@ const LESSON_KNOWLEDGE_RATE_LIMITS = {
     buckets: [
       { scope: "user", limit: 10, windowMs: 15 * 60 * 1000 },
       { scope: "school", limit: 60, windowMs: 15 * 60 * 1000 },
+    ],
+  },
+  knowledge_material_ocr_retry: {
+    buckets: [
+      { scope: "user", limit: 5, windowMs: 15 * 60 * 1000 },
+      { scope: "school", limit: 25, windowMs: 15 * 60 * 1000 },
     ],
   },
   portal_supplemental_upload_url: {

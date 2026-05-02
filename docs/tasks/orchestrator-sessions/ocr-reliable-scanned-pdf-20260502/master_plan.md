@@ -71,9 +71,9 @@ Genesis inventory and blueprint
 - [x] Feature blueprint created.
 - [x] Orchestrator session created.
 - [x] Task files generated.
-- [ ] Genesis task execution completed.
-- [ ] Design task execution completed.
-- [ ] Build task execution completed.
+- [x] Genesis task execution completed.
+- [x] Design task execution completed.
+- [x] Build task execution completed.
 - [ ] Final review completed.
 - [ ] `pnpm convex deploy` run after Convex code changes.
 

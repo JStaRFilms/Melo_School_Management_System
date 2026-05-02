@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for Takomi implementation planning.
+Implemented for MVP (2026-05-02). Convex now owns OCR job state and queues Mistral OCR for stored PDFs from the teacher planning library.
 
 ## Goal
 
@@ -38,22 +38,24 @@ The planning library currently supports file uploads, native PDF text extraction
 ### Client
 
 - `/planning/library` shows material status and retry actions.
-- Teachers can run OCR for `ocr_needed` or retryable failed materials without re-uploading.
+- Teachers can run provider OCR for `ocr_needed` materials without re-uploading.
+- Normal failed/stale extraction retries still use the native ingestion retry pipeline.
 - UI shows selected-page summaries and safe failure messages.
-- Browser-side OCR preparation should be removed from the primary flow or kept only as a hidden emergency fallback.
+- Browser-side OCR preparation is no longer used by the primary teacher retry flow.
 
 ### Convex Backend
 
 - Native extraction remains first pass for digital PDFs and text files.
-- OCR job/attempt tracking is added for scanned/image-heavy PDFs.
-- A Node action calls the configured OCR provider using a short-lived storage URL or fetched file bytes.
-- Mutations validate school/role access and persist normalized OCR results.
-- Chunking remains page-aware and selected-page-aware.
+- `knowledgeOcrJobs` tracks scanned/image-heavy PDF OCR attempts.
+- `requestKnowledgeMaterialProviderOcr` validates staff access, school boundary, rate limits, retry caps, stored-file availability, and idempotent queued jobs.
+- `lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal` calls Mistral OCR using a short-lived Convex storage URL.
+- Internal mutations transition jobs through queued -> processing -> succeeded/failed and write audit events.
+- OCR results are normalized to pages and chunked with page metadata.
 
 ### Provider Layer
 
-- MVP provider: Mistral OCR.
-- Internal adapter shape should normalize provider output into pages:
+- MVP provider: Mistral OCR via `MISTRAL_API_KEY`.
+- Internal adapter normalizes provider output into pages:
   - `pageNumber`
   - `text`
   - optional `markdown`
@@ -161,7 +163,13 @@ Audit events should record OCR requested, queued, started, succeeded, failed, re
 
 ## Verification
 
-- Run `pnpm typecheck` after implementation.
-- Run targeted Convex tests for auth, retry limits, page ranges, and chunking if available.
-- Manually test digital PDF, scanned PDF, selected-page scanned PDF, corrupt PDF, provider timeout, and cross-school access.
-- Run `pnpm convex deploy` after Convex implementation work, per project policy.
+Completed:
+
+- `pnpm --filter @school/convex convex:codegen`
+- `pnpm --filter @school/convex typecheck`
+- `pnpm --filter teacher typecheck`
+
+Still required before production release:
+
+- Manual test digital PDF, scanned PDF, selected-page scanned PDF, corrupt PDF, provider timeout, and cross-school access with `MISTRAL_API_KEY` configured.
+- Run `pnpm convex deploy` after final review, per project policy.

@@ -8,16 +8,11 @@ import {
   normalizeKnowledgeMaterialText,
 } from "./lessonKnowledgeIngestionHelpers";
 
-const OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_PDF_PARSE_TIMEOUT_MS = 20_000;
 const DEFAULT_PDF_PAGE_TEXT_TIMEOUT_MS = 3_000;
-const DEFAULT_OPENROUTER_TIMEOUT_MS = 20_000;
 
 type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-type PdfWorkerModule = {
-  WorkerMessageHandler: unknown;
-};
+type PdfWorkerModule = { WorkerMessageHandler: unknown };
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
 let pdfJsWorkerModulePromise: Promise<PdfWorkerModule> | null = null;
 
@@ -27,30 +22,16 @@ function ensurePdfJsGlobals() {
     ImageData?: typeof ImageData;
     Path2D?: typeof Path2D;
   };
-
-  if (!globalPdfJs.DOMMatrix) {
-    globalPdfJs.DOMMatrix = class DOMMatrix { } as unknown as typeof DOMMatrix;
-  }
-
-  if (!globalPdfJs.ImageData) {
-    globalPdfJs.ImageData = class ImageData { } as unknown as typeof ImageData;
-  }
-
-  if (!globalPdfJs.Path2D) {
-    globalPdfJs.Path2D = class Path2D { } as unknown as typeof Path2D;
-  }
+  if (!globalPdfJs.DOMMatrix) globalPdfJs.DOMMatrix = class DOMMatrix { } as unknown as typeof DOMMatrix;
+  if (!globalPdfJs.ImageData) globalPdfJs.ImageData = class ImageData { } as unknown as typeof ImageData;
+  if (!globalPdfJs.Path2D) globalPdfJs.Path2D = class Path2D { } as unknown as typeof Path2D;
 }
 
 async function ensurePdfJsWorkerHandler() {
   // @ts-expect-error pdfjs-dist does not ship type declarations for the worker bundle.
   pdfJsWorkerModulePromise ??= import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const workerModule = await pdfJsWorkerModulePromise;
-  const globalPdfJs = globalThis as typeof globalThis & {
-    pdfjsWorker?: {
-      WorkerMessageHandler?: PdfWorkerModule["WorkerMessageHandler"];
-    };
-  };
-
+  const globalPdfJs = globalThis as typeof globalThis & { pdfjsWorker?: { WorkerMessageHandler?: PdfWorkerModule["WorkerMessageHandler"] } };
   globalPdfJs.pdfjsWorker ??= {};
   globalPdfJs.pdfjsWorker.WorkerMessageHandler ??= workerModule.WorkerMessageHandler;
 }
@@ -71,40 +52,9 @@ type PdfQuality = {
 };
 
 type PdfParserOutcome =
-  | {
-      kind: "success";
-      text: string;
-      pages: Array<{ pageNumber: number; text: string }>;
-      quality: PdfQuality;
-      pageCount: number;
-    }
-  | {
-      kind: "page_limit";
-      pageCount: number;
-    }
-  | {
-      kind: "error";
-      pageCount: number;
-      errorMessage: string;
-    };
-
-type OpenRouterFallbackOutcome =
-  | {
-      kind: "success";
-      text: string;
-    }
-  | {
-      kind: "empty";
-      errorMessage: string;
-    }
-  | {
-      kind: "rate_limited";
-      errorMessage: string;
-    }
-  | {
-      kind: "error";
-      errorMessage: string;
-    };
+  | { kind: "success"; text: string; pages: Array<{ pageNumber: number; text: string }>; quality: PdfQuality; pageCount: number }
+  | { kind: "page_limit"; pageCount: number }
+  | { kind: "error"; pageCount: number; errorMessage: string };
 
 export type KnowledgeMaterialTextExtractionResult = {
   status: "ready" | "ocr_needed" | "failed";
@@ -112,7 +62,7 @@ export type KnowledgeMaterialTextExtractionResult = {
   pages?: Array<{ pageNumber: number; text: string }>;
   pageCount?: number;
   errorMessage: string | null;
-  extractionPath: "parser" | "openrouter" | "plain_text" | "none";
+  extractionPath: "parser" | "plain_text" | "none";
   fallbackReason:
   | "none"
   | "parser_error"
@@ -123,11 +73,14 @@ export type KnowledgeMaterialTextExtractionResult = {
 
 export type KnowledgeMaterialTextExtractionOptions = {
   contentType?: string | null;
-  openRouterApiKey?: string | null;
-  fetchImpl?: typeof fetch;
   pdfParseTimeoutMs?: number;
-  openRouterTimeoutMs?: number;
   selectedPageNumbers?: number[];
+  /** @deprecated OpenRouter PDF OCR is no longer used; retained for test/backward-call compatibility. */
+  openRouterApiKey?: string | null;
+  /** @deprecated OpenRouter PDF OCR is no longer used; retained for test/backward-call compatibility. */
+  fetchImpl?: typeof fetch;
+  /** @deprecated OpenRouter PDF OCR is no longer used; retained for test/backward-call compatibility. */
+  openRouterTimeoutMs?: number;
 };
 
 function normalizeContentType(contentType?: string | null) {
@@ -299,203 +252,34 @@ async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; sele
   }
 }
 
-function buildOpenRouterRequestBody(buffer: Buffer) {
-  return {
-    model: OPENROUTER_MODEL,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text:
-              "Extract the visible text from this school PDF. Return only the text, preserve headings and line breaks, and do not summarize or add commentary.",
-          },
-          {
-            type: "file",
-            file: {
-              filename: "knowledge-material.pdf",
-              file_data: `data:application/pdf;base64,${buffer.toString("base64")}`,
-            },
-          },
-        ],
-      },
-    ],
-    temperature: 0,
-    max_tokens: 8192,
-    plugins: [
-      {
-        id: "file-parser",
-        pdf: {
-          engine: "cloudflare-ai",
-        },
-      },
-    ],
-  };
-}
-
-function parseOpenRouterTextResponse(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  const choices = (value as { choices?: unknown }).choices;
-  if (!Array.isArray(choices)) {
-    return "";
-  }
-
-  for (const choice of choices) {
-    if (!choice || typeof choice !== "object") {
-      continue;
-    }
-
-    const message = (choice as { message?: unknown }).message;
-    if (!message || typeof message !== "object") {
-      continue;
-    }
-
-    const content = (message as { content?: unknown }).content;
-    if (typeof content === "string") {
-      const normalized = normalizeKnowledgeMaterialText(content);
-      if (normalized) {
-        return normalized;
-      }
-    }
-
-    if (Array.isArray(content)) {
-      const text = content
-        .map((part) => {
-          if (!part || typeof part !== "object") {
-            return "";
-          }
-
-          const partText = (part as { text?: unknown }).text;
-          return typeof partText === "string" ? partText : "";
-        })
-        .join(" ");
-      const normalized = normalizeKnowledgeMaterialText(text);
-      if (normalized) {
-        return normalized;
-      }
-    }
-  }
-
-  return "";
-}
-
-async function extractPdfTextWithOpenRouter(args: {
-  buffer: Buffer;
-  apiKey: string;
-  fetchImpl: typeof fetch;
-  timeoutMs: number;
-  selectedPageNumbers?: number[];
-}): Promise<OpenRouterFallbackOutcome> {
-  try {
-    const response = await withTimeout(
-      args.fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${args.apiKey}`,
-          "HTTP-Referer": "https://school-management-system.local",
-          "X-Title": "School Management System",
-        },
-        body: JSON.stringify(buildOpenRouterRequestBody(args.buffer)),
-      }),
-      args.timeoutMs,
-      () => undefined,
-      "OpenRouter OCR fallback timed out"
-    );
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return {
-          kind: "rate_limited",
-          errorMessage:
-            "OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.",
-        };
-      }
-
-      const errorText = await response.text().catch(() => "");
-      let providerMessage = errorText;
-      try {
-        const payload = JSON.parse(errorText) as { error?: { message?: string; metadata?: { raw?: string } } };
-        providerMessage = payload.error?.metadata?.raw || payload.error?.message || errorText;
-      } catch {
-        providerMessage = errorText;
-      }
-
-      return {
-        kind: "error",
-        errorMessage: `OpenRouter OCR fallback request failed with HTTP ${response.status}${providerMessage ? `: ${providerMessage.slice(0, 500)}` : ""}`,
-      };
-    }
-
-    const payload = (await response.json()) as unknown;
-    const text = parseOpenRouterTextResponse(payload);
-    if (!text) {
-      return {
-        kind: "empty",
-        errorMessage: "OpenRouter OCR fallback returned no readable text",
-      };
-    }
-
-    return {
-      kind: "success",
-      text,
-    };
-  } catch (error) {
-    return {
-      kind: "error",
-      errorMessage: error instanceof Error ? error.message : "OpenRouter OCR fallback failed",
-    };
-  }
-}
-
 function buildResultFromQuality(args: {
   status: "ready" | "ocr_needed" | "failed";
   text: string;
   pages?: Array<{ pageNumber: number; text: string }>;
   pageCount?: number;
   errorMessage: string | null;
-  extractionPath: "parser" | "openrouter" | "plain_text" | "none";
+  extractionPath: "parser" | "plain_text" | "none";
   fallbackReason: KnowledgeMaterialTextExtractionResult["fallbackReason"];
 }): KnowledgeMaterialTextExtractionResult {
   return args;
 }
 
-function buildUnavailableFallbackResult(args: {
+function buildOcrNeededResult(args: {
   fallbackReason: KnowledgeMaterialTextExtractionResult["fallbackReason"];
-  status: "ready" | "ocr_needed" | "failed";
+  status: "ocr_needed" | "failed";
+  pageCount?: number;
 }): KnowledgeMaterialTextExtractionResult {
   const errorMessage =
     args.fallbackReason === "scanned_or_problematic"
-      ? "This PDF appears scanned or image-only. OCR is still needed because OpenRouter OCR fallback is not configured in this environment."
+      ? "This PDF appears scanned or image-only. Provider-backed OCR is needed before it can be indexed."
       : args.fallbackReason === "unreadable_text"
-        ? "The PDF text was unreadable after native extraction, and OCR is still needed because OpenRouter OCR fallback is not configured in this environment."
-        : "Native PDF parsing failed, and OpenRouter OCR fallback is not configured in this environment.";
+        ? "The PDF text was unreadable after native extraction. Provider-backed OCR is needed before it can be indexed."
+        : "Native PDF parsing failed. Provider-backed OCR is needed before this PDF can be indexed.";
 
   return buildResultFromQuality({
     status: args.status,
     text: "",
-    errorMessage,
-    extractionPath: "none",
-    fallbackReason: args.fallbackReason,
-  });
-}
-
-function buildRateLimitedFallbackResult(args: {
-  fallbackReason: KnowledgeMaterialTextExtractionResult["fallbackReason"];
-  status: "ready" | "ocr_needed" | "failed";
-}): KnowledgeMaterialTextExtractionResult {
-  const errorMessage =
-    args.fallbackReason === "scanned_or_problematic" || args.fallbackReason === "unreadable_text"
-      ? "This PDF still needs OCR, but OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF."
-      : "Native PDF parsing failed, and OpenRouter OCR fallback is temporarily rate-limited (HTTP 429). Please try again later or upload an OCR'd PDF.";
-
-  return buildResultFromQuality({
-    status: args.status,
-    text: "",
+    ...(args.pageCount !== undefined ? { pageCount: args.pageCount } : {}),
     errorMessage,
     extractionPath: "none",
     fallbackReason: args.fallbackReason,
@@ -549,57 +333,10 @@ export async function extractReadableTextFromBuffer(
   }
 
   if (parserResult.kind === "error") {
-    const openRouterApiKey = options.openRouterApiKey?.trim();
-
-    if (!openRouterApiKey) {
-      return buildUnavailableFallbackResult({
-        fallbackReason: "parser_error",
-        status: "failed",
-      });
-    }
-
-    const openRouterResult = await extractPdfTextWithOpenRouter({
-      buffer,
-      apiKey: openRouterApiKey,
-      fetchImpl: options.fetchImpl ?? fetch,
-      timeoutMs: options.openRouterTimeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS,
-      selectedPageNumbers: options.selectedPageNumbers,
-    });
-
-    if (openRouterResult.kind === "success") {
-      const quality = evaluateTextQuality(openRouterResult.text);
-      if (quality.adequate) {
-        return buildResultFromQuality({
-          status: "ready",
-          text: quality.normalizedText,
-          errorMessage: null,
-          extractionPath: "openrouter",
-          fallbackReason: "none",
-        });
-      }
-
-      return buildResultFromQuality({
-        status: "failed",
-        text: quality.normalizedText,
-        errorMessage: "OpenRouter OCR fallback returned text that was still too short to index.",
-        extractionPath: "openrouter",
-        fallbackReason: "insufficient_text",
-      });
-    }
-
-    if (openRouterResult.kind === "rate_limited") {
-      return buildRateLimitedFallbackResult({
-        fallbackReason: "parser_error",
-        status: "failed",
-      });
-    }
-
-    return buildResultFromQuality({
-      status: "failed",
-      text: "",
-      errorMessage: openRouterResult.errorMessage,
-      extractionPath: "openrouter",
+    return buildOcrNeededResult({
       fallbackReason: "parser_error",
+      status: "failed",
+      pageCount: parserResult.pageCount,
     });
   }
 
@@ -636,58 +373,9 @@ export async function extractReadableTextFromBuffer(
     });
   }
 
-  const openRouterApiKey = options.openRouterApiKey?.trim();
-  if (!openRouterApiKey) {
-    return buildUnavailableFallbackResult({
-      fallbackReason,
-      status: "ocr_needed",
-    });
-  }
-
-  const openRouterResult = await extractPdfTextWithOpenRouter({
-    buffer,
-    apiKey: openRouterApiKey,
-    fetchImpl: options.fetchImpl ?? fetch,
-    timeoutMs: options.openRouterTimeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS,
-    selectedPageNumbers: options.selectedPageNumbers,
-  });
-
-  if (openRouterResult.kind === "success") {
-    const openRouterQuality = evaluateTextQuality(openRouterResult.text);
-    if (openRouterQuality.adequate) {
-      return buildResultFromQuality({
-        status: "ready",
-        text: openRouterQuality.normalizedText,
-        errorMessage: null,
-        extractionPath: "openrouter",
-        fallbackReason: "none",
-      });
-    }
-
-    return buildResultFromQuality({
-      status: "ocr_needed",
-      text: openRouterQuality.normalizedText,
-      errorMessage: "OpenRouter OCR fallback returned text that was still too short to index.",
-      extractionPath: "openrouter",
-      fallbackReason,
-    });
-  }
-
-  if (openRouterResult.kind === "rate_limited") {
-    return buildRateLimitedFallbackResult({
-      fallbackReason,
-      status: "ocr_needed",
-    });
-  }
-
-  return buildResultFromQuality({
-    status: "ocr_needed",
-    text: quality.normalizedText,
-    errorMessage:
-      openRouterResult.kind === "empty"
-        ? openRouterResult.errorMessage
-        : `OpenRouter OCR fallback failed: ${openRouterResult.errorMessage}`,
-    extractionPath: "openrouter",
+  return buildOcrNeededResult({
     fallbackReason,
+    status: "ocr_needed",
+    pageCount: parserResult.pageCount,
   });
 }

@@ -192,7 +192,6 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
 
       const extracted = await extractReadableTextFromBuffer(extractionBuffer, {
         contentType: args.storageContentType,
-        openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || undefined,
         selectedPageNumbers: extractionSelectedPageNumbers,
       });
 

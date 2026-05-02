@@ -83,6 +83,10 @@ const contentAuditEventTypeValidator = v.union(
   v.literal("ingestion_started"),
   v.literal("extraction_completed"),
   v.literal("ocr_needed"),
+  v.literal("ocr_requested"),
+  v.literal("ocr_started"),
+  v.literal("ocr_succeeded"),
+  v.literal("ocr_failed"),
   v.literal("ingestion_failed"),
   v.literal("retry_requested")
 );
@@ -125,6 +129,10 @@ type ContentAuditEventType =
   | "ingestion_started"
   | "extraction_completed"
   | "ocr_needed"
+  | "ocr_requested"
+  | "ocr_started"
+  | "ocr_succeeded"
+  | "ocr_failed"
   | "ingestion_failed"
   | "retry_requested";
 

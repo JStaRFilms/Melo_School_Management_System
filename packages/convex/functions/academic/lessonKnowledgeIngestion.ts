@@ -42,6 +42,10 @@ const knowledgeAuditEventTypeValidator = v.union(
   v.literal("ingestion_started"),
   v.literal("extraction_completed"),
   v.literal("ocr_needed"),
+  v.literal("ocr_requested"),
+  v.literal("ocr_started"),
+  v.literal("ocr_succeeded"),
+  v.literal("ocr_failed"),
   v.literal("ingestion_failed"),
   v.literal("retry_requested")
 );
@@ -877,6 +881,175 @@ export const startKnowledgeMaterialBrowserOcrRetryInternal = internalMutation({
       processingAttemptCount: material.ingestionAttemptCount + 1,
       images: args.images,
     };
+  },
+});
+
+export const requestKnowledgeMaterialProviderOcr = mutation({
+  args: { materialId: v.id("knowledgeMaterials") },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    jobId: v.id("knowledgeOcrJobs"),
+    processingStatus: v.union(v.literal("queued"), v.literal("extracting")),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+    if (actorRole !== "teacher" && actorRole !== "admin") {
+      throw new ConvexError("Knowledge material OCR is restricted to staff");
+    }
+
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.schoolId !== schoolId) {
+      throw new ConvexError("Knowledge material not found");
+    }
+    if (!material.storageId) {
+      throw new ConvexError("This material does not have a stored file to OCR");
+    }
+    if (!canManageKnowledgeMaterial({ userId, schoolId, role: actorRole, isSchoolAdmin: actorRole === "admin" }, material as MaterialState)) {
+      throw new ConvexError("You cannot manage this material");
+    }
+    if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
+      throw new ConvexError("OCR can only be queued for OCR-needed or failed material");
+    }
+    if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
+      throw new ConvexError("This material has reached the retry limit");
+    }
+
+    const activeJob = await ctx.db
+      .query("knowledgeOcrJobs")
+      .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "queued"))
+      .unique();
+    if (activeJob) {
+      return { materialId: args.materialId, jobId: activeJob._id, processingStatus: "queued" as const };
+    }
+
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_ocr_retry",
+      schoolId,
+      actorUserId: userId,
+    });
+
+    const now = Date.now();
+    const jobId = await ctx.db.insert("knowledgeOcrJobs", {
+      schoolId,
+      materialId: args.materialId,
+      storageId: material.storageId,
+      requestedByUserId: userId,
+      provider: "mistral",
+      status: "queued",
+      attempt: material.ingestionAttemptCount + 1,
+      maxAttempts: MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
+      ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
+      ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(args.materialId, {
+      processingStatus: "queued",
+      searchStatus: "not_indexed",
+      ingestionErrorMessage: null,
+      ingestionAttemptCount: material.ingestionAttemptCount + 1,
+      updatedAt: now,
+      updatedBy: userId,
+    });
+
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId,
+      actorUserId: userId,
+      actorRole,
+      eventType: "ocr_requested",
+      entityType: "knowledgeMaterial",
+      materialId: args.materialId,
+      changeSummary: "Queued provider-backed OCR for the stored PDF.",
+    });
+
+    await ctx.scheduler.runAfter(0, internal.functions.academic.lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal, { jobId });
+    return { materialId: args.materialId, jobId, processingStatus: "queued" as const };
+  },
+});
+
+export const startKnowledgeMaterialOcrJobInternal = internalMutation({
+  args: { jobId: v.id("knowledgeOcrJobs") },
+  returns: v.object({
+    jobId: v.id("knowledgeOcrJobs"),
+    materialId: v.id("knowledgeMaterials"),
+    schoolId: v.id("schools"),
+    storageId: v.id("_storage"),
+    requestedByUserId: v.id("users"),
+    actorRole: teacherOrAdminRoleValidator,
+    title: v.string(),
+    description: v.union(v.string(), v.null()),
+    topicLabel: v.string(),
+    selectedPageNumbers: v.optional(v.array(v.number())),
+  }),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new ConvexError("OCR job not found");
+    if (job.status !== "queued") throw new ConvexError("OCR job is not queued");
+    const material = await ctx.db.get(job.materialId);
+    if (!material || material.schoolId !== job.schoolId) throw new ConvexError("Knowledge material not found");
+    const requester = await ctx.db.get(job.requestedByUserId);
+    if (!requester || requester.schoolId !== job.schoolId || requester.isArchived) throw new ConvexError("OCR requester not found");
+    const actorRole: "admin" | "teacher" = requester.role === "admin" || requester.isSchoolAdmin === true ? "admin" : "teacher";
+    const now = Date.now();
+    await ctx.db.patch(args.jobId, { status: "processing", startedAt: now, updatedAt: now });
+    await ctx.db.patch(job.materialId, { processingStatus: "extracting", searchStatus: "indexing", updatedAt: now, updatedBy: job.requestedByUserId });
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: job.schoolId,
+      actorUserId: job.requestedByUserId,
+      actorRole,
+      eventType: "ocr_started",
+      entityType: "knowledgeMaterial",
+      materialId: job.materialId,
+      changeSummary: "Started provider-backed OCR for the stored PDF.",
+    });
+    return {
+      jobId: job._id,
+      materialId: job.materialId,
+      schoolId: job.schoolId,
+      storageId: job.storageId,
+      requestedByUserId: job.requestedByUserId,
+      actorRole,
+      title: material.title,
+      description: material.description ?? null,
+      topicLabel: material.topicLabel,
+      ...(job.selectedPageNumbers?.length ? { selectedPageNumbers: job.selectedPageNumbers } : {}),
+    };
+  },
+});
+
+export const completeKnowledgeMaterialOcrJobInternal = internalMutation({
+  args: {
+    jobId: v.id("knowledgeOcrJobs"),
+    status: v.union(v.literal("succeeded"), v.literal("failed")),
+    errorCode: v.union(v.string(), v.null()),
+    errorMessage: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new ConvexError("OCR job not found");
+    const now = Date.now();
+    await ctx.db.patch(args.jobId, {
+      status: args.status,
+      completedAt: now,
+      updatedAt: now,
+      ...(args.errorCode ? { errorCode: args.errorCode } : {}),
+      ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+    });
+    const requester = await ctx.db.get(job.requestedByUserId);
+    const actorRole: "admin" | "teacher" = requester?.role === "admin" || requester?.isSchoolAdmin === true ? "admin" : "teacher";
+    await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.recordContentAuditEventInternal, {
+      schoolId: job.schoolId,
+      actorUserId: job.requestedByUserId,
+      actorRole,
+      eventType: args.status === "succeeded" ? "ocr_succeeded" : "ocr_failed",
+      entityType: "knowledgeMaterial",
+      materialId: job.materialId,
+      changeSummary: args.status === "succeeded" ? "Provider-backed OCR succeeded." : args.errorMessage ?? "Provider-backed OCR failed.",
+    });
+    return null;
   },
 });
 
