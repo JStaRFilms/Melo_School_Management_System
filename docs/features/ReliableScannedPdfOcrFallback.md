@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for MVP (2026-05-02). Convex now owns OCR job state and queues Mistral OCR for stored PDFs from the teacher planning library.
+Implemented for MVP (2026-05-02). Convex now owns OCR job state and queues OpenRouter PDF processing with the explicit `mistral-ocr` engine for stored PDFs from the teacher planning library.
 
 ## Goal
 
@@ -10,7 +10,7 @@ Make scanned and image-heavy teacher planning-library PDFs reliable to index wit
 
 ## Decision
 
-Use Convex as the source of truth and orchestration layer, with Mistral OCR as the MVP OCR provider.
+Use Convex as the source of truth and orchestration layer, with OpenRouter as the API gateway and its `file-parser` plugin pinned to the `mistral-ocr` PDF engine for MVP OCR.
 
 Convex owns:
 
@@ -18,18 +18,18 @@ Convex owns:
 - Auth, school membership checks, role checks, rate limits, retry limits, and provider configuration.
 - Job state transitions and idempotent chunk replacement.
 
-Mistral OCR owns:
+OpenRouter PDF processing owns:
 
 - Scanned/image-heavy PDF OCR.
 - Page-level text/markdown extraction.
 
-Do not put native canvas, Poppler, Tesseract, or other native PDF rendering packages inside Convex. Do not rely on OpenRouter/Gemma PDF parsing as the primary OCR path. Do not make browser-side PDF rendering the primary path because it cannot reliably retry existing stored PDFs.
+Do not put native canvas, Poppler, Tesseract, or other native PDF rendering packages inside Convex. Do not rely on the old free OpenRouter/Gemma `cloudflare-ai` PDF parsing path as the primary scanned-PDF OCR path. Do not make browser-side PDF rendering the primary path because it cannot reliably retry existing stored PDFs.
 
 ## Current State
 
-The planning library currently supports file uploads, native PDF text extraction, selected page ranges, page-aware chunk metadata, and `ocr_needed` status. Recent attempts added OpenRouter/Gemma fallback and browser-prepared OCR retry, but those paths are unreliable for production:
+The planning library currently supports file uploads, native PDF text extraction, selected page ranges, page-aware chunk metadata, and `ocr_needed` status. Recent attempts added free OpenRouter/Gemma PDF parsing and browser-prepared OCR retry, but those paths are unreliable for production:
 
-- OpenRouter/Gemma can return inconsistent OCR text, loses robust page boundaries, and is hard to audit.
+- Free OpenRouter/Gemma plus `cloudflare-ai` parsing can return inconsistent OCR text, loses robust page boundaries, and is hard to audit.
 - Browser-side rendering requires the teacher to select the original PDF again and depends on device/browser quality.
 - Convex cannot safely bundle native canvas/PDF rasterization modules.
 
@@ -48,13 +48,14 @@ The planning library currently supports file uploads, native PDF text extraction
 - Native extraction remains first pass for digital PDFs and text files.
 - `knowledgeOcrJobs` tracks scanned/image-heavy PDF OCR attempts.
 - `requestKnowledgeMaterialProviderOcr` validates staff access, school boundary, rate limits, retry caps, stored-file availability, and idempotent queued jobs.
-- `lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal` calls Mistral OCR using a short-lived Convex storage URL.
+- `lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal` calls OpenRouter chat completions with a short-lived Convex storage URL and the `file-parser` plugin configured as `engine: "mistral-ocr"`.
 - Internal mutations transition jobs through queued -> processing -> succeeded/failed and write audit events.
 - OCR results are normalized to pages and chunked with page metadata.
 
 ### Provider Layer
 
-- MVP provider: Mistral OCR via `MISTRAL_API_KEY`.
+- MVP provider: OpenRouter via `OPENROUTER_API_KEY`, using `OPENROUTER_PDF_ENGINE=mistral-ocr`.
+- `OPENROUTER_OCR_MODEL` can override the model that receives the parsed PDF; otherwise the code uses the project default.
 - Internal adapter normalizes provider output into pages:
   - `pageNumber`
   - `text`
@@ -73,7 +74,7 @@ The planning library currently supports file uploads, native PDF text extraction
 6. Teacher or admin queues OCR.
 7. Convex validates auth, school membership, material ownership/management rights, retry limits, and school quota.
 8. Convex creates an OCR job and marks the material OCR queued/processing.
-9. Convex Node action fetches the stored file via `ctx.storage.getUrl(storageId)` and calls Mistral OCR.
+9. Convex Node action fetches the stored file via `ctx.storage.getUrl(storageId)` and calls OpenRouter PDF processing with `mistral-ocr`.
 10. OCR pages are normalized and saved or chunked.
 11. Existing chunks for the material are replaced idempotently.
 12. Chunks preserve `pageStart`, `pageEnd`, and `pageNumbers`.
@@ -125,19 +126,19 @@ Audit events should record OCR requested, queued, started, succeeded, failed, re
 - Read/write OCR rows only after verifying the material belongs to the same school.
 - Generate signed storage access only inside Convex actions or trusted workers.
 - Never persist signed URLs.
-- Store provider secrets only in Convex environment variables.
+- Store provider secrets only in Convex environment variables. MVP requires `OPENROUTER_API_KEY`, not `MISTRAL_API_KEY`.
 - Normalize provider errors before storing or showing them.
 - Rate limit OCR by school and material, with retry cooldown and max attempts.
 
 ## MVP Scope
 
-- Mistral OCR provider only.
+- OpenRouter `file-parser` with `mistral-ocr` engine only.
 - Convex Node action execution path.
 - Manual teacher retry for existing `ocr_needed` materials.
 - Optional admin/internal bulk queue task can be planned but does not need UI in MVP.
 - Selected page ranges remain supported.
 - Existing native extraction remains first pass.
-- OpenRouter/Gemma and browser-rendered OCR are no longer primary paths.
+- Free OpenRouter/Gemma `cloudflare-ai` parsing and browser-rendered OCR are no longer primary scanned-PDF OCR paths.
 
 ## Future Scope
 
@@ -168,8 +169,9 @@ Completed:
 - `pnpm --filter @school/convex convex:codegen`
 - `pnpm --filter @school/convex typecheck`
 - `pnpm --filter teacher typecheck`
+- `pnpm convex deploy` with `CONVEX_DEPLOYMENT=prod:outgoing-warbler-782`
 
 Still required before production release:
 
-- Manual test digital PDF, scanned PDF, selected-page scanned PDF, corrupt PDF, provider timeout, and cross-school access with `MISTRAL_API_KEY` configured.
-- Run `pnpm convex deploy` after final review, per project policy.
+- Confirm `OPENROUTER_API_KEY` is configured in the target Convex deployment.
+- Manual test digital PDF, scanned PDF, selected-page scanned PDF, corrupt PDF, provider timeout, and cross-school access.

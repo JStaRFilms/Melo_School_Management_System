@@ -42,7 +42,7 @@ Update feature and FR docs after implementation so the accepted OCR architecture
 
 ## Acceptance Criteria
 
-- FR-016 no longer claims OpenRouter/Gemma is the accepted production OCR fallback.
+- FR-016 no longer claims free OpenRouter/Gemma `cloudflare-ai` parsing is the accepted production scanned-PDF OCR fallback.
 - Page-selection docs describe provider-backed OCR and selected-page indexing.
 - Docs mention how to disable OCR fallback safely.
 - Docs mention `pnpm convex deploy` was run or why it could not be run.

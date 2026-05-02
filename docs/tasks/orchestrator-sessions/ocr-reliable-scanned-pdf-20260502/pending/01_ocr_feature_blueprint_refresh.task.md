@@ -42,8 +42,8 @@ Refresh the OCR feature blueprint so implementation agents have one authoritativ
 
 ## Acceptance Criteria
 
-- The accepted architecture is clearly Mistral OCR MVP plus Convex orchestration.
-- OpenRouter/Gemma is not described as the primary OCR fallback.
+- The accepted architecture is clearly OpenRouter `file-parser` with explicit `mistral-ocr` engine plus Convex orchestration.
+- Free OpenRouter/Gemma `cloudflare-ai` parsing is not described as the primary scanned-PDF OCR fallback.
 - Browser-rendered OCR is not described as the primary retry path.
 - Existing stored PDF retry, page ranges, tenant boundaries, audit logs, rate limits, and graceful failures are covered.
 - No implementation code is changed in this Genesis task.

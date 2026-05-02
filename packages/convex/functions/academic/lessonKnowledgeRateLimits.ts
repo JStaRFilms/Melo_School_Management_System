@@ -83,8 +83,8 @@ const LESSON_KNOWLEDGE_RATE_LIMITS = {
   },
   knowledge_material_ocr_retry: {
     buckets: [
-      { scope: "user", limit: 5, windowMs: 15 * 60 * 1000 },
-      { scope: "school", limit: 25, windowMs: 15 * 60 * 1000 },
+      { scope: "user", limit: 12, windowMs: 15 * 60 * 1000 },
+      { scope: "school", limit: 60, windowMs: 15 * 60 * 1000 },
     ],
   },
   portal_supplemental_upload_url: {

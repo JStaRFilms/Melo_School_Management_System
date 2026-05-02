@@ -915,12 +915,20 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       throw new ConvexError("This material has reached the retry limit");
     }
 
-    const activeJob = await ctx.db
+    const queuedJob = await ctx.db
       .query("knowledgeOcrJobs")
       .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "queued"))
       .unique();
-    if (activeJob) {
-      return { materialId: args.materialId, jobId: activeJob._id, processingStatus: "queued" as const };
+    if (queuedJob) {
+      return { materialId: args.materialId, jobId: queuedJob._id, processingStatus: "queued" as const };
+    }
+
+    const processingJob = await ctx.db
+      .query("knowledgeOcrJobs")
+      .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "processing"))
+      .unique();
+    if (processingJob) {
+      return { materialId: args.materialId, jobId: processingJob._id, processingStatus: "extracting" as const };
     }
 
     await assertLessonKnowledgeRateLimit(ctx, {
@@ -935,7 +943,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       materialId: args.materialId,
       storageId: material.storageId,
       requestedByUserId: userId,
-      provider: "mistral",
+      provider: "openrouter_mistral_ocr",
       status: "queued",
       attempt: material.ingestionAttemptCount + 1,
       maxAttempts: MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS,
@@ -1030,6 +1038,9 @@ export const completeKnowledgeMaterialOcrJobInternal = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new ConvexError("OCR job not found");
+    if (job.status !== "processing") {
+      throw new ConvexError("OCR job is not processing");
+    }
     const now = Date.now();
     await ctx.db.patch(args.jobId, {
       status: args.status,

@@ -8,10 +8,10 @@ Final architecture:
 
 - Convex remains the source of truth for materials, OCR jobs, statuses, chunks, audit logs, and tenant authorization.
 - Native PDF text extraction remains first pass for digital PDFs.
-- Mistral OCR is the MVP provider for scanned/image-heavy PDFs.
+- OpenRouter is the MVP API gateway for scanned/image-heavy PDFs, with the PDF `file-parser` plugin explicitly pinned to `mistral-ocr`.
 - Existing stored PDFs can be retried using Convex storage without teacher re-upload.
 - Page ranges remain supported and indexed chunks remain page-aware.
-- OpenRouter/Gemma and browser-side rendering are not primary OCR paths.
+- Free OpenRouter/Gemma `cloudflare-ai` parsing and browser-side rendering are not primary scanned-PDF OCR paths.
 
 ## Skills Registry
 
@@ -43,7 +43,7 @@ Final architecture:
 Genesis inventory and blueprint
   -> Design OCR job/status/provider/UX specs
   -> Backend job model
-  -> Mistral provider action
+  -> OpenRouter mistral-ocr provider action
   -> Page-aware chunking integration
   -> Teacher library UX
   -> Docs sync
@@ -59,7 +59,7 @@ Genesis inventory and blueprint
 | 03 | OCR job/status/provider design | Design | Architect | GPT-5.5 | 01, 02 |
 | 04 | Teacher OCR UX design | Design | UI/Product | GPT-5.4 | 01, 02 |
 | 05 | Convex OCR job model and audit events | Build | Backend | GPT-5.5 | 03 |
-| 06 | Mistral OCR provider action | Build | Backend integration | GPT-5.5 | 03, 05 |
+| 06 | OpenRouter mistral-ocr provider action | Build | Backend integration | GPT-5.5 | 03, 05 |
 | 07 | Page-aware chunking integration | Build | Backend | GPT-5.4 | 05, 06 |
 | 08 | Teacher library OCR UX | Build | Frontend | GPT-5.4 | 04, 05 |
 | 09 | Documentation sync | Build | Docs | GPT-5.4 Mini | 05-08 |

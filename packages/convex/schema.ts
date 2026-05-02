@@ -1243,7 +1243,7 @@ export default defineSchema({
     materialId: v.id("knowledgeMaterials"),
     storageId: v.id("_storage"),
     requestedByUserId: v.id("users"),
-    provider: v.literal("mistral"),
+    provider: v.union(v.literal("openrouter_mistral_ocr"), v.literal("mistral")),
     status: v.union(
       v.literal("queued"),
       v.literal("processing"),

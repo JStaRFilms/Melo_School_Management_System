@@ -21,7 +21,7 @@ A teacher can upload one PDF and enter ranges such as `1-5,7-8,70-72`. The teach
 - One visible `knowledgeMaterials` row per upload.
 - Store selected page metadata on the material.
 - Extract text only from selected PDF pages when page ranges are provided.
-- For image-heavy/scanned PDFs, queue provider-backed OCR from the stored Convex file. Mistral OCR is the MVP provider. OpenRouter/Gemma PDF parsing and browser-side rendering are not primary OCR paths.
+- For image-heavy/scanned PDFs, queue provider-backed OCR from the stored Convex file. OpenRouter `file-parser` with explicit `mistral-ocr` engine is the MVP provider path. Free OpenRouter/Gemma `cloudflare-ai` parsing and browser-side rendering are not primary OCR paths.
 - Store page metadata on generated chunks.
 - Show selected/indexed page summary in teacher UI and source proof.
 - Preserve existing full-document upload behavior when no page range is provided.
@@ -30,7 +30,7 @@ A teacher can upload one PDF and enter ranges such as `1-5,7-8,70-72`. The teach
 
 - Visual PDF page thumbnails.
 - User-facing management of compact selected-pages PDF files. The backend may create an internal trimmed PDF for safer selected-page OCR and preview.
-- Advanced multi-provider OCR routing beyond the Mistral MVP provider.
+- Advanced multi-provider OCR routing beyond the OpenRouter `mistral-ocr` MVP provider path.
 - Multiple visible child materials for one upload.
 - Student-facing citation UI changes.
 
