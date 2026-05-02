@@ -279,7 +279,7 @@ export default function TeacherLibraryPage() {
 
   const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
     try {
-      if (material.processingStatus === "ocr_needed") {
+      if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
         await requestProviderOcr({ materialId: material._id as never } as never);
         setNotice({
           tone: "success",

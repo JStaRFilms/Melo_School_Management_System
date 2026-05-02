@@ -14,13 +14,13 @@ Now let me produce the architecture document as a well-structured, rendered arti
 
 ---
 
-## 2. Recommended Primary Architecture: Convex Action → Mistral OCR API
+## 2. Recommended Primary Architecture: Convex Action → OpenRouter Mistral OCR
 
-**The core pattern is simple:** Convex stores the file and owns all state. A Convex `action` (which runs in a full Node.js environment with unrestricted outbound HTTP) fetches a short-lived signed download URL from Convex storage, streams the PDF bytes directly to Mistral's OCR endpoint, receives structured page-level JSON, and calls a mutation to persist chunks. Convex never touches a canvas.
+**The core pattern is simple:** Convex stores the file and owns all state. A Convex `action` (which runs in a full Node.js environment with unrestricted outbound HTTP) fetches a short-lived signed download URL from Convex storage, sends the PDF bytes through OpenRouter using the `mistral-ocr` file-parser engine, receives page-level OCR text, and calls a mutation to persist chunks. Convex never touches a canvas.
 
 **Why Mistral OCR over the alternatives:**
 
-Mistral's dedicated OCR API (`mistral-ocr-latest`) is designed specifically for document ingestion at scale. It accepts raw PDF bytes, returns structured Markdown per page with bounding box metadata, supports page selection, and costs approximately $1 per 1,000 pages — significantly cheaper than Google Document AI ($1.50/page for the first tier) and Azure Document Intelligence. Google Document AI and AWS Textract are operationally heavier: they require provisioning processors, IAM roles, and GCS/S3 bucket intermediaries before a single byte flows. For an MVP on a lean stack, that operational cost is not justified.
+OpenRouter's `file-parser` plugin with the `mistral-ocr` engine is the MVP OCR path. It lets Convex call OpenRouter's chat completions endpoint with `OPENROUTER_API_KEY`, keep provider configuration in one place, and still receive page-aware OCR text for stored PDFs. Google Document AI and AWS Textract are operationally heavier: they require provisioning processors, IAM roles, and GCS/S3 bucket intermediaries before a single byte flows. For an MVP on a lean stack, that operational cost is not justified.
 
 An external Tesseract/Poppler worker is technically viable but requires you to run and maintain a containerized service (Cloud Run, Railway, Fly.io), implement your own auth layer, queue failed retries, handle cold starts, and pay for persistent compute. This is the right long-term option for very high volume but is overbuilt for MVP.
 
@@ -34,8 +34,8 @@ OpenRouter vision models remain an option for a fallback tier (image-heavy slide
 
 1. Teacher selects a PDF in `/planning/library`. The Next.js route handler calls `generateUploadUrl` on Convex, uploads the file bytes directly to Convex storage, and receives a `storageId`.
 2. The frontend calls the `ingestMaterial` Convex mutation with `{ storageId, schoolId, teacherId, pageRange?, filename }`. The mutation creates a `materials` record with `status: "processing"` and immediately calls `ctx.scheduler.runAfter(0, internal.academic.lessonKnowledgeIngestionActions.processOcr, { materialId })`.
-3. The `processOcr` Convex action wakes up, calls `ctx.storage.getUrl(storageId)` to get a short-lived signed URL (valid for ~1 minute, never persisted or logged), fetches the PDF bytes, and POSTs them to `https://api.mistral.ai/v1/ocr` with `{ model: "mistral-ocr-latest", pages: pageRange ?? null }`.
-4. Mistral returns `{ pages: [{ index, markdown, bbox_data }] }`. The action iterates pages and calls `saveOcrChunks` mutation, writing one `lessonKnowledgeChunk` record per page with `{ materialId, pageIndex, text, schoolId }`.
+3. The `processOcr` Convex action wakes up, calls `ctx.storage.getUrl(storageId)` to get a short-lived signed URL (valid for ~1 minute, never persisted or logged), fetches the PDF bytes, and POSTs them to OpenRouter chat completions with the `file-parser` plugin configured as `engine: "mistral-ocr"`.
+4. OpenRouter returns model output normalized by the action into `{ pages: [{ pageNumber, text, markdown? }] }`. The action iterates pages and calls `saveOcrChunks` mutation, writing one `lessonKnowledgeChunk` record per page with `{ materialId, pageIndex, text, schoolId }`.
 5. The action calls `setMaterialStatus` mutation with `status: "ready"`. On any HTTP error or timeout, it calls `setMaterialStatus` with `status: "failed"` and writes an `ocrAuditLog` entry containing `{ materialId, schoolId, error, provider: "mistral", attemptedAt }`.
 6. The library UI reactively updates via Convex's live query subscription — the teacher sees the status badge flip from processing to ready with no polling.
 
@@ -89,7 +89,7 @@ No re-upload UI is needed for existing failed files — this is the key teacher 
 
 **Tenant boundaries.** Every DB query and mutation must include a `schoolId` filter derived from server-side auth. The `saveOcrChunks` mutation should assert that the `materialId` being written to belongs to the same `schoolId` as the calling user before inserting any chunk records.
 
-**Mistral API key.** Store as a Convex environment variable (`MISTRAL_API_KEY`), accessed only inside the action via `process.env`. Never reference it in mutations, queries, or client-side code.
+**OpenRouter API key.** Store as a Convex environment variable (`OPENROUTER_API_KEY`), accessed only inside the action via `process.env`. Never reference it in mutations, queries, or client-side code.
 
 **Rate limits.** Mistral's OCR API has per-minute and per-day rate limits (check their dashboard for your tier). Implement a simple exponential backoff inside `processOcr`: on HTTP 429, reschedule via `ctx.scheduler.runAfter(delay, ...)` with doubling delay up to a max of 10 minutes. Track attempt count in the material record and fail permanently after 5 attempts, writing a clear audit log entry.
 

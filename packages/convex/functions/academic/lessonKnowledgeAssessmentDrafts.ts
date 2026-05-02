@@ -860,8 +860,11 @@ async function loadSources(
     };
   });
 
-  const contextSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? selectedSources[0] ?? null;
-  const topicSource = selectedSources.find((source) => source.sourceType !== "imported_curriculum") ?? null;
+  const contextSource =
+    selectedSources.find((source) => source.subjectId !== null && source.sourceType !== "imported_curriculum") ??
+    selectedSources.find((source) => source.subjectId !== null) ??
+    null;
+  const topicSource = selectedSources.find((source) => source.subjectId !== null && source.sourceType !== "imported_curriculum") ?? null;
   const sourceContext = contextSource
     ? {
         subjectId: contextSource.subjectId,

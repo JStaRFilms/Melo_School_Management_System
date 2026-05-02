@@ -61,6 +61,7 @@ All fields are optional for backward compatibility.
 
 - Valid input like `1-5,7-8,70-72` is accepted and normalized.
 - Invalid input like `0`, `8-7`, `1,,3`, or `abc` is rejected.
+- Huge ranges are rejected before expanding them into an unbounded page list.
 - Selected pages outside the PDF page count fail with a clear error.
 - Page-aware chunks record source page metadata.
 - Existing text and full-PDF uploads continue to work.

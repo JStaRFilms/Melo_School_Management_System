@@ -1153,7 +1153,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
 
     const patch: Partial<Doc<"knowledgeMaterials">> = {
       title,
-      ...(subjectId ? { subjectId } : { subjectId: undefined }),
+      ...(subjectId ? { subjectId } : {}),
       level,
       topicLabel,
       searchText,

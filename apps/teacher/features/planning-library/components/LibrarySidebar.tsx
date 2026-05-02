@@ -34,7 +34,7 @@ interface LibrarySidebarProps {
     file: File;
     title: string;
     description: string;
-    subjectId: string;
+    subjectId: string | null;
     level: string;
     topicLabel: string;
     isCurriculumReference: boolean;
@@ -110,7 +110,7 @@ export function LibrarySidebar({
       file: uploadFile,
       title: uploadTitle,
       description: uploadDescription,
-      subjectId: uploadSubjectId,
+      subjectId: uploadSubjectId || null,
       level: uploadLevel,
       topicLabel: uploadTopicLabel,
       isCurriculumReference,

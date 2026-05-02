@@ -16,7 +16,7 @@ Convex owns:
 
 - Material records, source storage references, page selections, statuses, chunks, and audit logs.
 - Auth, school membership checks, role checks, rate limits, retry limits, and provider configuration.
-- Job state transitions and idempotent chunk replacement.
+- Job state transitions, storage-aware job reuse, and idempotent chunk replacement.
 
 OpenRouter PDF processing owns:
 
@@ -48,7 +48,9 @@ The planning library currently supports file uploads, native PDF text extraction
 - Native extraction remains first pass for digital PDFs and text files.
 - `knowledgeOcrJobs` tracks scanned/image-heavy PDF OCR attempts.
 - `requestKnowledgeMaterialProviderOcr` validates staff access, school boundary, rate limits, retry caps, stored-file availability, and idempotent queued jobs.
+- OCR job reuse is only valid when the queued/processing job still points at the material's current `storageId`; stale jobs from a replaced trimmed PDF are ignored.
 - `lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal` calls OpenRouter chat completions with a short-lived Convex storage URL and the `file-parser` plugin configured as `engine: "mistral-ocr"`.
+- Provider requests use abortable timeouts so timed-out OpenRouter calls are actively cancelled.
 - Internal mutations transition jobs through queued -> processing -> succeeded/failed and write audit events.
 - OCR results are normalized to pages and chunked with page metadata.
 
@@ -157,6 +159,7 @@ Audit events should record OCR requested, queued, started, succeeded, failed, re
 - OCR provider errors do not crash the app.
 - Failed OCR attempts leave the material recoverable.
 - Selected page ranges such as `1-5,7-8` are respected.
+- Browser-prepared OCR page numbers must be unique, positive, and within the material's known PDF page count.
 - Chunks include page metadata.
 - Teachers cannot OCR materials from another school.
 - Audit logs and retry limits are in place.
@@ -169,7 +172,7 @@ Completed:
 - `pnpm --filter @school/convex convex:codegen`
 - `pnpm --filter @school/convex typecheck`
 - `pnpm --filter teacher typecheck`
-- `pnpm convex deploy` with `CONVEX_DEPLOYMENT=prod:outgoing-warbler-782`
+- `pnpm convex deploy` against the configured production Convex deployment
 
 Still required before production release:
 

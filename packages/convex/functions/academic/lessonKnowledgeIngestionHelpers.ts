@@ -319,6 +319,14 @@ export function parsePdfPageRanges(value: string): number[] {
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < 1 || start > end) {
         throw new ConvexError("Page ranges must use positive ascending numbers");
       }
+      let newPagesInRange = 0;
+      for (let page = start; page <= end; page += 1) {
+        if (!pages.has(page)) newPagesInRange += 1;
+        if (pages.size + newPagesInRange > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) break;
+      }
+      if (pages.size + newPagesInRange > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
+        throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+      }
       for (let page = start; page <= end; page += 1) pages.add(page);
     } else if (single) {
       const page = Number(single[1]);
@@ -340,6 +348,12 @@ export function assertPdfPageSelectionWithinLimit(args: {
   selectedPageNumbers: number[];
   maxPageCount?: number;
 }) {
+  const invalidPage = args.selectedPageNumbers.find(
+    (page) => !Number.isInteger(page) || page < 1
+  );
+  if (invalidPage !== undefined) {
+    throw new ConvexError(`Selected page ${invalidPage} is not a valid page number`);
+  }
   if (args.selectedPageNumbers.length > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
     throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
   }

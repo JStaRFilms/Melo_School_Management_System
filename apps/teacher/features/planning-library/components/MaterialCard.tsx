@@ -35,6 +35,7 @@ export function MaterialCard({
   };
 
   const handlePrimaryKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       handlePrimaryAction();
@@ -94,6 +95,7 @@ export function MaterialCard({
               e.stopPropagation();
               onInspect();
             }}
+            onKeyDown={(e) => e.stopPropagation()}
             className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200"
             aria-label={`Inspect ${material.title}`}
           >

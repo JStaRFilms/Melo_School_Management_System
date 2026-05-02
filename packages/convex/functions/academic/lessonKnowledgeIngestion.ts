@@ -755,6 +755,13 @@ export const requestKnowledgeMaterialBrowserOcrImageUploadUrls = mutation({
     if (uniquePageNumbers.some((pageNumber) => !Number.isInteger(pageNumber) || pageNumber < 1)) {
       throw new ConvexError("OCR page numbers must be positive whole numbers");
     }
+    const actualPageCount = material.pdfPageCount ?? material.sourcePdfPageCount ?? null;
+    if (
+      actualPageCount !== null &&
+      uniquePageNumbers.some((pageNumber) => pageNumber > actualPageCount)
+    ) {
+      throw new ConvexError("OCR image page number exceeds document page count");
+    }
     if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
       throw new ConvexError("This material has reached the retry limit");
     }
@@ -820,9 +827,13 @@ export const startKnowledgeMaterialBrowserOcrRetryInternal = internalMutation({
       throw new ConvexError("Browser OCR retry supports up to 8 pages at a time");
     }
     const seenPages = new Set<number>();
+    const actualPageCount = material.pdfPageCount ?? material.sourcePdfPageCount ?? null;
     for (const image of args.images) {
       if (!Number.isInteger(image.pageNumber) || image.pageNumber < 1 || seenPages.has(image.pageNumber)) {
         throw new ConvexError("OCR image pages must be unique positive whole numbers");
+      }
+      if (actualPageCount !== null && image.pageNumber > actualPageCount) {
+        throw new ConvexError("OCR image page number exceeds document page count");
       }
       seenPages.add(image.pageNumber);
       const metadata = await ctx.db.system.get("_storage", image.storageId);
@@ -915,10 +926,11 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       throw new ConvexError("This material has reached the retry limit");
     }
 
-    const queuedJob = await ctx.db
+    const queuedJobs = await ctx.db
       .query("knowledgeOcrJobs")
       .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "queued"))
-      .unique();
+      .collect();
+    const queuedJob = queuedJobs.find((job) => job.storageId === material.storageId);
     if (queuedJob) {
       await ctx.db.patch(args.materialId, {
         processingStatus: "queued",
@@ -930,10 +942,11 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       return { materialId: args.materialId, jobId: queuedJob._id, processingStatus: "queued" as const };
     }
 
-    const processingJob = await ctx.db
+    const processingJobs = await ctx.db
       .query("knowledgeOcrJobs")
       .withIndex("by_material_and_status", (q) => q.eq("materialId", args.materialId).eq("status", "processing"))
-      .unique();
+      .collect();
+    const processingJob = processingJobs.find((job) => job.storageId === material.storageId);
     if (processingJob) {
       await ctx.db.patch(args.materialId, {
         processingStatus: "extracting",
@@ -1125,12 +1138,15 @@ export const retryKnowledgeMaterialIngestion = mutation({
       now - material.updatedAt >= MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS;
     const needsSelectedPagePdfTrim =
       Boolean(material.selectedPageNumbers?.length) && material.sourceFileMode !== "selected_pages";
+    const canTrimSelectedPagePdf =
+      needsSelectedPagePdfTrim &&
+      (material.processingStatus !== "extracting" || isStaleExtracting);
 
     if (
       material.processingStatus !== "ocr_needed" &&
       material.processingStatus !== "failed" &&
       !isStaleExtracting &&
-      !needsSelectedPagePdfTrim
+      !canTrimSelectedPagePdf
     ) {
       throw new ConvexError("This material does not need a retry");
     }
@@ -1281,6 +1297,12 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     const material = await ctx.db.get(args.materialId);
     if (!material || material.schoolId !== args.schoolId) {
       throw new ConvexError("Knowledge material not found");
+    }
+    if (!material.storageId || material.storageId !== args.previousStorageId) {
+      throw new ConvexError("Knowledge material storage changed before replacement");
+    }
+    if (args.previousStorageId === args.nextStorageId) {
+      throw new ConvexError("Replacement storage must differ from previous storage");
     }
 
     await ctx.db.patch(args.materialId, {
