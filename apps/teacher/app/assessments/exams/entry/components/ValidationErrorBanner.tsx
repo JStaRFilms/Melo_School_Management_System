@@ -14,51 +14,27 @@ export function ValidationErrorBanner({
   if (errorSummaries.length === 0) return null;
 
   return (
-    // Exact match from states mockup State 04
-    <div className="bg-red-50 border-2 border-red-200 text-red-900 rounded-3xl p-8 flex flex-col md:flex-row items-start gap-6">
-      <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 shrink-0">
-        <AlertTriangle className="w-6 h-6" />
-      </div>
-      <div className="space-y-4 flex-1">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-xl font-bold">Submission Blocked</h3>
-            <p className="text-red-700 font-medium">
-              Some records contain invalid data. Please review the highlighted
-              cells in the roster grid before finalizing the sheet.
-            </p>
-          </div>
-          {onDismiss && (
-            <button
-              onClick={onDismiss}
-              className="text-red-400 hover:text-red-600 shrink-0"
-              aria-label="Dismiss errors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+          <AlertTriangle className="h-4 w-4" />
         </div>
-        {/* Exact grid from states mockup */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {errorSummaries.slice(0, 6).map((err, i) => (
-            <div
-              key={i}
-              className="bg-white/50 border border-red-100 p-4 rounded-xl flex items-center gap-3"
-            >
-              <span className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center font-bold text-xs shrink-0">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <p className="text-xs font-bold">
-                {err.studentName}: {err.message}
-              </p>
-            </div>
-          ))}
-        </div>
-        {errorSummaries.length > 6 && (
-          <p className="text-xs text-red-500 font-bold">
-            ...and {errorSummaries.length - 6} more errors
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-black">Some scores still need attention</h3>
+          <p className="mt-1 text-sm font-medium text-amber-800">
+            {errorSummaries.length} field{errorSummaries.length === 1 ? "" : "s"} are not ready to save. Check the highlighted cells in the score grid.
           </p>
-        )}
+        </div>
+        {onDismiss ? (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-amber-500 hover:text-amber-800"
+            aria-label="Dismiss errors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
     </div>
   );

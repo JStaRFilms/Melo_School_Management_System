@@ -3,6 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/AuthProvider";
 import { ConvexClientProvider } from "@/lib/ConvexClientProvider";
 import { hasConvexAuthEnv } from "@school/auth";
+import { AppToaster } from "@school/shared/toast";
 import { getToken } from "@/lib/auth-server";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default async function RootLayout({
       <body className="antialiased" suppressHydrationWarning>
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
+            <AppToaster />
             {children}
           </AuthProvider>
         </ConvexClientProvider>

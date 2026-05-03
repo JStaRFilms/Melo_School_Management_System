@@ -85,6 +85,31 @@ export function AdminRosterGridRow({
     return Number.isNaN(parsed) ? null : parsed;
   };
 
+  const renderScoreInput = (field: ScoreField, value: number | null, max: number, isExam = false) => {
+    const error = studentErrors[field];
+
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <input
+          type="number"
+          value={value ?? ""}
+          min={0}
+          max={max}
+          step={1}
+          disabled={!isEditable}
+          onChange={(e) => {
+            onScoreChange(student.studentId, field, parseScoreValue(e.target.value));
+          }}
+          placeholder="--"
+          title={error ?? undefined}
+          className={`score-input ${isExam ? "score-input-exam" : ""} ${error ? "error" : ""} ${
+            !isEditable ? "cursor-not-allowed opacity-60" : ""
+          }`}
+        />
+      </div>
+    );
+  };
+
   return (
     <tr className="group hover:bg-slate-50/50 transition-all cursor-pointer">
       <td className="sticky-column pl-6">
@@ -112,73 +137,16 @@ export function AdminRosterGridRow({
           </div>
         </div>
       </td>
+      <td className="text-center">{renderScoreInput("ca1", ca1, 20)}</td>
+      <td className="text-center">{renderScoreInput("ca2", ca2, 20)}</td>
+      <td className="text-center">{renderScoreInput("ca3", ca3, 20)}</td>
       <td className="text-center">
-        <input
-          type="number"
-          value={ca1 ?? ""}
-          min={0}
-          max={20}
-          step={1}
-          disabled={!isEditable}
-          onChange={(e) => {
-            onScoreChange(student.studentId, "ca1", parseScoreValue(e.target.value));
-          }}
-          placeholder="--"
-          className={`score-input ${studentErrors.ca1 ? "error" : ""} ${
-            !isEditable ? "cursor-not-allowed opacity-60" : ""
-          }`}
-        />
-      </td>
-      <td className="text-center">
-        <input
-          type="number"
-          value={ca2 ?? ""}
-          min={0}
-          max={20}
-          step={1}
-          disabled={!isEditable}
-          onChange={(e) => {
-            onScoreChange(student.studentId, "ca2", parseScoreValue(e.target.value));
-          }}
-          placeholder="--"
-          className={`score-input ${studentErrors.ca2 ? "error" : ""} ${
-            !isEditable ? "cursor-not-allowed opacity-60" : ""
-          }`}
-        />
-      </td>
-      <td className="text-center">
-        <input
-          type="number"
-          value={ca3 ?? ""}
-          min={0}
-          max={20}
-          step={1}
-          disabled={!isEditable}
-          onChange={(e) => {
-            onScoreChange(student.studentId, "ca3", parseScoreValue(e.target.value));
-          }}
-          placeholder="--"
-          className={`score-input ${studentErrors.ca3 ? "error" : ""} ${
-            !isEditable ? "cursor-not-allowed opacity-60" : ""
-          }`}
-        />
-      </td>
-      <td className="text-center">
-        <input
-          type="number"
-          value={examRaw ?? ""}
-          min={0}
-          max={examInputMode === "raw40" ? 40 : 60}
-          step={1}
-          disabled={!isEditable}
-          onChange={(e) => {
-            onScoreChange(student.studentId, "examRawScore", parseScoreValue(e.target.value));
-          }}
-          placeholder="--"
-          className={`score-input score-input-exam ${studentErrors.examRawScore ? "error" : ""} ${
-            !isEditable ? "cursor-not-allowed opacity-60" : ""
-          }`}
-        />
+        {renderScoreInput(
+          "examRawScore",
+          examRaw,
+          examInputMode === "raw40" ? 40 : 60,
+          true
+        )}
       </td>
       {showScaledColumn && (
         <td className="text-center font-bold text-indigo-600">

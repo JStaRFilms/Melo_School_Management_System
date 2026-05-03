@@ -1,7 +1,6 @@
 "use client";
 
 import {
-buildErrorSummaries,
 countErrors,
 hasAnyErrors,
 validateField,
@@ -18,13 +17,13 @@ UpsertResponse,
 ValidationErrors,
 } from "@/lib/types";
 import type { ExamInputMode } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { EmptyRoster } from "./EmptyRoster";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { RosterGrid } from "./RosterGrid";
 import { SaveActionBar } from "./SaveActionBar";
 import { SelectionBar } from "./SelectionBar";
-import { ValidationErrorBanner } from "./ValidationErrorBanner";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -38,6 +37,24 @@ interface SaveArgs {
     ca3: number;
     examRawScore: number;
   }>;
+}
+
+const TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID =
+  "teacher-exam-entry-save-blocked";
+const TEACHER_EXAM_ENTRY_PARTIAL_SAVE_TOAST_ID =
+  "teacher-exam-entry-partial-save";
+
+function createHandledSaveError(message: string) {
+  return Object.assign(new Error(message), { toastHandled: true as const });
+}
+
+function getScoreFieldLabel(field: ScoreField): string {
+  if (field === "examRawScore") return "Exam score";
+  return field.toUpperCase();
+}
+
+function getClearedScoreMessage(field: ScoreField): string {
+  return `${getScoreFieldLabel(field)} was cleared. Restore the last score or enter a new score before saving.`;
 }
 
 interface ExamEntryWorkspaceProps {
@@ -87,6 +104,11 @@ export function ExamEntryWorkspace({
     Array<{ studentName: string; message: string }>
   >([]);
 
+  const rosterById = useMemo(
+    () => new Map(sheetData?.roster.map((entry) => [entry.studentId, entry]) ?? []),
+    [sheetData]
+  );
+
   useEffect(() => {
     setDraftScores(new Map());
     setValidationErrors(new Map());
@@ -106,6 +128,17 @@ export function ExamEntryWorkspace({
         return;
       }
 
+      const rosterEntry = rosterById.get(studentId);
+      const previousValue = rosterEntry?.assessmentRecord?.[field] ?? null;
+      const isClearingSavedScore = value === null && previousValue !== null;
+
+      if (isClearingSavedScore) {
+        appToast.info("Saved score cleared", {
+          id: "teacher-exam-entry-score-cleared",
+          description: "Previous values are kept until you save. Use Restore previous values if this was accidental.",
+        });
+      }
+
       setDraftScores((prev) => {
         const next = new Map(prev);
         const existing = next.get(studentId) ?? {};
@@ -118,7 +151,9 @@ export function ExamEntryWorkspace({
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
-      const error = validateField(field, value, examInputMode);
+      const error = isClearingSavedScore
+        ? getClearedScoreMessage(field)
+        : validateField(field, value, examInputMode);
 
       setValidationErrors((prev) => {
         const next = new Map(prev);
@@ -140,16 +175,67 @@ export function ExamEntryWorkspace({
         return next;
       });
     },
-    [sheetData]
+    [rosterById, sheetData]
   );
+
+  const clearedScoreCount = useMemo(() => {
+    if (!sheetData) return 0;
+    let count = 0;
+    for (const [studentId, scores] of draftScores.entries()) {
+      const rosterEntry = rosterById.get(studentId);
+      for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+        if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }, [draftScores, rosterById, sheetData]);
+
+  const handleRestoreClearedScores = useCallback(() => {
+    if (!sheetData) return;
+    const restoredStudentIds = new Set<Id<"students">>();
+    setDraftScores((prev) => {
+      const next = new Map(prev);
+      for (const [studentId, scores] of prev.entries()) {
+        const rosterEntry = rosterById.get(studentId);
+        const rest = { ...scores };
+        for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+          if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+            delete rest[field];
+            restoredStudentIds.add(studentId);
+          }
+        }
+        if (Object.keys(rest).length > 0) next.set(studentId, rest);
+        else next.delete(studentId);
+      }
+      setHasUnsavedChanges(next.size > 0);
+      return next;
+    });
+    setValidationErrors((prev) => {
+      const next = new Map(prev);
+      for (const studentId of restoredStudentIds) {
+        next.delete(studentId);
+      }
+      return next;
+    });
+  }, [rosterById, sheetData]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
-      throw new Error("Complete the selectors before saving.");
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: "Complete the selectors, then try saving again.",
+      });
+      throw createHandledSaveError("Complete the selectors before saving.");
     }
 
     if (!sheetData.editingState.canEdit) {
-      throw new Error(sheetData.editingState.message);
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: sheetData.editingState.message,
+      });
+      throw createHandledSaveError(sheetData.editingState.message);
     }
 
     const examInputMode: ExamInputMode =
@@ -166,11 +252,13 @@ export function ExamEntryWorkspace({
         "examRawScore",
       ] as ScoreField[]) {
         const value = scores[field];
-        if (value === null || value === undefined) {
+        if (value === undefined) {
           continue;
         }
 
-        const error = validateField(field, value, examInputMode);
+        const error = value === null
+          ? getClearedScoreMessage(field)
+          : validateField(field, value, examInputMode);
         if (error) {
           studentErrors[field] = error;
         }
@@ -182,18 +270,23 @@ export function ExamEntryWorkspace({
     }
 
     if (allErrors.size > 0) {
+      const errorCount = countErrors(allErrors);
       setValidationErrors(allErrors);
       setExtraErrorSummaries([]);
       setShowErrorBanner(true);
-      throw new Error(
-        `${countErrors(allErrors)} validation error${countErrors(allErrors) === 1 ? "" : "s"} found`
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: `${errorCount} field${errorCount === 1 ? "" : "s"} need attention. Review the highlighted rows and try again.`,
+      });
+      throw createHandledSaveError(
+        `${errorCount} validation error${errorCount === 1 ? "" : "s"} found`
       );
     }
 
     const records: SaveArgs["records"] = [];
 
     for (const [studentId, scores] of draftScores.entries()) {
-      const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+      const rosterEntry = rosterById.get(studentId);
       const ca1 = scores.ca1 ?? rosterEntry?.assessmentRecord?.ca1 ?? null;
       const ca2 = scores.ca2 ?? rosterEntry?.assessmentRecord?.ca2 ?? null;
       const ca3 = scores.ca3 ?? rosterEntry?.assessmentRecord?.ca3 ?? null;
@@ -211,7 +304,11 @@ export function ExamEntryWorkspace({
     }
 
     if (records.length === 0) {
-      throw new Error("No complete rows to save yet.");
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: "Complete at least one full row, then try saving again.",
+      });
+      throw createHandledSaveError("No complete rows to save yet.");
     }
 
     const result = await onSaveRecords({
@@ -253,8 +350,7 @@ export function ExamEntryWorkspace({
         result.errors.map((error) => ({
           studentName:
     humanNameFinalStrict(
-              sheetData.roster.find((student) => student.studentId === error.studentId)
-                ?.studentName ?? "Unknown student"
+              rosterById.get(error.studentId)?.studentName ?? "Unknown student"
             ),
           message: error.message,
         }))
@@ -263,12 +359,20 @@ export function ExamEntryWorkspace({
 
       const savedCount = result.updated + result.created;
       if (savedCount > 0) {
-        throw new Error(
+        appToast.warning("Partial save completed", {
+          id: TEACHER_EXAM_ENTRY_PARTIAL_SAVE_TOAST_ID,
+          description: `Saved ${savedCount} record${savedCount === 1 ? "" : "s"}. ${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention.`,
+        });
+        throw createHandledSaveError(
           `Saved ${savedCount} record${savedCount === 1 ? "" : "s"}, but ${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention.`
         );
       }
 
-      throw new Error("Save blocked by row-level validation errors.");
+      appToast.warning("Save blocked by validation", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: `${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention. Review the highlighted rows and try again.`,
+      });
+      throw createHandledSaveError("Save blocked by row-level validation errors.");
     }
 
     setDraftScores(new Map());
@@ -277,7 +381,7 @@ export function ExamEntryWorkspace({
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
     return result;
-  }, [draftScores, isSheetReady, onSaveRecords, selection, sheetData]);
+  }, [draftScores, isSheetReady, onSaveRecords, rosterById, selection, sheetData]);
 
   const handleCancel = useCallback(() => {
     setDraftScores(new Map());
@@ -315,14 +419,6 @@ export function ExamEntryWorkspace({
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
   const editingState = sheetData?.editingState;
-  const errorSummaries = useMemo(
-    () => [
-      ...buildErrorSummaries(validationErrors, roster),
-      ...extraErrorSummaries,
-    ],
-    [extraErrorSummaries, roster, validationErrors]
-  );
-
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -365,13 +461,6 @@ export function ExamEntryWorkspace({
         </div>
       ) : null}
 
-      {showErrorBanner && errorSummaries.length > 0 ? (
-        <ValidationErrorBanner
-          errorSummaries={errorSummaries}
-          onDismiss={() => setShowErrorBanner(false)}
-        />
-      ) : null}
-
       {isLoadingSheet ? (
         <LoadingSkeleton />
       ) : !isSheetReady ? (
@@ -395,6 +484,24 @@ export function ExamEntryWorkspace({
           onScoreChange={handleScoreChange}
         />
       )}
+
+      {clearedScoreCount > 0 ? (
+        <div className="fixed bottom-24 left-1/2 z-50 w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-2xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-950">{clearedScoreCount} saved score{clearedScoreCount === 1 ? "" : "s"} cleared</p>
+              <p className="text-xs font-medium text-slate-500">Previous values are kept until you save. Restore them or enter new scores.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRestoreClearedScores}
+              className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800"
+            >
+              Restore previous values
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {isSheetReady && roster.length > 0 ? (
         <SaveActionBar

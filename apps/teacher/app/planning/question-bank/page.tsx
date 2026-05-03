@@ -6,9 +6,9 @@ import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   buildTeacherPlanningLibraryAttachHref,
-  getUserFacingErrorMessage,
   parsePlanningContextFromSearchParams,
 } from "@school/shared";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
@@ -59,12 +59,33 @@ function parseDraftMode(rawValue: string | null): AssessmentDraftMode {
     : "practice_quiz";
 }
 
+function getQuestionBankGenerationToast(error: unknown): {
+  title: string;
+  description: string;
+} {
+  const message = getErrorMessage(error, "Something went wrong while generating. Please try again.");
+  const countMatch = message.match(/returned (\d+) questions?, but (\d+) were requested/i);
+
+  if (countMatch) {
+    const actual = Number(countMatch[1]);
+    const expected = Number(countMatch[2]);
+    return {
+      title: "Couldn't generate enough questions",
+      description: `Generated ${actual} question${actual === 1 ? "" : "s"}, but ${expected} were requested. Try fewer questions or add more source material.`,
+    };
+  }
+
+  return {
+    title: "Unable to generate assessment draft",
+    description: message,
+  };
+}
+
 export default function QuestionBankPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [draftMode, setDraftMode] = useState<AssessmentDraftMode>(parseDraftMode(searchParams.get("mode")));
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
@@ -226,11 +247,13 @@ export default function QuestionBankPage() {
         items: draft.items,
       } as never)) as AssessmentBankSaveResult;
 
-      setWorkspaceError(null);
       return result;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Failed to save assessment draft.");
-      setWorkspaceError(message);
+      const message = getErrorMessage(error, "Failed to save assessment draft.");
+      appToast.error("Unable to save assessment draft", {
+        id: "teacher-question-bank-save-error",
+        description: message,
+      });
       throw new Error(message);
     }
   };
@@ -266,12 +289,14 @@ export default function QuestionBankPage() {
         throw new Error(message);
       }
 
-      setWorkspaceError(null);
       return payload as AssessmentBankGenerationResult;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Generation failed.");
-      setWorkspaceError(message);
-      throw new Error(message);
+      const toastMessage = getQuestionBankGenerationToast(error);
+      appToast.error(toastMessage.title, {
+        id: "teacher-question-bank-generate-error",
+        description: toastMessage.description,
+      });
+      throw new Error(toastMessage.description);
     }
   };
 
@@ -281,12 +306,6 @@ export default function QuestionBankPage() {
 
   return (
     <main className="min-h-screen space-y-8 px-4 py-6 md:px-6 md:py-8">
-      {workspaceError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm">
-          {workspaceError}
-        </div>
-      ) : null}
-
       <TeacherHeader
         title="Question Bank Workspace"
         label="Teacher Planning"

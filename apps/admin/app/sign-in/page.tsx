@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { AUTH_ERROR_MESSAGES } from "@school/auth";
+import { appToast } from "@school/shared/toast";
 
 function SignInForm() {
   const router = useRouter();
@@ -42,6 +43,17 @@ function SignInForm() {
       ? AUTH_ERROR_MESSAGES.unauthorizedArea
       : null);
 
+  useEffect(() => {
+    if (!displayError) {
+      return;
+    }
+
+    appToast.error("Unable to sign in", {
+      id: "admin-sign-in-error",
+      description: displayError,
+    });
+  }, [displayError]);
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -56,13 +68,6 @@ function SignInForm() {
               Sign in to access admin controls
             </p>
           </div>
-
-          {/* Error message */}
-          {displayError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{displayError}</p>
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">

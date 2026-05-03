@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 interface BandsActionBarProps {
   hasUnsavedChanges: boolean;
@@ -17,25 +18,21 @@ export function BandsActionBar({
   onDiscard,
 }: BandsActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
 
   const handleSave = useCallback(async () => {
     if (!hasUnsavedChanges || hasValidationErrors) return;
 
     setIsSaving(true);
-    setSaveResult(null);
 
     try {
       await onSave();
-      setSaveResult({ success: true, message: "Grading bands updated" });
-      setTimeout(() => setSaveResult(null), 5000);
-    } catch (err) {
-      setSaveResult({
-        success: false,
-        message: err instanceof Error ? err.message : "Save failed",
+      appToast.success("Grading bands updated", {
+        id: "grading-bands-save-result",
+      });
+    } catch (error) {
+      appToast.error("Unable to save grading bands", {
+        id: "grading-bands-save-result",
+        description: getErrorMessage(error, "Save failed."),
       });
     } finally {
       setIsSaving(false);
@@ -46,32 +43,6 @@ export function BandsActionBar({
 
   return (
     <>
-      {/* Success Toast */}
-      {saveResult?.success && (
-        <div className="fixed top-4 right-4 bg-emerald-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl z-50">
-          <p className="font-bold text-sm">{saveResult.message}</p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Error Toast */}
-      {saveResult && !saveResult.success && (
-        <div className="fixed top-4 right-4 bg-red-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl z-50">
-          <p className="font-bold text-sm">{saveResult.message}</p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Mobile: Fixed bottom bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-white/90 backdrop-blur-md flex items-center justify-between gap-3 z-40">
         <button

@@ -11,11 +11,13 @@ type AuthErrorLike = {
   code?: unknown;
   message?: unknown;
   status?: unknown;
+  statusText?: unknown;
   error?: unknown;
+  cause?: unknown;
 };
 
-function collectErrorText(error: unknown): string {
-  if (!error) {
+function collectErrorText(error: unknown, depth = 0): string {
+  if (!error || depth > 3) {
     return "";
   }
 
@@ -23,10 +25,23 @@ function collectErrorText(error: unknown): string {
     return error;
   }
 
+  if (error instanceof Error) {
+    return [error.name, error.message, collectErrorText(error.cause, depth + 1)]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   if (typeof error === "object") {
     const parts = error as AuthErrorLike;
-    return [parts.code, parts.status, parts.message, parts.error]
-      .filter((part): part is string => typeof part === "string")
+    return [
+      parts.code,
+      parts.status,
+      parts.statusText,
+      parts.message,
+      collectErrorText(parts.error, depth + 1),
+      collectErrorText(parts.cause, depth + 1),
+    ]
+      .filter((part): part is string => typeof part === "string" && part.length > 0)
       .join(" ");
   }
 
@@ -55,12 +70,17 @@ export function getSignInErrorMessage(error: unknown): string {
   if (
     containsAny(text, [
       "invalid_email_or_password",
+      "invalid email or password",
+      "email or password is incorrect",
+      "incorrect email or password",
       "invalid credentials",
+      "invalid credential",
       "invalid password",
       "wrong password",
       "user not found",
       "credential account not found",
       "password not found",
+      "unauthorized",
     ])
   ) {
     return AUTH_ERROR_MESSAGES.invalidCredentials;

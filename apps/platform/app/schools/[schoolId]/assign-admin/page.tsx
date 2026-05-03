@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 function AssignAdminForm() {
   const router = useRouter();
@@ -14,7 +15,6 @@ function AssignAdminForm() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   // Fetch school details
@@ -40,34 +40,36 @@ function AssignAdminForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
     const trimmedName = adminName.trim();
     const trimmedEmail = adminEmail.trim().toLowerCase();
 
     if (!trimmedName) {
-      setError("Admin name is required");
+      appToast.warning("Review required before assigning", {
+        id: "platform-assign-admin-error",
+        description: "Admin name is required.",
+      });
       return;
     }
 
     if (!trimmedEmail) {
-      setError("Admin email is required");
+      appToast.warning("Review required before assigning", {
+        id: "platform-assign-admin-error",
+        description: "Admin email is required.",
+      });
       return;
     }
 
     if (!adminPassword || adminPassword.length < 8) {
-      setError("Password must be at least 8 characters");
+      appToast.warning("Review required before assigning", {
+        id: "platform-assign-admin-error",
+        description: "Password must be at least 8 characters.",
+      });
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      if (!isConvexConfigured()) {
-        setError("Convex is not configured. Cannot assign admin.");
-        return;
-      }
-
       await provisionAdmin({
         schoolId,
         adminName: trimmedName,
@@ -80,10 +82,11 @@ function AssignAdminForm() {
       setTimeout(() => {
         router.push("/schools");
       }, 2000);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to assign school admin";
-      setError(message);
+    } catch (error) {
+      appToast.error("Unable to assign admin", {
+        id: "platform-assign-admin-error",
+        description: getErrorMessage(error, "Failed to assign school admin."),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -230,13 +233,6 @@ function AssignAdminForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Error */}
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
           {/* Admin Name */}
           <div>
             <label
@@ -328,7 +324,18 @@ function AssignAdminForm() {
 }
 
 export default function AssignAdminPage() {
-  if (!isConvexConfigured()) {
+  const isConfigured = isConvexConfigured();
+
+  useEffect(() => {
+    if (!isConfigured) {
+      appToast.error("Unable to assign admin", {
+        id: "platform-assign-admin-error",
+        description: "Convex is not configured. Cannot assign admin.",
+      });
+    }
+  }, [isConfigured]);
+
+  if (!isConfigured) {
     return (
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-lg border border-amber-200 p-8 text-center">

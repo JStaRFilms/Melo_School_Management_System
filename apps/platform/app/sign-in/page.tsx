@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { AUTH_ERROR_MESSAGES } from "@school/auth";
+import { appToast } from "@school/shared/toast";
 
 const DEFAULT_SUCCESS_REDIRECT = "/schools";
 
@@ -49,8 +50,19 @@ function SignInForm() {
     localError ??
     error ??
     (errorParam === "unauthorized"
-      ? "Super admin access required. This account is not a platform administrator." 
+      ? "Super admin access required. This account is not a platform administrator."
       : null);
+
+  useEffect(() => {
+    if (!displayError) {
+      return;
+    }
+
+    appToast.error("Unable to sign in", {
+      id: "platform-sign-in-error",
+      description: displayError,
+    });
+  }, [displayError]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
@@ -68,13 +80,6 @@ function SignInForm() {
               Sign in to manage schools and platform access
             </p>
           </div>
-
-          {/* Error message */}
-          {displayError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{displayError}</p>
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">

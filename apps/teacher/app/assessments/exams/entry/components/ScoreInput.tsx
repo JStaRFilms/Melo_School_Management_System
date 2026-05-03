@@ -73,11 +73,6 @@ export function ScoreInput({
           isExamField ? "bg-amber-50/20 border-amber-200" : ""
         } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
-      {hasError && (
-        <span className="text-[9px] font-bold text-red-500 max-w-[120px] text-center leading-tight">
-          {validationError}
-        </span>
-      )}
     </div>
   );
 }

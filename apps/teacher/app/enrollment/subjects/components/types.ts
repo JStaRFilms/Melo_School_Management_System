@@ -17,8 +17,3 @@ export type EnrollmentMatrix = {
     selectedSubjectIds: string[];
   }>;
 };
-
-export type EnrollmentNotice = {
-  tone: "success" | "error";
-  message: string;
-};
