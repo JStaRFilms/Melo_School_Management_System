@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Save, Loader2 } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 
@@ -26,12 +26,6 @@ export function SaveActionBar({
   lockMessage,
 }: SaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{
-    success: boolean;
-    message: string;
-    count?: number;
-  } | null>(null);
-
   const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
     typeof error === "object" && error !== null && "toastHandled" in error;
 
@@ -39,16 +33,12 @@ export function SaveActionBar({
     if (isEditingLocked || !hasUnsavedChanges || isSaving) return;
 
     setIsSaving(true);
-    setSaveResult(null);
-
     try {
       await onSave();
-      setSaveResult({
-        success: true,
-        message: "Changes Synced Successfully",
-        count: dirtyCount,
+      appToast.success("Results saved", {
+        id: "teacher-exam-entry-save-result",
+        description: `${dirtyCount} student record${dirtyCount === 1 ? "" : "s"} saved successfully.`,
       });
-      setTimeout(() => setSaveResult(null), 5000);
     } catch (err) {
       if (!isHandledSaveError(err)) {
         appToast.error("Unable to save exam results", {
@@ -65,36 +55,6 @@ export function SaveActionBar({
 
   return (
     <>
-      {/* Success Banner - exact match from states mockup State 03 */}
-      {saveResult?.success && (
-        <div className="bg-emerald-600 text-white rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-emerald-900/10">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
-              <Save className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">{saveResult.message}</h3>
-              <p className="text-emerald-100/80 text-sm font-medium">
-                All {saveResult.count ?? 0} student record
-                {(saveResult.count ?? 0) > 1 ? "s" : ""} have been updated and
-                are safely stored.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button className="bg-white text-emerald-700 font-bold h-12 px-6 rounded-xl hover:bg-emerald-50 transition-colors">
-              View Audit Log
-            </button>
-            <button
-              onClick={() => setSaveResult(null)}
-              className="bg-emerald-500 border border-white/20 text-white font-bold h-12 px-6 rounded-xl hover:bg-emerald-400 transition-colors"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Mobile: Fixed bottom bar - exact match from desktop mockup */}
       <div className="fixed bottom-0 left-0 right-0 p-4 md:hidden bg-white/95 border-t border-obsidian-100 z-50">
         {isEditingLocked && lockMessage ? (

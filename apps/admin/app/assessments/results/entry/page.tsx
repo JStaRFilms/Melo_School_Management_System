@@ -3,7 +3,6 @@
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { isConvexConfigured } from "@/convex-runtime";
 import {
-buildErrorSummaries,
 countErrors,
 hasAnyErrors,
 validateField,
@@ -35,7 +34,6 @@ import { useCallback,useEffect,useMemo,useState } from "react";
 import { AdminRosterGrid } from "./components/AdminRosterGrid";
 import { AdminSaveActionBar } from "./components/AdminSaveActionBar";
 import { AdminSelectionBar } from "./components/AdminSelectionBar";
-import { AdminValidationBanner } from "./components/AdminValidationBanner";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -58,6 +56,15 @@ const ADMIN_RESULTS_ENTRY_PARTIAL_SAVE_TOAST_ID =
 
 function createHandledSaveError(message: string) {
   return Object.assign(new Error(message), { toastHandled: true as const });
+}
+
+function getScoreFieldLabel(field: ScoreField): string {
+  if (field === "examRawScore") return "Exam score";
+  return field.toUpperCase();
+}
+
+function getClearedScoreMessage(field: ScoreField): string {
+  return `${getScoreFieldLabel(field)} was cleared. Restore the last score or enter a new score before saving.`;
 }
 
 export default function AdminScoreEntryPage() {
@@ -300,6 +307,19 @@ function AdminScoreEntryContent({
         return;
       }
 
+      const rosterEntry = sheetData?.roster.find(
+        (item) => item.studentId === studentId
+      );
+      const previousValue = rosterEntry?.assessmentRecord?.[field] ?? null;
+      const isClearingSavedScore = value === null && previousValue !== null;
+
+      if (isClearingSavedScore) {
+        appToast.info("Saved score cleared", {
+          id: "admin-results-entry-score-cleared",
+          description: "Previous values are kept until you save. Use Restore previous values if this was accidental.",
+        });
+      }
+
       setDraftScores((prev) => {
         const next = new Map(prev);
         const existing = next.get(studentId) ?? {};
@@ -313,7 +333,9 @@ function AdminScoreEntryContent({
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
-      const error = validateField(field, value, examInputMode);
+      const error = isClearingSavedScore
+        ? getClearedScoreMessage(field)
+        : validateField(field, value, examInputMode);
 
       setValidationErrors((prev) => {
         const next = new Map(prev);
@@ -337,6 +359,42 @@ function AdminScoreEntryContent({
     },
     [sheetData]
   );
+
+  const clearedScoreCount = useMemo(() => {
+    if (!sheetData) return 0;
+    let count = 0;
+    for (const [studentId, scores] of draftScores.entries()) {
+      const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+      for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+        if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }, [draftScores, sheetData]);
+
+  const handleRestoreClearedScores = useCallback(() => {
+    if (!sheetData) return;
+    setDraftScores((prev) => {
+      const next = new Map(prev);
+      for (const [studentId, scores] of prev.entries()) {
+        const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+        const rest = { ...scores };
+        for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+          if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+            delete rest[field];
+          }
+        }
+        if (Object.keys(rest).length > 0) next.set(studentId, rest);
+        else next.delete(studentId);
+      }
+      setHasUnsavedChanges(next.size > 0);
+      return next;
+    });
+    setValidationErrors(new Map());
+    setExtraErrorSummaries([]);
+  }, [sheetData]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
@@ -369,11 +427,13 @@ function AdminScoreEntryContent({
         "examRawScore",
       ] as ScoreField[]) {
         const value = scores[field];
-        if (value === null || value === undefined) {
+        if (value === undefined) {
           continue;
         }
 
-        const error = validateField(field, value, examInputMode);
+        const error = value === null
+          ? getClearedScoreMessage(field)
+          : validateField(field, value, examInputMode);
         if (error) {
           studentErrors[field] = error;
         }
@@ -557,14 +617,6 @@ function AdminScoreEntryContent({
       "Select Session"
   );
   const sheetLabel = `${selectedSubjectName} \u2022 ${selectedClassName}`;
-  const errorSummaries = useMemo(
-    () => [
-      ...buildErrorSummaries(validationErrors, roster),
-      ...extraErrorSummaries,
-    ],
-    [extraErrorSummaries, roster, validationErrors]
-  );
-
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50">
       <style jsx global>{`
@@ -638,13 +690,6 @@ function AdminScoreEntryContent({
               </div>
             )}
 
-            {showErrorBanner && errorSummaries.length > 0 && (
-              <AdminValidationBanner
-                errorSummaries={errorSummaries}
-                onDismiss={() => setShowErrorBanner(false)}
-              />
-            )}
-
             {isLoadingSheet ? (
               <div className="flex flex-col items-center justify-center py-24 space-y-4">
                 <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-950 rounded-full animate-spin" />
@@ -683,6 +728,24 @@ function AdminScoreEntryContent({
               />
             )}
           </div>
+
+          {clearedScoreCount > 0 ? (
+            <div className="fixed bottom-24 left-1/2 z-[60] w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-2xl">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-black text-slate-950">{clearedScoreCount} saved score{clearedScoreCount === 1 ? "" : "s"} cleared</p>
+                  <p className="text-xs font-medium text-slate-500">Previous values are kept until you save. Restore them or enter new scores.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreClearedScores}
+                  className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800"
+                >
+                  Restore previous values
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {isSheetReady && roster.length > 0 && (
             <div className="sticky bottom-0 left-0 right-0 p-3 sm:p-6 bg-white/90 backdrop-blur-md border-t border-slate-200 z-50 shadow-[0_-8px_32px_rgba(0,0,0,0.05)]">

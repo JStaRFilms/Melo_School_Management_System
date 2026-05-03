@@ -1,7 +1,6 @@
 "use client";
 
 import {
-buildErrorSummaries,
 countErrors,
 hasAnyErrors,
 validateField,
@@ -25,7 +24,6 @@ import { LoadingSkeleton } from "./LoadingSkeleton";
 import { RosterGrid } from "./RosterGrid";
 import { SaveActionBar } from "./SaveActionBar";
 import { SelectionBar } from "./SelectionBar";
-import { ValidationErrorBanner } from "./ValidationErrorBanner";
 
 interface SaveArgs {
   sessionId: Id<"academicSessions">;
@@ -48,6 +46,15 @@ const TEACHER_EXAM_ENTRY_PARTIAL_SAVE_TOAST_ID =
 
 function createHandledSaveError(message: string) {
   return Object.assign(new Error(message), { toastHandled: true as const });
+}
+
+function getScoreFieldLabel(field: ScoreField): string {
+  if (field === "examRawScore") return "Exam score";
+  return field.toUpperCase();
+}
+
+function getClearedScoreMessage(field: ScoreField): string {
+  return `${getScoreFieldLabel(field)} was cleared. Restore the last score or enter a new score before saving.`;
 }
 
 interface ExamEntryWorkspaceProps {
@@ -116,6 +123,19 @@ export function ExamEntryWorkspace({
         return;
       }
 
+      const rosterEntry = sheetData?.roster.find(
+        (item) => item.studentId === studentId
+      );
+      const previousValue = rosterEntry?.assessmentRecord?.[field] ?? null;
+      const isClearingSavedScore = value === null && previousValue !== null;
+
+      if (isClearingSavedScore) {
+        appToast.info("Saved score cleared", {
+          id: "teacher-exam-entry-score-cleared",
+          description: "Previous values are kept until you save. Use Restore previous values if this was accidental.",
+        });
+      }
+
       setDraftScores((prev) => {
         const next = new Map(prev);
         const existing = next.get(studentId) ?? {};
@@ -128,7 +148,9 @@ export function ExamEntryWorkspace({
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
-      const error = validateField(field, value, examInputMode);
+      const error = isClearingSavedScore
+        ? getClearedScoreMessage(field)
+        : validateField(field, value, examInputMode);
 
       setValidationErrors((prev) => {
         const next = new Map(prev);
@@ -152,6 +174,42 @@ export function ExamEntryWorkspace({
     },
     [sheetData]
   );
+
+  const clearedScoreCount = useMemo(() => {
+    if (!sheetData) return 0;
+    let count = 0;
+    for (const [studentId, scores] of draftScores.entries()) {
+      const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+      for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+        if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }, [draftScores, sheetData]);
+
+  const handleRestoreClearedScores = useCallback(() => {
+    if (!sheetData) return;
+    setDraftScores((prev) => {
+      const next = new Map(prev);
+      for (const [studentId, scores] of prev.entries()) {
+        const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+        const rest = { ...scores };
+        for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
+          if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
+            delete rest[field];
+          }
+        }
+        if (Object.keys(rest).length > 0) next.set(studentId, rest);
+        else next.delete(studentId);
+      }
+      setHasUnsavedChanges(next.size > 0);
+      return next;
+    });
+    setValidationErrors(new Map());
+    setExtraErrorSummaries([]);
+  }, [sheetData]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
@@ -184,11 +242,13 @@ export function ExamEntryWorkspace({
         "examRawScore",
       ] as ScoreField[]) {
         const value = scores[field];
-        if (value === null || value === undefined) {
+        if (value === undefined) {
           continue;
         }
 
-        const error = validateField(field, value, examInputMode);
+        const error = value === null
+          ? getClearedScoreMessage(field)
+          : validateField(field, value, examInputMode);
         if (error) {
           studentErrors[field] = error;
         }
@@ -350,14 +410,6 @@ export function ExamEntryWorkspace({
   const examInputMode: ExamInputMode =
     sheetData?.settings?.examInputMode ?? "raw40";
   const editingState = sheetData?.editingState;
-  const errorSummaries = useMemo(
-    () => [
-      ...buildErrorSummaries(validationErrors, roster),
-      ...extraErrorSummaries,
-    ],
-    [extraErrorSummaries, roster, validationErrors]
-  );
-
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -400,13 +452,6 @@ export function ExamEntryWorkspace({
         </div>
       ) : null}
 
-      {showErrorBanner && errorSummaries.length > 0 ? (
-        <ValidationErrorBanner
-          errorSummaries={errorSummaries}
-          onDismiss={() => setShowErrorBanner(false)}
-        />
-      ) : null}
-
       {isLoadingSheet ? (
         <LoadingSkeleton />
       ) : !isSheetReady ? (
@@ -430,6 +475,24 @@ export function ExamEntryWorkspace({
           onScoreChange={handleScoreChange}
         />
       )}
+
+      {clearedScoreCount > 0 ? (
+        <div className="fixed bottom-24 left-1/2 z-50 w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-2xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-950">{clearedScoreCount} saved score{clearedScoreCount === 1 ? "" : "s"} cleared</p>
+              <p className="text-xs font-medium text-slate-500">Previous values are kept until you save. Restore them or enter new scores.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRestoreClearedScores}
+              className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800"
+            >
+              Restore previous values
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {isSheetReady && roster.length > 0 ? (
         <SaveActionBar

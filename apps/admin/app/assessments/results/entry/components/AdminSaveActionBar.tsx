@@ -26,12 +26,6 @@ export function AdminSaveActionBar({
 
 }: AdminSaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{
-    success: boolean;
-    message: string;
-    count?: number;
-  } | null>(null);
-
   const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
     typeof error === "object" && error !== null && "toastHandled" in error;
 
@@ -39,16 +33,12 @@ export function AdminSaveActionBar({
     if (isEditingLocked || !hasUnsavedChanges || isSaving) return;
 
     setIsSaving(true);
-    setSaveResult(null);
-
     try {
       await onSave();
-      setSaveResult({
-        success: true,
-        message: "Changes Synced Successfully",
-        count: dirtyCount,
+      appToast.success("Results saved", {
+        id: "admin-results-entry-save-result",
+        description: `${dirtyCount} student record${dirtyCount === 1 ? "" : "s"} saved successfully.`,
       });
-      setTimeout(() => setSaveResult(null), 5000);
     } catch (err) {
       if (!isHandledSaveError(err)) {
         appToast.error("Unable to save results", {
@@ -65,29 +55,6 @@ export function AdminSaveActionBar({
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      {/* Success Notification */}
-      {saveResult?.success && (
-        <div className="flex items-center gap-3 py-2 px-3 bg-emerald-50 border border-emerald-100 rounded-lg animate-in fade-in slide-in-from-bottom-1">
-          <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-black">
-            &#10003;
-          </div>
-          <div className="flex-1">
-             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-900">
-               Sync Successful
-             </span>
-             <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-emerald-600/60 ml-2">
-               {saveResult.count ?? 0} Protocol Records Committed
-             </span>
-          </div>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-[8px] font-black uppercase tracking-widest text-emerald-900/40 hover:text-emerald-900"
-          >
-            DISMISS
-          </button>
-        </div>
-      )}
-
       {/* Action Bar Content */}
       <div className="flex flex-col sm:flex-row items-center justify-between w-full h-auto py-2 px-1">
         <div className="flex items-center gap-4 w-full sm:w-auto">
@@ -148,7 +115,7 @@ export function AdminSaveActionBar({
               </>
             ) : (
               <>
-                {isEditingLocked ? "LOCKED" : hasValidationErrors ? `ERR: ${errorCount}` : "COMMIT BATCH"}
+                {isEditingLocked ? "LOCKED" : hasValidationErrors ? "FIX SCORES" : "COMMIT BATCH"}
               </>
             )}
           </button>

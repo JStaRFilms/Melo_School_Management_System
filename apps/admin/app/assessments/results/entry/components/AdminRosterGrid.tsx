@@ -43,7 +43,8 @@ export function AdminRosterGrid({
   examInputMode,
   gradingBands,
   draftScores,
-  validationErrors,
+  validationErrors,
+
   sessionId,
   termId,
   classId,
@@ -287,11 +288,6 @@ export function AdminRosterGrid({
                           inputError ? "text-rose-700" : ""
                         }`}
                       />
-                      {inputError && (
-                        <p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-rose-500">
-                          {inputError}
-                        </p>
-                      )}
                     </div>
                   );
                 })}
