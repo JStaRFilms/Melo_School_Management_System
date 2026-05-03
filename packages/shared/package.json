@@ -9,6 +9,7 @@
     "./name-format": "./src/name-format.ts",
     "./planning-context": "./src/planning-context.ts",
     "./planning-routes": "./src/planning-routes.ts",
+    "./toast": "./src/toast/index.ts",
     "./exam-recording": "./src/exam-recording/index.ts",
     "./subject-aggregation": "./src/subject-aggregation.ts"
   },
@@ -19,9 +20,10 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
+    "lucide-react": "^0.378.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "lucide-react": "^0.378.0",
+    "sonner": "^2.0.7",
     "zod": "^3.22.0"
   },
   "devDependencies": {

@@ -27,7 +27,7 @@
 | 01 | genesis | Genesis foundation | completed | orchestrator | orchestrator | vibe-genesis | - | - |
 | 02 | design | Toast architecture decision record | completed | architect | architect | vibe-design | gpt-5.5 | - |
 | 03 | design | Validation UX policy | completed | design | designer | vibe-design | gpt-5.5 | - |
-| 04 | build | Shared toast foundation | in-progress | code | coder | vibe-build | gpt-5.4 | - |
+| 04 | build | Shared toast foundation | completed | code | coder | vibe-build | gpt-5.4 | - |
 | 05 | build | Root layout toaster integration | pending | code | coder | vibe-build | gpt-5.4 | - |
 | 06 | build | High-impact global error replacement | pending | code | coder | vibe-build | gpt-5.4 | - |
 | 07 | build | Validation banner integration | pending | code | coder | vibe-build | gpt-5.4 | - |
