@@ -3,19 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpen, ShieldAlert, Sparkles, Users } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 import { humanNameFinalStrict } from "@/lib/human-name";
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
 
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
-import { FloatingNotice } from "./components/FloatingNotice";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import type {
   ClassSummary,
   EnrollmentMatrix,
-  EnrollmentNotice,
   SessionSummary,
 } from "./components/types";
 
@@ -33,7 +31,6 @@ export default function TeacherSubjectSelectionPage() {
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
   const matrix = useQuery(
     "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
@@ -53,15 +50,6 @@ export default function TeacherSubjectSelectionPage() {
       setSelectedClassId(classes[0]._id);
     }
   }, [classes, selectedClassId]);
-
-  useEffect(() => {
-    if (!notice) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setNotice(null), 2600);
-    return () => window.clearTimeout(timeoutId);
-  }, [notice]);
 
   const selectedClassName =
     classes?.find((classDoc) => classDoc._id === selectedClassId)?.name ??
@@ -95,8 +83,6 @@ export default function TeacherSubjectSelectionPage() {
         ? student.selectedSubjectIds.filter((id) => id !== subjectId)
         : [...student.selectedSubjectIds, subjectId];
 
-      setNotice(null);
-
       try {
         await setStudentSubjectSelections({
           studentId,
@@ -104,15 +90,15 @@ export default function TeacherSubjectSelectionPage() {
           sessionId: selectedSessionId,
           subjectIds: nextSubjectIds,
         } as never);
-        setNotice({
-          tone: "success",
-          message: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
+        appToast.success("Subject selection saved", {
+          id: `teacher-subject-selection-${studentId}`,
+          description: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
         });
-      } catch (err) {
-        setNotice({
-          tone: "error",
-          message: getUserFacingErrorMessage(
-            err,
+      } catch (error) {
+        appToast.error("Unable to update subject selection", {
+          id: `teacher-subject-selection-${studentId}`,
+          description: getErrorMessage(
+            error,
             "We couldn't update the subject selection right now."
           ),
         });
@@ -132,8 +118,6 @@ export default function TeacherSubjectSelectionPage() {
         return;
       }
 
-      setNotice(null);
-
       try {
         await setStudentSubjectSelections({
           studentId,
@@ -141,15 +125,15 @@ export default function TeacherSubjectSelectionPage() {
           sessionId: selectedSessionId,
           subjectIds,
         } as never);
-        setNotice({
-          tone: "success",
-          message: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
+        appToast.success("Subject selection saved", {
+          id: `teacher-subject-selection-${studentId}`,
+          description: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
         });
-      } catch (err) {
-        setNotice({
-          tone: "error",
-          message: getUserFacingErrorMessage(
-            err,
+      } catch (error) {
+        appToast.error("Unable to update subject selection", {
+          id: `teacher-subject-selection-${studentId}`,
+          description: getErrorMessage(
+            error,
             "We couldn't update the subject selection right now."
           ),
         });
@@ -169,8 +153,6 @@ export default function TeacherSubjectSelectionPage() {
 
   return (
     <main className="mx-auto max-w-[1440px] space-y-8 p-3 sm:p-5 lg:p-6">
-      <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
-
       <div className="space-y-8">
         <TeacherHeader
           label="Enrollment"
