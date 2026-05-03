@@ -59,6 +59,28 @@ function parseDraftMode(rawValue: string | null): AssessmentDraftMode {
     : "practice_quiz";
 }
 
+function getQuestionBankGenerationToast(error: unknown): {
+  title: string;
+  description: string;
+} {
+  const message = getErrorMessage(error, "Something went wrong while generating. Please try again.");
+  const countMatch = message.match(/returned (\d+) questions?, but (\d+) were requested/i);
+
+  if (countMatch) {
+    const actual = Number(countMatch[1]);
+    const expected = Number(countMatch[2]);
+    return {
+      title: "Couldn't generate enough questions",
+      description: `Generated ${actual} question${actual === 1 ? "" : "s"}, but ${expected} were requested. Try fewer questions or add more source material.`,
+    };
+  }
+
+  return {
+    title: "Unable to generate assessment draft",
+    description: message,
+  };
+}
+
 export default function QuestionBankPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -269,12 +291,12 @@ export default function QuestionBankPage() {
 
       return payload as AssessmentBankGenerationResult;
     } catch (error) {
-      const message = getErrorMessage(error, "Generation failed.");
-      appToast.error("Unable to generate assessment draft", {
+      const toastMessage = getQuestionBankGenerationToast(error);
+      appToast.error(toastMessage.title, {
         id: "teacher-question-bank-generate-error",
-        description: message,
+        description: toastMessage.description,
       });
-      throw new Error(message);
+      throw new Error(toastMessage.description);
     }
   };
 

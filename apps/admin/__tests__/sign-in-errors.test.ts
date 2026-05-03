@@ -24,6 +24,15 @@ describe("sign in error helpers", () => {
         message: "Invalid password",
       })
     ).toBe(AUTH_ERROR_MESSAGES.invalidCredentials);
+
+    expect(
+      getSignInErrorMessage({
+        error: {
+          code: "INVALID_EMAIL_OR_PASSWORD",
+          message: "Invalid email or password",
+        },
+      })
+    ).toBe(AUTH_ERROR_MESSAGES.invalidCredentials);
   });
 
   it("normalizes malformed email failures", () => {

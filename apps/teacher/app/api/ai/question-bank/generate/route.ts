@@ -284,7 +284,7 @@ function assertGeneratedQuestionCount(args: {
 }) {
   if (args.actual !== args.expected) {
     throw new Error(
-      `The generated ${args.outputType === "cbt_draft" ? "CBT draft" : "question bank"} returned ${args.actual} questions, but ${args.expected} were requested.`
+      `The generated ${args.outputType === "cbt_draft" ? "CBT draft" : "question bank"} returned ${args.actual} question${args.actual === 1 ? "" : "s"}, but ${args.expected} were requested.`
     );
   }
 }

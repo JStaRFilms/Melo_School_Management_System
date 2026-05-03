@@ -52,6 +52,25 @@ function LoadingShell() {
   );
 }
 
+function getLessonPlanGenerationToast(error: unknown): {
+  title: string;
+  description: string;
+} {
+  const message = getErrorMessage(error, "Something went wrong while generating. Please try again.");
+
+  if (/no indexed source text excerpts/i.test(message)) {
+    return {
+      title: "No usable source text found",
+      description: "We couldn't find usable text for the selected materials. Re-upload or reprocess the materials, then try again.",
+    };
+  }
+
+  return {
+    title: "Unable to generate draft",
+    description: message,
+  };
+}
+
 export default function LessonPlansPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -220,12 +239,12 @@ export default function LessonPlansPage() {
 
       return payload as LessonPlanSaveResult;
     } catch (error) {
-      const message = getErrorMessage(error, "Generation failed.");
-      appToast.error("Unable to generate draft", {
+      const toastMessage = getLessonPlanGenerationToast(error);
+      appToast.error(toastMessage.title, {
         id: "teacher-lesson-plans-generate-error",
-        description: message,
+        description: toastMessage.description,
       });
-      throw new Error(message);
+      throw new Error(toastMessage.description);
     }
   };
 

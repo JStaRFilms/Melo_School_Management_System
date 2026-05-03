@@ -436,7 +436,7 @@ export async function POST(request: Request) {
     if (sourceExcerptBundle.excerpts.length === 0) {
       return NextResponse.json(
         {
-          error: "No indexed source text excerpts were available for the selected sources. Re-ingest the materials before generating.",
+          error: "No usable source text was found for the selected materials. Re-upload or reprocess the materials, then try again.",
           warnings: sourceExcerptBundle.warnings,
         },
         { status: 400 }
