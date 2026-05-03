@@ -4,6 +4,7 @@ import { Suspense, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 function slugify(value: string): string {
   return value
@@ -19,7 +20,6 @@ function CreateSchoolForm() {
   const [slug, setSlug] = useState("");
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const createSchool = useMutation(
@@ -47,25 +47,30 @@ function CreateSchoolForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim().toLowerCase();
 
     if (!trimmedName) {
-      setError("School name is required");
+      appToast.warning("Review required before creating", {
+        id: "platform-create-school-error",
+        description: "School name is required.",
+      });
       return;
     }
 
     if (!trimmedSlug) {
-      setError("School slug is required");
+      appToast.warning("Review required before creating", {
+        id: "platform-create-school-error",
+        description: "School slug is required.",
+      });
       return;
     }
 
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmedSlug)) {
-      setError(
-        "Slug must be lowercase alphanumeric with hyphens (e.g. my-school)"
-      );
+      appToast.warning("Review required before creating", {
+        id: "platform-create-school-error",
+        description: "Slug must be lowercase alphanumeric with hyphens (e.g. my-school).",
+      });
       return;
     }
 
@@ -73,7 +78,10 @@ function CreateSchoolForm() {
 
     try {
       if (!isConvexConfigured()) {
-        setError("Convex is not configured. Cannot create school.");
+        appToast.error("Unable to create school", {
+          id: "platform-create-school-error",
+          description: "Convex is not configured. Cannot create school.",
+        });
         return;
       }
 
@@ -82,10 +90,11 @@ function CreateSchoolForm() {
       setTimeout(() => {
         router.push("/schools");
       }, 1500);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create school";
-      setError(message);
+    } catch (error) {
+      appToast.error("Unable to create school", {
+        id: "platform-create-school-error",
+        description: getErrorMessage(error, "Failed to create school."),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -143,13 +152,6 @@ function CreateSchoolForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Error */}
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
           {/* School Name */}
           <div>
             <label

@@ -6,10 +6,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   buildTeacherPlanningLibraryAttachHref,
-  getUserFacingErrorMessage,
   parsePlanningContextFromSearchParams,
   parseTeacherLessonPlanSourceIds,
 } from "@school/shared";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 import { X } from "lucide-react";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
@@ -59,7 +59,6 @@ export default function LessonPlansPage() {
   const [outputType, setOutputType] = useState<LessonPlanWorkspaceOutputType>(
     (searchParams.get("outputType") as LessonPlanWorkspaceOutputType | null) ?? "lesson_plan"
   );
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
@@ -181,11 +180,13 @@ export default function LessonPlansPage() {
         revisionKind: "manual_save",
       } as never)) as LessonPlanSaveResult;
 
-      setWorkspaceError(null);
       return result;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Failed to save draft.");
-      setWorkspaceError(message);
+      const message = getErrorMessage(error, "Failed to save draft.");
+      appToast.error("Unable to save draft", {
+        id: "teacher-lesson-plans-save-error",
+        description: message,
+      });
       throw new Error(message);
     }
   };
@@ -217,11 +218,13 @@ export default function LessonPlansPage() {
         throw new Error(message);
       }
 
-      setWorkspaceError(null);
       return payload as LessonPlanSaveResult;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Generation failed.");
-      setWorkspaceError(message);
+      const message = getErrorMessage(error, "Generation failed.");
+      appToast.error("Unable to generate draft", {
+        id: "teacher-lesson-plans-generate-error",
+        description: message,
+      });
       throw new Error(message);
     }
   };
@@ -234,12 +237,6 @@ export default function LessonPlansPage() {
     <div className="min-h-screen bg-slate-50/50">
       <div className="mx-auto max-w-[1600px] px-4 py-8 md:px-8">
         <div className="space-y-6">
-          {workspaceError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-800 shadow-sm">
-              {workspaceError}
-            </div>
-          ) : null}
-
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Link

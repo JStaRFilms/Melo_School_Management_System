@@ -6,9 +6,9 @@ import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   buildTeacherPlanningLibraryAttachHref,
-  getUserFacingErrorMessage,
   parsePlanningContextFromSearchParams,
 } from "@school/shared";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
@@ -64,7 +64,6 @@ export default function QuestionBankPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [draftMode, setDraftMode] = useState<AssessmentDraftMode>(parseDraftMode(searchParams.get("mode")));
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [targetTopicLabel, setTargetTopicLabel] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
@@ -226,11 +225,13 @@ export default function QuestionBankPage() {
         items: draft.items,
       } as never)) as AssessmentBankSaveResult;
 
-      setWorkspaceError(null);
       return result;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Failed to save assessment draft.");
-      setWorkspaceError(message);
+      const message = getErrorMessage(error, "Failed to save assessment draft.");
+      appToast.error("Unable to save assessment draft", {
+        id: "teacher-question-bank-save-error",
+        description: message,
+      });
       throw new Error(message);
     }
   };
@@ -266,11 +267,13 @@ export default function QuestionBankPage() {
         throw new Error(message);
       }
 
-      setWorkspaceError(null);
       return payload as AssessmentBankGenerationResult;
     } catch (error) {
-      const message = getUserFacingErrorMessage(error, "Generation failed.");
-      setWorkspaceError(message);
+      const message = getErrorMessage(error, "Generation failed.");
+      appToast.error("Unable to generate assessment draft", {
+        id: "teacher-question-bank-generate-error",
+        description: message,
+      });
       throw new Error(message);
     }
   };
@@ -281,12 +284,6 @@ export default function QuestionBankPage() {
 
   return (
     <main className="min-h-screen space-y-8 px-4 py-6 md:px-6 md:py-8">
-      {workspaceError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm">
-          {workspaceError}
-        </div>
-      ) : null}
-
       <TeacherHeader
         title="Question Bank Workspace"
         label="Teacher Planning"
