@@ -12,6 +12,13 @@ export interface DocumentSourceMaterialSummary {
   readonly excerpt?: string;
 }
 
+export interface RelatedInstructionArtifactSummary {
+  readonly outputType: DocumentOutputType;
+  readonly title: string;
+  readonly plainText: string;
+  readonly updatedAt?: number | null;
+}
+
 export interface DocumentTemplateSectionSummary {
   readonly id: string;
   readonly label: string;
@@ -28,6 +35,7 @@ export interface DocumentPromptContext {
   readonly templateName?: string;
   readonly templateSections?: DocumentTemplateSectionSummary[];
   readonly sourceMaterials?: DocumentSourceMaterialSummary[];
+  readonly relatedInstructionArtifacts?: RelatedInstructionArtifactSummary[];
   readonly revisionNotes?: string;
   readonly constraints?: string[];
 }
@@ -94,6 +102,15 @@ function formatContextLines(context: DocumentPromptContext) {
     }
   }
 
+  if (context.relatedInstructionArtifacts?.length) {
+    lines.push("Related teacher planning drafts for this same topic:");
+    for (const artifact of context.relatedInstructionArtifacts) {
+      const excerpt = artifact.plainText.length > 2400 ? `${artifact.plainText.slice(0, 2400).trim()}...` : artifact.plainText;
+      lines.push(`- ${artifact.outputType.replaceAll("_", " ")}: ${artifact.title}`);
+      lines.push(`  Draft context: """\n${excerpt}\n  """`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -118,6 +135,7 @@ function buildDocumentPrompt(args: {
     "If the template has a Class Activity section, describe an actionable classroom activity, not just a summary.",
     "If the template has an Assignment section, provide numbered questions or tasks unless the template label clearly asks for something else.",
     "When source excerpts are provided, ground definitions, explanations, examples, tasks, and sourceNotes in those excerpts.",
+    "Use related teacher planning drafts as supporting context for objectives, lesson flow, activities, emphasis, and prior explanations, but do not treat them as a replacement for source grounding.",
     "If excerpts are missing or thin, say so briefly in sourceNotes instead of pretending you reviewed the full source.",
     "",
     "Context:",
@@ -163,6 +181,7 @@ export function buildStudentNotePrompt(
     context,
     extraInstructions: [
       "Use student-friendly explanations appropriate for the stated level.",
+      "When a related lesson plan is provided, use its objectives, lesson flow, activities, and emphasis to decide what details the student note must explain.",
       "Do not write a short overview only; write enough detail for a learner to revise from the note.",
       "For Main Note or similar sections, include definitions, explanations, categories/types, benefits/importance, safety rules, officials, processes, or other relevant subtopics based on the topic.",
       "Use markdown subheadings inside long sections to make the note easy to read.",
@@ -226,6 +245,7 @@ export function buildAssignmentPrompt(
     context,
     extraInstructions: [
       "Make the tasks progressively more challenging.",
+      "When related lesson plans or student notes are provided, align questions with their objectives, explanations, examples, activities, and evaluation points.",
       "Use numbered questions/tasks with clear instructions and enough items for meaningful practice.",
       "Keep the assignment editable and school appropriate.",
     ],

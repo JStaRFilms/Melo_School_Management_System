@@ -478,10 +478,21 @@ export async function POST(request: Request) {
       templateName: workspace.template.title,
       templateSections,
       sourceMaterials,
+      relatedInstructionArtifacts: workspace.relatedInstructionArtifacts?.map((artifact) => ({
+        outputType: artifact.outputType,
+        title: artifact.title,
+        plainText: artifact.plainText,
+        updatedAt: artifact.updatedAt,
+      })),
       constraints: [
         `Use at least ${workspace.template.objectiveMinimums.minimumSourceMaterials} source materials.`,
         `Cover the required sections in this exact order: ${templateSections.map((section) => section.label).join(", ")}.`,
         "Do not replace the resolved template with a generic lesson-plan, student-note, or assignment outline.",
+        outputType === "student_note"
+          ? "If a related lesson plan draft is available, use it to enrich the student note with the teacher's planned objectives, explanations, examples, and classroom emphasis."
+          : outputType === "assignment"
+            ? "If related lesson-plan or student-note drafts are available, align the assignment with their objectives, explanations, examples, evaluation points, and classroom activities."
+            : "Use the resolved lesson-planning context and selected source materials as the grounding basis.",
       ],
       revisionNotes: workspace.draft.title && workspace.draft.title !== workspace.template?.title
         ? `Refresh the current draft while preserving the teacher's working title: ${workspace.draft.title}`

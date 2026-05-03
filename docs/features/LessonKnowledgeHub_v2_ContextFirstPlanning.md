@@ -66,6 +66,8 @@ Context contract:
 - one active teaching context at a time
 - topic identity is explicit
 - the workspace can suggest materials already related to the chosen subject, level/class, term, and topic
+- derived student notes use the same-topic lesson plan draft as supporting context when one exists
+- derived assignments use same-topic lesson plan and student-note drafts as supporting context when they exist
 - teachers can still attach additional sources inside the workspace
 
 ### 3. Exam workspace

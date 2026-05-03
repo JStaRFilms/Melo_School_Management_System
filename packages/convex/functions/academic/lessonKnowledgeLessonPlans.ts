@@ -181,6 +181,14 @@ const revisionValidator = v.object({
   snippet: v.string(),
 });
 
+const relatedInstructionArtifactValidator = v.object({
+  artifactId: v.id("instructionArtifacts"),
+  outputType: outputTypeValidator,
+  title: v.string(),
+  plainText: v.string(),
+  updatedAt: v.union(v.number(), v.null()),
+});
+
 const draftValidator = v.object({
   artifactId: v.union(v.id("instructionArtifacts"), v.null()),
   documentId: v.union(v.id("instructionArtifactDocuments"), v.null()),
@@ -231,6 +239,7 @@ const workspaceValidator = v.object({
   canGenerate: v.boolean(),
   canAutosave: v.boolean(),
   selectedSources: v.array(sourceValidator),
+  relatedInstructionArtifacts: v.array(relatedInstructionArtifactValidator),
 });
 
 const saveResultValidator = v.object({
@@ -290,6 +299,14 @@ type WorkspaceRevision = {
   createdAt: number;
   title: string;
   snippet: string;
+};
+
+type RelatedInstructionArtifact = {
+  artifactId: Id<"instructionArtifacts">;
+  outputType: WorkspaceOutputType;
+  title: string;
+  plainText: string;
+  updatedAt: number | null;
 };
 
 type TopicPlanningContextArgs = {
@@ -1279,6 +1296,79 @@ async function findMatchingArtifact(args: {
   return null;
 }
 
+async function loadRelatedInstructionArtifacts(
+  ctx: QueryCtx,
+  args: {
+    schoolId: Id<"schools">;
+    ownerUserId: Id<"users">;
+    currentOutputType: WorkspaceOutputType;
+    planningContext: TopicPlanningContextRecord | null;
+  }
+): Promise<RelatedInstructionArtifact[]> {
+  if (!args.planningContext || args.currentOutputType === "lesson_plan") {
+    return [];
+  }
+
+  const planningContext = args.planningContext;
+  const relatedOutputTypes: WorkspaceOutputType[] =
+    args.currentOutputType === "student_note" ? ["lesson_plan"] : ["lesson_plan", "student_note"];
+  const relatedContextKeys = new Map(
+    relatedOutputTypes.map((outputType) => [
+      buildTopicPlanningContextKey({
+        classId: String(planningContext.classId),
+        termId: String(planningContext.termId),
+        subjectId: String(planningContext.subjectId),
+        level: planningContext.level,
+        topicId: String(planningContext.topicId),
+        outputType,
+      }),
+      outputType,
+    ])
+  );
+
+  const candidateArtifacts = await ctx.db
+    .query("instructionArtifacts")
+    .withIndex("by_school_and_owner_user", (q) =>
+      q.eq("schoolId", args.schoolId).eq("ownerUserId", args.ownerUserId)
+    )
+    .take(100);
+  const relatedArtifacts: RelatedInstructionArtifact[] = [];
+
+  for (const artifact of candidateArtifacts) {
+    const outputType = artifact.outputType as WorkspaceOutputType;
+    if (!relatedOutputTypes.includes(outputType) || !artifact.currentDocumentId) {
+      continue;
+    }
+
+    const revisions = await ctx.db
+      .query("instructionArtifactRevisions")
+      .withIndex("by_school_and_artifact", (q) =>
+        q.eq("schoolId", args.schoolId).eq("artifactId", artifact._id)
+      )
+      .order("desc")
+      .take(1);
+    const sourceSnapshot = parseSourceSelectionSnapshot(revisions[0]?.sourceSelectionSnapshot ?? null);
+    if (!sourceSnapshot?.planningContextKey || relatedContextKeys.get(sourceSnapshot.planningContextKey) !== outputType) {
+      continue;
+    }
+
+    const document = await ctx.db.get(artifact.currentDocumentId);
+    if (!document || document.schoolId !== args.schoolId || !document.plainText.trim()) {
+      continue;
+    }
+
+    relatedArtifacts.push({
+      artifactId: artifact._id,
+      outputType,
+      title: extractTitleFromMarkdown(document.documentState, defaultTitle(outputType)),
+      plainText: truncateText(document.plainText, 5000),
+      updatedAt: artifact.updatedAt ?? null,
+    });
+  }
+
+  return relatedArtifacts.sort((a, b) => relatedOutputTypes.indexOf(a.outputType) - relatedOutputTypes.indexOf(b.outputType));
+}
+
 function normalizeSearchTerms(value: string | null | undefined): string[] {
   if (!value) {
     return [];
@@ -1476,6 +1566,12 @@ export const getTeacherInstructionWorkspace = query({
     const schoolName = school ? normalizeHumanName(school.name) : null;
     const currentArtifact = currentArtifactBundle?.artifact ?? null;
     const currentRevision = currentArtifactBundle?.revisions[0] ?? null;
+    const relatedInstructionArtifacts = await loadRelatedInstructionArtifacts(ctx, {
+      schoolId,
+      ownerUserId: userId,
+      currentOutputType: args.outputType,
+      planningContext,
+    });
     const sourceContext = planningContext
       ? {
           subjectId: planningContext.subjectId,
@@ -1631,6 +1727,7 @@ export const getTeacherInstructionWorkspace = query({
       canGenerate,
       canAutosave,
       selectedSources: sourceBundle.selectedSources,
+      relatedInstructionArtifacts,
     };
   },
 });
