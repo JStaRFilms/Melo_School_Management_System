@@ -1,7 +1,7 @@
 # Task: High-impact global error replacement
 **Task ID:** 06
 **Stage:** build
-**Status:** pending
+**Status:** in-progress
 **Role:** code
 **Preferred Agent:** coder
 **Conversation ID:** coder-06
@@ -53,3 +53,5 @@ Reviewer checks behavior, message quality, and regression risk.
 - Do not blindly remove inline validation summaries
 - Use getErrorMessage for unknown caught errors
 - Avoid direct Sonner imports outside shared toast module
+## Notes
+Starting Task 06 High-impact global error replacement. Will inspect each target before editing, use appToast/getErrorMessage, avoid direct Sonner imports, and run target typecheck after each TS/TSX edit.

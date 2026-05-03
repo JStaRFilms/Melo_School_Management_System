@@ -28,8 +28,8 @@
 | 02 | design | Toast architecture decision record | completed | architect | architect | vibe-design | gpt-5.5 | - |
 | 03 | design | Validation UX policy | completed | design | designer | vibe-design | gpt-5.5 | - |
 | 04 | build | Shared toast foundation | completed | code | coder | vibe-build | gpt-5.4 | - |
-| 05 | build | Root layout toaster integration | pending | code | coder | vibe-build | gpt-5.4 | - |
-| 06 | build | High-impact global error replacement | pending | code | coder | vibe-build | gpt-5.4 | - |
+| 05 | build | Root layout toaster integration | completed | code | coder | vibe-build | gpt-5.4 | - |
+| 06 | build | High-impact global error replacement | in-progress | code | coder | vibe-build | gpt-5.4 | - |
 | 07 | build | Validation banner integration | pending | code | coder | vibe-build | gpt-5.4 | - |
 | 08 | build | One-off notification component cleanup | pending | code | coder | vibe-build | gpt-5.4 | - |
 | 09 | build | Deep review and regression pass | pending | review | reviewer | vibe-build | gpt-5.5 | - |
