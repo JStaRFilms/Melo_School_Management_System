@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2,X } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 import { useCallback,useState } from "react";
 
 interface AdminSaveActionBarProps {
@@ -21,7 +22,8 @@ export function AdminSaveActionBar({
   onSave,
   onCancel,
   dirtyCount,
-  isEditingLocked = false,
+  isEditingLocked = false,
+
 }: AdminSaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{
@@ -30,8 +32,11 @@ export function AdminSaveActionBar({
     count?: number;
   } | null>(null);
 
+  const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
+    typeof error === "object" && error !== null && "toastHandled" in error;
+
   const handleSave = useCallback(async () => {
-    if (isEditingLocked || hasValidationErrors || !hasUnsavedChanges) return;
+    if (isEditingLocked || !hasUnsavedChanges || isSaving) return;
 
     setIsSaving(true);
     setSaveResult(null);
@@ -45,17 +50,18 @@ export function AdminSaveActionBar({
       });
       setTimeout(() => setSaveResult(null), 5000);
     } catch (err) {
-      setSaveResult({
-        success: false,
-        message: err instanceof Error ? err.message : "Save failed",
-      });
+      if (!isHandledSaveError(err)) {
+        appToast.error("Unable to save results", {
+          id: "admin-results-entry-save-result",
+          description: getErrorMessage(err, "Save failed."),
+        });
+      }
     } finally {
       setIsSaving(false);
     }
-  }, [dirtyCount, hasUnsavedChanges, hasValidationErrors, isEditingLocked, onSave]);
+  }, [dirtyCount, hasUnsavedChanges, isEditingLocked, isSaving, onSave]);
 
-  const isDisabled =
-    isEditingLocked || !hasUnsavedChanges || hasValidationErrors || isSaving;
+  const isDisabled = isEditingLocked || !hasUnsavedChanges || isSaving;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -78,24 +84,6 @@ export function AdminSaveActionBar({
             className="text-[8px] font-black uppercase tracking-widest text-emerald-900/40 hover:text-emerald-900"
           >
             DISMISS
-          </button>
-        </div>
-      )}
-
-      {/* Error Toast */}
-      {saveResult && !saveResult.success && (
-        <div className="flex items-center gap-3 py-2 px-3 bg-red-50 border border-red-100 rounded-lg animate-in fade-in slide-in-from-bottom-1">
-          <div className="w-5 h-5 rounded-full bg-red-600 flex items-center justify-center text-[10px] text-white font-black">
-            !
-          </div>
-          <p className="flex-1 font-black text-[10px] uppercase tracking-widest text-red-900">
-            {saveResult.message}
-          </p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-red-900/40 hover:text-red-900"
-          >
-            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}

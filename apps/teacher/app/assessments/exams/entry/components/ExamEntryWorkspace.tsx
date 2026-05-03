@@ -18,6 +18,7 @@ UpsertResponse,
 ValidationErrors,
 } from "@/lib/types";
 import type { ExamInputMode } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { EmptyRoster } from "./EmptyRoster";
 import { LoadingSkeleton } from "./LoadingSkeleton";
@@ -38,6 +39,15 @@ interface SaveArgs {
     ca3: number;
     examRawScore: number;
   }>;
+}
+
+const TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID =
+  "teacher-exam-entry-save-blocked";
+const TEACHER_EXAM_ENTRY_PARTIAL_SAVE_TOAST_ID =
+  "teacher-exam-entry-partial-save";
+
+function createHandledSaveError(message: string) {
+  return Object.assign(new Error(message), { toastHandled: true as const });
 }
 
 interface ExamEntryWorkspaceProps {
@@ -145,11 +155,19 @@ export function ExamEntryWorkspace({
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
-      throw new Error("Complete the selectors before saving.");
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: "Complete the selectors, then try saving again.",
+      });
+      throw createHandledSaveError("Complete the selectors before saving.");
     }
 
     if (!sheetData.editingState.canEdit) {
-      throw new Error(sheetData.editingState.message);
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: sheetData.editingState.message,
+      });
+      throw createHandledSaveError(sheetData.editingState.message);
     }
 
     const examInputMode: ExamInputMode =
@@ -182,11 +200,16 @@ export function ExamEntryWorkspace({
     }
 
     if (allErrors.size > 0) {
+      const errorCount = countErrors(allErrors);
       setValidationErrors(allErrors);
       setExtraErrorSummaries([]);
       setShowErrorBanner(true);
-      throw new Error(
-        `${countErrors(allErrors)} validation error${countErrors(allErrors) === 1 ? "" : "s"} found`
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: `${errorCount} field${errorCount === 1 ? "" : "s"} need attention. Review the highlighted rows and try again.`,
+      });
+      throw createHandledSaveError(
+        `${errorCount} validation error${errorCount === 1 ? "" : "s"} found`
       );
     }
 
@@ -211,7 +234,11 @@ export function ExamEntryWorkspace({
     }
 
     if (records.length === 0) {
-      throw new Error("No complete rows to save yet.");
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: "Complete at least one full row, then try saving again.",
+      });
+      throw createHandledSaveError("No complete rows to save yet.");
     }
 
     const result = await onSaveRecords({
@@ -263,12 +290,20 @@ export function ExamEntryWorkspace({
 
       const savedCount = result.updated + result.created;
       if (savedCount > 0) {
-        throw new Error(
+        appToast.warning("Partial save completed", {
+          id: TEACHER_EXAM_ENTRY_PARTIAL_SAVE_TOAST_ID,
+          description: `Saved ${savedCount} record${savedCount === 1 ? "" : "s"}. ${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention.`,
+        });
+        throw createHandledSaveError(
           `Saved ${savedCount} record${savedCount === 1 ? "" : "s"}, but ${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention.`
         );
       }
 
-      throw new Error("Save blocked by row-level validation errors.");
+      appToast.warning("Save blocked by validation", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: `${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention. Review the highlighted rows and try again.`,
+      });
+      throw createHandledSaveError("Save blocked by row-level validation errors.");
     }
 
     setDraftScores(new Map());

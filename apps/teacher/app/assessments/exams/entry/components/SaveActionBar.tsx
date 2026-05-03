@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Save, Loader2, X } from "lucide-react";
+import { Save, Loader2 } from "lucide-react";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 interface SaveActionBarProps {
   hasUnsavedChanges: boolean;
@@ -31,8 +32,11 @@ export function SaveActionBar({
     count?: number;
   } | null>(null);
 
+  const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
+    typeof error === "object" && error !== null && "toastHandled" in error;
+
   const handleSave = useCallback(async () => {
-    if (isEditingLocked || hasValidationErrors || !hasUnsavedChanges) return;
+    if (isEditingLocked || !hasUnsavedChanges || isSaving) return;
 
     setIsSaving(true);
     setSaveResult(null);
@@ -46,17 +50,18 @@ export function SaveActionBar({
       });
       setTimeout(() => setSaveResult(null), 5000);
     } catch (err) {
-      setSaveResult({
-        success: false,
-        message: err instanceof Error ? err.message : "Save failed",
-      });
+      if (!isHandledSaveError(err)) {
+        appToast.error("Unable to save exam results", {
+          id: "teacher-exam-entry-save-result",
+          description: getErrorMessage(err, "Save failed."),
+        });
+      }
     } finally {
       setIsSaving(false);
     }
-  }, [dirtyCount, hasUnsavedChanges, hasValidationErrors, isEditingLocked, onSave]);
+  }, [dirtyCount, hasUnsavedChanges, isEditingLocked, isSaving, onSave]);
 
-  const isDisabled =
-    isEditingLocked || !hasUnsavedChanges || hasValidationErrors || isSaving;
+  const isDisabled = isEditingLocked || !hasUnsavedChanges || isSaving;
 
   return (
     <>
@@ -87,19 +92,6 @@ export function SaveActionBar({
               Dismiss
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Error toast */}
-      {saveResult && !saveResult.success && (
-        <div className="bg-red-600 text-white rounded-xl px-6 py-4 flex items-center justify-between gap-3 shadow-xl">
-          <p className="font-bold text-sm">{saveResult.message}</p>
-          <button
-            onClick={() => setSaveResult(null)}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
       )}
 
