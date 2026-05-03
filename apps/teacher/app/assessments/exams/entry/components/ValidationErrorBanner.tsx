@@ -27,6 +27,7 @@ export function ValidationErrorBanner({
         </div>
         {onDismiss ? (
           <button
+            type="button"
             onClick={onDismiss}
             className="text-amber-500 hover:text-amber-800"
             aria-label="Dismiss errors"

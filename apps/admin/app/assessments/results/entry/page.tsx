@@ -288,6 +288,11 @@ function AdminScoreEntryContent({
     Array<{ studentName: string; message: string }>
   >([]);
 
+  const rosterById = useMemo(
+    () => new Map(sheetData?.roster.map((entry) => [entry.studentId, entry]) ?? []),
+    [sheetData]
+  );
+
   useEffect(() => {
     setDraftScores(new Map());
     setValidationErrors(new Map());
@@ -307,9 +312,7 @@ function AdminScoreEntryContent({
         return;
       }
 
-      const rosterEntry = sheetData?.roster.find(
-        (item) => item.studentId === studentId
-      );
+      const rosterEntry = rosterById.get(studentId);
       const previousValue = rosterEntry?.assessmentRecord?.[field] ?? null;
       const isClearingSavedScore = value === null && previousValue !== null;
 
@@ -357,14 +360,14 @@ function AdminScoreEntryContent({
         return next;
       });
     },
-    [sheetData]
+    [rosterById, sheetData]
   );
 
   const clearedScoreCount = useMemo(() => {
     if (!sheetData) return 0;
     let count = 0;
     for (const [studentId, scores] of draftScores.entries()) {
-      const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+      const rosterEntry = rosterById.get(studentId);
       for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
         if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
           count += 1;
@@ -372,18 +375,20 @@ function AdminScoreEntryContent({
       }
     }
     return count;
-  }, [draftScores, sheetData]);
+  }, [draftScores, rosterById, sheetData]);
 
   const handleRestoreClearedScores = useCallback(() => {
     if (!sheetData) return;
+    const restoredStudentIds = new Set<Id<"students">>();
     setDraftScores((prev) => {
       const next = new Map(prev);
       for (const [studentId, scores] of prev.entries()) {
-        const rosterEntry = sheetData.roster.find((item) => item.studentId === studentId);
+        const rosterEntry = rosterById.get(studentId);
         const rest = { ...scores };
         for (const field of ["ca1", "ca2", "ca3", "examRawScore"] as ScoreField[]) {
           if (scores[field] === null && (rosterEntry?.assessmentRecord?.[field] ?? null) !== null) {
             delete rest[field];
+            restoredStudentIds.add(studentId);
           }
         }
         if (Object.keys(rest).length > 0) next.set(studentId, rest);
@@ -392,9 +397,14 @@ function AdminScoreEntryContent({
       setHasUnsavedChanges(next.size > 0);
       return next;
     });
-    setValidationErrors(new Map());
-    setExtraErrorSummaries([]);
-  }, [sheetData]);
+    setValidationErrors((prev) => {
+      const next = new Map(prev);
+      for (const studentId of restoredStudentIds) {
+        next.delete(studentId);
+      }
+      return next;
+    });
+  }, [rosterById, sheetData]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
@@ -461,9 +471,7 @@ function AdminScoreEntryContent({
     const records: SaveArgs["records"] = [];
 
     for (const [studentId, scores] of draftScores.entries()) {
-      const rosterEntry = sheetData.roster.find(
-        (item) => item.studentId === studentId
-      );
+      const rosterEntry = rosterById.get(studentId);
       const ca1 = scores.ca1 ?? rosterEntry?.assessmentRecord?.ca1 ?? null;
       const ca2 = scores.ca2 ?? rosterEntry?.assessmentRecord?.ca2 ?? null;
       const ca3 = scores.ca3 ?? rosterEntry?.assessmentRecord?.ca3 ?? null;
@@ -531,9 +539,7 @@ function AdminScoreEntryContent({
       setExtraErrorSummaries(
         result.errors.map((error) => ({
           studentName:
-            sheetData.roster.find(
-              (student) => student.studentId === error.studentId
-            )?.studentName ?? "Unknown student",
+            rosterById.get(error.studentId)?.studentName ?? "Unknown student",
           message: error.message,
         }))
       );
@@ -567,6 +573,7 @@ function AdminScoreEntryContent({
     isSheetReady,
     onSaveRecords,
     selection,
+    rosterById,
     sheetData,
   ]);
 

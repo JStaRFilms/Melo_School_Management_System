@@ -27,7 +27,9 @@ export function AdminSaveActionBar({
 }: AdminSaveActionBarProps) {
   const [isSaving, setIsSaving] = useState(false);
   const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
-    typeof error === "object" && error !== null && "toastHandled" in error;
+    typeof error === "object" &&
+    error !== null &&
+    (error as { toastHandled?: unknown }).toastHandled === true;
 
   const handleSave = useCallback(async () => {
     if (isEditingLocked || !hasUnsavedChanges || isSaving) return;

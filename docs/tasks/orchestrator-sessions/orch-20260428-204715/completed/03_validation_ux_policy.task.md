@@ -1,4 +1,5 @@
 # Task: Validation UX policy
+
 **Task ID:** 03
 **Stage:** design
 **Status:** completed
@@ -7,18 +8,27 @@
 **Conversation ID:** designer-03
 **Workflow:** vibe-design
 **Model Override:** gpt-5.5
+
 ## Context
+
 Parent session: orch-20260428-204715
 
 Task title: Validation UX policy
+
 ## Objective
-Define how validation banners, inline errors, and global toast alerts should coexist.
+
+Define how validation banners, inline errors, and global toast alerts should
+coexist.
+
 ## Scope
+
 - Review known validation-heavy pages
 - Classify errors as toast-only, inline-only, or both
 - Define user-facing message patterns for validation failure
 - Prevent loss of detailed correction guidance
+
 ## Checklist
+
 - [x] Review validation-heavy target pages/components
 - [x] Classify each validation case as inline-only, toast-only, or both
 - [x] Define validation-blocked submit/save toast pattern
@@ -26,19 +36,36 @@ Define how validation banners, inline errors, and global toast alerts should coe
 - [x] Confirm inline row/field guidance remains where useful
 - [x] Add validation policy to docs/features/unified-toast-system.md
 - [x] List files that need validation-specific implementation treatment
+
 ## Definition of Done
-- Validation policy is included in docs/features/unified-toast-system.md or a linked section
+
+- Validation policy is included in docs/features/unified-toast-system.md or a
+  linked section
 - Each known validation-heavy target has a proposed treatment
 - Rules are clear enough for coders to apply consistently
+
 ## Expected Artifacts
+
 - Validation UX section in docs/features/unified-toast-system.md
+
 ## Dependencies
+
 - 01
+
 ## Review Checkpoint
+
 Orchestrator confirms validation policy before replacement work starts.
+
 ## Instructions
+
 - Do not remove inline validation conceptually unless clearly redundant
 - Global operation failure should use toast
 - Field-specific correction should remain near the field or row
+
 ## Notes
-Task 03 completed by designer subagent using oauth-router/gpt-5.5. Added Validation UX Policy to docs/features/unified-toast-system.md and then tightened it per user concern: existing inline UI is not automatically trusted; added inline quality gate to avoid preserving ugly/noisy/wrong inline surfaces.
+
+Task 03 completed by designer subagent using oauth-router/gpt-5.5. Added
+Validation UX Policy to docs/features/unified-toast-system.md and then
+tightened it per user concern: existing inline UI is not automatically
+trusted; added inline quality gate to avoid preserving ugly/noisy/wrong inline
+surfaces.

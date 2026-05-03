@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -70,14 +70,6 @@ function AssignAdminForm() {
     setIsSubmitting(true);
 
     try {
-      if (!isConvexConfigured()) {
-        appToast.error("Unable to assign admin", {
-          id: "platform-assign-admin-error",
-          description: "Convex is not configured. Cannot assign admin.",
-        });
-        return;
-      }
-
       await provisionAdmin({
         schoolId,
         adminName: trimmedName,
@@ -332,7 +324,18 @@ function AssignAdminForm() {
 }
 
 export default function AssignAdminPage() {
-  if (!isConvexConfigured()) {
+  const isConfigured = isConvexConfigured();
+
+  useEffect(() => {
+    if (!isConfigured) {
+      appToast.error("Unable to assign admin", {
+        id: "platform-assign-admin-error",
+        description: "Convex is not configured. Cannot assign admin.",
+      });
+    }
+  }, [isConfigured]);
+
+  if (!isConfigured) {
     return (
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-lg border border-amber-200 p-8 text-center">
