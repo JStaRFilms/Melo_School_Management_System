@@ -1,7 +1,7 @@
 # Task: Validation UX policy
 **Task ID:** 03
 **Stage:** design
-**Status:** pending
+**Status:** completed
 **Role:** design
 **Preferred Agent:** designer
 **Conversation ID:** designer-03
@@ -19,13 +19,13 @@ Define how validation banners, inline errors, and global toast alerts should coe
 - Define user-facing message patterns for validation failure
 - Prevent loss of detailed correction guidance
 ## Checklist
-- [ ] Review validation-heavy target pages/components
-- [ ] Classify each validation case as inline-only, toast-only, or both
-- [ ] Define validation-blocked submit/save toast pattern
-- [ ] Define message tone and detail level for validation failures
-- [ ] Confirm inline row/field guidance remains where useful
-- [ ] Add validation policy to docs/features/unified-toast-system.md
-- [ ] List files that need validation-specific implementation treatment
+- [x] Review validation-heavy target pages/components
+- [x] Classify each validation case as inline-only, toast-only, or both
+- [x] Define validation-blocked submit/save toast pattern
+- [x] Define message tone and detail level for validation failures
+- [x] Confirm inline row/field guidance remains where useful
+- [x] Add validation policy to docs/features/unified-toast-system.md
+- [x] List files that need validation-specific implementation treatment
 ## Definition of Done
 - Validation policy is included in docs/features/unified-toast-system.md or a linked section
 - Each known validation-heavy target has a proposed treatment
@@ -40,3 +40,5 @@ Orchestrator confirms validation policy before replacement work starts.
 - Do not remove inline validation conceptually unless clearly redundant
 - Global operation failure should use toast
 - Field-specific correction should remain near the field or row
+## Notes
+Task 03 completed by designer subagent using oauth-router/gpt-5.5. Added Validation UX Policy to docs/features/unified-toast-system.md and then tightened it per user concern: existing inline UI is not automatically trusted; added inline quality gate to avoid preserving ugly/noisy/wrong inline surfaces.
