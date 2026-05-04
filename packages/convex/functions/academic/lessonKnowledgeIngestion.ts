@@ -14,6 +14,9 @@ import {
   assertYouTubeUrl,
   buildMaterialSearchSeed,
   canManageKnowledgeMaterial,
+  isKnowledgeMaterialImageContentType,
+  isKnowledgeMaterialPdfContentType,
+  normalizeKnowledgeMaterialContentType,
   normalizeKnowledgeMaterialText,
   normalizePdfPageRangeInput,
   parsePdfPageRanges,
@@ -922,6 +925,16 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
     if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
       throw new ConvexError("OCR can only be queued for OCR-needed or failed material");
     }
+    const storageMeta = await ctx.db.system.get("_storage", material.storageId);
+    const normalizedContentType = normalizeKnowledgeMaterialContentType(storageMeta?.contentType);
+    const isOcrEligible =
+      isKnowledgeMaterialPdfContentType(normalizedContentType) ||
+      isKnowledgeMaterialImageContentType(normalizedContentType);
+    if (!isOcrEligible) {
+      throw new ConvexError(
+        "Provider OCR is only available for PDF and image uploads (PNG, JPG/JPEG, WEBP)."
+      );
+    }
     if (material.ingestionAttemptCount >= MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS) {
       throw new ConvexError("This material has reached the retry limit");
     }
@@ -996,7 +1009,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
       eventType: "ocr_requested",
       entityType: "knowledgeMaterial",
       materialId: args.materialId,
-      changeSummary: "Queued provider-backed OCR for the stored PDF.",
+      changeSummary: "Queued provider-backed OCR for the stored file.",
     });
 
     await ctx.scheduler.runAfter(0, internal.functions.academic.lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal, { jobId });
@@ -1017,6 +1030,7 @@ export const startKnowledgeMaterialOcrJobInternal = internalMutation({
     description: v.union(v.string(), v.null()),
     topicLabel: v.string(),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    contentType: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
@@ -1026,6 +1040,8 @@ export const startKnowledgeMaterialOcrJobInternal = internalMutation({
     if (!material || material.schoolId !== job.schoolId) throw new ConvexError("Knowledge material not found");
     const requester = await ctx.db.get(job.requestedByUserId);
     if (!requester || requester.schoolId !== job.schoolId || requester.isArchived) throw new ConvexError("OCR requester not found");
+    const storageMeta = await ctx.db.system.get("_storage", job.storageId);
+    if (!storageMeta) throw new ConvexError("Stored file metadata not found for OCR job");
     const actorRole: "admin" | "teacher" = requester.role === "admin" || requester.isSchoolAdmin === true ? "admin" : "teacher";
     const now = Date.now();
     await ctx.db.patch(args.jobId, { status: "processing", startedAt: now, updatedAt: now });
@@ -1037,7 +1053,7 @@ export const startKnowledgeMaterialOcrJobInternal = internalMutation({
       eventType: "ocr_started",
       entityType: "knowledgeMaterial",
       materialId: job.materialId,
-      changeSummary: "Started provider-backed OCR for the stored PDF.",
+      changeSummary: "Started provider-backed OCR for the stored file.",
     });
     return {
       jobId: job._id,
@@ -1050,6 +1066,7 @@ export const startKnowledgeMaterialOcrJobInternal = internalMutation({
       description: material.description ?? null,
       topicLabel: material.topicLabel,
       ...(job.selectedPageNumbers?.length ? { selectedPageNumbers: job.selectedPageNumbers } : {}),
+      contentType: storageMeta.contentType ?? null,
     };
   },
 });

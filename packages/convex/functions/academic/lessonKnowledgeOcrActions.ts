@@ -7,13 +7,17 @@ import {
   buildKnowledgeMaterialSearchText,
   chunkKnowledgeMaterialPages,
   estimateKnowledgeMaterialTokens,
+  isKnowledgeMaterialImageContentType,
+  isKnowledgeMaterialPdfContentType,
   isLikelyReadableKnowledgeMaterialText,
+  normalizeKnowledgeMaterialContentType,
   normalizeKnowledgeMaterialText,
   suggestKnowledgeMaterialLabels,
 } from "./lessonKnowledgeIngestionHelpers";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_OCR_MODEL = "google/gemma-4-31b-it:free";
+const OPENROUTER_OCR_IMAGE_MODEL = "google/gemma-4-31b-it:free";
 const OPENROUTER_PDF_ENGINE = "mistral-ocr";
 const OCR_TIMEOUT_MS = 60_000;
 
@@ -54,13 +58,13 @@ function safeProviderError(error: unknown) {
   if (/401|403|api key|unauthorized/i.test(message)) {
     return {
       code: "provider_auth",
-      message: `OCR provider rejected the request (${message.slice(0, 220)}). Check OpenRouter credits, model access, and PDF engine access.`,
+      message: `OCR provider rejected the request (${message.slice(0, 220)}). Check OpenRouter credits, model access, and OCR engine access.`,
     };
   }
-  if (/402|credit|payment|balance/i.test(message)) return { code: "provider_payment_required", message: "OCR provider requires available OpenRouter credits for the selected PDF engine." };
-  if (/404|model|engine|plugin/i.test(message)) return { code: "provider_unavailable", message: `OCR provider configuration is unavailable (${message.slice(0, 220)}). Check the OpenRouter model and PDF engine.` };
+  if (/402|credit|payment|balance/i.test(message)) return { code: "provider_payment_required", message: "OCR provider requires available OpenRouter credits for the selected OCR flow." };
+  if (/404|model|engine|plugin/i.test(message)) return { code: "provider_unavailable", message: `OCR provider configuration is unavailable (${message.slice(0, 220)}). Check the OpenRouter model and OCR engine.` };
   if (/429|rate/i.test(message)) return { code: "rate_limited", message: "OCR provider is temporarily rate-limited. Please try again later." };
-  return { code: "provider_failed", message: `OCR provider could not process this PDF (${message.slice(0, 220)}). Please try again later.` };
+  return { code: "provider_failed", message: `OCR provider could not process this stored file (${message.slice(0, 220)}). Please try again later.` };
 }
 
 function parseJsonObject(value: string): unknown {
@@ -152,7 +156,7 @@ function normalizeOcrPages(payload: unknown): NormalizedOcrPage[] {
   });
 }
 
-function buildOpenRouterOcrBody(args: { fileData: string }) {
+function buildOpenRouterPdfOcrBody(args: { fileData: string }) {
   return {
     model: process.env.OPENROUTER_OCR_MODEL?.trim() || OPENROUTER_OCR_MODEL,
     messages: [
@@ -186,7 +190,34 @@ function buildOpenRouterOcrBody(args: { fileData: string }) {
   };
 }
 
-async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string }) {
+function buildOpenRouterImageOcrBody(args: { imageData: string }) {
+  return {
+    model:
+      process.env.OPENROUTER_OCR_IMAGE_MODEL?.trim() ||
+      OPENROUTER_OCR_IMAGE_MODEL,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "Extract all readable text from this uploaded school planning image. Return only strict JSON in this exact shape: {\"pages\":[{\"pageNumber\":1,\"text\":\"...\"}]}. Use pageNumber 1. Do not summarize, explain, or add markdown fences.",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: args.imageData,
+            },
+          },
+        ],
+      },
+    ],
+    temperature: 0,
+  };
+}
+
+async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string; contentType: string }) {
   const response = await withTimeout(
     (signal) => fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
       method: "POST",
@@ -197,7 +228,11 @@ async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string 
         "HTTP-Referer": "https://school-management-system.local",
         "X-Title": "School Management System",
       },
-      body: JSON.stringify(buildOpenRouterOcrBody({ fileData: args.fileData })),
+      body: JSON.stringify(
+        isKnowledgeMaterialPdfContentType(args.contentType)
+          ? buildOpenRouterPdfOcrBody({ fileData: args.fileData })
+          : buildOpenRouterImageOcrBody({ imageData: args.fileData })
+      ),
     }),
     OCR_TIMEOUT_MS,
     "OCR provider timed out"
@@ -225,13 +260,16 @@ async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string 
   return fallbackText ? [{ pageNumber: 1, text: fallbackText }] : [];
 }
 
-async function buildPdfDataUrl(storageUrl: string) {
-  const response = await fetch(storageUrl);
+async function buildStoredFileDataUrl(args: { storageUrl: string; fallbackContentType: string }) {
+  const response = await fetch(args.storageUrl);
   if (!response.ok) {
     throw new ConvexError("Uploaded file could not be fetched for OCR");
   }
 
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "application/pdf";
+  const responseContentType = response.headers.get("content-type")?.split(";")[0]?.trim();
+  const contentType = responseContentType && responseContentType !== "application/octet-stream"
+    ? responseContentType
+    : args.fallbackContentType;
   const arrayBuffer = await response.arrayBuffer();
   const base64 = Buffer.from(arrayBuffer).toString("base64");
   return `data:${contentType};base64,${base64}`;
@@ -288,8 +326,15 @@ export const processKnowledgeMaterialOcrJobInternal = internalAction({
         throw new ConvexError("Uploaded file could not be retrieved for OCR");
       }
 
-      const fileData = await buildPdfDataUrl(storageUrl);
-      const pages = await runOpenRouterMistralOcr({ apiKey, fileData });
+      const contentType = normalizeKnowledgeMaterialContentType(job.contentType) ?? "application/octet-stream";
+      const isPdf = isKnowledgeMaterialPdfContentType(contentType);
+      const isImage = isKnowledgeMaterialImageContentType(contentType);
+      if (!isPdf && !isImage) {
+        throw new ConvexError("Provider OCR only supports stored PDFs and images");
+      }
+
+      const fileData = await buildStoredFileDataUrl({ storageUrl, fallbackContentType: contentType });
+      const pages = await runOpenRouterMistralOcr({ apiKey, fileData, contentType });
       const filteredPages = resolveSelectedOcrPages({
         pages,
         selectedPageNumbers: job.selectedPageNumbers,
@@ -297,7 +342,7 @@ export const processKnowledgeMaterialOcrJobInternal = internalAction({
       const text = normalizeKnowledgeMaterialText(filteredPages.map((page) => page.text).join("\n\n"));
 
       if (!text || !isLikelyReadableKnowledgeMaterialText(text)) {
-        throw new ConvexError("OCR provider returned no readable text for this PDF");
+        throw new ConvexError("OCR provider returned no readable text for this stored file");
       }
 
       const labels = suggestKnowledgeMaterialLabels({

@@ -117,19 +117,30 @@ export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
 export function inferUploadContentType(file: File) {
   const explicitType = file.type.trim().toLowerCase();
-  if (explicitType) {
-    return explicitType;
+  const fileName = file.name.trim().toLowerCase();
+
+  const byExtension = (() => {
+    if (fileName.endsWith(".pdf")) return "application/pdf";
+    if (fileName.endsWith(".docx")) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (fileName.endsWith(".pptx")) {
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    }
+    if (fileName.endsWith(".md")) return "text/markdown";
+    if (fileName.endsWith(".txt")) return "text/plain";
+    if (fileName.endsWith(".png")) return "image/png";
+    if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) return "image/jpeg";
+    if (fileName.endsWith(".webp")) return "image/webp";
+    return null;
+  })();
+
+  if (byExtension) {
+    return byExtension;
   }
 
-  const fileName = file.name.trim().toLowerCase();
-  if (fileName.endsWith(".pdf")) {
-    return "application/pdf";
-  }
-  if (fileName.endsWith(".md")) {
-    return "text/markdown";
-  }
-  if (fileName.endsWith(".txt")) {
-    return "text/plain";
+  if (explicitType) {
+    return explicitType;
   }
 
   return "application/octet-stream";
@@ -137,7 +148,18 @@ export function inferUploadContentType(file: File) {
 
 export function isSupportedUploadContentType(contentType: string) {
   const c = contentType.toLowerCase();
-  return c.startsWith("text/") || c === "application/pdf" || c === "application/x-pdf" || c.endsWith("+pdf");
+  return (
+    c.startsWith("text/") ||
+    c === "application/pdf" ||
+    c === "application/x-pdf" ||
+    c.endsWith("+pdf") ||
+    c === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    c === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    c === "image/png" ||
+    c === "image/jpeg" ||
+    c === "image/jpg" ||
+    c === "image/webp"
+  );
 }
 export function uploadIntentSuccessMessage(intent: UploadIntent) {
   switch (intent) {

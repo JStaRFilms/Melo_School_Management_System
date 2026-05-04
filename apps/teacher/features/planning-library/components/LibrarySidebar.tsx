@@ -237,7 +237,7 @@ export function LibrarySidebar({
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   className="hidden"
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp"
                 />
                 {uploadFile ? (
                   <>
@@ -258,7 +258,7 @@ export function LibrarySidebar({
                     <div className="mb-2 rounded-full bg-white p-2 text-slate-300 shadow-sm ring-1 ring-slate-950/5 group-hover:text-slate-400">
                       <Upload className="h-4 w-4" />
                     </div>
-                    <p className="text-[11px] font-bold text-slate-400">Choose PDF or Text file</p>
+                    <p className="text-[11px] font-bold text-slate-400">Choose PDF, DOCX, PPTX, TXT, MD, or image</p>
                     <p className="mt-1 text-[9px] font-medium text-slate-300">Max 12MB</p>
                   </>
                 )}
@@ -322,18 +322,17 @@ export function LibrarySidebar({
                   </div>
                 )}
 
-                {isPdfUpload && (
-                  <button
-                    type="button"
-                    onClick={() => setIsCurriculumReference((value) => !value)}
-                    aria-pressed={isCurriculumReference}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-2xl border-2 p-3 text-left transition-all",
-                      isCurriculumReference
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm shadow-emerald-500/10"
-                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                    )}
-                  >
+                <button
+                  type="button"
+                  onClick={() => setIsCurriculumReference((value) => !value)}
+                  aria-pressed={isCurriculumReference}
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-2xl border-2 p-3 text-left transition-all",
+                    isCurriculumReference
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm shadow-emerald-500/10"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                  )}
+                >
                     <span className={cn(
                       "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-black transition-all",
                       isCurriculumReference ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-white"
@@ -343,11 +342,10 @@ export function LibrarySidebar({
                     <span className="space-y-1">
                       <span className="block text-[10px] font-black uppercase tracking-[0.16em]">Curriculum / planning reference</span>
                       <span className="block text-[10px] font-semibold leading-relaxed opacity-80">
-                        Use this when uploading curriculum PDFs or broad source material that may support multiple topics.
+                        Use this when uploading curriculum documents or broad source material that may support multiple topics.
                       </span>
                     </span>
                   </button>
-                )}
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Upload As</label>
