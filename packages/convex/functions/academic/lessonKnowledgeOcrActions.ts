@@ -194,7 +194,6 @@ function buildOpenRouterImageOcrBody(args: { imageData: string }) {
   return {
     model:
       process.env.OPENROUTER_OCR_IMAGE_MODEL?.trim() ||
-      process.env.OPENROUTER_OCR_MODEL?.trim() ||
       OPENROUTER_OCR_IMAGE_MODEL,
     messages: [
       {

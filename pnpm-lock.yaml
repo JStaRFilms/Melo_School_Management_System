@@ -531,7 +531,7 @@ importers:
         specifier: ^3.10.1
         version: 3.10.1
       mammoth:
-        specifier: ^1.10.0
+        specifier: ^1.11.0
         version: 1.12.0
       pdf-lib:
         specifier: ^1.17.1

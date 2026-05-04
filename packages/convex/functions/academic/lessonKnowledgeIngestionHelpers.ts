@@ -167,7 +167,9 @@ export function isSupportedKnowledgeMaterialContentType(contentType?: string | n
     isKnowledgeMaterialPdfContentType(normalized) ||
     normalized === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     normalized === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-    normalized.startsWith("text/") ||
+    normalized === "text/plain" ||
+    normalized === "text/markdown" ||
+    normalized === "text/x-markdown" ||
     isKnowledgeMaterialImageContentType(normalized)
   );
 }

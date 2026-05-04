@@ -307,15 +307,74 @@ function decodeXmlEntities(value: string) {
     .replace(/&apos;/g, "'");
 }
 
-async function extractPptxPages(buffer: Buffer) {
-  const zip = await loadBoundedOfficeZip(buffer);
-  const slideEntries = Object.keys(zip.files)
+function getSortedPptxSlideEntries(zip: JSZip) {
+  return Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
     .sort((a, b) => {
       const aNum = Number(a.match(/slide(\d+)\.xml/i)?.[1] ?? 0);
       const bNum = Number(b.match(/slide(\d+)\.xml/i)?.[1] ?? 0);
       return aNum - bNum;
     });
+}
+
+function getXmlAttribute(tag: string, attributeName: string) {
+  const escapedName = attributeName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  return tag.match(new RegExp(`\\b${escapedName}="([^"]+)"`))?.[1] ?? null;
+}
+
+function normalizePptxSlideTarget(target: string) {
+  const withoutLeadingSlash = target.replace(/^\/+/, "");
+  if (withoutLeadingSlash.startsWith("ppt/")) {
+    return withoutLeadingSlash;
+  }
+
+  return `ppt/${withoutLeadingSlash.replace(/^\.\.\//, "")}`;
+}
+
+async function getOrderedPptxSlideEntries(zip: JSZip) {
+  const presentationEntry = zip.files["ppt/presentation.xml"];
+  const relationshipsEntry =
+    zip.files["ppt/_rels/presentation.xml.rels"] ?? zip.files["ppt/presentation.xml.rels"];
+
+  if (!presentationEntry || !relationshipsEntry) {
+    return getSortedPptxSlideEntries(zip);
+  }
+
+  const [presentationXml, relationshipsXml] = await Promise.all([
+    presentationEntry.async("string"),
+    relationshipsEntry.async("string"),
+  ]);
+  const relationshipTargets = new Map<string, string>();
+  for (const match of relationshipsXml.matchAll(/<Relationship\b[^>]*>/g)) {
+    const tag = match[0];
+    const id = getXmlAttribute(tag, "Id");
+    const target = getXmlAttribute(tag, "Target");
+    if (id && target) {
+      relationshipTargets.set(id, normalizePptxSlideTarget(target));
+    }
+  }
+
+  const orderedSlides: string[] = [];
+  for (const match of presentationXml.matchAll(/<p:sldId\b[^>]*>/g)) {
+    const slidePath = relationshipTargets.get(getXmlAttribute(match[0], "r:id") ?? "");
+    if (slidePath && zip.files[slidePath]) {
+      orderedSlides.push(slidePath);
+    }
+  }
+
+  return orderedSlides.length > 0 ? orderedSlides : getSortedPptxSlideEntries(zip);
+}
+
+async function extractPptxPages(buffer: Buffer) {
+  const startedAt = Date.now();
+  const remainingTimeoutMs = () => Math.max(0, DEFAULT_OFFICE_PARSE_TIMEOUT_MS - (Date.now() - startedAt));
+  const zip = await loadBoundedOfficeZip(buffer);
+  const slideEntries = await withTimeout(
+    getOrderedPptxSlideEntries(zip),
+    remainingTimeoutMs(),
+    () => undefined,
+    "PPTX presentation order extraction timed out"
+  );
 
   if (slideEntries.length > MAX_PPTX_SLIDES) {
     throw new Error(`PPTX contains more than ${MAX_PPTX_SLIDES} slides and is too large to process safely.`);
@@ -339,7 +398,7 @@ async function extractPptxPages(buffer: Buffer) {
 
     const xml = await withTimeout(
       entry.async("string"),
-      DEFAULT_OFFICE_PARSE_TIMEOUT_MS,
+      remainingTimeoutMs(),
       () => undefined,
       "PPTX slide extraction timed out"
     );
