@@ -106,13 +106,34 @@ const STOP_WORDS = new Set([
   "upload",
 ]);
 
-function normalizeKnowledgeMaterialContentType(contentType?: string | null) {
+export function normalizeKnowledgeMaterialContentType(contentType?: string | null) {
   const normalized = contentType?.trim().toLowerCase();
   if (!normalized) {
     return null;
   }
 
   return normalized.split(";")[0].trim();
+}
+
+export function isKnowledgeMaterialPdfContentType(contentType?: string | null) {
+  const normalized = normalizeKnowledgeMaterialContentType(contentType);
+  return Boolean(
+    normalized &&
+      (normalized === "application/pdf" ||
+        normalized === "application/x-pdf" ||
+        normalized.endsWith("+pdf"))
+  );
+}
+
+export function isKnowledgeMaterialImageContentType(contentType?: string | null) {
+  const normalized = normalizeKnowledgeMaterialContentType(contentType);
+  return Boolean(
+    normalized &&
+      (normalized === "image/png" ||
+        normalized === "image/jpeg" ||
+        normalized === "image/jpg" ||
+        normalized === "image/webp")
+  );
 }
 
 export function assertKnowledgeMaterialIngestionAccess(actor: KnowledgeActorContext) {
@@ -143,10 +164,11 @@ export function isSupportedKnowledgeMaterialContentType(contentType?: string | n
   }
 
   return (
-    normalized === "application/pdf" ||
-    normalized === "application/x-pdf" ||
-    normalized.endsWith("+pdf") ||
-    normalized.startsWith("text/")
+    isKnowledgeMaterialPdfContentType(normalized) ||
+    normalized === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    normalized === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    normalized.startsWith("text/") ||
+    isKnowledgeMaterialImageContentType(normalized)
   );
 }
 
@@ -170,7 +192,7 @@ export function assertKnowledgeMaterialUploadIsSupported(args: {
 
   if (!isSupportedKnowledgeMaterialContentType(args.contentType)) {
     throw new ConvexError(
-      "Only PDF and text-based uploads are supported in the planning library right now."
+      "Only PDF, DOCX, PPTX, TXT, MD, PNG, JPG/JPEG, and WEBP uploads are supported in the planning library right now."
     );
   }
 }

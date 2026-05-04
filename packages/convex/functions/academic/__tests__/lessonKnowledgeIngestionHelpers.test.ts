@@ -152,13 +152,31 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     ).toThrowError("Only admins can start a material as staff shared");
   });
 
-  it("rejects unsupported upload sizes and content types", () => {
+  it("accepts supported upload content types and rejects unsupported sizes/types", () => {
+    for (const contentType of [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/plain",
+      "text/markdown",
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+    ]) {
+      expect(() =>
+        assertKnowledgeMaterialUploadIsSupported({
+          contentType,
+          size: 1024,
+        })
+      ).not.toThrow();
+    }
+
     expect(() =>
       assertKnowledgeMaterialUploadIsSupported({
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        contentType: "application/vnd.microsoft.portable-executable",
         size: 1024,
       })
-    ).toThrowError("Only PDF and text-based uploads are supported in the planning library right now.");
+    ).toThrowError("Only PDF, DOCX, PPTX, TXT, MD, PNG, JPG/JPEG, and WEBP uploads are supported in the planning library right now.");
 
     expect(() =>
       assertKnowledgeMaterialUploadIsSupported({
