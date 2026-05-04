@@ -19,6 +19,17 @@ Use these skills where available:
 - `webapp-testing`
 - `sync-docs`
 
+
+## Model Routing
+
+- Strategy source: `docs/tasks/orchestrator-sessions/20260426-devlog-full-backlog/model_routing_strategy.md`.
+- Primary role: Coder / Reviewer.
+- Initial model: `gpt-5.5`.
+- Review model: `gpt-5.5`.
+- Escalation: move to `gpt-5.5` immediately if work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
+- `gpt-5.4-mini` is allowed only for small, explicit, isolated subtasks carved out from this task.
+- Task note: Billing, reconciliation, payment links, and financial correctness are high-risk.
+
 ## Objective
 
 Give schools a clean way to view and print invoices and payment statements with payment links, QR codes, and payment date/time visibility.

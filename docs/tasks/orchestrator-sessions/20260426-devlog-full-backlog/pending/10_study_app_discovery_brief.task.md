@@ -14,6 +14,17 @@ Use these skills where available:
 - `nextjs-standards`
 - `sync-docs`
 
+
+## Model Routing
+
+- Strategy source: `docs/tasks/orchestrator-sessions/20260426-devlog-full-backlog/model_routing_strategy.md`.
+- Primary role: Architect.
+- Initial model: `gpt-5.5`.
+- Review model: `gpt-5.4`.
+- Escalation: move to `gpt-5.5` immediately if work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
+- `gpt-5.4-mini` is allowed only for small, explicit, isolated subtasks carved out from this task.
+- Task note: Product/data-boundary discovery only; no code changes.
+
 ## Objective
 
 Turn the standalone study app idea into a discovery brief, not an implementation task.

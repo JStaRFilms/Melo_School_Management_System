@@ -16,6 +16,16 @@
 - For Convex work, read `packages/convex/_generated/ai/guidelines.md` before editing backend code.
 - At final handoff, run `pnpm convex deploy`; if deploy fails, document the exact blocker.
 
+
+## Model Routing Strategy
+
+- Authoritative routing file: `model_routing_strategy.md`.
+- Before dispatching a sub-agent, run `pi --list-models` and verify the requested model exists.
+- Start with the cheapest capable model, then escalate immediately when work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
+- Treat `gpt-5.4-mini` as a fast junior implementer: use only for small, explicit, isolated work.
+- Use `gpt-5.5` for serious architecture, tenant/security/billing decisions, final/deep review, regression detection, and high-risk refactors.
+- Use `gpt-5.4` as the default implementation and normal review model.
+
 ## Skills Registry
 
 | Skill | Use |
@@ -45,7 +55,7 @@
 
 | # | Task | Type | Dependencies | Status |
 | --- | --- | --- | --- | --- |
-| 01 | DevLog Audit Ledger | Audit | none | pending |
+| 01 | DevLog Audit Ledger | Audit | none | completed |
 | 02 | Report Card Batch Printing v2 | Build | 01 | pending |
 | 03 | School Branding and Parent Multi-School Context | Build | 01 | pending |
 | 04 | Student Records and Photo Editor | Build | 01 | pending |
@@ -56,6 +66,7 @@
 | 09 | PDF Parser Upgrade | Build | 01 | pending |
 | 10 | Study App Discovery Brief | Discovery | 01 | pending |
 | 11 | Final Verification, Docs, and Deploy | Finalize | 02-10 | pending |
+| MR | Model Routing Strategy | Orchestration Policy | none | completed |
 
 ## Dependency Map
 
@@ -83,8 +94,8 @@ flowchart TD
 ## Progress Checklist
 
 - [ ] Create task files
-- [ ] Complete DevLog audit ledger
-- [ ] Confirm implementation scope from audit
+- [x] Complete DevLog audit ledger
+- [x] Confirm implementation scope from audit
 - [ ] Execute scoped build tasks
 - [ ] Update feature docs
 - [ ] Run targeted tests/typechecks/build checks
