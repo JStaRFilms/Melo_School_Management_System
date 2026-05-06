@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { 
   TeacherLibraryMaterial, 
   MaterialDraft, 
@@ -39,10 +39,15 @@ export function MaterialEditSheet({
   const [draft, setDraft] = useState<MaterialDraft | null>(null);
   const [topicSearch, setTopicSearch] = useState("");
 
-  // Keep a stale reference so sheet content persists during close animation
-  const staleMaterialRef = useRef<TeacherLibraryMaterial | null>(null);
-  if (material) staleMaterialRef.current = material;
-  const displayMaterial = material ?? staleMaterialRef.current;
+  // Keep stale material so sheet content persists during close animation.
+  const [staleMaterial, setStaleMaterial] = useState<TeacherLibraryMaterial | null>(null);
+  const displayMaterial = material ?? staleMaterial;
+
+  useEffect(() => {
+    if (material) {
+      setStaleMaterial(material);
+    }
+  }, [material]);
 
   useEffect(() => {
     if (material && isOpen) {
@@ -63,7 +68,7 @@ export function MaterialEditSheet({
   useEffect(() => {
     if (!isOpen) {
       const timer = setTimeout(() => {
-        staleMaterialRef.current = null;
+        setStaleMaterial(null);
         setDraft(null);
       }, 500);
       return () => clearTimeout(timer);

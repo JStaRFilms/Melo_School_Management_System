@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
   ReportCardBatchNavigator,
-  ReportCardPrintStack,
+  ReportCardBatchPrintStackV2,
   ReportCardPreview,
   ReportCardToolbar,
   ReportCardPrintBlockedNotice,
@@ -106,15 +106,9 @@ function TeacherReportCardPageContent() {
     router.push(`${pathname}?${params.toString()}`);
   }, [pathname, resolvedClassId, router, searchParamsString]);
 
-  useEffect(() => {
-    hasTriggeredClassPrintRef.current = false;
-  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
-
-  useEffect(() => {
+  const handleBatchReady = useCallback(() => {
     if (
       !isPrintClassMode ||
-      classReportCards === undefined ||
-      classReportCards.length === 0 ||
       isClassPrintBlocked ||
       hasTriggeredClassPrintRef.current
     ) {
@@ -122,21 +116,29 @@ function TeacherReportCardPageContent() {
     }
 
     hasTriggeredClassPrintRef.current = true;
-    const timer = window.setTimeout(() => {
+    requestAnimationFrame(() => {
       window.print();
-    }, 80);
+    });
+  }, [isPrintClassMode, isClassPrintBlocked]);
+
+  // Reset the print trigger guard when context changes
+  useEffect(() => {
+    hasTriggeredClassPrintRef.current = false;
+  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
+
+  // Handle afterprint to exit batch mode
+  useEffect(() => {
+    if (!isPrintClassMode) return;
 
     const handleAfterPrint = () => {
       exitFullClassPrint();
     };
 
     window.addEventListener("afterprint", handleAfterPrint);
-
     return () => {
-      window.clearTimeout(timer);
       window.removeEventListener("afterprint", handleAfterPrint);
     };
-  }, [classReportCards, exitFullClassPrint, isClassPrintBlocked, isPrintClassMode]);
+  }, [isPrintClassMode, exitFullClassPrint]);
 
   if (!studentId || !sessionId || !termId) {
     return (
@@ -192,9 +194,10 @@ function TeacherReportCardPageContent() {
             </div>
           </div>
         ) : (
-          <ReportCardPrintStack
+          <ReportCardBatchPrintStackV2
             reportCards={classReportCards}
             backHref="/assessments/exams/entry"
+            onReady={handleBatchReady}
           />
         )}
       </>

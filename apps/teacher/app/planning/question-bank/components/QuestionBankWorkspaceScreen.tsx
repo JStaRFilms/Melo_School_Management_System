@@ -872,7 +872,7 @@ export function QuestionBankWorkspaceScreen({
                     )}
                   </div>
                   <p className="text-xs font-medium text-slate-500 max-w-md leading-relaxed">
-                    Set the core identity for this collection. Changes here affect how it's categorized in your library.
+                    Set the core identity for this collection. Changes here affect how it&apos;s categorized in your library.
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-2 sm:pb-0 scrollbar-none">

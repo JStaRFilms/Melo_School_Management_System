@@ -291,4 +291,5 @@ To stay aligned with the 200-line modularity rule, split the work into:
 ## Follow-Up
 
 - This pass delivers fast student-to-student class navigation and branding upload
-- true one-click print-all for the whole class is still deferred; current printing remains per student using the faster batch navigator
+- ~~true one-click print-all for the whole class is still deferred~~ → Delivered in `FullClassReportCardPrinting.md` (2026-05-06). Uses `ReportCardBatchPrintStackV2` with DOM-walk flex-ancestor isolation for reliable pagination.
+
