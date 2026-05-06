@@ -31,12 +31,22 @@ interface LinkRenderProps {
   children: ReactNode;
 }
 
+export interface WorkspaceSchoolBranding {
+  name: string;
+  logoUrl?: string | null;
+  theme?: {
+    primaryColor: string;
+    accentColor: string;
+  } | null;
+}
+
 export interface WorkspaceNavbarProps {
   workspace: WorkspaceKey;
   currentPath: string;
   fullBleed?: boolean;
   userName?: string | null;
   userRole?: string | null;
+  schoolBranding?: WorkspaceSchoolBranding | null;
   onSignOut?: () => void;
   renderLink: (props: LinkRenderProps) => ReactNode;
   children: ReactNode;
@@ -50,6 +60,7 @@ export function WorkspaceNavbar({
   fullBleed = false,
   userName,
   userRole,
+  schoolBranding,
   onSignOut,
   renderLink,
   children,
@@ -58,6 +69,13 @@ export function WorkspaceNavbar({
   const sections = getWorkspaceSections(workspace);
   const initials =
     userName?.trim().charAt(0).toUpperCase() ?? def.label.charAt(0);
+  const schoolName = schoolBranding?.name?.trim() || null;
+  const schoolInitials = buildSchoolInitials(schoolName ?? def.label);
+  const primaryColor = schoolBranding?.theme?.primaryColor || "#020617";
+  const accentColor = schoolBranding?.theme?.accentColor || "#2563eb";
+  const workspaceTitle = schoolName
+    ? `${schoolName} · ${def.label}`
+    : `${def.label} Portal`;
 
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -181,6 +199,12 @@ export function WorkspaceNavbar({
     setProfileOpen(false);
   }, [currentPath]);
 
+  useEffect(() => {
+    if (schoolName) {
+      document.title = workspaceTitle;
+    }
+  }, [schoolName, workspaceTitle]);
+
   const activeSection =
     sections
       .filter((section) => isWorkspaceSectionActive(section, currentPath))
@@ -196,15 +220,18 @@ export function WorkspaceNavbar({
       {/* ═══ DESKTOP SIDEBAR (Pinned) ═══════════════════════════ */}
       <aside className="hidden h-full w-72 flex-col border-r border-slate-200 bg-white xl:flex shrink-0 z-30">
         <div className="flex h-16 items-center gap-4 px-6 border-b border-slate-100/60">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[10px] font-black tracking-tighter text-white shadow-lg shadow-slate-950/20">
-            OS
-          </div>
-          <div>
-            <h1 className="font-display text-sm font-bold tracking-tight text-slate-950 leading-none">
-              {def.label} Portal
+          <SchoolBrandMark
+            name={schoolName ?? def.label}
+            logoUrl={schoolBranding?.logoUrl ?? null}
+            initials={schoolInitials}
+            primaryColor={primaryColor}
+          />
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-sm font-bold tracking-tight text-slate-950 leading-none">
+              {workspaceTitle}
             </h1>
             <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400 mt-1 leading-none">
-              Academic Engine
+              {schoolName ? "Active school workspace" : "Academic Engine"}
             </p>
           </div>
         </div>
@@ -253,8 +280,13 @@ export function WorkspaceNavbar({
         <header className="rc-no-print sticky top-0 z-40 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           
           <div className="flex items-center gap-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-black tracking-tighter text-white xl:hidden shadow-lg shadow-slate-950/20">
-              OS
+            <div className="xl:hidden">
+              <SchoolBrandMark
+                name={schoolName ?? def.label}
+                logoUrl={schoolBranding?.logoUrl ?? null}
+                initials={schoolInitials}
+                primaryColor={primaryColor}
+              />
             </div>
             <div className="flex items-center gap-2 overflow-hidden">
                <span className="hidden text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 sm:block">
@@ -264,6 +296,11 @@ export function WorkspaceNavbar({
               <h2 className="truncate font-display text-sm font-bold tracking-tight text-slate-950 xl:text-base">
                 {activeSection?.label ?? "Dashboard"}
               </h2>
+              {schoolName && (
+                <span className="hidden truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 md:block">
+                  {schoolName}
+                </span>
+              )}
             </div>
           </div>
 
@@ -273,7 +310,10 @@ export function WorkspaceNavbar({
                 onClick={() => setProfileOpen(!profileOpen)}
                 className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 transition-all hover:border-slate-300 hover:shadow-sm"
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950 text-[10px] font-bold text-white group-hover:bg-blue-600 transition-colors">
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-white transition-colors"
+                  style={{ backgroundColor: primaryColor }}
+                >
                   {initials}
                 </div>
                 <div className="hidden text-left leading-none sm:block">
@@ -327,10 +367,15 @@ export function WorkspaceNavbar({
           <div className="fixed inset-0 z-[100] flex flex-col bg-white xl:hidden transition-all duration-300 animate-in fade-in slide-in-from-right-5">
             <div className="flex h-16 shrink-0 items-center justify-between px-4 border-b border-slate-100">
                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-[10px] font-black tracking-tighter text-white">
-                    OS
-                  </div>
-                  <span className="font-display text-sm font-bold text-slate-950">Navigation</span>
+                  <SchoolBrandMark
+                    name={schoolName ?? def.label}
+                    logoUrl={schoolBranding?.logoUrl ?? null}
+                    initials={schoolInitials}
+                    primaryColor={primaryColor}
+                  />
+                  <span className="truncate font-display text-sm font-bold text-slate-950">
+                    {schoolName ?? "Navigation"}
+                  </span>
                </div>
                <button 
                   onClick={() => setOpen(false)}
@@ -342,7 +387,10 @@ export function WorkspaceNavbar({
 
             <div ref={menuRef} className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide pb-32">
               <div className="mb-8 flex items-center gap-4 px-2">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-base font-bold text-white shadow-xl shadow-slate-950/20">
+                <div
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-base font-bold text-white shadow-xl shadow-slate-950/20"
+                  style={{ backgroundColor: accentColor }}
+                >
                   {initials}
                 </div>
                 <div>
@@ -384,6 +432,45 @@ export function WorkspaceNavbar({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function buildSchoolInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "SCH";
+}
+
+function SchoolBrandMark({
+  name,
+  logoUrl,
+  initials,
+  primaryColor,
+}: {
+  name: string;
+  logoUrl: string | null;
+  initials: string;
+  primaryColor: string;
+}) {
+  if (logoUrl) {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <img src={logoUrl} alt={`${name} logo`} className="h-full w-full object-contain p-1" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black tracking-tighter text-white shadow-lg shadow-slate-950/20"
+      style={{ backgroundColor: primaryColor }}
+      aria-label={name}
+    >
+      {initials}
     </div>
   );
 }

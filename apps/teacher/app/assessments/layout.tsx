@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { useQuery } from "convex/react";
 import { WorkspaceNavbar } from "@school/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -12,6 +13,10 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
   const { session, signOut, isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const schoolBranding = useQuery(
+    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
+    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
+  ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {
@@ -52,6 +57,7 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
       currentPath={pathname}
       userName={session?.user?.name}
       userRole={session?.user?.role}
+      schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>

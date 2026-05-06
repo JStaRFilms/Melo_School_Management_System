@@ -50,3 +50,41 @@ Make each authenticated workspace clearly show the active school, and add the fi
 - Fallback branding remains usable when a school has no logo/theme.
 - Relevant portal/branding docs are created or updated.
 - Tenant-scope tests or explicit verification notes are included.
+
+
+## Completion Notes
+
+Completed on 2026-05-06.
+
+### Implementation
+
+- Added authenticated school branding query: `functions/academic/schoolBranding:getCurrentSchoolBranding`.
+- Extended `WorkspaceNavbar` with optional `schoolBranding` support, logo/fallback initials, school name, theme accents, and browser-title updates.
+- Wired admin, teacher, and portal workspace layouts to pass active school branding.
+- Updated portal workspace data to resolve parent-accessible students across multiple parent memberships linked to the same auth identity.
+- Student portal users remain direct-context users.
+- Portal child selectors now display school context.
+- Portal billing and payment context now validate through accessible student records across portal memberships.
+- Added `docs/features/SchoolBrandingAndParentMultiSchoolContext.md` and updated `PortalAcademicPortalFoundation.md`.
+
+### Verification
+
+Passed:
+
+- `corepack pnpm -C packages/shared exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C packages/convex exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/admin exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/teacher exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/portal exec tsc --noEmit --incremental false --pretty false`
+- `corepack pnpm -C apps/admin lint`
+- `corepack pnpm -C apps/teacher lint`
+- `corepack pnpm -C apps/portal lint`
+- `corepack pnpm -C apps/admin build`
+- `corepack pnpm -C apps/teacher build`
+- `corepack pnpm -C apps/portal build`
+
+### Manual verification still recommended
+
+- Confirm active school name/logo appears in admin and teacher nav.
+- Confirm portal child switching updates the selected child's school context.
+- Confirm parent cannot access an unrelated student/invoice by URL.

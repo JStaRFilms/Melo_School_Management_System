@@ -81,4 +81,8 @@ The portal reuses existing academic and billing records:
 - Parents and students can review school-fee invoices, payment history, and receipt/status details from the portal.
 - Eligible invoices can launch Paystack checkout directly from the portal and return to an authenticated portal verification page.
 - The shared workspace navigation now includes a live portal destination with a billing tab.
-- Future cross-school parent chooser work can build on this foundation without rewriting the portal.
+- Parent context can now resolve accessible children across multiple school memberships linked to the same auth identity.
+- Child selectors include school context so parents can tell which school is active.
+- Portal workspace, report-card history, billing, and payment context are scoped to the selected child's school.
+- Student logins remain direct to the student's own school/student context.
+- See `docs/features/SchoolBrandingAndParentMultiSchoolContext.md` for the authenticated branding and multi-school context rules.

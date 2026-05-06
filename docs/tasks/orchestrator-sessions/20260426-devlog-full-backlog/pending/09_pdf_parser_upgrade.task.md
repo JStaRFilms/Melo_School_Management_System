@@ -23,10 +23,12 @@ Use these skills where available:
 
 - Strategy source: `docs/tasks/orchestrator-sessions/20260426-devlog-full-backlog/model_routing_strategy.md`.
 - Primary role: Coder.
-- Initial model: `gpt-5.4`.
-- Review model: `gpt-5.5`.
-- Escalation: move to `gpt-5.5` immediately if work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
-- `gpt-5.4-mini` is allowed only for small, explicit, isolated subtasks carved out from this task.
+- Provider/model: `oauth-router/gpt-5.4`.
+- Reasoning effort: High.
+- Review provider/model: `oauth-router/gpt-5.5`.
+- Review reasoning effort: Medium.
+- Escalation: move to `oauth-router/gpt-5.5` High immediately if work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
+- GPT-5.4 Mini High is allowed only for small, explicit, isolated subtasks carved out from this task.
 - Task note: Escalate if OCR pipeline, async processing, or ingestion contracts need redesign.
 
 ## Objective

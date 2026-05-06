@@ -57,7 +57,7 @@
 | --- | --- | --- | --- | --- |
 | 01 | DevLog Audit Ledger | Audit | none | completed |
 | 02 | Report Card Batch Printing v2 | Build | 01 | completed |
-| 03 | School Branding and Parent Multi-School Context | Build | 01 | pending |
+| 03 | School Branding and Parent Multi-School Context | Build | 01 | completed |
 | 04 | Student Records and Photo Editor | Build | 01 | pending |
 | 05 | Billing Printable Finance Pack | Build | 01 | pending |
 | 06 | Knowledge and Template Prevention Fixes | Audit + Build | 01 | pending |

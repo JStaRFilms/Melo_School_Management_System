@@ -14,7 +14,7 @@ import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { usePathname,useRouter,useSearchParams } from "next/navigation";
-import { useMemo,useState } from "react";
+import { useEffect,useMemo,useState } from "react";
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -156,6 +156,12 @@ function PortalWorkspaceContent({ mode }: { mode: PortalWorkspaceMode }) {
   const resolvedStudentId = workspace?.selectedStudentId ?? null;
   const resolvedSessionId = workspace?.selectedSessionId ?? null;
   const resolvedTermId = workspace?.selectedTermId ?? null;
+
+  useEffect(() => {
+    if (workspace?.school?.name) {
+      document.title = `${workspace.school.name} · Portal`;
+    }
+  }, [workspace?.school?.name]);
 
   const selectedStudent = workspace?.selectedStudent ?? null;
   const activeHistoryItem = useMemo(() => {
@@ -308,7 +314,7 @@ function PortalGreetingBar({
           </h1>
           {selectedStudent && (
             <p className="mt-1 text-sm text-slate-500">
-              {selectedStudent.className} · {selectedStudent.admissionNumber}
+              {selectedStudent.className} · {selectedStudent.admissionNumber} · {selectedStudent.schoolName}
             </p>
           )}
         </div>
@@ -326,7 +332,10 @@ function PortalGreetingBar({
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {student.name.split(" ")[0]}
+                <span>{student.name.split(" ")[0]}</span>
+                {student.schoolName !== workspace.school.name && (
+                  <span className="ml-1 text-[10px] opacity-80">· {student.schoolName}</span>
+                )}
               </button>
             ))}
           </div>
@@ -553,7 +562,12 @@ function PortalReportCardLayout({
                             : "border-slate-200 bg-white font-medium text-slate-600 hover:border-slate-300"
                         }`}
                       >
-                        {student.name}
+                        <span>
+                          <span className="block">{student.name}</span>
+                          <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                            {student.schoolName} · {student.className}
+                          </span>
+                        </span>
                       </button>
                     ))}
                   </div>
