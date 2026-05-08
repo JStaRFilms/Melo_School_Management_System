@@ -1160,8 +1160,10 @@ export const updateAdminKnowledgeMaterialState = mutation({
       throw new ConvexError("No state change requested");
     }
 
-    const nextVisibility = args.visibility ?? material.visibility;
     const nextReviewStatus = args.reviewStatus ?? material.reviewStatus;
+    const nextVisibility = args.reviewStatus === "archived"
+      ? "private_owner"
+      : args.visibility ?? material.visibility;
 
     if (nextVisibility === "student_approved") {
       if (!material.topicId) {
@@ -1191,16 +1193,17 @@ export const updateAdminKnowledgeMaterialState = mutation({
     }
 
     const now = Date.now();
+    const visibilityPatch = args.reviewStatus === "archived" ? nextVisibility : args.visibility;
     await ctx.db.patch(args.materialId, {
-      ...(args.visibility ? { visibility: args.visibility } : {}),
+      ...(visibilityPatch ? { visibility: visibilityPatch } : {}),
       ...(args.reviewStatus ? { reviewStatus: args.reviewStatus } : {}),
       updatedAt: now,
       updatedBy: userId,
     });
 
-    if (args.visibility || args.reviewStatus) {
+    if (visibilityPatch || args.reviewStatus) {
       await patchMaterialChunksForState(ctx, args.materialId, schoolId, {
-        ...(args.visibility ? { visibility: args.visibility } : {}),
+        ...(visibilityPatch ? { visibility: visibilityPatch } : {}),
         ...(args.reviewStatus ? { reviewStatus: args.reviewStatus } : {}),
       });
     }

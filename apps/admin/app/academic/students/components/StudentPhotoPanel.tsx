@@ -141,35 +141,36 @@ export function StudentPhotoPanel({
 
   return (
     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <p className="shrink-0 whitespace-nowrap text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
           Student Photo
         </p>
-        {isCropping ? (
-          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-indigo-500">
-            Cropping...
-          </span>
-        ) : null}
+        <span className="min-h-3 shrink-0 whitespace-nowrap text-right text-[9px] font-black uppercase tracking-[0.12em] text-indigo-500">
+          {isCropping ? "Cropping..." : ""}
+        </span>
       </div>
       {visiblePreviewUrl ? (
-        <Image
-          src={visiblePreviewUrl}
-          alt={name}
-          width={600}
-          height={800}
-          unoptimized
-          className="h-44 w-full rounded-2xl object-cover"
-          style={
-            sourcePreviewUrl
-              ? {
-                  objectPosition: `${crop.x}% ${crop.y}%`,
-                  transform: `scale(${crop.zoom})`,
-                }
-              : undefined
-          }
-        />
+        <div className="relative mx-auto aspect-[3/4] w-full max-w-56 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+          <Image
+            src={visiblePreviewUrl}
+            alt={name}
+            fill
+            sizes="224px"
+            unoptimized
+            className="object-cover"
+            style={
+              sourcePreviewUrl
+                ? {
+                    objectPosition: `${crop.x}% ${crop.y}%`,
+                    transform: `scale(${crop.zoom})`,
+                    transformOrigin: `${crop.x}% ${crop.y}%`,
+                  }
+                : undefined
+            }
+          />
+        </div>
       ) : (
-        <div className="flex h-44 w-full items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+        <div className="mx-auto flex aspect-[3/4] w-full max-w-56 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
           No Photo
         </div>
       )}
