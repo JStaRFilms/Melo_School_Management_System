@@ -58,14 +58,14 @@
 | 01 | DevLog Audit Ledger | Audit | none | completed |
 | 02 | Report Card Batch Printing v2 | Build | 01 | completed |
 | 03 | School Branding and Parent Multi-School Context | Build | 01 | completed |
-| 04 | Student Records and Photo Editor | Build | 01 | pending |
-| 05 | Billing Printable Finance Pack | Build | 01 | pending |
-| 06 | Knowledge and Template Prevention Fixes | Audit + Build | 01 | pending |
-| 07 | Promotions Audit and Fix | Audit + Build | 01 | pending |
-| 08 | Portal and Teacher Knowledge Refactors | Audit + Build | 01, 06 | pending |
-| 09 | PDF Parser Upgrade | Build | 01 | pending |
-| 10 | Study App Discovery Brief | Discovery | 01 | pending |
-| 11 | Final Verification, Docs, and Deploy | Finalize | 02-10 | pending |
+| 04 | Student Records and Photo Editor | Build | 01 | completed |
+| 05 | Billing Printable Finance Pack | Build | 01 | completed |
+| 06 | Knowledge and Template Prevention Fixes | Audit + Build | 01 | completed |
+| 07 | Promotions Audit and Fix | Audit + Build | 01 | completed |
+| 08 | Portal and Teacher Knowledge Refactors | Audit + Build | 01, 06 | completed |
+| 09 | PDF Parser Upgrade | Build | 01 | deferred by user for future session |
+| 10 | Study App Discovery Brief | Discovery | 01 | completed |
+| 11 | Final Verification, Docs, and Deploy | Finalize | 02-08 and 10; 09 deferred | completed |
 | MR | Model Routing Strategy | Orchestration Policy | none | completed |
 
 ## Dependency Map
@@ -93,18 +93,24 @@ flowchart TD
 
 ## Progress Checklist
 
-- [ ] Create task files
+- [x] Create task files
 - [x] Complete DevLog audit ledger
 - [x] Confirm implementation scope from audit
-- [ ] Execute scoped build tasks
-- [ ] Update feature docs
-- [ ] Run targeted tests/typechecks/build checks
-- [ ] Run `pnpm convex deploy`
-- [ ] Write `Orchestrator_Summary.md`
+- [x] Execute scoped build/discovery tasks except user-deferred Task 09
+- [x] Update feature docs for completed workstreams
+- [x] Run targeted tests/typechecks/build checks
+- [x] Run `pnpm convex deploy`
+- [x] Write `Orchestrator_Summary.md`
+
+## Session Notes
+
+- 2026-05-08: Task 09 PDF Parser Upgrade was explicitly deferred by user instruction for a future session. It is not completed, and DL-030 remains open future work.
+- 2026-05-08: Task 10 Study App Discovery Brief completed as documentation-only discovery in `docs/features/StandaloneStudyAppDiscovery.md`; no app code was changed for Task 10.
+- 2026-05-08: Task 11 final verification completed. Targeted typechecks/builds passed, Convex production deploy succeeded, browser smoke checks remain pending due no interactive authenticated browser, and one teacher unit test needs follow-up.
 
 ## Final Deliverables
 
 - Complete DevLog comment ledger covering all checked, half-checked, and unchecked items.
 - Updated `docs/features/*.md` files for every changed feature.
-- Completed task files moved or copied into `completed/` with results.
+- Completed task files moved or copied into `completed/` with results; Task 09 remains deferred, not completed.
 - `Orchestrator_Summary.md` with verification results, deploy status, deferred items, and remaining risks.

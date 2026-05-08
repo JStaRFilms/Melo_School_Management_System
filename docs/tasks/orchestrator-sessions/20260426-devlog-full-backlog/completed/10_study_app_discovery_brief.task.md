@@ -48,3 +48,19 @@ Create `docs/features/StandaloneStudyAppDiscovery.md`.
 - Data ownership and privacy boundaries are explicit.
 - The brief lists open product questions for a future planning session.
 - No app code is changed.
+
+## Completion Notes
+
+- Status: Completed on 2026-05-08.
+- Created `docs/features/StandaloneStudyAppDiscovery.md` as a discovery-only brief.
+- Brief separates standalone learner capabilities from Melo-integrated school capabilities.
+- Brief defines standalone-owned, Melo school-owned, and shared/integrated data boundaries.
+- Brief records identity models for standalone learners, guardians, Melo students, Melo parents, hybrid learners, and school-linked cohorts.
+- Brief lists open product questions and future planning outputs required before implementation.
+- No app code, schema, route, or backend changes were made for Task 10.
+- Task 09 PDF Parser Upgrade was explicitly deferred by the user for a future session and was not completed as part of this task.
+
+## Verification
+
+- Documentation-only verification completed by reading required context and checking the created brief against Task 10 acceptance criteria.
+- No test/typecheck/build commands were required because no app code changed.

@@ -51,3 +51,9 @@ Upgrade PDF extraction for curricula, lessons, and scanned school documents with
 - Users see understandable fallback/error messages.
 - Tests or fixtures cover text PDF, scanned PDF, weak extraction, and parser failure.
 - Docs are updated with parser capabilities and limitations.
+
+## Deferral Note
+
+- Status: Deferred by explicit user instruction on 2026-05-08.
+- This task was not executed and should be handled in a future session.
+- DL-030 remains open future work; do not mark the PDF Parser Upgrade as completed in final session notes.
