@@ -11,7 +11,9 @@ interface SubjectSelectionMobileEditorProps {
   matrix: EnrollmentMatrix;
   totalSubjects: number;
   selectedStudentId?: string | null;
+  promotionStudentIds?: string[];
   onSelectStudent?: (studentId: string) => void;
+  onTogglePromotionStudent?: (studentId: string) => void;
   openUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
 }
 
@@ -19,6 +21,8 @@ export function SubjectSelectionMobileEditor({
   matrix,
   totalSubjects,
   selectedStudentId,
+  promotionStudentIds = [],
+  onTogglePromotionStudent,
   openUnifiedEditor,
 }: SubjectSelectionMobileEditorProps) {
   const [editorStudentId, setEditorStudentId] = useState<string | null>(
@@ -41,20 +45,23 @@ export function SubjectSelectionMobileEditor({
     });
   }, [matrix, selectedStudentId]);
 
+  const promotionStudentIdSet = new Set(promotionStudentIds);
+
   return (
     <div className="space-y-4 p-2 sm:p-3">
       {matrix.students.map((student) => {
         const selectedCount = student.selectedSubjectIds.length;
         const isActive = editorStudentId === student._id;
+        const isSelectedForPromotion = promotionStudentIdSet.has(student._id);
 
         return (
           <article
             key={student._id}
-            className={`rounded-2xl border p-4 shadow-xl transition-all duration-300 ring-1 ring-slate-950/5 ${
+            className={`rounded-2xl border p-4 shadow-xl transition-all duration-300 ring-1 ${
               isActive
-                ? "border-indigo-100 bg-white scale-[1.01] shadow-indigo-950/5"
-                : "border-slate-200 bg-white/60 backdrop-blur-sm shadow-none"
-            }`}
+                ? "border-indigo-100 bg-white scale-[1.01] shadow-indigo-950/5 ring-slate-950/5"
+                : "border-slate-200 bg-white/60 backdrop-blur-sm shadow-none ring-slate-950/5"
+            } ${isSelectedForPromotion ? "ring-2 ring-indigo-300" : ""}`}
           >
             <div className="flex items-start gap-4">
               {student.photoUrl ? (
@@ -91,11 +98,23 @@ export function SubjectSelectionMobileEditor({
                   </button>
                 </div>
                 
-                <div className="mt-5">
+                <div className="mt-5 grid grid-cols-[auto_1fr] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onTogglePromotionStudent?.(student._id)}
+                    className={`h-11 rounded-xl border px-3 text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] ${
+                      isSelectedForPromotion
+                        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-white text-slate-500"
+                    }`}
+                    aria-pressed={isSelectedForPromotion}
+                  >
+                    {isSelectedForPromotion ? "Selected" : "Select"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => openUnifiedEditor(student._id, "subjects")}
-                    className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all"
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-lg shadow-slate-950/20 transition-all active:scale-[0.98]"
                   >
                     <BookOpen className="h-4 w-4" />
                     <span>Subjects</span>

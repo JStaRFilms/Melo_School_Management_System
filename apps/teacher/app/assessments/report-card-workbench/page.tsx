@@ -179,6 +179,7 @@ export default function TeacherReportCardWorkbenchPage() {
           studentId: selection.studentId,
           sessionId: selection.sessionId,
           termId: selection.termId,
+          ...(selection.classId ? { classId: selection.classId } : {}),
         } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;

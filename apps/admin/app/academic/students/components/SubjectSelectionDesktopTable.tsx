@@ -9,7 +9,9 @@ import type { EnrollmentMatrix } from "./types";
 interface SubjectSelectionDesktopTableProps {
   matrix: EnrollmentMatrix;
   selectedStudentId?: string | null;
+  promotionStudentIds?: string[];
   onSelectStudent?: (studentId: string) => void;
+  onTogglePromotionStudent?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -17,11 +19,14 @@ interface SubjectSelectionDesktopTableProps {
 export function SubjectSelectionDesktopTable({
   matrix,
   selectedStudentId,
+  promotionStudentIds = [],
   onSelectStudent,
+  onTogglePromotionStudent,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionDesktopTableProps) {
   const allSubjectIds = matrix.subjects.map((subject) => subject._id);
+  const promotionStudentIdSet = new Set(promotionStudentIds);
 
   return (
     <div className="relative overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
@@ -42,15 +47,25 @@ export function SubjectSelectionDesktopTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {matrix.students.map((student) => (
+          {matrix.students.map((student) => {
+            const isSelectedForPromotion = promotionStudentIdSet.has(student._id);
+
+            return (
             <tr
               key={student._id}
               className={`transition-colors hover:bg-slate-50 ${
                 selectedStudentId === student._id ? "bg-indigo-50/60" : ""
-              }`}
+              } ${isSelectedForPromotion ? "ring-1 ring-inset ring-indigo-200" : ""}`}
             >
               <td className="sticky left-0 z-20 border-r-2 border-r-slate-100 bg-white p-4">
                 <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={isSelectedForPromotion}
+                    onChange={() => onTogglePromotionStudent?.(student._id)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    aria-label={`Select ${student.studentName} for promotion`}
+                  />
                   {student.photoUrl ? (
                     <Image
                       src={student.photoUrl}
@@ -148,7 +163,8 @@ export function SubjectSelectionDesktopTable({
                 );
               })}
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>

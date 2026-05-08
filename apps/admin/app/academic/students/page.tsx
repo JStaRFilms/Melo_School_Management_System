@@ -33,6 +33,7 @@ import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { StudentCreationForm } from "./components/StudentCreationForm";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
+import { StudentPromotionPanel, type PromotionSubjectMode } from "./components/StudentPromotionPanel";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import { uploadStudentPhoto } from "./components/studentPhotoUpload";
@@ -60,6 +61,9 @@ export default function StudentsPage() {
   const setStudentSubjectSelections = useMutation(
     "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
+  const promoteStudents = useMutation(
+    "functions/academic/studentEnrollment:promoteStudents" as never
+  );
   const upsertStudentFamilyLink = useMutation(
     "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
@@ -86,6 +90,12 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPromoting, setIsPromoting] = useState(false);
+  const [promotionStudentIds, setPromotionStudentIds] = useState<string[]>([]);
+  const [promotionTargetClassId, setPromotionTargetClassId] = useState("");
+  const [promotionTargetSessionId, setPromotionTargetSessionId] = useState("");
+  const [promotionSubjectMode, setPromotionSubjectMode] =
+    useState<PromotionSubjectMode>("all_target_class_subjects");
   const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
   // New states for Unified Editor
@@ -124,6 +134,15 @@ export default function StudentsPage() {
   }, [selectedSessionId, sessions]);
 
   useEffect(() => {
+    if (!sessions || promotionTargetSessionId) {
+      return;
+    }
+
+    const activeSession = sessions.find((session) => session.isActive);
+    setPromotionTargetSessionId(activeSession?._id ?? sessions[0]?._id ?? "");
+  }, [promotionTargetSessionId, sessions]);
+
+  useEffect(() => {
     if (!notice) {
       return;
     }
@@ -135,13 +154,18 @@ export default function StudentsPage() {
   useEffect(() => {
     if (!matrix?.students.length) {
       setSelectedStudentId(null);
+      setPromotionStudentIds([]);
       return;
     }
 
+    const visibleStudentIds = new Set(matrix.students.map((student) => student._id));
     setSelectedStudentId((current) =>
-      current && matrix.students.some((student) => student._id === current)
+      current && visibleStudentIds.has(current)
         ? current
         : null
+    );
+    setPromotionStudentIds((current) =>
+      current.filter((studentId) => visibleStudentIds.has(studentId))
     );
   }, [matrix]);
 
@@ -409,6 +433,95 @@ export default function StudentsPage() {
     [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
   );
 
+  const handleTogglePromotionStudent = useCallback((studentId: string) => {
+    setPromotionStudentIds((current) =>
+      current.includes(studentId)
+        ? current.filter((id) => id !== studentId)
+        : [...current, studentId]
+    );
+  }, []);
+
+  const handleSelectAllVisibleForPromotion = useCallback(() => {
+    setPromotionStudentIds(matrix?.students.map((student) => student._id) ?? []);
+  }, [matrix]);
+
+  const handlePromoteStudents = useCallback(async () => {
+    if (
+      !selectedClassId ||
+      !selectedSessionId ||
+      !promotionTargetClassId ||
+      !promotionTargetSessionId ||
+      promotionStudentIds.length === 0
+    ) {
+      return;
+    }
+
+    if (
+      selectedClassId === promotionTargetClassId &&
+      selectedSessionId === promotionTargetSessionId
+    ) {
+      setNotice({
+        tone: "warning",
+        message: "Choose a different target class or session before promoting.",
+      });
+      return;
+    }
+
+    const targetClassName =
+      classes?.find((classDoc) => classDoc._id === promotionTargetClassId)?.name ??
+      "the target class";
+    const targetSessionName =
+      sessions?.find((session) => session._id === promotionTargetSessionId)?.name ??
+      "the target session";
+
+    if (
+      !window.confirm(
+        `Promote ${promotionStudentIds.length} student(s) to ${targetClassName} / ${targetSessionName}? Old report cards and invoices will not be changed.`
+      )
+    ) {
+      return;
+    }
+
+    setIsPromoting(true);
+    setNotice(null);
+    try {
+      const result = (await promoteStudents({
+        studentIds: promotionStudentIds,
+        fromClassId: selectedClassId,
+        fromSessionId: selectedSessionId,
+        toClassId: promotionTargetClassId,
+        toSessionId: promotionTargetSessionId,
+        subjectEnrollmentMode: promotionSubjectMode,
+      } as never)) as { promotedCount: number; subjectSelectionCount: number };
+
+      setNotice({
+        tone: "success",
+        message: `Promoted ${result.promotedCount} student(s). Added ${result.subjectSelectionCount} target subject enrollment(s).`,
+      });
+      setPromotionStudentIds([]);
+      setSelectedStudentId(null);
+      setSelectedClassId(promotionTargetClassId);
+      setSelectedSessionId(promotionTargetSessionId);
+    } catch (err) {
+      setNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(err, "Promotion failed."),
+      });
+    } finally {
+      setIsPromoting(false);
+    }
+  }, [
+    classes,
+    promoteStudents,
+    promotionStudentIds,
+    promotionSubjectMode,
+    promotionTargetClassId,
+    promotionTargetSessionId,
+    selectedClassId,
+    selectedSessionId,
+    sessions,
+  ]);
+
   const openUnifiedEditor = useCallback((studentId: string, tab: "subjects" | "profile" = "subjects") => {
     setSelectedStudentId(studentId);
     setUnifiedInitialTab(tab);
@@ -544,18 +657,39 @@ export default function StudentsPage() {
             <div className="space-y-8">
 
               {selectedClassId && selectedSessionId ? (
-                <SubjectSelectionMatrix
-                  matrix={matrix}
-                  totalStudents={matrixSummary.totalStudents}
-                  totalSubjects={matrixSummary.totalSubjects}
-                  isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
-                  studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
-                  selectedStudentId={selectedStudentId}
-                  onSelectStudent={setSelectedStudentId}
-                  onOpenUnifiedEditor={openUnifiedEditor}
-                  onToggle={handleToggleSubject}
-                  onSetStudentSubjects={handleSetStudentSubjects}
-                />
+                <>
+                  <StudentPromotionPanel
+                    classes={classes}
+                    sessions={sessions}
+                    selectedCount={promotionStudentIds.length}
+                    sourceClassId={selectedClassId}
+                    sourceSessionId={selectedSessionId}
+                    targetClassId={promotionTargetClassId}
+                    targetSessionId={promotionTargetSessionId}
+                    subjectMode={promotionSubjectMode}
+                    isPromoting={isPromoting}
+                    onTargetClassChange={setPromotionTargetClassId}
+                    onTargetSessionChange={setPromotionTargetSessionId}
+                    onSubjectModeChange={setPromotionSubjectMode}
+                    onSelectAllVisible={handleSelectAllVisibleForPromotion}
+                    onClearSelection={() => setPromotionStudentIds([])}
+                    onPromote={handlePromoteStudents}
+                  />
+                  <SubjectSelectionMatrix
+                    matrix={matrix}
+                    totalStudents={matrixSummary.totalStudents}
+                    totalSubjects={matrixSummary.totalSubjects}
+                    isIssueVisible={matrixSummary.studentsWithNoSubjects > 0}
+                    studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
+                    selectedStudentId={selectedStudentId}
+                    promotionStudentIds={promotionStudentIds}
+                    onSelectStudent={setSelectedStudentId}
+                    onTogglePromotionStudent={handleTogglePromotionStudent}
+                    onOpenUnifiedEditor={openUnifiedEditor}
+                    onToggle={handleToggleSubject}
+                    onSetStudentSubjects={handleSetStudentSubjects}
+                  />
+                </>
               ) : (
                 <div className="py-20 flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 text-center">
                   <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-xl ring-1 ring-slate-950/5 animate-in fade-in zoom-in duration-700">

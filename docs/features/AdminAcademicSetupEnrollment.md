@@ -29,7 +29,7 @@ This feature allows administrators to:
 - Parent portal and billing surfaces
 - Bulk CSV import (manual entry focus for v1)
 - Advanced admissions workflows
-- Promotion/Demotion between sessions
+- Advanced demotion/rollback flows beyond the focused `StudentPromotionWorkflow.md` promotion workflow
 
 ## User Roles
 
@@ -164,3 +164,8 @@ This feature allows administrators to:
 - Understandable flow for school onboarding.
 - Admin can create teachers, sessions, terms, subjects, classes, and students in the live app.
 - Admin and assigned teachers can both update student subject selections using the same matrix model.
+
+
+## Promotion Follow-Up
+
+A focused selected-student promotion workflow now exists for moving active students into a new class/session context while preserving old subject selections, report cards, invoices, and family links. See `docs/features/StudentPromotionWorkflow.md`.

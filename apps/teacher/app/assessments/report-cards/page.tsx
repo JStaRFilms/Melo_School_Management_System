@@ -48,7 +48,12 @@ function TeacherReportCardPageContent() {
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
     studentId && sessionId && termId
-      ? ({ studentId, sessionId, termId } as never)
+      ? ({
+          studentId,
+          sessionId,
+          termId,
+          ...(classIdParam ? { classId: classIdParam } : {}),
+        } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;

@@ -993,6 +993,206 @@ export const restoreStudent = mutation({
   },
 });
 
+
+const promotionSubjectEnrollmentModeValidator = v.union(
+  v.literal("all_target_class_subjects"),
+  v.literal("matching_previous_subjects"),
+  v.literal("none")
+);
+
+async function listActiveSubjectIdsForClass(
+  ctx: any,
+  args: { schoolId: Id<"schools">; classId: Id<"classes"> }
+) {
+  const offerings = await ctx.db
+    .query("classSubjects")
+    .withIndex("by_class", (q: any) => q.eq("classId", args.classId))
+    .collect();
+
+  const subjectIds: Array<Id<"subjects">> = [];
+  const seen = new Set<string>();
+
+  for (const offering of offerings) {
+    const subject = await ctx.db.get(offering.subjectId);
+    const subjectKey = String(offering.subjectId);
+    if (
+      !subject ||
+      subject.schoolId !== args.schoolId ||
+      subject.isArchived ||
+      seen.has(subjectKey)
+    ) {
+      continue;
+    }
+
+    subjectIds.push(offering.subjectId);
+    seen.add(subjectKey);
+  }
+
+  return subjectIds;
+}
+
+export const promoteStudents = mutation({
+  args: {
+    studentIds: v.array(v.id("students")),
+    fromClassId: v.id("classes"),
+    fromSessionId: v.id("academicSessions"),
+    toClassId: v.id("classes"),
+    toSessionId: v.id("academicSessions"),
+    subjectEnrollmentMode: promotionSubjectEnrollmentModeValidator,
+  },
+  returns: v.object({
+    promotedCount: v.number(),
+    subjectSelectionCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const uniqueStudentIds = [...new Set(args.studentIds.map((id) => String(id)))] as Array<Id<"students">>;
+    if (uniqueStudentIds.length === 0) {
+      throw new ConvexError("Select at least one student to promote");
+    }
+    if (uniqueStudentIds.length > 100) {
+      throw new ConvexError("Promote 100 students or fewer at a time");
+    }
+    if (
+      String(args.fromClassId) === String(args.toClassId) &&
+      String(args.fromSessionId) === String(args.toSessionId)
+    ) {
+      throw new ConvexError("Choose a different target class or session");
+    }
+
+    const [fromClass, toClass, fromSession, toSession] = await Promise.all([
+      ctx.db.get(args.fromClassId),
+      ctx.db.get(args.toClassId),
+      ctx.db.get(args.fromSessionId),
+      ctx.db.get(args.toSessionId),
+    ]);
+
+    if (!fromClass || fromClass.schoolId !== schoolId || fromClass.isArchived) {
+      throw new ConvexError("Source class is not available");
+    }
+    if (!toClass || toClass.schoolId !== schoolId || toClass.isArchived) {
+      throw new ConvexError("Target class is not available");
+    }
+    if (!fromSession || fromSession.schoolId !== schoolId || fromSession.isArchived) {
+      throw new ConvexError("Source session is not available");
+    }
+    if (!toSession || toSession.schoolId !== schoolId || toSession.isArchived) {
+      throw new ConvexError("Target session is not available");
+    }
+
+    const targetClassSubjectIds = await listActiveSubjectIdsForClass(ctx, {
+      schoolId,
+      classId: args.toClassId,
+    });
+    const targetClassSubjectIdSet = new Set(
+      targetClassSubjectIds.map((subjectId) => String(subjectId))
+    );
+    const now = Date.now();
+    const batchKey = `${now}:${String(args.fromClassId)}:${String(args.toClassId)}`;
+    let promotedCount = 0;
+    let subjectSelectionCount = 0;
+
+    for (const studentId of uniqueStudentIds) {
+      const student = await ctx.db.get(studentId);
+      if (!student || student.schoolId !== schoolId || student.isArchived) {
+        throw new ConvexError("One selected student is not available");
+      }
+
+      const studentUser = await ctx.db.get(student.userId);
+      if (!studentUser || studentUser.schoolId !== schoolId || studentUser.isArchived) {
+        throw new ConvexError("One selected student account is not available");
+      }
+
+      if (String(student.classId) !== String(args.fromClassId)) {
+        throw new ConvexError(
+          "Only students currently enrolled in the selected source class can be promoted"
+        );
+      }
+
+      const previousSelections = await ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_student_and_class_and_session", (q: any) =>
+          q
+            .eq("studentId", studentId)
+            .eq("classId", args.fromClassId)
+            .eq("sessionId", args.fromSessionId)
+        )
+        .collect();
+      const existingTargetSelections = await ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_student_and_class_and_session", (q: any) =>
+          q
+            .eq("studentId", studentId)
+            .eq("classId", args.toClassId)
+            .eq("sessionId", args.toSessionId)
+        )
+        .collect();
+      const existingTargetSubjectIds = new Set(
+        existingTargetSelections.map((selection: any) => String(selection.subjectId))
+      );
+
+      const subjectIdsToEnroll =
+        args.subjectEnrollmentMode === "all_target_class_subjects"
+          ? targetClassSubjectIds
+          : args.subjectEnrollmentMode === "matching_previous_subjects"
+            ? previousSelections
+                .map((selection: any) => selection.subjectId as Id<"subjects">)
+                .filter((subjectId: Id<"subjects">) =>
+                  targetClassSubjectIdSet.has(String(subjectId))
+                )
+            : [];
+
+      const uniqueSubjectIdsToEnroll = [
+        ...new Set(subjectIdsToEnroll.map((subjectId) => String(subjectId))),
+      ] as Array<Id<"subjects">>;
+
+      await ctx.db.patch(studentId, {
+        classId: args.toClassId,
+        updatedAt: now,
+      });
+
+      let insertedForStudent = 0;
+      for (const subjectId of uniqueSubjectIdsToEnroll) {
+        if (existingTargetSubjectIds.has(String(subjectId))) {
+          continue;
+        }
+
+        await ctx.db.insert("studentSubjectSelections", {
+          schoolId,
+          studentId,
+          classId: args.toClassId,
+          subjectId,
+          sessionId: args.toSessionId,
+          createdAt: now,
+          updatedAt: now,
+        });
+        insertedForStudent += 1;
+      }
+
+      await ctx.db.insert("studentPromotions", {
+        schoolId,
+        studentId,
+        fromClassId: args.fromClassId,
+        toClassId: args.toClassId,
+        fromSessionId: args.fromSessionId,
+        toSessionId: args.toSessionId,
+        subjectEnrollmentMode: args.subjectEnrollmentMode,
+        subjectEnrollmentCount: insertedForStudent,
+        batchKey,
+        createdAt: now,
+        createdBy: userId,
+      });
+
+      promotedCount += 1;
+      subjectSelectionCount += insertedForStudent;
+    }
+
+    return { promotedCount, subjectSelectionCount };
+  },
+});
+
 // ==================== STUDENT SUBJECT ENROLLMENT ====================
 
 export const setStudentSubjectSelections = mutation({
