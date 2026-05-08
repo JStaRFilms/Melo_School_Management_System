@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
-import { ArrowLeft, CheckCircle2, ChevronDown, Copy, Fingerprint, Home, Info, KeyRound, LayoutGrid, Search, Shield, Upload, UserPlus, Users, AlertCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Copy, Fingerprint, Home, Info, KeyRound, LayoutGrid, Search, Shield, UserPlus, Users, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
+import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
 
@@ -45,6 +45,7 @@ type StudentFirstOnboardingFormProps = {
   parentTemporaryPassword: string;
   credentialSummary: OnboardingCredentialSummary | null;
   photoPreviewUrl: string | null;
+  photoResetKey: number;
   isSubmitting: boolean;
   firstNameInputRef: RefObject<HTMLInputElement>;
   onFirstNameChange: (value: string) => void;
@@ -101,6 +102,7 @@ export function StudentFirstOnboardingForm({
   parentTemporaryPassword,
   credentialSummary,
   photoPreviewUrl,
+  photoResetKey,
   isSubmitting,
   firstNameInputRef,
   onFirstNameChange,
@@ -164,17 +166,15 @@ export function StudentFirstOnboardingForm({
   const selectedClassName =
     classes.find((classDoc) => classDoc._id === selectedClassId)?.name ?? null;
 
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
+
   const canSubmit =
     firstName.trim() &&
     lastName.trim() &&
     admissionNumber.trim() &&
     gender.trim() &&
-    selectedClassId;
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    onPhotoChange(file);
-  };
+    selectedClassId &&
+    !isPhotoProcessing;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50/50">
@@ -324,43 +324,16 @@ export function StudentFirstOnboardingForm({
               <div className="grid gap-6 lg:grid-cols-12">
                 {/* Photo Panel */}
                 <div className="lg:col-span-3 order-2 lg:order-1">
-                  <div className="group relative flex aspect-[3/4] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-400 shadow-sm">
-                    {photoPreviewUrl ? (
-                      <>
-                        <Image
-                          src={photoPreviewUrl}
-                          alt="Student Preview"
-                          fill
-                          className="object-cover transition group-hover:scale-105"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 opacity-0 transition group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={onRemovePhoto}
-                            className="rounded-lg bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-white backdrop-blur-md hover:bg-white/30"
-                          >
-                            Replace
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 p-4 text-center">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-300">
-                          <Upload className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-900">Photo</p>
-                          <p className="text-[8px] font-medium text-slate-400">JPG/PNG</p>
-                        </div>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePhotoUpload}
-                          className="absolute inset-0 cursor-pointer opacity-0"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <StudentPhotoPanel
+                    name={[firstName, lastName].filter(Boolean).join(" ") || "Student photo"}
+                    previewUrl={photoPreviewUrl}
+                    onPhotoChange={onPhotoChange}
+                    onRemovePhoto={onRemovePhoto}
+                    helperText="Passport photo (Optional)"
+                    resetKey={photoResetKey}
+                    onProcessingChange={setIsPhotoProcessing}
+                    onValidationError={onPhotoValidationError}
+                  />
                 </div>
 
                 <div className="lg:col-span-9 grid gap-4 sm:grid-cols-2 order-1 lg:order-2">

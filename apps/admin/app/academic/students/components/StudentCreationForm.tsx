@@ -1,7 +1,7 @@
 "use client";
 
 import { Sparkles,UserPlus } from "lucide-react";
-import type { FormEvent,RefObject } from "react";
+import { useState,type FormEvent, type RefObject } from "react";
 import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import type { ClassSummary } from "./types";
@@ -18,6 +18,7 @@ interface StudentCreationFormProps {
   guardianPhone: string;
   address: string;
   photoPreviewUrl: string | null;
+  photoResetKey: number;
   isSubmitting: boolean;
   classes?: ClassSummary[];
   selectedClassId?: string | null;
@@ -54,6 +55,7 @@ export function StudentCreationForm({
   guardianPhone,
   address,
   photoPreviewUrl,
+  photoResetKey,
   isSubmitting,
   classes,
   selectedClassId,
@@ -76,6 +78,8 @@ export function StudentCreationForm({
   onPhotoValidationError,
   onSubmit,
 }: StudentCreationFormProps) {
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
+
   return (
     <div ref={sectionRef} className="space-y-6">
       <div className="space-y-1">
@@ -185,6 +189,8 @@ export function StudentCreationForm({
           onPhotoChange={onPhotoChange}
           onRemovePhoto={onRemovePhoto}
           helperText="Passport photo (Optional)"
+          resetKey={photoResetKey}
+          onProcessingChange={setIsPhotoProcessing}
           onValidationError={onPhotoValidationError}
         />
 
@@ -206,6 +212,7 @@ export function StudentCreationForm({
             type="submit"
             disabled={
               isSubmitting ||
+              isPhotoProcessing ||
               !studentFirstName.trim() ||
               !studentLastName.trim() ||
               !admissionNumber.trim() ||
@@ -215,7 +222,7 @@ export function StudentCreationForm({
             className="group relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4 text-indigo-400" />
-            <span>{isSubmitting ? "Processing..." : "Complete Admission"}</span>
+            <span>{isSubmitting ? "Processing..." : isPhotoProcessing ? "Preparing photo..." : "Complete Admission"}</span>
           </button>
         </div>
       </form>

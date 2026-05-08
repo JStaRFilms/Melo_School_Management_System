@@ -82,6 +82,7 @@ export default function StudentsPage() {
   const [parentRelationship, setParentRelationship] = useState("");
   const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
+  const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -211,6 +212,7 @@ export default function StudentsPage() {
     setParentRelationship("");
     setIsParentPrimaryContact(true);
     setStudentPhotoFile(null);
+    setStudentPhotoResetKey((key) => key + 1);
   }, []);
 
   const handleCreateStudent = async (event: FormEvent) => {
@@ -640,6 +642,7 @@ export default function StudentsPage() {
                     guardianPhone={guardianPhone}
                     address={address}
                     photoPreviewUrl={studentPhotoPreviewUrl}
+                    photoResetKey={studentPhotoResetKey}
                     isSubmitting={isSubmitting}
                     sectionRef={studentFormRef}
                     inputRef={studentNameInputRef}
@@ -783,6 +786,7 @@ export default function StudentsPage() {
                   guardianPhone={guardianPhone}
                   address={address}
                   photoPreviewUrl={studentPhotoPreviewUrl}
+                  photoResetKey={studentPhotoResetKey}
                   isSubmitting={isSubmitting}
                   sectionRef={studentFormRef}
                   inputRef={studentNameInputRef}

@@ -126,11 +126,14 @@ function normalizeGender(
   throw new ConvexError("Select a valid gender");
 }
 
-function getValidatedPhotoMetadata(args: {
-  photoStorageId?: Id<"_storage"> | null;
-  photoFileName?: string | null;
-  photoContentType?: string | null;
-}) {
+async function getValidatedPhotoMetadata(
+  ctx: { db: { system: { get: (id: Id<"_storage">) => Promise<any> } } },
+  args: {
+    photoStorageId?: Id<"_storage"> | null;
+    photoFileName?: string | null;
+    photoContentType?: string | null;
+  }
+) {
   if (
     args.photoStorageId === undefined &&
     (args.photoFileName !== undefined || args.photoContentType !== undefined)
@@ -142,14 +145,20 @@ function getValidatedPhotoMetadata(args: {
     return null;
   }
 
-  const fileName = args.photoFileName?.trim();
-  const contentType = args.photoContentType?.trim();
-  if (!fileName || !contentType) {
-    throw new ConvexError("Photo upload metadata is incomplete");
+  const storageDoc = await ctx.db.system.get(args.photoStorageId);
+  if (!storageDoc) {
+    throw new ConvexError("Uploaded student photo was not found");
   }
 
-  if (!contentType.startsWith("image/")) {
-    throw new ConvexError("Student photo must be an image file");
+  const fileName = args.photoFileName?.trim() || storageDoc.name || "student-photo";
+  const contentType = String(storageDoc.contentType ?? args.photoContentType ?? "").trim();
+  const allowedContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!allowedContentTypes.has(contentType)) {
+    throw new ConvexError("Student photo must be a JPG, PNG, or WebP image");
+  }
+
+  if (typeof storageDoc.size !== "number" || storageDoc.size > 1_048_576) {
+    throw new ConvexError("Student photo must be 1 MB or smaller");
   }
 
   return {
@@ -420,7 +429,7 @@ export const createStudent = mutation({
     const guardianName = normalizeOptionalText(args.guardianName);
     const guardianPhone = normalizeOptionalText(args.guardianPhone);
     const address = normalizeOptionalText(args.address);
-    const photoMetadata = getValidatedPhotoMetadata(args);
+    const photoMetadata = await getValidatedPhotoMetadata(ctx, args);
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
@@ -678,7 +687,7 @@ export const updateStudent = mutation({
         .replace(/[^a-zA-Z0-9]/g, "")
         .toLowerCase()}@students.local`;
     }
-    const uploadedPhotoMetadata = getValidatedPhotoMetadata(args);
+    const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
 
     const nextStudentRecord: any = {
       schoolId: student.schoolId,
@@ -1245,6 +1254,7 @@ export const getClassStudentSubjectMatrix = query({
         _id: v.id("students"),
         studentName: v.string(),
         admissionNumber: v.string(),
+        photoUrl: v.union(v.string(), v.null()),
         selectedSubjectIds: v.array(v.id("subjects")),
       })
     ),
@@ -1269,9 +1279,15 @@ export const getClassStudentSubjectMatrix = query({
       throw new ConvexError("Admin or teacher access required");
     }
 
-    const classDoc = await ctx.db.get(args.classId);
+    const [classDoc, sessionDoc] = await Promise.all([
+      ctx.db.get(args.classId),
+      ctx.db.get(args.sessionId),
+    ]);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
+    }
+    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
+      throw new ConvexError("Selected session is not available");
     }
 
     // Get subjects offered in this class
@@ -1344,7 +1360,10 @@ export const getClassStudentSubjectMatrix = query({
       .filter((student) => !student.isArchived)
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
-          const studentUser = await ctx.db.get(student.userId);
+          const [studentUser, photoUrl] = await Promise.all([
+            ctx.db.get(student.userId),
+            student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+          ]);
           const studentName = getReadableUserName(studentUser);
           const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
             explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
@@ -1355,6 +1374,7 @@ export const getClassStudentSubjectMatrix = query({
             _id: student._id,
             studentName: studentName.displayName || "Unnamed Student",
             admissionNumber: student.admissionNumber,
+            photoUrl,
             selectedSubjectIds: Array.from(effectiveSubjectIds)
               .filter((id) => visibleSubjectIds.has(id))
               .map((id) => id as any),
