@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { Search, X } from "lucide-react";
@@ -22,9 +23,11 @@ interface PortalTopicIndexData {
 }
 
 export default function PortalLearningTopicsPage() {
+  const searchParams = useSearchParams();
+  const studentId = searchParams.get("studentId");
   const data = useQuery(
     "functions/academic/lessonKnowledgePortal:getPortalTopicIndexData" as never,
-    {} as never
+    { studentId: studentId ? (studentId as never) : (null as never) } as never
   ) as PortalTopicIndexData | undefined;
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -128,7 +131,7 @@ export default function PortalLearningTopicsPage() {
                   {group.topics.map((topic) => (
                     <Link
                       key={topic._id}
-                      href={`/learning/topics/${topic._id}`}
+                      href={studentId ? `/learning/topics/${topic._id}?studentId=${encodeURIComponent(studentId)}` : `/learning/topics/${topic._id}` }
                       className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                     >
                       <div className="space-y-3">

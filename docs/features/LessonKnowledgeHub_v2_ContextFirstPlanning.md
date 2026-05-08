@@ -184,6 +184,7 @@ At minimum, draft identity must separate:
 ## UX Guardrails
 
 - Library entry still exists, but the default planning entry should be the planning hub.
+- Teacher video/link submissions and file uploads must match one of the teacher's assigned class/subject contexts unless the actor is a school admin.
 - Topic work should feel like continuing a teaching thread, not launching a generic document editor.
 - Exam drafting should make its wider scope obvious in labels and summaries.
 - Adding materials from within a workspace should preserve the current planning context.
@@ -209,6 +210,12 @@ At minimum, draft identity must separate:
 - [ ] Broad planning references remain reusable without forced topic binding.
 - [ ] Existing source-first drafts continue to open safely during rollout.
 - [ ] Portal-facing rules remain unchanged except for clearer topic alignment.
+
+## 2026-05-08 Task 08 hardening notes
+
+- Teacher library/video ingestion now rejects teacher-created materials whose selected subject and level do not match an assigned class/subject pairing. Admin actors retain school-wide setup authority.
+- Portal topic reads support parent-selected student context and reject topic pages when the linked child's class level does not match the active topic, preserving student-facing approval boundaries.
+- The library remains a repository/retrieval surface; planning context remains the authoring launcher.
 
 ## Relationship to Existing Docs
 

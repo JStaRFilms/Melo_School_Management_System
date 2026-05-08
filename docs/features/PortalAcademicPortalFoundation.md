@@ -76,12 +76,14 @@ The portal reuses existing academic and billing records:
 
 ## Implemented Outcome
 - The portal app is now bootstrapped with auth, layout, and workspace routing.
+- The portal workspace entry now delegates its Convex fallback and live workspace body into focused portal-workspace modules so the route-level component stays small while preserving dashboard, results, report-card, notification, billing, and learning routes.
 - Parents and students can enter a school-scoped dashboard.
 - The portal includes report-card, result-history, notification, and billing surfaces.
 - Parents and students can review school-fee invoices, payment history, and receipt/status details from the portal.
 - Eligible invoices can launch Paystack checkout directly from the portal and return to an authenticated portal verification page.
 - The shared workspace navigation now includes a live portal destination with a billing tab.
 - Parent context can now resolve accessible children across multiple school memberships linked to the same auth identity.
+- Portal learning topic queries now accept the selected `studentId` context, so parent viewers can open approved learning topics for a linked child without falling back to another child.
 - Child selectors include school context so parents can tell which school is active.
 - Portal workspace, report-card history, billing, and payment context are scoped to the selected child's school.
 - Student logins remain direct to the student's own school/student context.
