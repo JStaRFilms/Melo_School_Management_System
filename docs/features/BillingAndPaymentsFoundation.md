@@ -59,6 +59,8 @@ The current implementation now uses a **per-school Paystack merchant** model:
 11. Paystack webhook callbacks now resolve the candidate school invoice context first and verify the signature with the correct school-specific merchant secret before mutating invoice state.
 12. The admin billing workspace can passively recheck pending references and surface whether they are still pending, verified, webhook reconciled, or need manual attention.
 13. Admins can filter collections by class, term, invoice status, or search text.
+14. Admins can open a selected invoice in a printable finance pack, generate or reuse a Paystack-first payment URL, and print the invoice with the URL and QR code.
+15. Admins can open a printable student statement from an invoice row showing charge lines, payment date/times, invoice references, and calculated charge/payment/balance totals.
 
 ## Database Schema
 
@@ -149,3 +151,6 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - A provider-agnostic gateway adapter exists for future payment providers.
 - Class-default fee plans can now be bulk-applied to a class for a session/term with duplicate prevention and audit history.
 - The shared workspace navigation now includes a Finance/Billing section for admin users.
+- Admin invoice rows now expose printable Invoice and Statement actions. The printable invoice includes line items, adjustments, due/issued date-times, balance, and a payment URL/QR code when a Paystack-first payment link exists or is generated from the print surface.
+- The printable statement is student-scoped from the selected invoice and totals charges, applied payments, and balances from the school-scoped invoice/payment rows already returned by the billing dashboard.
+- Payment history surfaces date and time in the admin billing UI so bursary staff can reconcile manual and online collections against exact receipt timestamps.

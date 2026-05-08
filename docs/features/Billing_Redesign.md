@@ -25,6 +25,7 @@ Proposed split:
 - `components/FeePlanList.tsx`: Fee plan management.
 - `components/BillingConfig.tsx`: All settings (Prefix, Gateway, Modes).
 - `components/PaymentLinkHandoff.tsx`: The front-desk payment tool.
+- `components/PrintableFinanceModal.tsx`: The invoice/statement print surface with payment URL, QR code, and statement ledger totals.
 
 ## Data Flow
 - Unified Convex query `getBillingDashboard` provides initial state.
@@ -35,3 +36,10 @@ Proposed split:
 - Use `useDeferredValue` for search filters.
 - Virtualize large lists or implement pagination at the Convex level.
 - Extract logic into a `useBilling` custom hook.
+
+## Printable Finance Pack Outcome
+
+- Invoice table rows include `Invoice` and `Statement` print actions.
+- The invoice print surface reuses school-scoped dashboard invoice data and can generate a Paystack-first provider-agnostic payment handoff URL for the selected invoice without changing reconciliation rules.
+- The statement print surface is scoped to the selected invoice's student and shows charges, payments, date/times, invoice references, and charge/payment/balance totals.
+- Admin payment history labels the timestamp column as date/time and displays the full receipt timestamp.

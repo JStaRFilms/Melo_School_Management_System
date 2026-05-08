@@ -15,7 +15,7 @@ export default function AssessmentGenerationProfilesPage() {
   );
 
   const handleSaveProfile = async (draft: AssessmentProfileDraft) => {
-    await saveProfileMutation({ ...draft } as never);
+    return (await saveProfileMutation({ ...draft } as never)) as string;
   };
 
   if (!profiles) {

@@ -168,6 +168,33 @@ function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function hasMatchingTemplateApplicability(
+  template: Pick<InstructionTemplateListItem, "outputType" | "templateScope" | "subjectId" | "level" | "isSchoolDefault">,
+  draft: Pick<InstructionTemplateDraft, "outputType" | "templateScope" | "subjectId" | "level" | "isSchoolDefault">
+) {
+  if (template.outputType !== draft.outputType) {
+    return false;
+  }
+
+  if (template.templateScope !== draft.templateScope) {
+    return false;
+  }
+
+  if (template.isSchoolDefault !== draft.isSchoolDefault) {
+    return false;
+  }
+
+  const templateSubjectId = template.subjectId ? String(template.subjectId) : null;
+  const draftSubjectId = draft.subjectId ? String(draft.subjectId) : null;
+  if (templateSubjectId !== draftSubjectId) {
+    return false;
+  }
+
+  const templateLevel = normalizeText(template.level ?? "").toLowerCase();
+  const draftLevel = normalizeText(draft.level).toLowerCase();
+  return templateLevel === draftLevel;
+}
+
 function parseWholeNumber(value: string, label: string, minimum: number) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -292,34 +319,45 @@ export function validateInstructionTemplateDraft(
       return "Minimum source materials cannot be negative.";
     }
 
-    const conflict = templates.find((template) => {
-      if (template.isActive === false) {
-        return false;
-      }
-      if (draft.templateId && template._id === draft.templateId) {
-        return false;
-      }
-      if (template.outputType !== draft.outputType) {
-        return false;
-      }
-      if (template.templateScope !== draft.templateScope) {
-        return false;
-      }
+    const currentTemplate = draft.templateId
+      ? templates.find((template) => template._id === draft.templateId) ?? null
+      : null;
+    const retainsExistingActiveApplicability =
+      currentTemplate !== null &&
+      currentTemplate.isActive &&
+      draft.isActive &&
+      hasMatchingTemplateApplicability(currentTemplate, draft);
 
-      switch (draft.templateScope) {
-        case "subject_and_level":
-          return String(template.subjectId) === normalizedSubjectId && normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
-        case "subject_only":
-          return String(template.subjectId) === normalizedSubjectId;
-        case "level_only":
-          return normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
-        case "school_default":
-          return template.isSchoolDefault;
-      }
-    });
+    if (!retainsExistingActiveApplicability) {
+      const conflict = templates.find((template) => {
+        if (template.isActive === false) {
+          return false;
+        }
+        if (draft.templateId && template._id === draft.templateId) {
+          return false;
+        }
+        if (template.outputType !== draft.outputType) {
+          return false;
+        }
+        if (template.templateScope !== draft.templateScope) {
+          return false;
+        }
 
-    if (conflict) {
-      return `An active ${draft.templateScope.replace(/_/g, " ")} template already exists for this applicability.`;
+        switch (draft.templateScope) {
+          case "subject_and_level":
+            return String(template.subjectId) === normalizedSubjectId && normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
+          case "subject_only":
+            return String(template.subjectId) === normalizedSubjectId;
+          case "level_only":
+            return normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
+          case "school_default":
+            return template.isSchoolDefault;
+        }
+      });
+
+      if (conflict) {
+        return `An active ${draft.templateScope.replace(/_/g, " ")} template already exists for this applicability.`;
+      }
     }
 
     return null;

@@ -92,7 +92,6 @@ export function InstructionTemplateStudioScreen({
 
   const handleSelectTemplate = useCallback((id: string | "new") => {
     setSelectedTemplateId(id);
-    setEditorMode("designer");
     setIsMobileEditorOpen(true);
   }, []);
 
@@ -107,7 +106,6 @@ export function InstructionTemplateStudioScreen({
     if (next === outputType) return;
     onOutputTypeChange(next);
     setSelectedTemplateId(null);
-    setEditorMode("designer");
   }, [onOutputTypeChange, outputType]);
 
   const updateDraft = useCallback((patch: Partial<InstructionTemplateDraft>) => {

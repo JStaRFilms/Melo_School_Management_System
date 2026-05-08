@@ -1,4 +1,5 @@
-import type { BillingDashboardData,InvoiceSortKey,SortDirection } from "../types";
+import { FileText, ReceiptText } from "lucide-react";
+import type { BillingDashboardData, InvoiceSortKey, SortDirection } from "../types";
 import { formatMoney } from "../utils";
 import { SortHeaderButton } from "./SortHeaderButton";
 
@@ -9,6 +10,7 @@ interface InvoiceTableProps {
   onSortChange?: (key: InvoiceSortKey) => void;
   sortable?: boolean;
   onViewInvoice?: (id: string) => void;
+  onViewStatement?: (id: string) => void;
 }
 
 export function InvoiceTable({
@@ -16,8 +18,12 @@ export function InvoiceTable({
   sortKey,
   sortDirection,
   onSortChange,
-  sortable = true,
+  sortable = true,
+  onViewInvoice,
+  onViewStatement,
 }: InvoiceTableProps) {
+  const hasPrintActions = Boolean(onViewInvoice || onViewStatement);
+
   return (
     <div className="overflow-x-auto scrollbar-hide">
       <table className="w-full text-left text-sm border-collapse">
@@ -84,6 +90,11 @@ export function InvoiceTable({
                 <span className="uppercase tracking-widest">Date</span>
               )}
             </th>
+            {hasPrintActions && (
+              <th className="px-6 py-3 text-right font-bold text-[10px] text-slate-400">
+                <span className="uppercase tracking-widest">Print</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-950/5">
@@ -113,11 +124,11 @@ export function InvoiceTable({
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <span className={`inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${
-                  row.invoice.status === "paid" 
-                    ? "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-600/10" 
+                  row.invoice.status === "paid"
+                    ? "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-600/10"
                     : row.invoice.status === "overdue"
-                    ? "bg-rose-50 text-rose-600 ring-1 ring-rose-600/10"
-                    : "bg-slate-100 text-slate-500"
+                      ? "bg-rose-50 text-rose-600 ring-1 ring-rose-600/10"
+                      : "bg-slate-100 text-slate-500"
                 }`}>
                   {row.invoice.status}
                 </span>
@@ -125,11 +136,37 @@ export function InvoiceTable({
               <td className="px-6 py-4 whitespace-nowrap text-right text-slate-500 font-bold text-[10px] uppercase tracking-wider">
                 {new Intl.DateTimeFormat("en-NG", { dateStyle: "medium" }).format(row.invoice.issuedAt)}
               </td>
+              {hasPrintActions && (
+                <td className="px-6 py-4 whitespace-nowrap text-right">
+                  <div className="inline-flex items-center gap-2">
+                    {onViewInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => onViewInvoice(row.invoice._id)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:border-slate-950 hover:text-slate-950"
+                      >
+                        <ReceiptText className="h-3.5 w-3.5" />
+                        Invoice
+                      </button>
+                    )}
+                    {onViewStatement && (
+                      <button
+                        type="button"
+                        onClick={() => onViewStatement(row.invoice._id)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:border-slate-950 hover:text-slate-950"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Statement
+                      </button>
+                    )}
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
           {invoices.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-6 py-20 text-center">
+              <td colSpan={hasPrintActions ? 6 : 5} className="px-6 py-20 text-center">
                 <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">No Ledger Activity</p>
                 <p className="text-xs text-slate-400 mt-1">Invoices will appear here once generated.</p>
               </td>

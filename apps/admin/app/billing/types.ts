@@ -137,6 +137,8 @@ export type PaymentLinkResult = {
   authorizationUrl: string | null;
   accessCode: string | null;
   checkoutPayload: Record<string, unknown>;
+  amount?: number;
+  currency?: string;
 };
 
 export type ClassOption = {
@@ -238,17 +240,33 @@ export type BillingDashboardData = {
   invoices: Array<{
     invoice: {
       _id: string;
+      schoolId: string;
+      feePlanId: string;
+      feePlanApplicationId: string | null;
+      studentId: string;
+      classId: string;
+      sessionId: string;
+      termId: string;
       invoiceNumber: string;
       feePlanNameSnapshot: string;
-      feePlanApplicationId: string | null;
       currency: string;
+      lineItems: Array<{ id: string; label: string; amount: number; category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other"; order: number }>;
+      installmentSchedule: Array<{ id: string; label: string; dueAt: number; amount: number; isPaid: boolean }>;
+      subtotal: number;
+      waiverAmount: number;
+      discountAmount: number;
       totalAmount: number;
       amountPaid: number;
       balanceDue: number;
       status: string;
       dueDate: number;
       issuedAt: number;
+      issuedBy: string;
       notes: string | null;
+      lastPaymentId: string | null;
+      lastPaymentAt: number | null;
+      createdAt: number;
+      updatedAt: number;
     };
     studentName: string;
     className: string;

@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { mutation, query } from "../../_generated/server";
+import { mutation, query, type MutationCtx } from "../../_generated/server";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
 
 const questionStyleValidator = v.union(
@@ -125,7 +125,7 @@ export const listAssessmentGenerationProfiles = query({
     const rows = await ctx.db
       .query("assessmentGenerationProfiles")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .take(100);
+      .collect();
 
     return rows
       .filter((profile) => args.includeInactive || profile.isActive)
@@ -133,6 +133,30 @@ export const listAssessmentGenerationProfiles = query({
       .map(mapProfile);
   },
 });
+
+async function ensureUniqueProfileName(args: {
+  ctx: MutationCtx;
+  schoolId: Id<"schools">;
+  profileId: Id<"assessmentGenerationProfiles"> | null;
+  name: string;
+}) {
+  const rows = await args.ctx.db
+    .query("assessmentGenerationProfiles")
+    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    .collect();
+
+  const conflict = rows.find((profile) => {
+    if (args.profileId && profile._id === args.profileId) {
+      return false;
+    }
+
+    return normalizeText(profile.name).toLowerCase() === args.name.toLowerCase();
+  });
+
+  if (conflict) {
+    throw new ConvexError("An assessment profile with this name already exists");
+  }
+}
 
 export const saveAssessmentGenerationProfile = mutation({
   args: profilePayloadValidator,
@@ -145,13 +169,26 @@ export const saveAssessmentGenerationProfile = mutation({
     const description = normalizeOptionalText(args.description);
     const isDefault = args.isActive ? args.isDefault : false;
     const now = Date.now();
+    const existing = args.profileId ? await ctx.db.get(args.profileId) : null;
 
-    if (args.profileId) {
-      const existing = await ctx.db.get(args.profileId);
-      if (!existing || existing.schoolId !== schoolId) {
-        throw new ConvexError("Assessment generation profile not found");
-      }
-      await ctx.db.patch(args.profileId, {
+    if (args.profileId && (!existing || existing.schoolId !== schoolId)) {
+      throw new ConvexError("Assessment generation profile not found");
+    }
+
+    const retainsExistingName =
+      existing !== null && normalizeText(existing.name).toLowerCase() === normalized.name.toLowerCase();
+
+    if (!retainsExistingName) {
+      await ensureUniqueProfileName({
+        ctx,
+        schoolId,
+        profileId: existing?._id ?? null,
+        name: normalized.name,
+      });
+    }
+
+    if (existing) {
+      await ctx.db.patch(args.profileId!, {
         name: normalized.name,
         ...(description !== null ? { description } : { description: undefined }),
         questionStyle: args.questionStyle,

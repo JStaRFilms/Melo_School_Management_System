@@ -371,6 +371,13 @@ export default function KnowledgeLibraryPage() {
     }
   };
 
+  const handleArchiveMaterial = async (materialId: string) => {
+    await handleSaveState({
+      materialId,
+      reviewStatus: "archived",
+    });
+  };
+
   if (!subjects || !classes || !libraryData) {
     return <LoadingShell />;
   }
@@ -434,6 +441,7 @@ export default function KnowledgeLibraryPage() {
           onSaveDetails={handleSaveDetails}
           onCreateTopic={handleCreateTopic}
           onSaveState={handleSaveState}
+          onArchiveMaterial={handleArchiveMaterial}
           onClose={() => setSelectedMaterialId(null)}
         />
       </AdminSheet>
@@ -450,6 +458,7 @@ export default function KnowledgeLibraryPage() {
             onSaveDetails={handleSaveDetails}
             onCreateTopic={handleCreateTopic}
             onSaveState={handleSaveState}
+            onArchiveMaterial={handleArchiveMaterial}
             onClose={() => setSelectedMaterialId(null)}
           />
         </aside>

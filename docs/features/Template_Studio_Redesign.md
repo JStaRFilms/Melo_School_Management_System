@@ -33,6 +33,7 @@ Redesign the `/academic/knowledge/templates` route to improve information densit
    - Denser list items.
    - Integrated search.
    - Remove redundant "Template Catalog" label if possible.
+   - Preserve the active workspace mode when switching catalog entries, so monitor stays on monitor and designer stays on designer.
 3. **Tabs**: Horizontal segmented control for Output Type.
 4. **Editor**:
    - Merge "Template Identity" and "Objective Minimums" into a cohesive layout.
@@ -45,4 +46,5 @@ Redesign the `/academic/knowledge/templates` route to improve information densit
 ## Verification
 
 - Run `npx tsc --noEmit` in `apps/admin`.
+- Verify catalog switches keep the current designer/monitor context on mobile and desktop.
 - Visual check of all screen sizes.
