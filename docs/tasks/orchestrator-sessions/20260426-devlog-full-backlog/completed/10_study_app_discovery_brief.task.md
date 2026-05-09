@@ -4,7 +4,7 @@
 
 Do this first:
 - Read `../DevLog_Audit_Ledger.md`.
-- Read `docs/project_requirements.md`.
+- Read `docs/Project_Requirements.md`.
 - Read portal and knowledge hub docs.
 - Prime with Takomi `vibe-primeAgent`; use planning/discovery mode only.
 

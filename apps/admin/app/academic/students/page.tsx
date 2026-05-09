@@ -513,12 +513,17 @@ export default function StudentsPage() {
 
       setNotice({
         tone: "success",
-        message: `Promoted ${result.promotedCount} student(s). Added ${result.subjectSelectionCount} target subject enrollment(s).`,
+        message:
+          selectedSessionId === promotionTargetSessionId
+            ? `Promoted ${result.promotedCount} student(s). Added ${result.subjectSelectionCount} target subject enrollment(s).`
+            : `Pre-promoted ${result.promotedCount} student(s) for the target session. Added ${result.subjectSelectionCount} subject enrollment(s); placements will become effective on rollover.`,
       });
       setPromotionStudentIds([]);
       setSelectedStudentId(null);
-      setSelectedClassId(promotionTargetClassId);
-      setSelectedSessionId(promotionTargetSessionId);
+      if (selectedSessionId === promotionTargetSessionId) {
+        setSelectedClassId(promotionTargetClassId);
+        setSelectedSessionId(promotionTargetSessionId);
+      }
     } catch (err) {
       setNotice({
         tone: "error",

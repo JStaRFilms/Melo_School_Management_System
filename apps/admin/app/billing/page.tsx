@@ -115,10 +115,6 @@ export default function BillingPage() {
     classNameById, 
     applicationTerms 
   } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
-  const allBillingData = useQuery(
-    "functions/billing:getBillingDashboard" as never,
-    {} as never
-  ) as typeof data;
   const selectedFinanceInvoice = useMemo(
     () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
     [data?.invoices, financePack?.invoiceId]
@@ -155,23 +151,14 @@ export default function BillingPage() {
     () => sortPaymentRows(data?.payments ?? [], { key: "date", direction: "desc" }).slice(0, 5),
     [data?.payments]
   );
-  const selectedStudentInvoices = useMemo(() => {
-    if (!allBillingData || !selectedFinanceInvoice) {
-      return [];
-    }
-
-    return allBillingData.invoices.filter(
-      (row) => row.invoice.studentId === selectedFinanceInvoice.invoice.studentId
-    );
-  }, [allBillingData, selectedFinanceInvoice]);
-  const selectedStudentPayments = useMemo(() => {
-    if (!allBillingData || selectedStudentInvoices.length === 0) {
-      return [];
-    }
-
-    const selectedInvoiceIds = new Set(selectedStudentInvoices.map((row) => row.invoice._id));
-    return allBillingData.payments.filter((row) => selectedInvoiceIds.has(row.payment.invoiceId));
-  }, [allBillingData, selectedStudentInvoices]);
+  const selectedStudentBilling = useQuery(
+    api.functions.billing.listStudentInvoicesAndPayments,
+    selectedFinanceInvoice
+      ? { studentId: selectedFinanceInvoice.invoice.studentId as Id<"students"> }
+      : "skip"
+  ) as { invoices: NonNullable<typeof data>["invoices"]; payments: NonNullable<typeof data>["payments"] } | undefined;
+  const selectedStudentInvoices = selectedStudentBilling?.invoices ?? [];
+  const selectedStudentPayments = selectedStudentBilling?.payments ?? [];
   const selectedInvoiceLatestPaymentAttempt = useMemo(() => {
     if (!selectedFinanceInvoice || selectedFinanceInvoice.invoice.balanceDue <= 0) {
       return null;
@@ -182,7 +169,7 @@ export default function BillingPage() {
         row.attempt.invoiceId === selectedFinanceInvoice.invoice._id &&
         row.attempt.authorizationUrl &&
         row.attempt.currency === selectedFinanceInvoice.invoice.currency &&
-        row.attempt.amount === selectedFinanceInvoice.invoice.balanceDue
+        Math.abs(row.attempt.amount - selectedFinanceInvoice.invoice.balanceDue) < 0.005
       )
       .sort((left, right) => right.attempt.createdAt - left.attempt.createdAt)[0] ?? null;
   }, [financePackReusableAttempts, selectedFinanceInvoice]);
@@ -339,17 +326,19 @@ export default function BillingPage() {
     }
 
     setIsGeneratingFinancePackPaymentLink(true);
-    const success = await actions.runAction(async () => {
-      const result = await actions.createInvoicePaymentLink({
+    let success = false;
+    try {
+      success = await actions.runAction(async () => {
+        const result = await actions.createInvoicePaymentLink({
         schoolId: data.school.id,
         invoiceId: selectedFinanceInvoice.invoice._id,
         amount: selectedFinanceInvoice.invoice.balanceDue,
         email: financePackPaymentEmail,
         description: `Payment for ${selectedFinanceInvoice.invoice.invoiceNumber}`,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
-      } as never) as PaymentLinkActionResult;
+        } as never) as PaymentLinkActionResult;
 
-      const nextPaymentLink: PaymentLinkResult = {
+        const nextPaymentLink: PaymentLinkResult = {
         provider: result?.provider ?? "paystack",
         reference: result?.reference ?? "",
         authorizationUrl: result?.authorizationUrl ?? result?.authorization_url ?? null,
@@ -357,14 +346,16 @@ export default function BillingPage() {
         checkoutPayload: result?.checkoutPayload ?? result?.checkout_payload ?? {},
         amount: selectedFinanceInvoice.invoice.balanceDue,
         currency: selectedFinanceInvoice.invoice.currency,
-      };
+        };
 
-      setFinancePackPaymentLinks((current) => ({
-        ...current,
-        [selectedFinanceInvoice.invoice._id]: nextPaymentLink,
-      }));
-    }, "Payment Link Ready", "Unable to generate a payment link for this invoice.");
-    setIsGeneratingFinancePackPaymentLink(false);
+        setFinancePackPaymentLinks((current) => ({
+          ...current,
+          [selectedFinanceInvoice.invoice._id]: nextPaymentLink,
+        }));
+      }, "Payment Link Ready", "Unable to generate a payment link for this invoice.");
+    } finally {
+      setIsGeneratingFinancePackPaymentLink(false);
+    }
 
     if (success) {
       setFinancePackPaymentEmail("");

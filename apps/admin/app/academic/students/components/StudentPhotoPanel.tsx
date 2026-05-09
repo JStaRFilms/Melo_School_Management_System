@@ -138,6 +138,7 @@ export function StudentPhotoPanel({
     if (inputRef.current) inputRef.current.value = "";
     setSourceFile(null);
     setCrop(defaultCrop);
+    setIsCropping(false);
     onProcessingChangeRef.current?.(false);
     onRemovePhoto();
   };

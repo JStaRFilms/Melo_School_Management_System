@@ -44,6 +44,8 @@ function TeacherReportCardPageContent() {
   const isPrintClassMode = searchParams.get("printClass") === "1";
   const searchParamsString = searchParams.toString();
   const hasTriggeredClassPrintRef = useRef(false);
+  const printRaf1Ref = useRef<number | null>(null);
+  const printRaf2Ref = useRef<number | null>(null);
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
@@ -121,8 +123,8 @@ function TeacherReportCardPageContent() {
     }
 
     hasTriggeredClassPrintRef.current = true;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    printRaf1Ref.current = requestAnimationFrame(() => {
+      printRaf2Ref.current = requestAnimationFrame(() => {
         window.print();
       });
     });
@@ -132,6 +134,14 @@ function TeacherReportCardPageContent() {
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
   }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
+
+  useEffect(() => {
+    if (isPrintClassMode) return;
+    if (printRaf1Ref.current !== null) cancelAnimationFrame(printRaf1Ref.current);
+    if (printRaf2Ref.current !== null) cancelAnimationFrame(printRaf2Ref.current);
+    printRaf1Ref.current = null;
+    printRaf2Ref.current = null;
+  }, [isPrintClassMode]);
 
   // Handle afterprint to exit batch mode
   useEffect(() => {

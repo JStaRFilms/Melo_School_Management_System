@@ -521,9 +521,12 @@ export async function buildStudentReportCard(
   );
   const reportCardClassId =
     preferredClassId ??
-    (selectionClassIds.length === 1
-      ? (selectionClassIds[0] as Id<"classes">)
-      : (currentClassTermRecord?.classId ?? latestTermRecord?.classId ?? student.classId));
+    (currentClassTermRecord?.classId ??
+      latestTermRecord?.classId ??
+      (selectionClassIds.length === 1
+        ? (selectionClassIds[0] as Id<"classes">)
+        : undefined) ??
+      student.classId);
   const records = preferredClassId ? recordsForPreferredClass : termRecords.filter(
     (record: any) => String(record.classId) === String(reportCardClassId)
   );

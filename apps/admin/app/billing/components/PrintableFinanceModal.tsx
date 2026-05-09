@@ -23,8 +23,8 @@ type PrintableFinanceModalProps = {
   onClose: () => void;
 };
 
-function findInvoiceNumber(invoices: InvoiceRow[], invoiceId: string) {
-  return invoices.find((row) => row.invoice._id === invoiceId)?.invoice.invoiceNumber ?? "Unknown invoice";
+function amountsMatch(left: number | undefined, right: number) {
+  return left !== undefined && Math.abs(left - right) < 0.005;
 }
 
 function getSafeHttpsUrl(value: string | null) {
@@ -53,7 +53,7 @@ export function PrintableFinanceModal({
 }: PrintableFinanceModalProps) {
   const canShowPaymentLink = invoice.invoice.balanceDue > 0;
   const reusableGeneratedLink =
-    generatedPaymentLink?.amount === invoice.invoice.balanceDue &&
+    amountsMatch(generatedPaymentLink?.amount, invoice.invoice.balanceDue) &&
     generatedPaymentLink?.currency === invoice.invoice.currency
       ? generatedPaymentLink
       : null;
@@ -65,10 +65,12 @@ export function PrintableFinanceModal({
     ? reusableGeneratedLink?.reference ?? latestPaymentAttempt?.attempt.reference ?? null
     : null;
   const statementCurrency = invoice.invoice.currency;
-  const statementTotalCharges = studentInvoices.reduce((sum, row) => sum + row.invoice.totalAmount, 0);
-  const statementTotalPaid = studentInvoices.reduce((sum, row) => sum + row.invoice.amountPaid, 0);
-  const statementBalance = studentInvoices.reduce((sum, row) => sum + row.invoice.balanceDue, 0);
+  const sameCurrencyInvoices = studentInvoices.filter((row) => row.invoice.currency === statementCurrency);
+  const statementTotalCharges = sameCurrencyInvoices.reduce((sum, row) => sum + row.invoice.totalAmount, 0);
+  const statementTotalPaid = sameCurrencyInvoices.reduce((sum, row) => sum + row.invoice.amountPaid, 0);
+  const statementBalance = sameCurrencyInvoices.reduce((sum, row) => sum + row.invoice.balanceDue, 0);
   const sortedStudentInvoices = [...studentInvoices].sort((left, right) => left.invoice.issuedAt - right.invoice.issuedAt);
+  const invoiceNumberById = new Map(studentInvoices.map((row) => [row.invoice._id, row.invoice.invoiceNumber]));
   const sortedStudentPayments = [...studentPayments].sort((left, right) => left.payment.receivedAt - right.payment.receivedAt);
   const statementRows = [
     ...sortedStudentInvoices.map((row) => ({
@@ -86,7 +88,7 @@ export function PrintableFinanceModal({
       key: `payment-${row.payment._id}`,
       occurredAt: row.payment.receivedAt,
       type: "Payment" as const,
-      invoiceNumber: findInvoiceNumber(studentInvoices, row.payment.invoiceId),
+      invoiceNumber: invoiceNumberById.get(row.payment.invoiceId) ?? "Unknown invoice",
       details: `${row.payment.reference} | ${row.payment.paymentMethod}`,
       charge: null,
       payment: row.payment.amountApplied,
@@ -285,6 +287,7 @@ function LocalPaymentQrCode({ value }: { value: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let isCurrent = true;
     QRCode.toCanvas(canvas, value, {
       errorCorrectionLevel: "M",
       margin: 2,
@@ -294,12 +297,16 @@ function LocalPaymentQrCode({ value }: { value: string }) {
         light: "#ffffff",
       },
     }, (error) => {
+      if (!isCurrent) return;
       if (error) {
         console.error("QR code generation failed:", error);
         const context = canvas.getContext("2d");
         context?.clearRect(0, 0, canvas.width, canvas.height);
       }
     });
+    return () => {
+      isCurrent = false;
+    };
   }, [value]);
 
   return (

@@ -447,10 +447,22 @@ function SchoolBrandMark({
   initials: string;
   primaryColor: string;
 }) {
-  if (logoUrl) {
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [logoUrl]);
+
+  if (logoUrl && !logoFailed) {
     return (
       <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <img src={logoUrl} alt={`${name} logo`} loading="lazy" className="h-full w-full object-contain p-1" />
+        <img
+          src={logoUrl}
+          alt={`${name} logo`}
+          loading="lazy"
+          onError={() => setLogoFailed(true)}
+          className="h-full w-full object-contain p-1"
+        />
       </div>
     );
   }
