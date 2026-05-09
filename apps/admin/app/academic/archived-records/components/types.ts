@@ -4,7 +4,8 @@ export type ArchiveRecordType =
   | "teacher"
   | "subject"
   | "student"
-  | "event";
+  | "event"
+  | "knowledgeMaterial";
 
 export type ArchiveFilterType = "all" | ArchiveRecordType;
 
@@ -35,4 +36,5 @@ export interface ArchivedRecordsSummary {
   archivedSubjects: number;
   archivedStudents: number;
   archivedEvents: number;
+  archivedKnowledgeMaterials: number;
 }

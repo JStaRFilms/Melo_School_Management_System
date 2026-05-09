@@ -25,6 +25,7 @@ const FILTER_OPTIONS: Array<{
   { value: "student", label: "Students" },
   { value: "session", label: "Academic Sessions" },
   { value: "event", label: "Calendar Events" },
+  { value: "knowledgeMaterial", label: "Knowledge Materials" },
 ];
 
 export function ArchivedRecordsFilters({

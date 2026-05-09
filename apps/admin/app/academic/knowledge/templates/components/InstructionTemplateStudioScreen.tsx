@@ -188,7 +188,7 @@ export function InstructionTemplateStudioScreen({
           <div className="mx-auto max-w-[1150px] space-y-8 pb-32">
             <AdminHeader
               label="Knowledge Hub"
-              title="Template Studio"
+              title="Lesson/Notes Templates"
               description="Professional configuration of academic output structures."
               className="lg:mb-0"
               actions={

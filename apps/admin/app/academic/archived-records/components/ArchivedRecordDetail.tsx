@@ -27,6 +27,10 @@ export function ArchivedRecordDetail({
   variant = "default",
 }: ArchivedRecordDetailProps) {
   const isSheet = variant === "sheet";
+  const restoreLabel = record.type === "knowledgeMaterial" ? "Restore in Knowledge Library" : "Restore Record";
+  const restoreHelp = record.type === "knowledgeMaterial"
+    ? "Knowledge material restore is handled from the Knowledge Library so review status and visibility can be chosen deliberately."
+    : "Restoration will return this entry to active academic setup.";
 
   return (
     <div className={`space-y-6 ${!isSheet ? "animate-in slide-in-from-right-4 duration-300" : ""}`}>
@@ -100,10 +104,10 @@ export function ArchivedRecordDetail({
           disabled={isRestoring}
           className="w-full h-12 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-lg shadow-slate-950/20 hover:bg-slate-800 transition-all disabled:opacity-50 ring-offset-2 focus:ring-2 focus:ring-slate-950"
         >
-          {isRestoring ? "Restoring..." : "Restore Record"}
+          {isRestoring ? "Restoring..." : restoreLabel}
         </button>
         <p className="mt-3 text-[10px] text-center text-slate-400 font-medium px-4">
-          Restoration will return this entry to active academic setup.
+          {restoreHelp}
         </p>
       </div>
     </div>

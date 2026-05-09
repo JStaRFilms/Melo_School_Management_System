@@ -13,7 +13,8 @@ const archiveRecordTypeValidator = v.union(
   v.literal("teacher"),
   v.literal("subject"),
   v.literal("student"),
-  v.literal("event")
+  v.literal("event"),
+  v.literal("knowledgeMaterial")
 );
 
 const archiveRecordValidator = v.object({
@@ -68,6 +69,7 @@ export const listArchivedRecords = query({
       archivedSubjects: v.number(),
       archivedStudents: v.number(),
       archivedEvents: v.number(),
+      archivedKnowledgeMaterials: v.number(),
     }),
     records: v.array(archiveRecordValidator),
   }),
@@ -87,6 +89,8 @@ export const listArchivedRecords = query({
       students,
       selections,
       assessments,
+      knowledgeMaterials,
+      knowledgeTopics,
     ] = await Promise.all([
       ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
@@ -99,11 +103,15 @@ export const listArchivedRecords = query({
       ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("studentSubjectSelections").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("assessmentRecords").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      ctx.db.query("knowledgeMaterials").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      ctx.db.query("knowledgeTopics").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
     ]);
 
     const userLookup = new Map(users.map((user) => [String(user._id), user] as const));
     const sessionLookup = new Map(sessions.map((session) => [String(session._id), session] as const));
     const classLookup = new Map(classes.map((classDoc) => [String(classDoc._id), classDoc] as const));
+    const subjectLookup = new Map(subjects.map((subject) => [String(subject._id), subject] as const));
+    const topicLookup = new Map(knowledgeTopics.map((topic) => [String(topic._id), topic] as const));
 
     const classSubjectCountByClass = new Map<string, number>();
     const classSubjectCountBySubject = new Map<string, number>();
@@ -343,6 +351,36 @@ export const listArchivedRecords = query({
         ],
       }));
 
+    const knowledgeMaterialRecords = knowledgeMaterials
+      .filter((material) => material.reviewStatus === "archived")
+      .map((material) => {
+        const owner = userLookup.get(String(material.ownerUserId));
+        const subject = material.subjectId ? subjectLookup.get(String(material.subjectId)) : null;
+        const topic = material.topicId ? topicLookup.get(String(material.topicId)) : null;
+        return {
+          id: `knowledgeMaterial:${String(material._id)}`,
+          type: "knowledgeMaterial" as const,
+          typeLabel: "Knowledge Material",
+          recordId: String(material._id),
+          name: normalizeHumanName(material.title),
+          subtitle: [subject ? normalizeHumanName(subject.name) : null, material.level]
+            .filter(Boolean)
+            .join(" • ") || material.sourceType.replace(/_/g, " "),
+          archivedAt: material.updatedAt,
+          createdAt: material.createdAt,
+          archivedById: material.updatedBy ?? null,
+          archivedByName: archivedByName(material.updatedBy),
+          statusNote: "Hidden from active knowledge, teacher, and portal learning surfaces while preserving the source record.",
+          linkedHistory: `Owned by ${owner ? normalizePersonName(owner.name) : "unknown user"}; ${pluralize(material.chunkCount ?? 0, "indexed chunk")} and source metadata remain attached to this material.`,
+          detailFields: [
+            { label: "Owner", value: owner ? normalizePersonName(owner.name) : "Unknown owner" },
+            { label: "Source type", value: material.sourceType.replace(/_/g, " ") },
+            { label: "Subject", value: subject ? normalizeHumanName(subject.name) : "General" },
+            { label: "Topic", value: topic ? topic.title : material.topicLabel || "No topic" },
+          ],
+        };
+      });
+
     const records = [
       ...sessionRecords,
       ...classRecords,
@@ -350,6 +388,7 @@ export const listArchivedRecords = query({
       ...subjectRecords,
       ...studentRecords,
       ...eventRecords,
+      ...knowledgeMaterialRecords,
     ].sort((a, b) => b.archivedAt - a.archivedAt);
 
     return {
@@ -361,6 +400,7 @@ export const listArchivedRecords = query({
         archivedSubjects: subjectRecords.length,
         archivedStudents: studentRecords.length,
         archivedEvents: eventRecords.length,
+        archivedKnowledgeMaterials: knowledgeMaterialRecords.length,
       },
       records,
     };

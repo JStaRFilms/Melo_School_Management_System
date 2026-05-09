@@ -25,6 +25,7 @@ function chipClasses(recordType: ArchivedRecordItem["type"]) {
     student: `${base} bg-indigo-50 text-indigo-700 ring-indigo-600/10`,
     event: `${base} bg-cyan-50 text-cyan-700 ring-cyan-600/10`,
     session: `${base} bg-slate-50 text-slate-700 ring-slate-600/10`,
+    knowledgeMaterial: `${base} bg-blue-50 text-blue-700 ring-blue-600/10`,
   };
   return typeClasses[recordType] || `${base} bg-slate-50 text-slate-700 ring-slate-600/10`;
 }

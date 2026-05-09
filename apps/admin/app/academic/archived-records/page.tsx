@@ -5,6 +5,7 @@ import { useMutation,useQuery } from "convex/react";
 import {
 Archive,
 BookMarked,
+BookOpenText,
 CalendarDays,
 CalendarRange,
 Filter,
@@ -107,6 +108,7 @@ export default function ArchivedRecordsPage() {
         case "subject": await restoreSubject({ subjectId: selectedRecord.recordId as never }); break;
         case "student": await restoreStudent({ studentId: selectedRecord.recordId as never }); break;
         case "event": await restoreEvent({ eventId: selectedRecord.recordId as never }); break;
+        case "knowledgeMaterial": throw new Error("Restore knowledge materials from the Knowledge Library for now.");
         default: throw new Error("Unsupported record type");
       }
       const label = selectedRecord.typeLabel;
@@ -182,6 +184,7 @@ export default function ArchivedRecordsPage() {
               { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
               { label: "Sessions", value: archiveData.summary.archivedSessions, icon: <CalendarDays /> },
               { label: "Events", value: archiveData.summary.archivedEvents, icon: <CalendarRange /> },
+              { label: "Knowledge", value: archiveData.summary.archivedKnowledgeMaterials, icon: <BookOpenText /> },
             ]}
           />
         </div>
@@ -267,6 +270,7 @@ export default function ArchivedRecordsPage() {
                     { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
                     { label: "Sessions", value: archiveData.summary.archivedSessions, icon: <CalendarDays /> },
                     { label: "Events", value: archiveData.summary.archivedEvents, icon: <CalendarRange /> },
+                    { label: "Knowledge", value: archiveData.summary.archivedKnowledgeMaterials, icon: <BookOpenText /> },
                   ]}
                 />
               </div>
