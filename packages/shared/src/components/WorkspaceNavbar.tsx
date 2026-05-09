@@ -17,7 +17,6 @@ import {
   GraduationCap,
   ClipboardCheck,
   ChevronRight,
-  ShieldCheck,
   LayoutDashboard,
   Landmark,
   BookOpenText,
@@ -135,38 +134,47 @@ export function WorkspaceNavbar({
             },
           }
         : {
-            management: {
-              label: "Management",
+            operations: {
+              label: "Daily Operations",
               icon: <LayoutDashboard className="h-4 w-4" />,
               links: sections.filter((section) =>
-                ["/academic/teachers", "/admin", "/academic/archived-records"].includes(section.href)
+                [
+                  "/admin/dashboard",
+                  "/academic/students",
+                  "/academic/teachers",
+                  "/billing",
+                  "/assessments/results/entry",
+                  "/assessments/report-card-extras",
+                  "/academic/knowledge/library",
+                ].includes(section.href)
               ),
             },
-            academic: {
-              label: "Academic Operations",
+            academicSetup: {
+              label: "Academic Setup",
               icon: <GraduationCap className="h-4 w-4" />,
               links: sections.filter((section) =>
+                ["/academic/sessions", "/academic/classes", "/academic/subjects", "/academic/events"].includes(section.href)
+              ),
+            },
+            assessmentSetup: {
+              label: "Assessment Setup",
+              icon: <ClipboardCheck className="h-4 w-4" />,
+              links: sections.filter((section) =>
                 [
-                  "/academic/sessions",
-                  "/academic/events",
-                  "/academic/subjects",
-                  "/academic/classes",
-                  "/academic/students",
-                  "/academic/knowledge/library",
+                  "/assessments/setup/exam-recording",
+                  "/assessments/setup/grading-bands",
+                  "/assessments/setup/report-card-bundles",
                   "/academic/knowledge/templates",
                   "/academic/knowledge/assessment-profiles",
                 ].includes(section.href)
               ),
             },
-            finance: {
-              label: "Finance",
+            maintenance: {
+              label: "Administration",
               icon: <Landmark className="h-4 w-4" />,
-              links: sections.filter((section) => section.href === "/billing"),
-            },
-            assessments: {
-              label: "Assessments & Exams",
-              icon: <ClipboardCheck className="h-4 w-4" />,
-              links: sections.filter((section) => section.href.startsWith("/assessments")),
+              links: sections.filter((section) =>
+                ["/admin", "/academic/archived-records", "/assessments/report-cards/backfill"].includes(section.href)
+              ),
             },
           };
 
@@ -198,12 +206,6 @@ export function WorkspaceNavbar({
     setOpen(false);
     setProfileOpen(false);
   }, [currentPath]);
-
-  useEffect(() => {
-    if (schoolName) {
-      document.title = workspaceTitle;
-    }
-  }, [schoolName, workspaceTitle]);
 
   const activeSection =
     sections
@@ -260,17 +262,6 @@ export function WorkspaceNavbar({
           </div>
         </nav>
 
-        <div className="p-4 border-t border-slate-100 shrink-0">
-           <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 shadow-sm text-slate-400">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Node Status</p>
-                <p className="text-[11px] font-bold text-slate-900 mt-0.5">Production Core</p>
-              </div>
-           </div>
-        </div>
       </aside>
 
       {/* ═══ RIGHT SIDE (Header + Main) ════════════════════════ */}
@@ -459,7 +450,7 @@ function SchoolBrandMark({
   if (logoUrl) {
     return (
       <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <img src={logoUrl} alt={`${name} logo`} className="h-full w-full object-contain p-1" />
+        <img src={logoUrl} alt={`${name} logo`} loading="lazy" className="h-full w-full object-contain p-1" />
       </div>
     );
   }

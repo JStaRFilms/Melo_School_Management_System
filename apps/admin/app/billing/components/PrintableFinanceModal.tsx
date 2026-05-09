@@ -27,6 +27,16 @@ function findInvoiceNumber(invoices: InvoiceRow[], invoiceId: string) {
   return invoices.find((row) => row.invoice._id === invoiceId)?.invoice.invoiceNumber ?? "Unknown invoice";
 }
 
+function getSafeHttpsUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function PrintableFinanceModal({
   mode,
   school,
@@ -50,6 +60,7 @@ export function PrintableFinanceModal({
   const paymentUrl = canShowPaymentLink
     ? reusableGeneratedLink?.authorizationUrl ?? latestPaymentAttempt?.attempt.authorizationUrl ?? null
     : null;
+  const safePaymentUrl = getSafeHttpsUrl(paymentUrl);
   const paymentReference = canShowPaymentLink
     ? reusableGeneratedLink?.reference ?? latestPaymentAttempt?.attempt.reference ?? null
     : null;
@@ -191,12 +202,12 @@ export function PrintableFinanceModal({
                   <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                     <QrCode className="h-4 w-4" /> Payment link
                   </p>
-                  {paymentUrl ? (
+                  {safePaymentUrl ? (
                     <div className="mt-4 space-y-3">
-                      <LocalPaymentQrCode value={paymentUrl} />
-                      <a href={paymentUrl} target="_blank" rel="noreferrer" className="flex items-start gap-2 break-all rounded-2xl bg-white p-3 text-xs font-bold text-indigo-700 ring-1 ring-slate-200 print:text-slate-950">
+                      <LocalPaymentQrCode value={safePaymentUrl} />
+                      <a href={safePaymentUrl} target="_blank" rel="noreferrer" className="flex items-start gap-2 break-all rounded-2xl bg-white p-3 text-xs font-bold text-indigo-700 ring-1 ring-slate-200 print:text-slate-950">
                         <ExternalLink className="mt-0.5 h-4 w-4 flex-none" />
-                        {paymentUrl}
+                        {safePaymentUrl}
                       </a>
                       {paymentReference && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Reference: {paymentReference}</p>}
                     </div>
@@ -274,7 +285,7 @@ function LocalPaymentQrCode({ value }: { value: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    void QRCode.toCanvas(canvas, value, {
+    QRCode.toCanvas(canvas, value, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 192,
@@ -282,6 +293,12 @@ function LocalPaymentQrCode({ value }: { value: string }) {
         dark: "#0f172a",
         light: "#ffffff",
       },
+    }, (error) => {
+      if (error) {
+        console.error("QR code generation failed:", error);
+        const context = canvas.getContext("2d");
+        context?.clearRect(0, 0, canvas.width, canvas.height);
+      }
     });
   }, [value]);
 

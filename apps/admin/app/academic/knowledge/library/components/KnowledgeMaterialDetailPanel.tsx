@@ -258,14 +258,20 @@ export function KnowledgeMaterialDetailPanel({
 
   const handleRestore = async () => {
     if (!material) return;
+    const latestArchiveEvent = [...auditEvents]
+      .filter((event) => event.eventType === "archived")
+      .sort((left, right) => right.createdAt - left.createdAt)[0];
+    const restoredVisibility = latestArchiveEvent?.beforeVisibility ?? "staff_shared";
+    const restoredReviewStatus = latestArchiveEvent?.beforeReviewStatus ?? "pending_review";
+
     try {
       await onSaveState({
         materialId: material._id,
-        reviewStatus: "pending_review",
-        visibility: "staff_shared",
+        reviewStatus: restoredReviewStatus,
+        visibility: restoredVisibility,
       });
-      setReviewStatus("pending_review");
-      setVisibility("staff_shared");
+      setReviewStatus(restoredReviewStatus);
+      setVisibility(restoredVisibility);
     } catch {
       // Parent toast handles the error.
     }

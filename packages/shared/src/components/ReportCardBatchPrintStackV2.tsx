@@ -209,6 +209,9 @@ export function ReportCardBatchPrintStackV2({
   const rootRef = useRef<HTMLDivElement>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const restoreRef = useRef<(() => void) | null>(null);
+  const batchKey = reportCards
+    .map((reportCard) => `${reportCard.student._id}:${reportCard.sessionName}:${reportCard.termName}`)
+    .join("|");
 
   // Inject batch print CSS
   useLayoutEffect(() => {
@@ -229,33 +232,59 @@ export function ReportCardBatchPrintStackV2({
 
   // Wait for images
   useEffect(() => {
+    setImagesLoaded(false);
+    let isActive = true;
     const root = rootRef.current;
-    if (!root) { setImagesLoaded(true); return; }
+    if (!root) {
+      setImagesLoaded(true);
+      return () => { isActive = false; };
+    }
 
     const images = Array.from(root.querySelectorAll("img"));
-    if (images.length === 0) { setImagesLoaded(true); return; }
+    if (images.length === 0) {
+      setImagesLoaded(true);
+      return () => { isActive = false; };
+    }
 
     let settled = 0;
     const total = images.length;
-    function check() { if (++settled >= total) setImagesLoaded(true); }
+    const check = () => {
+      settled++;
+      if (isActive && settled >= total) setImagesLoaded(true);
+    };
 
     for (const img of images) {
-      if (img.complete) { settled++; } else {
+      if (img.complete) {
+        settled++;
+      } else {
         img.addEventListener("load", check, { once: true });
         img.addEventListener("error", check, { once: true });
       }
     }
     if (settled >= total) setImagesLoaded(true);
-  }, [reportCards]);
+
+    return () => {
+      isActive = false;
+      for (const img of images) {
+        img.removeEventListener("load", check);
+        img.removeEventListener("error", check);
+      }
+    };
+  }, [batchKey]);
 
   // Fire onReady after images + double RAF
   useEffect(() => {
     if (!imagesLoaded || reportCards.length === 0) return;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => { onReady?.(); });
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => { onReady?.(); });
     });
-    return () => cancelAnimationFrame(raf);
-  }, [imagesLoaded, reportCards.length, onReady]);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [batchKey, imagesLoaded, reportCards.length, onReady]);
 
   return (
     <div

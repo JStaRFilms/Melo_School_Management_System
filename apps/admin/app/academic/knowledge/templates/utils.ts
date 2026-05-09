@@ -336,23 +336,7 @@ export function validateInstructionTemplateDraft(
         if (draft.templateId && template._id === draft.templateId) {
           return false;
         }
-        if (template.outputType !== draft.outputType) {
-          return false;
-        }
-        if (template.templateScope !== draft.templateScope) {
-          return false;
-        }
-
-        switch (draft.templateScope) {
-          case "subject_and_level":
-            return String(template.subjectId) === normalizedSubjectId && normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
-          case "subject_only":
-            return String(template.subjectId) === normalizedSubjectId;
-          case "level_only":
-            return normalizeText(template.level ?? "").toLowerCase() === normalizedLevel.toLowerCase();
-          case "school_default":
-            return template.isSchoolDefault;
-        }
+        return hasMatchingTemplateApplicability(template, draft);
       });
 
       if (conflict) {

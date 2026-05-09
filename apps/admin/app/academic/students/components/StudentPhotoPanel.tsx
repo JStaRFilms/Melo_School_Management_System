@@ -34,6 +34,7 @@ export function StudentPhotoPanel({
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [crop, setCrop] = useState<StudentPhotoCrop>(defaultCrop);
   const [isCropping, setIsCropping] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const onPhotoChangeRef = useRef(onPhotoChange);
   const onValidationErrorRef = useRef(onValidationError);
   const onProcessingChangeRef = useRef(onProcessingChange);
@@ -48,6 +49,7 @@ export function StudentPhotoPanel({
     setSourceFile(null);
     setCrop(defaultCrop);
     setIsCropping(false);
+    if (inputRef.current) inputRef.current.value = "";
     onProcessingChangeRef.current?.(false);
   }, [resetKey]);
 
@@ -77,6 +79,7 @@ export function StudentPhotoPanel({
           if (!isCurrent) return;
           const validationError = getStudentPhotoValidationError(croppedFile);
           if (validationError) {
+            if (inputRef.current) inputRef.current.value = "";
             onPhotoChangeRef.current(null);
             onValidationErrorRef.current?.(validationError);
             return;
@@ -85,6 +88,7 @@ export function StudentPhotoPanel({
         })
         .catch(() => {
           if (!isCurrent) return;
+          if (inputRef.current) inputRef.current.value = "";
           onPhotoChangeRef.current(null);
           onValidationErrorRef.current?.("Photo crop failed.");
         })
@@ -131,6 +135,7 @@ export function StudentPhotoPanel({
   };
 
   const handleRemovePhoto = () => {
+    if (inputRef.current) inputRef.current.value = "";
     setSourceFile(null);
     setCrop(defaultCrop);
     onProcessingChangeRef.current?.(false);
@@ -178,6 +183,7 @@ export function StudentPhotoPanel({
         <StudentPhotoCropControls crop={crop} onCropChange={handleCropChange} />
       ) : null}
       <input
+        ref={inputRef}
         type="file"
         accept="image/*"
         onChange={handlePhotoInputChange}

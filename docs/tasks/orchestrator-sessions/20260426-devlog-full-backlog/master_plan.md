@@ -106,7 +106,7 @@ flowchart TD
 
 - 2026-05-08: Task 09 PDF Parser Upgrade was explicitly deferred by user instruction for a future session. It is not completed, and DL-030 remains open future work.
 - 2026-05-08: Task 10 Study App Discovery Brief completed as documentation-only discovery in `docs/features/StandaloneStudyAppDiscovery.md`; no app code was changed for Task 10.
-- 2026-05-08: Task 11 final verification completed. Targeted typechecks/builds passed, Convex production deploy succeeded, browser smoke checks remain pending due no interactive authenticated browser, and one teacher unit test needs follow-up.
+- 2026-05-08: Task 11 final verification completed. Targeted typechecks/builds passed, Convex production deploy succeeded, browser smoke checks remain pending due to no interactive authenticated browser, and one teacher unit test needs follow-up.
 
 ## Final Deliverables
 

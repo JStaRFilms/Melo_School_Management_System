@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { api } from "@school/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
@@ -18,9 +19,9 @@ export default function AcademicLayout({
   const pathname = usePathname();
   const router = useRouter();
   const schoolBranding = useQuery(
-    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
-    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
-  ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
+    api.functions.academic.schoolBranding.getCurrentSchoolBranding,
+    isConvexConfigured() && isAuthenticated ? {} : "skip"
+  );
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {

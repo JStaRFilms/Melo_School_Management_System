@@ -1,8 +1,8 @@
 # DevLog Audit Ledger
 
-**Session:** `20260426-devlog-full-backlog`  
-**Audit date:** 2026-05-04  
-**Source:** `00_Notes/DevLog.md`  
+**Session:** `20260426-devlog-full-backlog`
+**Audit date:** 2026-05-04
+**Source:** `00_Notes/DevLog.md`
 **Scope:** Audit-only; no source code edits.
 
 ## Context read

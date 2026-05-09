@@ -1381,6 +1381,44 @@ export const listBillingPaymentAttempts = query({
   },
 });
 
+export const listBillingPaymentAttemptsForInvoice = query({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+    statuses: v.optional(v.array(billingPaymentAttemptStatusValidator)),
+  },
+  returns: v.array(billingPaymentAttemptRowValidator),
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    const lookups = await loadBillingLookups(ctx, viewer.schoolId);
+    const statusSet = args.statuses ? new Set(args.statuses) : null;
+    const attempts = await ctx.db
+      .query("billingPaymentAttempts")
+      .withIndex("by_school_and_invoice", (q: any) =>
+        q.eq("schoolId", viewer.schoolId).eq("invoiceId", args.invoiceId)
+      )
+      .order("desc")
+      .collect();
+
+    return attempts
+      .filter((attempt: any) => !statusSet || statusSet.has(attempt.status))
+      .map((attempt: any) => ({
+        attempt: billingPaymentAttemptDocToReturn(attempt),
+        invoiceNumber: getInvoiceDisplayName(invoice.invoiceNumber),
+        studentName: lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student",
+        className: lookups.classNameById.get(String(invoice.classId)) ?? "Unknown class",
+        sessionName: lookups.sessionNameById.get(String(invoice.sessionId)) ?? "Unknown session",
+        termName: lookups.termNameById.get(String(invoice.termId)) ?? "Unknown term",
+      }));
+  },
+});
+
 export const upsertBillingSettings = mutation({
   args: billingSettingsUpdateValidator,
   returns: billingSettingsValidator,

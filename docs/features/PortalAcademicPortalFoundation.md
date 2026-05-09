@@ -14,7 +14,13 @@ Give parents and students a real mobile-first portal where they can sign in, cho
 - `apps/portal/app/(portal)/results/page.tsx`
 - `apps/portal/app/(portal)/notifications/page.tsx`
 - `apps/portal/app/(portal)/billing/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/[topicId]/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/[topicId]/topic-page.tsx`
 - `apps/portal/app/(portal)/components/PortalWorkspace.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/PortalWorkspaceContent.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/PortalPreview.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/format.ts`
 - `apps/portal/app/payments/paystack/return/page.tsx`
 - `apps/portal/app/payments/paystack/return/PaystackReturnClient.tsx`
 - `apps/portal/lib/AuthProvider.tsx`

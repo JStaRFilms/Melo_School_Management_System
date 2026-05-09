@@ -1148,10 +1148,14 @@ export const promoteStudents = mutation({
         ...new Set(subjectIdsToEnroll.map((subjectId) => String(subjectId))),
       ] as Array<Id<"subjects">>;
 
-      await ctx.db.patch(studentId, {
-        classId: args.toClassId,
-        updatedAt: now,
-      });
+      if (String(args.fromSessionId) === String(args.toSessionId)) {
+        await ctx.db.patch(studentId, {
+          classId: args.toClassId,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.patch(studentId, { updatedAt: now });
+      }
 
       let insertedForStudent = 0;
       for (const subjectId of uniqueSubjectIdsToEnroll) {

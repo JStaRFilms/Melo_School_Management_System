@@ -68,10 +68,10 @@ Failed / pending:
 
 ## Convex deploy
 
-- Initial `corepack pnpm convex deploy` failed because the CLI attempted a non-interactive confirmation prompt while `.env.local` pointed at the dev deployment (`CONVEX_DEPLOYMENT=dev:scrupulous-chinchilla-25`), then exited with code 127 and a Windows libuv assertion.
+- Initial `corepack pnpm convex deploy` failed because the CLI attempted a non-interactive confirmation prompt while `.env.local` pointed at the dev deployment (`CONVEX_DEPLOYMENT=<DEV_DEPLOYMENT_SLUG>`), then exited with code 127 and a Windows libuv assertion.
 - Retried with explicit production deployment target:
-  - `CONVEX_DEPLOYMENT=prod:outgoing-warbler-782 corepack pnpm convex deploy`
-  - Result: **success**. Convex functions deployed to `https://outgoing-warbler-782.eu-west-1.convex.cloud`.
+  - `CONVEX_DEPLOYMENT=<PROD_DEPLOYMENT_SLUG> corepack pnpm convex deploy`
+  - Result: **success**. Convex functions deployed to `<PROD_CONVEX_URL>`.
   - Added production indexes: `studentPromotions.by_school`, `studentPromotions.by_school_and_created_at`, `studentPromotions.by_student`, `studentPromotions.by_to_class_and_to_session`.
 
 ## Remaining risks and recommended next session

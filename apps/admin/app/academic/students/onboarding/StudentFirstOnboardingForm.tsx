@@ -750,7 +750,7 @@ export function StudentFirstOnboardingForm({
               >
                 <UserPlus className="h-4 w-4 transition group-hover:scale-110" />
                 <span className="text-[11px] font-black uppercase tracking-[0.15em]">
-                  {isSubmitting ? "..." : "Enroll Student"}
+                  {isSubmitting ? "..." : isPhotoProcessing ? "Preparing photo..." : "Enroll Student"}
                 </span>
               </button>
 
@@ -782,7 +782,7 @@ export function StudentFirstOnboardingForm({
             >
               <UserPlus className="h-4 w-4" />
               <span className="text-[11px] font-black uppercase tracking-wider">
-                {isSubmitting ? "..." : "Enroll"}
+                {isSubmitting ? "..." : isPhotoProcessing ? "Preparing..." : "Enroll"}
               </span>
             </button>
           </div>

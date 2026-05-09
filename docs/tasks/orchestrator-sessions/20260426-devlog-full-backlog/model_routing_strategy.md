@@ -1,6 +1,6 @@
 # Model Routing Strategy
 
-**Session:** `20260426-devlog-full-backlog`  
+**Session:** `20260426-devlog-full-backlog`
 **Purpose:** Route Takomi/coding-agent sub-agents to the cheapest capable model while protecting architecture, security, and regression-sensitive work.
 
 ## Provider Rule
@@ -30,6 +30,7 @@ Examples:
 ## GPT-5.5 Reasoning-Effort Routing
 
 ### GPT-5.5 High
+
 Use for:
 
 - major architecture decisions
@@ -41,6 +42,7 @@ Use for:
 - final deep review
 
 ### GPT-5.5 Medium
+
 Use for:
 
 - serious planning
@@ -50,6 +52,7 @@ Use for:
 - important code review where risk is moderate
 
 ### GPT-5.5 Low
+
 Use for:
 
 - execution after the plan is clear
@@ -67,12 +70,14 @@ Use for:
 ## Role Routing
 
 ### Architect
+
 - Use `oauth-router/gpt-5.5` + High for system design, database planning, API structure, security-sensitive decisions, major refactors, unclear project direction, or anything that could affect long-term maintainability.
 - Use `oauth-router/gpt-5.5` + Medium for serious but bounded architecture planning.
 - Use `oauth-router/gpt-5.4` + High for normal planning and straightforward architecture.
 - Avoid GPT-5.4 Mini High for architecture.
 
 ### Coder
+
 - Use `oauth-router/gpt-5.4` + High as the default coder.
 - Use `oauth-router/gpt-5.5` + High when the code is complex, risky, deeply connected across files, or likely to cause regressions.
 - Use `oauth-router/gpt-5.5` + Medium when implementation is complex but the plan is mostly clear.
@@ -80,11 +85,13 @@ Use for:
 - Use `oauth-router/gpt-5.4-mini` + High only for small, explicit, isolated coding tasks.
 
 ### Designer
+
 - Use `oauth-router/gpt-5.4` + High by default for UI/UX layout, component structure, design systems, and frontend logic.
 - Use `oauth-router/gpt-5.5` + Medium or High when the design problem needs deep product thinking, complex interaction logic, UX tradeoffs, or accessibility judgment.
 - Use `oauth-router/gpt-5.4-mini` + High for simple style changes, spacing, copy updates, basic Tailwind edits, and clearly defined UI tweaks.
 
 ### Reviewer
+
 - Use `oauth-router/gpt-5.5` + High for serious review: regressions, edge cases, security issues, architecture violations, broken assumptions, and deep correctness checks.
 - Use `oauth-router/gpt-5.5` + Medium for important review where the scope is bounded.
 - Use `oauth-router/gpt-5.4` + High for normal review.

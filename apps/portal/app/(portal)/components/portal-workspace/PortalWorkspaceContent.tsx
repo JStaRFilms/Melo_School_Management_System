@@ -7,13 +7,15 @@ PortalHistoryItem,
 PortalNotificationItem,
 PortalWorkspaceData,
 } from "@/portal-types";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
 import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { usePathname,useRouter,useSearchParams } from "next/navigation";
-import { useEffect,useMemo,useState } from "react";
+import { useEffect,useMemo,useRef,useState } from "react";
 
 function buildQueryArgs(
   studentId: string | null,
@@ -22,20 +24,20 @@ function buildQueryArgs(
   historyLimit: number
 ) {
   const args: {
-    studentId?: string | null;
-    sessionId?: string | null;
-    termId?: string | null;
+    studentId?: Id<"students"> | null;
+    sessionId?: Id<"academicSessions"> | null;
+    termId?: Id<"academicTerms"> | null;
     historyLimit: number;
   } = { historyLimit };
 
   if (studentId) {
-    args.studentId = studentId;
+    args.studentId = studentId as Id<"students">;
   }
   if (sessionId) {
-    args.sessionId = sessionId;
+    args.sessionId = sessionId as Id<"academicSessions">;
   }
   if (termId) {
-    args.termId = termId;
+    args.termId = termId as Id<"academicTerms">;
   }
 
   return args;
@@ -45,27 +47,26 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initializePortalPayment = useAction(
-    "functions/billing:initializePortalOnlinePayment" as never
-  );
+  const initializePortalPayment = useAction(api.functions.billing.initializePortalOnlinePayment);
 
   const studentId = searchParams.get("studentId");
   const sessionId = searchParams.get("sessionId");
   const termId = searchParams.get("termId");
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const paymentInitializingRef = useRef(false);
 
   const historyLimit = mode === "results" ? 8 : mode === "report-cards" ? 6 : 4;
 
   const workspace = useQuery(
-    "functions/portal:getWorkspaceData" as never,
-    buildQueryArgs(studentId, sessionId, termId, historyLimit) as never
+    api.functions.portal.getWorkspaceData,
+    buildQueryArgs(studentId, sessionId, termId, historyLimit)
   ) as PortalWorkspaceData | undefined;
   const billing = useQuery(
-    "functions/portal:getBillingData" as never,
+    api.functions.portal.getBillingData,
     mode === "billing"
-      ? ({ studentId: studentId ? (studentId as never) : (null as never) } as never)
-      : ("skip" as never)
+      ? { studentId: studentId ? (studentId as Id<"students">) : null }
+      : "skip"
   ) as PortalBillingData | undefined;
 
   const resolvedStudentId = workspace?.selectedStudentId ?? null;
@@ -129,14 +130,19 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   };
 
   const handleStartPortalPayment = async (invoice: PortalBillingInvoice) => {
+    if (paymentInitializingRef.current || payingInvoiceId !== null) {
+      return;
+    }
+
+    paymentInitializingRef.current = true;
     try {
       setBillingNotice(null);
       setPayingInvoiceId(invoice.invoiceId);
       const callbackUrl = `${window.location.origin}/payments/paystack/return?studentId=${encodeURIComponent(invoice.studentId)}`;
       const result = (await initializePortalPayment({
-        invoiceId: invoice.invoiceId,
+        invoiceId: invoice.invoiceId as Id<"studentInvoices">,
         callbackUrl,
-      } as never)) as {
+      })) as {
         authorizationUrl: string | null;
       };
 
@@ -146,6 +152,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
       window.location.href = result.authorizationUrl;
     } catch (error) {
+      paymentInitializingRef.current = false;
       setBillingNotice(getUserFacingErrorMessage(error, "Unable to start online payment."));
       setPayingInvoiceId(null);
     }
@@ -622,14 +629,22 @@ function ResultsView({
                 return (
                   <tr
                     key={`${item.sessionId}-${item.termId}`}
-                    onClick={() => onSelectHistoryItem(item)}
-                    className={`transition-colors cursor-pointer ${
+                    className={`transition-colors ${
                       isActive
                         ? "bg-emerald-50/60"
                         : "hover:bg-slate-50"
                     }`}
                   >
-                    <td className="px-4 py-3 text-slate-600">{item.sessionName}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <button
+                        type="button"
+                        onClick={() => onSelectHistoryItem(item)}
+                        aria-pressed={isActive}
+                        className="rounded-lg text-left font-medium text-slate-700 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                      >
+                        {item.sessionName}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 font-semibold text-slate-800">{item.termName}</td>
                     <td className="px-4 py-3 text-slate-600">{item.className}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
@@ -822,7 +837,7 @@ function BillingView({
                   <button
                     type="button"
                     onClick={() => void onPayNow(invoice)}
-                    disabled={payingInvoiceId === invoice.invoiceId}
+                    disabled={payingInvoiceId !== null}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <ExternalLink className="h-4 w-4" />

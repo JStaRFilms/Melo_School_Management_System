@@ -41,7 +41,7 @@ export function MaterialEditSheet({
 
   // Keep stale material so sheet content persists during close animation.
   const [staleMaterial, setStaleMaterial] = useState<TeacherLibraryMaterial | null>(null);
-  const displayMaterial = material ?? staleMaterial;
+  const displayMaterial = isOpen ? material : (material ?? staleMaterial);
 
   useEffect(() => {
     if (material) {

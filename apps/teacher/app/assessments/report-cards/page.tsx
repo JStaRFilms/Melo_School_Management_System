@@ -122,7 +122,9 @@ function TeacherReportCardPageContent() {
 
     hasTriggeredClassPrintRef.current = true;
     requestAnimationFrame(() => {
-      window.print();
+      requestAnimationFrame(() => {
+        window.print();
+      });
     });
   }, [isPrintClassMode, isClassPrintBlocked]);
 

@@ -44,6 +44,8 @@ EnrollmentNotice,
 SessionSummary,
 } from "./components/types";
 
+const MAX_PROMOTION_BATCH = 100;
+
 export default function StudentsPage() {
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
@@ -442,7 +444,14 @@ export default function StudentsPage() {
   }, []);
 
   const handleSelectAllVisibleForPromotion = useCallback(() => {
-    setPromotionStudentIds(matrix?.students.map((student) => student._id) ?? []);
+    const visibleIds = matrix?.students.map((student) => student._id) ?? [];
+    if (visibleIds.length > MAX_PROMOTION_BATCH) {
+      setNotice({
+        tone: "warning",
+        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once. Narrow the roster or select fewer students.`,
+      });
+    }
+    setPromotionStudentIds(visibleIds.slice(0, MAX_PROMOTION_BATCH));
   }, [matrix]);
 
   const handlePromoteStudents = useCallback(async () => {
@@ -453,6 +462,14 @@ export default function StudentsPage() {
       !promotionTargetSessionId ||
       promotionStudentIds.length === 0
     ) {
+      return;
+    }
+
+    if (promotionStudentIds.length > MAX_PROMOTION_BATCH) {
+      setNotice({
+        tone: "warning",
+        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once.`,
+      });
       return;
     }
 

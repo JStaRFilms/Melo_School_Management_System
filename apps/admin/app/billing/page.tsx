@@ -9,6 +9,8 @@ Plus,
 Search,
 X,
 } from "lucide-react";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
 
@@ -117,18 +119,19 @@ export default function BillingPage() {
     "functions/billing:getBillingDashboard" as never,
     {} as never
   ) as typeof data;
-  const linkGeneratedAttempts = useQuery(
-    "functions/billing:listBillingPaymentAttempts" as never,
-    { status: "link_generated", limit: 200 } as never
-  ) as NonNullable<typeof data>["paymentAttempts"] | undefined;
-  const awaitingReturnAttempts = useQuery(
-    "functions/billing:listBillingPaymentAttempts" as never,
-    { status: "awaiting_payer_return", limit: 200 } as never
-  ) as NonNullable<typeof data>["paymentAttempts"] | undefined;
-  const financePackReusableAttempts = useMemo(
-    () => [...(linkGeneratedAttempts ?? []), ...(awaitingReturnAttempts ?? [])],
-    [awaitingReturnAttempts, linkGeneratedAttempts]
+  const selectedFinanceInvoice = useMemo(
+    () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
+    [data?.invoices, financePack?.invoiceId]
   );
+  const financePackReusableAttempts = useQuery(
+    api.functions.billing.listBillingPaymentAttemptsForInvoice,
+    selectedFinanceInvoice
+      ? {
+          invoiceId: selectedFinanceInvoice.invoice._id as Id<"studentInvoices">,
+          statuses: ["link_generated", "awaiting_payer_return"],
+        }
+      : "skip"
+  ) as NonNullable<typeof data>["paymentAttempts"] | undefined;
   const actions = useBillingActions(setNotice);
   const { sortPreferences, setSortPreferences } = useBillingSortPreferences();
 
@@ -152,10 +155,6 @@ export default function BillingPage() {
     () => sortPaymentRows(data?.payments ?? [], { key: "date", direction: "desc" }).slice(0, 5),
     [data?.payments]
   );
-  const selectedFinanceInvoice = useMemo(
-    () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
-    [data?.invoices, financePack?.invoiceId]
-  );
   const selectedStudentInvoices = useMemo(() => {
     if (!allBillingData || !selectedFinanceInvoice) {
       return [];
@@ -178,7 +177,7 @@ export default function BillingPage() {
       return null;
     }
 
-    return financePackReusableAttempts
+    return (financePackReusableAttempts ?? [])
       .filter((row) =>
         row.attempt.invoiceId === selectedFinanceInvoice.invoice._id &&
         row.attempt.authorizationUrl &&

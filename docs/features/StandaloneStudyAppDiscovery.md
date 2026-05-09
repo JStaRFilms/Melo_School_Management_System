@@ -1,7 +1,7 @@
 # Standalone Study App Discovery Brief
 
-**Status:** Discovery only; not approved for implementation.  
-**Created:** 2026-05-08  
+**Status:** Discovery only; not approved for implementation.
+**Created:** 2026-05-08
 **Source:** DevLog DL-027 / Task 10, Project Requirements FR-009, FR-016, FR-019, portal foundation, and Lesson Knowledge Hub v2 planning docs.
 
 ## Purpose

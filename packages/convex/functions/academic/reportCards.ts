@@ -512,13 +512,18 @@ export async function buildStudentReportCard(
     throw new ConvexError("Student has no report-card history in this class");
   }
 
+  const latestTermRecord = [...termRecords].sort(
+    (a: any, b: any) =>
+      (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0)
+  )[0];
+  const currentClassTermRecord = termRecords.find(
+    (record: any) => String(record.classId) === String(student.classId)
+  );
   const reportCardClassId =
     preferredClassId ??
     (selectionClassIds.length === 1
       ? (selectionClassIds[0] as Id<"classes">)
-      : termRecords.length > 0
-        ? termRecords[0].classId
-        : student.classId);
+      : (currentClassTermRecord?.classId ?? latestTermRecord?.classId ?? student.classId));
   const records = preferredClassId ? recordsForPreferredClass : termRecords.filter(
     (record: any) => String(record.classId) === String(reportCardClassId)
   );

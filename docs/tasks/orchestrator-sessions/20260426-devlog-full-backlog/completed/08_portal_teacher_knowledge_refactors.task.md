@@ -54,7 +54,7 @@ Modularize the student/parent portal page and audit/fix the teacher and portal k
 
 ## Completion Notes
 
-- Status: Completed on 2026-05-08.
+- Status: Implemented - pending browser verification (completed code checks 2026-05-08).
 - Portal workspace entry was split into a small wrapper plus focused portal-workspace modules for the live workspace content, Convex fallback preview, and formatting helpers. Existing dashboard, results, report-card, notification, billing, and payment behavior was preserved.
 - Teacher library/video ingestion was hardened so teacher-created uploads and YouTube submissions must match one of the teacher's assigned class/level and subject pairings. Teacher uploads now require an assigned subject even for curriculum/planning-reference paths; school admins retain school-wide setup authority.
 - Portal learning topic queries now accept selected student context for parent viewers and reject topic page reads when the selected child is not in the topic's class level.
