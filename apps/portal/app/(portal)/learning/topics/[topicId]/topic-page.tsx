@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
@@ -137,17 +138,24 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
 }
 
 export function TopicPage({ topicId }: { topicId: string }) {
-  const topicData = useQuery("functions/academic/lessonKnowledgePortal:getPortalTopicPageData" as never, { topicId } as never) as PortalTopicPageData | undefined;
+  const searchParams = useSearchParams();
+  const studentId = searchParams.get("studentId");
+  const topicData = useQuery(
+    "functions/academic/lessonKnowledgePortal:getPortalTopicPageData" as never,
+    { topicId, studentId: studentId ? (studentId as never) : (null as never) } as never
+  ) as PortalTopicPageData | undefined;
   const requestUpload = useMutation("functions/academic/lessonKnowledgePortal:requestPortalSupplementalUploadUrl" as never) as unknown as (args: {
     topicId: string;
     title: string;
     description: string | null;
     fileContentType: string;
     fileSize: number;
+    studentId?: string | null;
   }) => Promise<{ materialId: string; uploadUrl: string }>;
   const finalizeUpload = useMutation("functions/academic/lessonKnowledgePortal:finalizePortalSupplementalUpload" as never) as unknown as (args: {
     materialId: string;
     storageId: string;
+    studentId?: string | null;
   }) => Promise<{ materialId: string; processingStatus: string }>;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -184,13 +192,14 @@ export function TopicPage({ topicId }: { topicId: string }) {
         description: description || null,
         fileContentType: file.type,
         fileSize: file.size,
+        studentId: studentId || null,
       });
       const uploadResponse = await fetch(result.uploadUrl, { method: "POST", body: file });
       if (!uploadResponse.ok) {
         throw new Error("Upload failed");
       }
       const { storageId } = await uploadResponse.json();
-      await finalizeUpload({ materialId: result.materialId, storageId });
+      await finalizeUpload({ materialId: result.materialId, storageId, studentId: studentId || null });
       setTitle("");
       setDescription("");
       setFile(null);

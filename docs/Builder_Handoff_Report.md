@@ -1,111 +1,40 @@
-# Builder Handoff Report: Unified Toast Notification System
+# Builder Handoff Report
 
 ## Built Features
 
-- Added a shared Sonner-backed toast foundation in `@school/shared/toast`.
-- Mounted one shared `AppToaster` in each target app root layout: admin, teacher, platform, and portal.
-- Replaced high-impact global operation errors with `appToast`.
-- Added validation-blocked save warning toasts while preserving useful inline row/table/field guidance.
-- Removed the teacher enrollment `FloatingNotice` one-off component and migrated its behavior to `appToast`.
-- Kept persistent domain notification center behavior separate from transient toast feedback.
+- FR-008 batch report-card print fix: `Print Class` now renders the batch stack as normal paginated print flow, with each student constrained to one A4 page.
+- Preserved the single-student print path by limiting the CSS override to `.rc-batch-print-v2-*` selectors in the batch print component.
 
-## Key Files Created
+## Root Cause
 
-- `packages/shared/src/toast/AppToaster.tsx`
-- `packages/shared/src/toast/app-toast.ts`
-- `packages/shared/src/toast/defaults.ts`
-- `packages/shared/src/toast/error-message.ts`
-- `packages/shared/src/toast/index.ts`
-- `packages/shared/src/toast/types.ts`
-- `docs/features/unified-toast-system.md`
+`ReportCardSheet` injects single-report print CSS that positions `.rc-print-root` as `position: fixed`. In full-class print, every report card reused that same sheet, so multiple student sheets were effectively removed from normal print pagination and overlaid at the first printable position. Chrome therefore saw one printable page (`Total: 1 page`) even when `getClassReportCards` returned multiple students.
 
-## Key Files Updated
+## Files Changed
 
-- `packages/shared/package.json`
-- `packages/shared/src/index.ts`
-- `apps/admin/app/layout.tsx`
-- `apps/teacher/app/layout.tsx`
-- `apps/platform/app/layout.tsx`
-- `apps/portal/app/layout.tsx`
-- `apps/admin/app/sign-in/page.tsx`
-- `apps/teacher/app/sign-in/page.tsx`
-- `apps/platform/app/sign-in/page.tsx`
-- `apps/platform/app/schools/create/page.tsx`
-- `apps/platform/app/schools/[schoolId]/assign-admin/page.tsx`
-- `apps/teacher/app/planning/lesson-plans/page.tsx`
-- `apps/teacher/app/planning/question-bank/page.tsx`
-- `apps/admin/app/assessments/setup/grading-bands/components/BandsActionBar.tsx`
-- `apps/admin/app/assessments/results/entry/page.tsx`
-- `apps/teacher/app/assessments/exams/entry/components/ExamEntryWorkspace.tsx`
-- `apps/admin/app/assessments/results/entry/components/AdminSaveActionBar.tsx`
-- `apps/teacher/app/assessments/exams/entry/components/SaveActionBar.tsx`
-- `apps/teacher/app/enrollment/subjects/page.tsx`
-- `apps/teacher/app/enrollment/subjects/components/types.ts`
-
-## Files Deleted
-
-- `apps/teacher/app/enrollment/subjects/components/FloatingNotice.tsx`
+- `packages/shared/src/components/ReportCardBatchPrintStackV2.tsx`
+  - Strengthened batch-only print CSS.
+  - Restores batch pages to static/relative flow.
+  - Forces each `.rc-batch-print-v2-page` to exactly `210mm x 297mm` with a page break after each student.
+  - Overrides the single-sheet fixed positioning only inside the batch stack.
+- `docs/issues/FR-008.md`
+  - Marked print layout acceptance criterion complete for full-class one-page-per-student batch printing.
 
 ## Verification Status
 
-### Typecheck
-
-Passed for affected packages:
-
-- `pnpm --filter @school/shared typecheck`
-- `pnpm --filter @school/admin typecheck`
-- `pnpm --filter @school/teacher typecheck`
-- `pnpm --filter @school/platform typecheck`
-- `pnpm --filter @school/portal typecheck`
-
-Full `pnpm typecheck` was attempted but timed out after 300 seconds after completing multiple package builds/typechecks. Scoped affected package typechecks passed.
-
-### Build
-
-Passed for affected apps:
-
-- `pnpm --filter @school/admin build`
-- `pnpm --filter @school/teacher build`
-- `pnpm --filter @school/platform build`
-- `pnpm --filter @school/portal build`
-
-### Lint
-
-- `pnpm --filter @school/admin lint` completed with existing warnings only.
-- `pnpm --filter @school/teacher lint` failed due to pre-existing unrelated issues in planning library/question-bank files, not from the toast migration.
-
-### Architecture/Regression Review
-
-- Deep review subagent used `oauth-router/gpt-5.5`.
-- No P0/P1 findings.
-- Direct Sonner imports are limited to:
-  - `packages/shared/src/toast/AppToaster.tsx`
-  - `packages/shared/src/toast/app-toast.ts`
-- Each target app mounts exactly one `AppToaster`.
-- Validation inline guidance was preserved where it remains actionable.
+- `pnpm --filter @school/shared typecheck` — passed.
+- `pnpm typecheck` — started and package typechecks/builds progressed, but root command timed out at 120s during the full monorepo run.
+- `pnpm --filter @school/admin lint` — passed with existing warnings only.
+- `pnpm --filter @school/teacher lint` — passed with existing warnings only.
+- `pnpm --filter @school/admin build` — passed.
+- `pnpm --filter @school/teacher build` — passed.
 
 ## How to Run
 
-```bash
-pnpm install
-pnpm --filter @school/shared typecheck
-pnpm --filter @school/admin typecheck
-pnpm --filter @school/teacher typecheck
-pnpm --filter @school/platform typecheck
-pnpm --filter @school/portal typecheck
-```
+1. Open admin or teacher report cards for a selected class/student/session/term.
+2. Click `Print Class`.
+3. Confirm the browser print dialog page count equals the number of class report cards, with one A4 page per student.
 
-To run target apps:
+## Notes / Remaining Work
 
-```bash
-pnpm --filter @school/admin dev
-pnpm --filter @school/teacher dev
-pnpm --filter @school/platform dev
-pnpm --filter @school/portal dev
-```
-
-## Future Follow-up
-
-- Consider cleaning remaining legacy inline/floating notices outside this feature scope.
-- Address existing lint baseline issues in teacher planning-library/question-bank files.
-- If desired, refine `AppToaster` visual styling centrally without changing app call sites.
+- No Convex query change was required: `getClassReportCards` already maps over the full roster returned by `getStudentsForClassReportCardBatch`.
+- Manual browser print dialog verification is still recommended against real class data to confirm the page total equals `classReportCards.length`.

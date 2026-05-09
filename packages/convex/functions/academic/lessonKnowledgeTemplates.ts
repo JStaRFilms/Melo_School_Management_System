@@ -15,7 +15,6 @@ import {
   normalizeOptionalInstructionTemplateText,
   normalizeRequiredInstructionTemplateText,
   sortInstructionTemplates,
-  toTemplateSearchKey,
   type InstructionTemplateObjectiveMinimums,
   type InstructionTemplateScope,
   type InstructionTemplateSectionInput,
@@ -32,11 +31,6 @@ const supportedOutputTypeSet = new Set<SupportedInstructionTemplateOutputType>([
 
 type InstructionTemplateDoc = Doc<"instructionTemplates">;
 type SubjectDoc = Doc<"subjects">;
-
-type InstructionTemplateResolutionContext = {
-  subjectId: Id<"subjects"> | null;
-  level: string | null;
-};
 
 function assertSupportedOutputType(outputType: string): asserts outputType is SupportedInstructionTemplateOutputType {
   if (!supportedOutputTypeSet.has(outputType as SupportedInstructionTemplateOutputType)) {
@@ -160,100 +154,61 @@ async function loadInstructionTemplateRows(
     .take(100);
 }
 
-function buildTemplateConflictMessage(args: {
-  templateId?: Id<"instructionTemplates"> | null;
-  templateScope: InstructionTemplateScope;
-  outputType: SupportedInstructionTemplateOutputType;
-  subjectId?: Id<"subjects"> | null;
-  level?: string | null;
-  isActive: boolean;
-}) {
-  return {
-    templateId: args.templateId ?? null,
-    templateScope: args.templateScope,
-    outputType: args.outputType,
-    subjectId: args.subjectId ?? null,
-    level: args.level ?? null,
-    isActive: args.isActive,
-  };
+function getInstructionTemplateConflictMessage(templateScope: InstructionTemplateScope) {
+  switch (templateScope) {
+    case "subject_and_level":
+      return "An active template already exists for this subject and level";
+    case "subject_only":
+      return "An active subject-only template already exists for this subject";
+    case "level_only":
+      return "An active level-only template already exists for this level";
+    case "school_default":
+      return "An active school default template already exists for this output type";
+  }
 }
 
 async function ensureUniqueApplicability(args: {
   ctx: MutationCtx;
   schoolId: Id<"schools">;
+  existing: InstructionTemplateDoc | null;
   templateId?: Id<"instructionTemplates"> | null;
-  outputType: SupportedInstructionTemplateOutputType;
+  templateKey: string;
   templateScope: InstructionTemplateScope;
-  subjectId?: Id<"subjects"> | null;
-  level?: string | null;
   isActive: boolean;
 }) {
   if (!args.isActive) {
     return;
   }
 
+  if (
+    args.existing &&
+    args.existing.isActive &&
+    args.existing.templateKey === args.templateKey
+  ) {
+    return;
+  }
+
   const existingRows = await args.ctx.db
     .query("instructionTemplates")
-    .withIndex("by_school_and_output_type", (q) =>
-      q.eq("schoolId", args.schoolId).eq("outputType", args.outputType)
+    .withIndex("by_school_and_template_key", (q) =>
+      q.eq("schoolId", args.schoolId).eq("templateKey", args.templateKey)
     )
-    .take(100);
+    .collect();
 
-  const normalizedLevel = normalizeOptionalInstructionTemplateText(args.level) ?? null;
-  const currentKey = buildTemplateConflictMessage({
-    templateId: args.templateId,
-    templateScope: args.templateScope,
-    outputType: args.outputType,
-    subjectId: args.subjectId ?? null,
-    level: normalizedLevel,
-    isActive: args.isActive,
+  const activeConflict = existingRows.find((row) => {
+    if (!row.isActive) {
+      return false;
+    }
+
+    if (args.templateId && String(row._id) === String(args.templateId)) {
+      return false;
+    }
+
+    return true;
   });
 
-  for (const row of existingRows) {
-    if (args.templateId && String(row._id) === String(args.templateId)) {
-      continue;
-    }
-
-    if (!row.isActive) {
-      continue;
-    }
-
-    const rowKey = buildTemplateConflictMessage({
-      templateId: row._id,
-      templateScope: row.templateScope as InstructionTemplateScope,
-      outputType: row.outputType as SupportedInstructionTemplateOutputType,
-      subjectId: row.subjectId ?? null,
-      level: row.level ?? null,
-      isActive: row.isActive,
-    });
-
-    const sameScope = rowKey.templateScope === currentKey.templateScope;
-    const sameSubject = String(rowKey.subjectId ?? "") === String(currentKey.subjectId ?? "");
-    const sameLevel = toTemplateSearchKey(rowKey.level ?? "") === toTemplateSearchKey(currentKey.level ?? "");
-
-    if (!sameScope) {
-      continue;
-    }
-
-    switch (args.templateScope) {
-      case "subject_and_level":
-        if (sameSubject && sameLevel) {
-          throw new ConvexError("An active template already exists for this subject and level");
-        }
-        break;
-      case "subject_only":
-        if (sameSubject) {
-          throw new ConvexError("An active subject-only template already exists for this subject");
-        }
-        break;
-      case "level_only":
-        if (sameLevel) {
-          throw new ConvexError("An active level-only template already exists for this level");
-        }
-        break;
-      case "school_default":
-        throw new ConvexError("An active school default template already exists for this output type");
-    }
+  if (activeConflict) {
+    throw new ConvexError(getInstructionTemplateConflictMessage(args.templateScope));
   }
 }
 
@@ -420,11 +375,10 @@ export const saveInstructionTemplate = mutation({
     await ensureUniqueApplicability({
       ctx,
       schoolId,
+      existing,
       templateId: existing?._id ?? null,
-      outputType: args.outputType,
-      templateScope: args.templateScope,
-      subjectId: applicability.subjectId,
-      level: applicability.level,
+      templateKey: applicability.templateKey,
+      templateScope: applicability.templateScope,
       isActive: args.isActive,
     });
 

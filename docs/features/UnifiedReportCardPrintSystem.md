@@ -32,7 +32,8 @@ This unified system ensures one shared component tree used everywhere.
 | `ReportCardSheet` | `packages/shared/src/components/ReportCardSheet.tsx` | Core A4 layout, contains print CSS, no toolbar |
 | `ReportCardToolbar` | `packages/shared/src/components/ReportCardToolbar.tsx` | Shared toolbar with Back button + Export/Print button |
 | `ReportCardPreview` | `packages/shared/src/components/ReportCardPreview.tsx` | 65% scaled preview wrapper for on-screen display |
-| `ReportCardPrintStack` | `packages/shared/src/components/ReportCardPrintStack.tsx` | Full-class print (uses Sheet directly, one page per student) |
+| `ReportCardPrintStack` | `packages/shared/src/components/ReportCardPrintStack.tsx` | Original full-class print stack (kept for compatibility) |
+| `ReportCardBatchPrintStackV2` | `packages/shared/src/components/ReportCardBatchPrintStackV2.tsx` | Batch-only print stack used by admin/teacher `printClass=1`; wraps `ReportCardSheet` while isolating batch page-break CSS from single-student printing |
 | `ReportCardPrintBlockedNotice` | `packages/shared/src/components/ReportCardToolbar.tsx` | Warning when cumulative print is blocked |
 
 ### Print CSS Architecture
@@ -66,7 +67,7 @@ All three surfaces (admin, teacher, portal) use the same pattern:
 Admin and teacher still use `printClass=1` to enter full-class print mode, but that mode also routes through the same shared print components:
 
 - surface page handles mode switching and print lifecycle
-- `ReportCardPrintStack` renders the stacked batch output
+- `ReportCardBatchPrintStackV2` renders the stacked batch output
 - `ReportCardSheet` remains the single source of truth for each page's printable body
 
 ### Key Decisions
@@ -107,9 +108,10 @@ Admin and teacher still use `printClass=1` to enter full-class print mode, but t
 - Toolbar hidden automatically
 
 ### Full-Class Print
-- Uses `ReportCardPrintStack` which renders each card at full size
-- One student per page via `page-break-after: always`
+- Uses `ReportCardBatchPrintStackV2` which renders each card at full size through the existing `ReportCardSheet`
+- One student per page via batch-only page-break CSS
 - No toolbar on any page
+- Single-student print remains on the existing preview/toolbar path and does not use the V2 batch wrapper
 
 ## Future Extensibility
 

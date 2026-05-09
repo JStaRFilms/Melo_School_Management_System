@@ -22,7 +22,7 @@ import { AssessmentProfileActionBar } from "./AssessmentProfileActionBar";
 
 interface AssessmentProfileStudioScreenProps {
   profiles: Profile[];
-  onSaveProfile: (draft: AssessmentProfileDraft) => Promise<void>;
+  onSaveProfile: (draft: AssessmentProfileDraft) => Promise<string>;
 }
 
 export function AssessmentProfileStudioScreen({
@@ -80,9 +80,13 @@ export function AssessmentProfileStudioScreen({
   }, []);
 
   const handleSave = useCallback(async () => {
-    await onSaveProfile(draft);
-    if (isMobile) setIsSheetOpen(false);
-  }, [draft, onSaveProfile, isMobile]);
+    const profileId = await onSaveProfile(draft);
+    setSelectedProfileId(profileId);
+    setDraft((current) => ({ ...current, profileId }));
+    if (isMobile) {
+      setIsSheetOpen(false);
+    }
+  }, [draft, isMobile, onSaveProfile]);
 
   const handleDiscard = useCallback(() => {
     setDraft(activeDraftSource);

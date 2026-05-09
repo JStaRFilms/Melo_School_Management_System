@@ -9,6 +9,9 @@ export interface PortalStudentOption {
   admissionNumber: string;
   classId: string;
   className: string;
+  schoolId: string;
+  schoolName: string;
+  schoolLogoUrl: string | null;
   relationship: string | null;
   photoUrl: string | null;
   isActive: boolean;
@@ -45,6 +48,10 @@ export interface PortalWorkspaceData {
     id: string;
     name: string;
     logoUrl: string | null;
+    theme: {
+      primaryColor: string;
+      accentColor: string;
+    };
   };
   viewer: {
     userId: string;

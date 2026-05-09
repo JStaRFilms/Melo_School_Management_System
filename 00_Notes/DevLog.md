@@ -66,26 +66,26 @@ pnpm --filter @school/admin dev
 
 - [-] We need to work on debloating all the pages and working on UI generally
 
-- [ ] We need to add photo editor
+- [x] We need to add photo editor
 
-- [ ] Now I realize something, it's minor, nothing crazy, but when I'm signed in as staff for a particular school, I can't tell which school it is. The dashboard doesn't say; the logo up top is still the default one. Even in the side panel or the browser tab, there's nothing like "OBHIS Teacher Portal" or "Admin Portal OBHIS." Could we add dynamic page metadata so each school gets its own branding? The whole UI should feel like it belongs to that school. This will matter a lot once parents start logging in, because we need them to know instantly which school they're connected to. and then we could make it more complicated: a parent might have kids in different schools, so when they log in they should see all of them. they could also log in with a kid's email, but that's separate. different parents, different kids, different schools, our system needs to handle those edge cases.
+- [x] Now I realize something, it's minor, nothing crazy, but when I'm signed in as staff for a particular school, I can't tell which school it is. The dashboard doesn't say; the logo up top is still the default one. Even in the side panel or the browser tab, there's nothing like "OBHIS Teacher Portal" or "Admin Portal OBHIS." Could we add dynamic page metadata so each school gets its own branding? The whole UI should feel like it belongs to that school. This will matter a lot once parents start logging in, because we need them to know instantly which school they're connected to. and then we could make it more complicated: a parent might have kids in different schools, so when they log in they should see all of them. they could also log in with a kid's email, but that's separate. different parents, different kids, different schools, our system needs to handle those edge cases.
 
 - [x] WE need to re work on the printing screen and scalling stuff to fit the screen and what not hehe...
-- [ ] I already implemented the printing feature for a single student at a time, but when I tried the multiple‑student printing available on the admin and teacher portals, it didn't work well. I don't want to tamper with the existing functionality, so I plan to duplicate the shared functions and components and create a new version for the other use case. That should make it easier to get it working. We'll create a dedicated feature for printing multiple students at once, so printing everyone in a class becomes simpler.
+- [x] I already implemented the printing feature for a single student at a time, but when I tried the multiple‑student printing available on the admin and teacher portals, it didn't work well. I don't want to tamper with the existing functionality, so I plan to duplicate the shared functions and components and create a new version for the other use case. That should make it easier to get it working. We'll create a dedicated feature for printing multiple students at once, so printing everyone in a class becomes simpler.
 
 - [x] UI fixes for the billing page, the portal and then the main website and the templates
 
-- [ ] We need to modularize the student portal page. I think it's too monolithic as it stands, and as we start to expand later, it might become a problem.
+- [x] We need to modularize the student portal page. I think it's too monolithic as it stands, and as we start to expand later, it might become a problem.
 
-- [ ] There needs to be a proper way for schools to check and print invoices. They should be able to print invoices that include links and a QR code, and display the QR code in the UI. Schools should also be able to print a statement, like a bank statement, to show when people pay. Additionally, they should be able to see payment dates and times in the UI.
+- [x] There needs to be a proper way for schools to check and print invoices. They should be able to print invoices that include links and a QR code, and display the QR code in the UI. Schools should also be able to print a statement, like a bank statement, to show when people pay. Additionally, they should be able to see payment dates and times in the UI.
 
-- [ ] There are several UI issues on the knowledge templates page in the admin portal. One problem is the many duplicate entries; we need a cleaning option. When I click on a monitor, specifically the designer monitor, and change the template catalog, it returns me to the designer view. It should stay on the page I was on before clicking. Does that make sense?
+- [x] There are several UI issues on the knowledge templates page in the admin portal. One problem is the many duplicate entries; we need a cleaning option. When I click on a monitor, specifically the designer monitor, and change the template catalog, it returns me to the designer view. It should stay on the page I was on before clicking. Does that make sense?
 
-- [ ] In future builds, if we create a study app later on, it would be nice for the app to work independently to some extent while still being able to use features from Melo, if available. That way, students whose schools have Melo can use their portal and access all the features, and students whose schools don’t have Melo can use it as a standalone, join a community of students, share resources, study together, and see their game scores and other metrics.
+- [x] In future builds, if we create a study app later on, it would be nice for the app to work independently to some extent while still being able to use features from Melo, if available. That way, students whose schools have Melo can use their portal and access all the features, and students whose schools don’t have Melo can use it as a standalone, join a community of students, share resources, study together, and see their game scores and other metrics.
 
-- [ ] We need to confirm whether promotions are sorted out, like a child moving from one class to another. Does that actually work?
+- [x] We need to confirm whether promotions are sorted out, like a child moving from one class to another. Does that actually work?
 
-- [ ] We need to work on the following:
+- [x] We need to work on the following:
 
 1. Academic Students page, improve how it loads parents and children, assigns emails, and handles editable fields.
 2. Knowledge Library on the admin page.

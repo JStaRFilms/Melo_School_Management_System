@@ -14,7 +14,13 @@ Give parents and students a real mobile-first portal where they can sign in, cho
 - `apps/portal/app/(portal)/results/page.tsx`
 - `apps/portal/app/(portal)/notifications/page.tsx`
 - `apps/portal/app/(portal)/billing/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/[topicId]/page.tsx`
+- `apps/portal/app/(portal)/learning/topics/[topicId]/topic-page.tsx`
 - `apps/portal/app/(portal)/components/PortalWorkspace.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/PortalWorkspaceContent.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/PortalPreview.tsx`
+- `apps/portal/app/(portal)/components/portal-workspace/format.ts`
 - `apps/portal/app/payments/paystack/return/page.tsx`
 - `apps/portal/app/payments/paystack/return/PaystackReturnClient.tsx`
 - `apps/portal/lib/AuthProvider.tsx`
@@ -76,9 +82,15 @@ The portal reuses existing academic and billing records:
 
 ## Implemented Outcome
 - The portal app is now bootstrapped with auth, layout, and workspace routing.
+- The portal workspace entry now delegates its Convex fallback and live workspace body into focused portal-workspace modules so the route-level component stays small while preserving dashboard, results, report-card, notification, billing, and learning routes.
 - Parents and students can enter a school-scoped dashboard.
 - The portal includes report-card, result-history, notification, and billing surfaces.
 - Parents and students can review school-fee invoices, payment history, and receipt/status details from the portal.
 - Eligible invoices can launch Paystack checkout directly from the portal and return to an authenticated portal verification page.
 - The shared workspace navigation now includes a live portal destination with a billing tab.
-- Future cross-school parent chooser work can build on this foundation without rewriting the portal.
+- Parent context can now resolve accessible children across multiple school memberships linked to the same auth identity.
+- Portal learning topic queries now accept the selected `studentId` context, so parent viewers can open approved learning topics for a linked child without falling back to another child.
+- Child selectors include school context so parents can tell which school is active.
+- Portal workspace, report-card history, billing, and payment context are scoped to the selected child's school.
+- Student logins remain direct to the student's own school/student context.
+- See `docs/features/SchoolBrandingAndParentMultiSchoolContext.md` for the authenticated branding and multi-school context rules.

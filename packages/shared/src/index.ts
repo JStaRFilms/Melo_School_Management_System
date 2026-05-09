@@ -18,6 +18,7 @@ export { ReportCardToolbar, ReportCardPrintBlockedNotice } from "./components/Re
 export { ReportCardBatchNavigator } from "./components/ReportCardBatchNavigator";
 export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigator";
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
+export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
 
 // Exam Recording Domain
 export * from "./exam-recording";

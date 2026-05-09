@@ -74,14 +74,14 @@ export function PaymentTable({
             <th className="px-6 py-3 font-bold text-[10px] text-slate-400 text-right">
               {sortable && onSortChange ? (
                 <SortHeaderButton
-                  label="Date"
+                  label="Date/time"
                   active={sortKey === "date"}
                   direction={sortDirection}
                   onClick={() => onSortChange("date")}
                   align="right"
                 />
               ) : (
-                <span className="uppercase tracking-widest">Date</span>
+                <span className="uppercase tracking-widest">Date/time</span>
               )}
             </th>
           </tr>

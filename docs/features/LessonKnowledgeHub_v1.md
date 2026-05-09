@@ -245,6 +245,7 @@ Core intent:
 Additional rules:
 
 - Template applicability is school-scoped; there is no cross-school fallback.
+- Admins must not create a second active template for the same `school + output type + applicability` combination. Existing legacy duplicates may remain until a later cleanup task explicitly removes them.
 - The resolved template ID and the resolution path must be saved with the artifact revision and AI run log.
 - Templates must declare the output type they govern and the sections that are required.
 - Template rules are the source of truth for objective minimums, required headings, and output shape.

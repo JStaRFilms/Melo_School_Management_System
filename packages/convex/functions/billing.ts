@@ -1381,6 +1381,109 @@ export const listBillingPaymentAttempts = query({
   },
 });
 
+export const listStudentInvoicesAndPayments = query({
+  args: { studentId: v.id("students") },
+  returns: v.object({
+    invoices: v.array(billingInvoiceRowValidator),
+    payments: v.array(billingPaymentRowValidator),
+  }),
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Student not found");
+    }
+
+    const lookups = await loadBillingLookups(ctx, viewer.schoolId);
+    const invoices = await ctx.db
+      .query("studentInvoices")
+      .withIndex("by_student", (q: any) => q.eq("studentId", args.studentId))
+      .collect();
+    const invoiceIds = new Set(invoices.map((invoice: any) => String(invoice._id)));
+    const payments = await ctx.db
+      .query("billingPayments")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
+      .collect();
+
+    const invoiceRows = invoices.map((invoice: any) => ({
+      invoice: invoiceDocToReturn(invoice),
+      studentName: lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student",
+      className: lookups.classNameById.get(String(invoice.classId)) ?? "Unknown class",
+      sessionName: lookups.sessionNameById.get(String(invoice.sessionId)) ?? "Unknown session",
+      termName: lookups.termNameById.get(String(invoice.termId)) ?? "Unknown term",
+    }));
+    const invoiceNumberById = new Map(invoices.map((invoice: any) => [String(invoice._id), getInvoiceDisplayName(invoice.invoiceNumber)]));
+    const paymentRows = payments
+      .filter((payment: any) => invoiceIds.has(String(payment.invoiceId)))
+      .map((payment: any) => ({
+        payment: paymentDocToReturn(payment),
+        invoiceNumber: invoiceNumberById.get(String(payment.invoiceId)) ?? "Unknown invoice",
+        studentName: lookups.studentUserByStudentId.get(String(student._id)) ?? "Unknown student",
+        className: lookups.classNameById.get(String(student.classId)) ?? "Unknown class",
+        sessionName: "Student account",
+        termName: "All terms",
+      }));
+
+    return { invoices: invoiceRows, payments: paymentRows };
+  },
+});
+
+export const listBillingPaymentAttemptsForInvoice = query({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+    statuses: v.optional(v.array(billingPaymentAttemptStatusValidator)),
+  },
+  returns: v.array(billingPaymentAttemptRowValidator),
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    assertAdmin(viewer);
+
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    const statusSet = args.statuses ? new Set(args.statuses) : null;
+    const [student, classDoc, session, term] = await Promise.all([
+      ctx.db.get(invoice.studentId),
+      ctx.db.get(invoice.classId),
+      ctx.db.get(invoice.sessionId),
+      ctx.db.get(invoice.termId),
+    ]);
+    const studentUser = student?.userId ? await ctx.db.get(student.userId) : null;
+    const studentName = studentUser ? buildSchoolDisplayName(studentUser) : "Unknown student";
+    const className = classDoc
+      ? formatClassDisplayName({
+          gradeName: classDoc.gradeName,
+          classLabel: classDoc.classLabel,
+          name: classDoc.name,
+        })
+      : "Unknown class";
+    const sessionName = session?.name ?? "Unknown session";
+    const termName = term?.name ?? "Unknown term";
+    const attempts = await ctx.db
+      .query("billingPaymentAttempts")
+      .withIndex("by_school_and_invoice", (q: any) =>
+        q.eq("schoolId", viewer.schoolId).eq("invoiceId", args.invoiceId)
+      )
+      .order("desc")
+      .collect();
+
+    return attempts
+      .filter((attempt: any) => !statusSet || statusSet.has(attempt.status))
+      .map((attempt: any) => ({
+        attempt: billingPaymentAttemptDocToReturn(attempt),
+        invoiceNumber: getInvoiceDisplayName(invoice.invoiceNumber),
+        studentName,
+        className,
+        sessionName,
+        termName,
+      }));
+  },
+});
+
 export const upsertBillingSettings = mutation({
   args: billingSettingsUpdateValidator,
   returns: billingSettingsValidator,

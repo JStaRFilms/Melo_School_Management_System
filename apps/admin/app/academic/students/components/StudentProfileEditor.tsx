@@ -84,6 +84,7 @@ export function StudentProfileEditor({
   const [address, setAddress] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [clearPhoto, setClearPhoto] = useState(false);
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
 
@@ -101,6 +102,7 @@ export function StudentProfileEditor({
     setAddress(studentProfile.address ?? "");
     setPhotoFile(null);
     setClearPhoto(false);
+    setIsPhotoProcessing(false);
   }, [studentProfile]);
 
   const previewUrl = useMemo(() => {
@@ -254,6 +256,8 @@ export function StudentProfileEditor({
                 setPhotoFile(null);
                 setClearPhoto(true);
               }}
+              resetKey={studentProfile._id}
+              onProcessingChange={setIsPhotoProcessing}
               onValidationError={(m) => onNotice({ tone: "error", message: m })}
             />
 
@@ -296,11 +300,11 @@ export function StudentProfileEditor({
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={isSaving || isArchiving || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
+              disabled={isSaving || isArchiving || isPhotoProcessing || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
             >
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              <span>{isSaving ? "Saving Changes..." : "Save Identity"}</span>
+              <span>{isSaving ? "Saving Changes..." : isPhotoProcessing ? "Preparing photo..." : "Save Identity"}</span>
             </button>
             <button
               type="button"

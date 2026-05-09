@@ -11,7 +11,9 @@ interface SubjectSelectionMatrixProps {
   isIssueVisible: boolean;
   studentsWithNoSubjects: number;
   selectedStudentId?: string | null;
+  promotionStudentIds?: string[];
   onSelectStudent?: (studentId: string) => void;
+  onTogglePromotionStudent?: (studentId: string) => void;
   onOpenUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
@@ -24,7 +26,9 @@ export function SubjectSelectionMatrix({
   isIssueVisible,
   studentsWithNoSubjects,
   selectedStudentId,
+  promotionStudentIds = [],
   onSelectStudent,
+  onTogglePromotionStudent,
   onOpenUnifiedEditor,
   onToggle,
   onSetStudentSubjects,
@@ -76,7 +80,9 @@ export function SubjectSelectionMatrix({
                 matrix={matrix}
                 totalSubjects={totalSubjects}
                 selectedStudentId={selectedStudentId}
+                promotionStudentIds={promotionStudentIds}
                 onSelectStudent={onSelectStudent}
+                onTogglePromotionStudent={onTogglePromotionStudent}
                 openUnifiedEditor={onOpenUnifiedEditor}
               />
             </div>
@@ -84,7 +90,9 @@ export function SubjectSelectionMatrix({
               <SubjectSelectionDesktopTable
                 matrix={matrix}
                 selectedStudentId={selectedStudentId}
+                promotionStudentIds={promotionStudentIds}
                 onSelectStudent={onSelectStudent}
+                onTogglePromotionStudent={onTogglePromotionStudent}
                 onToggle={onToggle}
                 onSetStudentSubjects={onSetStudentSubjects}
               />

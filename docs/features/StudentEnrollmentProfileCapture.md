@@ -28,7 +28,7 @@ Allow admins to capture more student profile details at the moment a student is 
    - guardian phone
    - address
    - student photo
-4. If a photo is selected, the client validates that it is an image no larger than 1 MB, uploads it to storage, and includes the returned metadata in the create payload.
+4. If a photo is selected in the class-first form or profile editor, the client validates that it is an image no larger than 1 MB, lets the admin adjust a 3:4 passport crop, uploads the cropped image to storage, and includes the returned metadata in the create/update payload.
 5. Client submits the full payload to `createStudent`.
 6. Convex creates the linked `users` row and the `students` row with any provided optional profile data.
 7. After save, the UI shows:
@@ -63,6 +63,7 @@ Allow admins to capture more student profile details at the moment a student is 
 - Treat `gender` as required so admins do not have to fill it twice
 - Keep the other profile fields optional
 - Allow an optional report-card photo during creation, but reject files larger than 1 MB immediately
+- Let admins replace, crop, or remove student profile photos from the identity editor without changing the student onboarding route
 - After save, give a short warning that names the missing optional fields instead of blocking the workflow
 
 ## Regression Checks
@@ -72,10 +73,15 @@ Allow admins to capture more student profile details at the moment a student is 
 - Admin mobile add-student sheet still works
 - Student photos can now be uploaded during creation with the same image-only rules used by the profile editor
 - Editing a student profile later still works with the same field set
+- Cropped or removed photos stay scoped to the active school through the existing admin-only student update mutation
+- Student photos appear in the `/academic/students` roster matrix and report-card data returned by Convex
 
 ## Implemented Outcome
 - Student creation now captures `gender` up front as a required field.
 - Admins can optionally fill house, date of birth, guardian name, guardian phone, and address during creation.
 - Admins can also attach an optional student photo during creation, with a 1 MB file-size limit enforced before upload.
+- Class-first creation and profile editing now share a passport-style crop control before upload.
+- Profile editing supports replacing and removing the stored photo reference.
+- Student photos are loaded into the student matrix and continue to flow into report-card and portal-safe report-card data.
 - If optional details like house, guardian fields, address, or photo are skipped, save still succeeds and the UI shows a warning-style reminder listing the missing fields.
 - The same standardized gender choices now appear in the full profile editor.

@@ -9,6 +9,9 @@ Plus,
 Search,
 X,
 } from "lucide-react";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
 
 // Local Components
@@ -19,6 +22,7 @@ import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { FeePlanList } from "./components/FeePlanList";
 import { InvoiceTable } from "./components/InvoiceTable";
 import { PaymentTable } from "./components/PaymentTable";
+import { PrintableFinanceModal } from "./components/PrintableFinanceModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 
 // Hooks & Utils
@@ -54,6 +58,17 @@ sortPaymentRows,
 toggleSortDirection
 } from "./utils";
 
+type PaymentLinkActionResult = {
+  provider?: string;
+  reference?: string;
+  authorizationUrl?: string | null;
+  authorization_url?: string | null;
+  accessCode?: string | null;
+  access_code?: string | null;
+  checkoutPayload?: Record<string, unknown>;
+  checkout_payload?: Record<string, unknown>;
+};
+
 export default function BillingPage() {
   // 1. State Management
   const [activeTab, setActiveTab] = useState<BillingTab>("overview");
@@ -78,6 +93,10 @@ export default function BillingPage() {
   const [paymentLinkDraft, setPaymentLinkDraft] = useState<PaymentLinkDraft>(initialPaymentLinkDraft());
   const [generatedPaymentLink, setGeneratedPaymentLink] = useState<PaymentLinkResult | null>(null);
   const [selectedGatewayMode, setSelectedGatewayMode] = useState<"test" | "live">("test");
+  const [financePack, setFinancePack] = useState<{ mode: "invoice" | "statement"; invoiceId: string } | null>(null);
+  const [financePackPaymentEmail, setFinancePackPaymentEmail] = useState("");
+  const [financePackPaymentLinks, setFinancePackPaymentLinks] = useState<Record<string, PaymentLinkResult>>({});
+  const [isGeneratingFinancePackPaymentLink, setIsGeneratingFinancePackPaymentLink] = useState(false);
 
   const sidebarTitles: Record<string, string> = {
     arsenal: "Financial Hub",
@@ -96,6 +115,19 @@ export default function BillingPage() {
     classNameById, 
     applicationTerms 
   } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
+  const selectedFinanceInvoice = useMemo(
+    () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
+    [data?.invoices, financePack?.invoiceId]
+  );
+  const financePackReusableAttempts = useQuery(
+    api.functions.billing.listBillingPaymentAttemptsForInvoice,
+    selectedFinanceInvoice
+      ? {
+          invoiceId: selectedFinanceInvoice.invoice._id as Id<"studentInvoices">,
+          statuses: ["link_generated", "awaiting_payer_return"],
+        }
+      : "skip"
+  ) as NonNullable<typeof data>["paymentAttempts"] | undefined;
   const actions = useBillingActions(setNotice);
   const { sortPreferences, setSortPreferences } = useBillingSortPreferences();
 
@@ -119,6 +151,28 @@ export default function BillingPage() {
     () => sortPaymentRows(data?.payments ?? [], { key: "date", direction: "desc" }).slice(0, 5),
     [data?.payments]
   );
+  const selectedStudentBilling = useQuery(
+    api.functions.billing.listStudentInvoicesAndPayments,
+    selectedFinanceInvoice
+      ? { studentId: selectedFinanceInvoice.invoice.studentId as Id<"students"> }
+      : "skip"
+  ) as { invoices: NonNullable<typeof data>["invoices"]; payments: NonNullable<typeof data>["payments"] } | undefined;
+  const selectedStudentInvoices = selectedStudentBilling?.invoices ?? [];
+  const selectedStudentPayments = selectedStudentBilling?.payments ?? [];
+  const selectedInvoiceLatestPaymentAttempt = useMemo(() => {
+    if (!selectedFinanceInvoice || selectedFinanceInvoice.invoice.balanceDue <= 0) {
+      return null;
+    }
+
+    return (financePackReusableAttempts ?? [])
+      .filter((row) =>
+        row.attempt.invoiceId === selectedFinanceInvoice.invoice._id &&
+        row.attempt.authorizationUrl &&
+        row.attempt.currency === selectedFinanceInvoice.invoice.currency &&
+        Math.abs(row.attempt.amount - selectedFinanceInvoice.invoice.balanceDue) < 0.005
+      )
+      .sort((left, right) => right.attempt.createdAt - left.attempt.createdAt)[0] ?? null;
+  }, [financePackReusableAttempts, selectedFinanceInvoice]);
 
   const handleInvoiceSortChange = (key: InvoiceSortKey) => {
     setSortPreferences((current) => ({
@@ -231,7 +285,7 @@ export default function BillingPage() {
         email: paymentLinkDraft.email,
         description: paymentLinkDraft.description.trim() || fallbackDescription,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
-      } as never) as any;
+      } as never) as PaymentLinkActionResult;
 
       setGeneratedPaymentLink({
         provider: result?.provider ?? "paystack",
@@ -239,6 +293,8 @@ export default function BillingPage() {
         authorizationUrl: result?.authorizationUrl ?? result?.authorization_url ?? null,
         accessCode: result?.accessCode ?? result?.access_code ?? null,
         checkoutPayload: result?.checkoutPayload ?? result?.checkout_payload ?? {},
+        amount: Number(paymentLinkDraft.amount),
+        currency: selectedInvoice?.invoice.currency,
       });
     }, "Link Generated", "Unable to initialize Paystack session.");
     if (success) {
@@ -247,6 +303,62 @@ export default function BillingPage() {
         title: "Link Generated",
         message: "Payment link is ready. Copy it or open it from the handoff panel.",
       });
+    }
+  };
+
+  const handleOpenFinancePack = (mode: "invoice" | "statement", invoiceId: string) => {
+    setFinancePack({ mode, invoiceId });
+    setFinancePackPaymentEmail("");
+  };
+
+  const handleGenerateFinancePackPaymentLink = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!data || !selectedFinanceInvoice) {
+      return;
+    }
+    if (selectedFinanceInvoice.invoice.balanceDue <= 0) {
+      setNotice({
+        tone: "error",
+        title: "No Balance",
+        message: "This invoice has no outstanding balance to collect.",
+      });
+      return;
+    }
+
+    setIsGeneratingFinancePackPaymentLink(true);
+    let success = false;
+    try {
+      success = await actions.runAction(async () => {
+        const result = await actions.createInvoicePaymentLink({
+        schoolId: data.school.id,
+        invoiceId: selectedFinanceInvoice.invoice._id,
+        amount: selectedFinanceInvoice.invoice.balanceDue,
+        email: financePackPaymentEmail,
+        description: `Payment for ${selectedFinanceInvoice.invoice.invoiceNumber}`,
+        callbackUrl: `${window.location.origin}/payments/paystack/return`,
+        } as never) as PaymentLinkActionResult;
+
+        const nextPaymentLink: PaymentLinkResult = {
+        provider: result?.provider ?? "paystack",
+        reference: result?.reference ?? "",
+        authorizationUrl: result?.authorizationUrl ?? result?.authorization_url ?? null,
+        accessCode: result?.accessCode ?? result?.access_code ?? null,
+        checkoutPayload: result?.checkoutPayload ?? result?.checkout_payload ?? {},
+        amount: selectedFinanceInvoice.invoice.balanceDue,
+        currency: selectedFinanceInvoice.invoice.currency,
+        };
+
+        setFinancePackPaymentLinks((current) => ({
+          ...current,
+          [selectedFinanceInvoice.invoice._id]: nextPaymentLink,
+        }));
+      }, "Payment Link Ready", "Unable to generate a payment link for this invoice.");
+    } finally {
+      setIsGeneratingFinancePackPaymentLink(false);
+    }
+
+    if (success) {
+      setFinancePackPaymentEmail("");
     }
   };
 
@@ -375,6 +487,8 @@ export default function BillingPage() {
                            sortKey="date"
                            sortDirection="desc"
                            sortable={false}
+                           onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
+                           onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
                          />
                       </AdminSurface>
                    </div>
@@ -387,6 +501,8 @@ export default function BillingPage() {
                       sortKey={sortPreferences.invoices.key}
                       sortDirection={sortPreferences.invoices.direction}
                       onSortChange={handleInvoiceSortChange}
+                      onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
+                      onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
                     />
                   </AdminSurface>
                 )}
@@ -546,6 +662,23 @@ export default function BillingPage() {
           feePlans={data.feePlans}
         />
       </AdminSheet>
+
+      {financePack && selectedFinanceInvoice && (
+        <PrintableFinanceModal
+          mode={financePack.mode}
+          school={data.school}
+          invoice={selectedFinanceInvoice}
+          studentInvoices={selectedStudentInvoices}
+          studentPayments={selectedStudentPayments}
+          latestPaymentAttempt={selectedInvoiceLatestPaymentAttempt}
+          generatedPaymentLink={financePackPaymentLinks[selectedFinanceInvoice.invoice._id] ?? null}
+          paymentEmail={financePackPaymentEmail}
+          isGeneratingPaymentLink={isGeneratingFinancePackPaymentLink}
+          onPaymentEmailChange={setFinancePackPaymentEmail}
+          onGeneratePaymentLink={handleGenerateFinancePackPaymentLink}
+          onClose={() => setFinancePack(null)}
+        />
+      )}
     </main>
   );
 }

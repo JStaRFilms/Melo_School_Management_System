@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
   ReportCardBatchNavigator,
-  ReportCardPrintStack,
+  ReportCardBatchPrintStackV2,
   ReportCardPreview,
   ReportCardToolbar,
   ReportCardPrintBlockedNotice,
@@ -44,11 +44,18 @@ function TeacherReportCardPageContent() {
   const isPrintClassMode = searchParams.get("printClass") === "1";
   const searchParamsString = searchParams.toString();
   const hasTriggeredClassPrintRef = useRef(false);
+  const printRaf1Ref = useRef<number | null>(null);
+  const printRaf2Ref = useRef<number | null>(null);
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
     studentId && sessionId && termId
-      ? ({ studentId, sessionId, termId } as never)
+      ? ({
+          studentId,
+          sessionId,
+          termId,
+          ...(classIdParam ? { classId: classIdParam } : {}),
+        } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
@@ -106,15 +113,9 @@ function TeacherReportCardPageContent() {
     router.push(`${pathname}?${params.toString()}`);
   }, [pathname, resolvedClassId, router, searchParamsString]);
 
-  useEffect(() => {
-    hasTriggeredClassPrintRef.current = false;
-  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
-
-  useEffect(() => {
+  const handleBatchReady = useCallback(() => {
     if (
       !isPrintClassMode ||
-      classReportCards === undefined ||
-      classReportCards.length === 0 ||
       isClassPrintBlocked ||
       hasTriggeredClassPrintRef.current
     ) {
@@ -122,21 +123,39 @@ function TeacherReportCardPageContent() {
     }
 
     hasTriggeredClassPrintRef.current = true;
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 80);
+    printRaf1Ref.current = requestAnimationFrame(() => {
+      printRaf2Ref.current = requestAnimationFrame(() => {
+        window.print();
+      });
+    });
+  }, [isPrintClassMode, isClassPrintBlocked]);
+
+  // Reset the print trigger guard when context changes
+  useEffect(() => {
+    hasTriggeredClassPrintRef.current = false;
+  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
+
+  useEffect(() => {
+    if (isPrintClassMode) return;
+    if (printRaf1Ref.current !== null) cancelAnimationFrame(printRaf1Ref.current);
+    if (printRaf2Ref.current !== null) cancelAnimationFrame(printRaf2Ref.current);
+    printRaf1Ref.current = null;
+    printRaf2Ref.current = null;
+  }, [isPrintClassMode]);
+
+  // Handle afterprint to exit batch mode
+  useEffect(() => {
+    if (!isPrintClassMode) return;
 
     const handleAfterPrint = () => {
       exitFullClassPrint();
     };
 
     window.addEventListener("afterprint", handleAfterPrint);
-
     return () => {
-      window.clearTimeout(timer);
       window.removeEventListener("afterprint", handleAfterPrint);
     };
-  }, [classReportCards, exitFullClassPrint, isClassPrintBlocked, isPrintClassMode]);
+  }, [isPrintClassMode, exitFullClassPrint]);
 
   if (!studentId || !sessionId || !termId) {
     return (
@@ -192,9 +211,10 @@ function TeacherReportCardPageContent() {
             </div>
           </div>
         ) : (
-          <ReportCardPrintStack
+          <ReportCardBatchPrintStackV2
             reportCards={classReportCards}
             backHref="/assessments/exams/entry"
+            onReady={handleBatchReady}
           />
         )}
       </>

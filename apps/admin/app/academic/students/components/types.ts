@@ -16,6 +16,7 @@ export type EnrollmentMatrix = {
     _id: string;
     studentName: string;
     admissionNumber: string;
+    photoUrl: string | null;
     selectedSubjectIds: string[];
   }>;
 };

@@ -1,0 +1,66 @@
+# Task 10: Study App Discovery Brief
+
+## Agent Setup
+
+Do this first:
+- Read `../DevLog_Audit_Ledger.md`.
+- Read `docs/Project_Requirements.md`.
+- Read portal and knowledge hub docs.
+- Prime with Takomi `vibe-primeAgent`; use planning/discovery mode only.
+
+Use these skills where available:
+- `takomi`
+- `convex`
+- `nextjs-standards`
+- `sync-docs`
+
+
+## Model Routing
+
+- Strategy source: `docs/tasks/orchestrator-sessions/20260426-devlog-full-backlog/model_routing_strategy.md`.
+- Primary role: Architect.
+- Provider/model: `oauth-router/gpt-5.5`.
+- Reasoning effort: High.
+- Review provider/model: `oauth-router/gpt-5.5`.
+- Review reasoning effort: Medium.
+- Escalation: move to `oauth-router/gpt-5.5` High immediately if work becomes vague, risky, cross-file, architecture-heavy, debugging-heavy, security-sensitive, or regression-sensitive.
+- GPT-5.4 Mini High is allowed only for small, explicit, isolated subtasks carved out from this task.
+- Task note: Product/data-boundary discovery only; no code changes.
+
+## Objective
+
+Turn the standalone study app idea into a discovery brief, not an implementation task.
+
+## Scope
+
+- Define how a future study app could work independently while integrating with Melo schools when available.
+- Clarify identity models for standalone students, Melo students, parents, and school-linked accounts.
+- Identify shared knowledge, community, game-score, metrics, and portal integration boundaries.
+- Identify what must not be built in this DevLog session.
+
+## Required Output
+
+Create `docs/features/StandaloneStudyAppDiscovery.md`.
+
+## Acceptance Criteria
+
+- The brief separates standalone app capabilities from Melo-integrated capabilities.
+- Data ownership and privacy boundaries are explicit.
+- The brief lists open product questions for a future planning session.
+- No app code is changed.
+
+## Completion Notes
+
+- Status: Completed on 2026-05-08.
+- Created `docs/features/StandaloneStudyAppDiscovery.md` as a discovery-only brief.
+- Brief separates standalone learner capabilities from Melo-integrated school capabilities.
+- Brief defines standalone-owned, Melo school-owned, and shared/integrated data boundaries.
+- Brief records identity models for standalone learners, guardians, Melo students, Melo parents, hybrid learners, and school-linked cohorts.
+- Brief lists open product questions and future planning outputs required before implementation.
+- No app code, schema, route, or backend changes were made for Task 10.
+- Task 09 PDF Parser Upgrade was explicitly deferred by the user for a future session and was not completed as part of this task.
+
+## Verification
+
+- Documentation-only verification completed by reading required context and checking the created brief against Task 10 acceptance criteria.
+- No test/typecheck/build commands were required because no app code changed.

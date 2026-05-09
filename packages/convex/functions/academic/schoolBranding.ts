@@ -1,9 +1,48 @@
-import { mutation } from "../../_generated/server";
+import { mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
 } from "./auth";
+import { normalizeHumanName } from "@school/shared/name-format";
+
+const schoolBrandingThemeValidator = v.object({
+  primaryColor: v.string(),
+  accentColor: v.string(),
+});
+
+export const schoolBrandingSummaryValidator = v.object({
+  schoolId: v.id("schools"),
+  name: v.string(),
+  logoUrl: v.union(v.string(), v.null()),
+  theme: schoolBrandingThemeValidator,
+});
+
+function fallbackTheme() {
+  return {
+    primaryColor: "#020617",
+    accentColor: "#2563eb",
+  };
+}
+
+export const getCurrentSchoolBranding = query({
+  args: {},
+  returns: schoolBrandingSummaryValidator,
+  handler: async (ctx) => {
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const school = await ctx.db.get(schoolId);
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+
+    return {
+      schoolId,
+      name: normalizeHumanName(school.name),
+      logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+      theme: fallbackTheme(),
+    };
+  },
+});
 
 export const generateSchoolLogoUploadUrl = mutation({
   args: {},

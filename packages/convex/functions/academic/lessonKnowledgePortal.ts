@@ -100,26 +100,85 @@ const portalSupplementalFinalizeValidator = v.object({
   ),
 });
 
-async function getStudentPortalContext(ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0]) {
-  const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
-  if (role !== "student") {
-    throw new ConvexError("Portal topic pages are available to students only");
+async function getStudentPortalContext(
+  ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0],
+  args: { studentId?: Id<"students"> | null } = {}
+) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new ConvexError("Unauthorized");
   }
-  const user = await ctx.db.get(userId) as Doc<"users"> | null;
-  if (!user || user.schoolId !== schoolId) {
-    throw new ConvexError("Student account not found");
+
+  const memberships = (await ctx.db
+    .query("users")
+    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
+    .collect()) as Doc<"users">[];
+  const activeMemberships = memberships.filter((user) => !user.isArchived);
+  if (activeMemberships.length === 0) {
+    throw new ConvexError("Portal account not found");
   }
-  const studentRows = await ctx.db
-    .query("students")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .collect();
-  const student = studentRows.find(
-    (entry: Doc<"students">) => !entry.isArchived && String(entry.userId) === String(userId)
-  ) ?? null;
-  if (!student || student.isArchived) {
+
+  const studentMembership = activeMemberships.find((user) => user.role === "student");
+  if (studentMembership) {
+    const studentRows = await ctx.db
+      .query("students")
+      .withIndex("by_school", (q: any) => q.eq("schoolId", studentMembership.schoolId))
+      .collect();
+    const student = studentRows.find(
+      (entry: Doc<"students">) =>
+        !entry.isArchived &&
+        String(entry.userId) === String(studentMembership._id) &&
+        (!args.studentId || String(entry._id) === String(args.studentId))
+    ) ?? null;
+    if (!student) {
+      throw new ConvexError("Student record not found");
+    }
+    return {
+      userId: studentMembership._id,
+      schoolId: studentMembership.schoolId,
+      role: "student" as const,
+      isSchoolAdmin: false,
+      student,
+    };
+  }
+
+  const parentMemberships = activeMemberships.filter((user) => user.role === "parent");
+  if (parentMemberships.length === 0) {
+    throw new ConvexError("Portal topic pages are available to students and parents only");
+  }
+
+  const accessible: Array<{ student: Doc<"students">; parentUser: Doc<"users"> }> = [];
+  for (const parentUser of parentMemberships) {
+    const familyLinks = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", parentUser._id))
+      .collect();
+    for (const familyLink of familyLinks) {
+      const familyStudents = await ctx.db
+        .query("students")
+        .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
+        .collect();
+      for (const student of familyStudents) {
+        if (student.schoolId === parentUser.schoolId && !student.isArchived) {
+          accessible.push({ student: student as Doc<"students">, parentUser });
+        }
+      }
+    }
+  }
+
+  const selected = args.studentId
+    ? accessible.find((entry) => String(entry.student._id) === String(args.studentId)) ?? null
+    : accessible[0] ?? null;
+  if (!selected) {
     throw new ConvexError("Student record not found");
   }
-  return { userId, schoolId, role, isSchoolAdmin, student };
+  return {
+    userId: selected.parentUser._id,
+    schoolId: selected.student.schoolId,
+    role: "parent" as const,
+    isSchoolAdmin: false,
+    student: selected.student,
+  };
 }
 
 
@@ -150,10 +209,10 @@ async function patchPortalPromotionChunksForState(
 }
 
 export const getPortalTopicIndexData = query({
-  args: {},
+  args: { studentId: v.optional(v.union(v.id("students"), v.null())) },
   returns: portalTopicIndexDataValidator,
-  handler: async (ctx) => {
-    const { schoolId, student } = await getStudentPortalContext(ctx);
+  handler: async (ctx, args) => {
+    const { schoolId, student } = await getStudentPortalContext(ctx, { studentId: args.studentId ?? null });
     const classDoc = (await ctx.db.get(student.classId)) as Doc<"classes"> | null;
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Class not found");
@@ -197,10 +256,10 @@ export const getPortalTopicIndexData = query({
 });
 
 export const getPortalTopicPageData = query({
-  args: { topicId: v.id("knowledgeTopics") },
+  args: { topicId: v.id("knowledgeTopics"), studentId: v.optional(v.union(v.id("students"), v.null())) },
   returns: portalTopicPageDataValidator,
   handler: async (ctx, args) => {
-    const { schoolId, student } = await getStudentPortalContext(ctx);
+    const { schoolId, student } = await getStudentPortalContext(ctx, { studentId: args.studentId ?? null });
     const topic = (await ctx.db.get(args.topicId)) as Doc<"knowledgeTopics"> | null;
     if (!topic || topic.schoolId !== schoolId || topic.status !== "active") {
       throw new ConvexError("Topic not found");
@@ -232,6 +291,9 @@ export const getPortalTopicPageData = query({
     const studentLevel = (classDoc.gradeName ?? classDoc.name).trim().toLowerCase();
     const topicLevel = topic.level.trim().toLowerCase();
     const classEligible = studentLevel === topicLevel;
+    if (!classEligible) {
+      throw new ConvexError("Topic not found");
+    }
     const approvedMaterials = await Promise.all(
       classEligibleMaterials
         .filter((material) =>
@@ -265,6 +327,10 @@ export const getPortalTopicPageData = query({
             previewCharLimit: 320,
           });
 
+          const originalFileUrl = sourceProof.originalFileUrl
+            ? `${sourceProof.originalFileUrl}?studentId=${String(student._id)}`
+            : null;
+
           return {
             _id: material._id,
             title: material.title,
@@ -275,7 +341,10 @@ export const getPortalTopicPageData = query({
             externalUrl: material.externalUrl ?? null,
             topicId: material.topicId ?? null,
             classId: student.classId,
-            sourceProof,
+            sourceProof: {
+              ...sourceProof,
+              originalFileUrl,
+            },
           };
         })
     );
@@ -299,10 +368,11 @@ export const getPortalTopicPageData = query({
 export const getPortalKnowledgeMaterialOriginalFileAccess = query({
   args: {
     materialId: v.id("knowledgeMaterials"),
+    studentId: v.optional(v.union(v.id("students"), v.null())),
   },
   returns: knowledgeMaterialOriginalFileAccessValidator,
   handler: async (ctx, args) => {
-    const { schoolId, student } = await getStudentPortalContext(ctx);
+    const { schoolId, student } = await getStudentPortalContext(ctx, { studentId: args.studentId ?? null });
     const material = await ctx.db.get(args.materialId);
     if (!material) {
       throw new ConvexError("Knowledge material not found");
@@ -345,12 +415,13 @@ export const requestPortalSupplementalUploadUrl = mutation({
     description: v.optional(v.union(v.string(), v.null())),
     fileContentType: v.string(),
     fileSize: v.number(),
+    studentId: v.optional(v.union(v.id("students"), v.null())),
   },
   returns: portalSupplementalUploadUrlValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, student } = await getStudentPortalContext(ctx);
+    const { userId, schoolId, student } = await getStudentPortalContext(ctx, { studentId: args.studentId ?? null });
     const topic = (await ctx.db.get(args.topicId)) as Doc<"knowledgeTopics"> | null;
-    if (!topic || topic.schoolId !== schoolId) throw new ConvexError("Topic not found");
+    if (!topic || topic.schoolId !== schoolId || topic.status !== "active") throw new ConvexError("Topic not found");
     const classDoc = (await ctx.db.get(student.classId)) as Doc<"classes"> | null;
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Class not found");
@@ -442,10 +513,11 @@ export const finalizePortalSupplementalUpload = mutation({
   args: {
     materialId: v.id("knowledgeMaterials"),
     storageId: v.id("_storage"),
+    studentId: v.optional(v.union(v.id("students"), v.null())),
   },
   returns: portalSupplementalFinalizeValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, student } = await getStudentPortalContext(ctx);
+    const { userId, schoolId, student } = await getStudentPortalContext(ctx, { studentId: args.studentId ?? null });
     const material = await ctx.db.get(args.materialId);
     if (!material) {
       throw new ConvexError("Knowledge material not found");

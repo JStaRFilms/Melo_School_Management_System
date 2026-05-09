@@ -427,6 +427,28 @@ export default defineSchema({
     .index("by_class_and_session", ["classId", "sessionId"])
     .index("by_student_and_class_and_session", ["studentId", "classId", "sessionId"]),
 
+  studentPromotions: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    fromClassId: v.id("classes"),
+    toClassId: v.id("classes"),
+    fromSessionId: v.id("academicSessions"),
+    toSessionId: v.id("academicSessions"),
+    subjectEnrollmentMode: v.union(
+      v.literal("all_target_class_subjects"),
+      v.literal("matching_previous_subjects"),
+      v.literal("none")
+    ),
+    subjectEnrollmentCount: v.number(),
+    batchKey: v.string(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_school_and_created_at", ["schoolId", "createdAt"])
+    .index("by_to_class_and_to_session", ["toClassId", "toSessionId"]),
+
   studentSubjectAggregationOptOuts: defineTable({
     schoolId: v.id("schools"),
     studentId: v.id("students"),

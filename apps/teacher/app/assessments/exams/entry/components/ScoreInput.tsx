@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { ScoreField } from "@/lib/types";
 
 interface ScoreInputProps {
@@ -21,6 +22,7 @@ export function ScoreInput({
   validationError = null,
   disabled = false,
 }: ScoreInputProps) {
+  const errorId = useId();
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     if (raw === "") {
@@ -36,6 +38,7 @@ export function ScoreInput({
   };
 
   const hasError = validationError != null;
+  const errorDescriptionId = hasError ? errorId : undefined;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -51,6 +54,7 @@ export function ScoreInput({
         placeholder="--"
         aria-label={`${field} score`}
         aria-invalid={hasError}
+        aria-describedby={errorDescriptionId}
         title={validationError ?? undefined}
         className={`hidden md:block score-input ${hasError ? "error" : ""} ${
           isExamField ? "bg-amber-50/20 border-amber-200" : ""
@@ -68,11 +72,17 @@ export function ScoreInput({
         placeholder="--"
         aria-label={`${field} score`}
         aria-invalid={hasError}
+        aria-describedby={errorDescriptionId}
         title={validationError ?? undefined}
         className={`md:hidden score-input-mobile ${hasError ? "error" : ""} ${
           isExamField ? "bg-amber-50/20 border-amber-200" : ""
         } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
+      {hasError && (
+        <p id={errorId} role="alert" className="max-w-28 text-center text-[10px] font-semibold leading-tight text-rose-600">
+          {validationError}
+        </p>
+      )}
     </div>
   );
 }

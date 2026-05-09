@@ -80,3 +80,4 @@ It does **not** introduce new billing features, schema migrations, or UI workflo
 - Duplicate payment references differing only by whitespace or case normalization are rejected consistently.
 - Existing school scoping on payment lookup remains intact.
 - No schema migration is required for the fix.
+- Printable invoice payment-link generation continues to use the existing `initializeOnlinePayment` action and payment-attempt records, so reference normalization and reconciliation behavior remain centralized in the hardened billing flow.

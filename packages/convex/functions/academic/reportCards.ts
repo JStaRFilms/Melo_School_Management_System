@@ -86,18 +86,21 @@ function getTermOrderForSession(
 function resolveHistoricalSnapshot(
   historicalTotals: Array<{
     termId: Id<"academicTerms">;
+    classId: Id<"classes">;
     subjectId: Id<"subjects">;
     total: number;
     updatedAt: number;
     createdAt: number;
   }>,
   termId: Id<"academicTerms">,
-  subjectId: Id<"subjects">
+  subjectId: Id<"subjects">,
+  classId: Id<"classes">
 ) {
   const matching = historicalTotals.filter(
     (doc) =>
       String(doc.termId) === String(termId) &&
-      String(doc.subjectId) === String(subjectId)
+      String(doc.subjectId) === String(subjectId) &&
+      String(doc.classId) === String(classId)
   );
 
   const latest = pickMostRecentDoc(matching);
@@ -352,9 +355,11 @@ async function getStudentsForClassReportCardBatch(
     schoolId: Id<"schools">;
     classId: Id<"classes">;
     sessionId: Id<"academicSessions">;
+    termId: Id<"academicTerms">;
   }
 ) {
-  const [currentStudents, selectionDocs] = await Promise.all([
+  const [sessionDoc, currentStudents, selectionDocs, sessionRecords] = await Promise.all([
+    ctx.db.get(args.sessionId),
     ctx.db
       .query("students")
       .withIndex("by_school_and_class", (q: any) =>
@@ -367,14 +372,25 @@ async function getStudentsForClassReportCardBatch(
         q.eq("classId", args.classId).eq("sessionId", args.sessionId)
       )
       .collect(),
+    ctx.db
+      .query("assessmentRecords")
+      .withIndex("by_sheet", (q: any) =>
+        q.eq("schoolId", args.schoolId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("classId", args.classId)
+      )
+      .collect(),
   ]);
 
   const studentIds = new Set<string>();
-  for (const student of currentStudents) {
-    studentIds.add(String(student._id));
+  if (sessionDoc?.isActive) {
+    for (const student of currentStudents) {
+      studentIds.add(String(student._id));
+    }
   }
   for (const selection of selectionDocs) {
     studentIds.add(String(selection.studentId));
+  }
+  for (const record of sessionRecords) {
+    studentIds.add(String(record.studentId));
   }
 
   const students = (
@@ -467,12 +483,53 @@ export async function buildStudentReportCard(
         .eq("sessionId", args.sessionId)
     )
     .collect();
-  const records = allSessionRecords.filter(
+  const termRecords = allSessionRecords.filter(
     (record: any) => String(record.termId) === String(args.termId)
   );
+  const sessionSelectionDocs = await ctx.db
+    .query("studentSubjectSelections")
+    .withIndex("by_student_and_session", (q: any) =>
+      q.eq("studentId", args.studentId).eq("sessionId", args.sessionId)
+    )
+    .collect();
+  const selectionClassIds = [
+    ...new Set(sessionSelectionDocs.map((selection: any) => String(selection.classId))),
+  ];
 
+  const preferredClassId = args.preferredClassId;
+  const recordsForPreferredClass = preferredClassId
+    ? termRecords.filter((record: any) => String(record.classId) === String(preferredClassId))
+    : [];
+  const selectionsForPreferredClass = preferredClassId
+    ? sessionSelectionDocs.filter((selection: any) => String(selection.classId) === String(preferredClassId))
+    : [];
+  if (
+    preferredClassId &&
+    (!session.isActive || String(student.classId) !== String(preferredClassId)) &&
+    recordsForPreferredClass.length === 0 &&
+    selectionsForPreferredClass.length === 0
+  ) {
+    throw new ConvexError("Student has no report-card history in this class");
+  }
+
+  const latestTermRecord = [...termRecords].sort(
+    (a: any, b: any) =>
+      (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0)
+  )[0];
+  const currentClassTermRecord = termRecords.find(
+    (record: any) => String(record.classId) === String(student.classId)
+  );
   const reportCardClassId =
-    records[0]?.classId ?? args.preferredClassId ?? student.classId;
+    preferredClassId ??
+    (currentClassTermRecord?.classId ??
+      latestTermRecord?.classId ??
+      (selectionClassIds.length === 1
+        ? (selectionClassIds[0] as Id<"classes">)
+        : undefined) ??
+      student.classId);
+  const records = preferredClassId ? recordsForPreferredClass : termRecords.filter(
+    (record: any) => String(record.classId) === String(reportCardClassId)
+  );
 
   if (!args.skipRoleCheck) {
     if (args.role === "teacher") {
@@ -495,7 +552,6 @@ export async function buildStudentReportCard(
     classDoc,
     photoUrl,
     schoolLogoUrl,
-    selectionDocs,
     classSubjectDocs,
     settings,
     gradingBands,
@@ -511,12 +567,6 @@ export async function buildStudentReportCard(
     ctx.db.get(reportCardClassId),
     student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
     school.logoStorageId ? ctx.storage.getUrl(school.logoStorageId) : null,
-    ctx.db
-      .query("studentSubjectSelections")
-      .withIndex("by_student_and_session", (q: any) =>
-        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId)
-      )
-      .collect(),
     ctx.db
       .query("classSubjects")
       .withIndex("by_class", (q: any) => q.eq("classId", reportCardClassId))
@@ -591,9 +641,12 @@ export async function buildStudentReportCard(
   const studentName = getReadableUserName(studentUser);
   const classTeacherName = getReadableUserName(classTeacher);
 
+  const selectionDocsForClass = sessionSelectionDocs.filter(
+    (selection: any) => String(selection.classId) === String(reportCardClassId)
+  );
   const explicitSubjectIds =
-    selectionDocs.length > 0
-      ? selectionDocs.map((selection: any) => String(selection.subjectId))
+    selectionDocsForClass.length > 0
+      ? selectionDocsForClass.map((selection: any) => String(selection.subjectId))
       : classSubjectDocs.map((classSubject: any) => String(classSubject.subjectId));
   const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
     explicitSubjectIds,
@@ -634,10 +687,12 @@ export async function buildStudentReportCard(
     records.map((record: any) => [record.subjectId, record] as const)
   );
   const sessionRecordsByTermAndSubject = new Map<string, any>(
-    allSessionRecords.map((record: any) => [
-      `${String(record.termId)}:${String(record.subjectId)}`,
-      record,
-    ])
+    allSessionRecords
+      .filter((record: any) => String(record.classId) === String(reportCardClassId))
+      .map((record: any) => [
+        `${String(record.termId)}:${String(record.subjectId)}`,
+        record,
+      ])
   );
   const subjectsById = new Map<Id<"subjects">, (typeof subjects)[number]>(
     subjects.map((subject) => [subject._id, subject] as const)
@@ -711,9 +766,9 @@ export async function buildStudentReportCard(
       );
 
       const firstTermTotal = firstTermRecord?.total ??
-        resolveHistoricalSnapshot(historicalTermTotals, firstTermId, subject._id);
+        resolveHistoricalSnapshot(historicalTermTotals, firstTermId, subject._id, reportCardClassId);
       const secondTermTotal = secondTermRecord?.total ??
-        resolveHistoricalSnapshot(historicalTermTotals, secondTermId, subject._id);
+        resolveHistoricalSnapshot(historicalTermTotals, secondTermId, subject._id, reportCardClassId);
 
       return buildCumulativeResult({
         subject,
@@ -833,6 +888,7 @@ export const getStudentReportCard = query({
     studentId: v.id("students"),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
+    classId: v.optional(v.id("classes")),
   },
   returns: reportCardResultValidator,
   handler: async (ctx, args) => {
@@ -845,6 +901,7 @@ export const getStudentReportCard = query({
       studentId: args.studentId,
       sessionId: args.sessionId,
       termId: args.termId,
+      preferredClassId: args.classId,
     });
   },
 });
@@ -873,6 +930,7 @@ export const getStudentsForReportCardBatch = query({
       schoolId,
       classId: args.classId,
       sessionId: args.sessionId,
+      termId: args.termId,
     });
   },
 });
@@ -901,6 +959,7 @@ export const getClassReportCards = query({
       schoolId,
       classId: args.classId,
       sessionId: args.sessionId,
+      termId: args.termId,
     });
 
     if (roster.length === 0) {

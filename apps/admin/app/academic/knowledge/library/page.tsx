@@ -11,7 +11,6 @@ import {
   Sparkles,
   ShieldCheck,
   Search,
-  X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -21,6 +20,7 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SubjectRecord } from "@/types";
 
+import { FloatingNotice } from "../../students/components/FloatingNotice";
 import { KnowledgeLibraryFilters } from "./components/KnowledgeLibraryFilters";
 
 interface ClassOptionRecord {
@@ -269,7 +269,7 @@ export default function KnowledgeLibraryPage() {
         topicLabel: args.topicLabel,
         ...(args.topicId ? { topicId: args.topicId } : {}),
       } as never);
-      setNotice({ tone: "success", title: "Material updated", message: "Relabel changes were saved and the search snapshot was refreshed." });
+      setNotice({ tone: "success", title: "Material updated", message: "Material details were saved." });
     } catch (error) {
       setNotice({
         tone: "error",
@@ -358,7 +358,7 @@ export default function KnowledgeLibraryPage() {
         };
       });
 
-      setNotice({ tone: "success", title: "Material state updated", message: "Visibility and review status were synchronized through Convex." });
+      setNotice({ tone: "success", title: "Material state updated", message: "The material access settings were updated." });
     } catch (error) {
       setNotice({
         tone: "error",
@@ -369,6 +369,14 @@ export default function KnowledgeLibraryPage() {
     } finally {
       setIsSavingState(false);
     }
+  };
+
+  const handleArchiveMaterial = async (materialId: string) => {
+    await handleSaveState({
+      materialId,
+      visibility: "private_owner",
+      reviewStatus: "archived",
+    });
   };
 
   if (!subjects || !classes || !libraryData) {
@@ -434,6 +442,7 @@ export default function KnowledgeLibraryPage() {
           onSaveDetails={handleSaveDetails}
           onCreateTopic={handleCreateTopic}
           onSaveState={handleSaveState}
+          onArchiveMaterial={handleArchiveMaterial}
           onClose={() => setSelectedMaterialId(null)}
         />
       </AdminSheet>
@@ -450,6 +459,7 @@ export default function KnowledgeLibraryPage() {
             onSaveDetails={handleSaveDetails}
             onCreateTopic={handleCreateTopic}
             onSaveState={handleSaveState}
+            onArchiveMaterial={handleArchiveMaterial}
             onClose={() => setSelectedMaterialId(null)}
           />
         </aside>
@@ -484,23 +494,7 @@ export default function KnowledgeLibraryPage() {
               />
             </div>
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-3 shadow-lg transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-[13px] font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button onClick={() => setNotice(null)} className="rounded-full p-1.5 hover:bg-slate-50 transition-colors">
-                    <X className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
+            <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
 
             <div className="space-y-2.5">
               {!isMobile ? (

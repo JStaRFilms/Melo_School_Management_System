@@ -55,6 +55,7 @@ export default function StudentOnboardingPage() {
   const [address, setAddress] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
+  const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [parentFirstName, setParentFirstName] = useState("");
   const [parentLastName, setParentLastName] = useState("");
   const [parentEmail, setParentEmail] = useState("");
@@ -128,6 +129,7 @@ export default function StudentOnboardingPage() {
     setAddress("");
     setSelectedClassId("");
     setStudentPhotoFile(null);
+    setStudentPhotoResetKey((key) => key + 1);
     setParentFirstName("");
     setParentLastName("");
     setParentEmail("");
@@ -331,6 +333,7 @@ export default function StudentOnboardingPage() {
         parentTemporaryPassword={parentTemporaryPassword}
         credentialSummary={credentialSummary}
         photoPreviewUrl={photoPreviewUrl}
+        photoResetKey={studentPhotoResetKey}
         isSubmitting={isSubmitting}
         firstNameInputRef={firstNameInputRef}
         onFirstNameChange={(value) => setFirstName(humanNameTypingStrict(value))}

@@ -8,7 +8,7 @@ function getConvexUrl() {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ materialId: string }> }
 ) {
   const token = await getToken();
@@ -22,13 +22,14 @@ export async function GET(
   }
 
   const { materialId } = await context.params;
+  const studentId = new URL(request.url).searchParams.get("studentId");
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
 
   try {
     const access = await client.query(
       api.functions.academic.lessonKnowledgePortal.getPortalKnowledgeMaterialOriginalFileAccess,
-      { materialId: materialId as never }
+      { materialId: materialId as never, studentId: studentId as never }
     );
 
     const upstream = await fetch(access.downloadUrl, { cache: "no-store" });

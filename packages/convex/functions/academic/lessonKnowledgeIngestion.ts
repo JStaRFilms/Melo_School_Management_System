@@ -6,7 +6,11 @@ import {
   mutation,
   type MutationCtx,
 } from "../../_generated/server";
-import { getAuthenticatedSchoolMembership } from "./auth";
+import {
+  getAuthenticatedSchoolMembership,
+  getTeacherAssignableClassIds,
+  getTeacherAssignableSubjectIds,
+} from "./auth";
 import {
   assertActiveKnowledgeSubjectTopicScope,
   assertKnowledgeMaterialIngestionAccess,
@@ -139,6 +143,57 @@ function normalizeRequiredText(value: string, label: string): string {
   }
 
   return normalized;
+}
+
+function normalizeLevelKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+async function assertTeacherKnowledgeContextAssignment(
+  ctx: Pick<MutationCtx, "db">,
+  args: {
+    actorUserId: Id<"users">;
+    schoolId: Id<"schools">;
+    actorRole: "teacher" | "admin";
+    isSchoolAdmin: boolean;
+    subjectId?: Id<"subjects"> | null;
+    level: string;
+  }
+) {
+  if (args.isSchoolAdmin || args.actorRole === "admin") {
+    return;
+  }
+
+  if (!args.subjectId) {
+    throw new ConvexError("Teachers must choose an assigned subject for uploads");
+  }
+
+  const classIds = await getTeacherAssignableClassIds(ctx, args.actorUserId, args.schoolId);
+  for (const classId of classIds) {
+    const classDoc = await ctx.db.get(classId);
+    if (!classDoc || classDoc.schoolId !== args.schoolId || classDoc.isArchived) {
+      continue;
+    }
+
+    const classLevels = [classDoc.gradeName, classDoc.level, classDoc.name]
+      .map((value) => normalizeLevelKey(value ?? ""))
+      .filter(Boolean);
+    if (!classLevels.includes(normalizeLevelKey(args.level))) {
+      continue;
+    }
+
+    const subjectIds = await getTeacherAssignableSubjectIds(
+      ctx,
+      args.actorUserId,
+      args.schoolId,
+      classDoc._id
+    );
+    if (subjectIds.some((subjectId) => String(subjectId) === String(args.subjectId))) {
+      return;
+    }
+  }
+
+  throw new ConvexError("This material must match one of your assigned class and subject contexts");
 }
 
 function assertUploadFinalizationPermission(args: {
@@ -403,6 +458,10 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       throw new ConvexError("Knowledge material ingestion is restricted to staff");
     }
 
+    if (!args.subjectId && actorRole === "teacher") {
+      throw new ConvexError("Teachers must choose an assigned subject for uploads");
+    }
+
     if (sourceType !== "imported_curriculum" && !args.subjectId) {
       throw new ConvexError("Subject is required unless this upload is a curriculum or planning reference");
     }
@@ -412,6 +471,14 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       subjectId: args.subjectId ?? null,
       level,
       topicId: args.topicId ?? null,
+    });
+    await assertTeacherKnowledgeContextAssignment(ctx, {
+      actorUserId: userId,
+      schoolId,
+      actorRole,
+      isSchoolAdmin,
+      subjectId: args.subjectId ?? null,
+      level,
     });
 
     const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
@@ -656,6 +723,14 @@ export const registerKnowledgeMaterialLink = mutation({
       subjectId: args.subjectId,
       level,
       topicId: args.topicId ?? null,
+    });
+    await assertTeacherKnowledgeContextAssignment(ctx, {
+      actorUserId: userId,
+      schoolId,
+      actorRole,
+      isSchoolAdmin,
+      subjectId: args.subjectId,
+      level,
     });
 
     await assertLessonKnowledgeRateLimit(ctx, {

@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import { humanNameFinalStrict } from "@/human-name";
 
 import type { EnrollmentMatrix } from "./types";
@@ -7,7 +9,9 @@ import type { EnrollmentMatrix } from "./types";
 interface SubjectSelectionDesktopTableProps {
   matrix: EnrollmentMatrix;
   selectedStudentId?: string | null;
+  promotionStudentIds?: string[];
   onSelectStudent?: (studentId: string) => void;
+  onTogglePromotionStudent?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -15,11 +19,14 @@ interface SubjectSelectionDesktopTableProps {
 export function SubjectSelectionDesktopTable({
   matrix,
   selectedStudentId,
+  promotionStudentIds = [],
   onSelectStudent,
+  onTogglePromotionStudent,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionDesktopTableProps) {
   const allSubjectIds = matrix.subjects.map((subject) => subject._id);
+  const promotionStudentIdSet = new Set(promotionStudentIds);
 
   return (
     <div className="relative overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
@@ -40,18 +47,39 @@ export function SubjectSelectionDesktopTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {matrix.students.map((student) => (
+          {matrix.students.map((student) => {
+            const isSelectedForPromotion = promotionStudentIdSet.has(student._id);
+
+            return (
             <tr
               key={student._id}
               className={`transition-colors hover:bg-slate-50 ${
                 selectedStudentId === student._id ? "bg-indigo-50/60" : ""
-              }`}
+              } ${isSelectedForPromotion ? "ring-1 ring-inset ring-indigo-200" : ""}`}
             >
               <td className="sticky left-0 z-20 border-r-2 border-r-slate-100 bg-white p-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400">
-                    {studentInitials(humanNameFinalStrict(student.studentName))}
-                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isSelectedForPromotion}
+                    onChange={() => onTogglePromotionStudent?.(student._id)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    aria-label={`Select ${student.studentName} for promotion`}
+                  />
+                  {student.photoUrl ? (
+                    <Image
+                      src={student.photoUrl}
+                      alt={student.studentName}
+                      width={40}
+                      height={40}
+                      unoptimized
+                      className="h-10 w-10 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400">
+                      {studentInitials(humanNameFinalStrict(student.studentName))}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="truncate">
                       <button
@@ -135,7 +163,8 @@ export function SubjectSelectionDesktopTable({
                 );
               })}
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>

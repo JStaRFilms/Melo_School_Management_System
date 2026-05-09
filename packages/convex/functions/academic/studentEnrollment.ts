@@ -126,11 +126,14 @@ function normalizeGender(
   throw new ConvexError("Select a valid gender");
 }
 
-function getValidatedPhotoMetadata(args: {
-  photoStorageId?: Id<"_storage"> | null;
-  photoFileName?: string | null;
-  photoContentType?: string | null;
-}) {
+async function getValidatedPhotoMetadata(
+  ctx: { db: { system: { get: (id: Id<"_storage">) => Promise<any> } } },
+  args: {
+    photoStorageId?: Id<"_storage"> | null;
+    photoFileName?: string | null;
+    photoContentType?: string | null;
+  }
+) {
   if (
     args.photoStorageId === undefined &&
     (args.photoFileName !== undefined || args.photoContentType !== undefined)
@@ -142,14 +145,20 @@ function getValidatedPhotoMetadata(args: {
     return null;
   }
 
-  const fileName = args.photoFileName?.trim();
-  const contentType = args.photoContentType?.trim();
-  if (!fileName || !contentType) {
-    throw new ConvexError("Photo upload metadata is incomplete");
+  const storageDoc = await ctx.db.system.get(args.photoStorageId);
+  if (!storageDoc) {
+    throw new ConvexError("Uploaded student photo was not found");
   }
 
-  if (!contentType.startsWith("image/")) {
-    throw new ConvexError("Student photo must be an image file");
+  const fileName = args.photoFileName?.trim() || storageDoc.name || "student-photo";
+  const contentType = String(storageDoc.contentType ?? args.photoContentType ?? "").trim();
+  const allowedContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!allowedContentTypes.has(contentType)) {
+    throw new ConvexError("Student photo must be a JPG, PNG, or WebP image");
+  }
+
+  if (typeof storageDoc.size !== "number" || storageDoc.size > 1_048_576) {
+    throw new ConvexError("Student photo must be 1 MB or smaller");
   }
 
   return {
@@ -420,7 +429,7 @@ export const createStudent = mutation({
     const guardianName = normalizeOptionalText(args.guardianName);
     const guardianPhone = normalizeOptionalText(args.guardianPhone);
     const address = normalizeOptionalText(args.address);
-    const photoMetadata = getValidatedPhotoMetadata(args);
+    const photoMetadata = await getValidatedPhotoMetadata(ctx, args);
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
@@ -678,7 +687,7 @@ export const updateStudent = mutation({
         .replace(/[^a-zA-Z0-9]/g, "")
         .toLowerCase()}@students.local`;
     }
-    const uploadedPhotoMetadata = getValidatedPhotoMetadata(args);
+    const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
 
     const nextStudentRecord: any = {
       schoolId: student.schoolId,
@@ -984,6 +993,210 @@ export const restoreStudent = mutation({
   },
 });
 
+
+const promotionSubjectEnrollmentModeValidator = v.union(
+  v.literal("all_target_class_subjects"),
+  v.literal("matching_previous_subjects"),
+  v.literal("none")
+);
+
+async function listActiveSubjectIdsForClass(
+  ctx: any,
+  args: { schoolId: Id<"schools">; classId: Id<"classes"> }
+) {
+  const offerings = await ctx.db
+    .query("classSubjects")
+    .withIndex("by_class", (q: any) => q.eq("classId", args.classId))
+    .collect();
+
+  const subjectIds: Array<Id<"subjects">> = [];
+  const seen = new Set<string>();
+
+  for (const offering of offerings) {
+    const subject = await ctx.db.get(offering.subjectId);
+    const subjectKey = String(offering.subjectId);
+    if (
+      !subject ||
+      subject.schoolId !== args.schoolId ||
+      subject.isArchived ||
+      seen.has(subjectKey)
+    ) {
+      continue;
+    }
+
+    subjectIds.push(offering.subjectId);
+    seen.add(subjectKey);
+  }
+
+  return subjectIds;
+}
+
+export const promoteStudents = mutation({
+  args: {
+    studentIds: v.array(v.id("students")),
+    fromClassId: v.id("classes"),
+    fromSessionId: v.id("academicSessions"),
+    toClassId: v.id("classes"),
+    toSessionId: v.id("academicSessions"),
+    subjectEnrollmentMode: promotionSubjectEnrollmentModeValidator,
+  },
+  returns: v.object({
+    promotedCount: v.number(),
+    subjectSelectionCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const uniqueStudentIds = [...new Set(args.studentIds.map((id) => String(id)))] as Array<Id<"students">>;
+    if (uniqueStudentIds.length === 0) {
+      throw new ConvexError("Select at least one student to promote");
+    }
+    if (uniqueStudentIds.length > 100) {
+      throw new ConvexError("Promote 100 students or fewer at a time");
+    }
+    if (
+      String(args.fromClassId) === String(args.toClassId) &&
+      String(args.fromSessionId) === String(args.toSessionId)
+    ) {
+      throw new ConvexError("Choose a different target class or session");
+    }
+
+    const [fromClass, toClass, fromSession, toSession] = await Promise.all([
+      ctx.db.get(args.fromClassId),
+      ctx.db.get(args.toClassId),
+      ctx.db.get(args.fromSessionId),
+      ctx.db.get(args.toSessionId),
+    ]);
+
+    if (!fromClass || fromClass.schoolId !== schoolId || fromClass.isArchived) {
+      throw new ConvexError("Source class is not available");
+    }
+    if (!toClass || toClass.schoolId !== schoolId || toClass.isArchived) {
+      throw new ConvexError("Target class is not available");
+    }
+    if (!fromSession || fromSession.schoolId !== schoolId || fromSession.isArchived) {
+      throw new ConvexError("Source session is not available");
+    }
+    if (!toSession || toSession.schoolId !== schoolId || toSession.isArchived) {
+      throw new ConvexError("Target session is not available");
+    }
+
+    const targetClassSubjectIds = await listActiveSubjectIdsForClass(ctx, {
+      schoolId,
+      classId: args.toClassId,
+    });
+    const targetClassSubjectIdSet = new Set(
+      targetClassSubjectIds.map((subjectId) => String(subjectId))
+    );
+    const now = Date.now();
+    const batchKey = `${now}:${String(args.fromClassId)}:${String(args.toClassId)}`;
+    let promotedCount = 0;
+    let subjectSelectionCount = 0;
+
+    for (const studentId of uniqueStudentIds) {
+      const student = await ctx.db.get(studentId);
+      if (!student || student.schoolId !== schoolId || student.isArchived) {
+        throw new ConvexError("One selected student is not available");
+      }
+
+      const studentUser = await ctx.db.get(student.userId);
+      if (!studentUser || studentUser.schoolId !== schoolId || studentUser.isArchived) {
+        throw new ConvexError("One selected student account is not available");
+      }
+
+      if (String(student.classId) !== String(args.fromClassId)) {
+        throw new ConvexError(
+          "Only students currently enrolled in the selected source class can be promoted"
+        );
+      }
+
+      const previousSelections = await ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_student_and_class_and_session", (q: any) =>
+          q
+            .eq("studentId", studentId)
+            .eq("classId", args.fromClassId)
+            .eq("sessionId", args.fromSessionId)
+        )
+        .collect();
+      const existingTargetSelections = await ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_student_and_class_and_session", (q: any) =>
+          q
+            .eq("studentId", studentId)
+            .eq("classId", args.toClassId)
+            .eq("sessionId", args.toSessionId)
+        )
+        .collect();
+      const existingTargetSubjectIds = new Set(
+        existingTargetSelections.map((selection: any) => String(selection.subjectId))
+      );
+
+      const subjectIdsToEnroll =
+        args.subjectEnrollmentMode === "all_target_class_subjects"
+          ? targetClassSubjectIds
+          : args.subjectEnrollmentMode === "matching_previous_subjects"
+            ? previousSelections
+                .map((selection: any) => selection.subjectId as Id<"subjects">)
+                .filter((subjectId: Id<"subjects">) =>
+                  targetClassSubjectIdSet.has(String(subjectId))
+                )
+            : [];
+
+      const uniqueSubjectIdsToEnroll = [
+        ...new Set(subjectIdsToEnroll.map((subjectId) => String(subjectId))),
+      ] as Array<Id<"subjects">>;
+
+      if (String(args.fromSessionId) === String(args.toSessionId)) {
+        await ctx.db.patch(studentId, {
+          classId: args.toClassId,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.patch(studentId, { updatedAt: now });
+      }
+
+      let insertedForStudent = 0;
+      for (const subjectId of uniqueSubjectIdsToEnroll) {
+        if (existingTargetSubjectIds.has(String(subjectId))) {
+          continue;
+        }
+
+        await ctx.db.insert("studentSubjectSelections", {
+          schoolId,
+          studentId,
+          classId: args.toClassId,
+          subjectId,
+          sessionId: args.toSessionId,
+          createdAt: now,
+          updatedAt: now,
+        });
+        insertedForStudent += 1;
+      }
+
+      await ctx.db.insert("studentPromotions", {
+        schoolId,
+        studentId,
+        fromClassId: args.fromClassId,
+        toClassId: args.toClassId,
+        fromSessionId: args.fromSessionId,
+        toSessionId: args.toSessionId,
+        subjectEnrollmentMode: args.subjectEnrollmentMode,
+        subjectEnrollmentCount: insertedForStudent,
+        batchKey,
+        createdAt: now,
+        createdBy: userId,
+      });
+
+      promotedCount += 1;
+      subjectSelectionCount += insertedForStudent;
+    }
+
+    return { promotedCount, subjectSelectionCount };
+  },
+});
+
 // ==================== STUDENT SUBJECT ENROLLMENT ====================
 
 export const setStudentSubjectSelections = mutation({
@@ -1245,6 +1458,7 @@ export const getClassStudentSubjectMatrix = query({
         _id: v.id("students"),
         studentName: v.string(),
         admissionNumber: v.string(),
+        photoUrl: v.union(v.string(), v.null()),
         selectedSubjectIds: v.array(v.id("subjects")),
       })
     ),
@@ -1269,9 +1483,15 @@ export const getClassStudentSubjectMatrix = query({
       throw new ConvexError("Admin or teacher access required");
     }
 
-    const classDoc = await ctx.db.get(args.classId);
+    const [classDoc, sessionDoc] = await Promise.all([
+      ctx.db.get(args.classId),
+      ctx.db.get(args.sessionId),
+    ]);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Cross-school access denied");
+    }
+    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
+      throw new ConvexError("Selected session is not available");
     }
 
     // Get subjects offered in this class
@@ -1344,7 +1564,10 @@ export const getClassStudentSubjectMatrix = query({
       .filter((student) => !student.isArchived)
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
         .map(async (student) => {
-          const studentUser = await ctx.db.get(student.userId);
+          const [studentUser, photoUrl] = await Promise.all([
+            ctx.db.get(student.userId),
+            student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+          ]);
           const studentName = getReadableUserName(studentUser);
           const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
             explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
@@ -1355,6 +1578,7 @@ export const getClassStudentSubjectMatrix = query({
             _id: student._id,
             studentName: studentName.displayName || "Unnamed Student",
             admissionNumber: student.admissionNumber,
+            photoUrl,
             selectedSubjectIds: Array.from(effectiveSubjectIds)
               .filter((id) => visibleSubjectIds.has(id))
               .map((id) => id as any),

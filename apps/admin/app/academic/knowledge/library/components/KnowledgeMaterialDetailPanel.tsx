@@ -14,9 +14,7 @@ import {
   FileText,
   Link2,
   Save,
-  ScanText,
   Shield,
-  ShieldAlert,
   Sparkles,
   Trash2,
   XCircle,
@@ -199,7 +197,6 @@ export function KnowledgeMaterialDetailPanel({
   const [topicId, setTopicId] = useState("");
   const [visibility, setVisibility] = useState<KnowledgeMaterialVisibility>("staff_shared");
   const [reviewStatus, setReviewStatus] = useState<KnowledgeMaterialReviewStatus>("draft");
-  const [localNotice, setLocalNotice] = useState<string | null>(null);
   const [showFullText, setShowFullText] = useState(false);
 
   useEffect(() => {
@@ -215,7 +212,6 @@ export function KnowledgeMaterialDetailPanel({
     setTopicId(material.topicId ?? "");
     setVisibility(material.visibility);
     setReviewStatus(material.reviewStatus);
-    setLocalNotice(null);
   }, [material]);
 
   const sourceProof = detail?.material.sourceProof ?? null;
@@ -224,44 +220,60 @@ export function KnowledgeMaterialDetailPanel({
 
   const handleReview = async (status: KnowledgeMaterialReviewStatus) => {
     if (!material) return;
-    setLocalNotice(null);
     try {
       await onSaveState({
         materialId: material._id,
         reviewStatus: status,
       });
       setReviewStatus(status);
-      setLocalNotice(`Status set to ${status}.`);
     } catch {
-      setLocalNotice("Review action failed.");
+      // Parent toast handles the error.
     }
   };
 
   const handleVisibility = async (v: KnowledgeMaterialVisibility) => {
     if (!material) return;
-    setLocalNotice(null);
     try {
       await onSaveState({
         materialId: material._id,
         visibility: v,
       });
       setVisibility(v);
-      setLocalNotice(`Visibility set to ${v.replace(/_/g, " ")}.`);
     } catch {
-      setLocalNotice("Visibility update failed.");
+      // Parent toast handles the error.
     }
   };
 
   const handleArchive = async () => {
-    if (!material || !onArchiveMaterial) return;
-    if (!window.confirm("Archive this material? This will remove it from all libraries.")) return;
-    
-    setLocalNotice(null);
+    if (!material || !onArchiveMaterial || material.reviewStatus === "archived") return;
+    if (!window.confirm("Archive this material? It will be hidden from staff and student library views.")) return;
+
     try {
       await onArchiveMaterial(material._id);
       onClose?.();
     } catch {
-      setLocalNotice("Archive failed.");
+      // Parent toast handles the error.
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!material) return;
+    const latestArchiveEvent = [...auditEvents]
+      .filter((event) => event.eventType === "archived")
+      .sort((left, right) => right.createdAt - left.createdAt)[0];
+    const restoredVisibility = latestArchiveEvent?.beforeVisibility ?? "staff_shared";
+    const restoredReviewStatus = latestArchiveEvent?.beforeReviewStatus ?? "pending_review";
+
+    try {
+      await onSaveState({
+        materialId: material._id,
+        reviewStatus: restoredReviewStatus,
+        visibility: restoredVisibility,
+      });
+      setReviewStatus(restoredReviewStatus);
+      setVisibility(restoredVisibility);
+    } catch {
+      // Parent toast handles the error.
     }
   };
 
@@ -293,12 +305,6 @@ export function KnowledgeMaterialDetailPanel({
         </div>
       )}
 
-      {localNotice && (
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700">
-          {localNotice}
-        </div>
-      )}
-
       {/* Content & Source Access */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
@@ -307,32 +313,40 @@ export function KnowledgeMaterialDetailPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          {sourceProof?.originalFileUrl && (
-            <a
-              href={sourceProof.originalFileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
-            >
-              <FileText className="h-4 w-4 text-indigo-500" />
-              Open Source
-            </a>
-          )}
-          {material.externalUrl && (
-            <a
-              href={material.externalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
-            >
-              <Link2 className="h-4 w-4 text-blue-500" />
-              External Link
-            </a>
-          )}
-          {!sourceProof?.originalFileUrl && !material.externalUrl && (
-             <div className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                No external source linked
-             </div>
+          {material.reviewStatus === "archived" ? (
+            <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Archived materials are hidden from library access. Restore this record to reopen source links.
+            </div>
+          ) : (
+            <>
+              {sourceProof?.originalFileUrl && (
+                <a
+                  href={sourceProof.originalFileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
+                >
+                  <FileText className="h-4 w-4 text-indigo-500" />
+                  Open Source
+                </a>
+              )}
+              {material.externalUrl && (
+                <a
+                  href={material.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md"
+                >
+                  <Link2 className="h-4 w-4 text-blue-500" />
+                  External Link
+                </a>
+              )}
+              {!sourceProof?.originalFileUrl && !material.externalUrl && (
+                <div className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  No external source linked
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -551,14 +565,25 @@ export function KnowledgeMaterialDetailPanel({
 
       {/* Destructive */}
       <div className="pt-4 border-t border-slate-100">
-        <button
-          onClick={handleArchive}
-          disabled={isActionLoading}
-          className="flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-4 text-[9px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-100 disabled:opacity-30"
-        >
-          <Trash2 className="h-3 w-3" />
-          Archive Record
-        </button>
+        {material.reviewStatus === "archived" ? (
+          <button
+            onClick={handleRestore}
+            disabled={isActionLoading || isSavingState}
+            className="flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-4 text-[9px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-30"
+          >
+            <Archive className="h-3 w-3" />
+            Restore Record
+          </button>
+        ) : (
+          <button
+            onClick={handleArchive}
+            disabled={isActionLoading || isSavingState}
+            className="flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-4 text-[9px] font-black uppercase tracking-widest text-rose-600 transition hover:bg-rose-100 disabled:opacity-30"
+          >
+            <Trash2 className="h-3 w-3" />
+            Archive Record
+          </button>
+        )}
       </div>
     </div>
   );
