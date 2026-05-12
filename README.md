@@ -1,4 +1,4 @@
-# School Management System
+# School Management System 
 
 A multi-tenant school management platform for academic administration, teacher workflows, parent/student portals, public school sites, billing, and AI-assisted lesson planning. The project is a pnpm/Turborepo monorepo with Next.js apps and a Convex backend.
 
