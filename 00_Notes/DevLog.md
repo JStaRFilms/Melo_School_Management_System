@@ -98,3 +98,26 @@ Next batch:
 - Portal: the entire knowledge system at the bottom.
 
 - [ ] we need to upgrade the PDF parser cuz rn it's too mid
+
+---
+ - [ ] The main website is mostly just words we need to clean it up and make sure I actually like it and it means something and it's functional and allt he links work and the user flow makes sense including the sub pages.
+
+ - [ ] Make the Book demo stuff actually work
+
+ - [ ] Work on SEO of the main site
+
+ - [ ] We need a logo for the platform that we will use as the default for the browser previews and the default text that shows as meta data when you share a link to the site, I am not sure if we can get an automatic one incase we are sharing something about a school like student sharing pages or admins sharing urls between eachother so the the about changes, it's not really necceary but I would like to push it to the extreme without any major downside hehe
+
+ - [ ] Make the App icon on the browser and the name change depending on what school is signed in
+
+ - [ ] I should consider making a youtube video about the App
+
+ - [ ] make the default entry page for the teacher app to be /planning
+
+ - [ ] I need clarification on how the promotion stuff works
+
+ - [ ] Fix the /admin/dashboard UI of the admin page
+
+ - [ ] Figure out the customization of the emails that are used for the students by default esspecially the fact that it's .local lmao, look at the possiblility of making it a real email i.e if they can actualy have a real inbox and what not, can we make it customizeable so that if a school had aother email provider they can easily do it, tbh I don't know how to make it normally like what's the standard and what not
+
+ - [ ] 

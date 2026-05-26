@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Melo School OS — Brand Direction Board</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+      --paper: #fafaf8;
+      --paper-2: #f3f0ea;
+      --ink: #0a0a0a;
+      --stone: #1c1917;
+      --muted: #706a61;
+      --border: #e7e5e4;
+      --gold: #ca8a04;
+      --gold-2: #b28730;
+      --spruce: #143a2f;
+      --navy: #0b132b;
+      --slate: #0f172a;
+      --white: #ffffff;
+      --shadow: 0 30px 90px rgba(10, 10, 10, 0.16);
+      --radius: 30px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(202, 138, 4, 0.13), transparent 26%),
+        radial-gradient(circle at 85% 0%, rgba(20, 58, 47, 0.12), transparent 24%),
+        linear-gradient(rgba(10, 10, 10, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(10, 10, 10, 0.025) 1px, transparent 1px);
+      background-size: auto, auto, 48px 48px, 48px 48px;
+      z-index: -2;
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.22;
+      z-index: -1;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.22'/%3E%3C/svg%3E");
+      mix-blend-mode: multiply;
+    }
+
+    .wrap {
+      width: min(1180px, calc(100vw - 36px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 16px;
+      z-index: 20;
+      width: min(980px, calc(100vw - 32px));
+      margin: 16px auto 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 12px 10px 16px;
+      border: 1px solid rgba(231, 229, 228, 0.78);
+      border-radius: 999px;
+      background: rgba(250, 250, 248, 0.76);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 50px rgba(10, 10, 10, 0.08);
+    }
+
+    .brand-mini {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .mark {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--paper);
+      background: var(--ink);
+      font-family: "Instrument Serif", serif;
+      font-size: 23px;
+      font-style: italic;
+      box-shadow: inset 0 0 0 1px rgba(202, 138, 4, 0.35);
+    }
+
+    .nav {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav a {
+      color: var(--stone);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 9px 12px;
+      border-radius: 999px;
+      transition: 180ms ease;
+    }
+
+    .nav a:hover { background: var(--ink); color: var(--paper); }
+
+    .hero {
+      min-height: 92vh;
+      display: grid;
+      align-items: center;
+      padding: 90px 0 70px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.04fr 0.96fr;
+      gap: 52px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--stone);
+      background: rgba(255,255,255,0.48);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 6px rgba(202, 138, 4, 0.12);
+    }
+
+    h1, h2, h3 { margin: 0; }
+
+    h1 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-weight: 400;
+      font-size: clamp(58px, 8vw, 124px);
+      line-height: 0.88;
+      letter-spacing: -0.075em;
+      max-width: 780px;
+    }
+
+    .italic { font-style: italic; letter-spacing: -0.055em; }
+
+    .hero-copy {
+      max-width: 620px;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: clamp(17px, 1.5vw, 21px);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 14px;
+      border: 1px solid var(--ink);
+    }
+
+    .btn.primary { background: var(--ink); color: var(--paper); }
+    .btn.secondary { color: var(--ink); background: transparent; border-color: var(--border); }
+
+    .hero-card {
+      position: relative;
+      border-radius: 44px;
+      padding: 16px;
+      background: linear-gradient(145deg, rgba(10,10,10,0.94), rgba(28,25,23,0.98));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .hero-card::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: radial-gradient(circle at 50% 0%, rgba(202, 138, 4, 0.28), transparent 28%);
+      z-index: -1;
+    }
+
+    .hero-card img {
+      display: block;
+      width: 100%;
+      border-radius: 32px;
+      filter: saturate(1.02) contrast(1.02);
+    }
+
+    .caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 15px 16px 4px;
+      color: rgba(250,250,248,0.74);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    section { padding: 76px 0; }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 0.75fr 1.25fr;
+      gap: 32px;
+      align-items: end;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 30px;
+    }
+
+    .section-kicker {
+      color: var(--gold);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-weight: 900;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(42px, 5vw, 76px);
+      font-weight: 400;
+      line-height: 0.95;
+      letter-spacing: -0.052em;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 680px;
+    }
+
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.46);
+      padding: 24px;
+      box-shadow: 0 20px 70px rgba(10, 10, 10, 0.055);
+    }
+
+    .panel.dark {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: rgba(202, 138, 4, 0.28);
+    }
+
+    .panel h3 {
+      font-size: 20px;
+      letter-spacing: -0.035em;
+      margin-bottom: 10px;
+    }
+
+    .panel p, .panel li { color: var(--muted); }
+    .panel.dark p, .panel.dark li { color: rgba(250,250,248,0.68); }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+
+    .pill {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 11px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--stone);
+      background: rgba(250,250,248,0.72);
+    }
+
+    .panel.dark .pill { border-color: rgba(250,250,248,0.15); background: rgba(250,250,248,0.06); color: var(--paper); }
+
+    .palette {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+
+    .swatch {
+      min-height: 170px;
+      border-radius: 26px;
+      border: 1px solid rgba(10,10,10,0.08);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+    }
+
+    .swatch strong { display: block; font-size: 13px; }
+    .swatch span { font-size: 11px; opacity: 0.75; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+
+    .swatch.dark-text { color: var(--ink); }
+    .swatch.light-text { color: var(--paper); }
+
+    .type-sample {
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .serif-sample {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(54px, 6vw, 94px);
+      line-height: 0.9;
+      letter-spacing: -0.065em;
+    }
+
+    .sans-sample {
+      font-size: 17px;
+      color: var(--muted);
+    }
+
+    .logo-stage {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .logo-preview {
+      min-height: 420px;
+      border-radius: 36px;
+      background: var(--ink);
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .logo-preview::after {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border: 1px solid rgba(202,138,4,0.22);
+      border-radius: 28px;
+      pointer-events: none;
+    }
+
+    .logo-preview img {
+      max-width: min(310px, 82%);
+      max-height: 310px;
+      object-fit: contain;
+      filter: drop-shadow(0 30px 60px rgba(202,138,4,0.18));
+    }
+
+    .mockup-strip {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .mockup-img {
+      border-radius: 36px;
+      overflow: hidden;
+      background: var(--ink);
+      min-height: 360px;
+      box-shadow: var(--shadow);
+    }
+
+    .mockup-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .large-statement {
+      border-radius: 48px;
+      padding: clamp(34px, 5vw, 62px);
+      background: var(--ink);
+      color: var(--paper);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .large-statement::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: radial-gradient(circle at 15% 5%, rgba(202,138,4,0.22), transparent 26%), radial-gradient(circle at 85% 40%, rgba(20,58,47,0.34), transparent 30%);
+    }
+
+    .large-statement > * { position: relative; }
+
+    .large-statement h2 { max-width: 880px; }
+    .large-statement p { color: rgba(250,250,248,0.68); max-width: 740px; font-size: 18px; }
+
+    .do-dont {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    ul.clean {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    ul.clean li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .check, .x {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 900;
+      margin-top: 1px;
+    }
+    .check { background: rgba(20,58,47,0.1); color: var(--spruce); }
+    .x { background: rgba(170,40,40,0.1); color: #a12828; }
+
+    .prompt-box {
+      white-space: pre-wrap;
+      border-radius: 24px;
+      border: 1px solid rgba(202,138,4,0.26);
+      background: rgba(10,10,10,0.96);
+      color: rgba(250,250,248,0.78);
+      padding: 20px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.65;
+      overflow: auto;
+      max-height: 280px;
+    }
+
+    .footer {
+      padding: 50px 0 70px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .footer-inner {
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 920px) {
+      .hero-grid,
+      .section-head,
+      .grid-3,
+      .grid-2,
+      .type-sample,
+      .logo-stage,
+      .mockup-strip,
+      .do-dont { grid-template-columns: 1fr; }
+
+      .palette { grid-template-columns: repeat(2, 1fr); }
+      .topbar { position: relative; top: 0; border-radius: 26px; align-items: flex-start; flex-direction: column; }
+      .nav { justify-content: flex-start; }
+      .hero { padding-top: 54px; }
+    }
+
+    @media print {
+      .topbar { display: none; }
+      body { background: white; }
+      section, .hero { break-inside: avoid; min-height: auto; padding: 34px 0; }
+      .hero-card, .mockup-img, .large-statement { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <nav class="topbar">
+    <div class="brand-mini"><span class="mark">M</span> Melo School OS</div>
+    <div class="nav">
+      <a href="#position">Position</a>
+      <a href="#system">System</a>
+      <a href="#logo">Logo</a>
+      <a href="#mockups">Mockups</a>
+      <a href="#rules">Rules</a>
+      <a href="#prompts">Prompts</a>
+    </div>
+  </nav>
+
+  <header class="hero wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="eyebrow">Brand Direction Board</div>
+        <h1>Melo School OS <span class="italic">Ivory Command</span></h1>
+        <p class="hero-copy">A premium operating system for school leadership — built around clarity, control, institutional trust, and a product experience that looks expensive because the school itself wants to feel expensive.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#system">View the system</a>
+          <a class="btn secondary" href="#rules">Non-negotiables</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <img src="melo_product_mockup_1779546006473.png" alt="Melo premium product mockup" />
+        <div class="caption"><span>Product-led prestige</span><span>Parent portal + admin command</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="position" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">01 / Position</div>
+          <h2>Not school software. School command.</h2>
+        </div>
+        <p class="section-desc">Melo should be positioned as the operating layer for serious Nigerian private schools: academics, billing, report cards, parent visibility, and school prestige working together in one premium system.</p>
+      </div>
+      <div class="grid-3">
+        <article class="panel dark">
+          <h3>Master name</h3>
+          <p><strong>Melo School OS</strong>. Keep it locked. Stop diluting it with SchoolOS, OS/SCHOOL, or generic “school management system” labels.</p>
+          <div class="pill-row"><span class="pill">Melo</span><span class="pill">School OS</span><span class="pill">Operating system</span></div>
+        </article>
+        <article class="panel">
+          <h3>Core promise</h3>
+          <p>Run your school with absolute clarity — less spreadsheet chaos, stronger parent trust, cleaner payments, and faster academic reporting.</p>
+          <div class="pill-row"><span class="pill">Clarity</span><span class="pill">Control</span><span class="pill">Trust</span></div>
+        </article>
+        <article class="panel">
+          <h3>Buyer emotion</h3>
+          <p>Proprietors are buying order, prestige, fee confidence, and a better parent-facing experience. The brand must make them feel upgraded.</p>
+          <div class="pill-row"><span class="pill">Prestige</span><span class="pill">Cashflow</span><span class="pill">Confidence</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="system" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">02 / Visual System</div>
+          <h2>Ivory warmth. Ink authority. Gold restraint.</h2>
+        </div>
+        <p class="section-desc">The winning direction blends Agy’s Ivory Institution with Pi’s Operational Trust. Premium editorial SaaS — never childish edtech.</p>
+      </div>
+
+      <div class="palette">
+        <div class="swatch dark-text" style="background:#fafaf8"><strong>Ivory Paper</strong><span>#FAFAF8</span></div>
+        <div class="swatch light-text" style="background:#0a0a0a"><strong>Velvet Ink</strong><span>#0A0A0A</span></div>
+        <div class="swatch light-text" style="background:#1c1917"><strong>Warm Stone</strong><span>#1C1917</span></div>
+        <div class="swatch light-text" style="background:#ca8a04"><strong>Burnished Gold</strong><span>#CA8A04</span></div>
+        <div class="swatch light-text" style="background:#143a2f"><strong>Deep Spruce</strong><span>#143A2F</span></div>
+        <div class="swatch light-text" style="background:#0b132b"><strong>Trust Navy</strong><span>#0B132B</span></div>
+      </div>
+
+      <div style="height:18px"></div>
+      <div class="type-sample">
+        <article class="panel">
+          <div class="section-kicker">Headline Type</div>
+          <div class="serif-sample">Institutional clarity, beautifully run.</div>
+        </article>
+        <article class="panel">
+          <div class="section-kicker">Body / UI Type</div>
+          <h3>DM Sans / Plus Jakarta / Space Grotesk</h3>
+          <p class="sans-sample">Use precise, readable sans-serif typography for product surfaces, pricing, feature descriptions, forms, and dashboards. The serif gives taste. The sans gives trust.</p>
+          <div class="pill-row"><span class="pill">Readable</span><span class="pill">Modern</span><span class="pill">Premium</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="directions" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">03 / Direction</div>
+          <h2>The route: Ivory Command.</h2>
+        </div>
+        <p class="section-desc">Use one core system, not three competing identities. The design should feel like a private-school boardroom met a premium fintech dashboard.</p>
+      </div>
+      <div class="grid-3">
+        <article class="panel dark">
+          <h3>Ivory Institution</h3>
+          <p>Academic prestige, heritage, editorial spacing, gold rules, warm ivory canvas. Best for taste and proprietor ego.</p>
+        </article>
+        <article class="panel">
+          <h3>Operational Trust</h3>
+          <p>Dashboard proof, billing confidence, parent portal clarity, Paystack credibility. Best for sales and buyer anxiety.</p>
+        </article>
+        <article class="panel">
+          <h3>Executive Noir</h3>
+          <p>Sharp contrast, deep ink surfaces, restrained luxury. Use as spice, not the whole meal. Too much and it becomes fashion perfume.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="logo" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">04 / Logo Routes</div>
+          <h2>A mark for leadership, not lunchboxes.</h2>
+        </div>
+        <p class="section-desc">Avoid the usual graduation-cap swamp. The best mark is a premium monogram or institutional symbol that suggests structure, records, finance, academics, and parent trust coming together.</p>
+      </div>
+      <div class="logo-stage">
+        <div class="logo-preview">
+          <img src="melo_logo_concept_1779545987898.png" alt="Melo woven crest logo concept" />
+        </div>
+        <div class="grid-2">
+          <article class="panel">
+            <h3>Woven Crest</h3>
+            <p>Interwoven golden M: academics, finance, and community braided into one operating system. Most premium route.</p>
+          </article>
+          <article class="panel">
+            <h3>Horizon Gate</h3>
+            <p>Architectural M/gate mark. Suggests school prestige, institutional permanence, and moving into a cleaner future.</p>
+          </article>
+          <article class="panel">
+            <h3>Editorial Pillar</h3>
+            <p>Typography-first “Melo” wordmark with a subtle rising column. Strong for premium SaaS and print materials.</p>
+          </article>
+          <article class="panel dark">
+            <h3>Kill list</h3>
+            <p>No cartoon caps, primary-color books, happy children icons, pencils, globes, or “school app” clipart. We’re not doing PTA newsletter cosplay.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="mockups" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">05 / First Asset</div>
+          <h2>Build the parent-facing mockup first.</h2>
+        </div>
+        <p class="section-desc">The first serious sales image should show a premium admin dashboard beside a mobile parent portal. It sells parent trust, fee clearance, and operational control faster than a logo ever will.</p>
+      </div>
+      <div class="mockup-strip">
+        <div class="mockup-img"><img src="melo_product_mockup_1779546006473.png" alt="Melo product mockup" /></div>
+        <div class="panel dark">
+          <h3>Hero composition</h3>
+          <ul class="clean">
+            <li><span class="check">✓</span><span>iPad/laptop: admin command dashboard, broadsheet, report card, billing cards.</span></li>
+            <li><span class="check">✓</span><span>Phone: parent portal with fee balance, result history, and Paystack payment state.</span></li>
+            <li><span class="check">✓</span><span>Floating proof cards: “Payment cleared”, “Report card ready”, “Outstanding balance”.</span></li>
+            <li><span class="check">✓</span><span>Warm ivory surface, black UI accents, gold lines, soft premium lighting.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <div class="large-statement">
+        <div class="section-kicker">Core line</div>
+        <h2>Run your school with absolute clarity.</h2>
+        <p>Melo School OS brings academics, billing, report cards, parent visibility, and school operations into one premium command center built for Nigerian schools.</p>
+      </div>
+    </section>
+
+    <section id="flyer" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">06 / Flyer System</div>
+          <h2>The WhatsApp flyer should feel like an executive invitation.</h2>
+        </div>
+        <p class="section-desc">The flyer is not the place for every feature. It should sell the upgrade: less chaos, better fee collection, beautiful report cards, parent trust.</p>
+      </div>
+      <div class="grid-3">
+        <article class="panel">
+          <h3>Academic Precision</h3>
+          <p>Exam recording, broadsheets, grading, branded report cards, and term/session structure.</p>
+        </article>
+        <article class="panel">
+          <h3>Financial Command</h3>
+          <p>Fee plans, invoices, debt tracking, payment status, and Paystack-backed parent payments.</p>
+        </article>
+        <article class="panel">
+          <h3>Parent Visibility</h3>
+          <p>Mobile-first portal for results, billing, notifications, and the confidence parents expect.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="rules" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">07 / Rules</div>
+          <h2>What we do. What we never do.</h2>
+        </div>
+        <p class="section-desc">These rules keep the brand premium while avoiding the usual school software visual crimes.</p>
+      </div>
+      <div class="do-dont">
+        <article class="panel">
+          <h3>Do</h3>
+          <ul class="clean">
+            <li><span class="check">✓</span><span>Lead with product proof and clean dashboards.</span></li>
+            <li><span class="check">✓</span><span>Use editorial typography, warm neutrals, and restrained gold.</span></li>
+            <li><span class="check">✓</span><span>Talk like an operating system for school leadership.</span></li>
+            <li><span class="check">✓</span><span>Show parent portal, report cards, billing, and term structure.</span></li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>Never</h3>
+          <ul class="clean">
+            <li><span class="x">×</span><span>No cartoon children, school buses, pencils, chalkboards, or generic caps.</span></li>
+            <li><span class="x">×</span><span>No noisy rainbow gradients or kiddie primary colors.</span></li>
+            <li><span class="x">×</span><span>No fake stats, security theater, or unverified uptime claims.</span></li>
+            <li><span class="x">×</span><span>No long feature dumps that make it feel like database software from 2011.</span></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="prompts" class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">08 / Generation Prompts</div>
+          <h2>Prompt kit for the next asset batch.</h2>
+        </div>
+        <p class="section-desc">Use these for logo exploration, product mockups, flyer hero art, and UGC ad visuals. Feed to Agy/Gemini, Midjourney, Flux, or your image tool of choice.</p>
+      </div>
+      <div class="grid-2">
+        <article class="panel">
+          <h3>Logo</h3>
+          <div class="prompt-box">Minimalist luxury logo, monogram letter 'M' for an elite academic institution. Interwoven flowing thin golden threads forming the letter M. Clean vector emblem, isolated on a deep charcoal black (#0a0a0a) background. Editorial typography, gold foil textures, architectural symmetry, premium, sleek, highly modern, flat graphic design vector, no text.</div>
+        </article>
+        <article class="panel">
+          <h3>Product Mockup</h3>
+          <div class="prompt-box">Highly realistic mockups of Apple devices displaying a professional school management dashboard. The UI has clean typography, warm ivory-paper background, warm stone accents, and gold charts. MacBook/iPad admin dashboard plus iPhone parent portal with tuition payment state. Minimal marble desk, warm ambient lighting, elegant SaaS mockup.</div>
+        </article>
+        <article class="panel">
+          <h3>Flyer Hero</h3>
+          <div class="prompt-box">Premium studio product photography, elegant tablet and smartphone mockups on warm ivory stone surface (#fafaf8). Tablet screen shows dark-themed school administration dashboard with golden charts, data grids, report cards. Phone shows clean parent billing app with “Pay Tuition Fee”. Warm dramatic architectural lighting, gold accents, cinematic, ultra-premium.</div>
+        </article>
+        <article class="panel">
+          <h3>UGC Visual</h3>
+          <div class="prompt-box">Candid premium lifestyle portrait of a confident Nigerian private school proprietress in elegant business attire, seated in a beautifully lit modern office, holding an iPad displaying a school academic dashboard. Warm professional tone, authentic, credible, not influencer hype, premium SaaS ad aesthetic.</div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <div class="footer-inner">
+      <span>Melo School OS — Brand Direction Board</span>
+      <span>Direction: Ivory Command · Source: Pi + Agy strategy synthesis · Built by Vanta</span>
+    </div>
+  </footer>
+</body>
+</html>
