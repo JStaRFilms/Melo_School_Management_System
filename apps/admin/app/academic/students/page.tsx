@@ -42,6 +42,7 @@ ClassSummary,
 EnrollmentMatrix,
 EnrollmentNotice,
 SessionSummary,
+TermSummary,
 } from "./components/types";
 
 const MAX_PROMOTION_BATCH = 100;
@@ -123,6 +124,18 @@ export default function StudentsPage() {
       ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never)
       : ("skip" as never)
   ) as EnrollmentMatrix | undefined;
+  const selectedSessionTerms = useQuery(
+    "functions/academic/academicSetup:listTermsBySession" as never,
+    selectedSessionId
+      ? ({ sessionId: selectedSessionId } as never)
+      : ("skip" as never)
+  ) as TermSummary[] | undefined;
+
+  const shouldShowPromotionPanel = useMemo(() => {
+    const activeTerm = selectedSessionTerms?.find((term) => term.isActive);
+
+    return activeTerm?.reportCardCalculationMode === "cumulative_annual";
+  }, [selectedSessionTerms]);
 
   useEffect(() => {
     if (!sessions || selectedSessionId) {
@@ -170,6 +183,12 @@ export default function StudentsPage() {
       current.filter((studentId) => visibleStudentIds.has(studentId))
     );
   }, [matrix]);
+
+  useEffect(() => {
+    if (!shouldShowPromotionPanel) {
+      setPromotionStudentIds([]);
+    }
+  }, [shouldShowPromotionPanel]);
 
   const activeStudentForSheet = useMemo(() => {
     if (!matrix || !selectedStudentId) return null;
@@ -680,23 +699,25 @@ export default function StudentsPage() {
 
               {selectedClassId && selectedSessionId ? (
                 <>
-                  <StudentPromotionPanel
-                    classes={classes}
-                    sessions={sessions}
-                    selectedCount={promotionStudentIds.length}
-                    sourceClassId={selectedClassId}
-                    sourceSessionId={selectedSessionId}
-                    targetClassId={promotionTargetClassId}
-                    targetSessionId={promotionTargetSessionId}
-                    subjectMode={promotionSubjectMode}
-                    isPromoting={isPromoting}
-                    onTargetClassChange={setPromotionTargetClassId}
-                    onTargetSessionChange={setPromotionTargetSessionId}
-                    onSubjectModeChange={setPromotionSubjectMode}
-                    onSelectAllVisible={handleSelectAllVisibleForPromotion}
-                    onClearSelection={() => setPromotionStudentIds([])}
-                    onPromote={handlePromoteStudents}
-                  />
+                  {shouldShowPromotionPanel ? (
+                    <StudentPromotionPanel
+                      classes={classes}
+                      sessions={sessions}
+                      selectedCount={promotionStudentIds.length}
+                      sourceClassId={selectedClassId}
+                      sourceSessionId={selectedSessionId}
+                      targetClassId={promotionTargetClassId}
+                      targetSessionId={promotionTargetSessionId}
+                      subjectMode={promotionSubjectMode}
+                      isPromoting={isPromoting}
+                      onTargetClassChange={setPromotionTargetClassId}
+                      onTargetSessionChange={setPromotionTargetSessionId}
+                      onSubjectModeChange={setPromotionSubjectMode}
+                      onSelectAllVisible={handleSelectAllVisibleForPromotion}
+                      onClearSelection={() => setPromotionStudentIds([])}
+                      onPromote={handlePromoteStudents}
+                    />
+                  ) : null}
                   <SubjectSelectionMatrix
                     matrix={matrix}
                     totalStudents={matrixSummary.totalStudents}

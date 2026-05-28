@@ -10,6 +10,15 @@ export type SessionSummary = {
   isActive: boolean;
 };
 
+export type TermSummary = {
+  _id: string;
+  name: string;
+  startDate: number;
+  endDate: number;
+  isActive: boolean;
+  reportCardCalculationMode: "standalone" | "cumulative_annual";
+};
+
 export type EnrollmentMatrix = {
   subjects: Array<{ _id: string; name: string; code: string }>;
   students: Array<{

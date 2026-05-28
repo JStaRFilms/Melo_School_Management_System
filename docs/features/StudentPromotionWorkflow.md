@@ -8,6 +8,7 @@ Promotions were previously **partial**: admins could edit a student's active `cl
 
 ## Implemented Behavior
 - Admins can select students from `/academic/students` and promote them to a target class and target session.
+- The promotion panel is intentionally end-of-year scoped: it only appears when the selected session's active term is set to `cumulative_annual` report-card mode. Standalone term reporting keeps the student roster focused on enrollment and subject selection.
 - The workflow updates only the student's current active class pointer.
 - Historical records remain tied to their original context:
   - `studentSubjectSelections` for the old class/session are preserved.

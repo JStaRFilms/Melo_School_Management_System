@@ -104,6 +104,7 @@ flowchart TD
 
 ## Session Notes
 
+- 2026-05-28: Future UX backlog item added for student promotions: keep the current cumulative-annual-only inline panel as acceptable for MVP, but later move promotion/rollover into a dedicated workspace such as `/academic/students/promotions` or `/academic/sessions/rollover`, with only a compact CTA/banner on the Students page when end-of-session promotion is available. The dedicated page should support clearer review steps, batch history, audit visibility, and safer bulk-action confirmation without cluttering everyday roster management.
 - 2026-05-08: Task 09 PDF Parser Upgrade was explicitly deferred by user instruction for a future session. It is not completed, and DL-030 remains open future work.
 - 2026-05-08: Task 10 Study App Discovery Brief completed as documentation-only discovery in `docs/features/StandaloneStudyAppDiscovery.md`; no app code was changed for Task 10.
 - 2026-05-08: Task 11 final verification completed. Targeted typechecks/builds passed, Convex production deploy succeeded, browser smoke checks remain pending due to no interactive authenticated browser, and one teacher unit test needs follow-up.

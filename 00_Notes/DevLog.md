@@ -116,6 +116,8 @@ Next batch:
 
  - [ ] I need clarification on how the promotion stuff works
 
+ - [ ] Future UX cleanup: move the student promotion/rollover flow out of the normal `/academic/students` roster page into a dedicated workspace, e.g. `/academic/students/promotions` or `/academic/sessions/rollover`. The current inline panel is okay for MVP because it only appears when cumulative annual mode is active, but long term the Students page should only show a compact banner/CTA like "End-of-session promotion is available". The dedicated page should handle review steps, promotion history, audit visibility, safer bulk-action confirmation, and keep everyday roster/subject management uncluttered.
+
  - [ ] Fix the /admin/dashboard UI of the admin page
 
  - [ ] Figure out the customization of the emails that are used for the students by default esspecially the fact that it's .local lmao, look at the possiblility of making it a real email i.e if they can actualy have a real inbox and what not, can we make it customizeable so that if a school had aother email provider they can easily do it, tbh I don't know how to make it normally like what's the standard and what not
