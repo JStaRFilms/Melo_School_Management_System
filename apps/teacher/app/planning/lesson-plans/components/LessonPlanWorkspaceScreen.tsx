@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useConvex } from "convex/react";
 
 import type {
@@ -204,7 +205,6 @@ export function LessonPlanWorkspaceScreen({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatusIndex, setGenerationStatusIndex] = useState(0);
   const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
-  const [notice, setNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const saveInFlightRef = useRef(false);
@@ -242,8 +242,12 @@ export function LessonPlanWorkspaceScreen({
   const generationStatusMessage = generationStatusMessages[generationStatusIndex] ?? generationStatusMessages[0];
 
   const pushNotice = useCallback((type: "success" | "error", message: string) => {
-    setNotice({ type, message });
-    window.setTimeout(() => setNotice(null), 3500);
+    if (type === "success") {
+      appToast.success(message);
+      return;
+    }
+
+    appToast.error(message);
   }, []);
 
   const applyToolbarAction = useCallback(
@@ -423,18 +427,6 @@ export function LessonPlanWorkspaceScreen({
 
   return (
     <div className="space-y-4">
-      {notice ? (
-        <div className={`rounded-xl border p-3.5 shadow-sm transition-all ${
-          notice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" :
-          notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-900" :
-          "border-slate-200 bg-white text-slate-900"
-        }`}>
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <p className="text-[11px] font-bold">{notice.message}</p>
-          </div>
-        </div>
-      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
         <aside className="hidden space-y-4 xl:block xl:sticky xl:top-6 xl:self-start">

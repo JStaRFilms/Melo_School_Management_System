@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
 import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
@@ -147,7 +148,6 @@ export default function TeacherVideosPage() {
   const [topicLabel, setTopicLabel] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [search, setSearch] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [activeForm, setActiveForm] = useState<"submit" | null>(null);
@@ -164,6 +164,17 @@ export default function TeacherVideosPage() {
   const videos = useMemo(() => videosData?.materials ?? [], [videosData]);
   const summary = videosData?.summary ?? { loaded: 0, privateOwner: 0, staffVisible: 0, readyToSelect: 0, publishable: 0, needsAttention: 0 };
 
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
+
   const filteredVideos = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return videos;
@@ -176,11 +187,10 @@ export default function TeacherVideosPage() {
 
   const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setNotice(null);
 
     const normalizedUrl = normalizeYouTubeUrl(externalUrl);
     if (!title.trim() || !normalizedUrl || !subjectId || !level.trim() || !topicLabel.trim()) {
-      setNotice({ tone: "error", message: "All fields are required for submission." });
+      showNotice({ tone: "error", message: "All fields are required for submission." });
       return;
     }
 
@@ -195,14 +205,14 @@ export default function TeacherVideosPage() {
         topicLabel: topicLabel.trim(),
         uploadIntent: "request_review",
       } as never);
-      setNotice({ tone: "success", message: "Video link submitted for review." });
+      showNotice({ tone: "success", message: "Video link submitted for review." });
       setTitle("");
       setDescription("");
       setExternalUrl("");
       setTopicLabel("");
       setActiveForm(null);
     } catch (error) {
-      setNotice({ tone: "error", message: getUserFacingErrorMessage(error, "Could not submit the link.") });
+      showNotice({ tone: "error", message: getUserFacingErrorMessage(error, "Could not submit the link.") });
     } finally {
       setBusy(false);
     }
@@ -327,19 +337,6 @@ export default function TeacherVideosPage() {
               }
             />
 
-            {notice && (
-              <div className={cn(
-                "group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-sm transition-all bg-white",
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              )}>
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  <button onClick={() => setNotice(null)} className="rounded-full p-1 hover:bg-slate-50 opacity-30 hover:opacity-100 transition-all">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-1">

@@ -5,6 +5,7 @@ import { AdminSheet } from "@/components/ui/AdminSheet";
 import { StatGroup } from "@/components/ui/StatGroup";
 import type { SubjectRecord } from "@/types";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import { BookOpenText,Plus,Search,Shapes,X } from "lucide-react";
 import { useDeferredValue,useEffect,useMemo,useState } from "react";
@@ -34,11 +35,17 @@ export default function SubjectsPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
+
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const deferredSearch = useDeferredValue(search);
   const selectedSubject = useMemo(() => 
@@ -89,12 +96,11 @@ export default function SubjectsPage() {
 
   const handleCreate = async (name: string, code: string) => {
     setIsSubmitting(true);
-    setNotice(null);
     try {
       await createSubject({ name, code } as never);
-      setNotice({ tone: "success", title: "Catalog Updated", message: `${name} has been added.` });
+      showNotice({ tone: "success", title: "Catalog Updated", message: `${name} has been added.` });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Creation Failed",
         message: getUserFacingErrorMessage(err, "Failed to create subject.")
@@ -107,12 +113,11 @@ export default function SubjectsPage() {
 
   const handleUpdate = async (id: string, name: string, code: string) => {
     setIsSaving(true);
-    setNotice(null);
     try {
       await updateSubject({ subjectId: id, name, code } as never);
-      setNotice({ tone: "success", title: "Record Updated", message: "Subject details saved." });
+      showNotice({ tone: "success", title: "Record Updated", message: "Subject details saved." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Update Failed",
         message: getUserFacingErrorMessage(err, "Failed to save changes.")
@@ -127,13 +132,12 @@ export default function SubjectsPage() {
     if (!subject) return;
     if (!window.confirm(`Archive ${subject.name}? This hides it from active enrollment.`)) return;
 
-    setNotice(null);
     try {
       await archiveSubject({ subjectId: id } as never);
       setSelectedSubjectId(null);
-      setNotice({ tone: "success", title: "Subject Archived", message: "Catalog entry deactivated." });
+      showNotice({ tone: "success", title: "Subject Archived", message: "Catalog entry deactivated." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Archive Failed",
         message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
@@ -266,26 +270,6 @@ export default function SubjectsPage() {
               }
             />
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button 
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">

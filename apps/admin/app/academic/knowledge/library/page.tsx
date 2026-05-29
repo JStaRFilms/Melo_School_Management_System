@@ -13,6 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSheet } from "@/components/ui/AdminSheet";
@@ -20,7 +21,6 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SubjectRecord } from "@/types";
 
-import { FloatingNotice } from "../../students/components/FloatingNotice";
 import { KnowledgeLibraryFilters } from "./components/KnowledgeLibraryFilters";
 
 interface ClassOptionRecord {
@@ -170,7 +170,6 @@ export default function KnowledgeLibraryPage() {
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [activeDetail, setActiveDetail] = useState<KnowledgeLibraryDetailResponse | null>(null);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; title: string; message: string } | null>(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isSavingState, setIsSavingState] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
@@ -199,6 +198,22 @@ export default function KnowledgeLibraryPage() {
   }, [detailQuery, selectedMaterialId]);
 
   const materials = useMemo(() => libraryData?.materials ?? [], [libraryData]);
+
+  const showNotice = (notice: { tone: "success" | "error" | "warning"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : notice.tone === "warning" ? "Review required" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    if (notice.tone === "warning") {
+      appToast.warning(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const filteredMaterials = useMemo(() => {
     const searchQuery = filters.searchQuery.trim();
@@ -257,7 +272,7 @@ export default function KnowledgeLibraryPage() {
     topicLabel: string;
     topicId?: string;
   }) => {
-    setNotice(null);
+    
     setIsSavingDetails(true);
     try {
       await updateDetails({
@@ -269,9 +284,9 @@ export default function KnowledgeLibraryPage() {
         topicLabel: args.topicLabel,
         ...(args.topicId ? { topicId: args.topicId } : {}),
       } as never);
-      setNotice({ tone: "success", title: "Material updated", message: "Material details were saved." });
+      showNotice({ tone: "success", title: "Material updated", message: "Material details were saved." });
     } catch (error) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Save failed",
         message: getUserFacingErrorMessage(error, "Failed to update material details."),
@@ -288,7 +303,7 @@ export default function KnowledgeLibraryPage() {
     subjectId: string;
     level: string;
   }) => {
-    setNotice(null);
+    
     setIsSavingDetails(true);
     try {
       const result = (await createTopic({
@@ -306,7 +321,7 @@ export default function KnowledgeLibraryPage() {
         status: "draft" | "active" | "retired";
       };
 
-      setNotice({
+      showNotice({
         tone: "success",
         title: "Topic ready",
         message: `Topic "${result.title}" is now available for attachment.`,
@@ -314,7 +329,7 @@ export default function KnowledgeLibraryPage() {
 
       return result;
     } catch (error) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Topic creation failed",
         message: getUserFacingErrorMessage(error, "Failed to create the topic."),
@@ -330,7 +345,7 @@ export default function KnowledgeLibraryPage() {
     visibility?: KnowledgeMaterialVisibility;
     reviewStatus?: KnowledgeMaterialReviewStatus;
   }) => {
-    setNotice(null);
+    
     setIsSavingState(true);
     try {
       const result = (await updateState({
@@ -358,9 +373,9 @@ export default function KnowledgeLibraryPage() {
         };
       });
 
-      setNotice({ tone: "success", title: "Material state updated", message: "The material access settings were updated." });
+      showNotice({ tone: "success", title: "Material state updated", message: "The material access settings were updated." });
     } catch (error) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "State update failed",
         message: getUserFacingErrorMessage(error, "Failed to update visibility or review state."),
@@ -494,7 +509,6 @@ export default function KnowledgeLibraryPage() {
               />
             </div>
 
-            <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
 
             <div className="space-y-2.5">
               {!isMobile ? (

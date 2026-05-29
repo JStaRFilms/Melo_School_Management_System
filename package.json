@@ -33,7 +33,8 @@
     "convex:deploy": "convex deploy",
     "convex:codegen": "convex codegen",
     "setup:convex": "powershell -ExecutionPolicy Bypass -File scripts/setup-convex.ps1",
-    "setup:convex:unix": "bash scripts/setup-convex.sh"
+    "setup:convex:unix": "bash scripts/setup-convex.sh",
+    "check:toasts": "node scripts/check-toast-usage.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.59.1"

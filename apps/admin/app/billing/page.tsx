@@ -11,6 +11,7 @@ X,
 } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
+import { appToast } from "@school/shared/toast";
 import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
 
@@ -79,7 +80,6 @@ export default function BillingPage() {
     status: "",
     search: "",
   });
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; title: string; message: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarVariant, setSidebarVariant] = useState<"arsenal" | "payment" | "invoice" | "application" | "link" | "plan">("payment");
 
@@ -107,6 +107,15 @@ export default function BillingPage() {
     plan: "New Fee Plan",
   };
 
+  const showNotice = (notice: { tone: "success" | "error"; title: string; message: string }) => {
+    if (notice.tone === "success") {
+      appToast.success(notice.title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(notice.title, { description: notice.message });
+  };
+
   // 2. Data & Actions
   const { 
     data, 
@@ -128,7 +137,7 @@ export default function BillingPage() {
         }
       : "skip"
   ) as NonNullable<typeof data>["paymentAttempts"] | undefined;
-  const actions = useBillingActions(setNotice);
+  const actions = useBillingActions();
   const { sortPreferences, setSortPreferences } = useBillingSortPreferences();
 
   const sortedInvoices = useMemo(
@@ -298,7 +307,7 @@ export default function BillingPage() {
       });
     }, "Link Generated", "Unable to initialize Paystack session.");
     if (success) {
-      setNotice({
+      showNotice({
         tone: "success",
         title: "Link Generated",
         message: "Payment link is ready. Copy it or open it from the handoff panel.",
@@ -317,7 +326,7 @@ export default function BillingPage() {
       return;
     }
     if (selectedFinanceInvoice.invoice.balanceDue <= 0) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "No Balance",
         message: "This invoice has no outstanding balance to collect.",
@@ -410,27 +419,6 @@ export default function BillingPage() {
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
           <div className="p-4 lg:p-8 space-y-8">
             {/* System Notifications */}
-            {notice && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-                <AdminSurface 
-                  intensity="medium" 
-                  className={`border-l-4 ${notice.tone === 'success' ? 'border-l-emerald-500' : 'border-l-rose-500'} flex items-center justify-between p-4 shadow-lg shadow-slate-200/50`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${notice.tone === 'success' ? 'bg-emerald-50 text-emerald-600 font-black' : 'bg-rose-50 text-rose-600 font-black'}`}>
-                      {notice.tone === 'success' ? <Plus className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300">System Activity</p>
-                      <p className="text-sm font-black text-slate-950 tracking-tight uppercase">{notice.message}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setNotice(null)} className="p-2 rounded-full hover:bg-slate-50 transition-colors">
-                    <X className="h-4 w-4 text-slate-300" />
-                  </button>
-                </AdminSurface>
-              </div>
-            )}
 
             <BillingHeader 
               summary={data.summary} 

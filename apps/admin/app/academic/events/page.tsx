@@ -4,6 +4,7 @@ import { useDeferredValue, useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CalendarRange, Sparkles, Search, PlusCircle, X } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
@@ -61,13 +62,19 @@ export default function EventsPage() {
   const isMobile = useIsMobile();
   const [busyState, setBusyState] = useState<"create" | "update" | "archive" | null>(null);
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
   const archiveResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<EventRecord | null>(null);
+
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const deferredSearch = useDeferredValue(search);
   
@@ -126,16 +133,15 @@ export default function EventsPage() {
     isAllDay: boolean;
   }) => {
     setBusyState("create");
-    setNotice(null);
     try {
       await createEvent({
         ...data,
         startDate: toTimestamp(data.startDate, false, data.isAllDay),
         endDate: toTimestamp(data.endDate, true, data.isAllDay),
       } as never);
-      setNotice({ tone: "success", title: "Event Created", message: `${data.title} added to calendar.` });
+      showNotice({ tone: "success", title: "Event Created", message: `${data.title} added to calendar.` });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Creation Failed",
         message: getUserFacingErrorMessage(err, "Failed to schedule event.")
@@ -154,7 +160,6 @@ export default function EventsPage() {
     isAllDay: boolean;
   }) => {
     setBusyState("update");
-    setNotice(null);
     try {
       await updateEvent({
         eventId: id,
@@ -162,9 +167,9 @@ export default function EventsPage() {
         startDate: toTimestamp(data.startDate, false, data.isAllDay),
         endDate: toTimestamp(data.endDate, true, data.isAllDay),
       } as never);
-      setNotice({ tone: "success", title: "Record Updated", message: "Event changes saved successfully." });
+      showNotice({ tone: "success", title: "Record Updated", message: "Event changes saved successfully." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Update Failed",
         message: getUserFacingErrorMessage(err, "Failed to save changes.")
@@ -187,13 +192,12 @@ export default function EventsPage() {
     if (!confirmed) return;
 
     setBusyState("archive");
-    setNotice(null);
     try {
       await archiveEvent({ eventId: id } as never);
       if (selectedEventId === id) setSelectedEventId(null);
-      setNotice({ tone: "success", title: "Event Archived", message: "Removed from live calendar." });
+      showNotice({ tone: "success", title: "Event Archived", message: "Removed from live calendar." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Archive Failed",
         message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
@@ -303,26 +307,6 @@ export default function EventsPage() {
               }
             />
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-40 leading-none">
-                      {notice.title}
-                    </p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button 
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3 w-3 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="relative w-full sm:max-w-xs">

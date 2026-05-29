@@ -1,7 +1,8 @@
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useAction,useMutation } from "convex/react";
 
-export function useBillingActions(setNotice: (n: any) => void) {
+export function useBillingActions() {
   const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
   const saveSchoolPaystackGatewayConfig = useMutation("functions/billingProviders:saveSchoolPaystackGatewayConfig" as never);
   const validateSchoolPaystackGatewayConfig = useAction("functions/billingProviders:validateSchoolPaystackGatewayConfig" as never);
@@ -16,21 +17,12 @@ export function useBillingActions(setNotice: (n: any) => void) {
     successTitle: string,
     fallbackMessage: string
   ) => {
-    setNotice(null);
     try {
       await action();
-      setNotice({
-        tone: "success",
-        title: "Success",
-        message: successTitle,
-      });
+      appToast.success("Success", { description: successTitle });
       return true;
     } catch (error) {
-      setNotice({
-        tone: "error",
-        title: successTitle,
-        message: getUserFacingErrorMessage(error, fallbackMessage),
-      });
+      appToast.error(successTitle, { description: getUserFacingErrorMessage(error, fallbackMessage) });
       return false;
     }
   };

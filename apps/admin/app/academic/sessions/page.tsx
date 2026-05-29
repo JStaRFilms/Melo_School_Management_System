@@ -6,6 +6,7 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionRecord,SubjectRecord } from "@/types";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import {
 ArrowRight,
@@ -39,11 +40,6 @@ export default function SessionsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
 
   // Handle auto-scroll to selected session on mobile
   useEffect(() => {
@@ -60,6 +56,17 @@ export default function SessionsPage() {
     }
   }, [isMobile, selectedSessionId]);
 
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
+
   const activeSession = useMemo(
     () => sessions?.find((s) => s.isActive) ?? null,
     [sessions]
@@ -71,24 +78,22 @@ export default function SessionsPage() {
   );
 
   const handleMakeActive = async (sessionId: string) => {
-    setNotice(null);
     try {
       await updateSession({ sessionId, isActive: true } as never);
-      setNotice({ tone: "success", title: "Activation Successful", message: "Academic session is now active." });
+      showNotice({ tone: "success", title: "Activation Successful", message: "Academic session is now active." });
     } catch (err) {
-      setNotice({ tone: "error", title: "Activation Failed", message: getUserFacingErrorMessage(err, "Failed to activate session") });
+      showNotice({ tone: "error", title: "Activation Failed", message: getUserFacingErrorMessage(err, "Failed to activate session") });
     }
   };
 
   const handleArchive = async (sessionId: string) => {
     if (!window.confirm("Archive this session? History is preserved, but it will be removed from setup lists.")) return;
-    setNotice(null);
     try {
       await archiveSession({ sessionId } as never);
       if (selectedSessionId === sessionId) setSelectedSessionId(null);
-      setNotice({ tone: "success", title: "Archive Successful", message: "Session moved to history." });
+      showNotice({ tone: "success", title: "Archive Successful", message: "Session moved to history." });
     } catch (err) {
-      setNotice({ tone: "error", title: "Archive Failed", message: getUserFacingErrorMessage(err, "Failed to archive session") });
+      showNotice({ tone: "error", title: "Archive Failed", message: getUserFacingErrorMessage(err, "Failed to archive session") });
     }
   };
 
@@ -118,15 +123,15 @@ export default function SessionsPage() {
         <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
           <div className="p-4 py-6 md:p-8 space-y-4 md:space-y-6">
             <SessionCreationForm
-              onSuccess={(msg) => setNotice({ tone: "success", title: "Success", message: msg })}
-              onError={(title, msg) => setNotice({ tone: "error", title, message: msg })}
+              onSuccess={(msg) => showNotice({ tone: "success", title: "Success", message: msg })}
+              onError={(title, msg) => showNotice({ tone: "error", title, message: msg })}
             />
 
             <TermCreationForm
               selectedSessionId={selectedSession?._id ?? null}
               selectedSessionName={selectedSession?.name ?? null}
-              onSuccess={(msg) => setNotice({ tone: "success", title: "Success", message: msg })}
-              onError={(title, msg) => setNotice({ tone: "error", title, message: msg })}
+              onSuccess={(msg) => showNotice({ tone: "success", title: "Success", message: msg })}
+              onError={(title, msg) => showNotice({ tone: "error", title, message: msg })}
             />
 
             <div className="pt-4 border-t border-slate-200/60 p-1">
@@ -168,26 +173,6 @@ export default function SessionsPage() {
               }
             />
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all duration-500 bg-white ${
-                notice.tone === "success" ? "border-emerald-500" : "border-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-xs font-bold tracking-tight">{notice.message}</p>
-                  </div>
-                  <button
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <SessionDirectory
               sessions={sessions}

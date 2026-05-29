@@ -5,8 +5,7 @@ import { useState, useRef, useCallback, type ChangeEvent, type FormEvent, type K
 import { 
   TeacherLibrarySubject, 
   LevelOption, 
-  UploadIntent, 
-  UploadNotice 
+  UploadIntent 
 } from "../types";
 import { 
   uploadIntentLabel, 
@@ -42,8 +41,6 @@ interface LibrarySidebarProps {
     selectedPageRanges: string;
   }) => Promise<void>;
   isUploading: boolean;
-  notice: UploadNotice | null;
-  onClearNotice: () => void;
   
   // Layout Props
   isAdmin: boolean;
@@ -62,8 +59,6 @@ export function LibrarySidebar({
   subjectsReady,
   onUpload,
   isUploading,
-  notice,
-  onClearNotice,
   isAdmin,
   view = "all",
 }: LibrarySidebarProps) {
@@ -90,7 +85,6 @@ export function LibrarySidebar({
     if (file && !uploadTitle) {
       setUploadTitle(normalizeFileTitle(file.name));
     }
-    onClearNotice();
   };
 
   const handleUploadSubmit = async (e: FormEvent) => {
@@ -376,14 +370,6 @@ export function LibrarySidebar({
                 </div>
               </div>
 
-              {notice && (
-                <div className={cn(
-                  "rounded-xl border p-3 text-[11px] font-bold leading-tight",
-                  notice.tone === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-rose-100 bg-rose-50 text-rose-700"
-                )}>
-                  {notice.message}
-                </div>
-              )}
 
               <button
                 type="submit"

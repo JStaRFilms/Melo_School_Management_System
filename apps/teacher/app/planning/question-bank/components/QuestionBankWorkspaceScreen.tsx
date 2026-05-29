@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { appToast } from "@school/shared/toast";
 import {
   AlertTriangle,
   BookOpenText,
@@ -291,7 +292,6 @@ export function QuestionBankWorkspaceScreen({
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const saveInFlightRef = useRef(false);
   const retrySaveRef = useRef(false);
@@ -359,8 +359,12 @@ export function QuestionBankWorkspaceScreen({
   }, [dirty, workspace, workspaceSignature]);
 
   const pushNotice = useCallback((tone: "success" | "error", message: string) => {
-    setNotice({ tone, message });
-    window.setTimeout(() => setNotice(null), 3500);
+    if (tone === "success") {
+      appToast.success(message);
+      return;
+    }
+
+    appToast.error(message);
   }, []);
 
   const updateItem = useCallback(
@@ -564,14 +568,6 @@ export function QuestionBankWorkspaceScreen({
     [dirty, onRemoveSource, workspace.selectedSourceCount]
   );
 
-  useEffect(() => {
-    if (!notice) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => setNotice(null), 3000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -819,17 +815,6 @@ export function QuestionBankWorkspaceScreen({
 
   return (
     <div className="space-y-8">
-      {notice ? (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm ${
-            notice.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}
-        >
-          {notice.message}
-        </div>
-      ) : null}
 
       <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start">
         {/* RIGHT SIDEBAR: WORKBENCH & CONTEXT */}

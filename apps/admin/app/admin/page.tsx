@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import {
   ArrowRightLeft,
   ShieldAlert,
@@ -52,11 +53,17 @@ export default function AdminManagementPage() {
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
+
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const activeAdmins = data?.admins.filter((admin) => !admin.isArchived) ?? [];
   const leadAdmin = data?.leadAdmin ?? null;
@@ -72,16 +79,15 @@ export default function AdminManagementPage() {
     failureTitle: string,
     fallbackMessage: string
   ) => {
-    setNotice(null);
     try {
       await action();
-      setNotice({
+      showNotice({
         tone: "success",
         title: successMessage,
         message: "Updated successfully.",
       });
     } catch (error) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: failureTitle,
         message: getUserFacingErrorMessage(error, fallbackMessage),
@@ -135,20 +141,20 @@ export default function AdminManagementPage() {
           <div className="p-4 py-6 md:p-8 space-y-4 md:space-y-6">
             <AdminCreationForm
               onSuccess={(msg) =>
-                setNotice({ tone: "success", title: "Success", message: msg })
+                showNotice({ tone: "success", title: "Success", message: msg })
               }
               onError={(title, msg) =>
-                setNotice({ tone: "error", title, message: msg })
+                showNotice({ tone: "error", title, message: msg })
               }
             />
 
             <TeacherPromotionSection
               teachers={teachers ?? []}
               onSuccess={(msg) =>
-                setNotice({ tone: "success", title: "Success", message: msg })
+                showNotice({ tone: "success", title: "Success", message: msg })
               }
               onError={(title, msg) =>
-                setNotice({ tone: "error", title, message: msg })
+                showNotice({ tone: "error", title, message: msg })
               }
             />
 
@@ -193,30 +199,6 @@ export default function AdminManagementPage() {
               }
             />
 
-            {notice && (
-              <div
-                className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all duration-500 animate-in fade-in slide-in-from-top-4 bg-white ${
-                  notice.tone === "success"
-                    ? "border-emerald-500 text-emerald-950"
-                    : "border-rose-500 text-rose-950"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-xs font-bold tracking-tight">{notice.message}</p>
-                  </div>
-                  <button
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <AdminDirectorySection
               admins={data.admins}

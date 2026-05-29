@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useMutation } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { Upload, Trash2, Save } from "lucide-react";
 
 export function SchoolLogoManagerCard({
@@ -26,10 +27,6 @@ export function SchoolLogoManagerCard({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [clearLogo, setClearLogo] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    message: string;
-  } | null>(null);
 
   useEffect(() => {
     setLogoFile(null);
@@ -56,15 +53,11 @@ export function SchoolLogoManagerCard({
 
   const handleSave = async () => {
     setIsSaving(true);
-    setNotice(null);
 
     try {
       if (clearLogo) {
         await removeSchoolLogo({} as never);
-        setNotice({
-          tone: "success",
-          message: "Logo removed.",
-        });
+        appToast.success("Logo removed.");
         return;
       }
 
@@ -94,15 +87,9 @@ export function SchoolLogoManagerCard({
         logoContentType: logoFile.type,
       } as never);
 
-      setNotice({
-        tone: "success",
-        message: "Logo saved.",
-      });
+      appToast.success("Logo saved.");
     } catch (error) {
-      setNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Save failed."),
-      });
+      appToast.error("Unable to save logo", { description: getUserFacingErrorMessage(error, "Save failed.") });
     } finally {
       setIsSaving(false);
     }
@@ -138,8 +125,7 @@ export function SchoolLogoManagerCard({
               const file = event.target.files?.[0] ?? null;
               setLogoFile(file);
               setClearLogo(false);
-              setNotice(null);
-            }}
+                      }}
           />
         </label>
         
@@ -157,8 +143,7 @@ export function SchoolLogoManagerCard({
           onClick={() => {
             setLogoFile(null);
             setClearLogo(true);
-            setNotice(null);
-          }}
+                  }}
           disabled={isSaving || (!schoolLogoUrl && !logoFile)}
           className="w-10 h-10 flex items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
         >
@@ -166,11 +151,6 @@ export function SchoolLogoManagerCard({
         </button>
       </div>
 
-      {notice && (
-        <p className={`text-[10px] font-bold text-center px-1 animate-in fade-in slide-in-from-top-1 ${notice.tone === "success" ? "text-emerald-500" : "text-rose-500"}`}>
-          {notice.message}
-        </p>
-      )}
     </div>
   );
 }

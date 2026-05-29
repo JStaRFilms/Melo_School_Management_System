@@ -2,6 +2,7 @@
 
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import {
 ArrowRight,
@@ -99,7 +100,6 @@ export default function StudentsPage() {
   const [promotionTargetSessionId, setPromotionTargetSessionId] = useState("");
   const [promotionSubjectMode, setPromotionSubjectMode] =
     useState<PromotionSubjectMode>("all_target_class_subjects");
-  const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
   // New states for Unified Editor
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
@@ -110,6 +110,20 @@ export default function StudentsPage() {
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
+
+  const showNotice = useCallback((nextNotice: EnrollmentNotice) => {
+    if (nextNotice.tone === "success") {
+      appToast.success(nextNotice.message);
+      return;
+    }
+
+    if (nextNotice.tone === "warning") {
+      appToast.warning(nextNotice.message);
+      return;
+    }
+
+    appToast.error(nextNotice.message);
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -157,14 +171,6 @@ export default function StudentsPage() {
     setPromotionTargetSessionId(activeSession?._id ?? sessions[0]?._id ?? "");
   }, [promotionTargetSessionId, sessions]);
 
-  useEffect(() => {
-    if (!notice) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setNotice(null), 3500);
-    return () => window.clearTimeout(timeoutId);
-  }, [notice]);
 
   useEffect(() => {
     if (!matrix?.students.length) {
@@ -299,7 +305,7 @@ export default function StudentsPage() {
 
     if (shouldLinkParent) {
       if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: "Parent first name, last name, and email are required to link family details during admission.",
         });
@@ -307,7 +313,7 @@ export default function StudentsPage() {
       }
 
       if (!isValidEmailAddress(normalizedParentEmail)) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: "Enter a valid parent email address before linking family details.",
         });
@@ -316,7 +322,6 @@ export default function StudentsPage() {
     }
 
     setIsSubmitting(true);
-    setNotice(null);
 
     try {
       const uploadedPhotoMetadata = studentPhotoFile
@@ -353,7 +358,7 @@ export default function StudentsPage() {
       resetStudentCreationForm();
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
-      setNotice({
+      showNotice({
         tone: missingOptionalFields.length > 0 ? "warning" : "success",
         message:
           missingOptionalFields.length > 0
@@ -364,7 +369,7 @@ export default function StudentsPage() {
         studentNameInputRef.current?.focus();
       }
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: getUserFacingErrorMessage(
           err,
@@ -391,8 +396,6 @@ export default function StudentsPage() {
         ? student.selectedSubjectIds.filter((id) => id !== subjectId)
         : [...student.selectedSubjectIds, subjectId];
 
-      setNotice(null);
-
       try {
         await setStudentSubjectSelections({
           studentId,
@@ -400,12 +403,12 @@ export default function StudentsPage() {
           sessionId: selectedSessionId,
           subjectIds: nextSubjectIds,
         } as never);
-        setNotice({
+        showNotice({
           tone: "success",
           message: `Saved subjects for ${humanNameFinalStrict(student.studentName)}.`,
         });
       } catch (err) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: getUserFacingErrorMessage(
             err,
@@ -414,7 +417,7 @@ export default function StudentsPage() {
         });
       }
     },
-    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
+    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections, showNotice]
   );
 
   const handleSetStudentSubjects = useCallback(
@@ -428,8 +431,6 @@ export default function StudentsPage() {
         return;
       }
 
-      setNotice(null);
-
       try {
         await setStudentSubjectSelections({
           studentId,
@@ -437,12 +438,12 @@ export default function StudentsPage() {
           sessionId: selectedSessionId,
           subjectIds,
         } as never);
-        setNotice({
+        showNotice({
           tone: "success",
           message: `Batch update saved for ${humanNameFinalStrict(student.studentName)}.`,
         });
       } catch (err) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: getUserFacingErrorMessage(
             err,
@@ -451,7 +452,7 @@ export default function StudentsPage() {
         });
       }
     },
-    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
+    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections, showNotice]
   );
 
   const handleTogglePromotionStudent = useCallback((studentId: string) => {
@@ -465,13 +466,13 @@ export default function StudentsPage() {
   const handleSelectAllVisibleForPromotion = useCallback(() => {
     const visibleIds = matrix?.students.map((student) => student._id) ?? [];
     if (visibleIds.length > MAX_PROMOTION_BATCH) {
-      setNotice({
+      showNotice({
         tone: "warning",
         message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once. Narrow the roster or select fewer students.`,
       });
     }
     setPromotionStudentIds(visibleIds.slice(0, MAX_PROMOTION_BATCH));
-  }, [matrix]);
+  }, [matrix, showNotice]);
 
   const handlePromoteStudents = useCallback(async () => {
     if (
@@ -485,7 +486,7 @@ export default function StudentsPage() {
     }
 
     if (promotionStudentIds.length > MAX_PROMOTION_BATCH) {
-      setNotice({
+      showNotice({
         tone: "warning",
         message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once.`,
       });
@@ -496,7 +497,7 @@ export default function StudentsPage() {
       selectedClassId === promotionTargetClassId &&
       selectedSessionId === promotionTargetSessionId
     ) {
-      setNotice({
+      showNotice({
         tone: "warning",
         message: "Choose a different target class or session before promoting.",
       });
@@ -519,7 +520,6 @@ export default function StudentsPage() {
     }
 
     setIsPromoting(true);
-    setNotice(null);
     try {
       const result = (await promoteStudents({
         studentIds: promotionStudentIds,
@@ -530,7 +530,7 @@ export default function StudentsPage() {
         subjectEnrollmentMode: promotionSubjectMode,
       } as never)) as { promotedCount: number; subjectSelectionCount: number };
 
-      setNotice({
+      showNotice({
         tone: "success",
         message:
           selectedSessionId === promotionTargetSessionId
@@ -544,7 +544,7 @@ export default function StudentsPage() {
         setSelectedSessionId(promotionTargetSessionId);
       }
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: getUserFacingErrorMessage(err, "Promotion failed."),
       });
@@ -561,6 +561,7 @@ export default function StudentsPage() {
     selectedClassId,
     selectedSessionId,
     sessions,
+    showNotice,
   ]);
 
   const openUnifiedEditor = useCallback((studentId: string, tab: "subjects" | "profile" = "subjects") => {
@@ -621,7 +622,7 @@ export default function StudentsPage() {
         onToggle={handleToggleSubject}
         onSetStudentSubjects={handleSetStudentSubjects}
         classes={classes}
-        onNotice={setNotice}
+        onNotice={showNotice}
         initialTab={unifiedInitialTab}
         onStudentArchived={() => setIsUnifiedSheetOpen(false)}
       />
@@ -679,21 +680,6 @@ export default function StudentsPage() {
               </div>
             </div>
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-[6px] p-4 shadow-xl transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : notice.tone === "warning" ? "border-l-amber-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">System Message</p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button onClick={() => setNotice(null)} className="rounded-full p-1.5 hover:bg-slate-50">
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="space-y-8">
 
@@ -774,7 +760,7 @@ export default function StudentsPage() {
               <StudentProfileEditor
                 studentId={selectedStudentId}
                 classes={classes}
-                onNotice={setNotice}
+                onNotice={showNotice}
                 onStudentArchived={() => setSelectedStudentId(null)}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -836,7 +822,7 @@ export default function StudentsPage() {
                     onAddressChange={setAddress}
                     onPhotoChange={setStudentPhotoFile}
                     onRemovePhoto={() => setStudentPhotoFile(null)}
-                    onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                    onPhotoValidationError={(m) => showNotice({ tone: "error", message: m })}
                     onSubmit={handleCreateStudent}
                     classes={classes}
                     selectedClassId={selectedClassId}
@@ -980,7 +966,7 @@ export default function StudentsPage() {
                   onAddressChange={setAddress}
                   onPhotoChange={setStudentPhotoFile}
                   onRemovePhoto={() => setStudentPhotoFile(null)}
-                  onPhotoValidationError={(m) => setNotice({ tone: "error", message: m })}
+                  onPhotoValidationError={(m) => showNotice({ tone: "error", message: m })}
                   onSubmit={async (e) => {
                     await handleCreateStudent(e);
                     setIsCreationSheetOpen(false);

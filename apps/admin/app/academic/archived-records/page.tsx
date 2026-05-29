@@ -1,6 +1,7 @@
 "use client";
 
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import {
 Archive,
@@ -59,7 +60,6 @@ export default function ArchivedRecordsPage() {
   const [dateTo, setDateTo] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<ArchivedRecordItem | null>(null);
   const [activeRecord, setActiveRecord] = useState<ArchivedRecordItem | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -97,7 +97,6 @@ export default function ArchivedRecordsPage() {
 
   const handleRestoreRecord = async () => {
     if (!selectedRecord) return;
-    setStatusMessage(null);
     setIsRestoring(true);
 
     try {
@@ -113,9 +112,9 @@ export default function ArchivedRecordsPage() {
       }
       const label = selectedRecord.typeLabel;
       setSelectedRecord(null);
-      setStatusMessage({ tone: "success", text: `${label} restored successfully.` });
+      appToast.success("Operation Successful", { description: `${label} restored successfully.` });
     } catch (err) {
-      setStatusMessage({ tone: "error", text: getUserFacingErrorMessage(err, "Failed to restore record") });
+      appToast.error("Operation Failed", { description: getUserFacingErrorMessage(err, "Failed to restore record") });
     } finally {
       setIsRestoring(false);
     }
@@ -277,21 +276,6 @@ export default function ArchivedRecordsPage() {
               <AdminHeader title="Archive Audit" />
             </div>
 
-            {statusMessage && (
-              <div className={`group relative overflow-hidden rounded-xl border-l-4 p-4 shadow-sm transition-all duration-500 bg-white ${
-                statusMessage.tone === "success" ? "border-emerald-500" : "border-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5 text-xs lg:text-sm">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {statusMessage.tone === "success" ? "Operation Successful" : "Operation Failed"}
-                    </p>
-                    <p className="text-xs font-bold tracking-tight">{statusMessage.text}</p>
-                  </div>
-                  <button onClick={() => setStatusMessage(null)} className="rounded-full p-1.5 hover:bg-slate-50"><X size={14} /></button>
-                </div>
-              </div>
-            )}
 
             {hasInvalidDateRange && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 text-xs font-medium text-amber-800 flex items-center gap-3">

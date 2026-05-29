@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import { 
@@ -61,7 +62,6 @@ export default function TeacherLibraryPage() {
   // Selection & UI State
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [notice, setNotice] = useState<UploadNotice | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isMobileUploadOpen, setIsMobileUploadOpen] = useState(false);
@@ -218,7 +218,7 @@ export default function TeacherLibraryPage() {
 
   const handleUpload = async (data: any) => {
     setIsUploading(true);
-    setNotice(null);
+    
     try {
       const uploadContentType = inferUploadContentType(data.file);
       const uploadShell = (await requestUploadUrl({
@@ -247,10 +247,10 @@ export default function TeacherLibraryPage() {
         storageId: payload.storageId as never,
       } as never);
 
-      setNotice({ tone: "success", message: uploadIntentSuccessMessage(data.uploadIntent) });
+      appToast.success(uploadIntentSuccessMessage(data.uploadIntent));
       setIsMobileUploadOpen(false);
     } catch (err) {
-      setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "Upload failed.") });
+      appToast.error("Upload failed", { description: getUserFacingErrorMessage(err, "Upload failed.") });
     } finally {
       setIsUploading(false);
     }
@@ -269,9 +269,9 @@ export default function TeacherLibraryPage() {
         topicId: draft.topicId || undefined,
       } as never);
       setEditingMaterialId(null);
-      setNotice({ tone: "success", message: "Changes saved." });
+      appToast.success("Changes saved.");
     } catch (err) {
-      setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "Save failed.") });
+      appToast.error("Save failed", { description: getUserFacingErrorMessage(err, "Save failed.") });
     } finally {
       setIsSaving(false);
     }
@@ -281,19 +281,18 @@ export default function TeacherLibraryPage() {
     try {
       if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
         await requestProviderOcr({ materialId: material._id as never } as never);
-        setNotice({
-          tone: "success",
-          message: material.selectedPageNumbers?.length
+        appToast.success(
+          material.selectedPageNumbers?.length
             ? "Provider OCR queued for the stored selected-page PDF."
-            : "Provider OCR queued for the stored PDF.",
-        });
+            : "Provider OCR queued for the stored PDF."
+        );
         return;
       }
 
       await retryMaterialIngestion({ materialId: material._id as never } as never);
-      setNotice({ tone: "success", message: "Extraction retry queued." });
+      appToast.success("Extraction retry queued.");
     } catch (err) {
-      setNotice({ tone: "error", message: getUserFacingErrorMessage(err, "OCR retry failed.") });
+      appToast.error("OCR retry failed", { description: getUserFacingErrorMessage(err, "OCR retry failed.") });
     }
   };
 
@@ -321,8 +320,6 @@ export default function TeacherLibraryPage() {
     subjectsReady: subjects ?? [],
     onUpload: handleUpload,
     isUploading,
-    notice,
-    onClearNotice: () => setNotice(null),
     isAdmin: session?.user?.role === "admin",
   };
 

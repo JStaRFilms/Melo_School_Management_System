@@ -100,6 +100,11 @@ Next batch:
 - [ ] we need to upgrade the PDF parser cuz rn it's too mid
 
 ---
+
+ - [ ] On the admin academic students page, updating a student's record currently uses an inline save notificatoins instead of the toast system we created. This is annoying and needs to be fixed. Thank you.
+
+  - [ ] on /academic/students we need to add a nice search feature that searches across the whole school and then we can click on a student and it will open the students class and select the student
+ 
  - [ ] The main website is mostly just words we need to clean it up and make sure I actually like it and it means something and it's functional and allt he links work and the user flow makes sense including the sub pages.
 
  - [ ] Make the Book demo stuff actually work

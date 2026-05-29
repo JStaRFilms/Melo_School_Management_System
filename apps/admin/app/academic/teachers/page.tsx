@@ -4,6 +4,7 @@ import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Search, GraduationCap, Sparkles, X, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
@@ -36,11 +37,17 @@ export default function TeachersPage() {
   const [isResetting, setIsResetting] = useState(false);
   const isMobile = useIsMobile();
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
+
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const deferredSearch = useDeferredValue(search);
   const selectedTeacher = useMemo(() => 
@@ -72,7 +79,6 @@ export default function TeachersPage() {
 
   const handleProvision = async (name: string, email: string, password: string): Promise<ProvisionResult> => {
     setIsSubmitting(true);
-    setNotice(null);
     try {
       const response = await createTeacher({
         name,
@@ -81,10 +87,10 @@ export default function TeachersPage() {
         origin: window.location.origin,
       } as never) as ProvisionResult;
       
-      setNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
+      showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
       return response;
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Provisioning Failed",
         message: getUserFacingErrorMessage(err, "Account creation failed.")
@@ -97,12 +103,11 @@ export default function TeachersPage() {
 
   const handleUpdate = async (id: string, name: string, email: string) => {
     setIsSaving(true);
-    setNotice(null);
     try {
       await updateTeacherProfile({ teacherId: id, name, email } as never);
-      setNotice({ tone: "success", title: "Record Updated", message: "Teacher information saved." });
+      showNotice({ tone: "success", title: "Record Updated", message: "Teacher information saved." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Update Failed",
         message: getUserFacingErrorMessage(err, "Failed to save changes.")
@@ -114,12 +119,11 @@ export default function TeachersPage() {
 
   const handleResetPassword = async (id: string, password: string) => {
     setIsResetting(true);
-    setNotice(null);
     try {
       await resetTeacherPassword({ teacherId: id, temporaryPassword: password } as never);
-      setNotice({ tone: "success", title: "Password Updated", message: "New temporary password set." });
+      showNotice({ tone: "success", title: "Password Updated", message: "New temporary password set." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Update Failed",
         message: getUserFacingErrorMessage(err, "Failed to update password.")
@@ -134,13 +138,12 @@ export default function TeachersPage() {
     if (!teacher) return;
     if (!window.confirm(`Archive ${teacher.name}? This will revoke their teaching access permanently.`)) return;
 
-    setNotice(null);
     try {
       await archiveTeacher({ teacherId: id } as never);
       setSelectedTeacherId(null);
-      setNotice({ tone: "success", title: "Teacher Archived", message: "Access and records deactivated." });
+      showNotice({ tone: "success", title: "Teacher Archived", message: "Access and records deactivated." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Archive Failed",
         message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
@@ -247,26 +250,6 @@ export default function TeachersPage() {
               }
             />
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button 
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">

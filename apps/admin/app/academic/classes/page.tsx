@@ -4,6 +4,7 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSheet } from "@/components/ui/AdminSheet";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import {
 Database,
@@ -72,11 +73,6 @@ export default function ClassesPage() {
   const [hasRequestedBackfill, setHasRequestedBackfill] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const [notice, setNotice] = useState<{
-    tone: "success" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -106,6 +102,17 @@ export default function ClassesPage() {
       cancelled = true;
     };
   }, [backfillClassNaming, classes, hasRequestedBackfill]);
+
+  const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const deferredSearch = useDeferredValue(search);
   const filteredClasses = useMemo(() => {
@@ -158,7 +165,6 @@ export default function ClassesPage() {
     subjectIds: string[];
   }) => {
     setIsSubmitting(true);
-    setNotice(null);
     try {
       const classId = (await createClass({
         gradeName: data.gradeName,
@@ -173,9 +179,9 @@ export default function ClassesPage() {
           subjectIds: data.subjectIds,
         } as never);
       }
-      setNotice({ tone: "success", title: "Class Records Initialized", message: `New blueprint created for ${data.gradeName}.` });
+      showNotice({ tone: "success", title: "Class Records Initialized", message: `New blueprint created for ${data.gradeName}.` });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Provisioning Failed",
         message: getUserFacingErrorMessage(err, "Failed to create class.")
@@ -193,7 +199,6 @@ export default function ClassesPage() {
   }) => {
     if (!selectedClassId) return;
     setIsSaving(true);
-    setNotice(null);
     try {
       await updateClass({
         classId: selectedClassId,
@@ -207,9 +212,9 @@ export default function ClassesPage() {
         subjectIds: data.subjectIds,
       } as never);
 
-      setNotice({ tone: "success", title: "Class Records Updated", message: "Blueprint modifications saved successfully." });
+      showNotice({ tone: "success", title: "Class Records Updated", message: "Blueprint modifications saved successfully." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Update Failed",
         message: getUserFacingErrorMessage(err, "Failed to save modifications.")
@@ -224,13 +229,12 @@ export default function ClassesPage() {
     if (!classDoc) return;
     if (!window.confirm(`Archive ${classDoc.name}? Historical performance and existing student enrollments will be preserved, but the class blueprint will be removed from active setup.`)) return;
 
-    setNotice(null);
     try {
       await archiveClass({ classId: id } as never);
       setSelectedClassId(null);
-      setNotice({ tone: "success", title: "Class Archived", message: "Record moved to historical database." });
+      showNotice({ tone: "success", title: "Class Archived", message: "Record moved to historical database." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Archive Failed",
         message: getUserFacingErrorMessage(err, "Failed to archive record.")
@@ -240,16 +244,15 @@ export default function ClassesPage() {
 
   const handleAssignTeacher = async (classId: string, subjectId: string, teacherId: string) => {
     if (!teacherId || !classId) return;
-    setNotice(null);
     try {
       await assignTeacherToClassSubject({
         classId,
         subjectId,
         teacherId,
       } as never);
-      setNotice({ tone: "success", title: "Assignment Saved", message: "Subject instructor updated." });
+      showNotice({ tone: "success", title: "Assignment Saved", message: "Subject instructor updated." });
     } catch (err) {
-      setNotice({
+      showNotice({
         tone: "error",
         title: "Assignment Failed",
         message: getUserFacingErrorMessage(err, "Failed to update instructor.")
@@ -379,26 +382,6 @@ export default function ClassesPage() {
               }
             />
 
-            {notice && (
-              <div className={`group relative overflow-hidden rounded-lg border-l-4 p-4 shadow-lg transition-all border-white bg-white ${
-                notice.tone === "success" ? "border-l-emerald-500" : "border-l-rose-500"
-              }`}>
-                <div className="flex items-center justify-between gap-6">
-                  <div className="space-y-0.5">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-40">
-                      {notice.title}
-                    </p>
-                    <p className="text-sm font-bold tracking-tight text-slate-950">{notice.message}</p>
-                  </div>
-                  <button 
-                    onClick={() => setNotice(null)}
-                    className="rounded-full p-1.5 hover:bg-slate-50 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-1">

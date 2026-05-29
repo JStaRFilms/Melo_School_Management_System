@@ -4,10 +4,10 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
 
-import { FloatingNotice } from "../components/FloatingNotice";
 import { uploadStudentPhoto } from "../components/studentPhotoUpload";
 import type { ClassSummary, EnrollmentNotice } from "../components/types";
 import { StudentFirstOnboardingForm } from "./StudentFirstOnboardingForm";
@@ -71,7 +71,6 @@ export default function StudentOnboardingPage() {
     parent: { email: string; temporaryPassword: string } | null;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [notice, setNotice] = useState<EnrollmentNotice | null>(null);
 
   const firstNameInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,14 +78,22 @@ export default function StudentOnboardingPage() {
     firstNameInputRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    if (!notice) {
+
+  const showNotice = (notice: { tone: "success" | "error" | "warning"; title?: string; message: string }) => {
+    const title = notice.title ?? (notice.tone === "success" ? "Success" : notice.tone === "warning" ? "Review required" : "Something went wrong");
+
+    if (notice.tone === "success") {
+      appToast.success(title, { description: notice.message });
       return;
     }
 
-    const timeoutId = window.setTimeout(() => setNotice(null), 3200);
-    return () => window.clearTimeout(timeoutId);
-  }, [notice]);
+    if (notice.tone === "warning") {
+      appToast.warning(title, { description: notice.message });
+      return;
+    }
+
+    appToast.error(title, { description: notice.message });
+  };
 
   const photoPreviewUrl = useMemo(() => {
     if (!studentPhotoFile) {
@@ -169,7 +176,7 @@ export default function StudentOnboardingPage() {
 
     if (shouldLinkParent) {
       if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: "Parent first name, last name, and email are required when linking a parent during onboarding.",
         });
@@ -177,7 +184,7 @@ export default function StudentOnboardingPage() {
       }
 
       if (!isValidEmailAddress(normalizedParentEmail)) {
-        setNotice({
+        showNotice({
           tone: "error",
           message: "Enter a valid parent email address before linking portal access.",
         });
@@ -186,7 +193,7 @@ export default function StudentOnboardingPage() {
     }
 
     if (provisionParentPortalAccess && !shouldLinkParent) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: "Link a parent first before provisioning parent portal access.",
       });
@@ -194,7 +201,7 @@ export default function StudentOnboardingPage() {
     }
 
     if (provisionStudentPortalAccess && !studentTemporaryPassword.trim()) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: "Student portal access needs a temporary password.",
       });
@@ -202,7 +209,7 @@ export default function StudentOnboardingPage() {
     }
 
     if (provisionParentPortalAccess && !parentTemporaryPassword.trim()) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: "Parent portal access needs a temporary password.",
       });
@@ -210,7 +217,7 @@ export default function StudentOnboardingPage() {
     }
 
     setIsSubmitting(true);
-    setNotice(null);
+    
     setCredentialSummary(null);
 
     let uploadedPhoto = false;
@@ -286,13 +293,13 @@ export default function StudentOnboardingPage() {
       });
 
       resetForm();
-      setNotice({
+      showNotice({
         tone: "success",
         message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
       });
       firstNameInputRef.current?.focus();
     } catch (error) {
-      setNotice({
+      showNotice({
         tone: "error",
         message: getUserFacingErrorMessage(
           error,
@@ -308,7 +315,6 @@ export default function StudentOnboardingPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      <FloatingNotice notice={notice} onDismiss={() => setNotice(null)} />
       <StudentFirstOnboardingForm
         classes={classes}
         selectedClassId={selectedClassId}
@@ -361,7 +367,7 @@ export default function StudentOnboardingPage() {
         onPhotoChange={setStudentPhotoFile}
         onRemovePhoto={() => setStudentPhotoFile(null)}
         onPhotoValidationError={(message) =>
-          setNotice({
+          showNotice({
             tone: "error",
             message,
           })

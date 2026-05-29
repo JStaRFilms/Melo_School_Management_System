@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { Sparkles, Trash2, Edit3, X, Info, ChevronDown, Save } from "lucide-react";
 
@@ -62,7 +63,6 @@ export function ClassAggregationManager({
     Record<string, string>
   >({});
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -72,7 +72,6 @@ export function ClassAggregationManager({
     setSelectedComponentIds([]);
     setComponentContributions({});
     setError(null);
-    setSuccessMessage(null);
   }, [classId]);
 
   const availableSubjects = offerings ?? [];
@@ -110,7 +109,6 @@ export function ClassAggregationManager({
       )
     );
     setError(null);
-    setSuccessMessage(null);
   };
 
   const toggleComponent = (subjectId: string) => {
@@ -134,7 +132,6 @@ export function ClassAggregationManager({
 
     setIsSaving(true);
     setError(null);
-    setSuccessMessage(null);
 
     try {
       await saveAggregation({
@@ -151,7 +148,7 @@ export function ClassAggregationManager({
             : {}),
         })),
       } as never);
-      setSuccessMessage(
+      appToast.success(
         editingAggregationId
           ? "Sync successful."
           : "Aggregation saved."
@@ -173,14 +170,13 @@ export function ClassAggregationManager({
 
     setIsSaving(true);
     setError(null);
-    setSuccessMessage(null);
 
     try {
       await removeAggregation({ aggregationId } as never);
       if (editingAggregationId === aggregationId) {
         resetForm();
       }
-      setSuccessMessage("Aggregation removed.");
+      appToast.success("Aggregation removed.");
     } catch (err) {
       setError(
         getUserFacingErrorMessage(err, "Failed to remove subject aggregation")
@@ -284,11 +280,9 @@ export function ClassAggregationManager({
            )}
         </div>
 
-        {(error || successMessage) && (
-          <div className={`p-3 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${
-            error ? "bg-rose-50 border-rose-100 text-rose-600" : "bg-emerald-50 border-emerald-100 text-emerald-600"
-          }`}>
-             {error || successMessage}
+        {error && (
+          <div className="p-3 rounded-lg text-[10px] font-bold uppercase tracking-widest border bg-rose-50 border-rose-100 text-rose-600">
+             {error}
           </div>
         )}
 
