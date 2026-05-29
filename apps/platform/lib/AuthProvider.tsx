@@ -128,7 +128,7 @@ function useAuthClientActions() {
           return { success: true, error: null };
         }
 
-        const message = AUTH_ERROR_MESSAGES.retry;
+        const message = AUTH_ERROR_MESSAGES.invalidCredentials;
         setAuthError(message);
         return { success: false, error: message };
       } catch (err) {

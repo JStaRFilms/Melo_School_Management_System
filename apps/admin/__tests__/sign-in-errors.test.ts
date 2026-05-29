@@ -33,6 +33,20 @@ describe("sign in error helpers", () => {
         },
       })
     ).toBe(AUTH_ERROR_MESSAGES.invalidCredentials);
+
+    expect(
+      getSignInErrorMessage({
+        status: 403,
+        statusText: "Forbidden",
+      })
+    ).toBe(AUTH_ERROR_MESSAGES.invalidCredentials);
+
+    expect(
+      getSignInErrorMessage({
+        status: 500,
+        statusText: "Internal Server Error",
+      })
+    ).toBe(AUTH_ERROR_MESSAGES.invalidCredentials);
   });
 
   it("normalizes malformed email failures", () => {
@@ -42,5 +56,20 @@ describe("sign in error helpers", () => {
         message: "Email is invalid",
       })
     ).toBe(AUTH_ERROR_MESSAGES.invalidEmail);
+  });
+
+  it("normalizes network and service failures separately from credential failures", () => {
+    expect(
+      getSignInErrorMessage({
+        message: "Failed to fetch",
+      })
+    ).toBe(AUTH_ERROR_MESSAGES.retry);
+
+    expect(
+      getSignInErrorMessage({
+        status: 503,
+        statusText: "Service Unavailable",
+      })
+    ).toBe(AUTH_ERROR_MESSAGES.retry);
   });
 });

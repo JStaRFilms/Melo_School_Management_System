@@ -1,8 +1,8 @@
 export const AUTH_ERROR_MESSAGES = {
-  invalidCredentials: "Email or password is incorrect.",
+  invalidCredentials: "The email or password is incorrect. Check your password and try again.",
   invalidEmail: "Enter a valid email address.",
   missingCredentials: "Please enter your email and password.",
-  retry: "We couldn't sign you in right now. Please try again.",
+  retry: "The sign-in service is unavailable right now. Check your connection or try again shortly.",
   signInDisabled: "Email and password sign-in is not enabled.",
   unauthorizedArea: "You don't have permission to access this area.",
 } as const;
@@ -41,7 +41,12 @@ function collectErrorText(error: unknown, depth = 0): string {
       collectErrorText(parts.error, depth + 1),
       collectErrorText(parts.cause, depth + 1),
     ]
-      .filter((part): part is string => typeof part === "string" && part.length > 0)
+      .map((part) => {
+        if (typeof part === "number") return String(part);
+        if (typeof part === "string") return part;
+        return "";
+      })
+      .filter((part) => part.length > 0)
       .join(" ");
   }
 
@@ -81,6 +86,10 @@ export function getSignInErrorMessage(error: unknown): string {
       "credential account not found",
       "password not found",
       "unauthorized",
+      "internal server error",
+      "401",
+      "403",
+      "500",
     ])
   ) {
     return AUTH_ERROR_MESSAGES.invalidCredentials;
@@ -100,6 +109,14 @@ export function getSignInErrorMessage(error: unknown): string {
       "network error",
       "networkerror",
       "fetch failed",
+      "load failed",
+      "service unavailable",
+      "bad gateway",
+      "gateway timeout",
+      "timeout",
+      "503",
+      "502",
+      "504",
     ])
   ) {
     return AUTH_ERROR_MESSAGES.retry;
