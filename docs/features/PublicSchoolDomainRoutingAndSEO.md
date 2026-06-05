@@ -15,7 +15,7 @@ It includes:
 - school-owned custom public domains
 - verification tokens and DNS readiness state
 - canonical host selection and safe redirect behavior
-- school-aware metadata, robots, sitemap, and structured data output
+- school-aware metadata, favicons, robots, sitemap, and structured data output
 
 It does not include:
 
@@ -68,7 +68,8 @@ The route layer resolves the request hostname, finds the school domain record, a
 The public-site engine emits school/domain-aware SEO output from the active canonical host:
 
 - metadata canonical URLs
-- open graph URLs
+- open graph URLs and social preview images
+- school profile-image favicons, falling back to the Melo app logo
 - JSON-LD structured data
 - robots.txt rules
 - sitemap.xml entries
@@ -89,5 +90,5 @@ Robots output disallows unknown or inactive hosts and advertises the canonical s
 - Platform-managed public subdomains are supported.
 - Custom public domains can be modeled as pending, verified, or active.
 - Canonical redirects and canonical metadata use the active host.
-- Robots, sitemap, and structured data are domain-aware.
+- Robots, sitemap, favicons, Open Graph images, and structured data are domain-aware.
 - Safe fallbacks protect unknown and inactive hosts.

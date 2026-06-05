@@ -101,7 +101,7 @@ Next batch:
 
 ---
 
- - [ ] On the admin academic students page, updating a student's record currently uses an inline save notificatoins instead of the toast system we created. This is annoying and needs to be fixed. Thank you.
+ - [x] On the admin academic students page, updating a student's record currently uses an inline save notificatoins instead of the toast system we created. This is annoying and needs to be fixed. Thank you.
 
   - [ ] on /academic/students we need to add a nice search feature that searches across the whole school and then we can click on a student and it will open the students class and select the student
  
@@ -127,4 +127,4 @@ Next batch:
 
  - [ ] Figure out the customization of the emails that are used for the students by default esspecially the fact that it's .local lmao, look at the possiblility of making it a real email i.e if they can actualy have a real inbox and what not, can we make it customizeable so that if a school had aother email provider they can easily do it, tbh I don't know how to make it normally like what's the standard and what not
 
- - [ ] 
+ - [ ] We need to come up with a proper attendance system that can easily mere with the present system and isn't eaily editable kinda so that nobody can jut rig it persay or something I want it to be easily scalable, because later we might add hardware, e.g., scanning an ID card to activate something. We don’t want the current system where you can simply record how many times a child attended class, although that should still be possible. Ideally the teacher, not the student, would adjust it. Maybe we’ll make it so that when hardware is used, the number of swipes appears on the student’s dashboard, while the report card reflects whatever the teacher sets, which could be higher than the student’s count.

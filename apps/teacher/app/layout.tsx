@@ -9,6 +9,15 @@ import { getToken } from "@/lib/auth-server";
 export const metadata: Metadata = {
   title: "Teacher Portal",
   description: "Teacher workspace for planning, assessment, and enrollment workflows",
+  robots: {
+    index: false,
+    follow: false,
+  },
+  icons: {
+    icon: [{ url: "/melo-favicon.png", type: "image/png" }],
+    shortcut: ["/melo-favicon.png"],
+    apple: [{ url: "/apple-icon.png" }],
+  },
 };
 
 export default async function RootLayout({

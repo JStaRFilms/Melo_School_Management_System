@@ -1,4 +1,4 @@
-import type { Metadata,MetadataRoute } from "next";
+import type { Metadata, MetadataRoute } from "next";
 import type { CSSProperties } from "react";
 
 export type TemplateKey =
@@ -112,6 +112,9 @@ export interface SchoolBrand {
   logoMark: string;
   fallbackMark: string;
   tagline: string;
+  /** Optional uploaded school profile/logo image. Used for the browser favicon when present. */
+  profileImageUrl?: string;
+  /** Optional dedicated icon override. Takes precedence over the profile image. */
   faviconUrl?: string;
 }
 
@@ -1380,6 +1383,10 @@ function toSafeJsonLd(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+function toAbsoluteUrl(url: string, origin: string): string {
+  return new URL(url, origin).toString();
+}
+
 export function siteThemeStyle(theme: SchoolTheme): CSSProperties {
   return {
     ["--school-primary" as never]: theme.primary,
@@ -1390,6 +1397,22 @@ export function siteThemeStyle(theme: SchoolTheme): CSSProperties {
     ["--school-ink" as never]: theme.ink,
     ["--school-muted" as never]: theme.muted,
   } as CSSProperties;
+}
+
+export function getSchoolUploadedFaviconUrl(school: SchoolConfig): string | null {
+  return school.brand.faviconUrl ?? school.brand.profileImageUrl ?? null;
+}
+
+export function getSchoolFaviconHref(school: SchoolConfig): string {
+  return getSchoolUploadedFaviconUrl(school) ?? "/melo-favicon.png";
+}
+
+export function getSchoolFaviconAbsoluteUrl({ origin, school }: { origin: string; school: SchoolConfig }): string {
+  return toAbsoluteUrl(getSchoolFaviconHref(school), origin);
+}
+
+export function buildOpenGraphImageUrl({ origin, page }: { origin: string; page: ResolvedPage }): string {
+  return new URL(`/og-image?path=${encodeURIComponent(page.canonicalPath)}`, origin).toString();
 }
 
 export function buildPageMetadata({
@@ -1403,33 +1426,48 @@ export function buildPageMetadata({
 }): Metadata {
   const canonicalUrl = new URL(page.canonicalPath, origin).toString();
   const shareTitle = page.key === "home" ? school.brand.name : `${page.title} — ${school.brand.name}`;
+  const faviconHref = getSchoolFaviconHref(school);
+  const ogImageUrl = buildOpenGraphImageUrl({ origin, page });
 
   return {
     metadataBase: new URL(origin),
+    applicationName: school.brand.name,
     title: shareTitle,
     description: page.description,
     alternates: {
       canonical: canonicalUrl,
     },
+    manifest: "/manifest.webmanifest",
     openGraph: {
       title: shareTitle,
       description: page.description,
       url: canonicalUrl,
       siteName: school.brand.name,
       type: "website",
+      locale: "en_NG",
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: shareTitle }],
     },
     twitter: {
       card: "summary_large_image",
       title: shareTitle,
       description: page.description,
+      images: [ogImageUrl],
     },
     icons: {
-      icon: school.brand.faviconUrl ?? "/icon.svg",
-      apple: school.brand.faviconUrl ?? "/icon.svg",
+      icon: [{ url: faviconHref, type: faviconHref.endsWith(".png") ? "image/png" : undefined }],
+      shortcut: [faviconHref],
+      apple: [{ url: getSchoolUploadedFaviconUrl(school) ?? "/apple-icon.png" }],
     },
     robots: {
       index: true,
       follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
     },
   };
 }
@@ -1443,6 +1481,7 @@ export function buildSchoolStructuredData({
   school: SchoolConfig;
   page: ResolvedPage;
 }): string {
+  const logoUrl = getSchoolFaviconAbsoluteUrl({ origin: canonicalUrl, school });
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
@@ -1451,6 +1490,7 @@ export function buildSchoolStructuredData({
         name: school.brand.name,
         url: canonicalUrl,
         description: page.description,
+        inLanguage: "en-NG",
       },
       {
         "@type": "EducationalOrganization",
@@ -1459,7 +1499,8 @@ export function buildSchoolStructuredData({
         telephone: school.contact.phone,
         email: school.contact.email,
         address: school.contact.address,
-        logo: school.brand.faviconUrl ? new URL(school.brand.faviconUrl, canonicalUrl).toString() : new URL("/icon.svg", canonicalUrl).toString(),
+        logo: logoUrl,
+        image: logoUrl,
       },
     ],
   };

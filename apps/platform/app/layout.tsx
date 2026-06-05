@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { AuthProvider } from "@/AuthProvider";
@@ -6,12 +7,17 @@ import { hasConvexAuthEnv } from "@school/auth";
 import { AppToaster } from "@school/shared/toast";
 import { getToken } from "@/auth-server";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "SchoolOS Platform Admin",
   description: "Internal super-admin workspace for SchoolOS.",
   robots: {
     index: false,
     follow: false,
+  },
+  icons: {
+    icon: [{ url: "/melo-favicon.png", type: "image/png" }],
+    shortcut: ["/melo-favicon.png"],
+    apple: [{ url: "/apple-icon.png" }],
   },
 };
 

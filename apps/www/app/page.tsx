@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { siteBrand, toJsonLd } from "@/site";
+import { buildPageMetadata, siteBrand, toJsonLd } from "@/site";
 
 import { WovenLightHero } from "../components/ui/woven-light-hero";
 import { FramedReveal } from "../components/public/landing/framed-reveal";
@@ -8,10 +8,11 @@ import { ExpansionStory } from "../components/public/landing/expansion-story";
 import { CapabilityComposition } from "../components/public/landing/capability-composition";
 import { FinalCta } from "../components/public/landing/final-cta";
 
-export const metadata: Metadata = {
-  title: `${siteBrand.name} — ${siteBrand.tagline}`,
+export const metadata: Metadata = buildPageMetadata({
+  title: siteBrand.tagline,
   description: siteBrand.description,
-};
+  path: "/",
+});
 
 const platformSchema = {
   "@context": "https://schema.org",

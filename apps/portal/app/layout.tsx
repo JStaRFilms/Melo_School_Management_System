@@ -9,6 +9,15 @@ import { getToken } from "@/auth-server";
 export const metadata: Metadata = {
   title: "Portal - Academic Dashboard",
   description: "Parent and student academic portal for the school management system",
+  robots: {
+    index: false,
+    follow: false,
+  },
+  icons: {
+    icon: [{ url: "/melo-favicon.png", type: "image/png" }],
+    shortcut: ["/melo-favicon.png"],
+    apple: [{ url: "/apple-icon.png" }],
+  },
 };
 
 export default async function RootLayout({

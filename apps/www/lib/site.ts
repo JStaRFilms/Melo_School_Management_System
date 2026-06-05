@@ -217,6 +217,8 @@ export function buildPageMetadata({
   const url = new URL(path, siteBrand.siteUrl).toString();
   const shareTitle = `${title} — ${siteBrand.name}`;
 
+  const imageUrl = new URL("/og-image", siteBrand.siteUrl).toString();
+
   return {
     title,
     description,
@@ -227,13 +229,26 @@ export function buildPageMetadata({
       url,
       siteName: siteBrand.name,
       type: "website",
+      locale: "en_NG",
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: shareTitle }],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: shareTitle,
       description,
+      images: [imageUrl],
     },
-    robots: { index: true, follow: true },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
   };
 }
 
