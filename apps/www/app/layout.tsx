@@ -4,7 +4,7 @@ import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/site-ui";
 import { siteBrand } from "@/site";
 
-const socialImageUrl = new URL("/og-image", siteBrand.siteUrl).toString();
+const socialImageUrl = new URL("/og-image.png", siteBrand.siteUrl).toString();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteBrand.siteUrl),

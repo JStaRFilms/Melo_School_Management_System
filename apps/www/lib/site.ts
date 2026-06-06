@@ -217,7 +217,7 @@ export function buildPageMetadata({
   const url = new URL(path, siteBrand.siteUrl).toString();
   const shareTitle = `${title} — ${siteBrand.name}`;
 
-  const imageUrl = new URL("/og-image", siteBrand.siteUrl).toString();
+  const imageUrl = new URL("/og-image.png", siteBrand.siteUrl).toString();
 
   return {
     title,
