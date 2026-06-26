@@ -14,6 +14,7 @@ interface TeacherEditFormProps {
   onClose: () => void;
   isSaving: boolean;
   isResetting: boolean;
+  isArchiveStatusLoading?: boolean;
   variant?: "default" | "sheet";
 }
 
@@ -25,6 +26,7 @@ export function TeacherEditForm({
   onClose,
   isSaving,
   isResetting,
+  isArchiveStatusLoading = false,
   variant = "default",
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
@@ -37,7 +39,7 @@ export function TeacherEditForm({
     setEmail(teacher.email);
     setResetPass("");
     setShowResetPass(false);
-  }, [teacher]);
+  }, [teacher._id, teacher.email, teacher.name]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +50,7 @@ export function TeacherEditForm({
   };
 
   const isSheet = variant === "sheet";
-  const archiveBlockers = teacher.archiveBlockers ?? [];
+  const archiveBlockers = [...new Set(teacher.archiveBlockers ?? [])].filter(Boolean);
   const hasArchiveBlockers = archiveBlockers.length > 0;
 
   const FormContent = (
@@ -155,12 +157,18 @@ export function TeacherEditForm({
             <button
               type="button"
               onClick={() => onArchive(teacher._id)}
-              disabled={hasArchiveBlockers}
-              title={hasArchiveBlockers ? "Reassign active class or subject links before archiving." : undefined}
+              disabled={isArchiveStatusLoading || hasArchiveBlockers}
+              title={
+                isArchiveStatusLoading
+                  ? "Checking active class and subject links before archiving."
+                  : hasArchiveBlockers
+                    ? "Reassign active class or subject links before archiving."
+                    : undefined
+              }
               className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-3 text-[10px] font-bold uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
             >
               <Archive className="h-3 w-3" />
-              Archive
+              {isArchiveStatusLoading ? "Checking..." : "Archive"}
             </button>
           </div>
       </div>

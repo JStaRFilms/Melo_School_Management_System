@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import {
   formatClassDisplayName,
   normalizeHumanName,
@@ -16,6 +17,8 @@ function buildClassName(classDoc: {
     name: classDoc.name,
   });
 }
+
+type ArchiveGuardrailCtx = QueryCtx | MutationCtx;
 
 function summarizeBlockers(blockers: string[]) {
   const uniqueBlockers = [...new Set(blockers)].filter(Boolean);
@@ -34,34 +37,36 @@ function summarizeBlockers(blockers: string[]) {
 }
 
 export async function listTeacherArchiveBlockers(
-  ctx: any,
+  ctx: ArchiveGuardrailCtx,
   args: {
     schoolId: Id<"schools">;
     teacherId?: Id<"users">;
   }
 ) {
-  const teacherAssignmentsQuery = args.teacherId
+  const teacherAssignmentsPromise = args.teacherId
     ? ctx.db
         .query("teacherAssignments")
-        .withIndex("by_teacher", (q: any) => q.eq("teacherId", args.teacherId))
+        .withIndex("by_teacher", (q) => q.eq("teacherId", args.teacherId!))
+        .collect()
     : ctx.db
         .query("teacherAssignments")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId));
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .collect();
 
   const [classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
       ctx.db
         .query("classes")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
       ctx.db
         .query("classSubjects")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
-      teacherAssignmentsQuery.collect(),
+      teacherAssignmentsPromise,
       ctx.db
         .query("subjects")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
     ]);
 
@@ -134,7 +139,7 @@ export async function listTeacherArchiveBlockers(
 }
 
 export async function getTeacherArchiveBlockers(
-  ctx: any,
+  ctx: ArchiveGuardrailCtx,
   args: {
     schoolId: Id<"schools">;
     teacherId: Id<"users">;
@@ -149,7 +154,7 @@ export async function getTeacherArchiveBlockers(
 }
 
 export async function assertTeacherCanBeArchived(
-  ctx: any,
+  ctx: ArchiveGuardrailCtx,
   args: {
     schoolId: Id<"schools">;
     teacherId: Id<"users">;
