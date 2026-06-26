@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title: siteBrand.name,
     description: siteBrand.description,
     url: siteBrand.siteUrl,
-    images: [{ url: socialImageUrl, width: 1200, height: 630, alt: `${siteBrand.name} platform preview` }],
+    images: [{ url: socialImageUrl, width: 1731, height: 909, alt: `${siteBrand.name} platform preview` }],
   },
   twitter: {
     card: "summary_large_image",
