@@ -33,13 +33,21 @@ function summarizeBlockers(blockers: string[]) {
   } more`;
 }
 
-export async function assertTeacherCanBeArchived(
+export async function listTeacherArchiveBlockers(
   ctx: any,
   args: {
     schoolId: Id<"schools">;
-    teacherId: Id<"users">;
+    teacherId?: Id<"users">;
   }
 ) {
+  const teacherAssignmentsQuery = args.teacherId
+    ? ctx.db
+        .query("teacherAssignments")
+        .withIndex("by_teacher", (q: any) => q.eq("teacherId", args.teacherId))
+    : ctx.db
+        .query("teacherAssignments")
+        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId));
+
   const [classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
       ctx.db
@@ -50,10 +58,7 @@ export async function assertTeacherCanBeArchived(
         .query("classSubjects")
         .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
         .collect(),
-      ctx.db
-        .query("teacherAssignments")
-        .withIndex("by_teacher", (q: any) => q.eq("teacherId", args.teacherId))
-        .collect(),
+      teacherAssignmentsQuery.collect(),
       ctx.db
         .query("subjects")
         .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
@@ -71,45 +76,86 @@ export async function assertTeacherCanBeArchived(
       .map((subject: any) => [String(subject._id), subject] as const)
   );
 
-  const blockers: string[] = [];
+  const blockersByTeacherId = new Map<string, string[]>();
+  const targetTeacherId = args.teacherId ? String(args.teacherId) : null;
+  const addBlocker = (teacherId: Id<"users"> | null | undefined, blocker: string) => {
+    if (!teacherId || !blocker) {
+      return;
+    }
+
+    const key = String(teacherId);
+    if (targetTeacherId && key !== targetTeacherId) {
+      return;
+    }
+
+    const teacherBlockers = blockersByTeacherId.get(key) ?? [];
+    teacherBlockers.push(blocker);
+    blockersByTeacherId.set(key, teacherBlockers);
+  };
 
   for (const classDoc of activeClasses.values()) {
-    if (String(classDoc.formTeacherId) === String(args.teacherId)) {
-      blockers.push(`form teacher for ${buildClassName(classDoc)}`);
-    }
+    addBlocker(
+      classDoc.formTeacherId,
+      `form teacher for ${buildClassName(classDoc)}`
+    );
   }
 
   for (const offering of classSubjects) {
-    if (String(offering.teacherId) !== String(args.teacherId)) {
-      continue;
-    }
-
     const classDoc = activeClasses.get(String(offering.classId));
     const subject = activeSubjects.get(String(offering.subjectId));
     if (!classDoc || !subject) {
       continue;
     }
 
-    blockers.push(
+    addBlocker(
+      offering.teacherId,
       `${normalizeHumanName(subject.name)} in ${buildClassName(classDoc)}`
     );
   }
 
   for (const assignment of teacherAssignments) {
-    if (String(assignment.schoolId) !== String(args.schoolId)) {
-      continue;
-    }
-
     const classDoc = activeClasses.get(String(assignment.classId));
     const subject = activeSubjects.get(String(assignment.subjectId));
     if (!classDoc || !subject) {
       continue;
     }
 
-    blockers.push(
+    addBlocker(
+      assignment.teacherId,
       `${normalizeHumanName(subject.name)} in ${buildClassName(classDoc)}`
     );
   }
+
+  for (const [teacherId, blockers] of blockersByTeacherId) {
+    blockersByTeacherId.set(teacherId, [...new Set(blockers)].filter(Boolean));
+  }
+
+  return blockersByTeacherId;
+}
+
+export async function getTeacherArchiveBlockers(
+  ctx: any,
+  args: {
+    schoolId: Id<"schools">;
+    teacherId: Id<"users">;
+  }
+) {
+  const blockersByTeacherId = await listTeacherArchiveBlockers(ctx, {
+    schoolId: args.schoolId,
+    teacherId: args.teacherId,
+  });
+
+  return blockersByTeacherId.get(String(args.teacherId)) ?? [];
+}
+
+export async function assertTeacherCanBeArchived(
+  ctx: any,
+  args: {
+    schoolId: Id<"schools">;
+    teacherId: Id<"users">;
+  }
+) {
+  const blockers = await getTeacherArchiveBlockers(ctx, args);
 
   if (blockers.length > 0) {
     throw new ConvexError(

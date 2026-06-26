@@ -19,6 +19,7 @@ import {
   assertClassCanBeArchived,
   assertSubjectCanBeArchived,
   assertTeacherCanBeArchived,
+  listTeacherArchiveBlockers,
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 
@@ -276,6 +277,8 @@ export const listTeachers = query({
       name: v.string(),
       email: v.string(),
       createdAt: v.number(),
+      canArchive: v.boolean(),
+      archiveBlockers: v.array(v.string()),
     })
   ),
   handler: async (ctx) => {
@@ -294,14 +297,25 @@ export const listTeachers = query({
       )
       .collect();
 
+    const archiveBlockersByTeacherId = await listTeacherArchiveBlockers(ctx, {
+      schoolId,
+    });
+
     return teachers
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((t) => ({
-        _id: t._id,
-        name: normalizePersonName(t.name),
-        email: t.email,
-        createdAt: t.createdAt,
-      }));
+      .map((t) => {
+        const archiveBlockers =
+          archiveBlockersByTeacherId.get(String(t._id)) ?? [];
+
+        return {
+          _id: t._id,
+          name: normalizePersonName(t.name),
+          email: t.email,
+          createdAt: t.createdAt,
+          canArchive: archiveBlockers.length === 0,
+          archiveBlockers,
+        };
+      });
   },
 });
 
