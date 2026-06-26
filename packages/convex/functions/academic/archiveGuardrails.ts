@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import {
   formatClassDisplayName,
   normalizeHumanName,
@@ -17,6 +18,8 @@ function buildClassName(classDoc: {
   });
 }
 
+type ArchiveGuardrailCtx = QueryCtx | MutationCtx;
+
 function summarizeBlockers(blockers: string[]) {
   const uniqueBlockers = [...new Set(blockers)].filter(Boolean);
 
@@ -33,30 +36,37 @@ function summarizeBlockers(blockers: string[]) {
   } more`;
 }
 
-export async function assertTeacherCanBeArchived(
-  ctx: any,
+export async function listTeacherArchiveBlockers(
+  ctx: ArchiveGuardrailCtx,
   args: {
     schoolId: Id<"schools">;
-    teacherId: Id<"users">;
+    teacherId?: Id<"users">;
   }
 ) {
+  const teacherAssignmentsPromise = args.teacherId
+    ? ctx.db
+        .query("teacherAssignments")
+        .withIndex("by_teacher", (q) => q.eq("teacherId", args.teacherId!))
+        .collect()
+    : ctx.db
+        .query("teacherAssignments")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .collect();
+
   const [classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
       ctx.db
         .query("classes")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
       ctx.db
         .query("classSubjects")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
-      ctx.db
-        .query("teacherAssignments")
-        .withIndex("by_teacher", (q: any) => q.eq("teacherId", args.teacherId))
-        .collect(),
+      teacherAssignmentsPromise,
       ctx.db
         .query("subjects")
-        .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect(),
     ]);
 
@@ -71,45 +81,86 @@ export async function assertTeacherCanBeArchived(
       .map((subject: any) => [String(subject._id), subject] as const)
   );
 
-  const blockers: string[] = [];
+  const blockersByTeacherId = new Map<string, string[]>();
+  const targetTeacherId = args.teacherId ? String(args.teacherId) : null;
+  const addBlocker = (teacherId: Id<"users"> | null | undefined, blocker: string) => {
+    if (!teacherId || !blocker) {
+      return;
+    }
+
+    const key = String(teacherId);
+    if (targetTeacherId && key !== targetTeacherId) {
+      return;
+    }
+
+    const teacherBlockers = blockersByTeacherId.get(key) ?? [];
+    teacherBlockers.push(blocker);
+    blockersByTeacherId.set(key, teacherBlockers);
+  };
 
   for (const classDoc of activeClasses.values()) {
-    if (String(classDoc.formTeacherId) === String(args.teacherId)) {
-      blockers.push(`form teacher for ${buildClassName(classDoc)}`);
-    }
+    addBlocker(
+      classDoc.formTeacherId,
+      `form teacher for ${buildClassName(classDoc)}`
+    );
   }
 
   for (const offering of classSubjects) {
-    if (String(offering.teacherId) !== String(args.teacherId)) {
-      continue;
-    }
-
     const classDoc = activeClasses.get(String(offering.classId));
     const subject = activeSubjects.get(String(offering.subjectId));
     if (!classDoc || !subject) {
       continue;
     }
 
-    blockers.push(
+    addBlocker(
+      offering.teacherId,
       `${normalizeHumanName(subject.name)} in ${buildClassName(classDoc)}`
     );
   }
 
   for (const assignment of teacherAssignments) {
-    if (String(assignment.schoolId) !== String(args.schoolId)) {
-      continue;
-    }
-
     const classDoc = activeClasses.get(String(assignment.classId));
     const subject = activeSubjects.get(String(assignment.subjectId));
     if (!classDoc || !subject) {
       continue;
     }
 
-    blockers.push(
+    addBlocker(
+      assignment.teacherId,
       `${normalizeHumanName(subject.name)} in ${buildClassName(classDoc)}`
     );
   }
+
+  for (const [teacherId, blockers] of blockersByTeacherId) {
+    blockersByTeacherId.set(teacherId, [...new Set(blockers)].filter(Boolean));
+  }
+
+  return blockersByTeacherId;
+}
+
+export async function getTeacherArchiveBlockers(
+  ctx: ArchiveGuardrailCtx,
+  args: {
+    schoolId: Id<"schools">;
+    teacherId: Id<"users">;
+  }
+) {
+  const blockersByTeacherId = await listTeacherArchiveBlockers(ctx, {
+    schoolId: args.schoolId,
+    teacherId: args.teacherId,
+  });
+
+  return blockersByTeacherId.get(String(args.teacherId)) ?? [];
+}
+
+export async function assertTeacherCanBeArchived(
+  ctx: ArchiveGuardrailCtx,
+  args: {
+    schoolId: Id<"schools">;
+    teacherId: Id<"users">;
+  }
+) {
+  const blockers = await getTeacherArchiveBlockers(ctx, args);
 
   if (blockers.length > 0) {
     throw new ConvexError(

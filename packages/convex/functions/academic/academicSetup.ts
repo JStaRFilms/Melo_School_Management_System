@@ -19,6 +19,7 @@ import {
   assertClassCanBeArchived,
   assertSubjectCanBeArchived,
   assertTeacherCanBeArchived,
+  getTeacherArchiveBlockers as readTeacherArchiveBlockers,
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 
@@ -302,6 +303,31 @@ export const listTeachers = query({
         email: t.email,
         createdAt: t.createdAt,
       }));
+  },
+});
+
+export const getTeacherArchiveBlockers = query({
+  args: { teacherId: v.id("users") },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const teacher = await ctx.db.get(args.teacherId);
+    if (
+      !teacher ||
+      teacher.schoolId !== schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
+      throw new ConvexError("Teacher not found");
+    }
+
+    return await readTeacherArchiveBlockers(ctx, {
+      schoolId,
+      teacherId: args.teacherId,
+    });
   },
 });
 

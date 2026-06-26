@@ -1411,8 +1411,8 @@ export function getSchoolFaviconAbsoluteUrl({ origin, school }: { origin: string
   return toAbsoluteUrl(getSchoolFaviconHref(school), origin);
 }
 
-export function buildOpenGraphImageUrl({ origin, page }: { origin: string; page: ResolvedPage }): string {
-  return new URL(`/og-image?path=${encodeURIComponent(page.canonicalPath)}`, origin).toString();
+export function buildOpenGraphImageUrl({ origin }: { origin: string }): string {
+  return new URL("/og-image.png", origin).toString();
 }
 
 export function buildPageMetadata({
@@ -1427,7 +1427,7 @@ export function buildPageMetadata({
   const canonicalUrl = new URL(page.canonicalPath, origin).toString();
   const shareTitle = page.key === "home" ? school.brand.name : `${page.title} — ${school.brand.name}`;
   const faviconHref = getSchoolFaviconHref(school);
-  const ogImageUrl = buildOpenGraphImageUrl({ origin, page });
+  const ogImageUrl = buildOpenGraphImageUrl({ origin });
 
   return {
     metadataBase: new URL(origin),

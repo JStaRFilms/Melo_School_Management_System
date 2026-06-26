@@ -14,6 +14,7 @@ interface TeacherEditFormProps {
   onClose: () => void;
   isSaving: boolean;
   isResetting: boolean;
+  isArchiveStatusLoading?: boolean;
   variant?: "default" | "sheet";
 }
 
@@ -25,6 +26,7 @@ export function TeacherEditForm({
   onClose,
   isSaving,
   isResetting,
+  isArchiveStatusLoading = false,
   variant = "default",
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
@@ -37,7 +39,7 @@ export function TeacherEditForm({
     setEmail(teacher.email);
     setResetPass("");
     setShowResetPass(false);
-  }, [teacher]);
+  }, [teacher._id, teacher.email, teacher.name]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +50,8 @@ export function TeacherEditForm({
   };
 
   const isSheet = variant === "sheet";
+  const archiveBlockers = [...new Set(teacher.archiveBlockers ?? [])].filter(Boolean);
+  const hasArchiveBlockers = archiveBlockers.length > 0;
 
   const FormContent = (
     <>
@@ -126,6 +130,25 @@ export function TeacherEditForm({
             </div>
           </FormField>
 
+          {hasArchiveBlockers && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Reassignment required</p>
+              <p className="mt-1 text-[11px] font-medium leading-relaxed">
+                This teacher still has active links. Reassign these first:
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] font-semibold leading-relaxed">
+                {archiveBlockers.slice(0, 3).map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+              {archiveBlockers.length > 3 && (
+                <p className="mt-1 text-[11px] font-semibold">
+                  +{archiveBlockers.length - 3} more active links
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-between items-center pt-2">
             <div className="space-y-0.5">
               <span className="text-[10px] font-bold text-rose-500 uppercase tracking-[0.1em]">Danger Zone</span>
@@ -134,10 +157,18 @@ export function TeacherEditForm({
             <button
               type="button"
               onClick={() => onArchive(teacher._id)}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-3 text-[10px] font-bold uppercase tracking-widest text-rose-600 hover:bg-rose-100 transition-colors"
+              disabled={isArchiveStatusLoading || hasArchiveBlockers}
+              title={
+                isArchiveStatusLoading
+                  ? "Checking active class and subject links before archiving."
+                  : hasArchiveBlockers
+                    ? "Reassign active class or subject links before archiving."
+                    : undefined
+              }
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-3 text-[10px] font-bold uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
             >
               <Archive className="h-3 w-3" />
-              Archive
+              {isArchiveStatusLoading ? "Checking..." : "Archive"}
             </button>
           </div>
       </div>

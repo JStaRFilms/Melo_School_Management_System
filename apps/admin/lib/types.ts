@@ -25,6 +25,7 @@ export type TeacherRecord = {
   name: string;
   email: string;
   createdAt: number;
+  archiveBlockers?: string[];
   status?: "active" | "inactive" | "onLeave";
 };
 

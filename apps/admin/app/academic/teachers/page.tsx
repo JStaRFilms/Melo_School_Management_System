@@ -20,6 +20,28 @@ type ProvisionResult = {
   temporaryPassword: string;
 };
 
+function normalizeArchiveBlockers(blockers: string[] | undefined) {
+  return [...new Set(blockers ?? [])].filter(Boolean);
+}
+
+function summarizeArchiveBlockers(blockers: string[]) {
+  const normalizedBlockers = normalizeArchiveBlockers(blockers);
+
+  if (normalizedBlockers.length <= 3) {
+    return normalizedBlockers.join(", ");
+  }
+
+  return `${normalizedBlockers.slice(0, 3).join(", ")}, and ${
+    normalizedBlockers.length - 3
+  } more`;
+}
+
+function getTeacherArchiveBlockerMessage(blockers: string[]) {
+  return `Reassign this teacher before archiving. Active links: ${summarizeArchiveBlockers(
+    blockers
+  )}.`;
+}
+
 export default function TeachersPage() {
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
@@ -53,6 +75,26 @@ export default function TeachersPage() {
   const selectedTeacher = useMemo(() => 
     teachers?.find((t) => t._id === selectedTeacherId) ?? null,
   [teachers, selectedTeacherId]);
+  const selectedTeacherArchiveBlockers = useQuery(
+    "functions/academic/academicSetup:getTeacherArchiveBlockers" as never,
+    selectedTeacherId
+      ? ({ teacherId: selectedTeacherId } as never)
+      : ("skip" as never)
+  ) as string[] | undefined;
+  const isArchiveStatusLoading =
+    Boolean(selectedTeacherId) && selectedTeacherArchiveBlockers === undefined;
+  const selectedTeacherWithArchiveState = useMemo(
+    () =>
+      selectedTeacher
+        ? {
+            ...selectedTeacher,
+            archiveBlockers: normalizeArchiveBlockers(
+              selectedTeacherArchiveBlockers
+            ),
+          }
+        : null,
+    [selectedTeacher, selectedTeacherArchiveBlockers]
+  );
 
   useEffect(() => {
     if (selectedTeacherId && isMobile) {
@@ -136,17 +178,43 @@ export default function TeachersPage() {
   const handleArchive = async (id: string) => {
     const teacher = teachers?.find(t => t._id === id);
     if (!teacher) return;
-    if (!window.confirm(`Archive ${teacher.name}? This will revoke their teaching access permanently.`)) return;
+
+    if (selectedTeacherId === id && selectedTeacherArchiveBlockers === undefined) {
+      showNotice({
+        tone: "error",
+        title: "Still Checking Links",
+        message: "Please wait while active class and subject links are checked.",
+      });
+      return;
+    }
+
+    const archiveBlockers =
+      selectedTeacherId === id
+        ? normalizeArchiveBlockers(selectedTeacherArchiveBlockers)
+        : [];
+    if (archiveBlockers.length > 0) {
+      showNotice({
+        tone: "error",
+        title: "Reassignment Required",
+        message: getTeacherArchiveBlockerMessage(archiveBlockers),
+      });
+      return;
+    }
+
+    if (!window.confirm(`Archive ${teacher.name}? This will deactivate their active access while preserving historical records.`)) return;
 
     try {
       await archiveTeacher({ teacherId: id } as never);
       setSelectedTeacherId(null);
-      showNotice({ tone: "success", title: "Teacher Archived", message: "Access and records deactivated." });
+      showNotice({ tone: "success", title: "Teacher Archived", message: "Active access deactivated. Historical records preserved." });
     } catch (err) {
+      const message = getUserFacingErrorMessage(err, "Failed to deactivate record.");
       showNotice({
         tone: "error",
-        title: "Archive Failed",
-        message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
+        title: message.startsWith("Reassign this teacher")
+          ? "Reassignment Required"
+          : "Archive Failed",
+        message,
       });
     }
   };
@@ -174,15 +242,16 @@ export default function TeachersPage() {
         title="Edit Staff Member"
         description="Update faculty credentials."
       >
-        {selectedTeacher && (
+        {selectedTeacherWithArchiveState && (
            <TeacherEditForm
-             teacher={selectedTeacher}
+             teacher={selectedTeacherWithArchiveState}
              onUpdate={handleUpdate}
              onResetPassword={handleResetPassword}
              onArchive={handleArchive}
              onClose={() => setSelectedTeacherId(null)}
              isSaving={isSaving}
              isResetting={isResetting}
+             isArchiveStatusLoading={isArchiveStatusLoading}
              variant="sheet"
            />
         )}
@@ -192,15 +261,16 @@ export default function TeachersPage() {
         {/* Sidebar Bucket */}
         <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-4 md:p-8">
           <div className="hidden lg:block">
-            {selectedTeacher ? (
+            {selectedTeacherWithArchiveState ? (
               <TeacherEditForm
-                teacher={selectedTeacher}
+                teacher={selectedTeacherWithArchiveState}
                 onUpdate={handleUpdate}
                 onResetPassword={handleResetPassword}
                 onArchive={handleArchive}
                 onClose={() => setSelectedTeacherId(null)}
                 isSaving={isSaving}
                 isResetting={isResetting}
+                isArchiveStatusLoading={isArchiveStatusLoading}
               />
             ) : (
               <TeacherCreationForm
