@@ -51,7 +51,6 @@ test-results/
 # AGENTS.md
 # CLAUDE.md
 # skills-lock.json
-pi-session-*.html
 
 .jstar/
 .pi/

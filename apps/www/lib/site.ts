@@ -230,7 +230,7 @@ export function buildPageMetadata({
       siteName: siteBrand.name,
       type: "website",
       locale: "en_NG",
-      images: [{ url: imageUrl, width: 1731, height: 909, alt: shareTitle }],
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: shareTitle }],
     },
     twitter: {
       card: "summary_large_image",
