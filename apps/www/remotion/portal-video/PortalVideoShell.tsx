@@ -8,14 +8,16 @@ import { getSceneTransitionOpacity } from "./timeline";
 export function PortalVideoShell({
   scene,
   children,
+  transitionOpacity: transitionOpacityOverride,
 }: {
   scene: PortalVideoScene;
   children: ReactNode;
+  transitionOpacity?: number;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const entrance = spring({ frame, fps, config: { damping: 18, stiffness: 110 } });
-  const transitionOpacity = getSceneTransitionOpacity(frame);
+  const transitionOpacity = transitionOpacityOverride ?? getSceneTransitionOpacity(frame);
   const cameraX = interpolate(frame, [0, 98, 180, 270], [0, -16, 0, -10], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",

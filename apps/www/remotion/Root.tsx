@@ -2,6 +2,7 @@ import React from 'react';
 import { Composition, Still, registerRoot } from 'remotion';
 import { ProductRevealV2 } from './compositions/ProductRevealV2';
 import { PortalComponentProof } from './compositions/PortalComponentProof';
+import { PortalHistoryMotionProof } from './compositions/PortalHistoryMotionProof';
 import { UnifiedOperationsStill } from './stills/UnifiedOperationsStill';
 import './styles.css';
 
@@ -20,6 +21,14 @@ export const RemotionRoot: React.FC = () => {
 				id="PortalComponentProof"
 				component={PortalComponentProof}
 				durationInFrames={270}
+				fps={30}
+				width={1440}
+				height={900}
+			/>
+			<Composition
+				id="PortalHistoryMotionProof"
+				component={PortalHistoryMotionProof}
+				durationInFrames={300}
 				fps={30}
 				width={1440}
 				height={900}

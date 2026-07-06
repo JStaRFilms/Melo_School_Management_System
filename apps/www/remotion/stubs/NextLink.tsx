@@ -1,16 +1,17 @@
-import React, { type ReactNode } from "react";
+import React, { type AnchorHTMLAttributes, type ReactNode } from "react";
+
+type NextLinkStubProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  children: ReactNode;
+  href?: string;
+};
 
 export default function NextLink({
   children,
-  className,
   href,
-}: {
-  children: ReactNode;
-  className?: string;
-  href?: string;
-}) {
+  ...props
+}: NextLinkStubProps) {
   return (
-    <a className={className} href={typeof href === "string" ? href : "#"}>
+    <a href={typeof href === "string" ? href : "#"} {...props}>
       {children}
     </a>
   );

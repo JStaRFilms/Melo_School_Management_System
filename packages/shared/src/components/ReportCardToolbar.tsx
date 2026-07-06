@@ -72,6 +72,7 @@ export function ReportCardToolbar({
         </a>
         <button
           type="button"
+          data-video-target="portal-export-print"
           disabled={isPrintBlocked}
           onClick={onPrint ?? (() => window.print())}
           style={{

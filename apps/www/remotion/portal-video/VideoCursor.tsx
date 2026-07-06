@@ -1,13 +1,50 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { getActiveClick, getCursorPosition, getLastReleasedClick } from "./timeline";
+import {
+  getActiveClick,
+  getCursorPosition,
+  getLastReleasedClick,
+  portalVideoTargetIds,
+  type VideoClick,
+} from "./timeline";
+import { useMeasuredVideoTargets, type VideoTargetId } from "./targets";
 
-export function VideoCursor() {
+type CursorPosition = { x: number; y: number };
+
+type TimelineCursorProps = {
+  targetIds: VideoTargetId[];
+  getPosition: (
+    frame: number,
+    measuredCenters: Partial<Record<VideoTargetId, CursorPosition>>
+  ) => CursorPosition;
+  getActiveClickForFrame: (frame: number) => VideoClick | null;
+  getLastReleasedClickForFrame: (frame: number) => VideoClick | null;
+};
+
+export function TimelineCursor({
+  targetIds,
+  getPosition,
+  getActiveClickForFrame,
+  getLastReleasedClickForFrame,
+}: TimelineCursorProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const position = getCursorPosition(frame);
-  const activeClick = getActiveClick(frame);
-  const lastReleasedClick = getLastReleasedClick(frame);
+  const targetRects = useMeasuredVideoTargets(targetIds, String(frame));
+  const measuredCenters = useMemo(
+    () => Object.fromEntries(
+      Object.entries(targetRects).map(([id, rect]) => [
+        id,
+        {
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2,
+        },
+      ])
+    ) as Partial<Record<VideoTargetId, CursorPosition>>,
+    [targetRects]
+  );
+  const position = getPosition(frame, measuredCenters);
+  const activeClick = getActiveClickForFrame(frame);
+  const lastReleasedClick = getLastReleasedClickForFrame(frame);
   const pulse = lastReleasedClick
     ? spring({
         frame: frame - lastReleasedClick.upFrame,
@@ -51,5 +88,16 @@ export function VideoCursor() {
         />
       </svg>
     </div>
+  );
+}
+
+export function VideoCursor() {
+  return (
+    <TimelineCursor
+      targetIds={portalVideoTargetIds}
+      getPosition={getCursorPosition}
+      getActiveClickForFrame={getActiveClick}
+      getLastReleasedClickForFrame={getLastReleasedClick}
+    />
   );
 }

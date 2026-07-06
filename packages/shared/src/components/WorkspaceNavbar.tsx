@@ -483,6 +483,7 @@ function SidebarLink({ section, active, renderLink }: { section: any, active: bo
     href: section.href,
     children: (
       <span
+        data-video-target={section.href === "/billing" ? "portal-nav-billing" : undefined}
         className={`flex items-center justify-between rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all duration-200 group ${
           active 
             ? "bg-slate-950 text-white shadow-md shadow-slate-950/10" 

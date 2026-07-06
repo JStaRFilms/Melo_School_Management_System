@@ -1,5 +1,6 @@
 import { interpolate } from "remotion";
 import type { PortalWorkspaceMode } from "../../../portal/lib/portal-types";
+import type { VideoTargetId } from "./targets";
 
 export type PortalVideoScene = {
   mode: PortalWorkspaceMode;
@@ -15,26 +16,27 @@ export type CursorPoint = {
   frame: number;
   x: number;
   y: number;
+  targetId?: VideoTargetId;
 };
 
 export type VideoClick = {
   id: string;
   label: string;
-  target: CursorPoint;
+  target: CursorPoint & { targetId: VideoTargetId };
   downFrame: number;
   upFrame: number;
   /**
    * The first frame where UI state is allowed to change. Keep this after
    * upFrame so the rendered click visually lands before the app reacts.
    */
-  commitFrame?: number;
+  commitFrame: number;
 };
 
 export const portalClicks = {
   openReportCard: {
     id: "open-report-card",
     label: "Open full report",
-    target: { frame: 80, x: 1115, y: 216 },
+    target: { frame: 80, targetId: "portal-full-report", x: 1115, y: 216 },
     downFrame: 86,
     upFrame: 90,
     commitFrame: 98,
@@ -42,7 +44,7 @@ export const portalClicks = {
   switchChild: {
     id: "switch-child",
     label: "Switch child",
-    target: { frame: 127, x: 382, y: 315 },
+    target: { frame: 127, targetId: "portal-child-david", x: 382, y: 315 },
     downFrame: 132,
     upFrame: 136,
     commitFrame: 144,
@@ -50,7 +52,7 @@ export const portalClicks = {
   openBilling: {
     id: "open-billing",
     label: "Open billing",
-    target: { frame: 164, x: 142, y: 504 },
+    target: { frame: 164, targetId: "portal-nav-billing", x: 142, y: 504 },
     downFrame: 168,
     upFrame: 172,
     commitFrame: 180,
@@ -58,7 +60,7 @@ export const portalClicks = {
   payInvoice: {
     id: "pay-invoice",
     label: "Start payment",
-    target: { frame: 202, x: 1028, y: 758 },
+    target: { frame: 202, targetId: "portal-pay-now", x: 1028, y: 758 },
     downFrame: 206,
     upFrame: 210,
     commitFrame: 216,
@@ -66,6 +68,7 @@ export const portalClicks = {
 } as const satisfies Record<string, VideoClick>;
 
 export const portalVideoClicks = Object.values(portalClicks);
+export const portalVideoTargetIds = portalVideoClicks.map((click) => click.target.targetId);
 
 export function getPortalScene(frame: number): PortalVideoScene {
   const hasOpenedReport = frame >= portalClicks.openReportCard.commitFrame;
@@ -111,20 +114,56 @@ export function getPortalScene(frame: number): PortalVideoScene {
   };
 }
 
-export function getCursorPosition(frame: number) {
-  const keyframes: CursorPoint[] = [
+export function getCursorKeyframes(): CursorPoint[] {
+  return [
     { frame: 0, x: 1050, y: 188 },
     { frame: 64, x: 1090, y: 198 },
     portalClicks.openReportCard.target,
-    { frame: portalClicks.openReportCard.upFrame + 8, x: portalClicks.openReportCard.target.x, y: portalClicks.openReportCard.target.y },
+    {
+      frame: portalClicks.openReportCard.upFrame + 8,
+      x: portalClicks.openReportCard.target.x,
+      y: portalClicks.openReportCard.target.y,
+      targetId: portalClicks.openReportCard.target.targetId,
+    },
     portalClicks.switchChild.target,
-    { frame: portalClicks.switchChild.upFrame + 8, x: portalClicks.switchChild.target.x, y: portalClicks.switchChild.target.y },
+    {
+      frame: portalClicks.switchChild.upFrame + 8,
+      x: portalClicks.switchChild.target.x,
+      y: portalClicks.switchChild.target.y,
+      targetId: portalClicks.switchChild.target.targetId,
+    },
     portalClicks.openBilling.target,
-    { frame: portalClicks.openBilling.upFrame + 8, x: portalClicks.openBilling.target.x, y: portalClicks.openBilling.target.y },
+    {
+      frame: portalClicks.openBilling.upFrame + 8,
+      x: portalClicks.openBilling.target.x,
+      y: portalClicks.openBilling.target.y,
+      targetId: portalClicks.openBilling.target.targetId,
+    },
     portalClicks.payInvoice.target,
-    { frame: portalClicks.payInvoice.upFrame + 16, x: portalClicks.payInvoice.target.x + 12, y: portalClicks.payInvoice.target.y - 10 },
+    {
+      frame: portalClicks.payInvoice.upFrame + 16,
+      x: portalClicks.payInvoice.target.x + 12,
+      y: portalClicks.payInvoice.target.y - 10,
+      targetId: portalClicks.payInvoice.target.targetId,
+    },
     { frame: 268, x: 1080, y: 700 },
   ];
+}
+
+export function getCursorPosition(
+  frame: number,
+  measuredCenters: Partial<Record<VideoTargetId, { x: number; y: number }>> = {}
+) {
+  const keyframes = getCursorKeyframes().map((point) => {
+    if (!point.targetId) {
+      return point;
+    }
+
+    const measuredCenter = measuredCenters[point.targetId];
+    return measuredCenter
+      ? { ...point, x: measuredCenter.x, y: measuredCenter.y }
+      : point;
+  });
 
   const frames = keyframes.map((point) => point.frame);
   const xValues = keyframes.map((point) => point.x);

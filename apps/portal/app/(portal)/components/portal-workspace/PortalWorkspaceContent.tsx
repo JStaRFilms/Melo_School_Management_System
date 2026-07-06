@@ -356,6 +356,7 @@ function DashboardView({
                 sessionId: workspace.selectedSessionId,
                 termId: workspace.selectedTermId,
               })}
+              data-video-target="portal-full-report"
               className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer"
             >
               Full report
@@ -411,6 +412,7 @@ function DashboardView({
             <h2 className="text-lg font-bold text-slate-900">Recent results</h2>
             <Link
               href={buildPortalHref("/results", { studentId: workspace.selectedStudentId })}
+              data-video-target="portal-see-results"
               className="text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
             >
               See all →
@@ -507,6 +509,7 @@ function PortalReportCardLayout({
                     {workspace.students.map((student) => (
                       <button
                         key={student.studentId}
+                        data-video-target={student.studentId === "student_david_sunday" ? "portal-child-david" : undefined}
                         onClick={() => onSelectStudent(student.studentId)}
                         className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition text-sm ${
                           student.isActive
@@ -628,6 +631,7 @@ function ResultsView({
               sessionId: workspace.selectedSessionId,
               termId: workspace.selectedTermId,
             })}
+            data-video-target="portal-open-report-card"
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer"
           >
             Open report card
@@ -668,6 +672,7 @@ function ResultsView({
                     <td className="px-4 py-3 text-slate-600">
                       <button
                         type="button"
+                        data-video-target={item.sessionId === "session_2024_2025" && item.termId === "term_third" ? "portal-history-third-term" : undefined}
                         onClick={() => onSelectHistoryItem(item)}
                         aria-pressed={isActive}
                         className="rounded-lg text-left font-medium text-slate-700 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
@@ -866,6 +871,7 @@ function BillingView({
                 <div className="border-t border-slate-100 px-5 py-4">
                   <button
                     type="button"
+                    data-video-target="portal-pay-now"
                     onClick={() => void onPayNow(invoice)}
                     disabled={payingInvoiceId !== null}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"

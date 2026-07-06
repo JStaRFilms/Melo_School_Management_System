@@ -23,6 +23,9 @@ Preserve the app's existing UI composition. Replace runtime dependencies, data s
 - Make video flows repeatable and scriptable.
 - Prefer code-native Remotion compositions that import/render real app components over screenshots or screen capture. Screen capture is only a diagnostic/reference fallback, not the main production workflow.
 - Drive cursor movement, click-down/up frames, app reactions, and route/state commits from one timeline object so clicks visibly land before UI changes.
+- Prefer semantic DOM target tracking (`data-video-target`) over raw coordinates for click accuracy; raw coordinates are fallbacks only.
+- When measuring DOM targets for Remotion cursor choreography, normalize `getBoundingClientRect()` viewport pixels back into composition coordinates using a `data-video-coordinate-root` and `useVideoConfig()` width/height. Remotion Studio preview scaling will otherwise make clicks drift badly.
+- Render debug target overlays in the same normalized composition coordinate space as the cursor, and use them only for authoring/diagnostics, never in polished output.
 - Prefer a tweakable preview workflow: open Remotion Studio, scrub the composition, adjust named timeline constants/props, and rerender. Avoid burying timing in unreadable magic numbers.
 
 ## Recommended Architecture
@@ -71,7 +74,9 @@ Start in the fork with the simplest safe version. Only backport abstractions to 
    - For this project, `pnpm video:portal:flow` captures reference artifacts into `artifacts/portal-parent-flow`; do not treat those artifacts as the source of the final Remotion composition.
    - For this project, `pnpm video:portal:component-proof` renders proof stills from `PortalComponentProof`, a code-native Remotion composition that imports real portal UI/components and mock data.
    - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, route/state choreography, and final render composition.
-   - Define each click with target coordinates, `downFrame`, `upFrame`, and `commitFrame`; route/data state must change at `commitFrame`, never before the click-up frame.
+   - Define each click with a semantic target id, fallback coordinates, `downFrame`, `upFrame`, and `commitFrame`; route/data state must change at `commitFrame`, never before the click-up frame.
+   - Add `data-video-target` markers to real clickable UI elements and measure their bounding boxes at render time so cursor clicks land at the actual center after camera transforms/responsive layout.
+   - Never feed raw viewport `getBoundingClientRect()` coordinates directly into cursor transforms. Convert target rects from viewport/Studio-scaled pixels into composition pixels relative to the Remotion coordinate root first.
    - Keep timing values centralized and named so the user can manually tune them while previewing in Remotion Studio.
 
 7. Verify.
