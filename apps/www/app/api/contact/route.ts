@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     // Validate request body
     const result = contactSchema.safeParse(body);
     if (!result.success) {
-      const errorMsg = result.error.errors.map((e) => e.message).join(", ");
+      const errorMsg = result.error.issues.map((e) => e.message).join(", ");
       return NextResponse.json(
         { success: false, error: errorMsg },
         { status: 400 }

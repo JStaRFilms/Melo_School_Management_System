@@ -3,7 +3,7 @@ import { Composition, Still, registerRoot } from 'remotion';
 import { ProductRevealV2 } from './compositions/ProductRevealV2';
 import { PortalComponentProof } from './compositions/PortalComponentProof';
 import { UnifiedOperationsStill } from './stills/UnifiedOperationsStill';
-import '../app/globals.css';
+import './styles.css';
 
 export const RemotionRoot: React.FC = () => {
 	return (

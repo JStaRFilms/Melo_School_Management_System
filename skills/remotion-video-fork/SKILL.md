@@ -22,6 +22,8 @@ Preserve the app's existing UI composition. Replace runtime dependencies, data s
 - Populate demo states with believable placeholder data, avatars, school branding, payments, notices, results, and report cards.
 - Make video flows repeatable and scriptable.
 - Prefer code-native Remotion compositions that import/render real app components over screenshots or screen capture. Screen capture is only a diagnostic/reference fallback, not the main production workflow.
+- Drive cursor movement, click-down/up frames, app reactions, and route/state commits from one timeline object so clicks visibly land before UI changes.
+- Prefer a tweakable preview workflow: open Remotion Studio, scrub the composition, adjust named timeline constants/props, and rerender. Avoid burying timing in unreadable magic numbers.
 
 ## Recommended Architecture
 
@@ -69,6 +71,8 @@ Start in the fork with the simplest safe version. Only backport abstractions to 
    - For this project, `pnpm video:portal:flow` captures reference artifacts into `artifacts/portal-parent-flow`; do not treat those artifacts as the source of the final Remotion composition.
    - For this project, `pnpm video:portal:component-proof` renders proof stills from `PortalComponentProof`, a code-native Remotion composition that imports real portal UI/components and mock data.
    - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, route/state choreography, and final render composition.
+   - Define each click with target coordinates, `downFrame`, `upFrame`, and `commitFrame`; route/data state must change at `commitFrame`, never before the click-up frame.
+   - Keep timing values centralized and named so the user can manually tune them while previewing in Remotion Studio.
 
 7. Verify.
    - Run targeted typecheck/build for the app being touched.
