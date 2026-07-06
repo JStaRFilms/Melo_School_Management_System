@@ -1,123 +1,169 @@
 ---
-name: remotion-video-fork
-description: Preserve-real-UI workflow for turning an existing app project into a Remotion/video-production fork. Use when the user wants videos that reuse the exact app UI composition, strip auth/database/connectors, replace live backends with mock/local data, script navigation/clicks/transitions, or prevent agents from remaking/redesigning screens for Remotion.
+name: remotion-real-ui-video
+description: Reusable workflow for turning an existing app into code-native Remotion videos that reuse the real UI instead of screenshots or recreated clone screens. Use when a user wants product demos, walkthroughs, onboarding videos, launch videos, or proof compositions from an existing React/Next/web app with mock/demo/local data, scripted navigation, click/touch choreography, responsive mobile proofs, scroll choreography, or calibrated cursor/tap targeting.
 ---
 
-# Remotion Video Fork Workflow
+# Remotion Real UI Video Workflow
 
 ## Core Rule
 
-Preserve the app's existing UI composition. Replace runtime dependencies, data sources, auth, and connectors; do not remake screens unless the user explicitly asks for a new design.
+Render the app's real UI in Remotion. Do not recreate clone screens, redesign dashboards, or rely on screenshots as the primary production path. Replace runtime/data boundaries with deterministic demo data so the existing components can render safely and repeatably.
 
 ## Non-negotiables
 
-- Treat the current repository as a video-production fork when the user confirms it is cloned for this purpose.
-- Keep real pages, layouts, components, shared navigation, styling, and visual hierarchy intact.
-- Do not create Remotion-only clone dashboards as the default approach.
-- Do not redesign dashboards, sidebars, cards, tables, report cards, or flows just because video rendering needs mock data.
+- Preserve the product's existing UI composition, layout hierarchy, shared components, styling, and navigation patterns.
+- Do not build Remotion-only clone dashboards as the default approach.
+- Do not redesign screens just because video rendering needs local data or scripted timing.
 - Prefer extracting data/provider boundaries over rewriting JSX.
-- Replace Convex/auth/payment/AI/external connector behavior with deterministic mock or local adapters.
-- In this video fork, mock/demo mode may be the default even when old live `.env` values exist; require an explicit opt-out for live backends.
-- Never expose "demo", "mock", "fake", "video mode", or other implementation wording in the user-facing UI; the app should look like a real production school portal.
-- Populate demo states with believable placeholder data, avatars, school branding, payments, notices, results, and report cards.
-- Make video flows repeatable and scriptable.
-- Prefer code-native Remotion compositions that import/render real app components over screenshots or screen capture. Screen capture is only a diagnostic/reference fallback, not the main production workflow.
-- Drive cursor movement, click-down/up frames, app reactions, and route/state commits from one timeline object so clicks visibly land before UI changes.
-- Prefer semantic DOM target tracking (`data-video-target`) over raw coordinates for click accuracy; raw coordinates are fallbacks only.
-- When measuring DOM targets for Remotion cursor choreography, normalize `getBoundingClientRect()` viewport pixels back into composition coordinates using a `data-video-coordinate-root` and `useVideoConfig()` width/height. Remotion Studio preview scaling will otherwise make clicks drift badly.
-- Render debug target overlays in the same normalized composition coordinate space as the cursor, and use them only for authoring/diagnostics, never in polished output.
-- For mobile/tablet proofs, create separate Remotion compositions with the intended viewport dimensions instead of simulating mobile inside a desktop composition. Reuse semantic targets, but add mobile-only targets for drawer links/cards that replace desktop sidebars/tables.
-- Mobile proofs should feel like phone screen recordings: full-screen app surface, no desktop camera pan/zoom, no mouse cursor. Use touch/tap indicators and scripted scroll choreography instead.
-- For Remotion-authored movement/scrolling, avoid CSS `transition`/browser-driven animation on properties that change every frame. Drive motion from frame values only; browser transitions can cause jitter/stutter when Remotion samples frames.
-- Prefer a tweakable preview workflow: open Remotion Studio, scrub the composition, adjust named timeline constants/props, and rerender. Avoid burying timing in unreadable magic numbers.
+- Replace live runtime dependencies at the boundary: authentication/session, databases, external APIs, payment providers, uploads, analytics, webhooks, AI calls, and feature flags.
+- Use believable deterministic demo data. Avoid random-at-render data unless seeded.
+- Never expose implementation wording such as "demo", "mock", "fake", "video mode", or "test data" in user-facing UI unless the user explicitly wants that.
+- Prefer code-native Remotion compositions that import/render real app components over screenshots or screen capture. Use Playwright/screenshots only as diagnostic/reference fallbacks.
+- Drive cursor/touch movement, down/up frames, app reactions, route/state commits, and scroll/camera changes from centralized timeline objects.
+- Route/data state must change only at a commit frame after the visual click/tap has landed.
+- Prefer semantic DOM target tracking (`data-video-target`) over raw coordinates; raw coordinates are fallbacks only.
+- Normalize DOM measurements into Remotion composition coordinates before positioning cursors, touches, debug overlays, or highlights.
+- For Remotion-authored movement/scrolling, avoid CSS `transition`/browser-driven animation on properties that change every frame. Drive motion from frame values only.
+- For mobile/tablet proofs, use separate Remotion compositions with intended viewport dimensions. Use full-screen app surfaces, touch indicators, and scripted scroll; avoid desktop pan/zoom and mouse cursors.
 
 ## Recommended Architecture
 
-Use a video/demo data layer:
+Use a video/demo data layer around the real app UI:
 
 ```txt
-real app UI
-  -> thin live/mock data boundary
-    -> live Convex/auth/connectors OR video mock data/local fixtures
-  -> scripted route/click/timing flow
-  -> Remotion/Playwright capture/render pipeline
+real app UI components
+  -> thin runtime/data boundary
+    -> live providers OR demo/local providers
+  -> scripted route/state/timeline layer
+  -> Remotion composition
+  -> optional debug overlays/reference captures
 ```
 
-Start in the fork with the simplest safe version. Only backport abstractions to the original production app after the workflow proves useful.
+When starting from an app with tightly coupled data/auth, split containers from presentational components:
+
+```txt
+LivePage/LiveContainer
+  -> loads auth/session/live data
+  -> calls actions/mutations
+  -> renders RealFeatureView props
+
+RemotionComposition
+  -> imports RealFeatureView
+  -> supplies demo data + no-op/demo actions
+  -> drives state from timeline commit frames
+```
 
 ## Workflow
 
 1. Inspect before editing.
-   - Identify routes, layouts, data hooks, auth guards, and external connectors.
-   - List exact files that block mock/video rendering.
-   - Confirm whether the current repo is the video fork before broad stripping.
+   - Identify the real routes/components that own the target UI.
+   - Identify data hooks, auth guards, providers, live API calls, browser-only assumptions, and external connectors.
+   - List the smallest boundaries that must be replaced for Remotion rendering.
 
-2. Preserve visual components.
-   - Find the real page/component that owns the UI.
-   - Split only if needed: `LiveContainer` loads data; presentational component receives props.
-   - Keep class names, component layout, spacing, and shared UI imports.
+2. Preserve real UI components.
+   - Keep class names, component structure, spacing, and shared UI imports.
+   - Extract presentational views only when necessary.
+   - Do not replace complex real screens with simplified video-only copies unless the user explicitly requests a redesign.
 
-3. Bypass auth in video mode.
-   - Provide a fake session with realistic user, role, school, and image.
-   - Disable redirects and loading gates for video mode.
-   - Keep sign-out/profile UI visually present if it appears in the real app.
+3. Create deterministic demo runtime/data.
+   - Provide local/demo sessions, users, accounts, projects, plans, records, notifications, payments, activity, or whatever domain entities the UI expects.
+   - Simulate loading, success, failure, empty, and optimistic states when useful for the video.
+   - Replace live mutations/actions with local no-op or scripted state changes.
+   - Keep user-facing copy production-like, not labeled as mock/demo.
 
-4. Replace live data.
-   - Replace `useQuery`, `useMutation`, `useAction`, server fetches, and connector calls at the boundary.
-   - Use deterministic mock fixtures, not random-at-render data, unless seeded.
-   - For mutations/actions, simulate latency and optimistic state where useful for video interactions.
+4. Build a code-native Remotion bridge.
+   - Import the real UI view/component into a Remotion composition.
+   - Provide required providers, styles, aliases/stubs, and local data.
+   - Stub framework integrations as needed, e.g. routing/link/navigation modules, image/font loaders, analytics, or server-only APIs.
+   - Keep Remotion-specific code around the UI, not inside every component.
 
-5. Replace external connectors.
-   - Payment providers, upload APIs, AI generation, email/SMS, OCR, webhooks, and storage should become fake local handlers or no-op adapters with visible success/failure states.
+5. Script interactions with a centralized timeline.
+   - Define named actions with `targetId`, fallback coordinates, `downFrame`, `upFrame`, and `commitFrame`.
+   - Derive route/view/data state from frame and commit frames.
+   - Make click/tap visibly land before route/data state changes.
+   - Keep timing constants readable and named so the user can tune them in Remotion Studio.
 
-6. Script video flows.
-   - Prefer scripted interactions over manual recording for repeatability.
-   - Main production path: import/render real app components inside Remotion and drive them with props, providers, timeline state, and simulated interactions.
-   - Use Playwright/screenshot capture only as a diagnostic/reference fallback, not as the main video construction method.
-   - For this project, `pnpm video:portal:flow` captures reference artifacts into `artifacts/portal-parent-flow`; do not treat those artifacts as the source of the final Remotion composition.
-   - For this project, `pnpm video:portal:component-proof` renders proof stills from `PortalComponentProof`, a code-native Remotion composition that imports real portal UI/components and mock data.
-   - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, route/state choreography, and final render composition.
-   - Define each click with a semantic target id, fallback coordinates, `downFrame`, `upFrame`, and `commitFrame`; route/data state must change at `commitFrame`, never before the click-up frame.
-   - Add `data-video-target` markers to real clickable UI elements and measure their bounding boxes at render time so cursor clicks land at the actual center after camera transforms/responsive layout.
-   - Never feed raw viewport `getBoundingClientRect()` coordinates directly into cursor transforms. Convert target rects from viewport/Studio-scaled pixels into composition pixels relative to the Remotion coordinate root first.
-   - For mobile navigation drawers or menus, drive open/closed state from the timeline commit frames rather than relying on the visual cursor/touch indicator to trigger real React clicks.
-   - For mobile pages longer than the viewport, drive vertical scroll from timeline state so the video can intentionally reveal lower content. Keep scroll transforms and target measurement in the same normalized coordinate space.
-   - Do not add CSS transitions to timeline-driven scroll/camera transforms; use deterministic per-frame transforms, preferably `translate3d(...)`, and snap to stable pixels if text shimmer or jitter appears.
-   - Keep timing values centralized and named so the user can manually tune them while previewing in Remotion Studio.
+6. Use semantic target measurement.
+   - Add `data-video-target="meaningful-id"` to the real clickable/focusable UI element.
+   - Measure target boxes at render time with `getBoundingClientRect()`.
+   - Convert viewport/Studio-scaled pixels into composition pixels relative to a `data-video-coordinate-root` using `useVideoConfig()` width/height.
+   - Position cursor/touch indicators at the normalized target center.
+   - Render optional debug target overlays in the same normalized coordinate space.
 
-7. Verify.
-   - Run targeted typecheck/build for the app being touched.
-   - Start the relevant Next app when needed and verify target routes render with no live env.
-   - For Remotion changes, verify the composition starts and renders at least a still/frame when practical.
+7. Handle responsive/mobile separately.
+   - Create a dedicated mobile/tablet composition with realistic viewport dimensions.
+   - Add mobile-only targets for drawer links, bottom tabs, cards, and stacked rows that replace desktop sidebars/tables.
+   - Use touch/tap indicators, not mouse cursors.
+   - Drive drawer/menu open state from timeline commit frames.
+   - For long pages, drive vertical scroll from timeline state with deterministic transforms such as `translate3d(...)`; avoid CSS transitions on frame-driven transforms.
 
-## Current Project Map
+8. Verify.
+   - Run targeted typecheck/build for touched packages.
+   - Render stills at each important click/tap/down/commit frame.
+   - Render a debug-overlay still to confirm targets and cursor/touch indicators share the same coordinate space.
+   - Render the final composition after stills look correct.
 
-- Monorepo workspaces: `apps/admin`, `apps/teacher`, `apps/portal`, `apps/platform`, `apps/www`, `packages/shared`, `packages/auth`, `packages/convex`.
-- Existing Remotion lives in `apps/www/remotion`.
-- Existing Remotion components currently include recreated screens such as `VideoAdminDashboard`, `VideoBillingDashboard`, and `VideoPortalDashboard`; treat these as legacy/reference, not the preferred pattern.
-- Shared workspace shell/navigation lives in `packages/shared/src/components/WorkspaceNavbar.tsx` and `packages/shared/src/workspace-navigation.ts`.
-- Portal dashboard is the easiest first real-UI target:
-  - `apps/portal/app/(portal)/components/PortalWorkspace.tsx`
-  - `apps/portal/app/(portal)/components/portal-workspace/PortalWorkspaceContent.tsx`
-  - `apps/portal/app/(portal)/layout.tsx`
-  - `apps/portal/lib/AuthProvider.tsx`
-  - `apps/portal/lib/ConvexClientProvider.tsx`
-- Existing mock data patterns:
-  - `apps/admin/lib/mock-data.ts`
-  - `apps/teacher/lib/mock-exam-data.ts`
-  - `apps/portal/app/(portal)/components/portal-workspace/PortalPreview.tsx` is only a placeholder fallback and should be replaced with full mock UI data when working on portal video mode.
+## Implementation Patterns
 
-## First Target Recommendation
+### Timeline action shape
 
-For the parent dashboard flow, refactor the portal so the real `PortalWorkspaceContent` UI can render from mock props/data without Convex:
+```ts
+type VideoAction = {
+  id: string;
+  label: string;
+  target: {
+    frame: number;
+    targetId: string;
+    x: number; // fallback only
+    y: number; // fallback only
+  };
+  downFrame: number;
+  upFrame: number;
+  commitFrame: number;
+};
+```
 
-- Keep the visible JSX/UI structure.
-- Move Convex queries/actions into a live wrapper or hook.
-- Add a mock provider/hook returning full `PortalWorkspaceData` and `PortalBillingData`.
-- Fake parent/student session and school branding.
-- Make routes `/`, `/results`, `/report-cards`, `/notifications`, and `/billing` render without auth or Convex in video mode.
-- For this portal fork, `NEXT_PUBLIC_PORTAL_DEMO_MODE` defaults to demo/mock mode; set it to `false` only for intentional live Convex testing.
+### Coordinate normalization pattern
+
+```ts
+const targetRect = target.getBoundingClientRect();
+const rootRect = root.getBoundingClientRect();
+const scaleX = rootRect.width / compositionWidth;
+const scaleY = rootRect.height / compositionHeight;
+
+const normalized = {
+  x: (targetRect.left - rootRect.left) / scaleX,
+  y: (targetRect.top - rootRect.top) / scaleY,
+  width: targetRect.width / scaleX,
+  height: targetRect.height / scaleY,
+};
+```
+
+### Frame-driven scroll pattern
+
+```ts
+const scrollY = interpolate(frame, [start, end], [0, 240], {
+  extrapolateLeft: "clamp",
+  extrapolateRight: "clamp",
+});
+
+<div style={{ transform: `translate3d(0, ${-Math.round(scrollY)}px, 0)` }} />
+```
+
+Do not add CSS `transition` to the same transform; Remotion is already sampling exact frames.
+
+## Common Pitfalls
+
+- Recreating screens instead of importing real components.
+- Putting demo/auth/video labels in user-facing UI.
+- Hardcoding click coordinates without semantic target measurement.
+- Using raw `getBoundingClientRect()` values directly in cursor transforms; Studio preview scaling will make clicks drift.
+- Measuring targets in one coordinate space while rendering overlays/cursors in another.
+- Changing UI state at click-down instead of after click-up.
+- Using desktop cursor/pan/zoom language for mobile proofs.
+- Adding CSS transitions to frame-driven Remotion transforms, causing scroll or camera jitter.
+- Letting real auth, database, payments, uploads, or analytics execute during video rendering.
 
 ## Skill Maintenance
 
-When the user adds a preference, correction, or workflow rule during this project, update this `SKILL.md` immediately before continuing implementation. Keep updates concise and operational. If a rule prevents common agent mistakes, add it under Non-negotiables.
+When a user adds a reusable preference, correction, or workflow rule while building Remotion videos, update this skill if the rule is project-agnostic. Keep project-specific routes, filenames, brands, and domain entities out of this generic skill; those belong in project-local skills or documentation.
