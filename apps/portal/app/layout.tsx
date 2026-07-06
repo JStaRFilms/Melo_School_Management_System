@@ -5,6 +5,7 @@ import { ConvexClientProvider } from "@/ConvexClientProvider";
 import { hasConvexAuthEnv } from "@school/auth";
 import { AppToaster } from "@school/shared/toast";
 import { getToken } from "@/auth-server";
+import { isConvexConfigured } from "@/convex-runtime";
 
 export const metadata: Metadata = {
   title: "Portal - Academic Dashboard",
@@ -25,7 +26,9 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const initialToken = hasConvexAuthEnv() ? await getToken().catch(() => null) : null;
+  const initialToken = isConvexConfigured() && hasConvexAuthEnv()
+    ? await getToken().catch(() => null)
+    : null;
 
   return (
     <html lang="en" suppressHydrationWarning>

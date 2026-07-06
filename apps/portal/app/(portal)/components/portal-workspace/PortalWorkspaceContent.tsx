@@ -6,6 +6,7 @@ PortalBillingInvoice,
 PortalHistoryItem,
 PortalNotificationItem,
 PortalWorkspaceData,
+PortalWorkspaceMode,
 } from "@/portal-types";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -43,7 +44,7 @@ function buildQueryArgs(
   return args;
 }
 
-export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types").PortalWorkspaceMode }) {
+export function PortalWorkspaceContent({ mode }: { mode: PortalWorkspaceMode }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,30 +70,6 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
       : "skip"
   ) as PortalBillingData | undefined;
 
-  const resolvedStudentId = workspace?.selectedStudentId ?? null;
-  const resolvedSessionId = workspace?.selectedSessionId ?? null;
-  const resolvedTermId = workspace?.selectedTermId ?? null;
-
-  useEffect(() => {
-    if (workspace?.school?.name) {
-      document.title = `${workspace.school.name} · Portal`;
-    }
-  }, [workspace?.school?.name]);
-
-  const selectedStudent = workspace?.selectedStudent ?? null;
-  const activeHistoryItem = useMemo(() => {
-    if (!workspace?.history.length) {
-      return null;
-    }
-
-    return (
-      workspace.history.find(
-        (item) =>
-          item.sessionId === resolvedSessionId && item.termId === resolvedTermId
-      ) ?? workspace.history[0]
-    );
-  }, [resolvedSessionId, resolvedTermId, workspace]);
-
   if (workspace === undefined) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -116,7 +93,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
   const handleSelectHistoryItem = (item: PortalHistoryItem) => {
     const params = new URLSearchParams(searchParams.toString());
-    const nextStudentId = resolvedStudentId ?? workspace.students[0]?.studentId ?? null;
+    const nextStudentId = workspace.selectedStudentId ?? workspace.students[0]?.studentId ?? null;
 
     if (nextStudentId) {
       params.set("studentId", nextStudentId);
@@ -158,14 +135,67 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
     }
   };
 
+  return (
+    <PortalWorkspaceView
+      mode={mode}
+      workspace={workspace}
+      billing={billing}
+      billingNotice={billingNotice}
+      payingInvoiceId={payingInvoiceId}
+      onSelectHistoryItem={handleSelectHistoryItem}
+      onSelectStudent={handleSelectStudent}
+      onPayNow={handleStartPortalPayment}
+    />
+  );
+}
+
+export function PortalWorkspaceView({
+  mode,
+  workspace,
+  billing,
+  billingNotice,
+  payingInvoiceId,
+  onSelectHistoryItem,
+  onSelectStudent,
+  onPayNow,
+}: {
+  mode: PortalWorkspaceMode;
+  workspace: PortalWorkspaceData;
+  billing?: PortalBillingData;
+  billingNotice: string | null;
+  payingInvoiceId: string | null;
+  onSelectHistoryItem: (item: PortalHistoryItem) => void;
+  onSelectStudent: (studentId: string) => void;
+  onPayNow: (invoice: PortalBillingInvoice) => Promise<void>;
+}) {
+  const selectedStudent = workspace.selectedStudent ?? null;
+  const activeHistoryItem = useMemo(() => {
+    if (!workspace.history.length) {
+      return null;
+    }
+
+    return (
+      workspace.history.find(
+        (item) =>
+          item.sessionId === workspace.selectedSessionId &&
+          item.termId === workspace.selectedTermId
+      ) ?? workspace.history[0]
+    );
+  }, [workspace]);
+
+  useEffect(() => {
+    if (workspace.school?.name) {
+      document.title = `${workspace.school.name} · Portal`;
+    }
+  }, [workspace.school?.name]);
+
   /* Report cards get their own full-bleed layout */
   if (mode === "report-cards") {
     return (
       <PortalReportCardLayout
         workspace={workspace}
-
-        onSelectHistoryItem={handleSelectHistoryItem}
-        onSelectStudent={handleSelectStudent}
+        onSelectHistoryItem={onSelectHistoryItem}
+        onSelectStudent={onSelectStudent}
       />
     );
   }
@@ -177,7 +207,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
       <PortalGreetingBar
         workspace={workspace}
         selectedStudent={selectedStudent}
-        onSelectStudent={handleSelectStudent}
+        onSelectStudent={onSelectStudent}
       />
 
       {/* ── Mode-Specific Content ── */}
@@ -186,14 +216,14 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
           <DashboardView
             workspace={workspace}
             activeHistoryItem={activeHistoryItem}
-            onSelectHistoryItem={handleSelectHistoryItem}
+            onSelectHistoryItem={onSelectHistoryItem}
           />
         )}
         {mode === "results" && (
           <ResultsView
             workspace={workspace}
             activeHistoryItem={activeHistoryItem}
-            onSelectHistoryItem={handleSelectHistoryItem}
+            onSelectHistoryItem={onSelectHistoryItem}
           />
         )}
         {mode === "notifications" && <NotificationsView workspace={workspace} />}
@@ -203,7 +233,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
             billing={billing}
             billingNotice={billingNotice}
             payingInvoiceId={payingInvoiceId}
-            onPayNow={handleStartPortalPayment}
+            onPayNow={onPayNow}
           />
         )}
       </div>

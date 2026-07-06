@@ -8,22 +8,54 @@ import { usePathname, useRouter } from "next/navigation";
 import { WorkspaceNavbar } from "@school/shared";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
+import { mockPortalSchoolBranding, mockPortalSession } from "@/mock-portal-data";
 
 export default function PortalLayout({
   children,
 }: {
   children: ReactNode;
 }) {
+  if (!isConvexConfigured()) {
+    return <MockPortalLayout>{children}</MockPortalLayout>;
+  }
+
+  return <LivePortalLayout>{children}</LivePortalLayout>;
+}
+
+function MockPortalLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  return (
+    <WorkspaceNavbar
+      workspace="portal"
+      currentPath={pathname}
+      fullBleed={true}
+      userName={mockPortalSession.user.name}
+      userRole={mockPortalSession.user.role}
+      schoolBranding={mockPortalSchoolBranding}
+      onSignOut={() => {}}
+      renderLink={(props) => (
+        <Link key={props.href} href={props.href} className={props.className}>
+          {props.children}
+        </Link>
+      )}
+    >
+      {children}
+    </WorkspaceNavbar>
+  );
+}
+
+function LivePortalLayout({ children }: { children: ReactNode }) {
   const { session, signOut, isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const schoolBranding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
-    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
+    isAuthenticated ? ({} as never) : ("skip" as never)
   ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
 
   useEffect(() => {
-    if (!isConvexConfigured() || isLoading) {
+    if (isLoading) {
       return;
     }
 
@@ -43,10 +75,9 @@ export default function PortalLayout({
   };
 
   if (
-    isConvexConfigured() &&
-    (isLoading ||
-      !isAuthenticated ||
-      (session?.user?.role !== "parent" && session?.user?.role !== "student"))
+    isLoading ||
+    !isAuthenticated ||
+    (session?.user?.role !== "parent" && session?.user?.role !== "student")
   ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">

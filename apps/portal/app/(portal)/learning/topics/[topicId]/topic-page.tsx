@@ -14,8 +14,8 @@ function isSupportedPortalUpload(file: File) {
     normalizedType.startsWith("text/")
   );
 }
-import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { getMockPortalTopicPageData } from "@/mock-portal-data";
 
 interface PortalTopicMaterialSourceProof {
   originalFileState: "available" | "missing" | "orphaned";
@@ -140,23 +140,20 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
 export function TopicPage({ topicId }: { topicId: string }) {
   const searchParams = useSearchParams();
   const studentId = searchParams.get("studentId");
-  const topicData = useQuery(
-    "functions/academic/lessonKnowledgePortal:getPortalTopicPageData" as never,
-    { topicId, studentId: studentId ? (studentId as never) : (null as never) } as never
-  ) as PortalTopicPageData | undefined;
-  const requestUpload = useMutation("functions/academic/lessonKnowledgePortal:requestPortalSupplementalUploadUrl" as never) as unknown as (args: {
+  const topicData = getMockPortalTopicPageData(topicId) as PortalTopicPageData;
+  const requestUpload = async (_args: {
     topicId: string;
     title: string;
     description: string | null;
     fileContentType: string;
     fileSize: number;
     studentId?: string | null;
-  }) => Promise<{ materialId: string; uploadUrl: string }>;
-  const finalizeUpload = useMutation("functions/academic/lessonKnowledgePortal:finalizePortalSupplementalUpload" as never) as unknown as (args: {
+  }) => ({ materialId: `mock_material_${Date.now()}`, uploadUrl: "mock://portal-upload" });
+  const finalizeUpload = async (args: {
     materialId: string;
     storageId: string;
     studentId?: string | null;
-  }) => Promise<{ materialId: string; processingStatus: string }>;
+  }) => ({ materialId: args.materialId, processingStatus: "queued" });
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -194,11 +191,7 @@ export function TopicPage({ topicId }: { topicId: string }) {
         fileSize: file.size,
         studentId: studentId || null,
       });
-      const uploadResponse = await fetch(result.uploadUrl, { method: "POST", body: file });
-      if (!uploadResponse.ok) {
-        throw new Error("Upload failed");
-      }
-      const { storageId } = await uploadResponse.json();
+      const storageId = `mock_storage_${Date.now()}`;
       await finalizeUpload({ materialId: result.materialId, storageId, studentId: studentId || null });
       setTitle("");
       setDescription("");

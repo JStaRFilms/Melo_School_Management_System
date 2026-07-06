@@ -60,4 +60,4 @@ pi-session-*.html
 .kilocode/
 .windsurf/
 .agents/
-skills/
+# skills/

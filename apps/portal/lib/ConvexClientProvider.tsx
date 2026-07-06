@@ -3,18 +3,18 @@
 import type { ReactNode } from "react";
 import { ConvexReactClient } from "convex/react";
 import { BetterAuthConvexProvider } from "@school/auth";
-import { convexUrl, isValidConvexUrl } from "@/convex-runtime";
+import { convexUrl, isConvexConfigured, isPortalDemoMode, isValidConvexUrl } from "@/convex-runtime";
 import { authClient } from "@/auth-client";
 
-if (!convexUrl) {
+if (!convexUrl && !isPortalDemoMode()) {
   console.warn("NEXT_PUBLIC_CONVEX_URL is not set. Convex features will not work.");
-} else if (!isValidConvexUrl(convexUrl)) {
+} else if (convexUrl && !isPortalDemoMode() && !isValidConvexUrl(convexUrl)) {
   console.error(
     "NEXT_PUBLIC_CONVEX_URL is not a valid Convex URL. Expected format: https://your-project.convex.cloud"
   );
 }
 
-const convex = convexUrl && isValidConvexUrl(convexUrl)
+const convex = isConvexConfigured() && convexUrl && isValidConvexUrl(convexUrl)
   ? new ConvexReactClient(convexUrl)
   : (null as unknown as ConvexReactClient);
 
@@ -25,7 +25,7 @@ export function ConvexClientProvider({
   children: ReactNode;
   initialToken?: string | null;
 }) {
-  if (!convexUrl || !isValidConvexUrl(convexUrl)) {
+  if (!isConvexConfigured()) {
     return <>{children}</>;
   }
 

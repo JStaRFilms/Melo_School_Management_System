@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { Suspense, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
+import { getMockPortalTopicIndexData } from "@/mock-portal-data";
 
 interface PortalTopicListItem {
   _id: string;
@@ -23,12 +23,17 @@ interface PortalTopicIndexData {
 }
 
 export default function PortalLearningTopicsPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-4xl px-4 py-10 text-slate-500">Loading learning topics…</div>}>
+      <PortalLearningTopicsPageContent />
+    </Suspense>
+  );
+}
+
+function PortalLearningTopicsPageContent() {
   const searchParams = useSearchParams();
   const studentId = searchParams.get("studentId");
-  const data = useQuery(
-    "functions/academic/lessonKnowledgePortal:getPortalTopicIndexData" as never,
-    { studentId: studentId ? (studentId as never) : (null as never) } as never
-  ) as PortalTopicIndexData | undefined;
+  const data = getMockPortalTopicIndexData() as PortalTopicIndexData;
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredTopics = useMemo(() => {
