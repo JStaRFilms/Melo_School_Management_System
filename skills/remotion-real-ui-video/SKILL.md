@@ -9,6 +9,10 @@ description: Reusable workflow for turning an existing app into code-native Remo
 
 Render the app's real UI in Remotion. Do not recreate clone screens, redesign dashboards, or rely on screenshots as the primary production path. Replace runtime/data boundaries with deterministic demo data so the existing components can render safely and repeatably.
 
+## New Project Transfer Rule
+
+This skill is a workflow, not a drop-in guarantee. For each new project, inspect the app's structure before implementing: routing, providers, styling setup, auth/session flow, data fetching, browser/server boundaries, responsive layouts, and Remotion compatibility. Adapt the generic pattern to the specific codebase instead of assuming prior project files, routes, models, or tooling exist.
+
 ## Non-negotiables
 
 - Preserve the product's existing UI composition, layout hierarchy, shared components, styling, and navigation patterns.
@@ -56,8 +60,10 @@ RemotionComposition
 ## Workflow
 
 1. Inspect before editing.
+   - Treat every project as different; do not assume the app uses the same framework, router, auth provider, data layer, styling system, or component structure as a prior project.
    - Identify the real routes/components that own the target UI.
    - Identify data hooks, auth guards, providers, live API calls, browser-only assumptions, and external connectors.
+   - Identify styling/global CSS/font/image/runtime requirements that Remotion must load or stub.
    - List the smallest boundaries that must be replaced for Remotion rendering.
 
 2. Preserve real UI components.
