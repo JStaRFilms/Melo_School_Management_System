@@ -46,17 +46,6 @@ export const WovenLightHero = () => {
       <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" />
       
       <div className="relative z-20 max-w-4xl px-4 pb-28 pt-24 text-center sm:pt-40 sm:pb-0">
-         <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="inline-flex items-center gap-3 rounded-full border border-stone-800 bg-stone-900/50 px-4 py-1.5 text-xs font-medium tracking-widest text-melo-gold uppercase backdrop-blur-sm shadow-sm ring-1 ring-white/5 mb-8">
-              <span className="flex h-2 w-2 rounded-full bg-melo-gold" />
-              Not a template. An operating system.
-            </span>
-          </motion.div>
-
         <h1 className="text-[3rem] leading-[0.98] tracking-tight text-white sm:text-6xl md:text-7xl lg:text-[5.5rem]" style={{ fontFamily: "'Instrument Serif', serif" }}>
             {headline.split(" ").map((word, i) => (
                 <span key={i} className="inline-block">
@@ -80,8 +69,8 @@ export const WovenLightHero = () => {
           One unified platform built to handle the rigorous complexity of Nigerian school operations.
         </motion.p>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={buttonControls} className="mt-10 flex flex-col items-center justify-center gap-3 sm:mt-12 sm:flex-row sm:gap-4">
-          <GoldButton href="/contact" size="lg" className="h-14 px-8 text-[15px]">
-              Book a walkthrough
+          <GoldButton href="/result-week" size="lg" className="h-14 px-8 text-[15px]">
+              Book a result-week walkthrough
           </GoldButton>
           <ButtonLink 
               href="/features" 

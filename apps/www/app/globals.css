@@ -21,10 +21,12 @@
 /* ─── Base ─── */
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
   background: var(--melo-paper);
   color: var(--melo-stone);
   font-family: 'DM Sans', sans-serif;

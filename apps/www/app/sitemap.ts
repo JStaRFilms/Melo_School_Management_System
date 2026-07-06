@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { siteBrand, siteNavigation } from "@/site";
 
-const routes = ["/", ...siteNavigation.filter((i) => i.href !== "/").map((i) => i.href)];
+const routes = ["/", ...siteNavigation.filter((i) => i.href !== "/").map((i) => i.href), "/result-week"];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

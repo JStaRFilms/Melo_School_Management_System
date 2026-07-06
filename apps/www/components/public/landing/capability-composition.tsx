@@ -100,7 +100,7 @@ export function CapabilityComposition() {
             <div className="mt-auto pt-8 border-t border-stone-100 flex items-center justify-between gap-4">
                 <div className="flex flex-col">
                    <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-bold mb-1">Reconciliation</span>
-                   <span className="text-xl font-serif text-melo-ink italic">Zero leakage</span>
+                   <span className="text-xl font-serif text-melo-ink italic">Reconciliation clarity</span>
                 </div>
                 <div className="flex flex-col text-right">
                    <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-bold mb-1">Status</span>

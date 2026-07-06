@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Mail, MapPin, Phone } from "lucide-react";
-import { Container, GoldButton, SectionLabel } from "@/site-ui";
+import { Container, SectionLabel } from "@/site-ui";
 import { buildPageMetadata, contactMethods, siteBrand } from "@/site";
+import { ContactForm } from "../../components/public/contact/contact-form";
 
 export const metadata: Metadata = buildPageMetadata({
   title: "Contact",
@@ -41,108 +42,7 @@ export default function ContactPage() {
         <Container>
           <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.2fr_1fr] lg:gap-16">
             {/* Left: Contact Form */}
-            <div className="rounded-2xl border border-melo-border bg-white p-8 sm:p-10">
-              <h2 className="font-serif text-3xl text-melo-ink">Book a demo</h2>
-              <p className="mt-2 text-sm text-melo-muted">
-                Tell us about your school and we&apos;ll schedule a walkthrough.
-              </p>
-
-              <form className="mt-8 space-y-5" action="#" method="POST">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="contact-name" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                      Your name
-                    </label>
-                    <input
-                      id="contact-name"
-                      type="text"
-                      name="name"
-                      autoComplete="name"
-                      required
-                      className="mt-2 w-full rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30"
-                      placeholder="Adebayo Johnson"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="contact-school" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                      School name
-                    </label>
-                    <input
-                      id="contact-school"
-                      type="text"
-                      name="school"
-                      required
-                      className="mt-2 w-full rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30"
-                      placeholder="Greenfield Academy"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="contact-email" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                      Email
-                    </label>
-                    <input
-                      id="contact-email"
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      required
-                      className="mt-2 w-full rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30"
-                      placeholder="admin@school.ng"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="contact-phone" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                      Phone
-                    </label>
-                    <input
-                      id="contact-phone"
-                      type="tel"
-                      name="phone"
-                      autoComplete="tel"
-                      className="mt-2 w-full rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30"
-                      placeholder="+234 812 345 6789"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="contact-students" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                    Number of students
-                  </label>
-                  <select
-                    id="contact-students"
-                    name="students"
-                    className="mt-2 w-full rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30 cursor-pointer"
-                  >
-                    <option value="">Select a range</option>
-                    <option value="1-100">1 – 100</option>
-                    <option value="101-300">101 – 300</option>
-                    <option value="301-800">301 – 800</option>
-                    <option value="800+">800+</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="contact-message" className="block text-xs font-semibold uppercase tracking-wider text-melo-muted">
-                    Anything else?
-                  </label>
-                  <textarea
-                    id="contact-message"
-                    name="message"
-                    rows={4}
-                    className="mt-2 w-full resize-none rounded-lg border border-melo-border bg-melo-paper px-4 py-3 text-sm text-melo-ink outline-none transition-colors duration-200 focus:border-melo-gold focus:ring-1 focus:ring-melo-gold/30"
-                    placeholder="Tell us about your school's needs..."
-                  />
-                </div>
-
-                <GoldButton href="#" className="w-full justify-center">
-                  Send request
-                </GoldButton>
-              </form>
-            </div>
+            <ContactForm />
 
             {/* Right: Contact Info */}
             <div className="space-y-10 lg:pt-4">

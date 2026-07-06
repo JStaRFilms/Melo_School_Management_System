@@ -56,7 +56,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <body className="bg-melo-paper text-melo-stone antialiased" suppressHydrationWarning>
         <SiteHeader />
-        <main>{children}</main>
+        <main className="pb-24 sm:pb-0">{children}</main>
         <SiteFooter />
       </body>
     </html>

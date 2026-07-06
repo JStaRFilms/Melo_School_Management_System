@@ -100,22 +100,44 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 /* ─── Site Header ─── */
 import { motion,useMotionValueEvent,useScroll } from "framer-motion";
 import { CreditCard,Home,Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatedDock } from "../components/ui/animated-dock";
 
 export function SiteHeader() {
   const { scrollY } = useScroll();
   const [hidden, setHidden] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [canAutoHide, setCanAutoHide] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 640px)");
+    const syncAutoHide = () => {
+      setCanAutoHide(query.matches);
+      if (!query.matches) {
+        setHidden(false);
+      }
+    };
+
+    syncAutoHide();
+    query.addEventListener("change", syncAutoHide);
+
+    return () => query.removeEventListener("change", syncAutoHide);
+  }, []);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const previous = scrollY.getPrevious() ?? 0;
+    setScrolled(latest > 20);
+
+    if (!canAutoHide) {
+      setHidden(false);
+      return;
+    }
+
     if (latest > previous && latest > 150) {
       setHidden(true);
     } else {
       setHidden(false);
     }
-    setScrolled(latest > 20);
   });
 
   const dockItems = [
