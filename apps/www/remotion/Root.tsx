@@ -3,6 +3,7 @@ import { Composition, Still, registerRoot } from 'remotion';
 import { ProductRevealV2 } from './compositions/ProductRevealV2';
 import { PortalComponentProof } from './compositions/PortalComponentProof';
 import { PortalHistoryMotionProof } from './compositions/PortalHistoryMotionProof';
+import { PortalMobileMotionProof } from './compositions/PortalMobileMotionProof';
 import { UnifiedOperationsStill } from './stills/UnifiedOperationsStill';
 import './styles.css';
 
@@ -32,6 +33,14 @@ export const RemotionRoot: React.FC = () => {
 				fps={30}
 				width={1440}
 				height={900}
+			/>
+			<Composition
+				id="PortalMobileMotionProof"
+				component={PortalMobileMotionProof}
+				durationInFrames={286}
+				fps={30}
+				width={390}
+				height={844}
 			/>
 			<Still
 				id="UnifiedOperationsStill"

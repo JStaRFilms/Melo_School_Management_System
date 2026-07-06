@@ -9,27 +9,42 @@ export function PortalVideoShell({
   scene,
   children,
   transitionOpacity: transitionOpacityOverride,
+  forceMobileMenuOpen,
+  presentation = "desktop",
+  contentScrollY = 0,
 }: {
   scene: PortalVideoScene;
   children: ReactNode;
   transitionOpacity?: number;
+  forceMobileMenuOpen?: boolean;
+  presentation?: "desktop" | "mobile";
+  contentScrollY?: number;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const entrance = spring({ frame, fps, config: { damping: 18, stiffness: 110 } });
   const transitionOpacity = transitionOpacityOverride ?? getSceneTransitionOpacity(frame);
-  const cameraX = interpolate(frame, [0, 98, 180, 270], [0, -16, 0, -10], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const cameraScale = interpolate(frame, [0, 70, 98, 180, 260], [0.985, 1, 1.018, 0.992, 1.01], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const isMobilePresentation = presentation === "mobile";
+  const cameraX = isMobilePresentation
+    ? 0
+    : interpolate(frame, [0, 98, 180, 270], [0, -16, 0, -10], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+  const cameraScale = isMobilePresentation
+    ? 1
+    : interpolate(frame, [0, 70, 98, 180, 260], [0.985, 1, 1.018, 0.992, 1.01], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
 
   return (
     <div
-      className="absolute inset-6 overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl shadow-slate-900/15"
+      className={
+        isMobilePresentation
+          ? "absolute inset-0 overflow-hidden bg-white"
+          : "absolute inset-6 overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl shadow-slate-900/15"
+      }
       style={{
         opacity: entrance,
         transform: `translateX(${cameraX}px) scale(${cameraScale})`,
@@ -42,6 +57,7 @@ export function PortalVideoShell({
         userName={mockPortalSession.user.name}
         userRole={mockPortalSession.user.role}
         schoolBranding={mockPortalSchoolBranding}
+        forceMobileMenuOpen={forceMobileMenuOpen}
         onSignOut={() => undefined}
         renderLink={(props) => (
           <a key={props.href} href={props.href} className={props.className}>
@@ -49,8 +65,16 @@ export function PortalVideoShell({
           </a>
         )}
       >
-        <div className="relative h-full w-full">
-          {children}
+        <div className="relative h-full w-full overflow-hidden">
+          <div
+            className="relative h-full w-full"
+            style={{
+              transform: `translate3d(0, ${-Math.round(contentScrollY)}px, 0)`,
+              willChange: contentScrollY === 0 ? undefined : "transform",
+            }}
+          >
+            {children}
+          </div>
           <div
             className="pointer-events-none absolute inset-0 bg-white"
             style={{ opacity: transitionOpacity }}

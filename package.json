@@ -38,9 +38,11 @@
     "video:portal:flow": "node scripts/capture-portal-parent-flow.mjs",
     "video:portal:component-proof": "node scripts/render-portal-component-proof.mjs",
     "video:portal:history-motion": "node scripts/render-portal-history-motion-proof.mjs",
+    "video:portal:mobile-motion": "node scripts/render-portal-mobile-motion-proof.mjs",
     "video:portal:studio": "pnpm --filter @school/www exec remotion studio remotion/Root.tsx",
     "video:portal:render": "node scripts/render-portal-component-proof-video.mjs",
-    "video:portal:history-render": "node scripts/render-portal-history-motion-proof-video.mjs"
+    "video:portal:history-render": "node scripts/render-portal-history-motion-proof-video.mjs",
+    "video:portal:mobile-render": "node scripts/render-portal-mobile-motion-proof-video.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.59.1"

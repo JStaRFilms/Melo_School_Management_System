@@ -9,7 +9,10 @@ export type VideoTargetId =
   | "portal-see-results"
   | "portal-history-third-term"
   | "portal-open-report-card"
-  | "portal-export-print";
+  | "portal-export-print"
+  | "portal-mobile-menu"
+  | "portal-mobile-nav-results"
+  | "portal-mobile-history-third-term";
 
 export type VideoRect = {
   x: number;

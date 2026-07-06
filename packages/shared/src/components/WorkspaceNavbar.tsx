@@ -43,6 +43,7 @@ export interface WorkspaceNavbarProps {
   workspace: WorkspaceKey;
   currentPath: string;
   fullBleed?: boolean;
+  forceMobileMenuOpen?: boolean;
   userName?: string | null;
   userRole?: string | null;
   schoolBranding?: WorkspaceSchoolBranding | null;
@@ -57,6 +58,7 @@ export function WorkspaceNavbar({
   workspace,
   currentPath,
   fullBleed = false,
+  forceMobileMenuOpen,
   userName,
   userRole,
   schoolBranding,
@@ -216,6 +218,8 @@ export function WorkspaceNavbar({
         return bLength - aLength;
       })[0] ?? null;
 
+  const mobileMenuOpen = forceMobileMenuOpen ?? open;
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
       
@@ -334,6 +338,7 @@ export function WorkspaceNavbar({
 
             <button
               ref={toggleRef}
+              data-video-target="portal-mobile-menu"
               onClick={() => setOpen(!open)}
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 xl:hidden"
             >
@@ -354,7 +359,7 @@ export function WorkspaceNavbar({
         </main>
 
         {/* ═══ MOBILE DRAWER ═══════════════════════════════════ */}
-        {open && (
+        {mobileMenuOpen && (
           <div className="fixed inset-0 z-[100] flex flex-col bg-white xl:hidden transition-all duration-300 animate-in fade-in slide-in-from-right-5">
             <div className="flex h-16 shrink-0 items-center justify-between px-4 border-b border-slate-100">
                <div className="flex items-center gap-3">
@@ -504,6 +509,7 @@ function MobileLink({ section, active, renderLink }: { section: any, active: boo
     href: section.href,
     children: (
       <span
+        data-video-target={section.href === "/results" ? "portal-mobile-nav-results" : undefined}
         className={`flex items-center justify-between rounded-xl px-4 py-3.5 text-sm font-bold transition-all ${
           active 
             ? "bg-slate-950 text-white shadow-lg shadow-slate-950/10" 

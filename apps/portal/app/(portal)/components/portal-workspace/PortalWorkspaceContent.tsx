@@ -708,6 +708,7 @@ function ResultsView({
                 <button
                   key={`m-${item.sessionId}-${item.termId}`}
                   type="button"
+                  data-video-target={item.sessionId === "session_2024_2025" && item.termId === "term_third" ? "portal-mobile-history-third-term" : undefined}
                   onClick={() => onSelectHistoryItem(item)}
                   className={`flex w-full items-center justify-between px-4 py-4 text-left transition-colors cursor-pointer ${
                     isActive ? "bg-emerald-50/60" : "hover:bg-slate-50"
