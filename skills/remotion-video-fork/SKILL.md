@@ -67,6 +67,7 @@ Start in the fork with the simplest safe version. Only backport abstractions to 
    - Main production path: import/render real app components inside Remotion and drive them with props, providers, timeline state, and simulated interactions.
    - Use Playwright/screenshot capture only as a diagnostic/reference fallback, not as the main video construction method.
    - For this project, `pnpm video:portal:flow` captures reference artifacts into `artifacts/portal-parent-flow`; do not treat those artifacts as the source of the final Remotion composition.
+   - For this project, `pnpm video:portal:component-proof` renders proof stills from `PortalComponentProof`, a code-native Remotion composition that imports real portal UI/components and mock data.
    - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, route/state choreography, and final render composition.
 
 7. Verify.

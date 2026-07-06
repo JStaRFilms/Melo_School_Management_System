@@ -5,10 +5,22 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
     "./remotion/**/*.{js,ts,jsx,tsx,mdx}",
+    "../portal/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "../portal/lib/**/*.{js,ts,jsx,tsx,mdx}",
+    "../../packages/shared/src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
       colors: {
+        surface: {
+          50: "#ffffff",
+          100: "#fcfcfd",
+          200: "#f8fafc",
+        },
+        brand: {
+          primary: "#0f172a",
+          accent: "#2563eb",
+        },
         melo: {
           ink: "#0a0a0a",
           paper: "#fafaf8",
@@ -22,7 +34,9 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["DM Sans", "sans-serif"],
+        sans: ["Public Sans", "DM Sans", "sans-serif"],
+        display: ["Space Grotesk", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
         serif: ["Instrument Serif", "Georgia", "serif"],
       },
       maxWidth: {
