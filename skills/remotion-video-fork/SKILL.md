@@ -18,8 +18,10 @@ Preserve the app's existing UI composition. Replace runtime dependencies, data s
 - Prefer extracting data/provider boundaries over rewriting JSX.
 - Replace Convex/auth/payment/AI/external connector behavior with deterministic mock or local adapters.
 - In this video fork, mock/demo mode may be the default even when old live `.env` values exist; require an explicit opt-out for live backends.
+- Never expose "demo", "mock", "fake", "video mode", or other implementation wording in the user-facing UI; the app should look like a real production school portal.
 - Populate demo states with believable placeholder data, avatars, school branding, payments, notices, results, and report cards.
 - Make video flows repeatable and scriptable.
+- Prefer code-native Remotion compositions that import/render real app components over screenshots or screen capture. Screen capture is only a diagnostic/reference fallback, not the main production workflow.
 
 ## Recommended Architecture
 
@@ -62,8 +64,10 @@ Start in the fork with the simplest safe version. Only backport abstractions to 
 
 6. Script video flows.
    - Prefer scripted interactions over manual recording for repeatability.
-   - Use Playwright-style route navigation and click steps when demonstrating the real app shell.
-   - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, and final render composition.
+   - Main production path: import/render real app components inside Remotion and drive them with props, providers, timeline state, and simulated interactions.
+   - Use Playwright/screenshot capture only as a diagnostic/reference fallback, not as the main video construction method.
+   - For this project, `pnpm video:portal:flow` captures reference artifacts into `artifacts/portal-parent-flow`; do not treat those artifacts as the source of the final Remotion composition.
+   - Use Remotion for timing, camera/pan overlays, captions, cursor choreography, route/state choreography, and final render composition.
 
 7. Verify.
    - Run targeted typecheck/build for the app being touched.

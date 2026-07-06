@@ -55,7 +55,7 @@ function MockPortalWorkspace({ mode }: { mode: PortalWorkspaceMode }) {
     setPayingInvoiceId(invoice.invoiceId);
     await new Promise((resolve) => window.setTimeout(resolve, 500));
     setPayingInvoiceId(null);
-    setBillingNotice("Demo mode: payment checkout is mocked for video capture.");
+    setBillingNotice("Secure checkout is ready. Your payment status will update shortly.");
   };
 
   return (

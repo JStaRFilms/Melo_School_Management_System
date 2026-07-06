@@ -34,7 +34,8 @@
     "convex:codegen": "convex codegen",
     "setup:convex": "powershell -ExecutionPolicy Bypass -File scripts/setup-convex.ps1",
     "setup:convex:unix": "bash scripts/setup-convex.sh",
-    "check:toasts": "node scripts/check-toast-usage.mjs"
+    "check:toasts": "node scripts/check-toast-usage.mjs",
+    "video:portal:flow": "node scripts/capture-portal-parent-flow.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.59.1"
