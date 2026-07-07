@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { ChevronDown } from "lucide-react";
-import type { SelectionState, SelectorOption, Id } from "@/types";
+import type { SelectionState, SelectorOption, Id } from "../../../../../lib/types";
 
 interface AdminSelectionBarProps {
   sessions: SelectorOption[];
@@ -86,6 +86,7 @@ export function AdminSelectionBar({
                 updateSelection("sessionId", e.target.value || null)
               }
               disabled={isLoadingSessions}
+              data-video-target="score-entry-session-selector"
               className="w-full h-10 px-3 bg-slate-50/50 border border-slate-200/60 rounded-md text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-0 disabled:opacity-50 appearance-none pr-8 cursor-pointer group-hover:bg-white group-hover:border-slate-400"
             >
               <option value="">
@@ -111,6 +112,7 @@ export function AdminSelectionBar({
               value={selection.termId ?? ""}
               onChange={(e) => updateSelection("termId", e.target.value || null)}
               disabled={!selection.sessionId || isLoadingTerms}
+              data-video-target="score-entry-term-selector"
               className="w-full h-10 px-3 bg-slate-50/50 border border-slate-200/60 rounded-md text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-0 disabled:opacity-50 appearance-none pr-8 cursor-pointer group-hover:bg-white group-hover:border-slate-400"
             >
               <option value="">
@@ -142,6 +144,7 @@ export function AdminSelectionBar({
                 updateSelection("classId", e.target.value || null)
               }
               disabled={!selection.termId || isLoadingClasses}
+              data-video-target="score-entry-class-selector"
               className="w-full h-10 px-3 bg-slate-50/50 border border-slate-200/60 rounded-md text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-0 disabled:opacity-50 appearance-none pr-8 cursor-pointer group-hover:bg-white group-hover:border-slate-400"
             >
               <option value="">
@@ -173,6 +176,7 @@ export function AdminSelectionBar({
                 updateSelection("subjectId", e.target.value || null)
               }
               disabled={!selection.classId || isLoadingSubjects}
+              data-video-target="score-entry-subject-selector"
               className="w-full h-10 px-3 bg-slate-50/50 border border-slate-200/60 rounded-md text-[11px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-0 disabled:opacity-50 appearance-none pr-8 cursor-pointer group-hover:bg-white group-hover:border-slate-400"
             >
               <option value="">

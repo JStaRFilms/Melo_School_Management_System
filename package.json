@@ -42,7 +42,11 @@
     "video:portal:studio": "pnpm --filter @school/www exec remotion studio remotion/Root.tsx",
     "video:portal:render": "node scripts/render-portal-component-proof-video.mjs",
     "video:portal:history-render": "node scripts/render-portal-history-motion-proof-video.mjs",
-    "video:portal:mobile-render": "node scripts/render-portal-mobile-motion-proof-video.mjs"
+    "video:portal:mobile-render": "node scripts/render-portal-mobile-motion-proof-video.mjs",
+    "video:melo:stills": "node scripts/render-melo-report-cards-demo.mjs stills",
+    "video:melo:debug": "node scripts/render-melo-report-cards-demo.mjs debug",
+    "video:melo:render": "node scripts/render-melo-report-cards-demo.mjs video",
+    "video:melo:all": "node scripts/render-melo-report-cards-demo.mjs all"
   },
   "dependencies": {
     "@playwright/test": "^1.59.1"

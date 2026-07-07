@@ -1,6 +1,7 @@
 import React from 'react';
 import { Composition, Still, registerRoot } from 'remotion';
 import { ProductRevealV2 } from './compositions/ProductRevealV2';
+import { MeloReportCardsDemo } from './compositions/MeloReportCardsDemo';
 import { PortalComponentProof } from './compositions/PortalComponentProof';
 import { PortalHistoryMotionProof } from './compositions/PortalHistoryMotionProof';
 import { PortalMobileMotionProof } from './compositions/PortalMobileMotionProof';
@@ -17,6 +18,23 @@ export const RemotionRoot: React.FC = () => {
 				fps={30}
 				width={1280}
 				height={720}
+			/>
+			<Composition
+				id="MeloReportCardsDemo"
+				component={MeloReportCardsDemo}
+				durationInFrames={750}
+				fps={30}
+				width={1920}
+				height={1080}
+			/>
+			<Composition
+				id="MeloReportCardsDemoDebug"
+				component={MeloReportCardsDemo}
+				defaultProps={{ debugTargets: true }}
+				durationInFrames={750}
+				fps={30}
+				width={1920}
+				height={1080}
 			/>
 			<Composition
 				id="PortalComponentProof"

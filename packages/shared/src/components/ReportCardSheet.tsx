@@ -658,7 +658,7 @@ export function ReportCardSheet({
                           : "white",
                     }}
                   >
-                    <Td align="left" bold>
+                    <Td align="left" bold dataVideoTarget={`report-card-row-${result.subjectId}`}>
                       {result.subjectName}
                       {reportCard.resultCalculationMode === "cumulative_annual" &&
                         (result.calculationMode === "cumulative_annual" &&
@@ -899,6 +899,7 @@ function Td({
   mono,
   color,
   fontSize: fs,
+  dataVideoTarget,
 }: {
   children: React.ReactNode;
   align?: "left" | "center" | "right";
@@ -906,9 +907,11 @@ function Td({
   mono?: boolean;
   color?: string;
   fontSize?: number;
+  dataVideoTarget?: string;
 }) {
   return (
     <td
+      data-video-target={dataVideoTarget}
       style={{
         padding: "4px 6px",
         textAlign: align,

@@ -10,9 +10,9 @@ import type {
   ValidationErrors,
   Id,
   GradingBandResponse,
-} from "@/types";
-import { getEffectiveValue, computeDerivedValues, getGradeColorClass } from "@/exam-helpers";
-import { humanNameFinalStrict } from "@/human-name";
+} from "../../../../../lib/types";
+import { getEffectiveValue, computeDerivedValues, getGradeColorClass } from "../../../../../lib/exam-helpers";
+import { humanNameFinalStrict } from "../../../../../lib/human-name";
 
 interface AdminRosterGridRowProps {
   student: StudentRosterEntry;
@@ -29,6 +29,9 @@ interface AdminRosterGridRowProps {
     field: ScoreField,
     value: number | null
   ) => void;
+  showQuickLinks?: boolean;
+  forceQuickLinks?: boolean;
+  reportLinkLabel?: string;
 }
 
 export function AdminRosterGridRow({
@@ -42,6 +45,9 @@ export function AdminRosterGridRow({
   classId,
   isEditable,
   onScoreChange,
+  showQuickLinks = false,
+  forceQuickLinks = false,
+  reportLinkLabel = "Report",
 }: AdminRosterGridRowProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
   const displayStudentName = humanNameFinalStrict(student.studentName);
@@ -102,6 +108,7 @@ export function AdminRosterGridRow({
           }}
           placeholder="--"
           title={error ?? undefined}
+          data-video-target={`score-${student.studentId}-${field}`}
           className={`score-input ${isExam ? "score-input-exam" : ""} ${error ? "error" : ""} ${
             !isEditable ? "cursor-not-allowed opacity-60" : ""
           }`}
@@ -111,19 +118,23 @@ export function AdminRosterGridRow({
   };
 
   return (
-    <tr className="group hover:bg-slate-50/50 transition-all cursor-pointer">
+    <tr
+      className="group hover:bg-slate-50/50 transition-all cursor-pointer"
+      data-video-target={`score-row-${student.studentId}`}
+    >
       <td className="sticky-column pl-6">
         <div className="flex flex-col">
           <span className="font-bold text-slate-950 text-sm tracking-tight">
             {displayStudentName}
           </span>
-          <div className="flex gap-2.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className={`flex gap-2.5 mt-1 transition-opacity ${showQuickLinks || forceQuickLinks ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
             {reportCardHref && (
               <Link
                 href={reportCardHref}
+                data-video-target={`preview-report-card-${student.studentId}`}
                 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-900"
               >
-                Report
+                {reportLinkLabel}
               </Link>
             )}
             {reportCardExtrasHref && (

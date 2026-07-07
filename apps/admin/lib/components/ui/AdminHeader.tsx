@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { cn } from "@/utils";
+import { cn } from "../../utils";
 
 interface AdminHeaderProps {
   title: string;

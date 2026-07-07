@@ -4,8 +4,8 @@ import {
 computeDerivedValues,
 getEffectiveValue,
 getInitials,
-} from "@/exam-helpers";
-import { humanNameFinalStrict } from "@/human-name";
+} from "../../../../../lib/exam-helpers";
+import { humanNameFinalStrict } from "../../../../../lib/human-name";
 import type {
 DraftScores,
 GradingBandResponse,
@@ -13,7 +13,7 @@ Id,
 ScoreField,
 StudentRosterEntry,
 ValidationErrors,
-} from "@/types";
+} from "../../../../../lib/types";
 import type { ExamInputMode } from "@school/shared";
 import { buildReportCardExtrasHref,buildReportCardHref } from "@school/shared";
 import Link from "next/link";
@@ -36,6 +36,10 @@ interface AdminRosterGridProps {
     field: ScoreField,
     value: number | null
   ) => void;
+  showQuickLinks?: boolean;
+  forceQuickLinksStudentId?: Id<"students">;
+  reportLinkLabel?: string;
+  examLabelOverride?: string;
 }
 
 export function AdminRosterGrid({
@@ -50,9 +54,13 @@ export function AdminRosterGrid({
   classId,
   isEditable = true,
   onScoreChange,
+  showQuickLinks = false,
+  forceQuickLinksStudentId,
+  reportLinkLabel,
+  examLabelOverride,
 }: AdminRosterGridProps) {
   const showScaledColumn = examInputMode === "raw60_scaled_to_40";
-  const examLabel = examInputMode === "raw40" ? "/40" : "/60";
+  const examLabel = examLabelOverride ?? (examInputMode === "raw40" ? "/40" : "/60");
   const [selectedStudentId, setSelectedStudentId] = useState(roster[0]?.studentId ?? "");
 
   useEffect(() => {
@@ -174,6 +182,9 @@ export function AdminRosterGrid({
                 classId={classId}
                 isEditable={isEditable}
                 onScoreChange={onScoreChange}
+                showQuickLinks={showQuickLinks}
+                forceQuickLinks={student.studentId === forceQuickLinksStudentId}
+                reportLinkLabel={reportLinkLabel}
               />
             ))}
           </tbody>

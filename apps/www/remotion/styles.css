@@ -91,3 +91,89 @@ h4,
 .animate-fade-in {
   animation: fadeIn 0.6s ease both;
 }
+
+.score-input {
+  width: 50px;
+  height: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.375rem;
+  text-align: center;
+  font-weight: 500;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8125rem;
+  color: #0f172a;
+  outline: none;
+}
+
+.score-input-exam {
+  background-color: rgba(251, 191, 36, 0.1);
+  border-color: rgb(252 211 77);
+  color: rgb(120 53 15);
+  font-weight: 700;
+}
+
+.sticky-column {
+  position: sticky;
+  left: 0;
+  background: inherit;
+  z-index: 10;
+  border-right: 2px solid #f1f5f9;
+}
+
+/* Cross-app admin components are imported into the Remotion host, so keep the
+   responsive display utilities they rely on available even when Tailwind's
+   content scan misses classes from the admin app. */
+.hidden {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .md\:block {
+    display: block !important;
+  }
+
+  .md\:hidden {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:block {
+    display: block !important;
+  }
+
+  .lg\:flex {
+    display: flex !important;
+  }
+
+  .lg\:grid {
+    display: grid !important;
+  }
+
+  .lg\:hidden {
+    display: none !important;
+  }
+
+  .lg\:flex-row,
+  .lg\:flex-row-reverse {
+    flex-direction: row !important;
+  }
+
+  .lg\:flex-row-reverse {
+    flex-direction: row-reverse !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .xl\:block {
+    display: block !important;
+  }
+
+  .xl\:flex {
+    display: flex !important;
+  }
+
+  .xl\:hidden {
+    display: none !important;
+  }
+}

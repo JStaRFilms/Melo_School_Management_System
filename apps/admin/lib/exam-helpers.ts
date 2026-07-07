@@ -13,7 +13,7 @@ import type {
   ValidationErrors,
   BandValidationError,
   Id,
-} from "@/types";
+} from "./types";
 
 /**
  * Get the effective value for a score field (draft or original)
