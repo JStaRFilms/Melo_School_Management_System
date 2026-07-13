@@ -80,6 +80,7 @@ export function ContactForm({
     ? `Hello Melo team, I'd like to book a walkthrough for result-week.`
     : `Hello Melo team, I'd like to book a demo for my school.`;
   const whatsappLink = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappText)}`;
+  const emailLink = `mailto:melo@jstarstudios.com?subject=${encodeURIComponent("Melo demo request")}`;
 
   if (status === "success") {
     return (
@@ -119,9 +120,22 @@ export function ContactForm({
       <p className="mt-2 text-sm text-melo-muted">{subtitle}</p>
 
       {status === "error" && (
-        <div className="mt-6 flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-50 p-4 text-sm text-red-600">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-          <p>{errorMessage}</p>
+        <div className="mt-6 rounded-lg border border-red-500/20 bg-red-50 p-4 text-sm text-red-700">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <p>{errorMessage}</p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3 pl-8">
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-4">
+              WhatsApp us
+            </a>
+            <a href={emailLink} className="font-semibold underline underline-offset-4">
+              Email us
+            </a>
+            <a href="tel:+2348152657887" className="font-semibold underline underline-offset-4">
+              Call us
+            </a>
+          </div>
         </div>
       )}
 
@@ -261,6 +275,21 @@ export function ContactForm({
           )}
         </button>
       </form>
+
+      <div className="mt-6 border-t border-melo-border pt-6 text-center">
+        <p className="text-xs font-semibold uppercase tracking-wider text-melo-muted">Prefer to reach us directly?</p>
+        <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-medium text-melo-ink">
+          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="underline decoration-melo-gold/50 underline-offset-4 hover:decoration-melo-gold">
+            WhatsApp
+          </a>
+          <a href="tel:+2348152657887" className="underline decoration-melo-gold/50 underline-offset-4 hover:decoration-melo-gold">
+            +234 815 265 7887
+          </a>
+          <a href={emailLink} className="underline decoration-melo-gold/50 underline-offset-4 hover:decoration-melo-gold">
+            Email
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

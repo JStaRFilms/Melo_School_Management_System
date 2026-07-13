@@ -14,7 +14,7 @@ export const siteBrand = {
     "Melo is the unified operating system for Nigerian schools — from academics and billing to parent visibility, built for how your institution actually runs.",
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://meloschool.com",
   phone: "+234 815 265 7887", // Keep placeholder or update if you have the studio line
-  email: "melo@jstarfilmsstudios.com",
+  email: "melo@jstarstudios.com",
   address: "Abuja, Nigeria",
   hours: "Monday – Friday, 9 am – 5 pm",
 } as const;
