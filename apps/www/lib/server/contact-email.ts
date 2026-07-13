@@ -60,7 +60,7 @@ function emailShell(args: {
             </tr>
             <tr>
               <td style="padding:20px 28px;border-top:1px solid #ebe4d8;color:#82796d;font-size:12px;line-height:1.6;">
-                ${escapeHtml(args.footer)}<br />Melo by J StaR Studios
+                ${escapeHtml(args.footer)}<br />Melo by J StaR Films Studios
               </td>
             </tr>
           </table>
@@ -165,7 +165,7 @@ export async function deliverContactLead(lead: ContactLead) {
         replyTo: to,
         subject: "We received your Melo demo request",
         html: confirmationHtml(lead),
-        text: `Hi ${lead.name},\n\nWe received your Melo demo request for ${lead.school}. The Melo team will respond within 24 hours.\n\nMelo by J StaR Studios`,
+        text: `Hi ${lead.name},\n\nWe received your Melo demo request for ${lead.school}. The Melo team will respond within 24 hours.\n\nMelo by J StaR Films Studios`,
       });
 
       confirmationSent = Boolean(confirmation.data?.id && !confirmation.error);
