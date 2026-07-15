@@ -31,6 +31,21 @@ function parseDateInputValue(value: string) {
   return new Date(`${value}T00:00:00`).getTime();
 }
 
+function formatDayAfterInputValue(value: number | null) {
+  if (!value) return undefined;
+
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 1);
+  return formatDateInputValue(date.getTime());
+}
+
+function formatDisplayDate(value: number) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value)
+  );
+}
+
 function parseIntegerInputValue(value: string) {
   if (!value.trim()) return null;
   const parsed = Number(value);
@@ -54,6 +69,7 @@ export function ReportCardAdminPanel({
   ) as
     | {
         termId: string;
+        termEndDate: number;
         nextTermBegins: number | null;
         defaultTimesSchoolOpened: number | null;
         resultCalculationMode: "standalone" | "cumulative_annual";
@@ -190,9 +206,20 @@ export function ReportCardAdminPanel({
     setTermDefaultsSuccess(null);
 
     try {
+      const nextTermBegins = parseDateInputValue(defaultNextTermBegins);
+      if (
+        nextTermBegins !== null &&
+        termSettings &&
+        nextTermBegins <= termSettings.termEndDate
+      ) {
+        throw new Error(
+          `Resumption must be after this term ends on ${formatDisplayDate(termSettings.termEndDate)}.`
+        );
+      }
+
       await saveTermDefaults({
         termId,
-        nextTermBegins: parseDateInputValue(defaultNextTermBegins),
+        nextTermBegins,
         defaultTimesSchoolOpened: parseIntegerInputValue(defaultTimesOpened),
         resultCalculationMode:
           termSettings?.resultCalculationMode ??
@@ -217,12 +244,23 @@ export function ReportCardAdminPanel({
     setGroupSuccess(null);
 
     try {
+      const nextTermBegins = parseDateInputValue(groupNextTermBegins);
+      if (
+        nextTermBegins !== null &&
+        termSettings &&
+        nextTermBegins <= termSettings.termEndDate
+      ) {
+        throw new Error(
+          `Resumption must be after this term ends on ${formatDisplayDate(termSettings.termEndDate)}.`
+        );
+      }
+
       const nextGroupId = (await saveTermGroup({
         groupId,
         termId,
         name: groupName,
         classIds: groupClassIds,
-        nextTermBegins: parseDateInputValue(groupNextTermBegins),
+        nextTermBegins,
         timesSchoolOpened: parseIntegerInputValue(groupTimesOpened),
       } as never)) as string;
       setSelectedGroupId(nextGroupId);
@@ -373,7 +411,12 @@ export function ReportCardAdminPanel({
             <input
               type="date"
               value={defaultNextTermBegins}
-              onChange={(event) => setDefaultNextTermBegins(event.target.value)}
+              min={formatDayAfterInputValue(termSettings?.termEndDate ?? null)}
+              onChange={(event) => {
+                setDefaultNextTermBegins(event.target.value);
+                setTermDefaultsError(null);
+                setTermDefaultsSuccess(null);
+              }}
               className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 text-[13px] font-medium text-slate-900 outline-none transition focus:border-slate-400"
             />
           </div>
@@ -479,7 +522,12 @@ export function ReportCardAdminPanel({
                 <input
                   type="date"
                   value={groupNextTermBegins}
-                  onChange={(event) => setGroupNextTermBegins(event.target.value)}
+                  min={formatDayAfterInputValue(termSettings?.termEndDate ?? null)}
+                  onChange={(event) => {
+                    setGroupNextTermBegins(event.target.value);
+                    setGroupError(null);
+                    setGroupSuccess(null);
+                  }}
                   className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-900 outline-none"
                 />
               </div>

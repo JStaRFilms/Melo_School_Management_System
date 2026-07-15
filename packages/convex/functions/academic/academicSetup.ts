@@ -1018,6 +1018,194 @@ export const updateTermCalculationMode = mutation({
   },
 });
 
+export const updateTermDates = mutation({
+  args: {
+    termId: v.id("academicTerms"),
+    startDate: v.number(),
+    endDate: v.number(),
+    expectedUpdatedAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const term = await ctx.db.get(args.termId);
+    if (!term || term.schoolId !== schoolId) {
+      throw new ConvexError("Term not found");
+    }
+    if (term.updatedAt !== args.expectedUpdatedAt) {
+      throw new ConvexError(
+        "This term changed after you opened it. Refresh and review the latest dates before saving."
+      );
+    }
+    if (args.endDate <= args.startDate) {
+      throw new ConvexError("Term end date must be after its start date");
+    }
+
+    const session = await ctx.db.get(term.sessionId);
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
+      throw new ConvexError("Academic session not found");
+    }
+    if (args.startDate < session.startDate || args.endDate > session.endDate) {
+      throw new ConvexError(
+        "Term dates must stay within the academic session date range"
+      );
+    }
+
+    const siblingTerms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_session", (q) => q.eq("sessionId", term.sessionId))
+      .collect();
+    const overlappingTerm = siblingTerms.find(
+      (candidate) =>
+        candidate._id !== term._id &&
+        args.startDate <= candidate.endDate &&
+        args.endDate >= candidate.startDate
+    );
+    if (overlappingTerm) {
+      throw new ConvexError(
+        `These dates overlap ${normalizeHumanName(overlappingTerm.name)}`
+      );
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.termId, {
+      startDate: args.startDate,
+      endDate: args.endDate,
+      updatedAt: now,
+    });
+    await ctx.db.insert("academicTimelineAuditEvents", {
+      schoolId,
+      eventType: "term_dates_updated",
+      entityType: "term",
+      entityId: String(term._id),
+      entityName: normalizeHumanName(term.name),
+      before: JSON.stringify({
+        startDate: term.startDate,
+        endDate: term.endDate,
+      }),
+      after: JSON.stringify({
+        startDate: args.startDate,
+        endDate: args.endDate,
+      }),
+      actorUserId: userId,
+      actorLabel: "Authenticated administrator",
+      createdAt: now,
+    });
+
+    return null;
+  },
+});
+
+export const activateTerm = mutation({
+  args: { termId: v.id("academicTerms") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const term = await ctx.db.get(args.termId);
+    if (!term || term.schoolId !== schoolId) {
+      throw new ConvexError("Term not found");
+    }
+    if (term.isActive) {
+      return null;
+    }
+
+    const activeTerms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .collect();
+    const now = Date.now();
+    for (const activeTerm of activeTerms) {
+      if (activeTerm._id !== term._id) {
+        await ctx.db.patch(activeTerm._id, {
+          isActive: false,
+          updatedAt: now,
+        });
+      }
+    }
+    await ctx.db.patch(term._id, { isActive: true, updatedAt: now });
+    await ctx.db.insert("academicTimelineAuditEvents", {
+      schoolId,
+      eventType: "term_activated",
+      entityType: "term",
+      entityId: String(term._id),
+      entityName: normalizeHumanName(term.name),
+      before: JSON.stringify({
+        activeTermIds: activeTerms.map((activeTerm) => String(activeTerm._id)),
+      }),
+      after: JSON.stringify({ activeTermId: String(term._id) }),
+      actorUserId: userId,
+      actorLabel: "Authenticated administrator",
+      createdAt: now,
+    });
+
+    return null;
+  },
+});
+
+export const listAcademicTimelineAuditEvents = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("academicTimelineAuditEvents"),
+      eventType: v.union(
+        v.literal("session_dates_updated"),
+        v.literal("term_dates_updated"),
+        v.literal("term_activated"),
+        v.literal("unused_timeline_deleted"),
+        v.literal("production_timeline_repair")
+      ),
+      entityType: v.union(v.literal("session"), v.literal("term")),
+      entityName: v.string(),
+      before: v.string(),
+      after: v.string(),
+      actorUserId: v.union(v.id("users"), v.null()),
+      actorName: v.string(),
+      actorLabel: v.string(),
+      createdAt: v.number(),
+    })
+  ),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const events = await ctx.db
+      .query("academicTimelineAuditEvents")
+      .withIndex("by_school_and_createdAt", (q) => q.eq("schoolId", schoolId))
+      .order("desc")
+      .take(20);
+
+    const actors = await Promise.all(
+      events.map((event) =>
+        event.actorUserId ? ctx.db.get(event.actorUserId) : Promise.resolve(null)
+      )
+    );
+
+    return events.map((event, index) => ({
+      _id: event._id,
+      eventType: event.eventType,
+      entityType: event.entityType,
+      entityName: event.entityName,
+      before: event.before,
+      after: event.after,
+      actorUserId: event.actorUserId ?? null,
+      actorName: actors[index]
+        ? normalizePersonName(actors[index].name)
+        : event.actorLabel,
+      actorLabel: event.actorLabel,
+      createdAt: event.createdAt,
+    }));
+  },
+});
+
 export const listTermsBySession = query({
   args: { sessionId: v.id("academicSessions") },
   returns: v.array(
@@ -1032,6 +1220,7 @@ export const listTermsBySession = query({
         v.literal("cumulative_annual")
       ),
       createdAt: v.number(),
+      updatedAt: v.number(),
     })
   ),
   handler: async (ctx, args) => {
@@ -1059,6 +1248,7 @@ export const listTermsBySession = query({
         isActive: t.isActive,
         reportCardCalculationMode: t.reportCardCalculationMode ?? "standalone",
         createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
       }));
   },
 });

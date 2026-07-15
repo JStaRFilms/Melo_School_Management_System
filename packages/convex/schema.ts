@@ -500,6 +500,27 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_school_active", ["schoolId", "isActive"]),
 
+  academicTimelineAuditEvents: defineTable({
+    schoolId: v.id("schools"),
+    eventType: v.union(
+      v.literal("session_dates_updated"),
+      v.literal("term_dates_updated"),
+      v.literal("term_activated"),
+      v.literal("unused_timeline_deleted"),
+      v.literal("production_timeline_repair")
+    ),
+    entityType: v.union(v.literal("session"), v.literal("term")),
+    entityId: v.string(),
+    entityName: v.string(),
+    before: v.string(),
+    after: v.string(),
+    actorUserId: v.optional(v.id("users")),
+    actorLabel: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_createdAt", ["schoolId", "createdAt"]),
+
   // Exam Recording tables
   schoolAssessmentSettings: defineTable({
     schoolId: v.id("schools"),

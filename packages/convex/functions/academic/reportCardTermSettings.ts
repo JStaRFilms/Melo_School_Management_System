@@ -107,6 +107,7 @@ export const getTermReportCardSettings = query({
   },
   returns: v.object({
     termId: v.id("academicTerms"),
+    termEndDate: v.number(),
     nextTermBegins: v.union(v.number(), v.null()),
     defaultTimesSchoolOpened: v.union(v.number(), v.null()),
     resultCalculationMode: v.union(
@@ -134,6 +135,7 @@ export const getTermReportCardSettings = query({
 
     return {
       termId: args.termId,
+      termEndDate: term.endDate,
       nextTermBegins: term.nextTermBegins ?? null,
       defaultTimesSchoolOpened: term.defaultTimesSchoolOpened ?? null,
       resultCalculationMode: term.reportCardCalculationMode ?? "standalone",
