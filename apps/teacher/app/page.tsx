@@ -27,5 +27,5 @@ export default function HomePage() {
     redirect("/sign-in?error=unauthorized");
   }
 
-  redirect("/assessments/report-card-workbench");
+  redirect("/assessments/exams/entry");
 }

@@ -325,14 +325,22 @@ export function ReportCardAdminPanel({
                 Cumulative annual computation cannot complete because {missingDataSubjects.length} subject{missingDataSubjects.length === 1 ? " is" : "s are"} missing scores from previous terms.
               </p>
               <p className="mt-2 text-xs font-semibold text-rose-800">
-                Printing stays blocked until the missing prior-term totals are backfilled.
+                Printing stays blocked until the totals are backfilled or an audited manual calculation is approved.
               </p>
-              <Link
-                href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${reportCard.classId}`}
-                className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-rose-950 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-rose-800"
-              >
-                Open historical backfill
-              </Link>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={`/assessments/report-cards/manual-adjustments?sessionId=${sessionId}&termId=${termId}&classId=${reportCard.classId}&studentId=${studentId}`}
+                  className="inline-flex h-9 items-center justify-center rounded-xl bg-rose-950 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-rose-800"
+                >
+                  Open manual adjustments
+                </Link>
+                <Link
+                  href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${reportCard.classId}`}
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-rose-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800 transition hover:bg-rose-100"
+                >
+                  Historical backfill
+                </Link>
+              </div>
             </div>
           </div>
         </div>

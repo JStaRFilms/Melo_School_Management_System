@@ -1,5 +1,5 @@
 import { mutation, query } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import {
   assertAdminForSchool,
@@ -17,6 +17,7 @@ import type { GradingBand } from "@school/shared/exam-recording";
 import {
   deriveCumulativeAnnualResult,
   isCumulativeAnnualMode,
+  type CumulativeTermKey,
   type CumulativeTermTotals,
   type ReportCardCalculationMode,
 } from "@school/shared";
@@ -125,6 +126,10 @@ function buildCumulativeResult(args: {
   firstTermTotal: number | null;
   secondTermTotal: number | null;
   gradingBands: GradingBand[];
+  manualAdjustment?: {
+    includedTerms: CumulativeTermKey[];
+    finalTotalOverride?: number;
+  } | null;
 }) {
   const currentBase = args.currentRecord
     ? buildRecordedResult(args.subject, args.currentRecord)
@@ -138,6 +143,13 @@ function buildCumulativeResult(args: {
   const cumulative = deriveCumulativeAnnualResult({
     totals,
     gradingBands: args.gradingBands,
+    ...(args.manualAdjustment
+      ? {
+          includedTerms: args.manualAdjustment.includedTerms,
+          finalTotalOverride:
+            args.manualAdjustment.finalTotalOverride ?? null,
+        }
+      : {}),
   });
 
   return {
@@ -149,6 +161,15 @@ function buildCumulativeResult(args: {
     annualAverage: cumulative.annualAverage,
     isCumulativeComplete: cumulative.isComplete,
     missingHistoricalTerms: cumulative.missingTerms,
+    manualAdjustment: args.manualAdjustment
+      ? {
+          includedTerms: args.manualAdjustment.includedTerms,
+          divisor: cumulative.divisor,
+          computedAverage: cumulative.computedAverage,
+          finalTotalOverride:
+            args.manualAdjustment.finalTotalOverride ?? null,
+        }
+      : null,
     total: cumulative.annualAverage ?? currentBase.total,
     gradeLetter: cumulative.gradeLetter ?? currentBase.gradeLetter,
     remark: cumulative.remark ?? currentBase.remark,
@@ -232,6 +253,21 @@ export const reportCardResultValidator = v.object({
           v.literal("current")
         )
       ),
+      manualAdjustment: v.union(
+        v.object({
+          includedTerms: v.array(
+            v.union(
+              v.literal("first"),
+              v.literal("second"),
+              v.literal("current")
+            )
+          ),
+          divisor: v.number(),
+          computedAverage: v.union(v.number(), v.null()),
+          finalTotalOverride: v.union(v.number(), v.null()),
+        }),
+        v.null()
+      ),
     })
   ),
   extras: reportCardExtraPrintableValidator,
@@ -264,6 +300,7 @@ function buildPendingResult(subject: {
     annualAverage: null,
     isCumulativeComplete: false,
     missingHistoricalTerms: ["current"] as Array<"first" | "second" | "current">,
+    manualAdjustment: null,
   };
 }
 
@@ -299,6 +336,7 @@ function buildRecordedResult(subject: {
     annualAverage: null,
     isCumulativeComplete: false,
     missingHistoricalTerms: [],
+    manualAdjustment: null,
   };
 }
 
@@ -562,6 +600,7 @@ export async function buildStudentReportCard(
     aggregationOptOuts,
     sessionTerms,
     historicalTermTotals,
+    manualAdjustments,
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
@@ -627,6 +666,16 @@ export async function buildStudentReportCard(
           .eq("sessionId", args.sessionId)
       )
       .collect(),
+    ctx.db
+      .query("reportCardManualAdjustments")
+      .withIndex("by_student_and_report_term", (q: any) =>
+        q
+          .eq("schoolId", args.schoolId)
+          .eq("studentId", args.studentId)
+          .eq("sessionId", args.sessionId)
+          .eq("termId", args.termId)
+      )
+      .take(500),
   ]);
 
   if (!classDoc || classDoc.schoolId !== args.schoolId) {
@@ -655,10 +704,10 @@ export async function buildStudentReportCard(
       String(optOut.aggregationId)
     ),
   });
-  const subjectIds = new Set<string>([
-    ...Array.from(effectiveSubjectIds),
-    ...records.map((record: any) => String(record.subjectId)),
-  ]);
+  // Student subject selections (or the class offering fallback) are the source of
+  // truth for report-card rows. Historical assessment records must not re-add a
+  // subject after it has been unchecked or removed from the class blueprint.
+  const subjectIds = new Set<string>(effectiveSubjectIds);
 
   if (subjectIds.size === 0) {
     throw new ConvexError(
@@ -729,6 +778,17 @@ export async function buildStudentReportCard(
   );
   const firstTermId = orderedSessionTerms[0]?._id ?? null;
   const secondTermId = orderedSessionTerms[1]?._id ?? null;
+  const manualAdjustmentBySubjectId = new Map<
+    string,
+    Doc<"reportCardManualAdjustments">
+  >(
+    manualAdjustments
+      .filter(
+        (adjustment: any) =>
+          String(adjustment.classId) === String(reportCardClassId)
+      )
+      .map((adjustment: any) => [String(adjustment.subjectId), adjustment] as const)
+  );
   const effectiveAggregations = aggregations.filter((aggregation) =>
     effectiveSubjectIds.has(String(aggregation.umbrellaSubjectId))
   );
@@ -776,6 +836,8 @@ export async function buildStudentReportCard(
         firstTermTotal,
         secondTermTotal,
         gradingBands: activeGradingBands,
+        manualAdjustment:
+          manualAdjustmentBySubjectId.get(String(subject._id)) ?? null,
       });
     });
 
@@ -786,45 +848,99 @@ export async function buildStudentReportCard(
         return null;
       }
 
-      const derived = deriveAggregatedSubjectResult({
-        strategy: aggregation.strategy,
-        assessmentConfig,
-        gradingBands: activeGradingBands,
-        components: aggregation.components.map((component) => ({
-          subjectId: String(component.componentSubjectId),
-          ca1: recordsBySubjectId.get(component.componentSubjectId)?.ca1 ?? null,
-          ca2: recordsBySubjectId.get(component.componentSubjectId)?.ca2 ?? null,
-          ca3: recordsBySubjectId.get(component.componentSubjectId)?.ca3 ?? null,
-          examScore:
-            recordsBySubjectId.get(component.componentSubjectId)
-              ?.examScaledScore ?? null,
-          total:
-            recordsBySubjectId.get(component.componentSubjectId)?.total ?? null,
-          rawMax: component.rawMaxOverride ?? 100,
-          contributionMax: component.contributionMax,
-        })),
-      });
+      const deriveForTerm = (termId: Id<"academicTerms">) =>
+        deriveAggregatedSubjectResult({
+          strategy: aggregation.strategy,
+          assessmentConfig,
+          gradingBands: activeGradingBands,
+          components: aggregation.components.map((component) => {
+            const componentRecord = sessionRecordsByTermAndSubject.get(
+              `${String(termId)}:${String(component.componentSubjectId)}`
+            );
+            return {
+              subjectId: String(component.componentSubjectId),
+              ca1: componentRecord?.ca1 ?? null,
+              ca2: componentRecord?.ca2 ?? null,
+              ca3: componentRecord?.ca3 ?? null,
+              examScore: componentRecord?.examScaledScore ?? null,
+              total: componentRecord?.total ?? null,
+              rawMax: component.rawMaxOverride ?? 100,
+              contributionMax: component.contributionMax,
+            };
+          }),
+        });
 
-      return {
-        subjectId: umbrellaSubject._id,
-        subjectName: normalizeHumanName(umbrellaSubject.name),
-        subjectCode: umbrellaSubject.code,
-        ca1: derived.ca1,
-        ca2: derived.ca2,
-        ca3: derived.ca3,
-        examScore: derived.examScore,
-        total: derived.total,
-        gradeLetter: derived.gradeLetter,
-        remark: derived.remark,
-        isRecorded: derived.isRecorded,
-        calculationMode: "standalone" as const,
-        currentTermTotal: derived.total,
-        firstTermTotal: null,
-        secondTermTotal: null,
-        annualAverage: null,
-        isCumulativeComplete: false,
-        missingHistoricalTerms: [],
-      };
+      const derived = deriveForTerm(args.termId);
+      if (!useCumulativeAnnualMode || !firstTermId || !secondTermId) {
+        return {
+          subjectId: umbrellaSubject._id,
+          subjectName: normalizeHumanName(umbrellaSubject.name),
+          subjectCode: umbrellaSubject.code,
+          ca1: derived.ca1,
+          ca2: derived.ca2,
+          ca3: derived.ca3,
+          examScore: derived.examScore,
+          total: derived.total,
+          gradeLetter: derived.gradeLetter,
+          remark: derived.remark,
+          isRecorded: derived.isRecorded,
+          calculationMode: "standalone" as const,
+          currentTermTotal: derived.total,
+          firstTermTotal: null,
+          secondTermTotal: null,
+          annualAverage: null,
+          isCumulativeComplete: false,
+          missingHistoricalTerms: [],
+          manualAdjustment: null,
+        };
+      }
+
+      const firstTermUmbrellaRecord = sessionRecordsByTermAndSubject.get(
+        `${String(firstTermId)}:${String(umbrellaSubject._id)}`
+      );
+      const secondTermUmbrellaRecord = sessionRecordsByTermAndSubject.get(
+        `${String(secondTermId)}:${String(umbrellaSubject._id)}`
+      );
+      const firstTermDerived = deriveForTerm(firstTermId);
+      const secondTermDerived = deriveForTerm(secondTermId);
+      const firstTermTotal =
+        firstTermUmbrellaRecord?.total ??
+        (firstTermDerived.isRecorded ? firstTermDerived.total : null) ??
+        resolveHistoricalSnapshot(
+          historicalTermTotals,
+          firstTermId,
+          umbrellaSubject._id,
+          reportCardClassId
+        );
+      const secondTermTotal =
+        secondTermUmbrellaRecord?.total ??
+        (secondTermDerived.isRecorded ? secondTermDerived.total : null) ??
+        resolveHistoricalSnapshot(
+          historicalTermTotals,
+          secondTermId,
+          umbrellaSubject._id,
+          reportCardClassId
+        );
+
+      return buildCumulativeResult({
+        subject: umbrellaSubject,
+        currentRecord: derived.isRecorded
+          ? {
+              ca1: derived.ca1,
+              ca2: derived.ca2,
+              ca3: derived.ca3,
+              examScaledScore: derived.examScore,
+              total: derived.total,
+              gradeLetter: derived.gradeLetter,
+              remark: derived.remark,
+            }
+          : null,
+        firstTermTotal,
+        secondTermTotal,
+        gradingBands: activeGradingBands,
+        manualAdjustment:
+          manualAdjustmentBySubjectId.get(String(umbrellaSubject._id)) ?? null,
+      });
     })
     .filter(
       (result): result is NonNullable<typeof result> => result !== null

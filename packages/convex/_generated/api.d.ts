@@ -43,6 +43,7 @@ import type * as functions_academic_lessonKnowledgeTemplates from "../functions/
 import type * as functions_academic_lessonKnowledgeTemplatesHelpers from "../functions/academic/lessonKnowledgeTemplatesHelpers.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
+import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
 import type * as functions_academic_reportCards from "../functions/academic/reportCards.js";
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
@@ -110,6 +111,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeTemplatesHelpers": typeof functions_academic_lessonKnowledgeTemplatesHelpers;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
+  "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
   "functions/academic/reportCards": typeof functions_academic_reportCards;
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;

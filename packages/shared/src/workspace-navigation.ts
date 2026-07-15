@@ -84,6 +84,11 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/academic/archived-records"],
       },
       {
+        href: "/assessments/report-cards/manual-adjustments",
+        label: "Manual Adjustments",
+        matchers: ["/assessments/report-cards/manual-adjustments"],
+      },
+      {
         href: "/assessments/report-cards/backfill",
         label: "Historical Backfill",
         matchers: ["/assessments/report-cards/backfill"],
@@ -106,7 +111,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       },
       {
         href: "/assessments/report-card-workbench",
-        label: "Report Extras",
+        label: "Report Cards",
         matchers: ["/assessments/report-card-workbench", "/assessments/report-card-extras", "/assessments/report-cards"],
       },
       {

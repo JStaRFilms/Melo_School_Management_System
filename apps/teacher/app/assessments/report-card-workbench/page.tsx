@@ -12,6 +12,7 @@ import { ExtrasSection } from "./components/ExtrasSection";
 import { ResultsSummary } from "./components/ResultsSummary";
 import { SubjectSection } from "./components/SubjectChangeSection";
 import { WorkbenchHeader } from "./components/WorkbenchHeader";
+import { getDefaultTermId } from "./selection-defaults";
 import type {
   SelectorOption,
   StudentOption,
@@ -64,6 +65,9 @@ export default function TeacherReportCardWorkbenchPage() {
       ? ({ sessionId: selection.sessionId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
+  const activeTerms = useQuery(
+    "functions/academic/teacherSelectors:getTeacherActiveTerms" as never
+  ) as Array<SelectorOption & { isActive: boolean }> | undefined;
   const classes = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
   ) as LegacySelectorOption[] | undefined;
@@ -113,14 +117,26 @@ export default function TeacherReportCardWorkbenchPage() {
   }, [normalizedSessions, replaceSelection, selection.sessionId]);
 
   useEffect(() => {
-    if (selection.sessionId && !selection.termId && terms && terms.length > 0) {
+    if (
+      selection.sessionId &&
+      !selection.termId &&
+      terms &&
+      terms.length > 0 &&
+      activeTerms !== undefined
+    ) {
       replaceSelection({
-        termId: terms[0].id,
+        termId: getDefaultTermId(terms, activeTerms),
         classId: null,
         studentId: null,
       });
     }
-  }, [replaceSelection, selection.sessionId, selection.termId, terms]);
+  }, [
+    activeTerms,
+    replaceSelection,
+    selection.sessionId,
+    selection.termId,
+    terms,
+  ]);
 
   useEffect(() => {
     if (!selection.classId && normalizedClasses.length > 0) {
@@ -278,6 +294,25 @@ export default function TeacherReportCardWorkbenchPage() {
     [roster, selection.studentId]
   );
 
+  const handleSessionChange = useCallback(
+    (nextSessionId: string | null) => {
+      replaceSelection({
+        sessionId: nextSessionId,
+        termId: null,
+        classId: null,
+        studentId: null,
+      });
+    },
+    [replaceSelection]
+  );
+
+  const handleTermChange = useCallback(
+    (nextTermId: string | null) => {
+      replaceSelection({ termId: nextTermId, studentId: null });
+    },
+    [replaceSelection]
+  );
+
   const handleClassChange = useCallback(
     (nextClassId: string | null) => {
       replaceSelection({ classId: nextClassId, studentId: null });
@@ -395,12 +430,20 @@ export default function TeacherReportCardWorkbenchPage() {
         termName={
           terms?.find((o) => o.id === selection.termId)?.name ?? "Term pending"
         }
+        sessionOptions={normalizedSessions}
+        termOptions={terms ?? []}
         classOptions={normalizedClasses}
         studentOptions={roster ?? []}
+        selectedSessionId={selection.sessionId}
+        selectedTermId={selection.termId}
         selectedClassId={selection.classId}
         selectedStudentId={selection.studentId}
+        isLoadingSessions={sessions === undefined}
+        isLoadingTerms={Boolean(selection.sessionId) && terms === undefined}
         isLoadingClasses={classes === undefined}
         isLoadingStudents={hasClassAndSession && rosterRows === undefined}
+        onSessionChange={handleSessionChange}
+        onTermChange={handleTermChange}
         onClassChange={handleClassChange}
         onStudentChange={handleStudentChange}
         onNextStudent={handleNextStudent}

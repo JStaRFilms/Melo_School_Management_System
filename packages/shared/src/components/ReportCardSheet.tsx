@@ -60,6 +60,12 @@ export type ReportCardSheetData = {
     annualAverage?: number | null;
     isCumulativeComplete?: boolean;
     missingHistoricalTerms?: Array<"first" | "second" | "current">;
+    manualAdjustment?: {
+      includedTerms: Array<"first" | "second" | "current">;
+      divisor: number;
+      computedAverage: number | null;
+      finalTotalOverride: number | null;
+    } | null;
   }>;
   extras?: Array<{
     bundleId: string;

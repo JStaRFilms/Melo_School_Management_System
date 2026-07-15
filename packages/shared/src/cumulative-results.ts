@@ -46,13 +46,37 @@ export function getMissingCumulativeTerms(totals: CumulativeTermTotals) {
 export function deriveCumulativeAnnualResult(args: {
   totals: CumulativeTermTotals;
   gradingBands: GradingBand[];
+  includedTerms?: CumulativeTermKey[];
+  finalTotalOverride?: number | null;
 }) {
-  const annualAverage = calculateAnnualAverage(args.totals);
-  const missingTerms = getMissingCumulativeTerms(args.totals);
+  if (
+    args.finalTotalOverride !== null &&
+    args.finalTotalOverride !== undefined &&
+    !Number.isFinite(args.finalTotalOverride)
+  ) {
+    throw new RangeError("Final total override must be finite");
+  }
+
+  const includedTerms = args.includedTerms ?? ["first", "second", "current"];
+  const missingTerms = includedTerms.filter((key) => args.totals[key] === null);
+  const includedValues = includedTerms
+    .map((key) => args.totals[key])
+    .filter((value): value is number => value !== null);
+  const computedAverage =
+    includedTerms.length > 0 && missingTerms.length === 0
+      ? round(
+          includedValues.reduce((sum, value) => sum + value, 0) /
+            includedTerms.length,
+          2
+        )
+      : null;
+  const annualAverage = args.finalTotalOverride ?? computedAverage;
 
   if (annualAverage === null) {
     return {
       annualAverage: null,
+      computedAverage,
+      divisor: includedTerms.length,
       gradeLetter: null,
       remark: null,
       isComplete: false,
@@ -67,9 +91,11 @@ export function deriveCumulativeAnnualResult(args: {
 
   return {
     annualAverage,
+    computedAverage,
+    divisor: includedTerms.length,
     gradeLetter,
     remark,
     isComplete: true,
-    missingTerms,
+    missingTerms: [] as CumulativeTermKey[],
   };
 }

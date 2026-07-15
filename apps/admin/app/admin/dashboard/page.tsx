@@ -91,6 +91,7 @@ const gradingSetup = [
 const systemSetup = [
   { href: "/admin", label: "Admin Users" },
   { href: "/academic/archived-records", label: "Archive Audit" },
+  { href: "/assessments/report-cards/manual-adjustments", label: "Manual Adjustments" },
   { href: "/assessments/report-cards/backfill", label: "Historical Backfill" },
 ];
 

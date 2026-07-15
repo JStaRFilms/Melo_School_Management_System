@@ -121,7 +121,7 @@ export function RosterGridRow({
                   href={reportCardExtrasHref}
                   className="ml-3 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700"
                 >
-                  Report Extras
+                  Edit Report Card
                 </Link>
               ) : null}
             </div>

@@ -111,6 +111,8 @@ describe("cumulative results helpers", () => {
 
     expect(result).toEqual({
       annualAverage: 73,
+      computedAverage: 73,
+      divisor: 3,
       gradeLetter: "A",
       remark: "Excellent",
       isComplete: true,
@@ -130,10 +132,64 @@ describe("cumulative results helpers", () => {
 
     expect(result).toEqual({
       annualAverage: null,
+      computedAverage: null,
+      divisor: 3,
       gradeLetter: null,
       remark: null,
       isComplete: false,
       missingTerms: ["first"],
+    });
+  });
+
+  it("averages only the terms selected by an administrator", () => {
+    const result = deriveCumulativeAnnualResult({
+      totals: {
+        first: null,
+        second: 68,
+        current: 74.3,
+      },
+      includedTerms: ["second", "current"],
+      gradingBands,
+    });
+
+    expect(result).toMatchObject({
+      annualAverage: 71.15,
+      computedAverage: 71.15,
+      divisor: 2,
+      gradeLetter: "A",
+      isComplete: true,
+      missingTerms: [],
+    });
+  });
+
+  it("rejects non-finite final total overrides", () => {
+    expect(() =>
+      deriveCumulativeAnnualResult({
+        totals: { first: 70, second: 70, current: 70 },
+        finalTotalOverride: Number.NaN,
+        gradingBands,
+      })
+    ).toThrow("Final total override must be finite");
+  });
+
+  it("uses an explicit final total while preserving the computed average", () => {
+    const result = deriveCumulativeAnnualResult({
+      totals: {
+        first: null,
+        second: 68,
+        current: 74.3,
+      },
+      includedTerms: ["second", "current"],
+      finalTotalOverride: 70,
+      gradingBands,
+    });
+
+    expect(result).toMatchObject({
+      annualAverage: 70,
+      computedAverage: 71.15,
+      divisor: 2,
+      gradeLetter: "A",
+      isComplete: true,
     });
   });
 });

@@ -152,7 +152,7 @@ export function RosterGrid({
                         href={reportCardExtrasHref}
                         className="ml-3 mt-1 inline-flex text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700"
                       >
-                        Report Extras
+                        Edit Report Card
                       </Link>
                     ) : null}
                   </div>

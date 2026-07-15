@@ -650,6 +650,63 @@ export default defineSchema({
     ])
     .index("by_student_and_session", ["schoolId", "studentId", "sessionId"]),
 
+  reportCardManualAdjustments: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    subjectId: v.id("subjects"),
+    includedTerms: v.array(
+      v.union(v.literal("first"), v.literal("second"), v.literal("current"))
+    ),
+    finalTotalOverride: v.optional(v.number()),
+    reason: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_and_report_term", [
+      "schoolId",
+      "studentId",
+      "sessionId",
+      "termId",
+    ])
+    .index("by_lookup", [
+      "schoolId",
+      "studentId",
+      "sessionId",
+      "termId",
+      "classId",
+      "subjectId",
+    ]),
+
+  reportCardManualAdjustmentEvents: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    subjectId: v.id("subjects"),
+    action: v.union(v.literal("apply"), v.literal("reset")),
+    includedTerms: v.array(
+      v.union(v.literal("first"), v.literal("second"), v.literal("current"))
+    ),
+    finalTotalOverride: v.optional(v.number()),
+    reason: v.string(),
+    createdAt: v.number(),
+    actorId: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_and_report_term", [
+      "schoolId",
+      "studentId",
+      "sessionId",
+      "termId",
+    ]),
+
   reportCardComments: defineTable({
     schoolId: v.id("schools"),
     studentId: v.id("students"),
