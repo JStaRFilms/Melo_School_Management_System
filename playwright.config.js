@@ -26,5 +26,11 @@ module.exports = defineConfig({
       reuseExistingServer: true,
       timeout: 180_000,
     },
+    {
+      command: "pnpm --filter @school/portal dev",
+      url: "http://localhost:3003/sign-in",
+      reuseExistingServer: true,
+      timeout: 180_000,
+    },
   ],
 });

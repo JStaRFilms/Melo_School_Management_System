@@ -20,6 +20,8 @@ import type * as functions_academic_assessmentEditingPolicyHelpers from "../func
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
+import type * as functions_academic_demoAssets from "../functions/academic/demoAssets.js";
+import type * as functions_academic_demoData from "../functions/academic/demoData.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
@@ -88,6 +90,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
+  "functions/academic/demoAssets": typeof functions_academic_demoAssets;
+  "functions/academic/demoData": typeof functions_academic_demoData;
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;

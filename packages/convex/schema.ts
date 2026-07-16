@@ -231,7 +231,8 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_school_and_email", ["schoolId", "email"])
-    .index("by_auth", ["authId"]),
+    .index("by_auth", ["authId"])
+    .index("by_email", ["email"]),
 
   families: defineTable({
     schoolId: v.id("schools"),
@@ -1771,6 +1772,36 @@ export default defineSchema({
       ],
     }),
 
+  // Persisted cursor state for bounded, restart-safe demo population phases.
+  demoSeedRuns: defineTable({
+    schoolId: v.id("schools"),
+    status: v.union(v.literal("running"), v.literal("failed"), v.literal("succeeded")),
+    phase: v.union(v.literal("foundation"), v.literal("students"), v.literal("assessments"), v.literal("billing"), v.literal("knowledge"), v.literal("complete")),
+    studentCursor: v.number(),
+    assessmentCursor: v.number(),
+    billingCursor: v.number(),
+    adminAuthId: v.string(),
+    teacherAuthId: v.string(),
+    portalAuthId: v.string(),
+    logoStorageId: v.id("_storage"),
+    portraitStorageIds: v.array(v.id("_storage")),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
+  // Durable cleanup ledger: destructive demo resets retain storage IDs until a
+  // successful storage delete is acknowledged, including across retries.
+  demoSeedStorageCleanup: defineTable({
+    schoolId: v.id("schools"),
+    schoolSlug: v.string(),
+    storageId: v.id("_storage"),
+    createdAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_slug", ["schoolSlug"])
+    .index("by_storage", ["storageId"]),
+
   rateLimitCounters: defineTable({
     key: v.string(),
     action: rateLimitActionValidator,
@@ -1784,6 +1815,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_key", ["key"])
+    .index("by_school", ["schoolId"])
     .index("by_school_and_action", ["schoolId", "action"])
     .index("by_window_expires_at", ["windowExpiresAt"]),
 
