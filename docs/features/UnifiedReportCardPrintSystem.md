@@ -108,8 +108,9 @@ Admin and teacher still use `printClass=1` to enter full-class print mode, but t
 - Toolbar hidden automatically
 
 ### Full-Class Print
-- Uses `ReportCardBatchPrintStackV2` which renders each card at full size through the existing `ReportCardSheet`
-- One student per page via batch-only page-break CSS
+- Uses `ReportCardBatchPrintStackV2` which renders each card through the existing `ReportCardSheet`
+- One student per fixed A4 page via batch-only page-break CSS
+- Measures and fits every student's sheet independently after images and web fonts load, preventing later pages from drifting or clipping comments
 - No toolbar on any page
 - Single-student print remains on the existing preview/toolbar path and does not use the V2 batch wrapper
 
@@ -129,6 +130,11 @@ When adding new report card features:
 - `docs/features/CumulativeTermResultsAndBackfill.md` - cumulative-result blocking and backfill rules that affect print eligibility
 
 ## Changelog
+
+### 2026-07-15: Independent Batch Page Fitting
+- **Problem:** fixed-height batch pages clipped comments when a report card's content exceeded the printable A4 height, especially in larger class print runs
+- **Solution:** wait for images and fonts, measure each report card independently, and apply a page-local downscale before opening print
+- **Verification:** browser stress test with 100 report cards confirmed 100 equal A4 page intervals and no clipped head-teacher comment rows on the first, middle, or final page
 
 ### 2026-04-17: Unified Print System
 - **Problem:** Inconsistent preview and broken print across surfaces

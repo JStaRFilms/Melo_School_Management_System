@@ -8,6 +8,34 @@ import {
 } from "./ReportCardSheet";
 
 const BATCH_PRINT_STYLE_ID = "report-card-batch-print-v2-styles";
+const A4_HEIGHT_MM = 297;
+const BATCH_PAGE_PADDING_MM = 8;
+const PX_PER_MM = 96 / 25.4;
+const BATCH_FIT_SAFETY_PX = 4;
+const BATCH_PRINTABLE_HEIGHT_PX =
+  (A4_HEIGHT_MM - BATCH_PAGE_PADDING_MM * 2) * PX_PER_MM;
+
+export function calculateBatchPrintScale(contentHeightPx: number) {
+  if (!Number.isFinite(contentHeightPx) || contentHeightPx <= 0) return 1;
+  return Math.min(
+    1,
+    (BATCH_PRINTABLE_HEIGHT_PX - BATCH_FIT_SAFETY_PX) / contentHeightPx
+  );
+}
+
+function fitBatchPagesForPrint(root: HTMLElement) {
+  const pages = root.querySelectorAll<HTMLElement>(".rc-batch-print-v2-page");
+
+  for (const page of pages) {
+    const sheet = page.querySelector<HTMLElement>(".rc-sheet");
+    if (!sheet) continue;
+
+    page.style.setProperty("--rc-batch-scale", "1");
+    const scale = calculateBatchPrintScale(sheet.scrollHeight);
+    page.style.setProperty("--rc-batch-scale", scale.toFixed(5));
+    page.dataset.printScale = scale.toFixed(5);
+  }
+}
 
 /**
  * Walk from `element` up to `document.body`:
@@ -180,6 +208,8 @@ function injectBatchPrintStyles() {
         box-shadow: none !important;
         overflow: visible !important;
         background: white !important;
+        transform: scale(var(--rc-batch-scale, 1)) !important;
+        transform-origin: top center !important;
       }
 
       .rc-batch-print-v2-page .rc-sheet * {
@@ -203,11 +233,12 @@ export function ReportCardBatchPrintStackV2({
 }: {
   reportCards: ReportCardSheetData[];
   backHref: string;
-  /** Called when all pages are rendered and images are loaded. */
+  /** Called when all pages are rendered, fitted, and assets are loaded. */
   onReady?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
   const restoreRef = useRef<(() => void) | null>(null);
   const batchKey = reportCards
     .map((reportCard) => `${reportCard.student._id}:${reportCard.sessionName}:${reportCard.termName}`)
@@ -272,19 +303,47 @@ export function ReportCardBatchPrintStackV2({
     };
   }, [batchKey]);
 
-  // Fire onReady after images + double RAF
+  // Wait for web fonts so measurements cannot change after printing starts.
   useEffect(() => {
-    if (!imagesLoaded || reportCards.length === 0) return;
+    let isActive = true;
+    setFontsLoaded(false);
+
+    if (!document.fonts?.ready) {
+      setFontsLoaded(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void document.fonts.ready.then(() => {
+      if (isActive) setFontsLoaded(true);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [batchKey]);
+
+  // Fit every student independently, then print after two paint frames.
+  useEffect(() => {
+    if (!imagesLoaded || !fontsLoaded || reportCards.length === 0) return;
+    const root = rootRef.current;
+    if (!root) return;
+
     let raf1 = 0;
     let raf2 = 0;
     raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => { onReady?.(); });
+      fitBatchPagesForPrint(root);
+      void root.offsetHeight;
+      raf2 = requestAnimationFrame(() => {
+        onReady?.();
+      });
     });
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [batchKey, imagesLoaded, reportCards.length, onReady]);
+  }, [batchKey, fontsLoaded, imagesLoaded, reportCards.length, onReady]);
 
   return (
     <div

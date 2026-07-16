@@ -188,3 +188,18 @@ That is much better than reopening report cards individually, but it still falls
 
 **Verification:** All three packages pass `tsc --noEmit`. Tested with 7-student class on teacher portal — print preview shows 7 pages, one per student.
 
+### 2026-07-15 Batch Print Per-Page Fit Hardening
+
+**Problem:** The fixed 297mm batch wrapper correctly separated students, but `overflow: hidden` clipped bottom comments whenever an individual report card was slightly taller than the 281mm printable content area. The issue became more visible later in larger class runs.
+
+**Solution:**
+- Wait for both report-card images and web fonts before declaring the stack ready.
+- Measure every `.rc-sheet` independently rather than deriving one scale for the entire class.
+- Store a page-local `--rc-batch-scale` value and uniformly downscale only pages that exceed the printable A4 content height.
+- Keep each `.rc-batch-print-v2-page` fixed at exactly 210mm × 297mm with independent page breaks, so no scale or position accumulates between students.
+
+**Verification:**
+- Shared typecheck and targeted lint pass.
+- Shared tests include a deterministic 100-student no-drift scale check.
+- A Chromium print-media stress run rendered 100 report cards at exactly 297mm page intervals with zero sheet or visible head-teacher-comment overflows on the first, 50th, and 100th pages.
+
