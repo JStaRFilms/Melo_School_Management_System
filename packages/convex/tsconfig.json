@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "baseUrl": "../..",
+    "paths": {
+      "@school/ai": ["packages/ai/src/index.ts"]
+    }
   },
   "include": [
     "_generated/**/*.ts",

@@ -195,11 +195,14 @@ That is much better than reopening report cards individually, but it still falls
 **Solution:**
 - Wait for both report-card images and web fonts before declaring the stack ready.
 - Measure every `.rc-sheet` independently rather than deriving one scale for the entire class.
+- Re-run the measurement during `beforeprint` / print-media activation so Chromium's actual print layout is authoritative.
 - Store a page-local `--rc-batch-scale` value and uniformly downscale only pages that exceed the printable A4 content height.
+- Reserve 4mm of vertical safety space for browser rounding and font-metric differences.
 - Keep each `.rc-batch-print-v2-page` fixed at exactly 210mm × 297mm with independent page breaks, so no scale or position accumulates between students.
 
 **Verification:**
 - Shared typecheck and targeted lint pass.
 - Shared tests include a deterministic 100-student no-drift scale check.
 - A Chromium print-media stress run rendered 100 report cards at exactly 297mm page intervals with zero sheet or visible head-teacher-comment overflows on the first, 50th, and 100th pages.
+- A generated 100-page Chromium PDF with varied 14/15-subject layouts and different comment lengths contained the correct class-teacher and head-teacher comment markers on every corresponding page, with no spillover or missing comments.
 

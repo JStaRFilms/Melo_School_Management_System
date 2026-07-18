@@ -20,6 +20,13 @@ import type * as functions_academic_assessmentEditingPolicyHelpers from "../func
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
+import type * as functions_academic_curriculumAdminRead from "../functions/academic/curriculumAdminRead.js";
+import type * as functions_academic_curriculumGeneration from "../functions/academic/curriculumGeneration.js";
+import type * as functions_academic_curriculumHelpers from "../functions/academic/curriculumHelpers.js";
+import type * as functions_academic_curriculumImportLifecycle from "../functions/academic/curriculumImportLifecycle.js";
+import type * as functions_academic_curriculumReadiness from "../functions/academic/curriculumReadiness.js";
+import type * as functions_academic_curriculumReadinessHelpers from "../functions/academic/curriculumReadinessHelpers.js";
+import type * as functions_academic_curriculumReviewLifecycle from "../functions/academic/curriculumReviewLifecycle.js";
 import type * as functions_academic_demoAssets from "../functions/academic/demoAssets.js";
 import type * as functions_academic_demoData from "../functions/academic/demoData.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
@@ -90,6 +97,13 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
+  "functions/academic/curriculumAdminRead": typeof functions_academic_curriculumAdminRead;
+  "functions/academic/curriculumGeneration": typeof functions_academic_curriculumGeneration;
+  "functions/academic/curriculumHelpers": typeof functions_academic_curriculumHelpers;
+  "functions/academic/curriculumImportLifecycle": typeof functions_academic_curriculumImportLifecycle;
+  "functions/academic/curriculumReadiness": typeof functions_academic_curriculumReadiness;
+  "functions/academic/curriculumReadinessHelpers": typeof functions_academic_curriculumReadinessHelpers;
+  "functions/academic/curriculumReviewLifecycle": typeof functions_academic_curriculumReviewLifecycle;
   "functions/academic/demoAssets": typeof functions_academic_demoAssets;
   "functions/academic/demoData": typeof functions_academic_demoData;
   "functions/academic/events": typeof functions_academic_events;

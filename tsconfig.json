@@ -19,6 +19,7 @@
       }
     ],
     "paths": {
+      "@school/ai": ["./packages/ai/src"],
       "@school/shared/*": ["./packages/shared/src/*"],
       "@school/convex/*": ["./packages/convex/*"]
     }

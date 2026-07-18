@@ -40,6 +40,24 @@ const knowledgeOutputTypeValidator = v.union(
   v.literal("cbt_draft")
 );
 
+const aiRunOutputTypeValidator = v.union(
+  v.literal("lesson_plan"),
+  v.literal("student_note"),
+  v.literal("assignment"),
+  v.literal("question_bank_draft"),
+  v.literal("cbt_draft"),
+  v.literal("curriculum_extraction")
+);
+
+const curriculumImportStatusValidator = v.union(
+  v.literal("draft"), v.literal("generating"), v.literal("ready_for_review"),
+  v.literal("partially_approved"), v.literal("approved"), v.literal("failed"), v.literal("archived")
+);
+
+const curriculumUnitReviewStatusValidator = v.union(
+  v.literal("proposed"), v.literal("approved"), v.literal("rejected")
+);
+
 const assessmentDraftModeValidator = v.union(
   v.literal("practice_quiz"),
   v.literal("class_test"),
@@ -1238,6 +1256,13 @@ export default defineSchema({
       "level",
       "termId",
     ])
+    .index("by_school_and_subject_and_level_and_term_and_status", [
+      "schoolId",
+      "subjectId",
+      "level",
+      "termId",
+      "status",
+    ])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
     .index("by_school_and_slug", ["schoolId", "slug"])
     .index("by_school_and_status", ["schoolId", "status"])
@@ -1291,7 +1316,9 @@ export default defineSchema({
     ])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
     .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_topic_and_visibility_and_review_status", ["schoolId", "topicId", "visibility", "reviewStatus"])
     .index("by_school_and_source_type", ["schoolId", "sourceType"])
+    .index("by_school_curriculum_ready_approved_indexed", ["schoolId", "sourceType", "processingStatus", "reviewStatus", "searchStatus"])
     .index("by_school_and_search_status", ["schoolId", "searchStatus"])
     .index("by_school_and_processing_status", ["schoolId", "processingStatus"])
     .searchIndex("search_search_text", {
@@ -1419,6 +1446,34 @@ export default defineSchema({
       ],
     }),
 
+  curriculumImports: defineTable({
+    schoolId: v.id("schools"), materialId: v.id("knowledgeMaterials"), subjectId: v.id("subjects"),
+    level: v.string(), termId: v.id("academicTerms"), status: curriculumImportStatusValidator,
+    requestedBy: v.id("users"), reviewedBy: v.optional(v.id("users")),
+    provider: v.optional(v.string()), modelId: v.optional(v.string()), promptVersion: v.string(), schemaVersion: v.string(),
+    aiRunLogId: v.optional(v.id("aiRunLogs")), errorCode: v.optional(v.string()), errorMessage: v.optional(v.string()),
+    proposedUnitCount: v.number(), approvedUnitCount: v.number(), rejectedUnitCount: v.number(), duplicateWarningCount: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_material", ["schoolId", "materialId"])
+    .index("by_school_and_updated_at", ["schoolId", "updatedAt"])
+    .index("by_school_and_subject_and_term_and_level", ["schoolId", "subjectId", "termId", "level"]),
+
+  curriculumUnits: defineTable({
+    schoolId: v.id("schools"), importId: v.id("curriculumImports"), materialId: v.id("knowledgeMaterials"),
+    weekNumber: v.optional(v.number()), title: v.string(), subtopics: v.array(v.string()), learningObjectives: v.array(v.string()),
+    suggestedDuration: v.optional(v.string()), sourcePages: v.array(v.number()), sourceChunkHash: v.string(), supportingExcerpt: v.string(),
+    confidence: v.number(), reviewStatus: curriculumUnitReviewStatusValidator,
+    validationWarnings: v.array(v.string()), duplicateWarnings: v.array(v.string()),
+    editedBy: v.optional(v.id("users")), reviewedBy: v.optional(v.id("users")), reviewedAt: v.optional(v.number()),
+    knowledgeTopicId: v.optional(v.id("knowledgeTopics")), createdAt: v.number(), updatedAt: v.number(),
+  })
+    .index("by_import_and_review_status", ["importId", "reviewStatus"])
+    .index("by_school_and_topic_identity", ["schoolId", "title"])
+    .index("by_school_and_knowledge_topic", ["schoolId", "knowledgeTopicId"])
+    .index("by_school_and_knowledge_topic_and_review_status", ["schoolId", "knowledgeTopicId", "reviewStatus"]),
+
   instructionTemplates: defineTable({
     schoolId: v.id("schools"),
     templateKey: v.string(),
@@ -1526,6 +1581,7 @@ export default defineSchema({
       "reviewStatus",
     ])
     .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_topic_and_artifact_status_and_output_type", ["schoolId", "topicId", "artifactStatus", "outputType"])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
     .index("by_school_and_template", ["schoolId", "templateId"])
     .index("by_school_and_artifact_status", ["schoolId", "artifactStatus"])
@@ -1707,6 +1763,7 @@ export default defineSchema({
       "reviewStatus",
     ])
     .index("by_school_and_topic", ["schoolId", "topicId"])
+    .index("by_school_and_topic_and_bank_status", ["schoolId", "topicId", "bankStatus"])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
     .index("by_school_and_bank_status", ["schoolId", "bankStatus"])
     .index("by_school_and_search_status", ["schoolId", "searchStatus"])
@@ -1823,13 +1880,14 @@ export default defineSchema({
     schoolId: v.id("schools"),
     actorUserId: v.id("users"),
     actorRole: knowledgeOwnerRoleValidator,
-    outputType: knowledgeOutputTypeValidator,
+    outputType: aiRunOutputTypeValidator,
     promptClass: v.string(),
     status: knowledgeAIRunStatusValidator,
     model: v.string(),
     provider: v.string(),
     targetArtifactId: v.optional(v.id("instructionArtifacts")),
     targetAssessmentBankId: v.optional(v.id("assessmentBanks")),
+    curriculumImportId: v.optional(v.id("curriculumImports")),
     sourceSelectionSnapshot: v.string(),
     sourceCount: v.number(),
     effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
@@ -1857,6 +1915,7 @@ export default defineSchema({
       "schoolId",
       "targetAssessmentBankId",
     ])
+    .index("by_school_and_curriculum_import", ["schoolId", "curriculumImportId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"]),
 
   contentAuditEvents: defineTable({
@@ -1875,7 +1934,9 @@ export default defineSchema({
       v.literal("instructionArtifactRevision"),
       v.literal("instructionArtifactSource"),
       v.literal("assessmentBank"),
-      v.literal("assessmentBankItem")
+      v.literal("assessmentBankItem"),
+      v.literal("curriculumImport"),
+      v.literal("curriculumUnit")
     ),
     materialId: v.optional(v.id("knowledgeMaterials")),
     bindingId: v.optional(v.id("knowledgeMaterialClassBindings")),
@@ -1884,6 +1945,8 @@ export default defineSchema({
     templateId: v.optional(v.id("instructionTemplates")),
     bankId: v.optional(v.id("assessmentBanks")),
     itemId: v.optional(v.id("assessmentBankItems")),
+    curriculumImportId: v.optional(v.id("curriculumImports")),
+    curriculumUnitId: v.optional(v.id("curriculumUnits")),
     beforeVisibility: v.optional(knowledgeVisibilityValidator),
     afterVisibility: v.optional(knowledgeVisibilityValidator),
     beforeReviewStatus: v.optional(knowledgeReviewStatusValidator),
@@ -1902,5 +1965,7 @@ export default defineSchema({
     .index("by_school_and_topic", ["schoolId", "topicId"])
     .index("by_school_and_artifact", ["schoolId", "artifactId"])
     .index("by_school_and_bank", ["schoolId", "bankId"])
+    .index("by_school_and_curriculum_import", ["schoolId", "curriculumImportId"])
+    .index("by_school_and_curriculum_unit", ["schoolId", "curriculumUnitId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"]),
 });

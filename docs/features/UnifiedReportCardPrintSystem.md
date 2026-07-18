@@ -110,7 +110,8 @@ Admin and teacher still use `printClass=1` to enter full-class print mode, but t
 ### Full-Class Print
 - Uses `ReportCardBatchPrintStackV2` which renders each card through the existing `ReportCardSheet`
 - One student per fixed A4 page via batch-only page-break CSS
-- Measures and fits every student's sheet independently after images and web fonts load, preventing later pages from drifting or clipping comments
+- Measures and fits every student's sheet independently after images and web fonts load, then recalculates again inside the browser's print lifecycle so print-media dimensions—not screen dimensions—control the final scale
+- Reserves a small bottom safety area inside the 8mm page padding to absorb browser rounding and font-metric differences without clipping comments
 - No toolbar on any page
 - Single-student print remains on the existing preview/toolbar path and does not use the V2 batch wrapper
 

@@ -48,6 +48,16 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         label: "Knowledge Library",
         matchers: ["/academic/knowledge/library"],
       },
+      {
+        href: "/academic/knowledge/curriculum-import",
+        label: "Curriculum Import",
+        matchers: ["/academic/knowledge/curriculum-import"],
+      },
+      {
+        href: "/academic/knowledge/curriculum-readiness",
+        label: "Curriculum Readiness",
+        matchers: ["/academic/knowledge/curriculum-readiness"],
+      },
       { href: "/academic/sessions", label: "Sessions", matchers: ["/academic/sessions"] },
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
