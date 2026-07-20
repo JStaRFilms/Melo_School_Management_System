@@ -1,0 +1,248 @@
+# Feature Blueprint: Melo Curriculum Intelligence
+
+## Status
+
+**Implemented, independently reviewed, and deployed to Convex production on 2026-07-18.**
+
+## Goal
+
+Turn a school-owned scheme of work into a reviewed, evidence-backed academic plan. A school administrator uploads or selects an extracted curriculum source, Melo proposes weekly curriculum units, the administrator approves or corrects them, and the accepted units become existing `knowledgeTopics` that teachers can use throughout planning and assessment.
+
+The first release also provides a **Curriculum Readiness Map**. It reports preparation evidence from existing Melo records; it does **not** claim that a lesson was taught unless a later, separately approved teaching-confirmation feature is added.
+
+## Product Boundary
+
+### Current workflow
+
+A teacher adds a curriculum PDF as a broad planning reference, manually selects or creates a topic, and asks Melo to use selected source excerpts to generate one artifact.
+
+### New workflow
+
+Melo treats the approved scheme of work as structured school data:
+
+1. Read an existing, school-scoped, extracted curriculum source.
+2. Propose week, topic, subtopics, learning objectives, supporting text, source pages, and confidence.
+3. Require an administrator to edit, reject, or approve every proposed unit.
+4. Create approved units as the system's existing `knowledgeTopics`.
+5. Calculate readiness from the existing lesson, note, assignment, assessment, and publication records connected to those topics.
+
+### Explicitly out of scope for the first release
+
+- Silent creation or publication of curriculum topics.
+- Declaring that a topic was delivered/taught.
+- Student tutoring, parent workflows, or a separate curriculum database that duplicates academic topics.
+- Spreadsheet/photo import beyond the existing supported ingestion paths.
+- Objective-level question alignment or deep exam conformance; these are a later premium audit increment.
+
+## Users and Permissions
+
+| User | First-release ability |
+| --- | --- |
+| School admin | Start an import from a ready curriculum source; review, edit, reject, approve, and view the readiness map. |
+| Teacher | Consume approved topics through the current planning and assessment workflows; view readiness only if existing academic permissions support it. |
+| Student / parent | No new access. |
+
+All reads and writes remain school-scoped and server-authorized. The client must never supply authority for school, source ownership, or approval.
+
+## Components
+
+### Client
+
+- Admin Curriculum Intelligence entry point under Academic Knowledge.
+- Source selector restricted to ready, school-owned `imported_curriculum` material.
+- Import status and extraction proposal review screen with page evidence, confidence, validation feedback, and per-unit edit/reject/approve actions.
+- Curriculum Readiness Map grouped by class, subject, and term; show factual statuses such as lesson plan prepared, assessment drafted, and student resource published.
+- Existing teacher planning pages continue to use the approved `knowledgeTopics`; no duplicate teacher workflow is introduced.
+
+### Server
+
+- Curriculum extraction action that receives normalized, page-aware text from the existing knowledge-material ingestion pipeline and returns schema-constrained units.
+- Deterministic validation and merge layer for required academic context, week format, duplicate candidates, page references, and topic uniqueness.
+- Admin-only Convex mutations/queries for import lifecycle, unit review, approval, audit events, and `knowledgeTopics` creation.
+- Read model that calculates readiness from existing instruction artifacts, assessment banks, and approved/published resources.
+- Small AI runtime resolver with deterministic `mock` mode and OpenRouter as the single network provider; record the actual provider and exact OpenRouter model ID for every curriculum run.
+
+## Data Flow
+
+```text
+Existing curriculum upload
+  -> native extraction / OCR fallback
+  -> normalized page-aware material and chunks
+  -> admin selects a ready source
+  -> curriculum extraction request
+  -> schema-constrained unit proposal
+  -> deterministic validation + duplicate hints
+  -> admin review
+  -> approved units create existing knowledgeTopics
+  -> existing lesson / assessment / publishing records
+  -> calculated Curriculum Readiness Map
+```
+
+Only an administrator's approval changes academic data. AI output is a proposal, not authority.
+
+## Database Schema Direction
+
+Reuse the existing `knowledgeMaterials`, `knowledgeMaterialChunks`, `knowledgeTopics`, `instructionArtifacts`, `assessmentBanks`, `aiRunLogs`, and `contentAuditEvents` tables.
+
+Add only these curriculum-specific records:
+
+### `curriculumImports`
+
+- `schoolId`, `materialId`, `subjectId`, `level`, `termId`
+- `status`: `draft | generating | ready_for_review | partially_approved | approved | failed | archived`
+- `requestedBy`, `reviewedBy?`, timestamps
+- actual AI `provider`, `modelId`, prompt/schema versions, canonical run-log reference, error metadata
+- aggregate counts for proposed, approved, rejected, and duplicate-warning units
+
+Indexes: school/status, school/material, school/subject/term/level.
+
+### `curriculumUnits`
+
+- `schoolId`, `importId`, source `materialId`
+- `weekNumber?`, `title`, `subtopics`, `learningObjectives`, `suggestedDuration?`
+- `sourcePages`, `sourceChunkHash`, bounded `supportingExcerpt`, `confidence`
+- `reviewStatus`: `proposed | approved | rejected`
+- editor/reviewer metadata and validation/duplicate warnings
+- `knowledgeTopicId?` after approval
+
+Indexes: import/review status, school/topic identity, school/knowledge topic.
+
+Learning objectives are stored on the curriculum unit for traceability in release one. Extending `knowledgeTopics` with objectives is deferred until an objective-level feature needs them, avoiding a broad change to current topic consumers.
+
+Extend the existing `aiRunLogs` vocabulary with a curriculum-extraction output type and an optional `curriculumImportId`, rather than inventing a second disconnected model-run log. Extend the existing content-audit event/entity validators so import creation, unit review, and topic approval are auditable with the same school activity trail. All proposal records refer to source material and bounded page/chunk evidence; they must not duplicate whole document bodies.
+
+## AI and Cost Routing
+
+| Work | Runtime | Guardrail |
+| --- | --- | --- |
+| UI development and deterministic tests | `mock` fixtures | No network tokens. |
+| Normal integration tests | Pinned low-cost OpenRouter model | Never use a moving/free router. |
+| Final deployment extraction and routine generation | GPT-5.6 through OpenRouter | Pin the exact OpenRouter model ID; use schema-constrained output and per-run logs. |
+| Deep curriculum audit and independent final review | Premium GPT-5.6 tier through OpenRouter | Explicit user-visible action; never default or used for ordinary implementation. |
+
+`OPENROUTER_API_KEY` remains the only network-provider credential. `SCHOOL_AI_CURRICULUM_MODEL` selects the exact extraction model so the final demo can switch to GPT-5.6 without code changes. Logs must store `provider: openrouter` plus that exact model ID. OCR remains independently configured and is not silently changed as part of the generation-runtime refactor.
+
+The credential must be configured on the active Convex deployment because curriculum extraction runs inside a Convex action, not inside the Next.js admin process. Provider authentication, unavailable-model, rate-limit, and invalid-structured-output failures are returned to admins as safe actionable messages without exposing credentials or raw provider payloads.
+
+## Acceptance Criteria
+
+- An admin can choose a ready, school-scoped curriculum source and create a proposal.
+- The proposal has schema-validated weekly units with page evidence and supporting excerpts.
+- Invalid or ambiguous data is surfaced for review; it is never silently created as a topic.
+- Admin approval creates or links the existing `knowledgeTopics` exactly once and records an audit event.
+- Teachers can use approved topics in the existing planning workflow without a parallel topic system.
+- Readiness status derives from real existing records and uses precise language.
+- Cross-school data access, client-supplied school context, and unreviewed publication are blocked by server checks.
+- Mock fixtures cover the UI; automated tests cover validation, authorization, approval idempotency, and readiness calculation.
+- The actual provider/model/prompt version and curriculum import link are recorded in the canonical AI-run log.
+- Before handoff, run focused tests, typecheck/lint as practical, and `pnpm convex deploy` as required by this repository.
+
+## Delivery Sequence
+
+1. Verify current data contracts and finalize provider runtime adapter.
+2. Implement import proposal and validation using fixtures first.
+3. Implement the admin review and approval workflow.
+4. Implement the readiness read model and UI.
+5. Add focused tests, run a current-head deployment, and prepare a deterministic judge demo.
+
+## Implementation Notes
+
+- OpenRouter is the single network provider. `SCHOOL_AI_CURRICULUM_MODEL` selects the exact model ID, while deterministic tests use the protected `mock` runtime and make no provider request.
+- Production is configured with the OpenRouter model slug `openai/gpt-5.6-terra`; changing models remains an environment-only operation.
+- Generation is initiated by one authenticated admin action. Provider, model, source selection, and prompt metadata are derived server-side and written to the canonical AI run log.
+- Curriculum sources must be ready, approved, indexed, school-owned `imported_curriculum` materials whose subject and level match the requested academic context.
+- Source evidence is page-aware, deduplicated, and bounded by per-entry and aggregate character budgets before it can reach OpenRouter.
+- Successful proposal persistence is atomic with run completion. Pre-run and in-run failures move the import into an explicit failed state instead of leaving silent drafts.
+- Approval is human-only and idempotently creates or links the existing `knowledgeTopics`; readiness is calculated from existing artifacts and publication evidence.
+- The admin production build and authenticated browser flow passed at desktop and mobile widths. The development Convex schema sync also validated all new compound indexes.
+
+### Source compatibility repair (2026-07-20)
+
+Production testing exposed two gaps hidden by fixture-shaped curriculum tests:
+
+- Real ingestion creates indexed chunks without `chunkHash`, while curriculum evidence originally required one and silently discarded those chunks.
+- Lesson source selection could attach a readable material before applying the final planning-context subject, level, and topic checks. The later excerpt query then rejected the source but surfaced the rejection as missing text.
+
+The repair must keep existing uploads usable without reprocessing: use the stable Convex chunk ID when a legacy chunk has no hash, preserve real page metadata for curriculum evidence, and apply the same planning-context compatibility rules when listing, attaching, and extracting lesson sources. Regression coverage must use production-shaped chunks rather than manually adding metadata ingestion does not create. Expected source-state failures must remain actionable instead of being collapsed into a generic model-generation error.
+
+### Evidence reconciliation and term selection repair (2026-07-20)
+
+Live generation proved that a provider can return schema-valid units while adding harmless typography or a trailing ellipsis to a copied excerpt. Before persistence, Melo must reconcile each citation only against the bounded source entries sent in that exact prompt. A citation may be repaired only when its canonical excerpt uniquely identifies one prompt entry; authoritative chunk and page metadata then replace copied model metadata. Fabricated, paraphrased, or ambiguous evidence remains rejected, and the database validator remains the final trust boundary.
+
+Curriculum planning is not limited to the currently active term. The admin may choose any term belonging to the active academic session, while imports targeting another or inactive session remain blocked. If source text strongly identifies a different numbered term than the selected term, generation stops before spending model tokens and tells the admin to select the matching term.
+
+### Review workspace UX repair (2026-07-20)
+
+The curriculum-import screen uses a bounded desktop workspace rather than a vertically growing dashboard. Proposal setup and import history live in the left rail, the selected import's review queue scrolls independently in the centre, and a persistent inspector/editor occupies the right rail. Mobile keeps the same information in a natural stacked flow.
+
+Review UI must not expose provider or model identifiers; those remain in server-side provenance and audit records. Clicking Edit opens a controlled React editor with title, subtopics, objectives, and duration fields instead of browser prompts. Raw Convex wrappers or structured JSON must be reduced to the safe `errorMessage` before appearing in either the toast or the review panel.
+
+Approval also uses a Melo confirmation dialog rather than the browser's native `confirm` UI. Subtopics are optional because many schemes of work provide only a topic and learning objectives. The extraction prompt must return an empty subtopic list when the source does not explicitly distinguish subtopics, and persistence collapses legacy/model output where subtopics merely duplicate the objectives.
+
+### Release-scale integration repair (2026-07-20)
+
+- Fully scoped teacher topic selectors query the compound subject/level/term/status index before applying teacher access rules; unrelated school topics must never consume the result window first.
+- Topic identity uses a normalized title key within school, subject, level, term, and active status. Approval queries that identity directly and backfills legacy matches before creating anything, preventing the former first-100 duplicate gap.
+- Readiness rows remain bounded for presentation, but aggregate counts are calculated across the complete supported scope rather than the visible row slice. Scopes beyond the explicit safety ceiling fail visibly instead of silently under-reporting.
+- The readiness map allows administrators to select any term in the active session, so a prior-term import remains visible while another term is active.
+- An approved curriculum unit is the many-to-many association between its curriculum material and resulting knowledge topic. Teacher planning inherits that material as a selectable source, saved artifact sources also contribute to the topic source count, and workspace links preload the inherited source IDs.
+
+Destructive deletion is deferred. A future archive/delete workflow must inspect dependent curriculum units, lesson artifacts, artifact-source links, assessment banks, and published materials, explain the dependencies to the administrator, and default to archival. It must never silently remove a topic or import that teachers have already used.
+
+## Risks and Decisions Needed
+
+- Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.
+- Keep the existing uncommitted report-card change outside this feature's scope.
+- Decide later whether objective-level alignment belongs in the hackathon vertical slice; it is intentionally excluded from the first build to protect delivery quality.
+
+## Hackathon Closeout Checklist
+
+The Curriculum Intelligence implementation is complete for the agreed vertical slice. The remaining work is release and submission work rather than another major product build:
+
+- Pin the final OpenAI GPT model through the OpenRouter environment configuration and run one production-shaped import smoke test with that exact model.
+- Deploy the current admin and teacher applications from this branch and verify that they use the deployed Convex backend.
+- Prepare a stable judge account and deterministic sample school data covering source upload, extraction, review, approval, teacher planning, and readiness.
+- Run one authenticated browser walkthrough of the complete three-minute demo path on the public deployment.
+- Capture the final screenshots, write and record the narrated video, and upload the public video.
+- Complete the Devpost links and description, including the repository, live demo, video, technologies used, Codex contribution, and required Codex session evidence.
+
+The video script is therefore the largest creative deliverable left, but it is not literally the only release task. Model qualification, current-branch frontend deployment, judge access, and one final public end-to-end smoke test remain submission gates.
+
+Development judge data is now available through the resettable full-school `codex-academy` seed documented in `docs/features/MeloCurriculumJudgeDemoTenant.md`. The same profile must be seeded in production only after the frontend merge and production deployment gates are deliberately configured.
+
+## Deferred Post-Hackathon Backlog
+
+These items were intentionally deferred and must remain visible for later work.
+
+### 1. Reliable scanned-document OCR and upload-state cleanup
+
+- Diagnose why development and production can disagree on whether the same uploaded PDF is indexed or requires OCR.
+- Make the provider-backed OCR retry path reliable for already stored `ocr_needed` materials without requiring another upload.
+- Ensure upload controls reset after successful publication instead of retaining stale file and form state in the right-hand panel.
+- Provide clear queued, processing, retryable failure, and completed states instead of making chunk counts appear authoritative when extraction failed.
+- Add production-shaped tests for digital PDFs, scanned PDFs, selected page ranges, corrupt files, provider timeouts, and retrying an existing stored file.
+- Continue to follow `docs/features/ReliableScannedPdfOcrFallback.md` and `docs/decisions/OCRArchitectureDecision_2026-05-02.md`; do not replace OCR infrastructure with a general chat model.
+
+### 2. Safe curriculum import and topic archival
+
+- Add an admin archive action for failed or obsolete curriculum imports and approved curriculum topics; avoid irreversible hard deletion by default.
+- Before archival, inspect linked curriculum units, lesson artifacts, artifact-source records, assessment banks, questions, and published student materials.
+- If teacher work depends on the topic, show a plain-language dependency summary such as "2 lesson notes and 1 assessment use this topic" and require an explicit decision.
+- Preserve teacher work and audit history. Archiving an import must not silently remove generated topics or detach sources from existing artifacts.
+- Support restoring archived topics/imports where the underlying subject, class, term, and source still exist.
+- Provide a safe cleanup path for abandoned failed imports so the recent-import list does not grow indefinitely.
+
+### 3. Coverage beyond readiness
+
+- Add a teacher-controlled **Mark as taught** confirmation before Melo claims actual curriculum coverage. Until then, keep using "prepared" and "ready" language.
+- Align assessment questions to individual learning objectives and identify objectives that have never been assessed.
+- Detect exam questions that fall outside the approved scheme of work and show the supporting comparison evidence.
+- Recommend missing lesson plans, notes, assignments, or assessments without publishing generated material automatically.
+
+### 4. Curriculum lifecycle and analytics
+
+- Compare curriculum versions and show added, removed, moved, or materially changed weeks, topics, and objectives before replacing an existing plan.
+- Add spreadsheet, photographed-page, and mixed-document import support after the PDF/OCR path is dependable.
+- Add cross-term, class, and school readiness reports with explicit pagination or maintained aggregates for large scopes.
+- Generate student learning resources only from reviewed curriculum units and approved teacher content.
+- Add curriculum analytics across academic sessions while preserving tenant boundaries and source provenance.

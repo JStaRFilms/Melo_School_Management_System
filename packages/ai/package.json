@@ -9,10 +9,15 @@
     "./config": "./src/config.ts",
     "./models": "./src/models.ts",
     "./contracts": "./src/contracts.ts",
+    "./curriculum": "./src/curriculum.ts",
+    "./curriculum-evidence": "./src/curriculumEvidence.ts",
+    "./curriculum-generation": "./src/curriculumGeneration.ts",
     "./prompts": "./src/prompts.ts",
-    "./retry": "./src/retry.ts"
+    "./retry": "./src/retry.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
+    "test": "node --experimental-strip-types --test src/runtime.test.ts src/curriculumGeneration.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx"
   },

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.3",
+    "@school/ai": "workspace:*",
     "@school/shared": "workspace:*",
     "better-auth": "^1.2.0",
     "convex": "^1.0.0",

@@ -11,30 +11,44 @@ const BATCH_PRINT_STYLE_ID = "report-card-batch-print-v2-styles";
 const A4_HEIGHT_MM = 297;
 const BATCH_PAGE_PADDING_MM = 8;
 const PX_PER_MM = 96 / 25.4;
-const BATCH_FIT_SAFETY_PX = 4;
+const BATCH_FIT_SAFETY_MM = 4;
 const BATCH_PRINTABLE_HEIGHT_PX =
-  (A4_HEIGHT_MM - BATCH_PAGE_PADDING_MM * 2) * PX_PER_MM;
+  (A4_HEIGHT_MM -
+    BATCH_PAGE_PADDING_MM * 2 -
+    BATCH_FIT_SAFETY_MM) *
+  PX_PER_MM;
 
 export function calculateBatchPrintScale(contentHeightPx: number) {
   if (!Number.isFinite(contentHeightPx) || contentHeightPx <= 0) return 1;
   return Math.min(
     1,
-    (BATCH_PRINTABLE_HEIGHT_PX - BATCH_FIT_SAFETY_PX) / contentHeightPx
+    BATCH_PRINTABLE_HEIGHT_PX / contentHeightPx
   );
 }
 
 function fitBatchPagesForPrint(root: HTMLElement) {
-  const pages = root.querySelectorAll<HTMLElement>(".rc-batch-print-v2-page");
+  const pages = Array.from(
+    root.querySelectorAll<HTMLElement>(".rc-batch-print-v2-page")
+  );
+
+  for (const page of pages) {
+    page.style.setProperty("--rc-batch-scale", "1");
+  }
+  void root.offsetHeight;
 
   for (const page of pages) {
     const sheet = page.querySelector<HTMLElement>(".rc-sheet");
     if (!sheet) continue;
 
-    page.style.setProperty("--rc-batch-scale", "1");
-    const scale = calculateBatchPrintScale(sheet.scrollHeight);
+    const contentHeight = Math.max(
+      sheet.scrollHeight,
+      sheet.getBoundingClientRect().height
+    );
+    const scale = calculateBatchPrintScale(contentHeight);
     page.style.setProperty("--rc-batch-scale", scale.toFixed(5));
     page.dataset.printScale = scale.toFixed(5);
   }
+  void root.offsetHeight;
 }
 
 /**
@@ -324,6 +338,28 @@ export function ReportCardBatchPrintStackV2({
     };
   }, [batchKey]);
 
+  // Re-fit inside the browser's print lifecycle so print-media layout wins.
+  useEffect(() => {
+    if (!imagesLoaded || !fontsLoaded || reportCards.length === 0) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const handleBeforePrint = () => {
+      fitBatchPagesForPrint(root);
+    };
+    const printMedia = window.matchMedia("print");
+    const handlePrintMediaChange = (event: MediaQueryListEvent) => {
+      if (event.matches) handleBeforePrint();
+    };
+
+    window.addEventListener("beforeprint", handleBeforePrint);
+    printMedia.addEventListener("change", handlePrintMediaChange);
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      printMedia.removeEventListener("change", handlePrintMediaChange);
+    };
+  }, [batchKey, fontsLoaded, imagesLoaded, reportCards.length]);
+
   // Fit every student independently, then print after two paint frames.
   useEffect(() => {
     if (!imagesLoaded || !fontsLoaded || reportCards.length === 0) return;
@@ -334,7 +370,6 @@ export function ReportCardBatchPrintStackV2({
     let raf2 = 0;
     raf1 = requestAnimationFrame(() => {
       fitBatchPagesForPrint(root);
-      void root.offsetHeight;
       raf2 = requestAnimationFrame(() => {
         onReady?.();
       });

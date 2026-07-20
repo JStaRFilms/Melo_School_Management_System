@@ -144,6 +144,7 @@ const teacherPlanningWorkItemValidator = v.object({
   termName: v.string(),
   preferredClassId: v.union(v.id("classes"), v.null()),
   preferredClassName: v.union(v.string(), v.null()),
+  sourceIds: v.array(v.id("knowledgeMaterials")),
   sourceCount: v.number(),
   readySourceCount: v.number(),
   lessonCount: v.number(),
@@ -673,10 +674,15 @@ async function readTeacherKnowledgeTopics(
   const allowedSubjectIds = new Set(allowedSubjects.map((subject) => subject.id));
   const allowedLevels = await readTeacherAssignableLevelLabels(ctx, actor);
 
-  const topics = await ctx.db
-    .query("knowledgeTopics")
-    .withIndex("by_school_and_status", (q) => q.eq("schoolId", actor.schoolId).eq("status", "active"))
-    .take(300);
+  const topics = args.subjectId && levelFilter && args.termId
+    ? await ctx.db.query("knowledgeTopics").withIndex(
+        "by_school_and_subject_and_level_and_term_and_status",
+        (q) => q.eq("schoolId", actor.schoolId).eq("subjectId", args.subjectId!).eq("level", levelFilter).eq("termId", args.termId!).eq("status", "active"),
+      ).take(limit)
+    : await ctx.db.query("knowledgeTopics").withIndex(
+        "by_school_and_status",
+        (q) => q.eq("schoolId", actor.schoolId).eq("status", "active"),
+      ).take(300);
 
   const filteredTopics = topics.filter((topic) => {
     if (topic.status !== "active") {
@@ -855,10 +861,15 @@ export const listTeacherPlanningTopicWork = query({
       }
     }
 
-    const topics = await ctx.db
-      .query("knowledgeTopics")
-      .withIndex("by_school_and_status", (q) => q.eq("schoolId", schoolId).eq("status", "active"))
-      .take(300);
+    const topics = args.subjectId && levelFilter && args.termId
+      ? await ctx.db.query("knowledgeTopics").withIndex(
+          "by_school_and_subject_and_level_and_term_and_status",
+          (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("level", levelFilter).eq("termId", args.termId!).eq("status", "active"),
+        ).take(limit)
+      : await ctx.db.query("knowledgeTopics").withIndex(
+          "by_school_and_status",
+          (q) => q.eq("schoolId", schoolId).eq("status", "active"),
+        ).take(300);
 
     const filteredTopics = topics.filter((topic) => {
       if (args.subjectId && String(topic.subjectId) !== String(args.subjectId)) return false;
@@ -885,19 +896,12 @@ export const listTeacherPlanningTopicWork = query({
     termIds.forEach((id, index) => termMap.set(id, terms[index] as Doc<"academicTerms"> | null));
 
     const rows = await Promise.all(filteredTopics.map(async (topic) => {
-      const [materials, artifacts, banks] = await Promise.all([
+      const [directMaterials, artifacts, banks, approvedCurriculumUnits] = await Promise.all([
         ctx.db.query("knowledgeMaterials").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(80),
         ctx.db.query("instructionArtifacts").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(40),
         ctx.db.query("assessmentBanks").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(40),
+        ctx.db.query("curriculumUnits").withIndex("by_school_and_knowledge_topic_and_review_status", (q) => q.eq("schoolId", schoolId).eq("knowledgeTopicId", topic._id).eq("reviewStatus", "approved")).take(20),
       ]);
-
-      const visibleMaterials: Doc<"knowledgeMaterials">[] = [];
-      for (const material of materials) {
-        const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
-        if (isTeacherLibraryVisibleToActor(actor, material, accessContext)) {
-          visibleMaterials.push(material);
-        }
-      }
 
       const visibleArtifacts = artifacts.filter((artifact) =>
         actor.isSchoolAdmin || actor.role === "admin" || String(artifact.ownerUserId) === String(userId) || artifact.visibility !== "private_owner"
@@ -905,6 +909,26 @@ export const listTeacherPlanningTopicWork = query({
       const visibleBanks = banks.filter((bank) =>
         actor.isSchoolAdmin || actor.role === "admin" || String(bank.ownerUserId) === String(userId) || bank.visibility !== "private_owner"
       );
+      const artifactSourceRows = (await Promise.all(visibleArtifacts.map((artifact) =>
+        ctx.db.query("instructionArtifactSources").withIndex(
+          "by_school_and_artifact_and_source_order",
+          (q) => q.eq("schoolId", schoolId).eq("artifactId", artifact._id),
+        ).take(12)
+      ))).flat();
+      const materialIds = new Set<string>([
+        ...directMaterials.map((material) => String(material._id)),
+        ...approvedCurriculumUnits.map((unit) => String(unit.materialId)),
+        ...artifactSourceRows.map((row) => String(row.materialId)),
+      ]);
+      const directMaterialMap = new Map(directMaterials.map((material) => [String(material._id), material]));
+      const materials = (await Promise.all([...materialIds].map(async (materialId) =>
+        directMaterialMap.get(materialId) ?? await ctx.db.get(materialId as Id<"knowledgeMaterials">)
+      ))).filter((material): material is Doc<"knowledgeMaterials"> => Boolean(material));
+      const visibleMaterials: Doc<"knowledgeMaterials">[] = [];
+      for (const material of materials) {
+        const accessContext = await getTeacherLibraryClassAccessContext(ctx, actor, material);
+        if (isTeacherLibraryVisibleToActor(actor, material, accessContext)) visibleMaterials.push(material);
+      }
 
       const subject = subjectMap.get(String(topic.subjectId)) ?? null;
       const term = termMap.get(String(topic.termId)) ?? null;
@@ -946,6 +970,7 @@ export const listTeacherPlanningTopicWork = query({
         termName: term?.name ?? "Unknown term",
         preferredClassId: preferredClass?._id ?? null,
         preferredClassName: preferredClass?.name ?? null,
+        sourceIds: visibleMaterials.map((item) => item._id),
         sourceCount: visibleMaterials.length,
         readySourceCount: visibleMaterials.filter((item) => item.processingStatus === "ready" && item.searchStatus === "indexed").length,
         lessonCount: visibleArtifacts.length,

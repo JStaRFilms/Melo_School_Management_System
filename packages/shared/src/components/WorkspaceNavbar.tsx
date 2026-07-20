@@ -146,6 +146,8 @@ export function WorkspaceNavbar({
                   "/assessments/results/entry",
                   "/assessments/report-card-extras",
                   "/academic/knowledge/library",
+                  "/academic/knowledge/curriculum-import",
+                  "/academic/knowledge/curriculum-readiness",
                 ].includes(section.href)
               ),
             },
