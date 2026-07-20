@@ -6,6 +6,7 @@ import {
   detectCurriculumTermMismatch,
   hasMatchingCurriculumEvidence,
   MAX_CURRICULUM_SOURCE_CHARS_TOTAL,
+  normalizeCurriculumProposal,
 } from "../curriculumHelpers";
 
 describe("bounded curriculum generation evidence", () => {
@@ -98,5 +99,22 @@ describe("bounded curriculum generation evidence", () => {
         pageNumbers: [3],
       }],
     })).toBe(false);
+  });
+
+  it("allows absent subtopics and removes objective copies", () => {
+    const base = {
+      title: "Safety Club",
+      learningObjectives: ["Describe the structure of a road safety club"],
+      suggestedDuration: "40 minutes",
+      sourcePages: [3],
+      sourceChunkHash: "chunk-3",
+      supportingExcerpt: "Safety Club as an Agent of Socialization",
+      confidence: 0.99,
+    };
+    expect(normalizeCurriculumProposal({ ...base, subtopics: [] }).subtopics).toEqual([]);
+    expect(normalizeCurriculumProposal({
+      ...base,
+      subtopics: ["Describe the structure of a road safety club"],
+    }).subtopics).toEqual([]);
   });
 });

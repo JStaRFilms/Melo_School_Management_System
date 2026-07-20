@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, PencilLine, X } from "lucide-react";
 import type { CurriculumUnit } from "./types";
+import { visibleCurriculumSubtopics } from "./curriculumUnitPresentation";
 
 interface Props {
   unit: CurriculumUnit | null;
@@ -26,7 +27,7 @@ export function CurriculumUnitEditor({ unit, busy, onClose, onSave }: Props) {
 
   useEffect(() => {
     setTitle(unit?.title ?? "");
-    setSubtopics(unit?.subtopics.join("\n") ?? "");
+    setSubtopics(unit ? visibleCurriculumSubtopics(unit.subtopics, unit.learningObjectives).join("\n") : "");
     setObjectives(unit?.learningObjectives.join("\n") ?? "");
     setDuration(unit?.suggestedDuration ?? "");
   }, [unit]);
@@ -42,7 +43,7 @@ export function CurriculumUnitEditor({ unit, busy, onClose, onSave }: Props) {
   }
 
   const listFrom = (value: string) => value.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
-  const canSave = title.trim() && listFrom(subtopics).length > 0 && listFrom(objectives).length > 0;
+  const canSave = title.trim() && listFrom(objectives).length > 0;
 
   return (
     <form
@@ -70,7 +71,7 @@ export function CurriculumUnitEditor({ unit, busy, onClose, onSave }: Props) {
       <EditorField label="Unit title">
         <input value={title} onChange={(event) => setTitle(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none focus:border-blue-400" />
       </EditorField>
-      <EditorField label="Subtopics" hint="One per line">
+      <EditorField label="Subtopics" hint="Optional · one per line">
         <textarea value={subtopics} onChange={(event) => setSubtopics(event.target.value)} rows={4} className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs leading-5 outline-none focus:border-blue-400" />
       </EditorField>
       <EditorField label="Learning objectives" hint="One per line">

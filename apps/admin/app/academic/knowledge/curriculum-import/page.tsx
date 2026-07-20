@@ -6,6 +6,7 @@ import { BookOpenCheck, RefreshCw } from "lucide-react";
 import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { CurriculumImportSidebar } from "./components/CurriculumImportSidebar";
+import { CurriculumApprovalDialog } from "./components/CurriculumApprovalDialog";
 import { CurriculumUnitCard } from "./components/CurriculumUnitCard";
 import { CurriculumUnitEditor, type UnitEditValues } from "./components/CurriculumUnitEditor";
 import { getCurriculumErrorMessage } from "./components/curriculumErrorMessage";
@@ -27,6 +28,7 @@ export default function CurriculumImportPage() {
   const terms = useQuery("functions/academic/academicSetup:listTermsBySession" as never, activeSession ? { sessionId: activeSession._id } as never : "skip" as never) as Term[] | undefined;
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  const [approvalUnit, setApprovalUnit] = useState<CurriculumUnit | null>(null);
   const [form, setForm] = useState<CurriculumImportForm>(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const review = useQuery("functions/academic/curriculumAdminRead:getCurriculumImportReview" as never, selectedImportId ? { importId: selectedImportId } as never : "skip" as never) as Review | undefined;
@@ -91,11 +93,11 @@ export default function CurriculumImportPage() {
   };
 
   const approve = async (unit: CurriculumUnit) => {
-    if (!window.confirm(`Approve “${unit.title}” as a school topic?`)) return;
     setBusy(true);
     try {
       await approveUnit({ unitId: unit._id } as never);
       appToast.success("Topic approved", { description: "The topic is now available in the academic knowledge workflow." });
+      setApprovalUnit(null);
       if (editingUnitId === unit._id) setEditingUnitId(null);
     } catch (error) {
       appToast.error("Approval failed", { description: getCurriculumErrorMessage(error, "Try again.") });
@@ -118,7 +120,7 @@ export default function CurriculumImportPage() {
           <section className="min-w-0 bg-slate-50/40 lg:h-full lg:overflow-y-auto custom-scrollbar">
             <ReviewHeader selectedImport={selectedImport} generating={review?.status === "generating"} />
             {review?.status === "failed" && <p className="m-4 rounded-lg bg-rose-50 p-3 text-xs font-semibold text-rose-700">{getCurriculumErrorMessage(review.errorMessage, "Generation failed. Check the extracted source, then create a fresh proposal.")}</p>}
-            <div>{review?.units.map((unit) => <CurriculumUnitCard key={unit._id} unit={unit} busy={busy} selected={unit._id === editingUnitId} onEdit={(item) => setEditingUnitId(item._id)} onReject={(item) => void rejectUnit(item)} onApprove={(item) => void approve(item)} />)}</div>
+            <div>{review?.units.map((unit) => <CurriculumUnitCard key={unit._id} unit={unit} busy={busy} selected={unit._id === editingUnitId} onEdit={(item) => setEditingUnitId(item._id)} onReject={(item) => void rejectUnit(item)} onApprove={setApprovalUnit} />)}</div>
             {review && review.units.length === 0 && review.status !== "generating" && <EmptyReview />}
             {!selectedImport && <EmptyReview label="Choose an import to review" />}
           </section>
@@ -127,6 +129,7 @@ export default function CurriculumImportPage() {
             <CurriculumUnitEditor unit={editingUnit} busy={busy} onClose={() => setEditingUnitId(null)} onSave={saveUnit} />
           </aside>
         </div>
+        <CurriculumApprovalDialog unit={approvalUnit} busy={busy} onCancel={() => setApprovalUnit(null)} onConfirm={(unit) => void approve(unit)} />
       </div>
     </main>
   );

@@ -14,7 +14,7 @@ export const CURRICULUM_EXTRACTION_PROMPT_CLASS = "curriculum-extraction:v1";
 export function buildCurriculumExtractionPrompt(rawInput: CurriculumExtractionInput) {
   const input = curriculumExtractionInputSchema.parse(rawInput);
   return {
-    system: "You extract proposed weekly curriculum units from approved school source entries. Return only grounded units. For every unit, copy one supplied chunkHash exactly, use only page numbers from that same entry, and copy a short contiguous supportingExcerpt verbatim. Never add ellipses to an excerpt. Example citation: sourceChunkHash='chunk-1', sourcePages=[2], supportingExcerpt='Week 2: Community leadership'. Do not create topics or claim anything was taught.",
+    system: "You extract proposed weekly curriculum units from approved school source entries. Return only grounded units. Subtopics must be short topic labels explicitly distinct from learning objectives; when the source does not state separate subtopics, return subtopics as an empty array and never copy objectives into subtopics. For every unit, copy one supplied chunkHash exactly, use only page numbers from that same entry, and copy a short contiguous supportingExcerpt verbatim. Never add ellipses to an excerpt. Example citation: sourceChunkHash='chunk-1', sourcePages=[2], supportingExcerpt='Week 2: Community leadership'. Do not create topics or claim anything was taught.",
     prompt: JSON.stringify({
       task: "Propose editable weekly curriculum units for administrator review.",
       subject: input.subject,

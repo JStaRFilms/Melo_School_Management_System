@@ -38,7 +38,7 @@ export const reviewCurriculumUnit = mutation({
     const title = args.title === undefined ? unit.title : normalizeCurriculumText(args.title, "Unit title");
     const subtopics = args.subtopics === undefined ? unit.subtopics : args.subtopics.map((item) => normalizeCurriculumText(item, "Subtopic"));
     const objectives = args.learningObjectives === undefined ? unit.learningObjectives : args.learningObjectives.map((item) => normalizeCurriculumText(item, "Learning objective"));
-    if (subtopics.length === 0 || objectives.length === 0) throw new ConvexError("Units need subtopics and learning objectives");
+    if (objectives.length === 0) throw new ConvexError("Units need learning objectives");
     const now = Date.now();
     await ctx.db.patch(args.unitId, { reviewStatus: args.reviewStatus, title, subtopics, learningObjectives: objectives, ...(args.suggestedDuration === undefined ? {} : { suggestedDuration: normalizeCurriculumText(args.suggestedDuration, "Suggested duration", 120) }), editedBy: userId, reviewedBy: userId, reviewedAt: now, updatedAt: now });
     await ctx.db.insert("contentAuditEvents", { schoolId, actorUserId: userId, actorRole: "admin", eventType: args.reviewStatus === "rejected" ? "rejected" : "overridden", entityType: "curriculumUnit", curriculumUnitId: args.unitId, curriculumImportId: unit.importId, changeSummary: `Marked curriculum unit ${args.reviewStatus}.`, createdAt: now });

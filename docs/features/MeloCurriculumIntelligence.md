@@ -177,6 +177,8 @@ The curriculum-import screen uses a bounded desktop workspace rather than a vert
 
 Review UI must not expose provider or model identifiers; those remain in server-side provenance and audit records. Clicking Edit opens a controlled React editor with title, subtopics, objectives, and duration fields instead of browser prompts. Raw Convex wrappers or structured JSON must be reduced to the safe `errorMessage` before appearing in either the toast or the review panel.
 
+Approval also uses a Melo confirmation dialog rather than the browser's native `confirm` UI. Subtopics are optional because many schemes of work provide only a topic and learning objectives. The extraction prompt must return an empty subtopic list when the source does not explicitly distinguish subtopics, and persistence collapses legacy/model output where subtopics merely duplicate the objectives.
+
 ## Risks and Decisions Needed
 
 - Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.

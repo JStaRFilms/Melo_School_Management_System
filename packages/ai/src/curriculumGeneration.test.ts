@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { APICallError, LoadAPIKeyError, NoOutputGeneratedError, RetryError } from "ai";
 
-import { createMockCurriculumExtraction, curriculumExtractionInputSchema } from "./curriculum.ts";
+import { createMockCurriculumExtraction, curriculumExtractionInputSchema, curriculumUnitSchema } from "./curriculum.ts";
 import { reconcileCurriculumExtractionEvidence, reconcileCurriculumUnitEvidence } from "./curriculumEvidence.ts";
 import { toCurriculumGenerationFailure } from "./curriculumErrors.ts";
 
@@ -23,6 +23,11 @@ test("uses the deterministic mock without a model request", async () => {
   const result = createMockCurriculumExtraction(input);
   assert.equal(result.units[0].sourceChunkHash, "chunk-4");
   assert.deepEqual(result.units[0].sourcePages, [4, 5]);
+});
+
+test("accepts curriculum units without invented subtopics", () => {
+  const unit = createMockCurriculumExtraction(input).units[0];
+  assert.deepEqual(curriculumUnitSchema.parse({ ...unit, subtopics: [] }).subtopics, []);
 });
 
 test("preserves an actionable source-evidence failure", () => {

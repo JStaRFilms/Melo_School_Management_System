@@ -17,7 +17,7 @@ export const curriculumExtractionInputSchema = z.object({
 export const curriculumUnitSchema = z.object({
   weekNumber: z.number().int().positive().nullable(),
   title: z.string().trim().min(1),
-  subtopics: z.array(z.string().trim().min(1)).min(1),
+  subtopics: z.array(z.string().trim().min(1)).max(12),
   learningObjectives: z.array(z.string().trim().min(1)).min(1),
   suggestedDuration: z.string().trim().min(1).nullable(),
   sourcePages: z.array(z.number().int().positive()).min(1),

@@ -53,15 +53,25 @@ export function normalizeCurriculumText(value: string, label: string, maxLength 
   return normalized;
 }
 
-function normalizeTextList(values: string[], label: string, maximum: number) {
+function normalizeTextList(values: string[], label: string, maximum: number, allowEmpty = false) {
   const unique = [...new Set(values.map((value) => normalizeCurriculumText(value, label, 240)))];
-  if (unique.length === 0) throw new ConvexError(`At least one ${label.toLowerCase()} is required`);
+  if (!allowEmpty && unique.length === 0) throw new ConvexError(`At least one ${label.toLowerCase()} is required`);
   if (unique.length > maximum) throw new ConvexError(`Too many ${label.toLowerCase()} entries`);
   return unique;
 }
 
+function listsRepeatTheSameContent(left: string[], right: string[]) {
+  if (left.length === 0 || left.length !== right.length) return false;
+  const normalize = (value: string) => normalizeEvidenceText(value).replace(/[^a-z0-9 ]/g, "");
+  const rightValues = new Set(right.map(normalize));
+  return left.every((value) => rightValues.has(normalize(value)));
+}
+
 export function normalizeCurriculumProposal(input: CurriculumProposalInput): CurriculumProposalInput {
   const pages = [...new Set(input.sourcePages)].sort((a, b) => a - b);
+  const learningObjectives = normalizeTextList(input.learningObjectives, "Learning objective", 12);
+  const candidateSubtopics = normalizeTextList(input.subtopics, "Subtopic", 12, true);
+  const subtopics = listsRepeatTheSameContent(candidateSubtopics, learningObjectives) ? [] : candidateSubtopics;
   if (pages.length === 0 || pages.length > MAX_CURRICULUM_SOURCE_PAGES || pages.some((page) => !Number.isInteger(page) || page < 1)) {
     throw new ConvexError("Source pages must be a bounded list of positive whole numbers");
   }
@@ -74,8 +84,8 @@ export function normalizeCurriculumProposal(input: CurriculumProposalInput): Cur
   return {
     ...(input.weekNumber === undefined ? {} : { weekNumber: input.weekNumber }),
     title: normalizeCurriculumText(input.title, "Unit title"),
-    subtopics: normalizeTextList(input.subtopics, "Subtopic", 12),
-    learningObjectives: normalizeTextList(input.learningObjectives, "Learning objective", 12),
+    subtopics,
+    learningObjectives,
     ...(input.suggestedDuration ? { suggestedDuration: normalizeCurriculumText(input.suggestedDuration, "Suggested duration", 120) } : {}),
     sourcePages: pages,
     sourceChunkHash: normalizeCurriculumText(input.sourceChunkHash, "Source chunk reference", 200),
