@@ -1240,6 +1240,7 @@ export default defineSchema({
     level: v.string(),
     termId: v.id("academicTerms"),
     title: v.string(),
+    normalizedTitle: v.optional(v.string()),
     slug: v.string(),
     summary: v.optional(v.string()),
     searchText: v.string(),
@@ -1261,6 +1262,14 @@ export default defineSchema({
       "subjectId",
       "level",
       "termId",
+      "status",
+    ])
+    .index("by_scope_normalized_title_and_status", [
+      "schoolId",
+      "subjectId",
+      "level",
+      "termId",
+      "normalizedTitle",
       "status",
     ])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])

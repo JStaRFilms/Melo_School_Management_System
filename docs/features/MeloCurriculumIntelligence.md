@@ -179,6 +179,16 @@ Review UI must not expose provider or model identifiers; those remain in server-
 
 Approval also uses a Melo confirmation dialog rather than the browser's native `confirm` UI. Subtopics are optional because many schemes of work provide only a topic and learning objectives. The extraction prompt must return an empty subtopic list when the source does not explicitly distinguish subtopics, and persistence collapses legacy/model output where subtopics merely duplicate the objectives.
 
+### Release-scale integration repair (2026-07-20)
+
+- Fully scoped teacher topic selectors query the compound subject/level/term/status index before applying teacher access rules; unrelated school topics must never consume the result window first.
+- Topic identity uses a normalized title key within school, subject, level, term, and active status. Approval queries that identity directly and backfills legacy matches before creating anything, preventing the former first-100 duplicate gap.
+- Readiness rows remain bounded for presentation, but aggregate counts are calculated across the complete supported scope rather than the visible row slice. Scopes beyond the explicit safety ceiling fail visibly instead of silently under-reporting.
+- The readiness map allows administrators to select any term in the active session, so a prior-term import remains visible while another term is active.
+- An approved curriculum unit is the many-to-many association between its curriculum material and resulting knowledge topic. Teacher planning inherits that material as a selectable source, saved artifact sources also contribute to the topic source count, and workspace links preload the inherited source IDs.
+
+Destructive deletion is deferred. A future archive/delete workflow must inspect dependent curriculum units, lesson artifacts, artifact-source links, assessment banks, and published materials, explain the dependencies to the administrator, and default to archival. It must never silently remove a topic or import that teachers have already used.
+
 ## Risks and Decisions Needed
 
 - Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.

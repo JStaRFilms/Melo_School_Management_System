@@ -3,7 +3,8 @@ import { query } from "../../_generated/server";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
 import { countCurriculumReadiness, describeCurriculumReadiness, type ReadinessEvidence } from "./curriculumReadinessHelpers";
 
-const MAX_TOPICS = 50;
+const MAX_VISIBLE_TOPICS = 50;
+const MAX_SUPPORTED_SCOPE_TOPICS = 200;
 const statusValidator = v.union(
   v.literal("approved_curriculum_unit"), v.literal("no_approved_curriculum_unit"),
   v.literal("lesson_plan_prepared"), v.literal("no_lesson_plan_prepared"),
@@ -33,8 +34,9 @@ export const getAdminCurriculumReadiness = query({
     if (!term || term.schoolId !== schoolId) throw new ConvexError("Academic term not found");
     const level = args.level.trim();
     if (!level) throw new ConvexError("Level is required");
-    const limit = Math.max(1, Math.min(args.limit ?? 25, MAX_TOPICS));
-    const topics = await ctx.db.query("knowledgeTopics").withIndex("by_school_and_subject_and_level_and_term_and_status", (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", args.termId).eq("status", "active")).take(limit);
+    const limit = Math.max(1, Math.min(args.limit ?? 25, MAX_VISIBLE_TOPICS));
+    const topics = await ctx.db.query("knowledgeTopics").withIndex("by_school_and_subject_and_level_and_term_and_status", (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId).eq("level", level).eq("termId", args.termId).eq("status", "active")).take(MAX_SUPPORTED_SCOPE_TOPICS + 1);
+    if (topics.length > MAX_SUPPORTED_SCOPE_TOPICS) throw new ConvexError("This curriculum scope is too large to summarize safely. Narrow the subject, level, or term.");
     const evidenceByTopic = new Map<string, ReadinessEvidence>();
     await Promise.all(topics.map(async (topic) => {
       const [unit, lessonPlan, studentNote, assignment, bank, material] = await Promise.all([
@@ -49,6 +51,10 @@ export const getAdminCurriculumReadiness = query({
       evidenceByTopic.set(String(topic._id), evidence);
     }));
     const evidence = topics.map((topic) => evidenceByTopic.get(String(topic._id))!);
-    return { rows: topics.map((topic, index) => ({ topicId: topic._id, title: topic.title, subjectId: topic.subjectId, level: topic.level, termId: topic.termId, ...describeCurriculumReadiness(evidence[index]) })), counts: countCurriculumReadiness(evidence), evidenceNotice: "Preparation evidence only. This does not confirm that a topic was taught." };
+    return {
+      rows: topics.slice(0, limit).map((topic) => ({ topicId: topic._id, title: topic.title, subjectId: topic.subjectId, level: topic.level, termId: topic.termId, ...describeCurriculumReadiness(evidenceByTopic.get(String(topic._id))!) })),
+      counts: countCurriculumReadiness(evidence),
+      evidenceNotice: "Preparation evidence only. This does not confirm that a topic was taught.",
+    };
   },
 });

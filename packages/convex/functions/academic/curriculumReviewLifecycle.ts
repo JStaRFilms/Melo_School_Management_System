@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { mutation, type MutationCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
-import { assertCurriculumAdminScope, calculateCurriculumImportStatus, normalizeCurriculumText, resolveCurriculumApproval } from "./curriculumHelpers";
+import { assertCurriculumAdminScope, calculateCurriculumImportStatus, normalizeCurriculumText, normalizeKnowledgeTopicTitleIdentity, resolveCurriculumApproval } from "./curriculumHelpers";
 
 async function refreshImportCounts(ctx: MutationCtx, importId: Id<"curriculumImports">, schoolId: Id<"schools">, reviewedBy: Id<"users">) {
   const units = await ctx.db.query("curriculumUnits").withIndex("by_import_and_review_status", (q) => q.eq("importId", importId)).take(100);
@@ -62,13 +62,27 @@ export const approveCurriculumUnit = mutation({
     if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
     const subject = await ctx.db.get(importRecord.subjectId);
     if (!subject || subject.schoolId !== schoolId || subject.isArchived) throw new ConvexError("Subject not found");
-    const candidates = await ctx.db.query("knowledgeTopics").withIndex("by_school_and_subject_and_level_and_term", (q) => q.eq("schoolId", schoolId).eq("subjectId", importRecord.subjectId).eq("level", importRecord.level).eq("termId", importRecord.termId)).take(100);
-    const existing = candidates.find((topic) => topic.title.trim().toLowerCase() === unit.title.trim().toLowerCase() && topic.status !== "retired");
+    const normalizedTitle = normalizeKnowledgeTopicTitleIdentity(unit.title);
+    let existing = await ctx.db.query("knowledgeTopics").withIndex(
+      "by_scope_normalized_title_and_status",
+      (q) => q.eq("schoolId", schoolId).eq("subjectId", importRecord.subjectId).eq("level", importRecord.level).eq("termId", importRecord.termId).eq("normalizedTitle", normalizedTitle).eq("status", "active"),
+    ).unique();
+    if (!existing) {
+      for await (const candidate of ctx.db.query("knowledgeTopics").withIndex(
+        "by_school_and_subject_and_level_and_term_and_status",
+        (q) => q.eq("schoolId", schoolId).eq("subjectId", importRecord.subjectId).eq("level", importRecord.level).eq("termId", importRecord.termId).eq("status", "active"),
+      )) {
+        if (normalizeKnowledgeTopicTitleIdentity(candidate.title) !== normalizedTitle) continue;
+        existing = candidate;
+        if (candidate.normalizedTitle !== normalizedTitle) await ctx.db.patch(candidate._id, { normalizedTitle });
+        break;
+      }
+    }
     const now = Date.now();
     const decision = resolveCurriculumApproval({ matchingTopicId: existing ? String(existing._id) : undefined });
     const topicId = decision.kind === "link_existing" ? existing!._id : await ctx.db.insert("knowledgeTopics", {
       schoolId, subjectId: importRecord.subjectId, level: importRecord.level, termId: importRecord.termId,
-      title: unit.title, slug: await uniqueTopicSlug(ctx, schoolId, `${subject.name}-${importRecord.level}-${unit.title}`),
+      title: unit.title, normalizedTitle, slug: await uniqueTopicSlug(ctx, schoolId, `${subject.name}-${importRecord.level}-${unit.title}`),
       summary: unit.learningObjectives.join(" ").slice(0, 600), searchText: `${unit.title} ${subject.name} ${importRecord.level} ${unit.subtopics.join(" ")}`,
       status: "active", createdAt: now, updatedAt: now, createdBy: userId, updatedBy: userId,
     });

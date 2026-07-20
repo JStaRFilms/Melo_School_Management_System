@@ -66,6 +66,7 @@ export type PlanningWorkItem = {
   termName: string;
   preferredClassId: string | null;
   preferredClassName: string | null;
+  sourceIds: string[];
   sourceCount: number;
   readySourceCount: number;
   lessonCount: number;
@@ -286,12 +287,15 @@ export default function PlanningIndexPage() {
           topicId,
         }
       : null;
+  const topicSourceIds = planningWork?.find((item) => item.topicId === topicId)?.sourceIds ?? [];
 
   const lessonHref = topicContext
     ? buildTeacherPlanningWorkspaceHref({
         route: "lesson-plans",
         context: topicContext,
         outputType: "lesson_plan",
+        sourceIds: topicSourceIds,
+        sourceOrigin: "topic_workspace",
       })
     : null;
     
@@ -300,6 +304,8 @@ export default function PlanningIndexPage() {
         route: "question-bank",
         mode: "practice_quiz",
         context: topicContext,
+        sourceIds: topicSourceIds,
+        sourceOrigin: "topic_workspace",
       })
     : null;
 
@@ -551,10 +557,10 @@ export default function PlanningIndexPage() {
                     }
                   : null;
                 const lHref = itemContext
-                  ? buildTeacherPlanningWorkspaceHref({ route: "lesson-plans", outputType: "lesson_plan", context: itemContext })
+                  ? buildTeacherPlanningWorkspaceHref({ route: "lesson-plans", outputType: "lesson_plan", context: itemContext, sourceIds: item.sourceIds, sourceOrigin: "topic_workspace" })
                   : null;
                 const qHref = itemContext
-                  ? buildTeacherPlanningWorkspaceHref({ route: "question-bank", mode: "practice_quiz", context: itemContext })
+                  ? buildTeacherPlanningWorkspaceHref({ route: "question-bank", mode: "practice_quiz", context: itemContext, sourceIds: item.sourceIds, sourceOrigin: "topic_workspace" })
                   : null;
                   
                 return (

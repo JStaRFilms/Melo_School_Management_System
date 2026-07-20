@@ -12,6 +12,10 @@ export const MAX_CURRICULUM_SOURCE_CHARS_PER_PAGE = 4_000;
 export const MAX_CURRICULUM_SOURCE_CHARS_TOTAL = 24_000;
 export const CURRICULUM_SCHEMA_VERSION = "curriculum-unit-v1";
 
+export function normalizeKnowledgeTopicTitleIdentity(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 const CURRICULUM_TERM_ALIASES = [
   { label: "First Term", aliases: ["first term", "1st term", "term 1"] },
   { label: "Second Term", aliases: ["second term", "2nd term", "term 2"] },

@@ -83,6 +83,21 @@ describe("curriculum lifecycle", () => {
     expect(result.audits.map((audit) => audit.entityType)).toEqual(expect.arrayContaining(["curriculumImport", "curriculumUnit"]));
   });
 
+  it("links a legacy duplicate beyond the former 100-topic window", async () => {
+    const { t, ids, importId, runId } = await createImport();
+    const proposal = proposalFor(String(ids.chunkId));
+    await t.withIdentity(admin).mutation(saveCurriculumProposals, { importId, proposals: [proposal], aiRunLogId: runId });
+    const existingTopicId = await t.run(async (ctx) => {
+      for (let index = 0; index < 101; index += 1) await ctx.db.insert("knowledgeTopics", { schoolId: ids.schoolId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, title: `Distractor ${index}`, slug: `distractor-${index}`, searchText: `distractor-${index}`, status: "active", createdAt: 1, updatedAt: 1, createdBy: ids.adminId, updatedBy: ids.adminId });
+      return await ctx.db.insert("knowledgeTopics", { schoolId: ids.schoolId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, title: "  FRACTIONS  ", slug: "legacy-fractions", searchText: "fractions", status: "active", createdAt: 1, updatedAt: 1, createdBy: ids.adminId, updatedBy: ids.adminId });
+    });
+    const unitId = await t.run(async (ctx) => (await ctx.db.query("curriculumUnits").withIndex("by_import_and_review_status", (q) => q.eq("importId", importId).eq("reviewStatus", "proposed")).unique())!._id);
+    expect(await t.withIdentity(admin).mutation(approveCurriculumUnit, { unitId })).toBe(existingTopicId);
+    const result = await t.run(async (ctx) => ({ existing: await ctx.db.get(existingTopicId), topics: await ctx.db.query("knowledgeTopics").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).collect() }));
+    expect(result.existing?.normalizedTitle).toBe("fractions");
+    expect(result.topics).toHaveLength(102);
+  });
+
   it("marks the run and import failed after completion rejection", async () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
