@@ -8,6 +8,7 @@ import { internal } from "../../_generated/api";
 import {
   CURRICULUM_EXTRACTION_PROMPT_CLASS,
   generateCurriculumExtraction,
+  reconcileCurriculumExtractionEvidence,
   resolveCurriculumAiRuntime,
 } from "@school/ai";
 import { toCurriculumGenerationFailure } from "@school/ai";
@@ -15,6 +16,7 @@ import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
 import {
   CURRICULUM_SCHEMA_VERSION,
   buildBoundedCurriculumSourcePages,
+  detectCurriculumTermMismatch,
   hasMatchingCurriculumEvidence,
   isReadyCurriculumSource,
   MAX_CURRICULUM_SOURCE_PAGES,
@@ -42,7 +44,9 @@ async function loadContext(ctx: Parameters<typeof getAuthenticatedSchoolMembersh
     ctx.db.get(importRecord.materialId), ctx.db.get(importRecord.subjectId), ctx.db.get(importRecord.termId),
   ]);
   if (!material || material.schoolId !== schoolId || !isReadyCurriculumSource(material)) throw new ConvexError("Choose a ready school curriculum source");
-  if (!subject || subject.schoolId !== schoolId || subject.isArchived || !term || term.schoolId !== schoolId || !term.isActive) throw new ConvexError("Curriculum academic context is no longer available");
+  if (!subject || subject.schoolId !== schoolId || subject.isArchived || !term || term.schoolId !== schoolId) throw new ConvexError("Curriculum academic context is no longer available");
+  const session = await ctx.db.get(term.sessionId);
+  if (!session || session.schoolId !== schoolId || !session.isActive) throw new ConvexError("Choose a term from the active academic session");
   return { userId, schoolId, importRecord, subject, term };
 }
 
@@ -55,6 +59,10 @@ export const getGenerationInput = internalQuery({
     const chunks = await ctx.db.query("knowledgeMaterialChunks").withIndex("by_school_and_material", (q) => q.eq("schoolId", schoolId).eq("materialId", importRecord.materialId)).take(300);
     const pages = buildBoundedCurriculumSourcePages(chunks);
     if (pages.length === 0) throw new ConvexError("No page-aware extracted source text is available");
+    const termMismatch = detectCurriculumTermMismatch(term.name, pages.map((page) => page.text).join("\n"));
+    if (termMismatch) {
+      throw new ConvexError(`The source appears to cover ${termMismatch.detectedTerm}, not the selected ${termMismatch.requestedTerm}`);
+    }
     return { subject: subject.name, level: importRecord.level, term: term.name, pages };
   },
 });
@@ -138,8 +146,9 @@ export const requestCurriculumGeneration = action({
       const runtime = resolveCurriculumAiRuntime();
       aiRunLogId = await ctx.runMutation(internal.functions.academic.curriculumGeneration.startGeneration, { importId: args.importId, provider: runtime.provider, model: runtime.modelId, sourceCount: input.pages.length });
       const result = await generateCurriculumExtraction({ input });
+      const reconciledUnits = reconcileCurriculumExtractionEvidence(result.extraction.units, input.pages);
       const completion: { proposalCount: number } = await ctx.runMutation(internal.functions.academic.curriculumGeneration.completeGeneration, {
-        importId: args.importId, aiRunLogId, proposals: result.extraction.units.map((unit) => ({
+        importId: args.importId, aiRunLogId, proposals: reconciledUnits.map((unit) => ({
           ...(unit.weekNumber === null ? {} : { weekNumber: unit.weekNumber }), title: unit.title,
           subtopics: unit.subtopics, learningObjectives: unit.learningObjectives,
           ...(unit.suggestedDuration === null ? {} : { suggestedDuration: unit.suggestedDuration }),
@@ -152,7 +161,7 @@ export const requestCurriculumGeneration = action({
       const failure = toCurriculumGenerationFailure(error);
       if (aiRunLogId) await ctx.runMutation(internal.functions.academic.curriculumGeneration.failGeneration, { importId: args.importId, aiRunLogId, ...failure });
       else await ctx.runMutation(internal.functions.academic.curriculumGeneration.failUnstartedGeneration, { importId: args.importId, ...failure });
-      throw new ConvexError(failure.errorMessage);
+      throw new ConvexError(failure);
     }
   },
 });

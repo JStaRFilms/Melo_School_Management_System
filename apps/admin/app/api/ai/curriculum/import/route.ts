@@ -32,9 +32,14 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     const failure = toCurriculumGenerationFailure(error);
+    const status = failure.errorCode === "source_evidence_unavailable" || failure.errorCode === "evidence_citation_invalid" || failure.errorCode === "source_context_mismatch"
+      ? 422
+      : failure.errorCode.startsWith("provider_")
+        ? 502
+        : 500;
     return NextResponse.json(
       { error: failure.errorMessage },
-      { status: failure.errorCode === "source_evidence_unavailable" ? 422 : 500 }
+      { status }
     );
   }
 }

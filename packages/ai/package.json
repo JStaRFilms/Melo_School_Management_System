@@ -10,6 +10,7 @@
     "./models": "./src/models.ts",
     "./contracts": "./src/contracts.ts",
     "./curriculum": "./src/curriculum.ts",
+    "./curriculum-evidence": "./src/curriculumEvidence.ts",
     "./curriculum-generation": "./src/curriculumGeneration.ts",
     "./prompts": "./src/prompts.ts",
     "./retry": "./src/retry.ts",

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { ConvexError } from "convex/values";
+import { toCurriculumGenerationFailure } from "@school/ai";
 import {
   buildBoundedCurriculumSourcePages,
+  detectCurriculumTermMismatch,
   hasMatchingCurriculumEvidence,
   MAX_CURRICULUM_SOURCE_CHARS_TOTAL,
 } from "../curriculumHelpers";
@@ -31,10 +34,69 @@ describe("bounded curriculum generation evidence", () => {
       chunkHash: "chunk-record-id",
     }]);
     expect(hasMatchingCurriculumEvidence({
+      title: "Fractions",
+      subtopics: ["Equal parts"],
+      learningObjectives: ["Compare fractions"],
       sourcePages: [3],
       sourceChunkHash: "chunk-record-id",
       supportingExcerpt: "compare equal parts using visual models",
       chunks: [chunk],
     })).toBe(true);
+  });
+
+  it("preserves safe provider failures through a real ConvexError boundary", () => {
+    const failure = {
+      errorCode: "source_context_mismatch",
+      errorMessage: "The source appears to cover Second Term, but Third Term was selected.",
+    };
+    expect(toCurriculumGenerationFailure(new ConvexError(failure))).toEqual(failure);
+  });
+
+  it("detects a strong numbered-term mismatch without guessing from one mention", () => {
+    expect(detectCurriculumTermMismatch(
+      "Third Term",
+      "JSS 1 SECOND TERM SCHEME OF WORK\nWeek 1. Revision and assessment.",
+    )).toEqual({ requestedTerm: "Third Term", detectedTerm: "Second Term" });
+    expect(detectCurriculumTermMismatch(
+      "Third Term",
+      "Third Term work includes one review of Second Term topics.",
+    )).toBeNull();
+    expect(detectCurriculumTermMismatch(
+      "Third Term",
+      "Revision of Second Term work. Review the Second Term examination.",
+    )).toBeNull();
+    expect(detectCurriculumTermMismatch(
+      "Third Term",
+      "JSS 1 THIRD TERM WORK. Week 1 revises the Second Term lesson notes.",
+    )).toBeNull();
+  });
+
+  it("rejects trivial excerpts even when the words occur in the source", () => {
+    expect(hasMatchingCurriculumEvidence({
+      title: "Fractions",
+      subtopics: ["Equal parts"],
+      learningObjectives: ["Compare fractions"],
+      sourcePages: [3],
+      sourceChunkHash: "chunk-record-id",
+      supportingExcerpt: "the week topic",
+      chunks: [{
+        _id: "chunk-record-id",
+        chunkText: "The week topic introduces fractions and equal parts.",
+        pageNumbers: [3],
+      }],
+    })).toBe(false);
+    expect(hasMatchingCurriculumEvidence({
+      title: "Drug Abuse",
+      subtopics: ["Harmful substances"],
+      learningObjectives: ["Explain health consequences"],
+      sourcePages: [3],
+      sourceChunkHash: "chunk-record-id",
+      supportingExcerpt: "Learning objectives include classroom discussion",
+      chunks: [{
+        _id: "chunk-record-id",
+        chunkText: "Learning objectives include classroom discussion.",
+        pageNumbers: [3],
+      }],
+    })).toBe(false);
   });
 });

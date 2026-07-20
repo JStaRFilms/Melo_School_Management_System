@@ -38,7 +38,7 @@ async function fixture() {
     const termId = await ctx.db.insert("academicTerms", { schoolId, sessionId, name: "Term 1", startDate: now, endDate: 2, isActive: true, createdAt: now, updatedAt: now });
     const materialId = await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: adminId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title: "Math scheme", subjectId, level: "JSS 1", topicLabel: "Scheme", searchStatus: "indexed", searchText: "math scheme", processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: now, createdAt: now, updatedAt: now, createdBy: adminId, updatedBy: adminId });
     const chunkId = await ctx.db.insert("knowledgeMaterialChunks", { schoolId, materialId, chunkIndex: 0, chunkText: "Fractions compare equal parts using visual models.", searchText: "fractions", visibility: "staff_shared", reviewStatus: "approved", searchStatus: "indexed", pageNumbers: [3], createdAt: now, updatedAt: now });
-    return { schoolId, otherSchoolId, adminId, subjectId, otherSubjectId, termId, materialId, chunkId };
+    return { schoolId, otherSchoolId, adminId, subjectId, otherSubjectId, sessionId, termId, materialId, chunkId };
   });
   return { t, ids };
 }
@@ -88,8 +88,8 @@ describe("curriculum lifecycle", () => {
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
     const runId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/curriculum-fixture-v1", sourceCount: 1 });
     const proposal = proposalFor(String(ids.chunkId));
-    await t.run((ctx) => ctx.db.patch(ids.termId, { isActive: false }));
-    await expect(t.withIdentity(admin).mutation(completeGeneration, { importId, aiRunLogId: runId, proposals: [proposal] })).rejects.toThrow("academic context");
+    await t.run((ctx) => ctx.db.patch(ids.sessionId, { isActive: false }));
+    await expect(t.withIdentity(admin).mutation(completeGeneration, { importId, aiRunLogId: runId, proposals: [proposal] })).rejects.toThrow("active academic session");
     await t.withIdentity(admin).mutation(failGeneration, { importId, aiRunLogId: runId, errorCode: "validation_error", errorMessage: "Curriculum proposal generation failed." });
     const result = await t.run(async (ctx) => ({ record: await ctx.db.get(importId), run: await ctx.db.get(runId), units: await ctx.db.query("curriculumUnits").withIndex("by_import_and_review_status", (q) => q.eq("importId", importId).eq("reviewStatus", "proposed")).take(10) }));
     expect(result.record?.status).toBe("failed"); expect(result.run?.status).toBe("failed"); expect(result.units).toHaveLength(0);
@@ -110,11 +110,21 @@ describe("curriculum lifecycle", () => {
     expect(result.units).toHaveLength(1);
   });
 
-  it("blocks inactive terms and records a retryable pre-run failure without run metadata", async () => {
+  it("allows any term in the active session and blocks terms from an inactive session", async () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
     await t.run((ctx) => ctx.db.patch(ids.termId, { isActive: false }));
-    await expect(t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock", sourceCount: 1 })).rejects.toThrow("academic context");
+    await expect(t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock", sourceCount: 1 })).resolves.toBeTruthy();
+    await t.run((ctx) => ctx.db.patch(ids.sessionId, { isActive: false }));
+    const otherTermId = await t.run((ctx) => ctx.db.insert("academicTerms", { schoolId: ids.schoolId, sessionId: ids.sessionId, name: "Term 2", startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 }));
+    await expect(t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: otherTermId })).rejects.toThrow("active academic session");
+  });
+
+  it("records a retryable pre-run failure without run metadata", async () => {
+    const { t, ids } = await fixture();
+    const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
+    await t.run((ctx) => ctx.db.patch(ids.sessionId, { isActive: false }));
+    await expect(t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock", sourceCount: 1 })).rejects.toThrow("active academic session");
     await t.withIdentity(admin).mutation(failUnstartedGeneration, { importId, errorCode: "preflight_failed", errorMessage: "Curriculum proposal generation failed." });
     const record = await t.run((ctx) => ctx.db.get(importId));
     expect(record).toMatchObject({ status: "failed", errorCode: "preflight_failed" });

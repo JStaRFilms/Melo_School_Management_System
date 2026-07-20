@@ -1,4 +1,9 @@
 import { ConvexError } from "convex/values";
+import {
+  canonicalizeCurriculumEvidence,
+  hasCurriculumEvidenceSemanticOverlap,
+  isMeaningfulCurriculumEvidenceExcerpt,
+} from "@school/ai";
 
 export const MAX_CURRICULUM_UNITS_PER_IMPORT = 60;
 export const MAX_CURRICULUM_SOURCE_PAGES = 20;
@@ -6,6 +11,12 @@ export const MAX_CURRICULUM_EXCERPT_LENGTH = 1_200;
 export const MAX_CURRICULUM_SOURCE_CHARS_PER_PAGE = 4_000;
 export const MAX_CURRICULUM_SOURCE_CHARS_TOTAL = 24_000;
 export const CURRICULUM_SCHEMA_VERSION = "curriculum-unit-v1";
+
+const CURRICULUM_TERM_ALIASES = [
+  { label: "First Term", aliases: ["first term", "1st term", "term 1"] },
+  { label: "Second Term", aliases: ["second term", "2nd term", "term 2"] },
+  { label: "Third Term", aliases: ["third term", "3rd term", "term 3"] },
+] as const;
 
 export type CurriculumProposalInput = {
   weekNumber?: number;
@@ -74,11 +85,18 @@ export function normalizeCurriculumProposal(input: CurriculumProposalInput): Cur
 }
 
 export function hasMatchingCurriculumEvidence(args: {
+  title: string;
+  subtopics: string[];
+  learningObjectives: string[];
   sourcePages: number[];
   sourceChunkHash: string;
   supportingExcerpt: string;
   chunks: CurriculumEvidenceChunk[];
 }) {
+  if (
+    !isMeaningfulCurriculumEvidenceExcerpt(args.supportingExcerpt) ||
+    !hasCurriculumEvidenceSemanticOverlap(args.supportingExcerpt, args)
+  ) return false;
   return args.chunks.some((chunk) => {
     if (getCurriculumChunkReference(chunk) !== args.sourceChunkHash) return false;
     const evidencePages = chunk.pageNumbers ?? range(chunk.pageStart, chunk.pageEnd);
@@ -88,7 +106,29 @@ export function hasMatchingCurriculumEvidence(args: {
 }
 
 export function normalizeEvidenceText(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return canonicalizeCurriculumEvidence(value);
+}
+
+export function detectCurriculumTermMismatch(requestedTerm: string, sourceText: string) {
+  const requested = normalizeEvidenceText(requestedTerm);
+  const sourceHeading = sourceText
+    .split(/\r?\n/)
+    .map((line) => normalizeEvidenceText(line))
+    .find(Boolean) ?? "";
+  const requestedGroup = CURRICULUM_TERM_ALIASES.find((group) =>
+    group.aliases.some((alias) => requested.includes(alias))
+  );
+  if (!requestedGroup) return null;
+
+  if (requestedGroup.aliases.some((alias) => sourceHeading.includes(alias))) return null;
+  const isLikelyHeading = sourceHeading.length <= 160 && !/[.!?]/.test(sourceHeading);
+  if (!isLikelyHeading) return null;
+  const detected = CURRICULUM_TERM_ALIASES.filter((group) =>
+    group.label !== requestedGroup.label && group.aliases.some((alias) => sourceHeading.includes(alias))
+  );
+  return detected.length === 1
+    ? { requestedTerm: requestedGroup.label, detectedTerm: detected[0].label }
+    : null;
 }
 
 function range(start?: number, end?: number) {

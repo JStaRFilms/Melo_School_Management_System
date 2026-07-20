@@ -122,6 +122,8 @@ Extend the existing `aiRunLogs` vocabulary with a curriculum-extraction output t
 
 `OPENROUTER_API_KEY` remains the only network-provider credential. `SCHOOL_AI_CURRICULUM_MODEL` selects the exact extraction model so the final demo can switch to GPT-5.6 without code changes. Logs must store `provider: openrouter` plus that exact model ID. OCR remains independently configured and is not silently changed as part of the generation-runtime refactor.
 
+The credential must be configured on the active Convex deployment because curriculum extraction runs inside a Convex action, not inside the Next.js admin process. Provider authentication, unavailable-model, rate-limit, and invalid-structured-output failures are returned to admins as safe actionable messages without exposing credentials or raw provider payloads.
+
 ## Acceptance Criteria
 
 - An admin can choose a ready, school-scoped curriculum source and create a proposal.
@@ -162,6 +164,12 @@ Production testing exposed two gaps hidden by fixture-shaped curriculum tests:
 - Lesson source selection could attach a readable material before applying the final planning-context subject, level, and topic checks. The later excerpt query then rejected the source but surfaced the rejection as missing text.
 
 The repair must keep existing uploads usable without reprocessing: use the stable Convex chunk ID when a legacy chunk has no hash, preserve real page metadata for curriculum evidence, and apply the same planning-context compatibility rules when listing, attaching, and extracting lesson sources. Regression coverage must use production-shaped chunks rather than manually adding metadata ingestion does not create. Expected source-state failures must remain actionable instead of being collapsed into a generic model-generation error.
+
+### Evidence reconciliation and term selection repair (2026-07-20)
+
+Live generation proved that a provider can return schema-valid units while adding harmless typography or a trailing ellipsis to a copied excerpt. Before persistence, Melo must reconcile each citation only against the bounded source entries sent in that exact prompt. A citation may be repaired only when its canonical excerpt uniquely identifies one prompt entry; authoritative chunk and page metadata then replace copied model metadata. Fabricated, paraphrased, or ambiguous evidence remains rejected, and the database validator remains the final trust boundary.
+
+Curriculum planning is not limited to the currently active term. The admin may choose any term belonging to the active academic session, while imports targeting another or inactive session remain blocked. If source text strongly identifies a different numbered term than the selected term, generation stops before spending model tokens and tells the admin to select the matching term.
 
 ## Risks and Decisions Needed
 

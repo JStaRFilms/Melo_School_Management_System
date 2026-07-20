@@ -21,7 +21,9 @@ export const createCurriculumImport = mutation({
     const [material, subject, term] = await Promise.all([ctx.db.get(args.materialId), ctx.db.get(args.subjectId), ctx.db.get(args.termId)]);
     if (!material || material.schoolId !== schoolId || !isReadyCurriculumSource(material)) throw new ConvexError("Choose a ready school curriculum source");
     if (!subject || subject.schoolId !== schoolId || subject.isArchived) throw new ConvexError("Subject not found");
-    if (!term || term.schoolId !== schoolId || !term.isActive) throw new ConvexError("Choose an active school term");
+    if (!term || term.schoolId !== schoolId) throw new ConvexError("Choose a school term");
+    const session = await ctx.db.get(term.sessionId);
+    if (!session || session.schoolId !== schoolId || !session.isActive) throw new ConvexError("Choose a term from the active academic session");
     const level = args.level.trim().replace(/\s+/g, " ");
     if (!level) throw new ConvexError("Level is required");
     if (material.subjectId && material.subjectId !== args.subjectId) throw new ConvexError("Choose a curriculum source for the selected subject");
