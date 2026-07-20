@@ -171,6 +171,12 @@ Live generation proved that a provider can return schema-valid units while addin
 
 Curriculum planning is not limited to the currently active term. The admin may choose any term belonging to the active academic session, while imports targeting another or inactive session remain blocked. If source text strongly identifies a different numbered term than the selected term, generation stops before spending model tokens and tells the admin to select the matching term.
 
+### Review workspace UX repair (2026-07-20)
+
+The curriculum-import screen uses a bounded desktop workspace rather than a vertically growing dashboard. Proposal setup and import history live in the left rail, the selected import's review queue scrolls independently in the centre, and a persistent inspector/editor occupies the right rail. Mobile keeps the same information in a natural stacked flow.
+
+Review UI must not expose provider or model identifiers; those remain in server-side provenance and audit records. Clicking Edit opens a controlled React editor with title, subtopics, objectives, and duration fields instead of browser prompts. Raw Convex wrappers or structured JSON must be reduced to the safe `errorMessage` before appearing in either the toast or the review panel.
+
 ## Risks and Decisions Needed
 
 - Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.
