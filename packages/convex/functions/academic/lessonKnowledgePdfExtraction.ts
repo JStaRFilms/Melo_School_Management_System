@@ -198,8 +198,15 @@ async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; sele
     const pageTexts: string[] = [];
     const pages: Array<{ pageNumber: number; text: string }> = [];
     const pagesToRead = selectedPageNumbers ?? Array.from({ length: pageCount }, (_, index) => index + 1);
+    const failedPageNumbers: number[] = [];
     for (const pageNumber of pagesToRead) {
-      if (remainingTimeoutMs() <= 1) break;
+      if (remainingTimeoutMs() <= 1) {
+        return {
+          kind: "error",
+          pageCount,
+          errorMessage: `PDF parsing timed out before all ${pagesToRead.length} selected pages were processed.`,
+        };
+      }
 
       try {
         const page = await withTimeout(
@@ -220,19 +227,16 @@ async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; sele
           pages.push({ pageNumber, text: pageText });
         }
       } catch {
-        // Preserve other extracted pages.
+        failedPageNumbers.push(pageNumber);
       }
+    }
 
-      const currentQuality = evaluateTextQuality(pageTexts.join("\n\n"));
-      if (currentQuality.adequate) {
-        return {
-          kind: "success",
-          text: currentQuality.normalizedText,
-          pages,
-          quality: currentQuality,
-          pageCount,
-        };
-      }
+    if (failedPageNumbers.length > 0) {
+      return {
+        kind: "error",
+        pageCount,
+        errorMessage: `PDF text extraction failed for page${failedPageNumbers.length === 1 ? "" : "s"} ${failedPageNumbers.join(", ")}.`,
+      };
     }
 
     const quality = evaluateTextQuality(pageTexts.join("\n\n"));
@@ -517,7 +521,12 @@ export async function extractReadableTextFromBuffer(
   }
 
   if (parserResult.kind === "error") {
-    return buildOcrNeededResult({ fallbackReason: "parser_error", status: "failed", pageCount: parserResult.pageCount });
+    return buildOcrNeededResult({
+      fallbackReason: "parser_error",
+      status: "failed",
+      pageCount: parserResult.pageCount,
+      errorMessage: parserResult.errorMessage,
+    });
   }
 
   const quality = parserResult.quality;

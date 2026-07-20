@@ -9,8 +9,8 @@ import {
   CURRICULUM_EXTRACTION_PROMPT_CLASS,
   generateCurriculumExtraction,
   resolveCurriculumAiRuntime,
-  toCurriculumGenerationFailure,
 } from "@school/ai";
+import { toCurriculumGenerationFailure } from "@school/ai";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
 import {
   CURRICULUM_SCHEMA_VERSION,

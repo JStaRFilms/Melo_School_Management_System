@@ -37,8 +37,8 @@ async function fixture() {
     const sessionId = await ctx.db.insert("academicSessions", { schoolId, name: "2026", startDate: now, endDate: 2, isActive: true, createdAt: now, updatedAt: now });
     const termId = await ctx.db.insert("academicTerms", { schoolId, sessionId, name: "Term 1", startDate: now, endDate: 2, isActive: true, createdAt: now, updatedAt: now });
     const materialId = await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: adminId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title: "Math scheme", subjectId, level: "JSS 1", topicLabel: "Scheme", searchStatus: "indexed", searchText: "math scheme", processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: now, createdAt: now, updatedAt: now, createdBy: adminId, updatedBy: adminId });
-    await ctx.db.insert("knowledgeMaterialChunks", { schoolId, materialId, chunkIndex: 0, chunkText: "Fractions compare equal parts using visual models.", searchText: "fractions", visibility: "staff_shared", reviewStatus: "approved", searchStatus: "indexed", pageNumbers: [3], chunkHash: "chunk-3", createdAt: now, updatedAt: now });
-    return { schoolId, otherSchoolId, adminId, subjectId, otherSubjectId, termId, materialId };
+    const chunkId = await ctx.db.insert("knowledgeMaterialChunks", { schoolId, materialId, chunkIndex: 0, chunkText: "Fractions compare equal parts using visual models.", searchText: "fractions", visibility: "staff_shared", reviewStatus: "approved", searchStatus: "indexed", pageNumbers: [3], createdAt: now, updatedAt: now });
+    return { schoolId, otherSchoolId, adminId, subjectId, otherSubjectId, termId, materialId, chunkId };
   });
   return { t, ids };
 }
@@ -46,12 +46,12 @@ async function fixture() {
 async function createImport() {
   const { t, ids } = await fixture();
   const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
-  const runId = await t.run((ctx) => ctx.db.insert("aiRunLogs", { schoolId: ids.schoolId, actorUserId: ids.adminId, actorRole: "admin", outputType: "curriculum_extraction", promptClass: "curriculum-extraction:v1", status: "succeeded", model: "gpt-test", provider: "mock", curriculumImportId: importId, sourceSelectionSnapshot: "chunk-3", sourceCount: 1, createdAt: 2, updatedAt: 2 }));
+  const runId = await t.run((ctx) => ctx.db.insert("aiRunLogs", { schoolId: ids.schoolId, actorUserId: ids.adminId, actorRole: "admin", outputType: "curriculum_extraction", promptClass: "curriculum-extraction:v1", status: "succeeded", model: "gpt-test", provider: "mock", curriculumImportId: importId, sourceSelectionSnapshot: String(ids.chunkId), sourceCount: 1, createdAt: 2, updatedAt: 2 }));
   const mismatchedRunId = await t.run((ctx) => ctx.db.insert("aiRunLogs", { schoolId: ids.schoolId, actorUserId: ids.adminId, actorRole: "admin", outputType: "curriculum_extraction", promptClass: "curriculum-extraction:v1", status: "succeeded", model: "gpt-test", provider: "mock", sourceSelectionSnapshot: "wrong", sourceCount: 1, createdAt: 2, updatedAt: 2 }));
   return { t, ids, importId, runId, mismatchedRunId };
 }
 
-const proposal = { weekNumber: 1, title: "Fractions", subtopics: ["Equal parts"], learningObjectives: ["Compare fractions"], suggestedDuration: "1 week", sourcePages: [3], sourceChunkHash: "chunk-3", supportingExcerpt: "compare equal parts using visual models", confidence: 0.9 };
+const proposalFor = (sourceChunkHash: string) => ({ weekNumber: 1, title: "Fractions", subtopics: ["Equal parts"], learningObjectives: ["Compare fractions"], suggestedDuration: "1 week", sourcePages: [3], sourceChunkHash, supportingExcerpt: "compare equal parts using visual models", confidence: 0.9 });
 
 describe("curriculum lifecycle", () => {
   it("enforces admin ownership and cross-school source boundaries", async () => {
@@ -63,13 +63,15 @@ describe("curriculum lifecycle", () => {
   });
 
   it("requires a matching successful run and excerpt-grounded chunk evidence", async () => {
-    const { t, importId, runId, mismatchedRunId } = await createImport();
+    const { t, ids, importId, runId, mismatchedRunId } = await createImport();
+    const proposal = proposalFor(String(ids.chunkId));
     await expect(t.withIdentity(admin).mutation(saveCurriculumProposals, { importId, proposals: [proposal], aiRunLogId: mismatchedRunId })).rejects.toThrow("canonical curriculum run log");
     await expect(t.withIdentity(admin).mutation(saveCurriculumProposals, { importId, proposals: [{ ...proposal, supportingExcerpt: "not in the source" }], aiRunLogId: runId })).rejects.toThrow("excerpt text");
   });
 
   it("writes audits, derives run provenance, and approves exactly once on retry", async () => {
     const { t, ids, importId, runId } = await createImport();
+    const proposal = proposalFor(String(ids.chunkId));
     await t.withIdentity(admin).mutation(saveCurriculumProposals, { importId, proposals: [proposal], aiRunLogId: runId });
     const unitId = await t.run(async (ctx) => (await ctx.db.query("curriculumUnits").withIndex("by_import_and_review_status", (q) => q.eq("importId", importId).eq("reviewStatus", "proposed")).unique())!._id);
     const firstTopicId = await t.withIdentity(admin).mutation(approveCurriculumUnit, { unitId });
@@ -85,6 +87,7 @@ describe("curriculum lifecycle", () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
     const runId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/curriculum-fixture-v1", sourceCount: 1 });
+    const proposal = proposalFor(String(ids.chunkId));
     await t.run((ctx) => ctx.db.patch(ids.termId, { isActive: false }));
     await expect(t.withIdentity(admin).mutation(completeGeneration, { importId, aiRunLogId: runId, proposals: [proposal] })).rejects.toThrow("academic context");
     await t.withIdentity(admin).mutation(failGeneration, { importId, aiRunLogId: runId, errorCode: "validation_error", errorMessage: "Curriculum proposal generation failed." });
@@ -96,6 +99,7 @@ describe("curriculum lifecycle", () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
     const runId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/curriculum-fixture-v1", sourceCount: 1 });
+    const proposal = proposalFor(String(ids.chunkId));
     const running = await t.run((ctx) => ctx.db.get(runId));
     expect(running).toMatchObject({ status: "running", provider: "mock", model: "mock/curriculum-fixture-v1", sourceCount: 1 });
     expect(JSON.parse(running!.sourceSelectionSnapshot)).toEqual({ materialId: String(ids.materialId), pageCount: 1 });

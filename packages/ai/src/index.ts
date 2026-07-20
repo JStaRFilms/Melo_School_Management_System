@@ -1,6 +1,7 @@
 export * from "./contracts";
 export * from "./models";
 export * from "./curriculum";
+export * from "./curriculumErrors";
 export * from "./curriculumGeneration";
 export * from "./prompts";
 export * from "./retry";

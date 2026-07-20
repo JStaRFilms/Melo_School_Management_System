@@ -154,6 +154,15 @@ Extend the existing `aiRunLogs` vocabulary with a curriculum-extraction output t
 - Approval is human-only and idempotently creates or links the existing `knowledgeTopics`; readiness is calculated from existing artifacts and publication evidence.
 - The admin production build and authenticated browser flow passed at desktop and mobile widths. The development Convex schema sync also validated all new compound indexes.
 
+### Source compatibility repair (2026-07-20)
+
+Production testing exposed two gaps hidden by fixture-shaped curriculum tests:
+
+- Real ingestion creates indexed chunks without `chunkHash`, while curriculum evidence originally required one and silently discarded those chunks.
+- Lesson source selection could attach a readable material before applying the final planning-context subject, level, and topic checks. The later excerpt query then rejected the source but surfaced the rejection as missing text.
+
+The repair must keep existing uploads usable without reprocessing: use the stable Convex chunk ID when a legacy chunk has no hash, preserve real page metadata for curriculum evidence, and apply the same planning-context compatibility rules when listing, attaching, and extracting lesson sources. Regression coverage must use production-shaped chunks rather than manually adding metadata ingestion does not create. Expected source-state failures must remain actionable instead of being collapsed into a generic model-generation error.
+
 ## Risks and Decisions Needed
 
 - Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.

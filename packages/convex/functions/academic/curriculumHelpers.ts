@@ -19,6 +19,22 @@ export type CurriculumProposalInput = {
   confidence: number;
 };
 
+type CurriculumEvidenceChunk = {
+  _id?: string;
+  chunkHash?: string;
+  chunkText: string;
+  pageNumbers?: number[];
+  pageStart?: number;
+  pageEnd?: number;
+};
+
+export function getCurriculumChunkReference(chunk: CurriculumEvidenceChunk) {
+  const storedHash = chunk.chunkHash?.trim();
+  if (storedHash) return storedHash;
+  const stableChunkId = chunk._id ? String(chunk._id).trim() : "";
+  return stableChunkId || null;
+}
+
 export function normalizeCurriculumText(value: string, label: string, maxLength = 240) {
   const normalized = value.trim().replace(/\s+/g, " ");
   if (!normalized) throw new ConvexError(`${label} is required`);
@@ -61,10 +77,10 @@ export function hasMatchingCurriculumEvidence(args: {
   sourcePages: number[];
   sourceChunkHash: string;
   supportingExcerpt: string;
-  chunks: Array<{ chunkHash?: string; chunkText: string; pageNumbers?: number[]; pageStart?: number; pageEnd?: number }>;
+  chunks: CurriculumEvidenceChunk[];
 }) {
   return args.chunks.some((chunk) => {
-    if (chunk.chunkHash !== args.sourceChunkHash) return false;
+    if (getCurriculumChunkReference(chunk) !== args.sourceChunkHash) return false;
     const evidencePages = chunk.pageNumbers ?? range(chunk.pageStart, chunk.pageEnd);
     return args.sourcePages.every((page) => evidencePages.includes(page)) &&
       normalizeEvidenceText(chunk.chunkText).includes(normalizeEvidenceText(args.supportingExcerpt));
@@ -87,7 +103,7 @@ export function isReadyCurriculumSource(material: {
     material.searchStatus === "indexed" && material.reviewStatus === "approved";
 }
 
-export function buildBoundedCurriculumSourcePages(chunks: Array<{ chunkHash?: string; chunkText: string; pageNumbers?: number[]; pageStart?: number; pageEnd?: number }>) {
+export function buildBoundedCurriculumSourcePages(chunks: CurriculumEvidenceChunk[]) {
   const pages: Array<{ pageNumbers: number[]; text: string; chunkHash: string }> = [];
   const seen = new Set<string>();
   let totalCharacters = 0;
@@ -95,15 +111,16 @@ export function buildBoundedCurriculumSourcePages(chunks: Array<{ chunkHash?: st
     const text = chunk.chunkText.trim().slice(0, MAX_CURRICULUM_SOURCE_CHARS_PER_PAGE);
     const numbers = chunk.pageNumbers ?? range(chunk.pageStart, chunk.pageEnd);
     const pageNumbers = [...new Set(numbers)].filter((page) => Number.isInteger(page) && page > 0).sort((a, b) => a - b).slice(0, MAX_CURRICULUM_SOURCE_PAGES);
-    const key = `${chunk.chunkHash}:${normalizeEvidenceText(text)}`;
-    if (!chunk.chunkHash || !text || !pageNumbers.length) continue;
+    const chunkReference = getCurriculumChunkReference(chunk);
+    if (!chunkReference || !text || !pageNumbers.length) continue;
+    const key = `${chunkReference}:${normalizeEvidenceText(text)}`;
     const duplicateIndex = pages.findIndex((page) => `${page.chunkHash}:${normalizeEvidenceText(page.text)}` === key);
     if (duplicateIndex >= 0) {
       pages[duplicateIndex].pageNumbers = [...new Set([...pages[duplicateIndex].pageNumbers, ...pageNumbers])].sort((a, b) => a - b).slice(0, MAX_CURRICULUM_SOURCE_PAGES);
       continue;
     }
     if (seen.has(key) || pages.length >= MAX_CURRICULUM_SOURCE_PAGES || totalCharacters + text.length > MAX_CURRICULUM_SOURCE_CHARS_TOTAL) continue;
-    pages.push({ pageNumbers, text, chunkHash: chunk.chunkHash });
+    pages.push({ pageNumbers, text, chunkHash: chunkReference });
     seen.add(key); totalCharacters += text.length;
   }
   return pages;

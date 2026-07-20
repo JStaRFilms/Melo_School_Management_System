@@ -11,6 +11,10 @@ import {
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import {
+  getLessonSourceContextIssue,
+  levelMatchesLessonKnowledgeScope,
+} from "./lessonKnowledgeSourceContext";
+import {
   getInstructionTemplateApplicabilityLabel,
   getInstructionTemplateScopeRank,
   sortInstructionTemplates,
@@ -352,10 +356,6 @@ function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function levelMatchesKnowledgeScope(levelA: string, levelB: string) {
-  return normalizeText(levelA).toLowerCase() === normalizeText(levelB).toLowerCase();
-}
-
 function normalizeOptionalText(value?: string | null) {
   if (value === undefined || value === null) {
     return undefined;
@@ -653,7 +653,7 @@ async function assertUsableLessonSource(
 ) {
   const row = await ctx.db.get(sourceId);
   if (!row || row.schoolId !== actor.schoolId) {
-    return { source: null, issue: String(sourceId) };
+    return { source: null, issue: "The selected source is no longer available." };
   }
 
   const classAccess =
@@ -661,29 +661,21 @@ async function assertUsableLessonSource(
       ? await resolveClassScopedKnowledgeMaterialStaffAccess(ctx, actor, row)
       : null;
 
-  if (planningContext) {
-    if (String(row.subjectId) !== String(planningContext.subjectId) || !levelMatchesKnowledgeScope(row.level, planningContext.level)) {
-      return { source: null, issue: String(sourceId) };
-    }
-
-    if (row.topicId && String(row.topicId) !== String(planningContext.topicId) && row.sourceType !== "imported_curriculum") {
-      return { source: null, issue: String(sourceId) };
-    }
-
-    if (
-      row.visibility === "class_scoped" &&
-      !classAccess?.matchedClassIds.some((classId) => String(classId) === String(planningContext.classId))
-    ) {
-      return { source: null, issue: String(sourceId) };
-    }
-  }
-
   if (
     !canUseKnowledgeMaterialAsLessonSource(actor, row, {
       classContextMatches: classAccess?.classContextMatches,
     })
   ) {
-    return { source: null, issue: String(sourceId) };
+    return { source: null, issue: "The selected source is not available for lesson generation." };
+  }
+
+  const contextIssue = getLessonSourceContextIssue({
+    source: row,
+    planningContext,
+    classAccess,
+  });
+  if (contextIssue) {
+    return { source: null, issue: contextIssue };
   }
 
   return { source: row, issue: null };
@@ -692,7 +684,8 @@ async function assertUsableLessonSource(
 async function loadSources(
   ctx: QueryCtx,
   actor: KnowledgeActorContext,
-  sourceIds: Array<Id<"knowledgeMaterials">>
+  sourceIds: Array<Id<"knowledgeMaterials">>,
+  planningContext?: TopicPlanningContextRecord | null
 ) {
   const requestedRows = await Promise.all(sourceIds.map((sourceId) => ctx.db.get(sourceId)));
   const accessibleRows: Array<{
@@ -713,6 +706,7 @@ async function loadSources(
   }> = [];
   const missingSourceIds: string[] = [];
   const inaccessibleSourceIds: string[] = [];
+  const inaccessibleSourceIssues: string[] = [];
   const subjectIds = new Set<string>();
 
   for (let index = 0; index < requestedRows.length; index += 1) {
@@ -725,6 +719,7 @@ async function loadSources(
 
     if (row.schoolId !== actor.schoolId) {
       inaccessibleSourceIds.push(String(requestedId));
+      inaccessibleSourceIssues.push("The selected source is no longer available.");
       continue;
     }
 
@@ -739,6 +734,18 @@ async function loadSources(
       })
     ) {
       inaccessibleSourceIds.push(String(requestedId));
+      inaccessibleSourceIssues.push("The selected source is not available for lesson generation.");
+      continue;
+    }
+
+    const contextIssue = getLessonSourceContextIssue({
+      source: row,
+      planningContext,
+      classAccess,
+    });
+    if (contextIssue) {
+      inaccessibleSourceIds.push(String(requestedId));
+      inaccessibleSourceIssues.push(contextIssue);
       continue;
     }
 
@@ -788,6 +795,7 @@ async function loadSources(
     selectedSources,
     missingSourceIds,
     inaccessibleSourceIds,
+    inaccessibleSourceIssues,
     sourceContext,
   };
 }
@@ -820,7 +828,7 @@ async function resolveTopicPlanningContext(
 
   if (
     String(topic.subjectId) !== String(input.subjectId) ||
-    !levelMatchesKnowledgeScope(topic.level, input.level) ||
+    !levelMatchesLessonKnowledgeScope(topic.level, input.level) ||
     String(topic.termId) !== String(input.termId)
   ) {
     throw new ConvexError("Topic context does not match the selected subject, level, and term");
@@ -1461,8 +1469,8 @@ export const getTeacherInstructionSourceExcerpts = query({
 
       const { source, issue } = await assertUsableLessonSource(ctx, actor, sourceId, planningContext);
       if (!source) {
-        omittedSourceIds.push(issue ?? String(sourceId));
-        warnings.push(`Source ${String(sourceId)} is no longer available for generation.`);
+        omittedSourceIds.push(String(sourceId));
+        warnings.push(issue ?? "The selected source is no longer available for generation.");
         continue;
       }
 
@@ -1560,7 +1568,7 @@ export const getTeacherInstructionWorkspace = query({
     });
     const effectiveSourceIds =
       requestedSourceIds.length > 0 ? requestedSourceIds : currentArtifactBundle?.sourceIds ?? [];
-    const sourceBundle = await loadSources(ctx, actor, effectiveSourceIds);
+    const sourceBundle = await loadSources(ctx, actor, effectiveSourceIds, planningContext);
 
     const school = await ctx.db.get(schoolId);
     const schoolName = school ? normalizeHumanName(school.name) : null;
@@ -1617,8 +1625,9 @@ export const getTeacherInstructionWorkspace = query({
     }
 
     if (sourceBundle.inaccessibleSourceIds.length > 0) {
+      const sourceIssues = [...new Set(sourceBundle.inaccessibleSourceIssues)];
       warnings.push(
-        `Some selected sources are no longer accessible: ${sourceBundle.inaccessibleSourceIds.join(", ")}. Generation is blocked until the selection is repaired.`
+        ...sourceIssues.map((issue) => `${issue} Generation is blocked until the selection is repaired.`)
       );
     }
 
@@ -1807,7 +1816,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
     if (
       planningContext &&
       (String(planningContext.subjectId) !== String(args.subjectId) ||
-        !levelMatchesKnowledgeScope(planningContext.level, normalizedLevel))
+        !levelMatchesLessonKnowledgeScope(planningContext.level, normalizedLevel))
     ) {
       throw new ConvexError("Planning context does not match the lesson workspace subject and level");
     }

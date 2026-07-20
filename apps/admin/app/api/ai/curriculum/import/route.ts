@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { api } from "@school/convex/_generated/api";
+import { toCurriculumGenerationFailure } from "@school/ai";
 import { getToken } from "@/auth-server";
 
 const requestSchema = z.object({ importId: z.string().trim().min(1) });
@@ -29,10 +30,11 @@ export async function POST(request: Request) {
       { importId }
     );
     return NextResponse.json(result);
-  } catch {
+  } catch (error) {
+    const failure = toCurriculumGenerationFailure(error);
     return NextResponse.json(
-      { error: "Curriculum proposal generation could not be completed. Check the source and try again." },
-      { status: 500 }
+      { error: failure.errorMessage },
+      { status: failure.errorCode === "source_evidence_unavailable" ? 422 : 500 }
     );
   }
 }

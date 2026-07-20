@@ -265,8 +265,30 @@ describe("lessonKnowledgeIngestionHelpers", () => {
 
     expect(result.status).toBe("ready");
     expect(result.extractionPath).toBe("parser");
-    expect(result.text.length).toBeGreaterThan(1000);
+    expect(result.pageCount).toBe(11);
+    expect(result.pages).toHaveLength(11);
+    expect(result.pages?.at(-1)?.pageNumber).toBe(11);
+    expect(result.text.length).toBeGreaterThan(15_000);
     expect(result.errorMessage).toBeNull();
+  });
+
+  it("fails instead of indexing partial PDF text when the global parse budget expires", async () => {
+    const samplePdf = readFileSync(
+      new URL(
+        "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
+        import.meta.url
+      )
+    );
+
+    const result = await extractReadableTextFromBuffer(samplePdf, {
+      contentType: "application/pdf",
+      pdfParseTimeoutMs: 1,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.text).toBe("");
+    expect(result.fallbackReason).toBe("parser_error");
+    expect(result.errorMessage).toContain("timed out");
   });
 
   it("classifies scanned-like PDFs as needing provider-backed OCR", async () => {

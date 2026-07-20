@@ -30,13 +30,6 @@ export interface GenerateCurriculumExtractionOptions {
   readonly runtime?: ResolveCurriculumAiRuntimeOptions;
 }
 
-export function toCurriculumGenerationFailure(error: unknown) {
-  return {
-    errorCode: error instanceof Error && error.name ? error.name.slice(0, 80) : "generation_failed",
-    errorMessage: "Curriculum proposal generation failed.",
-  };
-}
-
 export async function generateCurriculumExtraction(
   options: GenerateCurriculumExtractionOptions
 ): Promise<{ extraction: CurriculumExtraction; inputTokens?: number; outputTokens?: number }> {

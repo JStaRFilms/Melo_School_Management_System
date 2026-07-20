@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBoundedCurriculumSourcePages, MAX_CURRICULUM_SOURCE_CHARS_TOTAL } from "../curriculumHelpers";
+import {
+  buildBoundedCurriculumSourcePages,
+  hasMatchingCurriculumEvidence,
+  MAX_CURRICULUM_SOURCE_CHARS_TOTAL,
+} from "../curriculumHelpers";
 
 describe("bounded curriculum generation evidence", () => {
   it("deduplicates repeated page evidence and caps aggregate source text", () => {
@@ -11,5 +15,26 @@ describe("bounded curriculum generation evidence", () => {
     expect(pages.find((page) => page.chunkHash === "same")?.pageNumbers).toEqual([1, 2, 3, 4, 5]);
     expect(pages.reduce((total, page) => total + page.text.length, 0)).toBeLessThanOrEqual(MAX_CURRICULUM_SOURCE_CHARS_TOTAL);
     expect(pages.every((page) => page.pageNumbers.every((number) => number > 0) && page.text.length > 0)).toBe(true);
+  });
+
+  it("uses a stable chunk id when production ingestion did not store a legacy hash", () => {
+    const chunk = {
+      _id: "chunk-record-id",
+      chunkText: "Fractions compare equal parts using visual models.",
+      pageNumbers: [3],
+    };
+    const pages = buildBoundedCurriculumSourcePages([chunk]);
+
+    expect(pages).toEqual([{
+      pageNumbers: [3],
+      text: chunk.chunkText,
+      chunkHash: "chunk-record-id",
+    }]);
+    expect(hasMatchingCurriculumEvidence({
+      sourcePages: [3],
+      sourceChunkHash: "chunk-record-id",
+      supportingExcerpt: "compare equal parts using visual models",
+      chunks: [chunk],
+    })).toBe(true);
   });
 });
