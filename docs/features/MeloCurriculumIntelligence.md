@@ -194,3 +194,55 @@ Destructive deletion is deferred. A future archive/delete workflow must inspect 
 - Confirm the final public OpenAI model IDs available to the deployment environment before recording the demo.
 - Keep the existing uncommitted report-card change outside this feature's scope.
 - Decide later whether objective-level alignment belongs in the hackathon vertical slice; it is intentionally excluded from the first build to protect delivery quality.
+
+## Hackathon Closeout Checklist
+
+The Curriculum Intelligence implementation is complete for the agreed vertical slice. The remaining work is release and submission work rather than another major product build:
+
+- Pin the final OpenAI GPT model through the OpenRouter environment configuration and run one production-shaped import smoke test with that exact model.
+- Deploy the current admin and teacher applications from this branch and verify that they use the deployed Convex backend.
+- Prepare a stable judge account and deterministic sample school data covering source upload, extraction, review, approval, teacher planning, and readiness.
+- Run one authenticated browser walkthrough of the complete three-minute demo path on the public deployment.
+- Capture the final screenshots, write and record the narrated video, and upload the public video.
+- Complete the Devpost links and description, including the repository, live demo, video, technologies used, Codex contribution, and required Codex session evidence.
+
+The video script is therefore the largest creative deliverable left, but it is not literally the only release task. Model qualification, current-branch frontend deployment, judge access, and one final public end-to-end smoke test remain submission gates.
+
+Development judge data is now available through the resettable full-school `codex-academy` seed documented in `docs/features/MeloCurriculumJudgeDemoTenant.md`. The same profile must be seeded in production only after the frontend merge and production deployment gates are deliberately configured.
+
+## Deferred Post-Hackathon Backlog
+
+These items were intentionally deferred and must remain visible for later work.
+
+### 1. Reliable scanned-document OCR and upload-state cleanup
+
+- Diagnose why development and production can disagree on whether the same uploaded PDF is indexed or requires OCR.
+- Make the provider-backed OCR retry path reliable for already stored `ocr_needed` materials without requiring another upload.
+- Ensure upload controls reset after successful publication instead of retaining stale file and form state in the right-hand panel.
+- Provide clear queued, processing, retryable failure, and completed states instead of making chunk counts appear authoritative when extraction failed.
+- Add production-shaped tests for digital PDFs, scanned PDFs, selected page ranges, corrupt files, provider timeouts, and retrying an existing stored file.
+- Continue to follow `docs/features/ReliableScannedPdfOcrFallback.md` and `docs/decisions/OCRArchitectureDecision_2026-05-02.md`; do not replace OCR infrastructure with a general chat model.
+
+### 2. Safe curriculum import and topic archival
+
+- Add an admin archive action for failed or obsolete curriculum imports and approved curriculum topics; avoid irreversible hard deletion by default.
+- Before archival, inspect linked curriculum units, lesson artifacts, artifact-source records, assessment banks, questions, and published student materials.
+- If teacher work depends on the topic, show a plain-language dependency summary such as "2 lesson notes and 1 assessment use this topic" and require an explicit decision.
+- Preserve teacher work and audit history. Archiving an import must not silently remove generated topics or detach sources from existing artifacts.
+- Support restoring archived topics/imports where the underlying subject, class, term, and source still exist.
+- Provide a safe cleanup path for abandoned failed imports so the recent-import list does not grow indefinitely.
+
+### 3. Coverage beyond readiness
+
+- Add a teacher-controlled **Mark as taught** confirmation before Melo claims actual curriculum coverage. Until then, keep using "prepared" and "ready" language.
+- Align assessment questions to individual learning objectives and identify objectives that have never been assessed.
+- Detect exam questions that fall outside the approved scheme of work and show the supporting comparison evidence.
+- Recommend missing lesson plans, notes, assignments, or assessments without publishing generated material automatically.
+
+### 4. Curriculum lifecycle and analytics
+
+- Compare curriculum versions and show added, removed, moved, or materially changed weeks, topics, and objectives before replacing an existing plan.
+- Add spreadsheet, photographed-page, and mixed-document import support after the PDF/OCR path is dependable.
+- Add cross-term, class, and school readiness reports with explicit pagination or maintained aggregates for large scopes.
+- Generate student learning resources only from reviewed curriculum units and approved teacher content.
+- Add curriculum analytics across academic sessions while preserving tenant boundaries and source provenance.

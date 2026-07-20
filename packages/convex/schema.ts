@@ -1464,6 +1464,7 @@ export default defineSchema({
     proposedUnitCount: v.number(), approvedUnitCount: v.number(), rejectedUnitCount: v.number(), duplicateWarningCount: v.number(),
     createdAt: v.number(), updatedAt: v.number(),
   })
+    .index("by_school", ["schoolId"])
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_school_and_material", ["schoolId", "materialId"])
     .index("by_school_and_updated_at", ["schoolId", "updatedAt"])
@@ -1478,6 +1479,7 @@ export default defineSchema({
     editedBy: v.optional(v.id("users")), reviewedBy: v.optional(v.id("users")), reviewedAt: v.optional(v.number()),
     knowledgeTopicId: v.optional(v.id("knowledgeTopics")), createdAt: v.number(), updatedAt: v.number(),
   })
+    .index("by_school", ["schoolId"])
     .index("by_import_and_review_status", ["importId", "reviewStatus"])
     .index("by_school_and_topic_identity", ["schoolId", "title"])
     .index("by_school_and_knowledge_topic", ["schoolId", "knowledgeTopicId"])
@@ -1841,6 +1843,7 @@ export default defineSchema({
   // Persisted cursor state for bounded, restart-safe demo population phases.
   demoSeedRuns: defineTable({
     schoolId: v.id("schools"),
+    seedProfile: v.optional(v.union(v.literal("demo"), v.literal("judge"))),
     status: v.union(v.literal("running"), v.literal("failed"), v.literal("succeeded")),
     phase: v.union(v.literal("foundation"), v.literal("students"), v.literal("assessments"), v.literal("billing"), v.literal("knowledge"), v.literal("complete")),
     studentCursor: v.number(),

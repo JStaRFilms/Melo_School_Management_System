@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { assertOperatorGate, isMissingStorageObjectError } from "../seedRunner";
+import { assertJudgeOperatorGate, assertOperatorGate, isMissingStorageObjectError } from "../seedRunner";
 
 const original = { ...process.env };
 afterEach(() => { process.env = { ...original }; });
@@ -33,5 +33,20 @@ describe("demo seed operator gates", () => {
   test("recognizes already-deleted storage objects for idempotent cleanup", () => {
     expect(isMissingStorageObjectError(new Error('Invalid storage delete request: {"code":"StorageIdNotFound","message":"storage id abc not found"}'))).toBe(true);
     expect(isMissingStorageObjectError(new Error("network unavailable"))).toBe(false);
+  });
+
+  test("uses independent gates for the codex-academy judge tenant", () => {
+    process.env.JUDGE_SEED_OPERATOR_TOKEN = "judge-token";
+    process.env.JUDGE_SEED_DEPLOYMENT_IDENTITY = "judge-preview";
+    process.env.JUDGE_SEED_DEPLOYMENT_ENV = "preview";
+    const judge = {
+      confirmation: "RESET codex-academy",
+      operatorToken: "judge-token",
+      targetIdentity: "judge-preview",
+      deploymentEnvironment: "preview" as const,
+    };
+    expect(() => assertJudgeOperatorGate(judge)).not.toThrow();
+    expect(() => assertJudgeOperatorGate({ ...judge, confirmation: "RESET demo-school" })).toThrow("codex-academy");
+    expect(() => assertOperatorGate({ ...base, operatorToken: "judge-token" })).toThrow("operator token");
   });
 });

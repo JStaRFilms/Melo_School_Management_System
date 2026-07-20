@@ -16,9 +16,9 @@ async function assets(t: TestConvex) {
   }));
 }
 
-async function start(t: TestConvex) {
+async function start(t: TestConvex, seedProfile: "demo" | "judge" = "demo") {
   const runId = await t.mutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
-    adminAuthId: "auth-admin", teacherAuthId: "auth-teacher", portalAuthId: "auth-portal", ...(await assets(t)),
+    seedProfile, adminAuthId: `auth-admin-${seedProfile}`, teacherAuthId: `auth-teacher-${seedProfile}`, portalAuthId: `auth-portal-${seedProfile}`, ...(await assets(t)),
   });
   await t.mutation(internal.functions.academic.seed.populateDemoFoundationInternal, { runId });
   return runId;
@@ -101,5 +101,35 @@ describe("demo-school phased seed integration", () => {
     expect(counts.bindings).toHaveLength(12);
     expect(new Set(counts.bindings.map((binding) => binding.classId))).toEqual(new Set(counts.classes.slice(0, 2).map((classDoc) => classDoc._id)));
     expect(counts.run).toMatchObject({ status: "succeeded", phase: "complete" });
+  });
+
+  test("judge profile creates a full school plus the curriculum demo journey", async () => {
+    const t = convexTest(schema, modules);
+    const seeded = await finish(t, await start(t, "judge"));
+    const fixture = await t.run(async (ctx) => {
+      const school = await ctx.db.get(seeded.schoolId);
+      return {
+        school,
+        students: await ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(50),
+        classes: await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(10),
+        subjects: await ctx.db.query("subjects").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(10),
+        materials: await ctx.db.query("knowledgeMaterials").withIndex("by_school_and_source_type", (q) => q.eq("schoolId", seeded.schoolId).eq("sourceType", "imported_curriculum")).take(5),
+        imports: await ctx.db.query("curriculumImports").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(5),
+        units: await ctx.db.query("curriculumUnits").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(5),
+        artifacts: await ctx.db.query("instructionArtifacts").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(20),
+        artifactSources: await ctx.db.query("instructionArtifactSources").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(20),
+      };
+    });
+    expect(seeded).toMatchObject({ studentCount: 36, classCount: 3, invoiceCount: 36, assessmentRecordCount: 756 });
+    expect(fixture.school).toMatchObject({ name: "Codex Academy", slug: "codex-academy" });
+    expect(fixture.students).toHaveLength(36);
+    expect(fixture.classes).toHaveLength(3);
+    expect(fixture.subjects).toHaveLength(7);
+    expect(fixture.materials[0]).toMatchObject({ title: "JSS 1 Social Studies — Second Term Scheme of Work", chunkCount: 5, processingStatus: "ready", searchStatus: "indexed" });
+    expect(fixture.imports[0]).toMatchObject({ status: "approved", approvedUnitCount: 1 });
+    expect(fixture.units[0]).toMatchObject({ reviewStatus: "approved", title: "Revision of Last Term's Work" });
+    const lesson = fixture.artifacts.find((artifact) => String(artifact.topicId) === String(fixture.units[0].knowledgeTopicId));
+    expect(lesson).toMatchObject({ outputType: "lesson_plan", reviewStatus: "approved" });
+    expect(fixture.artifactSources).toContainEqual(expect.objectContaining({ artifactId: lesson?._id, materialId: fixture.materials[0]._id }));
   });
 });

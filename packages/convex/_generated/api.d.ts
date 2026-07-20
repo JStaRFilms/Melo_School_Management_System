@@ -32,6 +32,8 @@ import type * as functions_academic_demoData from "../functions/academic/demoDat
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
+import type * as functions_academic_judgeCurriculumSeed from "../functions/academic/judgeCurriculumSeed.js";
+import type * as functions_academic_judgeLessonSeed from "../functions/academic/judgeLessonSeed.js";
 import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
 import type * as functions_academic_lessonKnowledgeAdmin from "../functions/academic/lessonKnowledgeAdmin.js";
 import type * as functions_academic_lessonKnowledgeAssessmentDrafts from "../functions/academic/lessonKnowledgeAssessmentDrafts.js";
@@ -59,6 +61,7 @@ import type * as functions_academic_reportCards from "../functions/academic/repo
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
+import type * as functions_academic_seedRunnerSecurity from "../functions/academic/seedRunnerSecurity.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
@@ -110,6 +113,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
+  "functions/academic/judgeCurriculumSeed": typeof functions_academic_judgeCurriculumSeed;
+  "functions/academic/judgeLessonSeed": typeof functions_academic_judgeLessonSeed;
   "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;
   "functions/academic/lessonKnowledgeAdmin": typeof functions_academic_lessonKnowledgeAdmin;
   "functions/academic/lessonKnowledgeAssessmentDrafts": typeof functions_academic_lessonKnowledgeAssessmentDrafts;
@@ -137,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
+  "functions/academic/seedRunnerSecurity": typeof functions_academic_seedRunnerSecurity;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
