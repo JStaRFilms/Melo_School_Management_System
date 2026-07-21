@@ -2,6 +2,72 @@
 
 A multi-tenant school management platform for academic administration, teacher workflows, parent/student portals, public school sites, billing, and AI-assisted lesson planning. The project is a pnpm/Turborepo monorepo with Next.js apps and a Convex backend.
 
+<details>
+<summary>🚀 <b>OpenAI Build Week Submission: Melo Curriculum Intelligence</b> (Click to expand)</summary>
+
+<br/>
+
+## OpenAI Build Week Submission
+
+### Melo Curriculum Intelligence
+
+Melo Curriculum Intelligence turns an indexed school scheme of work into evidence-backed weekly curriculum proposals. Administrators review, edit, reject, or approve each proposed unit before it becomes an academic topic inside Melo’s existing teacher-planning system.
+
+The feature includes:
+
+- Weekly curriculum-unit extraction
+- Learning objectives and source-page evidence
+- Human administrative review and approval
+- Approved topics connected to existing teacher workflows
+- Curriculum Readiness reporting from real lesson, assessment, and publication records
+
+### How GPT-5.6 was used
+
+GPT-5.6 Terra is used through OpenRouter for curriculum extraction.
+
+It interprets inconsistent scheme-of-work documents and proposes schema-constrained curriculum units containing:
+
+- Week numbers
+- Topic titles
+- Subtopics
+- Learning objectives
+- Suggested durations
+- Supporting excerpts
+- Source-page citations
+- Confidence scores
+
+GPT-5.6 does not directly create authoritative school data. Deterministic application code validates academic context, evidence, duplicate topics, permissions, and source compatibility. An administrator must approve each unit before Melo creates or links an academic topic.
+
+### How Codex was used
+
+Codex was used throughout the Build Week implementation to:
+
+- Inspect the existing multi-app Melo monorepo
+- Design the curriculum-import architecture
+- Integrate the feature with existing knowledge topics and teacher planning
+- Implement the Convex schema, actions, queries, and mutations
+- Build the admin review and Curriculum Readiness interfaces
+- Write focused validation, authorization, seed, and integration tests
+- Debug production-shaped source evidence and citation failures
+- Prepare and verify the judge demo tenant
+- Support deployment and submission documentation
+
+### Technology
+
+- GPT-5.6 Terra through OpenRouter
+- OpenAI Codex
+- Next.js
+- React
+- TypeScript
+- Convex
+- Vercel AI SDK
+- Tailwind CSS
+- Zod
+- Vitest
+- Playwright
+
+</details>
+
 ## What is included
 
 - **Marketing website** (`apps/www`, port `3000`) - public product website.
