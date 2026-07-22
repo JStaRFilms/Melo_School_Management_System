@@ -1,5 +1,18 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  admissionsDataClassValidator,
+  admissionsDecisionStateValidator,
+  admissionsDocumentStateValidator,
+  admissionsEntitlementStateValidator,
+  admissionsPermissionValidator,
+  admissionsProviderValidator,
+  admissionsPurchaseStateValidator,
+  applicationStateValidator,
+  capabilityScopeValidator,
+  paymentProviderModeValidator,
+  siteRevisionContentValidator,
+} from "./functions/foundation/contracts";
 
 const knowledgeVisibilityValidator = v.union(
   v.literal("private_owner"),
@@ -225,9 +238,698 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_status", ["status"]),
 
+  // Shared B0 foundation. These tables are additive and intentionally contain
+  // contracts/data boundaries only; B1 and B4 own their feature behaviour.
+  admissionsGuardians: defineTable({
+    authTokenIdentifier: v.string(),
+    betterAuthUserId: v.optional(v.string()),
+    normalizedEmail: v.string(),
+    emailVerifiedAt: v.optional(v.number()),
+    normalizedPhone: v.optional(v.string()),
+    phoneVerifiedAt: v.optional(v.number()),
+    status: v.union(v.literal("active"), v.literal("suspended")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_auth_token_identifier", ["authTokenIdentifier"])
+    .index("by_better_auth_user_id", ["betterAuthUserId"])
+    .index("by_normalized_email", ["normalizedEmail"]),
+
+  admissionsProgrammes: defineTable({
+    schoolId: v.id("schools"),
+    slug: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("closed"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_slug", ["schoolId", "slug"])
+    .index("by_school_and_status", ["schoolId", "status"]),
+
+  admissionsIntakes: defineTable({
+    schoolId: v.id("schools"),
+    programmeId: v.id("admissionsProgrammes"),
+    slug: v.string(),
+    name: v.string(),
+    cycleLabel: v.string(),
+    targetClassId: v.optional(v.id("classes")),
+    opensAt: v.number(),
+    closesAt: v.number(),
+    startsAt: v.optional(v.number()),
+    status: v.union(v.literal("draft"), v.literal("open"), v.literal("paused"), v.literal("closed"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_slug", ["schoolId", "slug"])
+    .index("by_school_and_status_and_opens_at", ["schoolId", "status", "opensAt"])
+    .index("by_programme_and_status", ["programmeId", "status"]),
+
+  admissionsFormVersions: defineTable({
+    schoolId: v.id("schools"),
+    programmeId: v.id("admissionsProgrammes"),
+    intakeId: v.optional(v.id("admissionsIntakes")),
+    version: v.number(),
+    schemaVersion: v.string(),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
+    publishedAt: v.optional(v.number()),
+    publishedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_programme", ["schoolId", "programmeId"])
+    .index("by_intake_and_status", ["intakeId", "status"])
+    .index("by_school_and_programme_and_version", ["schoolId", "programmeId", "version"]),
+
+  admissionsFormFields: defineTable({
+    schoolId: v.id("schools"),
+    formVersionId: v.id("admissionsFormVersions"),
+    fieldKey: v.string(),
+    sectionKey: v.string(),
+    kind: v.string(),
+    label: v.string(),
+    helpText: v.optional(v.string()),
+    requiredMode: v.union(v.literal("required"), v.literal("optional"), v.literal("conditional")),
+    dataClass: admissionsDataClassValidator,
+    purpose: v.optional(v.string()),
+    validationJson: v.string(),
+    conditionalRuleJson: v.optional(v.string()),
+    order: v.number(),
+    status: v.union(v.literal("active"), v.literal("retired")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_form_version_and_order", ["formVersionId", "order"])
+    .index("by_form_version_and_field_key", ["formVersionId", "fieldKey"])
+    .index("by_school_and_data_class", ["schoolId", "dataClass"]),
+
+  admissionsDocumentRequirements: defineTable({
+    schoolId: v.id("schools"),
+    formVersionId: v.id("admissionsFormVersions"),
+    requirementKey: v.string(),
+    category: v.string(),
+    label: v.string(),
+    requiredMode: v.union(v.literal("required"), v.literal("optional"), v.literal("conditional")),
+    acceptedMimeTypes: v.array(v.string()),
+    maxBytes: v.number(),
+    maxFiles: v.number(),
+    sensitivity: admissionsDataClassValidator,
+    purpose: v.string(),
+    conditionJson: v.optional(v.string()),
+    order: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_form_version_and_order", ["formVersionId", "order"])
+    .index("by_form_version_and_requirement_key", ["formVersionId", "requirementKey"])
+    .index("by_school_and_category", ["schoolId", "category"]),
+
+  admissionsDeclarationVersions: defineTable({
+    schoolId: v.id("schools"),
+    programmeId: v.id("admissionsProgrammes"),
+    version: v.number(),
+    title: v.string(),
+    body: v.string(),
+    bodyDigest: v.string(),
+    purpose: v.string(),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
+    publishedAt: v.optional(v.number()),
+    publishedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_programme_and_version", ["schoolId", "programmeId", "version"])
+    .index("by_programme_and_status", ["programmeId", "status"]),
+
+  admissionsProducts: defineTable({
+    schoolId: v.id("schools"),
+    intakeId: v.id("admissionsIntakes"),
+    slug: v.string(),
+    name: v.string(),
+    slotCount: v.literal(1),
+    status: v.union(v.literal("draft"), v.literal("active"), v.literal("paused"), v.literal("retired")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_intake", ["schoolId", "intakeId"])
+    .index("by_school_and_slug", ["schoolId", "slug"])
+    .index("by_intake_and_status", ["intakeId", "status"]),
+
+  admissionsProductPrices: defineTable({
+    schoolId: v.id("schools"),
+    productId: v.id("admissionsProducts"),
+    version: v.number(),
+    amountMinor: v.number(),
+    currency: v.string(),
+    refundPolicyKey: v.string(),
+    feeDisclosure: v.string(),
+    effectiveFrom: v.number(),
+    effectiveTo: v.optional(v.number()),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_product_and_version", ["productId", "version"])
+    .index("by_product_and_status_and_effective_from", ["productId", "status", "effectiveFrom"])
+    .index("by_school_and_status", ["schoolId", "status"]),
+
+  admissionsPurchaseAttempts: defineTable({
+    schoolId: v.id("schools"),
+    guardianId: v.id("admissionsGuardians"),
+    productId: v.id("admissionsProducts"),
+    priceId: v.id("admissionsProductPrices"),
+    provider: admissionsProviderValidator,
+    providerMode: paymentProviderModeValidator,
+    reference: v.string(),
+    idempotencyKey: v.string(),
+    amountMinor: v.number(),
+    currency: v.string(),
+    feeDisclosureSnapshot: v.string(),
+    state: admissionsPurchaseStateValidator,
+    providerAuthorizationReference: v.optional(v.string()),
+    verifiedAt: v.optional(v.number()),
+    failureCode: v.optional(v.string()),
+    entitlementId: v.optional(v.id("admissionsEntitlements")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_reference", ["reference"])
+    .index("by_school_and_reference", ["schoolId", "reference"])
+    .index("by_guardian_and_created_at", ["guardianId", "createdAt"])
+    .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
+    .index("by_school_and_guardian_and_idempotency_key", ["schoolId", "guardianId", "idempotencyKey"]),
+
+  admissionsPaymentEvents: defineTable({
+    schoolId: v.id("schools"),
+    purchaseAttemptId: v.id("admissionsPurchaseAttempts"),
+    provider: admissionsProviderValidator,
+    providerMode: paymentProviderModeValidator,
+    providerEventId: v.string(),
+    eventType: v.string(),
+    bodyDigest: v.string(),
+    signatureValid: v.boolean(),
+    processingStatus: v.union(v.literal("received"), v.literal("verified"), v.literal("processed"), v.literal("ignored"), v.literal("rejected")),
+    processingMessage: v.optional(v.string()),
+    receivedAt: v.number(),
+    processedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_provider_and_provider_event_id", ["schoolId", "provider", "providerEventId"])
+    .index("by_purchase_attempt_and_received_at", ["purchaseAttemptId", "receivedAt"])
+    .index("by_school_and_processing_status_and_received_at", ["schoolId", "processingStatus", "receivedAt"]),
+
+  admissionsEntitlements: defineTable({
+    schoolId: v.id("schools"),
+    guardianId: v.id("admissionsGuardians"),
+    productId: v.id("admissionsProducts"),
+    intakeId: v.id("admissionsIntakes"),
+    sourcePurchaseAttemptId: v.id("admissionsPurchaseAttempts"),
+    state: admissionsEntitlementStateValidator,
+    applicationId: v.optional(v.id("admissionsApplications")),
+    reservedAt: v.optional(v.number()),
+    consumedAt: v.optional(v.number()),
+    voidReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_source_purchase_attempt", ["sourcePurchaseAttemptId"])
+    .index("by_guardian_and_state_and_created_at", ["guardianId", "state", "createdAt"])
+    .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
+    .index("by_application", ["applicationId"]),
+
+  admissionsApplications: defineTable({
+    schoolId: v.id("schools"),
+    guardianId: v.id("admissionsGuardians"),
+    entitlementId: v.id("admissionsEntitlements"),
+    programmeId: v.id("admissionsProgrammes"),
+    intakeId: v.id("admissionsIntakes"),
+    productId: v.id("admissionsProducts"),
+    priceId: v.id("admissionsProductPrices"),
+    formVersionId: v.id("admissionsFormVersions"),
+    declarationVersionId: v.id("admissionsDeclarationVersions"),
+    publicId: v.string(),
+    state: applicationStateValidator,
+    currentRevision: v.number(),
+    latestSnapshotId: v.optional(v.id("admissionsSubmissionSnapshots")),
+    currentDecisionId: v.optional(v.id("admissionsDecisions")),
+    conversionId: v.optional(v.id("admissionsConversions")),
+    requestedEntryLabel: v.optional(v.string()),
+    draftVersion: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entitlement", ["entitlementId"])
+    .index("by_school_and_public_id", ["schoolId", "publicId"])
+    .index("by_guardian_and_updated_at", ["guardianId", "updatedAt"])
+    .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
+    .index("by_school_and_intake_and_state", ["schoolId", "intakeId", "state"]),
+
+  admissionsApplicantProfiles: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    firstName: v.string(),
+    lastName: v.string(),
+    middleName: v.optional(v.string()),
+    dateOfBirth: v.number(),
+    gender: v.optional(v.string()),
+    preferredName: v.optional(v.string()),
+    nationality: v.optional(v.string()),
+    countryOfBirth: v.optional(v.string()),
+    address: v.optional(v.string()),
+    normalizedName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationId"])
+    .index("by_school_and_normalized_name_and_date_of_birth", ["schoolId", "normalizedName", "dateOfBirth"]),
+
+  admissionsApplicationAnswers: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    formFieldId: v.id("admissionsFormFields"),
+    fieldKey: v.string(),
+    valueType: v.string(),
+    serializedValue: v.string(),
+    dataClass: admissionsDataClassValidator,
+    valueVersion: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_field_key", ["applicationId", "fieldKey"])
+    .index("by_form_field", ["formFieldId"])
+    .index("by_school_and_data_class", ["schoolId", "dataClass"]),
+
+  admissionsSubmissionSnapshots: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    revision: v.number(),
+    formVersionId: v.id("admissionsFormVersions"),
+    declarationVersionId: v.id("admissionsDeclarationVersions"),
+    productPriceId: v.id("admissionsProductPrices"),
+    requirementsDigest: v.string(),
+    canonicalDigest: v.string(),
+    signerGuardianId: v.id("admissionsGuardians"),
+    signerName: v.string(),
+    signerRelationship: v.string(),
+    submittedAt: v.number(),
+    declarationAcceptedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_application_and_revision", ["applicationId", "revision"])
+    .index("by_school_and_submitted_at", ["schoolId", "submittedAt"])
+    .index("by_canonical_digest", ["canonicalDigest"]),
+
+  admissionsSubmissionSnapshotItems: defineTable({
+    schoolId: v.id("schools"),
+    snapshotId: v.id("admissionsSubmissionSnapshots"),
+    itemKey: v.string(),
+    kind: v.string(),
+    valueType: v.string(),
+    serializedValue: v.string(),
+    dataClass: admissionsDataClassValidator,
+    sourceRowId: v.optional(v.string()),
+    sourceVersion: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_snapshot_and_item_key", ["snapshotId", "itemKey"])
+    .index("by_school_and_data_class", ["schoolId", "dataClass"])
+    .index("by_snapshot_and_kind", ["snapshotId", "kind"]),
+
+  admissionsDocuments: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    requirementId: v.optional(v.id("admissionsDocumentRequirements")),
+    category: v.string(),
+    documentKey: v.string(),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    mimeType: v.string(),
+    byteSize: v.number(),
+    sha256: v.string(),
+    version: v.number(),
+    state: admissionsDocumentStateValidator,
+    sensitivity: admissionsDataClassValidator,
+    uploadedByGuardianId: v.optional(v.id("admissionsGuardians")),
+    supersedesDocumentId: v.optional(v.id("admissionsDocuments")),
+    retentionHold: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_category_and_version", ["applicationId", "category", "version"])
+    .index("by_document_key", ["documentKey"])
+    .index("by_storage", ["storageId"])
+    .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
+    .index("by_application_and_requirement", ["applicationId", "requirementId"]),
+
+  admissionsDocumentAccessAudits: defineTable({
+    schoolId: v.id("schools"),
+    documentId: v.id("admissionsDocuments"),
+    actorKind: v.union(v.literal("guardian"), v.literal("staff"), v.literal("system")),
+    guardianId: v.optional(v.id("admissionsGuardians")),
+    actorUserId: v.optional(v.id("users")),
+    action: v.union(v.literal("view"), v.literal("download")),
+    outcome: v.union(v.literal("granted"), v.literal("denied")),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_document_and_created_at", ["documentId", "createdAt"])
+    .index("by_school_and_actor_user_and_created_at", ["schoolId", "actorUserId", "createdAt"]),
+
+  admissionsDecisions: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    version: v.number(),
+    state: admissionsDecisionStateValidator,
+    reasonCode: v.optional(v.string()),
+    rationale: v.optional(v.string()),
+    decidedBy: v.id("users"),
+    decidedAt: v.number(),
+    supersedesDecisionId: v.optional(v.id("admissionsDecisions")),
+    createdAt: v.number(),
+  })
+    .index("by_application_and_version", ["applicationId", "version"])
+    .index("by_school_and_state_and_decided_at", ["schoolId", "state", "decidedAt"])
+    .index("by_school_and_decided_by_and_decided_at", ["schoolId", "decidedBy", "decidedAt"]),
+
+  admissionsConversions: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    acceptedDecisionId: v.id("admissionsDecisions"),
+    snapshotId: v.id("admissionsSubmissionSnapshots"),
+    idempotencyKey: v.string(),
+    state: v.union(v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    classId: v.optional(v.id("classes")),
+    admissionNumber: v.optional(v.string()),
+    familyId: v.optional(v.id("families")),
+    studentId: v.optional(v.id("students")),
+    errorCode: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationId"])
+    .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
+    .index("by_idempotency_key", ["idempotencyKey"])
+    .index("by_student", ["studentId"]),
+
+  admissionsApplicationContacts: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    contactKey: v.string(),
+    kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")),
+    fullName: v.string(),
+    relationship: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    address: v.optional(v.string()),
+    isApplicantGuardian: v.boolean(),
+    isPrimary: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_contact_key", ["applicationId", "contactKey"])
+    .index("by_school_and_email", ["schoolId", "email"])
+    .index("by_application_and_is_primary", ["applicationId", "isPrimary"]),
+
+  admissionsPreviousSchools: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    name: v.string(),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    classLabel: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_end_date", ["applicationId", "endDate"])
+    .index("by_school_and_application", ["schoolId", "applicationId"]),
+
+  admissionsDocumentReviews: defineTable({
+    schoolId: v.id("schools"),
+    documentId: v.id("admissionsDocuments"),
+    reviewerUserId: v.id("users"),
+    result: v.union(v.literal("accepted"), v.literal("rejected"), v.literal("needs_replacement")),
+    reasonCode: v.optional(v.string()),
+    guardianMessage: v.optional(v.string()),
+    internalNote: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_document_and_created_at", ["documentId", "createdAt"])
+    .index("by_school_and_reviewer_user_and_created_at", ["schoolId", "reviewerUserId", "createdAt"]),
+
+  admissionsReviewAssignments: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    assigneeUserId: v.id("users"),
+    role: v.string(),
+    state: v.union(v.literal("assigned"), v.literal("completed"), v.literal("cancelled")),
+    dueAt: v.optional(v.number()),
+    assignedByUserId: v.id("users"),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_assignee_user_and_state", ["schoolId", "assigneeUserId", "state"])
+    .index("by_application_and_state", ["applicationId", "state"])
+    .index("by_school_and_state_and_due_at", ["schoolId", "state", "dueAt"]),
+
+  admissionsReviewEvents: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    snapshotId: v.optional(v.id("admissionsSubmissionSnapshots")),
+    actorUserId: v.optional(v.id("users")),
+    actorGuardianId: v.optional(v.id("admissionsGuardians")),
+    eventType: v.string(),
+    visibility: v.union(v.literal("guardian"), v.literal("staff")),
+    reasonCode: v.optional(v.string()),
+    message: v.optional(v.string()),
+    metadataJson: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_application_and_created_at", ["applicationId", "createdAt"])
+    .index("by_school_and_event_type_and_created_at", ["schoolId", "eventType", "createdAt"])
+    .index("by_school_and_visibility_and_created_at", ["schoolId", "visibility", "createdAt"]),
+
+  admissionsEvaluations: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    type: v.union(v.literal("entrance_assessment"), v.literal("interview")),
+    state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")),
+    scheduledAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    resultCode: v.optional(v.string()),
+    score: v.optional(v.number()),
+    evaluatorUserId: v.optional(v.id("users")),
+    version: v.number(),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_type_and_version", ["applicationId", "type", "version"])
+    .index("by_school_and_state_and_scheduled_at", ["schoolId", "state", "scheduledAt"])
+    .index("by_school_and_evaluator_user_and_state", ["schoolId", "evaluatorUserId", "state"]),
+
+  admissionsConversionAttempts: defineTable({
+    schoolId: v.id("schools"),
+    conversionId: v.id("admissionsConversions"),
+    attemptNumber: v.number(),
+    workerKey: v.string(),
+    outcome: v.union(v.literal("succeeded"), v.literal("retryable_failure"), v.literal("terminal_failure")),
+    errorCode: v.optional(v.string()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_conversion_and_attempt_number", ["conversionId", "attemptNumber"])
+    .index("by_school_and_outcome_and_started_at", ["schoolId", "outcome", "startedAt"]),
+
+  admissionsCommunicationOutbox: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.optional(v.id("admissionsApplications")),
+    conversionId: v.optional(v.id("admissionsConversions")),
+    eventKey: v.string(),
+    recipientGuardianId: v.id("admissionsGuardians"),
+    channel: v.union(v.literal("email"), v.literal("sms")),
+    templateKey: v.string(),
+    templateVersion: v.string(),
+    state: v.union(v.literal("pending"), v.literal("sending"), v.literal("sent"), v.literal("failed")),
+    nextAttemptAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_state_and_next_attempt_at", ["schoolId", "state", "nextAttemptAt"])
+    .index("by_conversion_and_event_key", ["conversionId", "eventKey"])
+    .index("by_application_and_event_key", ["applicationId", "eventKey"]),
+
+  admissionsAuditEvents: defineTable({
+    schoolId: v.id("schools"),
+    actorKind: v.union(v.literal("guardian"), v.literal("staff"), v.literal("system")),
+    actorGuardianId: v.optional(v.id("admissionsGuardians")),
+    actorUserId: v.optional(v.id("users")),
+    action: v.string(),
+    entityType: v.string(),
+    entityId: v.string(),
+    applicationId: v.optional(v.id("admissionsApplications")),
+    outcome: v.union(v.literal("success"), v.literal("denied"), v.literal("blocked"), v.literal("failed")),
+    reasonCode: v.optional(v.string()),
+    requestCorrelationId: v.optional(v.string()),
+    metadataJson: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_created_at", ["schoolId", "createdAt"])
+    .index("by_application_and_created_at", ["applicationId", "createdAt"])
+    .index("by_school_and_actor_user_and_created_at", ["schoolId", "actorUserId", "createdAt"])
+    .index("by_school_and_action_and_created_at", ["schoolId", "action", "createdAt"]),
+
+  admissionsRetentionJobs: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.optional(v.id("admissionsApplications")),
+    policyKey: v.string(),
+    policyVersion: v.string(),
+    state: v.union(v.literal("draft"), v.literal("approved"), v.literal("running"), v.literal("completed"), v.literal("cancelled")),
+    scheduledAt: v.number(),
+    cursor: v.optional(v.string()),
+    dryRunCount: v.optional(v.number()),
+    approvedByUserId: v.optional(v.id("users")),
+    executedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_state_and_scheduled_at", ["schoolId", "state", "scheduledAt"])
+    .index("by_application", ["applicationId"])
+    .index("by_school_and_policy_key", ["schoolId", "policyKey"]),
+
+  schoolCapabilityGrants: defineTable({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    capability: admissionsPermissionValidator,
+    scope: capabilityScopeValidator,
+    programmeId: v.optional(v.id("admissionsProgrammes")),
+    intakeId: v.optional(v.id("admissionsIntakes")),
+    grantedByUserId: v.id("users"),
+    reason: v.string(),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    revokedByUserId: v.optional(v.id("users")),
+    isBreakGlass: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_user", ["schoolId", "userId"])
+    .index("by_school_and_capability", ["schoolId", "capability"])
+    .index("by_user_and_capability", ["userId", "capability"]),
+
+  schoolApprovalEvidence: defineTable({
+    schoolId: v.id("schools"),
+    approvalClass: v.union(v.literal("standard"), v.literal("sensitive_public"), v.literal("identity"), v.literal("privacy"), v.literal("finance"), v.literal("legal")),
+    subjectType: v.string(),
+    subjectKey: v.string(),
+    evidenceReference: v.string(),
+    approvedByUserId: v.optional(v.id("users")),
+    approvedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_approval_class", ["schoolId", "approvalClass"])
+    .index("by_school_and_subject_type_and_subject_key", ["schoolId", "subjectType", "subjectKey"])
+    .index("by_school_and_expires_at", ["schoolId", "expiresAt"]),
+
+  schoolSiteProfiles: defineTable({
+    schoolId: v.id("schools"),
+    mode: v.union(v.literal("managed"), v.literal("external"), v.literal("none")),
+    status: v.union(v.literal("draft"), v.literal("review"), v.literal("published"), v.literal("suspended"), v.literal("retired")),
+    rendererKey: v.optional(v.string()),
+    rendererSchemaVersion: v.optional(v.string()),
+    externalPrimaryUrl: v.optional(v.string()),
+    draftRevisionId: v.optional(v.id("schoolSiteRevisions")),
+    publishedRevisionId: v.optional(v.id("schoolSiteRevisions")),
+    canonicalDomainId: v.optional(v.id("schoolDomains")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_status", ["status"]),
+
+  schoolDomains: defineTable({
+    schoolId: v.id("schools"),
+    hostname: v.string(),
+    surface: v.literal("public"),
+    kind: v.union(v.literal("platform_subdomain"), v.literal("custom_domain"), v.literal("school_subdomain")),
+    status: v.union(v.literal("requested"), v.literal("verification_pending"), v.literal("verified"), v.literal("routing_pending"), v.literal("certificate_pending"), v.literal("ready"), v.literal("active"), v.literal("suspended"), v.literal("retired")),
+    canonicalIntent: v.union(v.literal("canonical"), v.literal("redirect")),
+    canonicalDomainId: v.optional(v.id("schoolDomains")),
+    ownership: v.union(v.literal("school_managed_dns"), v.literal("platform_managed_dns")),
+    verificationTokenHash: v.optional(v.string()),
+    nextVerificationCheckAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_hostname", ["hostname"])
+    .index("by_school_and_surface_and_status", ["schoolId", "surface", "status"])
+    .index("by_status_and_next_verification_check_at", ["status", "nextVerificationCheckAt"]),
+
+  schoolSiteAssets: defineTable({
+    schoolId: v.id("schools"),
+    storageId: v.id("_storage"),
+    kind: v.union(v.literal("logo"), v.literal("favicon"), v.literal("hero"), v.literal("gallery"), v.literal("staff"), v.literal("facility"), v.literal("document"), v.literal("social_share")),
+    fileName: v.string(),
+    mediaType: v.string(),
+    byteSize: v.number(),
+    checksum: v.string(),
+    altText: v.optional(v.string()),
+    decorative: v.boolean(),
+    rightsStatus: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"), v.literal("expired")),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
+    rightsExpiresAt: v.optional(v.number()),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_kind_and_status", ["schoolId", "kind", "status"])
+    .index("by_storage", ["storageId"]),
+
+  schoolSiteRevisions: defineTable({
+    schoolId: v.id("schools"),
+    revisionNumber: v.number(),
+    state: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
+    rendererKey: v.string(),
+    rendererSchemaVersion: v.string(),
+    content: siteRevisionContentValidator,
+    contentDigest: v.string(),
+    sourceRevisionId: v.optional(v.id("schoolSiteRevisions")),
+    approvalEvidenceIds: v.array(v.id("schoolApprovalEvidence")),
+    expectedDraftVersion: v.number(),
+    publishedAt: v.optional(v.number()),
+    publishedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_state_and_revision_number", ["schoolId", "state", "revisionNumber"])
+    .index("by_school_and_revision_number", ["schoolId", "revisionNumber"]),
+
+  schoolSiteAuditEvents: defineTable({
+    schoolId: v.id("schools"),
+    actorUserId: v.optional(v.id("users")),
+    eventType: v.union(v.literal("draft_saved"), v.literal("previewed"), v.literal("published"), v.literal("reverted"), v.literal("domain_changed"), v.literal("asset_approved"), v.literal("grant_changed")),
+    revisionId: v.optional(v.id("schoolSiteRevisions")),
+    outcome: v.union(v.literal("success"), v.literal("denied"), v.literal("blocked")),
+    summary: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_created_at", ["schoolId", "createdAt"])
+    .index("by_actor_user_and_created_at", ["actorUserId", "createdAt"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),
+    // New writes use the canonical Convex token identifier. authId remains the
+    // Better Auth bridge for existing memberships until a reviewed backfill.
+    authTokenIdentifier: v.optional(v.string()),
     name: v.string(),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -250,6 +952,7 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_and_email", ["schoolId", "email"])
     .index("by_auth", ["authId"])
+    .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_email", ["email"]),
 
   families: defineTable({
@@ -307,6 +1010,14 @@ export default defineSchema({
     photoFileName: v.optional(v.string()),
     photoContentType: v.optional(v.string()),
     photoUpdatedAt: v.optional(v.number()),
+    // Existing student rows remain valid. Admissions conversion writes these
+    // only after an explicit accepted-application conversion.
+    sourceApplicationId: v.optional(v.id("admissionsApplications")),
+    photoProvenance: v.optional(
+      v.union(v.literal("school_upload"), v.literal("application_upload"))
+    ),
+    photoSourceDocumentId: v.optional(v.id("admissionsDocuments")),
+    photoRetentionHold: v.optional(v.boolean()),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -316,7 +1027,9 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_class", ["classId"])
     .index("by_family", ["familyId"])
-    .index("by_school_and_class", ["schoolId", "classId"]),
+    .index("by_school_and_class", ["schoolId", "classId"])
+    .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
+    .index("by_source_application", ["sourceApplicationId"]),
 
   classes: defineTable({
     schoolId: v.id("schools"),

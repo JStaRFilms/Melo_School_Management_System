@@ -1,5 +1,6 @@
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { matchesPaymentDispatchProviderModeV1 } from "./foundation/paymentDispatch";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -55,6 +56,13 @@ function buildPaystackEventId(payload: any) {
   const reference = normalizeWebhookText(data.reference ?? payload?.reference) ?? "unknown";
   const eventMarker = normalizeWebhookText(data.id ?? payload?.event_id) ?? reference;
   return `paystack:${eventMarker}`;
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function verifyPaystackSignature(
@@ -126,20 +134,15 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     buildPaystackEventId(payload);
 
   const referenceContext: any = await ctx.runQuery(
-    (internal as any).functions.billingProviders.resolveSchoolPaystackReferenceContextInternal,
-    {
-      reference,
-      invoiceId: metadata.invoiceId ?? undefined,
-      invoiceNumber: metadata.invoiceNumber ?? undefined,
-    }
+    (internal as any).functions.foundation.paymentDispatch.resolvePaymentDispatchContextInternal,
+    { reference }
   );
 
   if (!referenceContext) {
     return jsonResponse(
       {
         ok: false,
-        message:
-          "Webhook payload must include a resolvable school invoice reference from the current merchant configuration.",
+        message: "Webhook payload must include a resolvable payment reference.",
       },
       400
     );
@@ -152,9 +155,9 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     );
   }
 
-  if (metadata.providerMode && String(metadata.providerMode) !== String(referenceContext.mode)) {
+  if (!matchesPaymentDispatchProviderModeV1(referenceContext, provider, metadata.providerMode)) {
     return jsonResponse(
-      { ok: false, message: "Webhook invoice reference does not belong to the resolved merchant mode." },
+      { ok: false, message: "Webhook payment reference does not match the resolved provider or merchant mode." },
       400
     );
   }
@@ -163,7 +166,7 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     (internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
     {
       schoolId: referenceContext.schoolId,
-      mode: referenceContext.mode,
+      mode: referenceContext.providerMode,
       purpose: "webhook_verification",
     }
   );
@@ -186,29 +189,48 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
   const eventId = buildPaystackEventId(payload);
   const eventType = normalizeWebhookText(payload?.event) ?? "payment.webhook";
 
-  await ctx.runMutation(
-    (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
-    {
-      schoolId: referenceContext.schoolId,
-      provider: "paystack",
-      providerMode: referenceContext.mode,
-      eventId,
-      eventType,
-      reference,
-      invoiceId: referenceContext.invoiceId,
-      invoiceNumber: referenceContext.invoiceNumber,
-      gatewayReference: metadata.gatewayReference ?? reference,
-      amountReceived: metadata.amountReceived,
-      payerName: metadata.payerName,
-      payerEmail: metadata.payerEmail,
-      rawBody,
-      payload,
-      signatureValid: true,
-      verificationMessage: "Paystack signature verified",
-      attemptReconciliationSource: "webhook",
-      receivedAt: Date.now(),
-    }
-  );
+  const receivedAt = Date.now();
+  if (referenceContext.domain === "billing") {
+    await ctx.runMutation(
+      (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
+      {
+        schoolId: referenceContext.schoolId,
+        provider: "paystack",
+        providerMode: referenceContext.providerMode,
+        eventId,
+        eventType,
+        reference,
+        invoiceId: referenceContext.invoiceId,
+        invoiceNumber: referenceContext.invoiceNumber,
+        gatewayReference: metadata.gatewayReference ?? reference,
+        amountReceived: metadata.amountReceived,
+        payerName: metadata.payerName,
+        payerEmail: metadata.payerEmail,
+        rawBody,
+        payload,
+        signatureValid: true,
+        verificationMessage: "Paystack signature verified",
+        attemptReconciliationSource: "webhook",
+        receivedAt,
+      }
+    );
+  } else {
+    // Admissions payloads never persist raw webhook bodies. B1 will consume the
+    // verified replay-safe envelope to create an entitlement transactionally.
+    await ctx.runMutation(
+      (internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal,
+      {
+        schoolId: referenceContext.schoolId,
+        purchaseAttemptId: referenceContext.purchaseAttemptId,
+        provider: "paystack",
+        providerMode: referenceContext.providerMode,
+        providerEventId: eventId,
+        eventType,
+        bodyDigest: await sha256Hex(rawBody),
+        receivedAt,
+      }
+    );
+  }
 
   return jsonResponse({ ok: true });
 });

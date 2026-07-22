@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>OBHIS public site — D2 design mockup (Revised)</title>
+  <style>
+    :root { --ink:#14231d; --evergreen:#103d31; --leaf:#176c49; --pale:#e0eee6; --clay:#9d4c2e; --gold:#8a5b12; --paper:#f7f5ef; --surface:#fffefa; --mist:#e9e7de; --muted:#526158; --focus:#0b6f94; --shadow:0 12px 28px rgba(16,61,49,.08); }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; } body { margin:0; color:var(--ink); background:var(--paper); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:16px; line-height:1.6; }
+    button,a { font:inherit; } a { color:inherit; } 
+    a:focus-visible,button:focus-visible,summary:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+    .section-dark a:focus-visible,.section-dark button:focus-visible,.footer a:focus-visible,.footer button:focus-visible { outline:3px solid #ffffff; outline-offset:3px; }
+    .skip { position:absolute; z-index:100; top:-60px; left:16px; padding:9px 13px; color:#fff; background:var(--evergreen); } .skip:focus { top:14px; }
+    .design-note { margin:0; padding:9px 16px; color:#fff; background:#526158; text-align:center; font-size:13px; font-weight:700; letter-spacing:.01em; }
+    .shell { width:min(1280px,calc(100% - 48px)); margin:auto; }
+    .site-header { position:sticky; z-index:10; top:0; border-bottom:1px solid rgba(20,35,29,.1); background:rgba(247,245,239,.96); backdrop-filter:blur(10px); }
+    .nav { min-height:80px; display:flex; align-items:center; gap:20px; }
+    .mark { display:flex; align-items:center; gap:10px; min-width:210px; text-decoration:none; font-size:13px; font-weight:800; letter-spacing:.045em; text-transform:uppercase; line-height:1.2; }
+    .mark-icon { position:relative; width:35px; height:35px; border:2px solid var(--evergreen); border-radius:50% 50% 48% 48%; }
+    .mark-icon:after { content:""; position:absolute; width:14px; height:14px; top:8px; left:8px; border-radius:50%; background:var(--leaf); }
+    .nav-links { display:flex; align-items:center; justify-content:center; gap:18px; flex:1; }
+    .nav-links a { padding:8px 0; font-size:14px; font-weight:700; text-decoration:none; }
+    .nav-links a[aria-current="page"] { border-bottom:2px solid var(--leaf); }
+    .button { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-height:46px; padding:11px 17px; border:1px solid transparent; border-radius:12px; color:#fff; background:var(--leaf); font-weight:800; text-decoration:none; cursor:pointer; }
+    .button:hover { background:var(--evergreen); }
+    .button.alt { color:var(--ink); border-color:var(--ink); background:transparent; }
+    .button.alt:hover { color:#fff; background:var(--evergreen); }
+    .button.disabled { opacity:0.6; cursor:not-allowed; background:var(--muted); pointer-events:none; }
+    .button .arrow { font-size:18px; line-height:0; }
+    .mobile-menu { display:none; margin-left:auto; }
+    .mobile-menu summary { list-style:none; min-width:44px; min-height:44px; display:grid; place-items:center; border:1px solid var(--ink); border-radius:10px; cursor:pointer; }
+    .mobile-menu summary::-webkit-details-marker { display:none; }
+    .mobile-panel { position:absolute; left:0; right:0; top:68px; padding:20px 16px 28px; border-bottom:1px solid var(--mist); background:var(--surface); box-shadow:var(--shadow); }
+    .mobile-panel a { display:block; padding:13px 0; font-size:18px; font-weight:750; text-decoration:none; border-bottom:1px solid var(--mist); }
+    .mobile-panel .button { margin-top:20px; width:100%; color:#fff; }
+    
+    .hero { padding:72px 0 88px; overflow:hidden; }
+    .hero-grid { display:grid; grid-template-columns:5fr 1fr 6fr; align-items:center; gap:24px; }
+    .eyebrow { display:flex; align-items:center; gap:10px; margin:0 0 17px; color:var(--clay); font-size:12px; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
+    .eyebrow:before { content:""; display:block; width:30px; height:2px; background:var(--gold); }
+    .hero h1,.page-title { max-width:580px; margin:0; font-family:Georgia,"Times New Roman",serif; font-size:clamp(40px,5vw,64px); line-height:1.03; letter-spacing:-.045em; font-weight:600; }
+    .hero h1 em { color:var(--evergreen); font-style:normal; }
+    .hero-copy { max-width:500px; margin:25px 0 29px; color:var(--muted); font-size:18px; line-height:1.65; }
+    .actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+    .hero-media { position:relative; min-height:480px; }
+    
+    /* Designed Non-Photographic Graphic Hero Fallback */
+    .hero-fallback-graphic { height:480px; border-radius:20px; background:linear-gradient(145deg, var(--evergreen) 0%, #175443 60%, var(--leaf) 100%); position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; padding:36px; color:var(--paper); box-shadow:var(--shadow); }
+    .hero-fallback-graphic::before { content:""; position:absolute; top:-60px; right:-60px; width:280px; height:280px; border-radius:50%; border:40px solid rgba(217,178,115,.15); pointer-events:none; }
+    .hero-fallback-graphic::after { content:""; position:absolute; bottom:-80px; left:-40px; width:320px; height:320px; border-radius:50%; background:radial-gradient(circle, rgba(224,238,230,.1) 0%, transparent 70%); pointer-events:none; }
+    .graphic-badge { align-self:flex-start; padding:6px 12px; border:1px solid rgba(217,178,115,.4); border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#d9b273; }
+    .graphic-body { position:relative; z-index:1; }
+    .graphic-body h2 { font-family:Georgia,serif; font-size:28px; line-height:1.25; margin:0 0 10px; color:#fff; }
+    .graphic-body p { font-size:14px; margin:0; color:#d5e4dd; max-width:340px; }
+
+    .approval-chip { position:absolute; z-index:2; right:20px; top:20px; padding:6px 10px; border-radius:999px; color:var(--evergreen); background:var(--surface); font-size:11px; font-weight:850; letter-spacing:.06em; text-transform:uppercase; }
+    .orientation { border-top:1px solid var(--mist); border-bottom:1px solid var(--mist); background:var(--surface); }
+    .orientation-grid { display:grid; grid-template-columns:repeat(4,1fr); }
+    .orientation a { padding:31px 24px; min-height:146px; text-decoration:none; border-right:1px solid var(--mist); }
+    .orientation a:last-child { border:0; }
+    .orientation .num { display:block; margin-bottom:9px; color:var(--gold); font-family:Georgia,serif; font-size:22px; }
+    .orientation strong { display:block; font-family:Georgia,serif; font-size:22px; line-height:1.15; }
+    .orientation span { color:var(--muted); font-size:13px; }
+    
+    .section { padding:112px 0; }
+    .section-pale { background:var(--pale); }
+    .section-dark { color:var(--paper); background:var(--evergreen); }
+    .section-head { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:41px; }
+    .section-head h2 { max-width:610px; margin:0; font-family:Georgia,serif; font-size:clamp(31px,3.5vw,46px); line-height:1.08; letter-spacing:-.035em; font-weight:600; }
+    .section-intro { max-width:430px; margin:0; color:var(--muted); }
+    .section-dark .section-intro { color:#d5e4dd; }
+    
+    /* Robust Responsive Programme Grid */
+    .programmes { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px; }
+    .programme { position:relative; min-height:280px; padding:28px; border:1px solid var(--mist); border-radius:16px; background:var(--surface); display:flex; flex-direction:column; justify-content:space-between; text-decoration:none; transition:transform .16s ease,box-shadow .16s ease; }
+    .programme:hover { transform:translateY(-3px); box-shadow:var(--shadow); }
+    .programme-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; }
+    .programme .num { color:var(--gold); font-family:Georgia,serif; font-size:26px; line-height:1; }
+    .programme .line { width:32px; height:2px; margin-bottom:14px; background:var(--leaf); }
+    .programme h3 { margin:0 0 7px; font-family:Georgia,serif; font-size:26px; line-height:1.1; font-weight:600; }
+    .programme p { margin:0; color:var(--muted); font-size:15px; }
+    .programme .linkish { margin-top:18px; font-size:14px; font-weight:850; text-decoration:underline; text-underline-offset:4px; }
+    
+    .approach-grid { display:grid; grid-template-columns:5fr 1fr 6fr; gap:24px; align-items:center; }
+    .pull { margin:0; font-family:Georgia,serif; font-size:clamp(34px,4vw,52px); line-height:1.08; letter-spacing:-.035em; }
+    .approach-copy { color:#d5e4dd; font-size:18px; }
+    .approval-line { display:inline-flex; align-items:center; gap:8px; margin-top:20px; padding:7px 10px; border:1px solid rgba(255,255,255,.35); border-radius:999px; color:#e5eee9; font-size:12px; font-weight:800; }
+    .approval-line:before { content:""; width:7px; height:7px; border-radius:50%; background:#d9b273; }
+    
+    .mosaic { display:grid; grid-template-columns:1.5fr 1fr; grid-template-rows:240px 240px; gap:16px; }
+    .mosaic figure { position:relative; margin:0; overflow:hidden; border-radius:16px; }
+    .mosaic figure:first-child { grid-row:span 2; }
+    .mosaic .photo { width:100%; height:100%; }
+    .mosaic figcaption { position:absolute; z-index:2; right:13px; bottom:11px; left:13px; color:#fff; font-size:12px; font-weight:800; }
+    .mosaic .photo:before { position:absolute; z-index:1; left:17px; top:16px; color:#fff; font-size:11px; font-weight:850; letter-spacing:.08em; }
+    .mosaic figure:nth-child(1) .photo { background:linear-gradient(140deg,#d7a779,#8da695); }
+    .mosaic figure:nth-child(1) .photo:before { content:"APPROVED SCHOOL-LIFE ASSET"; }
+    .mosaic figure:nth-child(2) .photo { background:linear-gradient(140deg,#b4c6ad,#e5d6a4); }
+    .mosaic figure:nth-child(2) .photo:before { content:"APPROVED SPACE ASSET"; }
+    .mosaic figure:nth-child(3) .photo { background:linear-gradient(140deg,#aa735b,#d5c197); }
+    .mosaic figure:nth-child(3) .photo:before { content:"APPROVED DETAIL ASSET"; }
+    
+    /* Zero-Imagery Typographic Fallback Block */
+    .zero-imagery-fallback { padding:36px; border:1px dashed var(--leaf); border-radius:16px; background:var(--surface); text-align:center; margin-top:24px; }
+    .zero-imagery-fallback h3 { font-family:Georgia,serif; font-size:24px; margin:0 0 10px; color:var(--evergreen); }
+    .zero-imagery-fallback p { color:var(--muted); max-width:540px; margin:0 auto 18px; font-size:15px; }
+
+    .bridge { display:grid; grid-template-columns:2fr 1fr; gap:32px; align-items:center; padding:52px; border-radius:20px; background:var(--pale); }
+    .bridge h2 { max-width:620px; margin:0; font-family:Georgia,serif; font-size:clamp(31px,3.5vw,45px); line-height:1.08; letter-spacing:-.035em; }
+    .steps { margin:27px 0 0; padding:0; list-style:none; display:flex; gap:20px; }
+    .steps li { display:flex; gap:9px; flex:1; color:var(--muted); font-size:14px; }
+    .steps b { display:grid; flex:0 0 26px; width:26px; height:26px; place-items:center; border-radius:50%; color:#fff; background:var(--evergreen); font-size:12px; }
+    .bridge .button { justify-self:end; }
+    
+    .visit { display:grid; grid-template-columns:1fr 1.1fr; gap:72px; align-items:center; }
+    .visit h2 { margin:0 0 16px; font-family:Georgia,serif; font-size:clamp(34px,4vw,50px); line-height:1.05; letter-spacing:-.04em; }
+    .visit p { max-width:520px; margin:0 0 25px; color:var(--muted); font-size:18px; }
+    
+    .contact-card { padding:32px; border-radius:16px; background:var(--surface); border-left:6px solid var(--leaf); box-shadow:var(--shadow); }
+    .contact-card h3 { margin:0 0 12px; font-family:Georgia,serif; font-size:22px; color:var(--evergreen); }
+    .contact-card p { margin:0 0 16px; color:var(--muted); font-size:15px; }
+    .contact-methods { display:flex; flex-direction:column; gap:10px; font-size:14px; }
+    .contact-item { display:flex; align-items:center; gap:8px; font-weight:700; color:var(--evergreen); }
+    .omission-note { font-size:12px; color:var(--muted); font-style:italic; margin-top:14px; padding-top:12px; border-top:1px solid var(--mist); }
+
+    .footer { padding:65px 0 28px; color:#e7eee9; background:var(--evergreen); }
+    .footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr; gap:40px; padding-bottom:46px; }
+    .footer .mark { color:#fff; }
+    .footer p { max-width:360px; color:#cfe0d8; font-size:14px; }
+    .footer h3 { margin:0 0 12px; color:#d9b273; font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
+    .footer a { display:block; width:max-content; max-width:100%; padding:4px 0; color:#fff; font-size:14px; text-decoration-thickness:1px; text-underline-offset:4px; }
+    .footer-bottom { display:flex; justify-content:space-between; gap:20px; padding-top:20px; border-top:1px solid rgba(255,255,255,.2); color:#cfe0d8; font-size:12px; }
+    .footer-bottom a { display:inline; color:#cfe0d8; }
+    .route-key { display:inline-block; margin-top:12px; padding:4px 7px; border-radius:5px; color:var(--evergreen); background:var(--pale); font-size:11px; font-weight:850; letter-spacing:.04em; }
+    .availability-tag { display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:800; text-transform:uppercase; margin-left:8px; }
+    .availability-tag.open { background:#e0eee6; color:#103d31; }
+    .availability-tag.paused { background:#fef3c7; color:#92400e; }
+    .availability-tag.closed { background:#fee2e2; color:#991b1b; }
+
+    @media (max-width:1023px) { 
+      .shell { width:min(100% - 32px,900px); }
+      .nav { min-height:68px; }
+      .nav-links,.nav>.button { display:none; }
+      .mobile-menu { display:block; }
+      .hero { padding:54px 0 64px; }
+      .hero-grid,.approach-grid { grid-template-columns:1fr 1fr; }
+      .hero-grid>div:nth-child(2),.approach-grid>div:nth-child(2) { display:none; }
+      .hero-media { min-height:420px; }
+      .orientation-grid { grid-template-columns:repeat(2,1fr); }
+      .section { padding:76px 0; }
+      .bridge { padding:36px; }
+      .steps { flex-direction:column; gap:11px; }
+      .visit { gap:38px; } 
+    }
+    @media (max-width:640px) { 
+      .design-note { text-align:left; font-size:11px; }
+      .shell { width:calc(100% - 32px); }
+      .hero { padding:42px 0 55px; }
+      .hero-grid,.approach-grid,.visit,.bridge { grid-template-columns:1fr; }
+      .hero h1 { font-size:43px; }
+      .hero-copy { font-size:16px; }
+      .hero-media { margin-top:10px; min-height:380px; }
+      .orientation-grid { grid-template-columns:1fr; }
+      .orientation a { min-height:0; padding:23px 4px; border-right:0; border-bottom:1px solid var(--mist); }
+      .orientation a:last-child { border:0; }
+      .section { padding:56px 0; }
+      .section-head { display:block; margin-bottom:29px; }
+      .section-intro { margin-top:15px; }
+      .mosaic { grid-template-columns:1fr; grid-template-rows:240px 185px 185px; }
+      .mosaic figure:first-child { grid-row:auto; }
+      .bridge { gap:26px; padding:28px 22px; }
+      .bridge .button { justify-self:start; width:100%; }
+      .visit { gap:25px; }
+      .footer-grid { grid-template-columns:1fr; gap:25px; }
+      .footer-bottom { display:block; }
+      .footer-bottom a { display:block; margin-top:6px; }
+    }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*:before,*:after { transition:none !important; animation:none !important; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <p class="design-note">D2 DESIGN MOCKUP · no school fact, contact, programme, fee, or image shown here is publication-approved · see the approval sheet</p>
+  <header class="site-header">
+    <div class="shell nav">
+      <a class="mark" href="#home" aria-label="Approved school display name, home">
+        <span class="mark-icon" aria-hidden="true"></span><span>[Approved school<br>display name]</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#home" aria-current="page">Home</a>
+        <a href="#about">About</a>
+        <a href="#programmes">Programmes</a>
+        <a href="#admissions">Admissions</a>
+        <a href="#school-life">School life</a>
+        <a href="#visit">Visit</a>
+      </nav>
+      <!-- Application link consumes B0 ApplicationLinkV1 resolver -->
+      <a class="button" href="https://apply.schoolos.example/s/obhis" target="_blank" rel="noopener noreferrer" aria-label="Start an application (opens secure admissions site in new window)">
+        Start an application <span class="arrow" aria-hidden="true">→</span>
+      </a>
+      
+      <!-- Accessible Mobile Navigation Dialog -->
+      <details class="mobile-menu" aria-label="Navigation Menu">
+        <summary aria-label="Open navigation menu" role="button" aria-haspopup="dialog">☰</summary>
+        <div class="mobile-panel" role="dialog" aria-modal="true" aria-label="Mobile navigation panel">
+          <nav aria-label="Mobile primary navigation">
+            <a href="#home">Home</a>
+            <a href="#about">About</a>
+            <a href="#programmes">Programmes</a>
+            <a href="#admissions">Admissions</a>
+            <a href="#school-life">School life</a>
+            <a href="#visit">Visit</a>
+            <a href="#contact">Contact</a>
+          </nav>
+          <a class="button" href="https://apply.schoolos.example/s/obhis" target="_blank" rel="noopener noreferrer" aria-label="Start an application (opens secure admissions site)">
+            Start an application <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </details>
+    </div>
+  </header>
+  
+  <main id="main">
+    <!-- Home Route (/) -->
+    <section id="home" class="hero"><div class="shell hero-grid">
+      <div>
+        <p class="eyebrow">A school-first beginning</p>
+        <h1>A considered <em>place to begin.</em></h1>
+        <p class="hero-copy">This is an approval-aware content placeholder for the school’s short introduction. It demonstrates the reading rhythm, not a public claim about services, outcomes, or availability.</p>
+        <div class="actions">
+          <a class="button" href="https://apply.schoolos.example/s/obhis" target="_blank" rel="noopener noreferrer">Start an application <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="button alt" href="#visit">Plan a visit</a>
+        </div>
+        <span class="route-key">Route: / (Home) · identity & approved hero copy only</span>
+      </div>
+      <div aria-hidden="true"></div>
+      <div class="hero-media" aria-label="Hero visual container">
+        <!-- Designed Non-Photographic Graphic Hero Fallback (used when no approved photo asset exists) -->
+        <div class="hero-fallback-graphic">
+          <span class="graphic-badge">Approved non-photographic fallback</span>
+          <div class="graphic-body">
+            <h2>Olive Blessed Crest Academy</h2>
+            <p>A calm, editorial representation of environment and values, active prior to photographic asset approval.</p>
+          </div>
+          <span class="route-key" style="align-self:flex-start; margin:0;">obhis-v1 graphic composition</span>
+        </div>
+      </div>
+    </div></section>
+    
+    <section class="orientation" aria-label="Explore the school routes"><div class="shell orientation-grid">
+      <a href="#about"><span class="num">01</span><strong>About</strong><span>Approved values & approach</span></a>
+      <a href="#programmes"><span class="num">02</span><strong>Programmes</strong><span>Current approved entry points</span></a>
+      <a href="#admissions"><span class="num">03</span><strong>Admissions</strong><span>Understand the next approved step</span></a>
+      <a href="#visit"><span class="num">04</span><strong>Plan a visit</strong><span>Confirmed contact & visit guidance</span></a>
+    </div></section>
+
+    <!-- About Route (/about) -->
+    <section id="about" class="section section-pale"><div class="shell">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Approved framing</p>
+          <h2>About the school identity & values.</h2>
+        </div>
+        <p class="section-intro">This section presents approved leadership positioning and documented school approach. Unverified historical claims remain omitted.</p>
+      </div>
+      <div class="approach-grid" style="grid-template-columns: 1fr 1fr; gap: 40px;">
+        <div style="background:var(--surface); padding:32px; border-radius:16px; border:1px solid var(--mist);">
+          <h3 style="font-family:Georgia,serif; font-size:24px; margin:0 0 12px; color:var(--evergreen);">Values & Approach</h3>
+          <p style="margin:0 0 16px; color:var(--muted); font-size:15px;">When published, approved core values appear here as a calm editorial list. The renderer never parses historical brochure slogans as active commitments without explicit approval.</p>
+          <span class="approval-line">Approved values ledger field</span>
+        </div>
+        <div style="background:var(--surface); padding:32px; border-radius:16px; border:1px solid var(--mist);">
+          <h3 style="font-family:Georgia,serif; font-size:24px; margin:0 0 12px; color:var(--evergreen);">Leadership Welcome</h3>
+          <p style="margin:0 0 16px; color:var(--muted); font-size:15px;">Leadership messages require current name, title, approved quote, and portrait consent together. If any item is unapproved, the entire block is omitted cleanly.</p>
+          <span class="route-key">Route: /about · consent-gated</span>
+        </div>
+      </div>
+    </div></section>
+
+    <!-- Programmes Route (/programmes) -->
+    <section id="programmes" class="section"><div class="shell">
+      <div class="section-head"><div><p class="eyebrow">Find an entry point</p><h2>Current programmes, clearly presented.</h2></div><p class="section-intro">The renderer displays only approved programme records. Cards reflow dynamically based on published record count.</p></div>
+      <div class="programmes">
+        <a class="programme" href="#admissions">
+          <div class="programme-header">
+            <span class="num">01</span>
+            <span class="availability-tag open">Open</span>
+          </div>
+          <div>
+            <div class="line"></div>
+            <h3>[Approved programme]</h3>
+            <p>Approved age/class descriptor and concise programme overview appear here when published.</p>
+          </div>
+          <span class="linkish">Explore this entry point →</span>
+        </a>
+        <a class="programme" href="#admissions">
+          <div class="programme-header">
+            <span class="num">02</span>
+            <span class="availability-tag open">Open</span>
+          </div>
+          <div>
+            <div class="line"></div>
+            <h3>[Approved programme]</h3>
+            <p>A second current record maintains a calm progression without assuming a full school range.</p>
+          </div>
+          <span class="linkish">Explore this entry point →</span>
+        </a>
+        <a class="programme" href="#admissions">
+          <div class="programme-header">
+            <span class="num">03</span>
+            <span class="availability-tag open">Open</span>
+          </div>
+          <div>
+            <div class="line"></div>
+            <h3>[Approved programme]</h3>
+            <p>Absent records are omitted; B5 does not invent a card to complete a visual grid.</p>
+          </div>
+          <span class="linkish">Explore this entry point →</span>
+        </a>
+      </div>
+      <span class="route-key" style="margin-top:20px;">Route: /programmes · bounded records only</span>
+    </div></section>
+
+    <!-- Vision & Editorial Band -->
+    <section class="section section-dark"><div class="shell approach-grid">
+      <div><p class="eyebrow" style="color:#d9b273">An approved point of view</p><p class="pull">“A short values statement belongs here only after school approval.”</p><span class="approval-line">Approved values / mission field</span></div><div aria-hidden="true"></div><div class="approach-copy">A supporting editorial paragraph gives space for approved mission, values, or approach text. It is removed—not replaced with historical brochure language—when that content has not been approved.</div>
+    </div></section>
+
+    <!-- School Life Route (/school-life) -->
+    <section id="school-life" class="section section-pale"><div class="shell">
+      <div class="section-head"><div><p class="eyebrow">See the setting</p><h2>Evidence is more useful than a superlative.</h2></div><p class="section-intro">A purposeful mosaic presents current, rights-cleared images with captions. It avoids stock-child imagery and does not make unsupported facility or safety claims.</p></div>
+      
+      <!-- Mosaic when rights-cleared imagery exists -->
+      <div class="mosaic">
+        <figure><div class="photo" role="img" aria-label="Placeholder for approved school-life asset"></div><figcaption>[Approved caption; alt text is separate and non-identifying]</figcaption></figure>
+        <figure><div class="photo" role="img" aria-label="Placeholder for approved space asset"></div><figcaption>[Approved factual space label]</figcaption></figure>
+        <figure><div class="photo" role="img" aria-label="Placeholder for approved detail asset"></div><figcaption>[Approved detail caption]</figcaption></figure>
+      </div>
+
+      <!-- Zero-Imagery Typographic Fallback Demonstration -->
+      <div class="zero-imagery-fallback">
+        <h3>Designed Zero-Imagery Fallback</h3>
+        <p>When no public photo assets are approved or rights-cleared, the renderer replaces the photo grid with a typographic evidence block rather than displaying stock photos or grey placeholder boxes.</p>
+        <a class="button alt" href="#visit">Plan a campus visit <span class="arrow" aria-hidden="true">→</span></a>
+      </div>
+      <span class="route-key" style="margin-top:20px;">Route: /school-life · rights & consent gated</span>
+    </div></section>
+
+    <!-- Admissions Route (/admissions) -->
+    <section id="admissions" class="section"><div class="shell bridge">
+      <div>
+        <p class="eyebrow">A clear next step</p>
+        <h2>Admissions continues in the secure application experience.</h2>
+        <ol class="steps">
+          <li><b>1</b><span>Explore approved programmes and the current entry point.</span></li>
+          <li><b>2</b><span>Start a secure application through the canonical admissions link.</span></li>
+          <li><b>3</b><span>Follow the current requirements presented there.</span></li>
+        </ol>
+        <span class="route-key">Route: /admissions · links.application resolver integration</span>
+      </div>
+      
+      <!-- Application Link Availability Demonstration -->
+      <div style="display:flex; flex-direction:column; gap:12px; align-items:flex-end;">
+        <a class="button" href="https://apply.schoolos.example/s/obhis" target="_blank" rel="noopener noreferrer" aria-label="Start an application (opens secure admissions site)">
+          Start an application <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <span style="font-size:12px; color:var(--muted); font-style:italic;">Availability: <strong>open</strong> (B0 ApplicationLinkV1 resolved)</span>
+      </div>
+    </div></section>
+
+    <!-- Visit & Contact Routes (/visit & /contact) -->
+    <section id="visit" class="section"><div class="shell visit">
+      <div>
+        <p class="eyebrow">Visit and contact</p>
+        <h2>Make the next conversation easy.</h2>
+        <p>Use this area for approved visit guidance and contact routes. Address, office hours, maps, and response promises remain absent until the school confirms them.</p>
+        <div class="actions">
+          <a class="button alt" href="#contact">Contact the school <span class="arrow" aria-hidden="true">→</span></a>
+        </div>
+        <span class="route-key" style="margin-top:16px;">Routes: /visit & /contact</span>
+      </div>
+      
+      <!-- Authentic Contact Panel Demonstration -->
+      <aside id="contact" class="contact-card" aria-label="Approved contact information">
+        <h3>Contact & Visit Guidance</h3>
+        <p>Approved address, phone, email, and visit hours render as structured typed fields when confirmed by the school owner.</p>
+        <div class="contact-methods">
+          <div class="contact-item">📍 <span>[Approved school address appears here when confirmed]</span></div>
+          <div class="contact-item">📞 <span>[Approved public telephone channel]</span></div>
+          <div class="contact-item">✉️ <span>[Approved contact email address]</span></div>
+        </div>
+        <p class="omission-note">Unapproved or unconfirmed contact channels are omitted completely. No fictional phone numbers, temporary gmail addresses, or debug placeholder strings are exposed to the public.</p>
+      </aside>
+    </div></section>
+  </main>
+
+  <footer class="footer"><div class="shell">
+    <div class="footer-grid">
+      <div>
+        <a class="mark" href="#home">
+          <span class="mark-icon" aria-hidden="true" style="border-color:#fff"></span>
+          <span>[Approved school<br>display name]</span>
+        </a>
+        <p>Footer composition demonstrates the conditional content boundary. Unapproved contact details, policies, or portal routes remain hidden.</p>
+      </div>
+      <div>
+        <h3>Explore</h3>
+        <a href="#home">Home</a>
+        <a href="#about">About</a>
+        <a href="#programmes">Programmes</a>
+        <a href="#admissions">Admissions</a>
+        <a href="#school-life">School life</a>
+        <a href="#visit">Visit</a>
+      </div>
+      <div>
+        <h3>Family access</h3>
+        <a href="https://apply.schoolos.example/s/obhis" target="_blank" rel="noopener noreferrer">Start an application</a>
+        <!-- Conditional Link: Rendered only when B0 resolves links.portal -->
+        <a href="#portal-contract" aria-label="Family portal (conditional link)">Family portal <span aria-hidden="true">↗</span> <small style="opacity:0.75">(conditional)</small></a>
+        <!-- Conditional Link: Rendered only when policies[] is non-empty -->
+        <a href="#policy-contract" aria-label="Policies (conditional link)">Policies <small style="opacity:0.75">(conditional)</small></a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© [current year supplied by product policy] [approved display name]</span>
+      <span><a href="#privacy-contract">Privacy</a> · <a href="#approval-sheet">Content approval required</a></span>
+    </div>
+  </div></footer>
+
+  <!-- Implementation notes: Revised D2 design artifact for obhis-v1 renderer. All 8 review items resolved: complete route manifest (/about, /programmes, /admissions, etc.), accessible mobile navigation, B0 ApplicationLinkV1 integration, non-photographic & zero-imagery fallbacks, omission of debug placeholders, robust card reflow, and high-contrast focus rings for dark surfaces. -->
+</body>
+</html>
+

@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Admissions staff review journeys — design mockup</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5b667a;
+      --line: #d8dfeb;
+      --canvas: #f4f7fb;
+      --surface: #fff;
+      --brand: #243c9b;
+      --brand-weak: #e9edff;
+      --success: #087a61;
+      --success-weak: #dff7ef;
+      --warn: #9a5b00;
+      --warn-weak: #fff2d5;
+      --danger: #b42318;
+      --danger-weak: #ffe8e7;
+      --purple: #6846a6;
+      --radius: 14px;
+      --shadow: 0 10px 25px rgba(20,35,68,.08);
+      font: 15px/1.48 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); }
+    button, .button {
+      font: inherit; font-weight: 750; border-radius: 8px; border: 1px solid var(--brand);
+      min-height: 40px; min-width: 40px; padding: .58rem .9rem; background: var(--brand); color: #fff;
+      display: inline-flex; gap: .4rem; align-items: center; justify-content: center; cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button:hover, .button:hover { background: #1c307e; }
+    .secondary { background: #fff; color: var(--brand); border-color: var(--brand); }
+    .secondary:hover { background: #f0f4ff; }
+    .quiet { background: transparent; border-color: transparent; color: var(--brand); }
+    .quiet:hover { background: #eef2fb; }
+    .danger { background: var(--danger); border-color: var(--danger); }
+    .danger:hover { background: #911c13; }
+    button:disabled, .button:disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+
+    .top { background: #172033; color: white; padding: .8rem max(1rem, calc((100vw - 1320px)/2)); display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+    .top strong { font-size: 1.02rem; }
+    .top small { color: #c9d2e3; }
+    
+    .shell { max-width: 1320px; margin: auto; padding: 1.5rem 1rem 4rem; }
+    .intro { max-width: 820px; }
+    .intro h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; margin: .25rem 0; }
+    .muted { color: var(--muted); }
+    .small { font-size: .84rem; }
+    .pill { display: inline-flex; align-items: center; gap: .3rem; border-radius: 99px; min-height: 24px; padding: .2rem .55rem; background: #edf1f7; color: #455064; font-size: .76rem; font-weight: 800; white-space: nowrap; }
+    .pill.success { background: var(--success-weak); color: #075f4d; }
+    .pill.warn { background: var(--warn-weak); color: #7a4800; }
+    .pill.danger { background: var(--danger-weak); color: #97231b; }
+    .pill.brand { background: var(--brand-weak); color: var(--brand); }
+
+    .screen { margin: 1.8rem 0; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: var(--radius); overflow: hidden; }
+    .label { background: #eef2fb; border-bottom: 1px solid var(--line); padding: .75rem 1.1rem; display: flex; justify-content: space-between; gap: 1rem; font-weight: 800; font-size: .86rem; }
+    .label small { color: var(--muted); font-weight: 500; }
+    .body { padding: 1.25rem; }
+    .annotation { border-left: 4px solid var(--purple); margin-top: 1.25rem; padding: .5rem .85rem; background: #faf8ff; color: #403665; font-size: .87rem; border-radius: 0 8px 8px 0; }
+    .annotation strong { display: block; margin-bottom: .2rem; color: #2c1a52; }
+
+    .toolbar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .toolbar select, .toolbar input, .field input, .field textarea, .field select { font: inherit; border: 1px solid #a4b0c2; border-radius: 7px; padding: .5rem .6rem; background: #fff; min-height: 40px; }
+    .toolbar input { min-width: 170px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; min-width: 920px; }
+    th { text-align: left; background: #f7f9fc; color: #4c586d; font-size: .77rem; text-transform: uppercase; letter-spacing: .03em; }
+    th, td { padding: .72rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    tr:last-child td { border: 0; }
+    td strong { display: block; }
+    
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
+    .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem; background: #fff; }
+    .notice { padding: .85rem 1rem; border: 1px solid #f3ca76; border-radius: 9px; background: var(--warn-weak); color: #704200; }
+    .notice.success { background: var(--success-weak); border-color: #9de1ca; color: #075a48; }
+    .notice.danger { background: var(--danger-weak); border-color: #f5aaa5; color: #8c221a; }
+    .notice h3 { font-size: 1rem; margin: 0 0 .2rem; }
+    
+    .app-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 1rem; }
+    .rail { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; align-self: start; }
+    .rail h3 { margin: .15rem 0 .8rem; }
+    .rail-item { padding: .58rem 0; border-bottom: 1px solid var(--line); }
+    .rail-item:last-child { border: 0; }
+    .tabs { border-bottom: 1px solid var(--line); display: flex; gap: .25rem; overflow: auto; margin-bottom: 1rem; }
+    .tabs button { border-radius: 7px 7px 0 0; background: transparent; border-color: transparent; color: #4b5870; white-space: nowrap; min-height: 38px; }
+    .tabs button.active { color: var(--brand); background: var(--brand-weak); border-color: var(--brand-weak); }
+    
+    .field { margin: .75rem 0; }
+    .field label { font-weight: 750; display: block; margin-bottom: .25rem; }
+    .field textarea { width: 100%; min-height: 74px; }
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .8rem; }
+    .lock { padding: .9rem; border: 1px solid #b8a6dd; background: #f7f3ff; color: #443166; border-radius: 9px; }
+    .doc { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--line); }
+    .doc:last-child { border: 0; }
+    .timeline { border-left: 2px solid var(--line); padding-left: 1rem; margin: .4rem; }
+    .timeline div { padding: 0 0 .85rem; position: relative; }
+    .timeline div:before { content: ""; position: absolute; left: -1.34rem; top: .26rem; width: .58rem; height: .58rem; border-radius: 50%; background: var(--brand); }
+    .check { display: flex; gap: .55rem; align-items: flex-start; margin: .6rem 0; }
+    .state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .75rem; }
+    .state { border: 1px solid var(--line); border-radius: 9px; padding: .85rem; background: #fff; }
+    .state p { margin: .35rem 0 0; color: var(--muted); font-size: .82rem; }
+    .audit { display: grid; grid-template-columns: 130px 1fr 130px; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid var(--line); font-size: .87rem; }
+    .mobile-filter { display: none; }
+
+    /* Modal / Drawer Overlay Styling */
+    .modal-backdrop { background: rgba(15, 23, 42, 0.55); padding: 1.5rem; border-radius: 12px; margin: 1rem 0; }
+    .modal-dialog { background: #fff; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 20px 40px rgba(0,0,0,0.18); padding: 1.5rem; max-width: 600px; margin: auto; }
+
+    @media (max-width: 760px) {
+      .top { padding: .7rem; }
+      .top small { display: none; }
+      .shell { padding: 1.15rem .7rem 5rem; }
+      .body { padding: 1rem; }
+      .label { align-items: flex-start; flex-direction: column; }
+      .label small { max-width: 100%; text-align: left; margin-top: .2rem; }
+      .app-shell { display: block; }
+      .rail { margin-bottom: 1rem; }
+      .tabs { position: sticky; top: 0; background: #fff; z-index: 1; }
+      .grid { display: block; }
+      .grid > .card { margin-bottom: 1rem; }
+      .toolbar .desktop-filter { display: none; }
+      .mobile-filter { display: inline-flex; }
+      .toolbar input { min-width: 0; flex: 1; }
+      .audit { grid-template-columns: 1fr; gap: .15rem; }
+      .actions button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<header class="top">
+  <strong>Admin · Admissions</strong>
+  <small>Design reference only · Tenant-scoped private operations</small>
+  <span class="pill brand">Staff review journey</span>
+</header>
+
+<main class="shell">
+  <section class="intro">
+    <span class="pill brand">D1 · Build-ready annotated wireframes (Updated)</span>
+    <h1>Staff triage, decision, & conversion</h1>
+    <p class="muted">A permission-aware operations UI. Queue data is redacted by default; sensitive document access, decision authority, conversion execution, and audit review are explicit permissions and deliberate actions.</p>
+  </section>
+
+  <!-- SCREEN 01: Tenant-Scoped Admissions Queue & Complete Filter Suite -->
+  <section class="screen" aria-labelledby="queue-title">
+    <div class="label">
+      <span>01 · Tenant-scoped admissions queue</span>
+      <small>`applications.list` · 6 Bounded filters + pagination + mobile filter drawer</small>
+    </div>
+    <div class="body">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+        <div>
+          <span class="pill brand">[Approved school name]</span>
+          <h2 id="queue-title">Admissions queue</h2>
+          <p class="muted">Review published applications for this school only.</p>
+        </div>
+        <button type="button">Copy public application link</button>
+      </div>
+
+      <!-- Toolbar with 6 Bounded Filters -->
+      <div class="toolbar" style="margin-top: 1rem;">
+        <input aria-label="Search application reference" placeholder="App reference (APP-...)">
+        <select class="desktop-filter" aria-label="Filter by intake"><option>All intakes</option></select>
+        <select class="desktop-filter" aria-label="Filter by workflow state"><option>All workflow states</option></select>
+        <select class="desktop-filter" aria-label="Filter by decision state"><option>All decision states</option></select>
+        <select class="desktop-filter" aria-label="Filter by assignee"><option>All assignees</option></select>
+        <select class="desktop-filter" aria-label="Filter by completeness"><option>All completeness states</option></select>
+        <input type="date" class="desktop-filter" aria-label="Filter by date from">
+        <button type="button" class="secondary desktop-filter">Apply filters</button>
+        <button type="button" class="secondary mobile-filter">Filters (3 active)</button>
+        <button type="button" class="quiet">Clear</button>
+      </div>
+
+      <p class="small muted">3 active filters · 1–25 of 86 applications</p>
+
+      <!-- Queue Table -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Application</th>
+              <th>Programme / Intake</th>
+              <th>Workflow</th>
+              <th>Completeness</th>
+              <th>Assignee</th>
+              <th>Updated</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>APP-••••204</strong>
+                <span class="small muted">Basic identity shown only when permitted</span>
+              </td>
+              <td>[Programme]<br><span class="small muted">[Intake]</span></td>
+              <td><span class="pill warn">! Changes requested</span></td>
+              <td>2 updates needed</td>
+              <td>[Reviewer]</td>
+              <td>Today, 10:42</td>
+              <td><button type="button" class="secondary">Open</button></td>
+            </tr>
+            <tr>
+              <td>
+                <strong>APP-••••810</strong>
+                <span class="small muted">No document preview</span>
+              </td>
+              <td>[Programme]<br><span class="small muted">[Intake]</span></td>
+              <td><span class="pill brand">● Under review</span></td>
+              <td>Ready for review</td>
+              <td>Unassigned</td>
+              <td>Yesterday</td>
+              <td><button type="button" class="secondary">Open</button></td>
+            </tr>
+            <tr>
+              <td>
+                <strong>APP-••••329</strong>
+              </td>
+              <td>[Programme]<br><span class="small muted">[Intake]</span></td>
+              <td><span class="pill success">● Decision recorded</span></td>
+              <td>Complete</td>
+              <td>[Decision maker]</td>
+              <td>Jul 21</td>
+              <td><button type="button" class="secondary">Open</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="actions" style="margin-top: .8rem;">
+        <button type="button" class="secondary">Previous</button>
+        <button type="button" class="secondary">Next</button>
+      </div>
+
+      <!-- Mobile Filter Drawer Overlay Mockup -->
+      <div class="modal-backdrop" role="region" aria-label="Mobile filter drawer mockup">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mobile-filter-title">
+          <h3 id="mobile-filter-title">Filter Queue Applications</h3>
+          <div class="grid" style="grid-template-columns: 1fr 1fr; gap:.5rem;">
+            <div class="field"><label>Intake</label><select><option>All intakes</option></select></div>
+            <div class="field"><label>Workflow State</label><select><option>All workflow states</option></select></div>
+            <div class="field"><label>Decision State</label><select><option>All decision states</option></select></div>
+            <div class="field"><label>Assignee</label><select><option>All assignees</option></select></div>
+            <div class="field"><label>Completeness</label><select><option>All completeness states</option></select></div>
+            <div class="field"><label>Date Range</label><input type="date"></div>
+          </div>
+          <div class="actions">
+            <button type="button">Apply filters</button>
+            <button type="button" class="secondary">Clear filters</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Queue Empty States Gallery -->
+      <h3 style="font-size:1rem; margin-top:1.5rem;">Queue Empty & Permission States</h3>
+      <div class="state-grid">
+        <div class="state">
+          <span class="pill">No Filter Matches</span>
+          <h4 style="margin:.3rem 0 .1rem;">No applications match these filters</h4>
+          <p>Try adjusting or clearing your active intake, state, or date filters.</p>
+          <button type="button" class="quiet" style="margin-top:.4rem;">Clear all filters</button>
+        </div>
+        <div class="state" style="border-color: #f5aaa5; background: #fff8f8;">
+          <span class="pill danger">Not Found or Denied (`NOT_FOUND_OR_DENIED`)</span>
+          <h4 style="margin:.3rem 0 .1rem;">The application is unavailable</h4>
+          <p>Tenant isolation response; does not expose whether the application exists in another school scope.</p>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Redaction and isolation</strong>
+      School context is persistent and filter changes reset results. Queue rows never expose DOB, address, medical values, document thumbnails/raw filenames, storage IDs, or private file URLs. A denied or unknown application resolves to `NOT_FOUND_OR_DENIED`.
+    </div>
+  </section>
+
+  <!-- SCREEN 02: Application Detail & Sensitive Data Reveal Gate Modal -->
+  <section class="screen" aria-labelledby="detail-title">
+    <div class="label">
+      <span>02 · Application detail & step-up sensitive reveal gate</span>
+      <small>`applications.view_basic` vs `applications.view_sensitive` · Read-only snapshot</small>
+    </div>
+    <div class="body">
+      <div class="app-shell">
+        <aside class="rail">
+          <span class="pill brand">● Under review</span>
+          <h3>APP-••••810</h3>
+          <div class="rail-item"><strong>Programme / intake</strong><span class="small muted">[Published value]</span></div>
+          <div class="rail-item"><strong>Revision</strong><span class="small muted">Revision 2 submitted [date]</span></div>
+          <div class="rail-item"><strong>Completeness</strong><span class="pill success">● Required items complete</span></div>
+          <div class="rail-item"><strong>Assignment</strong><span class="small muted">[Reviewer] · due [date]</span></div>
+          <div class="rail-item"><strong>Decision</strong><span class="small muted">In evaluation</span></div>
+          <div class="rail-item"><strong>Conversion</strong><span class="small muted">Not requested</span></div>
+        </aside>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap">
+            <div>
+              <h2 id="detail-title">Application review</h2>
+              <p class="muted">Current submitted revision · Staff cannot edit guardian snapshot values.</p>
+            </div>
+            <div class="actions" style="margin:0">
+              <button type="button" class="secondary">Assign</button>
+              <button type="button">Request changes</button>
+            </div>
+          </div>
+
+          <nav class="tabs" aria-label="Application sections">
+            <button type="button" class="active">Overview</button>
+            <button type="button">Application</button>
+            <button type="button">Documents</button>
+            <button type="button">Review</button>
+            <button type="button">Decision</button>
+            <button type="button">Conversion</button>
+            <button type="button">Audit</button>
+          </nav>
+
+          <div class="grid">
+            <section class="card" style="grid-column: span 7;">
+              <h3>Submitted application summary</h3>
+              <dl class="small">
+                <dt class="muted">Child and entry details</dt>
+                <dd>[Basic permitted summary from revision 2]</dd>
+                <dt class="muted">Primary guardian</dt>
+                <dd>[Permitted contact summary]</dd>
+                <dt class="muted">Declaration</dt>
+                <dd>[Exact submitted declaration version / timestamp]</dd>
+              </dl>
+
+              <div class="lock">
+                <strong>Restricted sensitive information</strong>
+                <p class="small">Medical, identity, and other high-risk responses are hidden. Explicit permission (`applications.view_sensitive`) is required; access is audited.</p>
+                <button type="button" class="secondary">Request / reveal authorized access</button>
+              </div>
+            </section>
+
+            <aside class="card" style="grid-column: span 5;">
+              <h3>Revision history</h3>
+              <div class="timeline">
+                <div>
+                  <strong>Revision 2 submitted</strong><br>
+                  <span class="small muted">[date] · responds to requested changes</span>
+                </div>
+                <div>
+                  <strong>Changes requested</strong><br>
+                  <span class="small muted">Guardian-safe message sent</span>
+                </div>
+                <div>
+                  <strong>Revision 1 submitted</strong><br>
+                  <span class="small muted">[date]</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <!-- Step-up Authorization Modal Mockup for Sensitive Fields -->
+          <div class="modal-backdrop" role="region" aria-label="Sensitive reveal gate modal">
+            <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reveal-title">
+              <span class="pill warn">🔒 Step-up Sensitive Access Gate</span>
+              <h3 id="reveal-title" style="margin:.4rem 0 .2rem;">Reveal Restricted Sensitive Fields</h3>
+              <p class="small muted">You are requesting access to high-risk medical/support or identity information for APP-••••810. This action will be permanently logged in the audit trail.</p>
+              
+              <div class="field">
+                <label for="reveal-reason">Access Purpose / Reason <span>Required</span></label>
+                <select id="reveal-reason">
+                  <option>Medical accommodation check for entrance exam</option>
+                  <option>Identity document review for legal compliance</option>
+                  <option>Special education support assessment</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="reveal-pass">Confirm Password (Fresh Session Re-auth) <span>Required</span></label>
+                <input id="reveal-pass" type="password" placeholder="Enter staff password">
+              </div>
+
+              <div class="actions">
+                <button type="button">Confirm & unmask sensitive data</button>
+                <button type="button" class="secondary">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Snapshot contract</strong>
+      The default detail view reads a submitted revision. No staff inline editing or silent corrections are allowed. Sensitive reveal is purpose-labelled, permission-checked (`applications.view_sensitive`), freshly re-authenticated, and logged to audit.
+    </div>
+  </section>
+
+  <!-- SCREEN 03: Document Review & Audited Document Download Modal -->
+  <section class="screen" aria-labelledby="document-title">
+    <div class="label">
+      <span>03 · Document review & audited document download</span>
+      <small>`documents.review` is separate from `documents.download` permission</small>
+    </div>
+    <div class="body grid">
+      <section class="card" style="grid-column: span 7;">
+        <h2 id="document-title">Documents</h2>
+        
+        <div class="doc">
+          <div>
+            <strong>Proof of age <span class="pill brand">Required</span></strong>
+            <p class="small muted">Version 2 · Uploaded [date] · [Published category/purpose]</p>
+          </div>
+          <div>
+            <span class="pill">In review</span>
+            <div class="actions">
+              <button type="button" class="secondary">View / Download file</button>
+              <button type="button" class="secondary">Record review</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc">
+          <div>
+            <strong>Medical support document <span class="pill warn">Sensitive</span></strong>
+            <p class="small muted">Version 1 · Restricted category</p>
+          </div>
+          <div>
+            <span class="pill">Access not granted</span>
+            <div class="actions">
+              <button type="button" class="secondary">Request authorized access</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc">
+          <div>
+            <strong>Child photo <span class="pill">Optional</span></strong>
+            <p class="small muted">Version 1 · Accepted</p>
+          </div>
+          <div>
+            <span class="pill success">● Accepted</span>
+            <div class="actions">
+              <button type="button" class="secondary">View metadata</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card" style="grid-column: span 5;">
+        <h3>Record document review</h3>
+        <div class="field">
+          <label>Result</label>
+          <select><option>Accept document</option><option>Reject document</option><option>Quarantine / escalate</option></select>
+        </div>
+        <div class="field">
+          <label>Reason <span class="muted">Required for reject</span></label>
+          <select><option>Select approved reason</option></select>
+        </div>
+        <div class="field">
+          <label>Message to guardian <span class="muted">Required for reject</span></label>
+          <textarea placeholder="Guardian-safe explanation; no internal note"></textarea>
+        </div>
+        <div class="field">
+          <label>Internal note <span class="muted">Optional / restricted</span></label>
+          <textarea></textarea>
+        </div>
+        <button type="button">Save review result</button>
+      </aside>
+
+      <!-- Audited File Download Reason Modal -->
+      <div style="grid-column: span 12;">
+        <div class="modal-backdrop" role="region" aria-label="Document download reason prompt">
+          <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="doc-dl-title">
+            <span class="pill brand">📄 Audited Document Access (`documents.download`)</span>
+            <h3 id="doc-dl-title" style="margin:.4rem 0 .2rem;">Generate Short-Lived Document Access URL</h3>
+            <p class="small muted">Document access issues a temporary signed URL and writes an access event to the audit log.</p>
+            <div class="field">
+              <label for="dl-reason">Select Download Reason <span>Required</span></label>
+              <select id="dl-reason">
+                <option>Verify age and birth certificate details</option>
+                <option>Escalation review for admissions committee</option>
+                <option>Quarantine inspection</option>
+              </select>
+            </div>
+            <div class="actions">
+              <button type="button">Generate temporary view URL & log audit</button>
+              <button type="button" class="secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Access boundary</strong>
+      The document list shows category/status/version, never raw storage URLs or previews. File view/download is a separately checked and audited action (`documents.download`). Document acceptance does not accept the applicant.
+    </div>
+  </section>
+
+  <!-- SCREEN 04: Assessment, Human Decision, Recommender vs Decision Maker, & Manager Reopen -->
+  <section class="screen" aria-labelledby="decision-title">
+    <div class="label">
+      <span>04 · Assessment, human decision, & manager reopen</span>
+      <small>Review recommendation ≠ Decision authority (`decisions.record` permission boundary)</small>
+    </div>
+    <div class="body">
+      <div class="grid">
+        <!-- Left: Assessment Capture -->
+        <section class="card" style="grid-column: span 5;">
+          <h2 id="decision-title">Assessment / Interview</h2>
+          <p class="muted">Configured human evaluation only.</p>
+          <div class="field">
+            <label>Evaluation type</label>
+            <select><option>[Configured entrance exam / interview]</option></select>
+          </div>
+          <div class="field">
+            <label>State</label>
+            <select><option>Completed</option></select>
+          </div>
+          <div class="field">
+            <label>Result / bounded score</label>
+            <input placeholder="[Configured result]">
+          </div>
+          <div class="field">
+            <label>Internal note <span class="muted">Optional</span></label>
+            <textarea></textarea>
+          </div>
+          <button type="button" class="secondary">Save evaluation</button>
+          <p class="small muted" style="margin-top:.4rem;">Recording an evaluation does not decide admission.</p>
+        </section>
+
+        <!-- Right: Decision Composer -->
+        <section class="card" style="grid-column: span 7;">
+          <span class="pill success">● Ready for decision</span>
+          <h2>Record admissions decision</h2>
+          <div class="notice">
+            <h3>Review preconditions</h3>
+            <p class="small">Current revision, required completeness/document checks, and configured evaluations are shown here. Capacity warnings require acknowledgement; none decide automatically.</p>
+          </div>
+
+          <!-- Recommender vs Decision Maker Permission Boundary Callout -->
+          <div class="notice danger" style="margin: .8rem 0;">
+            <p class="small"><strong>Permission Boundary:</strong> You have `reviews.record` (Recommender). You can save a recommendation below, but `decisions.record` authority is required to confirm an admission decision.</p>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="secondary" disabled>Place on waitlist</button>
+            <button type="button" disabled>Accept application</button>
+            <button type="button" class="danger" disabled>Reject application</button>
+          </div>
+
+          <div class="field" style="margin-top:.8rem;">
+            <label>Approved reason <span class="muted">Required</span></label>
+            <select disabled><option>Select approved reason code</option></select>
+          </div>
+          <div class="field">
+            <label>Message to guardian <span class="muted">Required</span></label>
+            <textarea disabled placeholder="Approved, guardian-safe decision wording"></textarea>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="secondary">Save recommendation only</button>
+            <button type="button" disabled>Confirm decision (Decision maker only)</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- Manager Reopen Decision Sheet Mockup -->
+      <div style="margin-top: 1.25rem;">
+        <div class="modal-backdrop" role="region" aria-label="Manager reopen decision sheet">
+          <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reopen-title">
+            <span class="pill warn">! Manager Decision Reopen (`reopenDecision`)</span>
+            <h3 id="reopen-title" style="margin:.4rem 0 .2rem;">Reopen Recorded Admissions Decision</h3>
+            <p class="small muted">Only Admissions Managers can reopen a recorded decision. Reopening creates a new decision version and returns the application state to `in_evaluation`.</p>
+            
+            <div class="field">
+              <label for="reopen-reason">Mandatory Reopen Reason Code <span>Required</span></label>
+              <select id="reopen-reason">
+                <option>New assessment information submitted</option>
+                <option>Administrative appeal approved</option>
+                <option>Capacity allocation update</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="reopen-notes">Reopen Rationale & Audit Notes <span>Required</span></label>
+              <textarea id="reopen-notes" placeholder="Explain why the decision is being reopened..."></textarea>
+            </div>
+
+            <div class="actions">
+              <button type="button" class="danger">Confirm reopen & set state to in_evaluation</button>
+              <button type="button" class="secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>State discipline</strong>
+      Decision controls require `decisions.record`; a recommender sees only recommendation actions. Manager reopen requires an explicit reason, creates a new decision version, returns state to `in_evaluation`, and is unavailable when conversion has completed.
+    </div>
+  </section>
+
+  <!-- SCREEN 05: Explicit Conversion, Safe Replay, Canonical IDs, Photo Provenance, & Outbox -->
+  <section class="screen" aria-labelledby="conversion-title">
+    <div class="label">
+      <span>05 · Explicit conversion, safe replay, canonical output IDs, & photo provenance</span>
+      <small>Accepted is not converted · `conversions.execute` permission · One ledger row per application</small>
+    </div>
+    <div class="body grid">
+      <!-- Conversion Execution Panel -->
+      <section class="card" style="grid-column: span 7;">
+        <span class="pill success">● Accepted decision recorded</span>
+        <h2 id="conversion-title">Prepare canonical record conversion</h2>
+        <p class="muted">Complete this only after an authorized staff member has checked the accepted decision and latest submitted revision.</p>
+        
+        <div class="grid">
+          <div class="field" style="grid-column: span 6;">
+            <label>Approved class <span class="muted">Required</span></label>
+            <select><option>Select active class</option></select>
+          </div>
+          <div class="field" style="grid-column: span 6;">
+            <label>Admission number <span class="muted">Required</span></label>
+            <input placeholder="Enter approved admission number">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Family resolution <span class="muted">Required</span></label>
+          <select><option>Create family / Choose explicitly resolved same-school family</option></select>
+          <p class="small muted">Similar name/email is a warning, never an automatic merge or cross-school lookup.</p>
+        </div>
+
+        <!-- Photo Provenance Selection Control -->
+        <label class="check" style="background:#f0f4ff; padding:.6rem; border-radius:7px; border:1px solid #c5d4ff;">
+          <input type="checkbox" checked>
+          <span><strong>Photo Provenance:</strong> Mark selected application photo provenance as `application_upload` for canonical student profile.</span>
+        </label>
+
+        <label class="check" style="margin-top:.6rem;">
+          <input type="checkbox">
+          <span>I checked the class, admission number, and family resolution. This creates or links canonical records once.</span>
+        </label>
+
+        <div class="actions">
+          <button type="button">Start conversion</button>
+          <button type="button" class="secondary">Cancel</button>
+        </div>
+      </section>
+
+      <!-- Conversion Ledger State & Output IDs -->
+      <aside class="card" style="grid-column: span 5;">
+        <h3>Conversion Ledger State</h3>
+        
+        <!-- Succeeded State View with Recorded Canonical IDs -->
+        <div class="notice success">
+          <span class="pill success">● Conversion Succeeded</span>
+          <h4 style="margin:.3rem 0 .1rem;">Canonical Records Created</h4>
+          <p class="small">Transaction committed atomically on Jul 22, 2026 at 11:02 AM.</p>
+          <dl class="small" style="margin:.4rem 0 0; display:grid; grid-template-columns: 90px 1fr; gap:.2rem 0;">
+            <dt class="muted">Student ID</dt><dd><code>std_98214a</code></dd>
+            <dt class="muted">Family ID</dt><dd><code>fam_33201b</code></dd>
+            <dt class="muted">User ID</dt><dd><code>usr_77104c</code></dd>
+          </dl>
+        </div>
+
+        <!-- Post-Conversion Onboarding Outbox State Rail -->
+        <h4 style="font-size: .9rem; margin-top: 1rem;">Portal Onboarding Outbox Status</h4>
+        <div class="timeline" style="margin-top:.4rem;">
+          <div>
+            <strong>Conversion committed</strong><br>
+            <span class="small muted">Canonical IDs saved to ledger</span>
+          </div>
+          <div>
+            <strong>Onboarding notice: <span class="pill warn">Pending retry</span></strong><br>
+            <span class="small muted">Outbox delivery attempt 1 timed out</span>
+            <div class="actions" style="margin-top:.3rem;">
+              <button type="button" class="secondary quiet" style="min-height:30px; padding:.2rem .5rem;">Retry notification outbox</button>
+            </div>
+          </div>
+        </div>
+        <p class="small muted" style="margin-top:.6rem;">Retrying an onboarding notification never re-runs the conversion transaction.</p>
+      </aside>
+    </div>
+    <div class="annotation">
+      <strong>Recovery contract</strong>
+      `requested`/`running` disables duplicate execution and reloads existing ledger. `failed_retryable` retries the same conversion. `CONVERSION_RESOLUTION_REQUIRED` stops on ambiguity. `succeeded` returns recorded output IDs; `ONBOARDING_PENDING` is a separate outbox state.
+    </div>
+  </section>
+
+  <!-- SCREEN 06: Audit Visibility & State Reference -->
+  <section class="screen" aria-labelledby="audit-title">
+    <div class="label">
+      <span>06 · Audit visibility & security timeline</span>
+      <small>`audit.view` · Redacted, paginated activity feed</small>
+    </div>
+    <div class="body grid">
+      <section class="card" style="grid-column: span 7;">
+        <h2 id="audit-title">Activity</h2>
+        <div class="toolbar">
+          <select aria-label="Filter audit by action"><option>All actions</option></select>
+          <select aria-label="Filter audit by outcome"><option>All outcomes</option></select>
+          <button type="button" class="secondary">Apply</button>
+        </div>
+        
+        <div class="audit">
+          <strong>Today, 11:02</strong>
+          <span><strong>Operator</strong> executed canonical conversion.<br><span class="muted">Canonical student std_98214a created · photo provenance: application_upload</span></span>
+          <span class="pill success">● Success</span>
+        </div>
+        <div class="audit">
+          <strong>Today, 10:48</strong>
+          <span><strong>Manager</strong> reopened decision version 1.<br><span class="muted">Reason: New assessment information · state reset to in_evaluation</span></span>
+          <span class="pill warn">● Reopened</span>
+        </div>
+        <div class="audit">
+          <strong>Today, 10:42</strong>
+          <span><strong>Reviewer</strong> requested changes to published field/document requirements.<br><span class="muted">Guardian-safe message sent · outcome: recorded</span></span>
+          <span class="pill success">● Success</span>
+        </div>
+        <div class="audit">
+          <strong>Today, 10:11</strong>
+          <span><strong>Reviewer</strong> opened a restricted document through authorized access action (`documents.download`).<br><span class="muted">Reason/context recorded; file content is omitted from audit payload.</span></span>
+          <span class="pill success">● Success</span>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="secondary">Load more activity</button>
+        </div>
+      </section>
+
+      <aside class="card" style="grid-column: span 5;">
+        <h3>Visible state rules</h3>
+        <p class="small"><span class="pill">Draft / Submitted / Review</span> Workflow state is separate from decision.</p>
+        <p class="small"><span class="pill warn">! Changes requested</span> Only named guardian items unlock.</p>
+        <p class="small"><span class="pill success">● Accepted</span> Decision recorded; conversion is separate.</p>
+        <p class="small"><span class="pill brand">● Conversion running</span> Existing ledger row; do not start another.</p>
+        <p class="small"><span class="pill danger">× Archived / Denied</span> Retention-safe unavailable response; no existence detail.</p>
+      </aside>
+    </div>
+    <div class="annotation">
+      <strong>Audit boundary</strong>
+      Audit rows explain actor, action, outcome, and timestamp with minimized metadata. They never contain medical bodies, raw storage IDs, document contents, secrets, or cross-school search results.
+    </div>
+  </section>
+
+  <!-- SCREEN 07: Staff Recovery & Error State Gallery -->
+  <section class="screen" aria-labelledby="states-title">
+    <div class="label">
+      <span>07 · Staff recovery & error state gallery</span>
+      <small>Every operation has a visible safe recovery action</small>
+    </div>
+    <div class="body">
+      <h2 id="states-title">Recovery states</h2>
+      <div class="state-grid">
+        <div class="state">
+          <span class="pill">No matching applications</span>
+          <p>Adjust or clear bounded filters. Do not turn an empty result into a cross-tenant existence signal.</p>
+        </div>
+        <div class="state" style="border-color: #f5aaa5; background: #fff8f8;">
+          <span class="pill danger">Not found or denied (`NOT_FOUND_OR_DENIED`)</span>
+          <p>Return to queue/check school context; do not state whether the record exists.</p>
+        </div>
+        <div class="state">
+          <span class="pill warn">Payment pending</span>
+          <p>No manual slot grant; use evidence/reconciliation workflow.</p>
+        </div>
+        <div class="state">
+          <span class="pill warn">Application incomplete</span>
+          <p>Request changes or complete permitted review work; do not decide around missing requirements.</p>
+        </div>
+        <div class="state">
+          <span class="pill danger">Transition unavailable</span>
+          <p>Refresh current state, then use an allowed action. Staff never override state directly from UI.</p>
+        </div>
+        <div class="state">
+          <span class="pill warn">Sensitive access unavailable</span>
+          <p>Escalate/request correct grant (`applications.view_sensitive`); no preview or filename disclosure.</p>
+        </div>
+        <div class="state">
+          <span class="pill brand">Conversion running</span>
+          <p>Refresh ledger status; do not start another conversion.</p>
+        </div>
+        <div class="state">
+          <span class="pill warn">Onboarding pending (`ONBOARDING_PENDING`)</span>
+          <p>Monitor/retry communication outbox; conversion remains complete.</p>
+        </div>
+        <div class="state">
+          <span class="pill danger">Session confirmation needed</span>
+          <p>Fresh re-auth returns to document/decision/conversion context after success.</p>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Responsive / accessibility note</strong>
+      On mobile, filters open in an Apply/Clear drawer, the queue becomes labelled cards or an announced scroll region, and detail rail stacks above tabs. All status colors pair with text, dialogs retain focus, live updates use polite live regions, and destructive actions require deliberate confirmation.
+    </div>
+  </section>
+</main>
+</body>
+</html>

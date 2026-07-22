@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>School content & admissions settings — operational mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans:['Plus Jakarta Sans','sans-serif'], mono:['JetBrains Mono','monospace'] },
+          colors: { ink:'#0f172a', brand:'#4f46e5' },
+          boxShadow: { panel:'0 1px 2px rgba(15,23,42,.06), 0 10px 28px rgba(15,23,42,.05)' }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family:'Plus Jakarta Sans',sans-serif; background:#f8fafc; color:#0f172a; -webkit-font-smoothing:antialiased; }
+    .nav-item { display:flex; align-items:center; gap:.75rem; width:100%; border-radius:.7rem; padding:.68rem .75rem; color:#94a3b8; font-size:.78rem; font-weight:700; text-align:left; transition:.15s ease; }
+    .nav-item:hover { background:rgba(255,255,255,.08); color:#fff; }
+    .nav-item.active { background:#eef2ff; color:#4338ca; }
+    .field-label { display:block; margin-bottom:.38rem; font-size:.64rem; line-height:1rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#64748b; }
+    .input { width:100%; height:2.75rem; border:1px solid #dbe2ea; border-radius:.65rem; background:#fff; padding:0 .8rem; font-size:.82rem; font-weight:600; color:#1e293b; outline:none; transition:border-color .15s, box-shadow .15s; }
+    .input:focus { border-color:#4f46e5; box-shadow:0 0 0 3px rgba(79,70,229,.13); }
+    .input[readonly] { background:#f8fafc; color:#475569; }
+    .btn { display:inline-flex; min-height:2.65rem; align-items:center; justify-content:center; gap:.45rem; border-radius:.65rem; padding:.55rem .9rem; font-size:.72rem; font-weight:800; letter-spacing:.02em; transition:.16s ease; cursor:pointer; }
+    .btn:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
+    .btn-primary { background:#4f46e5; color:#fff; box-shadow:0 5px 12px rgba(79,70,229,.2); }
+    .btn-primary:hover { background:#4338ca; }
+    .btn-primary:disabled, .btn-primary[aria-disabled="true"] { background:#94a3b8; cursor:not-allowed; box-shadow:none; opacity:.65; }
+    .btn-secondary { background:#fff; border:1px solid #dbe2ea; color:#334155; }
+    .btn-secondary:hover { background:#f8fafc; }
+    .btn-danger { background:#ef4444; color:#fff; }
+    .btn-danger:hover { background:#dc2626; }
+    .pill { display:inline-flex; align-items:center; gap:.3rem; border-radius:999px; padding:.25rem .52rem; font-size:.6rem; font-weight:800; letter-spacing:.055em; text-transform:uppercase; }
+    .dot { width:.42rem; height:.42rem; border-radius:999px; display:inline-block; }
+    [data-panel] { display:none; } [data-panel].shown { display:block; }
+    .mobile-open { transform:translateX(0)!important; } .veil-open { display:block!important; }
+    @media (prefers-reduced-motion:reduce) { *,*:before,*:after { transition:none!important; scroll-behavior:auto!important; } }
+  </style>
+</head>
+<body class="min-h-screen pb-28">
+  <a href="#workspace" class="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:left-4 focus:top-4 rounded bg-white px-4 py-3 text-sm font-bold text-indigo-700 shadow">Skip to workspace</a>
+
+  <!-- Mobile navigation backdrop / drawer -->
+  <div id="veil" class="fixed inset-0 z-40 hidden bg-slate-950/40 lg:hidden" aria-hidden="true"></div>
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-slate-950 p-4 shadow-2xl transition-transform lg:translate-x-0" aria-label="Settings navigation">
+    <div class="mb-7 flex items-center gap-3 px-2 pt-1">
+      <div class="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500 text-sm font-extrabold text-white">S</div>
+      <div><p class="text-xs font-extrabold text-white">School workspace</p><p class="mt-0.5 text-[10px] font-semibold text-slate-400">Settings & governance</p></div>
+      <button id="closeNav" class="ml-auto rounded p-2 text-slate-400 hover:bg-white/10 lg:hidden" aria-label="Close navigation">✕</button>
+    </div>
+    <p class="mb-2 px-3 text-[9px] font-extrabold uppercase tracking-[.16em] text-slate-500">Workspace</p>
+    <nav class="space-y-1" aria-label="School settings sections">
+      <button class="nav-item" data-tab="overview"><span aria-hidden="true">◫</span>Overview</button>
+      <button class="nav-item active" data-tab="site"><span aria-hidden="true">⌘</span>Public site</button>
+      <button class="nav-item" data-tab="admissions"><span aria-hidden="true">◎</span>Admissions</button>
+      <button class="nav-item" data-tab="publishing"><span aria-hidden="true">↗</span>Publishing & audit <span class="ml-auto rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] text-amber-300">2</span></button>
+      <button class="nav-item" data-tab="people"><span aria-hidden="true">♙</span>People & permissions</button>
+    </nav>
+    <p class="mb-2 mt-7 px-3 text-[9px] font-extrabold uppercase tracking-[.16em] text-slate-500">Delivery & Infrastructure</p>
+    <nav class="space-y-1">
+      <button class="nav-item" data-tab="domains"><span aria-hidden="true">◌</span>Domains & support</button>
+      <button class="nav-item" data-tab="request"><span aria-hidden="true">＋</span>Request a site change</button>
+    </nav>
+    <div class="mt-auto rounded-xl border border-slate-800 bg-slate-900 p-3">
+      <div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-full bg-slate-700 text-[10px] font-bold text-white">AM</span><div><p class="text-[10px] font-bold text-white">A. Manager</p><p class="text-[9px] text-slate-400">School publisher</p></div></div>
+      <div class="mt-3 flex gap-2">
+        <button id="openAccessModal" class="w-full rounded-lg border border-slate-700 py-1.5 text-[10px] font-bold text-slate-300 hover:bg-slate-800">My access</button>
+        <button id="openBreakGlassModal" class="w-full rounded-lg border border-rose-800/80 bg-rose-950/40 py-1.5 text-[10px] font-bold text-rose-300 hover:bg-rose-900/60">Break-glass</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="lg:pl-72">
+    <!-- Persistent status header -->
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div class="mx-auto flex h-[72px] max-w-[1440px] items-center gap-3 px-4 sm:px-6">
+        <button id="openNav" class="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 text-slate-600 lg:hidden" aria-label="Open navigation">☰</button>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <p class="truncate text-sm font-extrabold text-slate-900">School settings</p>
+            <span class="pill bg-amber-50 text-amber-700"><i class="dot bg-amber-500"></i>Draft v12</span>
+            <span id="conflictIndicator" class="hidden pill bg-rose-50 text-rose-700 border border-rose-200"><i class="dot bg-rose-500"></i>Conflict detected</span>
+          </div>
+          <p class="mt-0.5 truncate text-[10px] font-semibold text-slate-500">Illustrative school workspace · saved 2 minutes ago</p>
+        </div>
+        <div class="hidden items-center gap-2 sm:flex">
+          <button class="btn btn-secondary text-xs" id="triggerConflictModal">⚠️ Test conflict state</button>
+          <button class="btn btn-secondary" data-action="preview">◧ Preview draft</button>
+          <button class="btn btn-primary" data-tab="publishing">Review & publish <span aria-hidden="true">→</span></button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Concurrency Conflict Alert Banner (DRAFT_VERSION_CONFLICT) -->
+    <div id="conflictBanner" class="hidden border-b border-rose-200 bg-rose-50 px-4 py-3 sm:px-6">
+      <div class="mx-auto flex max-w-[1440px] items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-100 text-xs font-extrabold text-rose-700">!</span>
+          <div>
+            <p class="text-xs font-bold text-rose-950">DRAFT_VERSION_CONFLICT: Another editor published or saved Draft v13.</p>
+            <p class="text-[11px] text-rose-800">Your local un-saved field changes have been preserved. Silent last-write-wins is disabled.</p>
+          </div>
+        </div>
+        <button id="openConflictDiffModal" class="btn btn-danger shrink-0 text-xs">Refresh & compare changes</button>
+      </div>
+    </div>
+
+    <main id="workspace" class="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
+      <!-- Overview -->
+      <section data-panel="overview" aria-labelledby="overview-title">
+        <div class="mb-6"><p class="text-[10px] font-bold uppercase tracking-[.14em] text-indigo-600">School workspace</p><h1 id="overview-title" class="text-2xl font-extrabold tracking-tight">What needs attention</h1><p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Review factual content, approvals, and application settings without exposing applicant data or changing page layout.</p></div>
+        <div class="grid gap-4 md:grid-cols-3">
+          <article class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-panel"><span class="pill bg-white text-amber-700">Publish blocker</span><h2 class="mt-3 text-sm font-extrabold">2 approvals need attention</h2><p class="mt-2 text-xs leading-5 text-amber-800">A public contact field and an image consent are not current. The draft can be saved but cannot publish.</p><button class="mt-4 text-xs font-extrabold text-amber-800 underline" data-tab="publishing">Review blockers</button></article>
+          <article class="rounded-2xl border border-indigo-100 bg-white p-5 shadow-panel"><span class="pill bg-indigo-50 text-indigo-700">Admissions</span><h2 class="mt-3 text-sm font-extrabold">Form draft is safe to test</h2><p class="mt-2 text-xs leading-5 text-slate-500">Preview required fields and declaration text with synthetic data. No checkout, upload, or submission is available in preview.</p><button class="mt-4 text-xs font-extrabold text-indigo-700 underline" data-tab="admissions">Open admissions settings</button></article>
+          <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel"><span class="pill bg-slate-100 text-slate-600">Domain</span><h2 class="mt-3 text-sm font-extrabold">Managed domain: routing pending</h2><p class="mt-2 text-xs leading-5 text-slate-500">Ownership is verified. Platform activation waits for the school DNS owner to complete the CNAME routing record.</p><button class="mt-4 text-xs font-extrabold text-indigo-700 underline" data-tab="domains">View guidance</button></article>
+        </div>
+      </section>
+
+      <!-- Public site -->
+      <section data-panel="site" class="shown" aria-labelledby="site-title">
+        <div class="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+          <div><nav class="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400" aria-label="Breadcrumb">Settings / Public site</nav><h1 id="site-title" class="text-2xl font-extrabold tracking-tight">Public site content</h1><p class="mt-1 text-sm text-slate-500">Edit approved facts and assets. The renderer controls page structure, components, and routes.</p></div>
+          <div class="flex gap-2"><button class="btn btn-secondary" data-action="preview">◧ Preview draft</button><button class="btn btn-primary" data-action="save">Save draft</button></div>
+        </div>
+        <div class="mt-6 grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_310px]">
+          <aside class="rounded-2xl border border-slate-200 bg-white p-3 shadow-panel" aria-label="Public site categories"><p class="px-2 pb-2 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Typed content</p><div class="space-y-1 text-xs font-bold"><button class="w-full rounded-lg bg-indigo-50 px-3 py-2.5 text-left text-indigo-700">Identity & contact</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Brand & assets <span class="float-right text-amber-600">1</span></button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Approved page copy</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Programmes & gallery</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Policies & CTAs</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">SEO & navigation</button></div></aside>
+          <div class="space-y-5">
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-start justify-between gap-4">
+                <div><h2 class="text-sm font-extrabold">Identity & contact</h2><p class="mt-1 text-xs leading-5 text-slate-500">These are structured public fields, not a free-form page. Sensitive public facts require privacy/school approval evidence before publication.</p></div>
+                <span class="pill shrink-0 bg-amber-50 text-amber-700">Approval required</span>
+              </div>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <label><span class="field-label">Display name</span><input class="input" value="Olive Blessed Crest Academy" aria-label="Display name"></label>
+                <label><span class="field-label">Short name <span class="normal-case text-slate-400">optional</span></span><input class="input" value="OBHIS Academy" placeholder="Shown where space is limited" aria-label="Short name"></label>
+                <div class="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                  <label><span class="field-label">Public email <span class="ml-1 text-amber-600">Sensitive public fact</span></span><input class="input border-amber-300" value="admissions@obhis.sch.ng" aria-describedby="email-help"></label>
+                  <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label><span class="field-label">Approval Evidence Reference ID <span class="text-amber-700">*</span></span><input class="input" value="PRIV-2026-089" placeholder="e.g. PRIV-2026-089"></label>
+                    <label><span class="field-label">Approval Expiry / Review Date</span><input class="input" type="date" value="2026-12-31"></label>
+                  </div>
+                  <span id="email-help" class="mt-2 block text-[11px] leading-4 text-amber-800">Sensitive-public changes require documented school approval evidence and <code>site.publish.sensitive</code> capability.</span>
+                </div>
+              </div>
+              <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4"><div class="flex gap-3"><span class="mt-0.5 text-indigo-600" aria-hidden="true">ⓘ</span><p class="text-xs leading-5 text-slate-600"><strong class="text-slate-800">Renderer boundary:</strong> navigation order, page layout, custom fonts, CSS, scripts, and route creation are not editable here. <button class="font-bold text-indigo-700 underline" data-tab="request">Request a site change</button> instead.</p></div></div>
+            </section>
+
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-start justify-between gap-4">
+                <div><h2 class="text-sm font-extrabold">Application CTA & Link Intent</h2><p class="mt-1 text-xs text-slate-500">Typed intent uses the B0 <code>ApplicationLinkV1</code> resolver. Editors never manually enter an application origin.</p></div>
+                <span class="pill bg-emerald-50 text-emerald-700"><i class="dot bg-emerald-500"></i>Resolved: OPEN</span>
+              </div>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <label><span class="field-label">Button label</span><input class="input" value="Start an application"></label>
+                <label><span class="field-label">Link Intent</span><select id="ctaIntentSelect" class="input" aria-label="CTA link intent"><option value="application">Application — canonical link</option><option value="portal">Portal — canonical link</option><option value="contact">Contact page</option><option value="visit">Visit request</option><option value="reviewed_external">Reviewed external destination</option></select></label>
+                <label><span class="field-label">Target Intake <span class="normal-case text-slate-400">optional filter</span></span><select class="input"><option value="">All active intakes (default)</option><option value="primary-2026-2027">Intake 2026/2027 — Primary</option><option value="nursery-2026-2027">Intake 2026/2027 — Nursery</option></select></label>
+                <div id="externalUrlBox" class="hidden"><label><span class="field-label">External Destination URL <span class="text-amber-600">Must be allowlisted HTTPS</span></span><input class="input" placeholder="https://approved-partner.org/page"></label></div>
+              </div>
+              <div class="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 p-3.5 text-[11px] text-indigo-900">
+                <div class="flex items-center gap-2"><span aria-hidden="true">↗</span><span>Canonical B0 Resolver output: <strong>https://apply.melo.sch.ng/s/obhis</strong></span></div>
+                <span class="pill bg-emerald-100 text-emerald-800">State: OPEN</span>
+              </div>
+            </section>
+          </div>
+
+          <aside class="space-y-4">
+            <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-panel">
+              <p class="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Draft status</p>
+              <div class="mt-3 flex items-center justify-between"><span class="text-xs font-bold">Version 12</span><span class="pill bg-amber-50 text-amber-700">Not public</span></div>
+              <div class="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-2/3 rounded-full bg-indigo-500"></div></div>
+              <p class="mt-2 text-[11px] text-slate-500">8 of 12 required checks passed</p>
+              <button class="mt-4 w-full text-left text-xs font-extrabold text-indigo-700" data-tab="publishing">Open review checklist →</button>
+            </section>
+
+            <!-- Asset Safety Inspector -->
+            <section class="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 shadow-panel">
+              <p class="text-[9px] font-extrabold uppercase tracking-[.14em] text-amber-800">Asset Safety Inspector</p>
+              <div class="mt-3 space-y-2 text-xs">
+                <div class="flex items-start gap-2"><span class="text-amber-700 font-bold">!</span><p class="text-[11px] text-amber-900"><strong>1 gallery asset</strong> has no current consent record. Excluded from public projection.</p></div>
+                <div class="rounded-lg bg-white p-2.5 border border-amber-200 text-[11px] space-y-1">
+                  <p><strong>Purpose:</strong> Gallery / Student Feature</p>
+                  <p><strong>Alt text:</strong> Primary classroom science lab</p>
+                  <p><strong>Identifiable Minors:</strong> Yes (2 children)</p>
+                  <p><strong>Consent Scope:</strong> Expired 2026-06-01</p>
+                  <span class="pill bg-rose-100 text-rose-800 mt-1">Status: Rejected / Expired</span>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Admissions -->
+      <section data-panel="admissions" aria-labelledby="admissions-title">
+        <div class="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <nav class="text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">Settings / Admissions</nav>
+              <span class="pill bg-indigo-100 text-indigo-800">Scope: Primary Intake 2026/2027</span>
+            </div>
+            <h1 id="admissions-title" class="text-2xl font-extrabold tracking-tight">Admissions configuration</h1>
+            <p class="mt-1 max-w-3xl text-sm text-slate-500">Configure published offers, products, forms, document rules, and declarations. Editors cannot alter a guardian’s submitted application snapshot.</p>
+          </div>
+          <div class="flex gap-2"><button class="btn btn-secondary" data-action="formpreview">◧ Preview form</button><button class="btn btn-primary" data-tab="publishing">Review version</button></div>
+        </div>
+        <div class="mt-6 grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+          <aside class="rounded-2xl border border-slate-200 bg-white p-3 shadow-panel"><p class="px-2 pb-2 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Catalogue</p><div class="space-y-1 text-xs font-bold"><button class="w-full rounded-lg bg-indigo-50 px-3 py-2.5 text-left text-indigo-700">Programmes & intakes</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Product & price</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Form v4 <span class="float-right rounded bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-500">DRAFT</span></button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Document Requirements</button><button class="w-full rounded-lg px-3 py-2.5 text-left text-slate-600 hover:bg-slate-50">Declarations & Consent</button></div></aside>
+          <div class="space-y-5">
+            <!-- Sensitive Form Field Config -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="flex items-center gap-2"><h2 class="text-sm font-extrabold">Sensitive Field: Child Medical & Support Information</h2><span class="pill bg-slate-100 text-slate-600">Disabled by default</span></div>
+                  <p class="mt-1 text-xs leading-5 text-slate-500">A conditional, optional sensitive field must specify purpose, data class, privacy approval, retention policy, and access scope before publication.</p>
+                </div>
+                <span class="pill bg-amber-50 text-amber-800 border border-amber-200">Governance Review Needed</span>
+              </div>
+              <div class="mt-5 grid gap-4 md:grid-cols-2">
+                <label><span class="field-label">Field key</span><input class="input" value="medical_support_needs" readonly></label>
+                <label><span class="field-label">Data Class <span class="text-rose-600">*</span></span><select class="input"><option value="medical_health">medical_health (High risk)</option><option value="government_identity">government_identity</option><option value="religious_affiliation">religious_affiliation</option></select></label>
+                <label><span class="field-label">Required mode</span><select class="input"><option>Optional when condition matches</option><option>Disabled / Not collected</option></select></label>
+                <label><span class="field-label">Access Scope</span><select class="input"><option>Explicit sensitive-view grant only</option></select></label>
+                <label class="md:col-span-2"><span class="field-label">Purpose statement <span class="text-rose-600">*</span></span><input class="input border-rose-300" value="Determine required medical accommodations and emergency safety protocols during school hours." placeholder="Explain specific safety or accommodation need" aria-describedby="purpose-error"></label>
+                <label><span class="field-label">Privacy Approval Evidence ID <span class="text-rose-600">*</span></span><input class="input" value="PRIV-2026-089" placeholder="e.g. PRIV-2026-089"></label>
+                <label><span class="field-label">Retention Policy Version <span class="text-rose-600">*</span></span><select class="input"><option value="retention-v2">retention-v2 (7 years post-graduation)</option><option value="retention-v1">retention-v1 (5 years)</option></select></label>
+                <label class="md:col-span-2"><span class="field-label">Guardian Notice Text</span><textarea class="input h-16 py-2" placeholder="Notice displayed to guardian explaining data collection purpose, access, and retention"></textarea></label>
+              </div>
+              <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><strong>Publication Gate:</strong> Sensitive collection requires valid purpose, data class, retention policy, access scope, and <code>privacy.approve</code> evidence. Note: Privacy approval does NOT grant staff access to submitted applicant answers or documents.</div>
+            </section>
+
+            <!-- Application Product & Price -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-start justify-between gap-3">
+                <div><h2 class="text-sm font-extrabold">Application Product & Price Versioning</h2><p class="mt-1 text-xs leading-5 text-slate-500">One verified purchase creates one child application slot in v1. Price changes produce a new immutable version.</p></div>
+                <span class="pill bg-indigo-50 text-indigo-700">Draft price v3</span>
+              </div>
+              <div class="mt-5 grid gap-4 sm:grid-cols-3">
+                <label><span class="field-label">Slots per product</span><input class="input" value="1" readonly><span class="mt-1.5 block text-[10px] text-slate-500">Fixed for v1</span></label>
+                <label><span class="field-label">Amount (minor units)</span><input class="input" value="5000000" inputmode="numeric"><span class="mt-1.5 block text-[10px] text-indigo-700 font-bold">= ₦50,000.00 NGN</span></label>
+                <label><span class="field-label">Currency</span><select class="input"><option value="NGN">NGN — Nigerian Naira</option></select></label>
+                <label><span class="field-label">Effective From Date</span><input class="input" type="date" value="2026-08-01"></label>
+                <label><span class="field-label">Effective To Date</span><input class="input" type="date" value="2027-07-31"></label>
+                <label><span class="field-label">Refund Policy Key</span><select class="input"><option value="non_refundable_except_withdrawal">non_refundable_except_withdrawal</option></select></label>
+                <label class="sm:col-span-2"><span class="field-label">Fee Disclosure Document / Wording</span><input class="input" value="fee_disclosure_v3.pdf (Approved 2026-07-15)"></label>
+                <label><span class="field-label">Finance Approval Reference</span><input class="input" value="FIN-APPROVAL-402"></label>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2"><span class="pill bg-emerald-50 text-emerald-700">Finance Approval Recorded</span><span class="pill bg-indigo-50 text-indigo-700">Disclosure attached</span><span class="pill bg-slate-100 text-slate-600">No effect on paid attempts</span></div>
+            </section>
+
+            <!-- Document Requirements Editor -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-center justify-between">
+                <div><h2 class="text-sm font-extrabold">Document Requirement Rules</h2><p class="mt-1 text-xs text-slate-500">Configure file requirements, accepted MIME types, max size, and sensitivity categories.</p></div>
+                <button class="btn btn-secondary text-xs">+ Add requirement</button>
+              </div>
+              <div class="mt-4 space-y-3">
+                <div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div class="flex items-center gap-2"><strong class="text-slate-900">Birth Certificate / Age Evidence</strong><span class="pill bg-rose-50 text-rose-700">Category: birth_certificate</span><span class="pill bg-indigo-50 text-indigo-700">Mandatory</span></div>
+                    <p class="mt-1 text-[11px] text-slate-500">MIME: <code>image/jpeg, application/pdf</code> · Max: 5MB · Retention: retention-v2</p>
+                  </div>
+                  <button class="btn btn-secondary text-[11px]">Edit rule</button>
+                </div>
+                <div class="rounded-xl border border-amber-200 p-4 bg-amber-50/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div class="flex items-center gap-2"><strong class="text-slate-900">Doctor's Medical Assessment Report</strong><span class="pill bg-rose-100 text-rose-800">High Risk Medical</span><span class="pill bg-amber-100 text-amber-800">Conditional</span></div>
+                    <p class="mt-1 text-[11px] text-amber-900">Condition: <code>medical_support_needs == true</code> · Privacy Officer Co-approval Recorded</p>
+                  </div>
+                  <button class="btn btn-secondary text-[11px]">Edit rule</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Declaration & Consent Editor -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-center justify-between">
+                <div><h2 class="text-sm font-extrabold">Declaration & Legal Consent AST (v4)</h2><p class="mt-1 text-xs text-slate-500">Versioned restricted rich-text AST. Service declaration is mandatory; optional consent is NEVER pre-checked.</p></div>
+                <span class="pill bg-indigo-50 text-indigo-700">Version 4 Draft</span>
+              </div>
+              <div class="mt-4 space-y-4">
+                <label><span class="field-label">Declaration Body (Restricted Rich Text AST)</span><textarea class="input h-24 py-3 font-mono text-xs" readonly>{ "type": "doc", "content": [ { "type": "paragraph", "text": "I certify that all information provided in this application is accurate..." } ] }</textarea></label>
+                <div class="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-xs space-y-2">
+                  <p class="font-bold text-indigo-950">Consent Checkboxes Setup Guard:</p>
+                  <div class="flex items-center gap-2"><input type="checkbox" disabled class="rounded"><span class="text-slate-700">I agree to the School Code of Conduct (Mandatory Service Declaration)</span></div>
+                  <div class="flex items-center gap-2"><input type="checkbox" disabled class="rounded"><span class="text-slate-700">I consent to educational research photo usage (Optional — Default: Unchecked)</span><span class="pill bg-amber-100 text-amber-900">Pre-check Forbidden</span></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- Publishing & Audit -->
+      <section data-panel="publishing" aria-labelledby="publish-title">
+        <div class="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+          <div><nav class="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">Settings / Publishing & audit</nav><h1 id="publish-title" class="text-2xl font-extrabold tracking-tight">Review before publication</h1><p class="mt-1 text-sm text-slate-500">Publishing freezes an immutable revision. It never turns a saved draft into an unreviewed public claim.</p></div>
+          <span class="pill w-fit bg-amber-50 text-amber-700"><i class="dot bg-amber-500"></i>2 blockers</span>
+        </div>
+        <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_330px]">
+          <div class="space-y-4">
+            <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
+              <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-extrabold">Draft v12 · Semantic Changes Summary</h2><p class="mt-1 text-xs text-slate-500">3 changed semantic fields · affects public site and admissions preview</p></div>
+              <div class="divide-y divide-slate-100">
+                <div class="flex items-center gap-3 px-5 py-4"><span class="grid h-7 w-7 place-items-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">✓</span><div class="flex-1"><p class="text-xs font-bold">CTA Label & Link Intent</p><p class="mt-0.5 text-[11px] text-slate-500">CTA updated to 'Start an application' -> B0 link resolves to OPEN</p></div><span class="pill bg-emerald-50 text-emerald-700">Ready</span></div>
+                <div class="flex items-center gap-3 px-5 py-4"><span class="grid h-7 w-7 place-items-center rounded-full bg-amber-50 text-xs font-bold text-amber-700">!</span><div class="flex-1"><p class="text-xs font-bold">Public Email (Sensitive Public Fact)</p><p class="mt-0.5 text-[11px] text-slate-500">Approval Evidence Reference PRIV-2026-089 attached, pending publisher confirmation</p></div><button class="text-xs font-extrabold text-indigo-700 underline">Fix</button></div>
+                <div class="flex items-center gap-3 px-5 py-4"><span class="grid h-7 w-7 place-items-center rounded-full bg-amber-50 text-xs font-bold text-amber-700">!</span><div class="flex-1"><p class="text-xs font-bold">Gallery Asset Consent</p><p class="mt-0.5 text-[11px] text-slate-500">Rights/consent evidence expired · asset excluded from public projection</p></div><button class="text-xs font-extrabold text-indigo-700 underline">Fix</button></div>
+              </div>
+            </section>
+
+            <!-- Publication History & Revert Modal Trigger -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex items-center justify-between">
+                <div><h2 class="text-sm font-extrabold">Publication Timeline & Revert-by-Clone</h2><p class="mt-1 text-xs text-slate-500">History is immutable. Reverting clones a prior revision into a new draft.</p></div>
+                <button class="btn btn-secondary text-xs" data-tab="audit">View full audit</button>
+              </div>
+              <ol class="mt-5 border-l-2 border-slate-100 pl-5">
+                <li class="relative pb-5"><i class="absolute -left-[1.78rem] top-1 h-3 w-3 rounded-full border-2 border-white bg-indigo-500"></i><p class="text-xs font-bold">Draft v12 saved</p><p class="mt-1 text-[11px] text-slate-500">2 minutes ago · A. Manager · 3 semantic field changes</p></li>
+                <li class="relative pb-5"><i class="absolute -left-[1.78rem] top-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-500"></i><p class="text-xs font-bold">Published v11 (Active Public Site Revision)</p><p class="mt-1 text-[11px] text-slate-500">12 days ago · School publisher · approval evidence recorded</p><button class="mt-2 text-[11px] font-extrabold text-indigo-700 underline" id="openRevertModal">Clone v11 to a new draft (Revert action)</button></li>
+                <li class="relative"><i class="absolute -left-[1.78rem] top-1 h-3 w-3 rounded-full border-2 border-white bg-slate-300"></i><p class="text-xs font-bold">Published v10</p><p class="mt-1 text-[11px] text-slate-500">35 days ago · audit details available to authorised roles</p></li>
+              </ol>
+            </section>
+
+            <!-- Audit Trail Filter & Inspector -->
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div><h2 class="text-sm font-extrabold">Audit Log (Redacted & Scoped)</h2><p class="mt-1 text-xs text-slate-500">Every governance action is logged. Raw files, secrets, and applicant answers are never stored in audit logs.</p></div>
+                <div class="flex flex-wrap gap-1.5 text-[10px] font-bold">
+                  <button class="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-800">All</button>
+                  <button class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Site</button>
+                  <button class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Admissions</button>
+                  <button class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Grants</button>
+                </div>
+              </div>
+              <div class="mt-4 space-y-2 text-xs">
+                <div class="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div><p class="font-bold">PUBLISH_REVISION_EXECUTE</p><p class="text-[11px] text-slate-500">Published Revision v11 · Actor: A. Manager · Reason: Annual school profile update</p></div>
+                  <button class="btn btn-secondary text-[10px]" id="inspectAuditPayload">Inspect payload</button>
+                </div>
+                <div class="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div><p class="font-bold">SENSITIVE_FIELD_ENABLE</p><p class="text-[11px] text-slate-500">Enabled medical_support_needs · Privacy Ref: PRIV-2026-089 · Actor: P. Officer</p></div>
+                  <button class="btn btn-secondary text-[10px]" id="inspectAuditPayload2">Inspect payload</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="h-fit rounded-2xl border border-indigo-200 bg-white p-5 shadow-panel xl:sticky xl:top-24">
+            <p class="text-[9px] font-extrabold uppercase tracking-[.14em] text-indigo-600">Publish gate</p>
+            <h2 class="mt-2 text-base font-extrabold">Not ready to publish</h2>
+            <p class="mt-2 text-xs leading-5 text-slate-500">Resolve required approvals and re-run validation. Saving is still available.</p>
+            <div class="my-5 space-y-3 border-y border-slate-100 py-4 text-xs">
+              <div class="flex justify-between"><span class="text-slate-500">Content validation</span><strong class="text-emerald-700">Passed</strong></div>
+              <div class="flex justify-between"><span class="text-slate-500">Asset rights</span><strong class="text-amber-700">1 action</strong></div>
+              <div class="flex justify-between"><span class="text-slate-500">Sensitive approvals</span><strong class="text-amber-700">1 action</strong></div>
+              <div class="flex justify-between"><span class="text-slate-500">Link safety</span><strong class="text-emerald-700">Passed</strong></div>
+            </div>
+            <label><span class="field-label">Publisher reason <span class="text-rose-600">required for sensitive change</span></span><textarea class="input h-20 py-3" placeholder="Why this public change is accurate and approved"></textarea></label>
+            <button class="btn btn-primary mt-4 w-full" disabled aria-disabled="true" title="Resolve blockers before publishing">Publish immutable version</button>
+            <button class="mt-3 w-full text-xs font-extrabold text-indigo-700 underline" data-action="preview">Preview draft safely</button>
+          </aside>
+        </div>
+      </section>
+
+      <!-- People & Permissions -->
+      <section data-panel="people" aria-labelledby="people-title">
+        <div class="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+          <div><nav class="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">Settings / People & permissions</nav><h1 id="people-title" class="text-2xl font-extrabold tracking-tight">People & permissions</h1><p class="mt-1 text-sm text-slate-500">Capabilities are explicit, scoped, and auditable. Content access never silently grants applicant or document access.</p></div>
+          <button class="btn btn-primary" id="openGrantModal">+ Grant access</button>
+        </div>
+        <div class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+          <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[680px] text-left">
+                <thead class="bg-slate-50 text-[9px] uppercase tracking-[.12em] text-slate-500">
+                  <tr><th class="px-5 py-3">Person</th><th class="px-5 py-3">Scope</th><th class="px-5 py-3">Capabilities</th><th class="px-5 py-3">Expires</th><th class="px-5 py-3"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-xs">
+                  <tr><td class="px-5 py-4 font-bold">A. Manager<br><span class="text-[10px] font-medium text-slate-500">School publisher</span></td><td class="px-5 py-4 text-slate-600"><span class="pill bg-indigo-50 text-indigo-700">Public site</span></td><td class="px-5 py-4"><span class="pill bg-indigo-50 text-indigo-700">settings.manage</span> <span class="pill bg-indigo-50 text-indigo-700">site.publish.standard</span></td><td class="px-5 py-4 text-slate-500">No expiry</td><td class="px-5 py-4"><button class="font-bold text-indigo-700">Edit</button></td></tr>
+                  <tr><td class="px-5 py-4 font-bold">P. Officer<br><span class="text-[10px] font-medium text-slate-500">Privacy officer</span></td><td class="px-5 py-4 text-slate-600"><span class="pill bg-violet-50 text-violet-700">All admissions</span></td><td class="px-5 py-4"><span class="pill bg-violet-50 text-violet-700">privacy.approve</span> <span class="pill bg-violet-50 text-violet-700">retention.manage</span></td><td class="px-5 py-4 text-slate-500">Annual review (2026-12-31)</td><td class="px-5 py-4"><button class="font-bold text-indigo-700">Edit</button></td></tr>
+                  <tr><td class="px-5 py-4 font-bold">R. Clerk<br><span class="text-[10px] font-medium text-slate-500">Admissions catalogue editor</span></td><td class="px-5 py-4 text-slate-600"><span class="pill bg-amber-50 text-amber-800">Primary Intake 2026</span></td><td class="px-5 py-4"><span class="pill bg-slate-100 text-slate-600">admissions.catalogue.manage</span></td><td class="px-5 py-4 text-slate-500">30 Sep 2026</td><td class="px-5 py-4"><button class="font-bold text-indigo-700">Edit</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <aside class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h2 class="text-sm font-extrabold text-amber-950">Separate high-risk access</h2>
+            <p class="mt-2 text-xs leading-5 text-amber-900">No person listed here can view sensitive applicant answers or download a document unless they hold a distinct, scoped operational grant. Platform support starts with zero default access.</p>
+            <button class="mt-4 text-xs font-extrabold text-amber-900 underline">Read permission guide</button>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Domains -->
+      <section data-panel="domains" aria-labelledby="domain-title">
+        <div>
+          <nav class="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">Settings / Domains & support</nav>
+          <h1 id="domain-title" class="text-2xl font-extrabold tracking-tight">Domain readiness & operating mode</h1>
+          <p class="mt-1 text-sm text-slate-500">Provider-neutral guidance separates school DNS work from platform activation.</p>
+        </div>
+
+        <!-- Mode Switcher Tabs -->
+        <div class="mt-6 flex border-b border-slate-200">
+          <button class="border-b-2 border-indigo-600 pb-3 px-4 text-xs font-extrabold text-indigo-600">Managed Custom Domain</button>
+          <button class="border-b-2 border-transparent pb-3 px-4 text-xs font-bold text-slate-500 hover:text-slate-700">External School Website Link</button>
+          <button class="border-b-2 border-transparent pb-3 px-4 text-xs font-bold text-slate-500 hover:text-slate-700">No Website (Direct Apply Link)</button>
+        </div>
+
+        <div class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+          <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-panel">
+            <ol class="grid gap-5 sm:grid-cols-4">
+              <li><span class="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">✓</span><h2 class="mt-3 text-xs font-extrabold">1. Ownership</h2><p class="mt-1 text-[11px] leading-5 text-slate-500">TXT record verified</p></li>
+              <li><span class="grid h-8 w-8 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">2</span><h2 class="mt-3 text-xs font-extrabold">2. Routing</h2><p class="mt-1 text-[11px] leading-5 text-slate-500">Waiting for CNAME</p></li>
+              <li><span class="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">3</span><h2 class="mt-3 text-xs font-extrabold">3. Certificate</h2><p class="mt-1 text-[11px] leading-5 text-slate-500">Starts after routing</p></li>
+              <li><span class="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">4</span><h2 class="mt-3 text-xs font-extrabold">4. Activation</h2><p class="mt-1 text-[11px] leading-5 text-slate-500">Needs published content</p></li>
+            </ol>
+
+            <div class="mt-7 grid gap-4 sm:grid-cols-2">
+              <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                <p class="text-xs font-bold text-emerald-950">Step 1: TXT Ownership Record (Completed)</p>
+                <code class="mt-2 block rounded bg-white p-2 text-[10px] font-mono text-slate-700">Host: _melo-verify.obhis.sch.ng<br>Value: melo-site-verify=a8f9c10d2e</code>
+              </div>
+              <div class="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                <p class="text-xs font-bold text-indigo-950">Step 2: CNAME Routing Record (Pending)</p>
+                <code class="mt-2 block rounded bg-white p-2 text-[10px] font-mono text-slate-700">Host: obhis.sch.ng<br>Target: site-edge.melo.platform</code>
+              </div>
+            </div>
+
+            <div class="mt-5 flex items-center justify-between rounded-xl bg-slate-50 p-4 border border-slate-200">
+              <div><p class="text-xs font-bold">Canonical domain intent:</p><p class="text-[11px] text-slate-500">https://obhis.sch.ng (Canonical) · https://www.obhis.sch.ng (308 Alias)</p></div>
+              <button class="btn btn-secondary text-xs">Re-check DNS readiness</button>
+            </div>
+          </section>
+          <aside class="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+            <p class="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Need help?</p>
+            <h2 class="mt-2 text-sm font-extrabold">Ask the delivery team</h2>
+            <p class="mt-2 text-xs leading-5 text-slate-500">Include a non-sensitive description and the domain status. Never paste credentials, applicant documents, or private URLs.</p>
+            <button class="btn btn-primary mt-4 w-full">Open support request</button>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Request route/layout change -->
+      <section data-panel="request" aria-labelledby="request-title"><div class="max-w-2xl"><nav class="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">Settings / Delivery request</nav><h1 id="request-title" class="text-2xl font-extrabold tracking-tight">Request a code-controlled site change</h1><p class="mt-2 text-sm leading-6 text-slate-500">Routes, layout, components, scripts, renderer selection, and deployment remain code-controlled so the public site stays accessible, secure, and bespoke.</p><section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-panel"><label><span class="field-label">Request type</span><select class="input"><option>New typed content field</option><option>Route or layout request</option><option>Renderer/design direction</option><option>Accessibility issue</option></select></label><label class="mt-4 block"><span class="field-label">Objective</span><textarea class="input h-28 py-3" placeholder="Describe the audience need and the factual content/assets available. Do not include applicant data."></textarea></label><div class="mt-4 grid gap-4 sm:grid-cols-2"><label><span class="field-label">Urgency</span><select class="input"><option>Standard</option></select></label><label><span class="field-label">Approver</span><input class="input" placeholder="School owner or delegated approver"></label></div><button class="btn btn-primary mt-5">Send request</button></section></div></section>
+    </main>
+  </div>
+
+  <!-- Modal 1: Concurrency Conflict Diff Modal (DRAFT_VERSION_CONFLICT) -->
+  <div id="conflictDiffModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+    <div class="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <span class="pill bg-rose-50 text-rose-700">DRAFT_VERSION_CONFLICT</span>
+          <h2 id="conflict-title" class="mt-2 text-lg font-extrabold">Refresh & compare draft changes</h2>
+        </div>
+        <button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" id="closeConflictModal">✕</button>
+      </div>
+      <p class="mt-3 text-xs text-slate-600">Another editor (P. Officer) saved Draft v13 while you were working. Compare your local input with the server draft below:</p>
+
+      <div class="mt-4 space-y-3 font-mono text-xs">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p class="font-bold text-slate-700 font-sans text-xs mb-1">Field: <code>public_contact_email</code></p>
+          <div class="grid grid-cols-2 gap-3 text-[11px]">
+            <div class="rounded bg-rose-50 p-2 border border-rose-200"><p class="font-bold text-rose-900 font-sans">Server (v13):</p><code>contact@obhis.sch.ng</code></div>
+            <div class="rounded bg-emerald-50 p-2 border border-emerald-200"><p class="font-bold text-emerald-900 font-sans">Your Local Draft (v12):</p><code>admissions@obhis.sch.ng</code></div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end gap-3">
+        <button class="btn btn-secondary" id="closeConflictModal2">Keep server v13</button>
+        <button class="btn btn-primary" id="resolveConflictBtn">Re-apply my local draft changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Revert-by-Clone Confirmation Modal -->
+  <div id="revertModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="revert-title">
+    <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+        <div><span class="pill bg-indigo-50 text-indigo-700">Revert Action</span><h2 id="revert-title" class="mt-2 text-lg font-extrabold">Clone Revision v11 into a New Draft</h2></div>
+        <button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" id="closeRevertModal">✕</button>
+      </div>
+      <p class="mt-3 text-xs leading-5 text-slate-600">Reverting does NOT delete or mutate past revisions. It clones published Revision v11 into a new editable Draft v13.</p>
+      <label class="mt-4 block"><span class="field-label">Publisher Reason <span class="text-rose-600">*</span></span><textarea class="input h-20 py-2 text-xs" placeholder="Explain why revision v11 is being restored as the new draft"></textarea></label>
+      <div class="mt-5 flex justify-end gap-2">
+        <button class="btn btn-secondary" id="closeRevertModal2">Cancel</button>
+        <button class="btn btn-primary" id="confirmRevertBtn">Clone v11 to new draft</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Audit Payload Inspector Drawer -->
+  <div id="auditInspectorModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="audit-title">
+    <div class="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+        <div><span class="pill bg-emerald-50 text-emerald-800">Redacted Audit Event</span><h2 id="audit-title" class="mt-2 text-base font-extrabold">PUBLISH_REVISION_EXECUTE</h2></div>
+        <button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" id="closeAuditModal">✕</button>
+      </div>
+      <div class="mt-4 font-mono text-[11px] bg-slate-900 text-slate-200 p-4 rounded-xl space-y-1">
+        <p><span class="text-indigo-400">actorId:</span> "usr_school_publisher_88"</p>
+        <p><span class="text-indigo-400">action:</span> "site.publish.sensitive"</p>
+        <p><span class="text-indigo-400">targetVersion:</span> "v11"</p>
+        <p><span class="text-indigo-400">timestamp:</span> 1784752800000</p>
+        <p><span class="text-indigo-400">scope:</span> "schoolId: sch_obhis_001"</p>
+        <p><span class="text-indigo-400">approvalRef:</span> "PRIV-2026-089"</p>
+        <p><span class="text-indigo-400">reason:</span> "Annual school profile and contact update"</p>
+        <p><span class="text-emerald-400">payloadSanitization:</span> "GUARANTEED: Zero raw applicant answers, documents, or secrets"</p>
+      </div>
+      <button class="btn btn-secondary mt-5 w-full" id="closeAuditModal2">Close audit inspector</button>
+    </div>
+  </div>
+
+  <!-- Modal 4: Break-Glass Support Request Modal -->
+  <div id="breakGlassModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="breakglass-title">
+    <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border-2 border-rose-500">
+      <div class="flex items-start justify-between gap-4">
+        <div><span class="pill bg-rose-100 text-rose-900 font-bold">Emergency Break-Glass Protocol</span><h2 id="breakglass-title" class="mt-2 text-lg font-extrabold text-rose-950">Request Time-Bound Platform Support Access</h2></div>
+        <button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" id="closeBreakGlass">✕</button>
+      </div>
+      <p class="mt-3 text-xs leading-5 text-slate-600">Platform support roles have ZERO default access to school applicant data. Break-glass grants temporary, high-audited 2-hour access for documented incidents.</p>
+      <div class="mt-4 space-y-3">
+        <label><span class="field-label">Incident Reference / Ticket ID <span class="text-rose-600">*</span></span><input class="input" placeholder="e.g. INC-88204"></label>
+        <label><span class="field-label">Justification & Scope <span class="text-rose-600">*</span></span><textarea class="input h-16 py-2 text-xs" placeholder="Reason emergency access is required"></textarea></label>
+      </div>
+      <div class="mt-5 flex justify-end gap-2">
+        <button class="btn btn-secondary" id="closeBreakGlass2">Cancel</button>
+        <button class="btn btn-danger" id="submitBreakGlass">Request 2-hour break-glass</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Modal -->
+  <div id="previewModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="preview-title"><div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><div class="flex items-start justify-between gap-4"><div><span class="pill bg-amber-50 text-amber-700">Draft — not public</span><h2 id="preview-title" class="mt-3 text-lg font-extrabold">Authorized preview</h2></div><button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" data-action="closepreview" aria-label="Close preview">✕</button></div><p class="mt-3 text-sm leading-6 text-slate-600">Preview is watermarked, non-canonical, excluded from search, and uses only safe draft projections. The form preview uses synthetic data—no payment, upload, or submission can occur.</p><div class="mt-5 rounded-xl border border-dashed border-indigo-200 bg-indigo-50 p-5 text-center"><p class="text-xs font-extrabold text-indigo-900">DRAFT PREVIEW · v12</p><p class="mt-2 text-[11px] text-indigo-700">Public renderer layout shown here is illustrative.</p></div><button class="btn btn-secondary mt-5 w-full" data-action="closepreview">Close preview</button></div></div>
+  
+  <div id="toast" class="fixed bottom-5 right-5 z-[70] hidden max-w-sm rounded-xl border border-emerald-200 bg-white p-4 text-xs font-semibold text-slate-700 shadow-xl" role="status">Draft saved. It is not public.</div>
+
+  <script>
+    const sidebar=document.getElementById('sidebar'), veil=document.getElementById('veil'), modal=document.getElementById('previewModal'), toast=document.getElementById('toast');
+    function setTab(tab){ document.querySelectorAll('[data-panel]').forEach(x=>x.classList.toggle('shown',x.dataset.panel===tab)); document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab)); sidebar.classList.remove('mobile-open'); veil.classList.remove('veil-open'); window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}); }
+    document.querySelectorAll('[data-tab]').forEach(el=>el.addEventListener('click',()=>setTab(el.dataset.tab)));
+    document.getElementById('openNav').addEventListener('click',()=>{sidebar.classList.add('mobile-open');veil.classList.add('veil-open')});
+    document.getElementById('closeNav').addEventListener('click',()=>{sidebar.classList.remove('mobile-open');veil.classList.remove('veil-open')}); veil.addEventListener('click',()=>{sidebar.classList.remove('mobile-open');veil.classList.remove('veil-open')});
+    document.querySelectorAll('[data-action="preview"],[data-action="formpreview"]').forEach(el=>el.addEventListener('click',()=>{modal.classList.remove('hidden');modal.classList.add('flex')}));
+    document.querySelectorAll('[data-action="closepreview"]').forEach(el=>el.addEventListener('click',()=>{modal.classList.add('hidden');modal.classList.remove('flex')}));
+    document.querySelectorAll('[data-action="save"]').forEach(el=>el.addEventListener('click',()=>{toast.classList.remove('hidden');setTimeout(()=>toast.classList.add('hidden'),3500)}));
+
+    // Concurrency conflict simulation triggers
+    const triggerConflict = document.getElementById('triggerConflictModal');
+    const conflictBanner = document.getElementById('conflictBanner');
+    const conflictIndicator = document.getElementById('conflictIndicator');
+    const conflictModal = document.getElementById('conflictDiffModal');
+
+    triggerConflict.addEventListener('click', ()=>{
+      conflictBanner.classList.remove('hidden');
+      conflictIndicator.classList.remove('hidden');
+    });
+
+    document.getElementById('openConflictDiffModal').addEventListener('click', ()=>{
+      conflictModal.classList.remove('hidden');
+      conflictModal.classList.add('flex');
+    });
+    document.getElementById('closeConflictModal').addEventListener('click', ()=>{ conflictModal.classList.add('hidden'); conflictModal.classList.remove('flex'); });
+    document.getElementById('closeConflictModal2').addEventListener('click', ()=>{ conflictModal.classList.add('hidden'); conflictModal.classList.remove('flex'); });
+    document.getElementById('resolveConflictBtn').addEventListener('click', ()=>{
+      conflictModal.classList.add('hidden'); conflictModal.classList.remove('flex');
+      conflictBanner.classList.add('hidden'); conflictIndicator.classList.add('hidden');
+      alert('Conflict resolved: Local draft changes re-applied to new draft baseline.');
+    });
+
+    // Revert Modal
+    const revertModal = document.getElementById('revertModal');
+    document.getElementById('openRevertModal').addEventListener('click', ()=>{ revertModal.classList.remove('hidden'); revertModal.classList.add('flex'); });
+    document.getElementById('closeRevertModal').addEventListener('click', ()=>{ revertModal.classList.add('hidden'); revertModal.classList.remove('flex'); });
+    document.getElementById('closeRevertModal2').addEventListener('click', ()=>{ revertModal.classList.add('hidden'); revertModal.classList.remove('flex'); });
+    document.getElementById('confirmRevertBtn').addEventListener('click', ()=>{ revertModal.classList.add('hidden'); revertModal.classList.remove('flex'); alert('Revision v11 successfully cloned to new Draft v13.'); });
+
+    // Audit Inspector Modal
+    const auditModal = document.getElementById('auditInspectorModal');
+    const openAudit = (btn) => btn?.addEventListener('click', ()=>{ auditModal.classList.remove('hidden'); auditModal.classList.add('flex'); });
+    openAudit(document.getElementById('inspectAuditPayload'));
+    openAudit(document.getElementById('inspectAuditPayload2'));
+    document.getElementById('closeAuditModal').addEventListener('click', ()=>{ auditModal.classList.add('hidden'); auditModal.classList.remove('flex'); });
+    document.getElementById('closeAuditModal2').addEventListener('click', ()=>{ auditModal.classList.add('hidden'); auditModal.classList.remove('flex'); });
+
+    // Break-Glass Modal
+    const breakGlassModal = document.getElementById('breakGlassModal');
+    document.getElementById('openBreakGlassModal').addEventListener('click', ()=>{ breakGlassModal.classList.remove('hidden'); breakGlassModal.classList.add('flex'); });
+    document.getElementById('closeBreakGlass').addEventListener('click', ()=>{ breakGlassModal.classList.add('hidden'); breakGlassModal.classList.remove('flex'); });
+    document.getElementById('closeBreakGlass2').addEventListener('click', ()=>{ breakGlassModal.classList.add('hidden'); breakGlassModal.classList.remove('flex'); });
+    document.getElementById('submitBreakGlass').addEventListener('click', ()=>{ breakGlassModal.classList.add('hidden'); breakGlassModal.classList.remove('flex'); alert('Break-glass emergency request submitted and logged.'); });
+
+    // CTA Intent External Selector
+    const ctaSelect = document.getElementById('ctaIntentSelect');
+    const extBox = document.getElementById('externalUrlBox');
+    ctaSelect?.addEventListener('change', (e)=>{
+      extBox.classList.toggle('hidden', e.target.value !== 'reviewed_external');
+    });
+  </script>
+</body>
+</html>

@@ -24,3 +24,4 @@ export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintSt
 export * from "./exam-recording";
 export * from "./cumulative-results";
 export * from "./subject-aggregation";
+export * from "./admissions-foundation";
