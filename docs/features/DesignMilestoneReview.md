@@ -77,6 +77,19 @@ These do not prevent the B0 contract-freeze work from starting, but they block t
 - **B5** consumes B4 plus D2 and the approval sheet; it cannot source facts from the current OBHIS demo record.
 - **B6** owns cross-feature reconciliation and final security/accessibility/release evidence.
 
+## B0 decision closure (2026-07-22)
+
+The eight mandatory B0 decisions are resolved by `docs/features/AdmissionsAndSiteFoundationContract.md` and its matching additive schema/contracts:
+
+1. **Public link:** sole public `ApplicationLinkV1`, configured absolute origin, canonical `/s/{schoolSlug}`, optional intake route, and safe unavailable projection.
+2. **Waitlist:** canonical application state is `waitlisted`; it is not accepted and cannot be converted.
+3. **Capabilities/approval:** one scoped/expiring/revocable grant vocabulary, default-deny including platform support, and independent approval evidence.
+4. **Documents:** opaque metadata/list boundary, fresh-assurance input, audit-before-URL ordering, quarantine denial, and non-enumerating response shape.
+5. **Publication:** immutable revision/pointer model, optimistic draft version, evidence expiry, typed renderer envelope, public published-only reads, and revert-by-clone.
+6. **Genesis risks:** canonical token-identity membership bridge, `adm_` replay dispatch, school-scoped schema/indexes, admission-number/provenance compatibility, and contract tests.
+7. **CTA intents:** `admissions_info|application|portal|contact|visit|reviewed_external`; no editable origins, scripts, or open redirects.
+8. **Identity policy:** explicit `identity` approval class permits a stricter OBHIS/public-identity gate than ordinary display-name confirmation.
+
 ## Final verdict
 
 **B0 may begin.** This is permission to execute the shared contract-and-foundation phase, not permission to merge an unresolved foundation or launch B1–B5 in parallel against draft contracts. The eight “Before B0 foundation merge” items are mandatory closure criteria.
