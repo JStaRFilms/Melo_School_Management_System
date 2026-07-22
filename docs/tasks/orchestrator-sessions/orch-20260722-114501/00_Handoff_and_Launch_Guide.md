@@ -28,6 +28,14 @@
 4. Every task returns: changed files, decisions, test commands/results, unresolved assumptions, migration impact, and exact handoff dependency.
 5. A task may not silently invent public school claims, pricing, legal wording, required sensitive fields, or payment behavior.
 
+## Credit and review protocol
+
+- Use `openai-codex/gpt-5.6-terra` for the current Design tasks (`thinking: high`). For future bounded/mechanical work, use Terra with the lowest suitable thinking level (normally medium); reserve high for complex UI, security, or cross-domain contracts.
+- `openai-codex/gpt-5.6-sol` is reserved for architecture deadlocks, high-risk security/privacy questions, and milestone review. No unapproved provider/model, including GPT-5.5, may be substituted.
+- An implementer/designer must finish its own scope, run its required validation, and self-check before any independent review.
+- **Never dispatch a reviewer after every task.** Review only after the complete Design bundle (D1-D3), B0 foundation, combined admissions bundle (B1-B3), combined sites bundle (B4-B5), and final B6 integration/release.
+- Do not automatically launch a reviewer. The integration owner explicitly opens each milestone review only after its bundle is complete.
+
 ## Worktree and merge protocol
 
 - **Integration owner only:** creates/merges `B0` foundation and `B6` integration commits on the shared integration branch.
