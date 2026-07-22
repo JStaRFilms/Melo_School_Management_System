@@ -50,6 +50,13 @@ export const capabilityScopeValidator = v.union(
   v.literal("intake")
 );
 
+export const capabilityGrantProjectionValidator = v.object({
+  capability: admissionsPermissionValidator,
+  scope: capabilityScopeValidator,
+  programmeId: v.union(v.id("admissionsProgrammes"), v.null()),
+  intakeId: v.union(v.id("admissionsIntakes"), v.null()),
+});
+
 export const applicationStateValidator = v.union(
   v.literal("draft"),
   v.literal("submitted"),

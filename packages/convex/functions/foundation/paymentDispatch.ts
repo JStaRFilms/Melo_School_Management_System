@@ -22,6 +22,14 @@ const admissionsDispatchContextValidator = v.object({
   purchaseAttemptId: v.id("admissionsPurchaseAttempts"),
 });
 
+export function matchesPaymentDispatchProviderModeV1(
+  context: { provider: string; providerMode: string },
+  provider: string,
+  providerMode?: string
+): boolean {
+  return context.provider === provider && (!providerMode || context.providerMode === providerMode);
+}
+
 /** Resolves the payment domain from a persisted reference, not webhook metadata. */
 export const resolvePaymentDispatchContextInternal = internalQuery({
   args: { reference: v.string() },

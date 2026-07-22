@@ -55,13 +55,40 @@ export const getApplicationLink = query({
         )
         .unique();
     } else if (school) {
+      // A status alone is insufficient: an older record may still say `open`
+      // after its close time. Resolve all bounded open candidates and choose a
+      // currently valid, product-backed intake deterministically.
       const candidates = await ctx.db
         .query("admissionsIntakes")
         .withIndex("by_school_and_status_and_opens_at", (q) =>
           q.eq("schoolId", school._id).eq("status", "open")
         )
-        .take(1);
-      intake = candidates[0] ?? null;
+        .order("desc")
+        .take(100);
+      const candidatesWithProducts = [];
+      for (const candidate of candidates) {
+        const products = await ctx.db
+          .query("admissionsProducts")
+          .withIndex("by_intake_and_status", (q) =>
+            q.eq("intakeId", candidate._id).eq("status", "active")
+          )
+          .take(1);
+        if (products.length > 0) candidatesWithProducts.push(candidate);
+      }
+
+      const now = Date.now();
+      const compareByOpenThenId = (left: typeof candidates[number], right: typeof candidates[number]) =>
+        right.opensAt - left.opensAt || String(right._id).localeCompare(String(left._id));
+      const current = candidatesWithProducts
+        .filter((candidate) => candidate.opensAt <= now && candidate.closesAt >= now)
+        .sort(compareByOpenThenId)[0];
+      const upcoming = candidatesWithProducts
+        .filter((candidate) => candidate.opensAt > now)
+        .sort((left, right) => left.opensAt - right.opensAt || String(left._id).localeCompare(String(right._id)))[0];
+      const recentlyClosed = candidatesWithProducts
+        .filter((candidate) => candidate.closesAt < now)
+        .sort((left, right) => right.closesAt - left.closesAt || String(right._id).localeCompare(String(left._id)))[0];
+      intake = current ?? upcoming ?? recentlyClosed ?? null;
     }
 
     const activeProducts = intake

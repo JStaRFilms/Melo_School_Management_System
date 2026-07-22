@@ -1,5 +1,6 @@
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { matchesPaymentDispatchProviderModeV1 } from "./foundation/paymentDispatch";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -154,9 +155,9 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     );
   }
 
-  if (metadata.providerMode && String(metadata.providerMode) !== String(referenceContext.providerMode)) {
+  if (!matchesPaymentDispatchProviderModeV1(referenceContext, provider, metadata.providerMode)) {
     return jsonResponse(
-      { ok: false, message: "Webhook invoice reference does not belong to the resolved merchant mode." },
+      { ok: false, message: "Webhook payment reference does not match the resolved provider or merchant mode." },
       400
     );
   }
