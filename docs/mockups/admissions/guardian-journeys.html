@@ -6,77 +6,713 @@
   <meta name="robots" content="noindex" />
   <title>Admissions guardian journeys — design mockup</title>
   <style>
-    :root{--ink:#172033;--muted:#5b667a;--line:#d8dfeb;--canvas:#f4f7fb;--surface:#fff;--brand:#243c9b;--brand-weak:#e9edff;--success:#087a61;--success-weak:#dff7ef;--warn:#9a5b00;--warn-weak:#fff2d5;--danger:#b42318;--danger-weak:#ffe8e7;--purple:#6846a6;--radius:14px;--shadow:0 10px 25px rgba(20,35,68,.08);font:16px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-    *{box-sizing:border-box} body{margin:0;color:var(--ink);background:var(--canvas)} a{color:var(--brand)} button,.button{font:inherit;font-weight:700;border-radius:9px;border:1px solid var(--brand);padding:.7rem 1rem;background:var(--brand);color:#fff;text-decoration:none;display:inline-flex;gap:.45rem;align-items:center;justify-content:center;cursor:default}.button.secondary,button.secondary{background:#fff;color:var(--brand)} .button.quiet{background:transparent;border-color:transparent;color:var(--brand)} .button.danger{background:var(--danger);border-color:var(--danger)}
-    .skip{position:absolute;left:-999px}.skip:focus{left:1rem;top:1rem;z-index:9;background:#fff;padding:.5rem}.top{background:#fff;border-bottom:1px solid var(--line);padding:1rem max(1rem,calc((100vw - 1180px)/2));display:flex;align-items:center;justify-content:space-between;gap:1rem}.brand{font-weight:800;color:var(--brand);font-size:1.05rem}.brand span{color:var(--ink);font-weight:600}.pill{display:inline-flex;align-items:center;gap:.35rem;border-radius:999px;padding:.2rem .55rem;background:#eef1f7;color:#455064;font-size:.78rem;font-weight:750;white-space:nowrap}.pill.success{color:#075f4d;background:var(--success-weak)}.pill.warn{color:#7a4800;background:var(--warn-weak)}.pill.danger{color:#97231b;background:var(--danger-weak)}.pill.brand{background:var(--brand-weak);color:var(--brand)}
-    main{max-width:1180px;margin:auto;padding:2rem 1rem 4rem}.intro{max-width:760px;margin:0 0 2rem}.intro h1{margin:.2rem 0;font-size:clamp(1.75rem,4vw,2.6rem);line-height:1.13}.intro p{color:var(--muted);margin:.6rem 0}.legend{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:1rem}.screen{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin:2rem 0}.screen-label{padding:.7rem 1rem;background:#eef2fb;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:1rem;align-items:center;font-size:.86rem;font-weight:800}.screen-label small{font-weight:500;color:var(--muted)}.screen-body{padding:1.5rem}.annotation{border-left:3px solid var(--purple);padding:.35rem .75rem;margin:1.1rem 0 0;background:#faf8ff;color:#403665;font-size:.88rem}.annotation strong{display:block}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:1rem}.card{border:1px solid var(--line);border-radius:11px;padding:1rem;background:#fff}.muted{color:var(--muted)}.small{font-size:.86rem}.notice{padding:.9rem 1rem;border-radius:10px;border:1px solid #f3ca76;background:var(--warn-weak);color:#704200}.notice.success{background:var(--success-weak);border-color:#9de1ca;color:#075a48}.notice.danger{background:var(--danger-weak);border-color:#f5aaa5;color:#8c221a}.notice h3{margin:0 0 .2rem;font-size:1rem}.split{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}.field{margin:.9rem 0}.field label{font-weight:750;display:block;margin-bottom:.3rem}.field label span{font-weight:600;color:var(--muted);font-size:.83rem}.field input,.field select,.field textarea{font:inherit;width:100%;padding:.65rem .7rem;border:1px solid #9ca9bd;border-radius:8px;background:#fff}.field textarea{min-height:78px}.field .help{font-size:.84rem;color:var(--muted);margin:.25rem 0}.field.error input{border:2px solid var(--danger)}.error-text{color:var(--danger);font-size:.84rem;font-weight:650}.stepper{list-style:none;padding:0;margin:0}.stepper li{padding:.7rem .2rem .7rem 1.65rem;position:relative;color:var(--muted);font-size:.9rem}.stepper li:before{content:"";width:.72rem;height:.72rem;border:2px solid #9ba8bb;border-radius:50%;position:absolute;left:0;top:.93rem;background:#fff}.stepper li.done:before{background:var(--success);border-color:var(--success)}.stepper li.current{color:var(--brand);font-weight:800}.stepper li.current:before{border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-weak)}.stepper li + li:after{content:"";width:2px;height:1rem;background:var(--line);position:absolute;left:.35rem;top:-.4rem}.app-layout{display:grid;grid-template-columns:205px minmax(0,1fr);gap:2rem}.progress{height:7px;border-radius:99px;background:#e2e7f0;overflow:hidden}.progress span{display:block;width:57%;height:100%;background:var(--brand)}.requirement{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:.85rem 0;border-bottom:1px solid var(--line)}.requirement:last-child{border:0}.file{border:1px dashed #91a0b8;border-radius:9px;background:#f9fbfe;padding:.8rem}.timeline{border-left:2px solid var(--line);margin:.5rem 0;padding-left:1rem}.timeline div{position:relative;padding:0 0 1rem}.timeline div:before{content:"";width:.58rem;height:.58rem;background:var(--brand);border-radius:50%;position:absolute;left:-1.34rem;top:.3rem}.state-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem}.state{border:1px solid var(--line);border-radius:10px;padding:.8rem}.state p{font-size:.84rem;margin:.4rem 0;color:var(--muted)}.actions{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin-top:1rem}.privacy{display:flex;gap:.5rem;padding:.7rem;border-radius:9px;background:#f5f1ff;color:#463374;font-size:.87rem}.mobile-bar{display:none}
-    @media(max-width:700px){main{padding:1.25rem .75rem 5rem}.top{padding:.8rem .75rem}.top .small{display:none}.screen-body{padding:1rem}.grid,.split{display:block}.grid>.card{margin-bottom:1rem}.app-layout{display:block}.app-layout nav{display:none}.mobile-bar{display:flex;justify-content:space-between;align-items:center;margin:-.1rem 0 1rem}.state-grid{grid-template-columns:1fr}.actions .button,.actions button{width:100%}.screen-label{align-items:flex-start}.screen-label small{max-width:55%;text-align:right}.requirement{display:block}.requirement .actions{margin-top:.5rem}.sticky-save{position:sticky;bottom:.5rem;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);border-radius:10px;padding:.6rem;z-index:2}.sticky-save .button{width:100%}}
+    :root {
+      --ink: #172033;
+      --muted: #5b667a;
+      --line: #d8dfeb;
+      --canvas: #f4f7fb;
+      --surface: #fff;
+      --brand: #243c9b;
+      --brand-weak: #e9edff;
+      --success: #087a61;
+      --success-weak: #dff7ef;
+      --warn: #9a5b00;
+      --warn-weak: #fff2d5;
+      --danger: #b42318;
+      --danger-weak: #ffe8e7;
+      --purple: #6846a6;
+      --radius: 14px;
+      --shadow: 0 10px 25px rgba(20,35,68,.08);
+      font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); }
+    a { color: var(--brand); text-decoration: none; }
+    button, .button {
+      font: inherit; font-weight: 700; border-radius: 9px; border: 1px solid var(--brand);
+      min-height: 44px; min-width: 44px; padding: .7rem 1.1rem; background: var(--brand); color: #fff;
+      display: inline-flex; gap: .5rem; align-items: center; justify-content: center; cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+    button:hover, .button:hover { background: #1c307e; }
+    .button.secondary, button.secondary { background: #fff; color: var(--brand); border-color: var(--brand); }
+    .button.secondary:hover, button.secondary:hover { background: #f0f4ff; }
+    .button.quiet, button.quiet { background: transparent; border-color: transparent; color: var(--brand); }
+    .button.quiet:hover, button.quiet:hover { background: #eef2fb; }
+    .button.danger, button.danger { background: var(--danger); border-color: var(--danger); }
+    .button.danger:hover, button.danger:hover { background: #911c13; }
+    .button:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+
+    .skip { position: absolute; left: -999px; }
+    .skip:focus { left: 1rem; top: 1rem; z-index: 99; background: #fff; padding: .75rem 1.25rem; border: 2px solid var(--brand); }
+    .top { background: #fff; border-bottom: 1px solid var(--line); padding: 1rem max(1rem, calc((100vw - 1180px)/2)); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .brand { font-weight: 800; color: var(--brand); font-size: 1.05rem; }
+    .brand span { color: var(--ink); font-weight: 600; }
+    .pill { display: inline-flex; align-items: center; gap: .4rem; border-radius: 999px; min-height: 24px; padding: .25rem .65rem; background: #eef1f7; color: #455064; font-size: .8rem; font-weight: 750; white-space: nowrap; }
+    .pill.success { color: #075f4d; background: var(--success-weak); }
+    .pill.warn { color: #7a4800; background: var(--warn-weak); }
+    .pill.danger { color: #97231b; background: var(--danger-weak); }
+    .pill.brand { background: var(--brand-weak); color: var(--brand); }
+
+    main { max-width: 1180px; margin: auto; padding: 2rem 1rem 4rem; }
+    .intro { max-width: 820px; margin: 0 0 2rem; }
+    .intro h1 { margin: .3rem 0; font-size: clamp(1.75rem, 4vw, 2.6rem); line-height: 1.13; }
+    .intro p { color: var(--muted); margin: .6rem 0; }
+    .legend { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
+    .screen { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin: 2rem 0; }
+    .screen-label { padding: .85rem 1.25rem; background: #eef2fb; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 1rem; align-items: center; font-size: .88rem; font-weight: 800; }
+    .screen-label small { font-weight: 500; color: var(--muted); }
+    .screen-body { padding: 1.5rem; }
+    .annotation { border-left: 4px solid var(--purple); padding: .5rem .9rem; margin: 1.25rem 0 0; background: #faf8ff; color: #403665; font-size: .88rem; border-radius: 0 8px 8px 0; }
+    .annotation strong { display: block; margin-bottom: .2rem; color: #2c1a52; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
+    .card { border: 1px solid var(--line); border-radius: 11px; padding: 1.2rem; background: #fff; }
+    .muted { color: var(--muted); }
+    .small { font-size: .86rem; }
+    .notice { padding: 1rem 1.1rem; border-radius: 10px; border: 1px solid #f3ca76; background: var(--warn-weak); color: #704200; }
+    .notice.success { background: var(--success-weak); border-color: #9de1ca; color: #075a48; }
+    .notice.danger { background: var(--danger-weak); border-color: #f5aaa5; color: #8c221a; }
+    .notice.info { background: var(--brand-weak); border-color: #b0c2ff; color: #1a2b70; }
+    .notice h3 { margin: 0 0 .25rem; font-size: 1.02rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .field { margin: .9rem 0; }
+    .field label { font-weight: 750; display: block; margin-bottom: .35rem; }
+    .field label span { font-weight: 600; color: var(--muted); font-size: .83rem; }
+    .field input, .field select, .field textarea { font: inherit; width: 100%; padding: .68rem .8rem; border: 1px solid #9ca9bd; border-radius: 8px; background: #fff; min-height: 44px; }
+    .field textarea { min-height: 85px; }
+    .field .help { font-size: .84rem; color: var(--muted); margin: .25rem 0; }
+    .field.error input { border: 2px solid var(--danger); }
+    .error-text { color: var(--danger); font-size: .84rem; font-weight: 650; margin-top: .25rem; }
+    .stepper { list-style: none; padding: 0; margin: 0; }
+    .stepper li { padding: .7rem .2rem .7rem 1.65rem; position: relative; color: var(--muted); font-size: .9rem; }
+    .stepper li:before { content: ""; width: .75rem; height: .75rem; border: 2px solid #9ba8bb; border-radius: 50%; position: absolute; left: 0; top: .93rem; background: #fff; }
+    .stepper li.done:before { background: var(--success); border-color: var(--success); }
+    .stepper li.current { color: var(--brand); font-weight: 800; }
+    .stepper li.current:before { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-weak); }
+    .stepper li + li:after { content: ""; width: 2px; height: 1rem; background: var(--line); position: absolute; left: .35rem; top: -.4rem; }
+    .app-layout { display: grid; grid-template-columns: 205px minmax(0, 1fr); gap: 2rem; }
+    .progress { height: 8px; border-radius: 99px; background: #e2e7f0; overflow: hidden; margin: .4rem 0; }
+    .progress span { display: block; height: 100%; background: var(--brand); }
+    .requirement { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: .9rem 0; border-bottom: 1px solid var(--line); }
+    .requirement:last-child { border: 0; }
+    .file { border: 1px dashed #91a0b8; border-radius: 9px; background: #f9fbfe; padding: 1rem; text-align: center; }
+    .timeline { border-left: 2px solid var(--line); margin: .5rem 0; padding-left: 1.25rem; }
+    .timeline div { position: relative; padding: 0 0 1rem; }
+    .timeline div:before { content: ""; width: .6rem; height: .6rem; background: var(--brand); border-radius: 50%; position: absolute; left: -1.58rem; top: .3rem; }
+    .state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .9rem; }
+    .state { border: 1px solid var(--line); border-radius: 10px; padding: .9rem; background: #fff; }
+    .state p { font-size: .84rem; margin: .4rem 0 0; color: var(--muted); }
+    .actions { display: flex; gap: .65rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+    .privacy { display: flex; gap: .65rem; padding: .85rem; border-radius: 9px; background: #f5f1ff; color: #463374; font-size: .87rem; border: 1px solid #d9cdfc; }
+    .mobile-bar { display: none; }
+    .tab-bar { display: flex; gap: .5rem; border-bottom: 2px solid var(--line); margin-bottom: 1rem; }
+    .tab-bar button { background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; color: var(--muted); font-weight: 700; min-height: 40px; padding: .5rem .75rem; }
+    .tab-bar button.active { color: var(--brand); border-bottom-color: var(--brand); }
+    
+    /* Modal / Dialog Backdrop Mockup */
+    .modal-backdrop { background: rgba(15, 23, 42, 0.55); padding: 1.5rem; border-radius: 12px; margin: 1rem 0; }
+    .modal-dialog { background: #fff; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 20px 40px rgba(0,0,0,0.18); padding: 1.5rem; max-width: 580px; margin: auto; }
+
+    @media (max-width: 700px) {
+      main { padding: 1.25rem .75rem 5rem; }
+      .top { padding: .8rem .75rem; }
+      .top .small { display: none; }
+      .screen-body { padding: 1rem; }
+      .grid, .split { display: block; }
+      .grid > .card { margin-bottom: 1rem; }
+      .app-layout { display: block; }
+      .app-layout nav { display: none; }
+      .mobile-bar { display: flex; justify-content: space-between; align-items: center; margin: -.1rem 0 1rem; }
+      .actions .button, .actions button { width: 100%; }
+      .screen-label { align-items: flex-start; flex-direction: column; }
+      .screen-label small { max-width: 100%; text-align: left; margin-top: .2rem; }
+      .requirement { display: block; }
+      .requirement .actions { margin-top: .5rem; }
+      .sticky-save { position: sticky; bottom: .5rem; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 10px; padding: .6rem; z-index: 2; }
+      .sticky-save .button { width: 100%; }
+    }
   </style>
 </head>
 <body>
 <a class="skip" href="#mockups">Skip to mockups</a>
-<header class="top"><div class="brand">Apply <span>· School admissions</span></div><div class="small muted">Design reference only · private application UI</div><span class="pill brand">Guardian journey</span></header>
+<header class="top">
+  <div class="brand">Apply <span>· School admissions</span></div>
+  <div class="small muted">Design reference only · private application UI</div>
+  <span class="pill brand">Guardian journey</span>
+</header>
+
 <main id="mockups">
   <section class="intro">
-    <p class="pill brand">D1 · Build-ready annotated wireframes</p>
+    <span class="pill brand">D1 · Build-ready annotated wireframes (Updated)</span>
     <h1>Guardian admissions journey</h1>
-    <p>Mobile-first screens for a verified guardian who buys a separate paid slot for each child, completes a private application, and follows a human admissions process.</p>
-    <div class="legend"><span class="pill success">● Confirmed / complete</span><span class="pill warn">! Pending / action needed</span><span class="pill danger">× Error / unavailable</span><span class="pill brand">● Current action</span></div>
+    <p>Mobile-first screens for a verified guardian who purchases a separate slot per child, completes a private application, and follows a human admissions process.</p>
+    <div class="legend">
+      <span class="pill success">● Confirmed / complete</span>
+      <span class="pill warn">! Pending / action needed</span>
+      <span class="pill danger">× Error / unavailable</span>
+      <span class="pill brand">● Current action</span>
+    </div>
   </section>
 
+  <!-- SCREEN 01: Offering Link Entry & Availability States -->
   <section class="screen" aria-labelledby="offering-title">
-    <div class="screen-label"><span>01 · Public offering / link entry</span><small>`/s/{schoolSlug}` or `/s/{schoolSlug}/i/{intakeSlug}`</small></div>
-    <div class="screen-body grid">
-      <div style="grid-column:span 7"><span class="pill success">● Applications open</span><h2 id="offering-title">[Approved school name]</h2><p class="muted">[Published programme] · [Published intake label]</p><p>Start an online application for one child. You can save your progress and return after verifying your contact details.</p><div class="notice"><h3>Before you begin</h3><p>One payment creates <strong>one application slot for one child</strong>. You can buy another slot for a sibling later.</p><ul class="small"><li>Application fee: <strong>[server-resolved amount and currency]</strong></li><li>Required documents: [published requirement count/categories]</li><li>Applications close: [published date/time, if supplied]</li></ul></div><div class="actions"><a class="button" href="#auth">Start an application</a><a class="button secondary" href="#documents">What you will need</a></div></div>
-      <aside class="card" style="grid-column:span 5"><h3>Availability</h3><p class="small"><strong>Open now</strong></p><p class="small muted">Availability, dates, fee disclosure, and document requirements come from the published offering. This page never assumes an unverified school fact.</p><hr style="border:0;border-top:1px solid var(--line);margin:1rem 0"><a href="#support" class="small">Already started? Sign in to resume →</a></aside>
+    <div class="screen-label">
+      <span>01 · Public offering / link entry & availability states</span>
+      <small>`ApplicationLinkV1` contract (`/s/{schoolSlug}` or `/s/{schoolSlug}/i/{intakeSlug}`)</small>
     </div>
-    <div class="annotation"><strong>Build note</strong>Unknown, disabled, paused, or closed links use the same safe availability treatment (`OFFERING_UNAVAILABLE`) without exposing tenant configuration. “Open” permits a start; it does not promise admission or a place.</div>
-  </section>
-
-  <section class="screen" id="auth" aria-labelledby="auth-title">
-    <div class="screen-label"><span>02 · Sign in and verification gate</span><small>Return guardian to original purchase/resume intent</small></div>
-    <div class="screen-body split"><div><h2 id="auth-title">Protect your child’s application</h2><p class="muted">Sign in or create an account, then verify your contact before you pay, upload private documents, or submit.</p><div class="field"><label for="email">Email address <span>Required</span></label><input id="email" type="email" placeholder="name@example.com" autocomplete="email"><p class="help">We use your verified email to help you return to your applications.</p></div><div class="actions"><button>Continue with email</button><button class="secondary">I already have an account</button></div></div><aside class="card"><span class="pill warn">! Verification required</span><h3>Check your inbox</h3><p class="small">Use the verification link we sent to continue. We will return you to <strong>Buy one application slot</strong>.</p><button class="quiet">Send another email</button><p class="small muted">If a school later requires phone verification, it is a separately labelled step—not an assumed form field.</p></aside></div>
-    <div class="annotation"><strong>Content rule</strong>Explain the purpose of verification in plain language. Do not expose account existence, child names, or prior applications before server-confirmed ownership.</div>
-  </section>
-
-  <section class="screen" aria-labelledby="payment-title">
-    <div class="screen-label"><span>03 · Fee disclosure, checkout handoff, and truthful return</span><small>Payment redirect is not payment success</small></div>
     <div class="screen-body">
-      <div class="grid"><div class="card" style="grid-column:span 5"><h2 id="payment-title">Review application fee</h2><dl class="small"><dt class="muted">School</dt><dd>[Approved school name]</dd><dt class="muted">Intake</dt><dd>[Published intake]</dd><dt class="muted">Product</dt><dd>One application slot for one child</dd><dt class="muted">Fee</dt><dd><strong>[Server-resolved amount / currency]</strong></dd><dt class="muted">Policy</dt><dd>[Published refund disclosure version]</dd></dl><label class="small" style="display:flex;gap:.5rem;align-items:flex-start;margin-top:1rem"><input type="checkbox"> <span>I have reviewed the application fee and disclosure for this one-child slot.</span></label><div class="actions"><button>Continue to secure checkout</button></div></div>
-      <div class="card" style="grid-column:span 7"><span class="pill warn">! Payment pending</span><h2>We are confirming your payment</h2><p>Your payment return was received, but confirmation is still in progress. <strong>Your application slot is not ready yet, and this does not confirm a school place.</strong></p><p class="small muted">Reference: ADM-••••4821 · Last checked just now</p><div class="actions"><button>Check payment again</button><button class="secondary">Contact support</button></div><div class="notice" style="margin-top:1rem"><h3>If you see a problem</h3><p class="small">A failed payment creates no slot. If payment details conflict, we show “Payment needs a check” and ask support to reconcile it—never grant a slot from a screenshot or redirect alone.</p></div></div></div>
-      <div class="state-grid" style="margin-top:1rem"><div class="state"><span class="pill">Checkout pending</span><p>Leaving-site handoff with return-safe action.</p></div><div class="state"><span class="pill success">Payment confirmed</span><p>“Your application slot is ready.” Start one child draft.</p></div><div class="state"><span class="pill danger">Payment not completed</span><p>Review current fee, then start a new attempt.</p></div><div class="state"><span class="pill warn">Payment needs a check</span><p>Partial reference + support; no slot yet.</p></div><div class="state"><span class="pill warn">Checkout expired</span><p>Check payment before starting again.</p></div><div class="state"><span class="pill danger">Refunded / reversed</span><p>Unavailable/held slot; retain safe history.</p></div></div>
+      <!-- Variant A: Applications Open -->
+      <div class="grid" style="margin-bottom: 1.5rem;">
+        <div style="grid-column: span 7;">
+          <span class="pill success">● Applications open</span>
+          <h2 id="offering-title">[Approved school name]</h2>
+          <p class="muted">[Published programme] · [Published intake label]</p>
+          <p>Start an online application for one child. You can save your progress and return after verifying your contact details.</p>
+          <div class="notice">
+            <h3>Before you begin</h3>
+            <p>One payment creates <strong>one application slot for one child</strong>. You can buy another slot for a sibling later.</p>
+            <ul class="small" style="margin:.4rem 0 0; padding-left: 1.2rem;">
+              <li>Application fee: <strong>[server-resolved amount and currency]</strong></li>
+              <li>Required documents: [published requirement count/categories]</li>
+              <li>Applications close: [published date/time, if supplied]</li>
+            </ul>
+          </div>
+          <div class="actions">
+            <a class="button" href="#auth">Start an application</a>
+            <a class="button secondary" href="#documents">What you will need</a>
+          </div>
+        </div>
+        <aside class="card" style="grid-column: span 5;">
+          <h3>Availability</h3>
+          <p class="small"><strong>Open now</strong></p>
+          <p class="small muted">Availability, dates, fee disclosure, and document requirements come from the published offering. This page never assumes an unverified school fact.</p>
+          <hr style="border:0;border-top:1px solid var(--line);margin:1rem 0">
+          <a href="#support" class="small">Already started? Sign in to resume →</a>
+        </aside>
+      </div>
+
+      <!-- Availability State Gallery -->
+      <h3 style="font-size:1rem; margin-top:1.5rem;">Additional Availability States (`ApplicationLinkV1.availability`)</h3>
+      <div class="state-grid">
+        <div class="state">
+          <span class="pill warn">● Upcoming</span>
+          <h4 style="margin:.4rem 0 .2rem;">Admissions Open Soon</h4>
+          <p>Opens: <strong>Sept 1, 2026 at 09:00 AM</strong></p>
+          <p>The published offering is visible for planning. Purchase and draft start are disabled until opensAt timestamp.</p>
+          <div class="actions" style="margin-top:.5rem;"><button class="secondary quiet" style="min-height:36px; padding:.3rem .6rem;">Set reminder / notify me</button></div>
+        </div>
+        <div class="state">
+          <span class="pill warn">! Paused</span>
+          <h4 style="margin:.4rem 0 .2rem;">Applications Temporarily Paused</h4>
+          <p>The school has temporarily paused new application slot purchases. Existing draft and submitted applications remain accessible in your workspace.</p>
+          <div class="actions" style="margin-top:.5rem;"><a href="#workspace" class="small">Go to workspace →</a></div>
+        </div>
+        <div class="state">
+          <span class="pill danger">× Closed / Unavailable</span>
+          <h4 style="margin:.4rem 0 .2rem;">Offering Unavailable (`OFFERING_UNAVAILABLE`)</h4>
+          <p>This application link is not available or admissions for this cycle have closed. Please check the link or contact the school directly.</p>
+          <p class="small muted">Generic safe response; does not expose internal school settings or intake configuration.</p>
+        </div>
+      </div>
     </div>
-    <div class="annotation"><strong>Build note</strong>Do not show a success check, available slot, or “place secured” copy until provider verification records `paid`. Price/product are server-resolved and a changed disclosure requires renewed confirmation.</div>
+    <div class="annotation">
+      <strong>Build note</strong>
+      Unknown, disabled, paused, or closed links use the safe availability treatment (`OFFERING_UNAVAILABLE`) without exposing tenant configuration. The link URL is server-owned and never constructed from query params or client hostnames.
+    </div>
   </section>
 
-  <section class="screen" aria-labelledby="workspace-title">
-    <div class="screen-label"><span>04 · Slot workspace / sibling-safe dashboard</span><small>`/s/{schoolSlug}/account`</small></div>
-    <div class="screen-body"><div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap"><div><h2 id="workspace-title">Your applications</h2><p class="muted">[Approved school name] · 1 slot available</p></div><button>Buy another application slot</button></div><div class="grid" style="margin-top:1rem"><article class="card" style="grid-column:span 4"><span class="pill success">● Available slot</span><h3>Ready for one child</h3><p class="small muted">No child details have been added to this slot yet.</p><button>Start application</button></article><article class="card" style="grid-column:span 4"><span class="pill brand">● Draft · Step 3 of 6</span><h3>[Child name after guardian saves it]</h3><p class="small muted">Last saved today, 10:42 · Documents next</p><div class="progress" aria-label="57% complete"><span></span></div><div class="actions"><button>Resume</button></div></article><article class="card" style="grid-column:span 4"><span class="pill warn">! Action needed</span><h3>[Child name after guardian saves it]</h3><p class="small muted">The school requested updates to 2 items.</p><div class="actions"><button>Review changes</button></div></article></div></div>
-    <div class="annotation"><strong>Interaction rule</strong>Cards are independent entitlements. A guardian may buy sibling slots, but a draft is permanently bound to its own slot; reset/correction uses the same draft, never “move this child to another slot.”</div>
+  <!-- SCREEN 02: Sign In and Verification Gate -->
+  <section class="screen" id="auth" aria-labelledby="auth-title">
+    <div class="screen-label">
+      <span>02 · Sign in and contact verification gate</span>
+      <small>Return guardian to original purchase/resume intent after verification</small>
+    </div>
+    <div class="screen-body split">
+      <div>
+        <h2 id="auth-title">Protect your child’s application</h2>
+        <p class="muted">Sign in or create an account, then verify your contact before you pay, upload private documents, or submit.</p>
+        <div class="field">
+          <label for="email">Email address <span>Required</span></label>
+          <input id="email" type="email" placeholder="name@example.com" autocomplete="email">
+          <p class="help">We use your verified email to help you return to your applications securely.</p>
+        </div>
+        <div class="actions">
+          <button type="button">Continue with email</button>
+          <button type="button" class="secondary">I already have an account</button>
+        </div>
+      </div>
+      <aside class="card">
+        <span class="pill warn">! Verification required</span>
+        <h3>Check your inbox</h3>
+        <p class="small">Use the verification link we sent to continue. We will return you to <strong>Buy one application slot</strong>.</p>
+        <button type="button" class="quiet">Send another email</button>
+        <p class="small muted" style="margin-top:.8rem;">If policy later requires phone verification, it will appear as a separately labelled verification step—never a silently required form field.</p>
+      </aside>
+    </div>
+    <div class="annotation">
+      <strong>Content rule</strong>
+      Explain the purpose of verification in plain language. Never expose account existence, child names, or prior applications before server-derived contact verification.
+    </div>
   </section>
 
+  <!-- SCREEN 03: Fee Disclosure, Checkout Return, PRICE_CHANGED, & Refunded Consumed Slot -->
+  <section class="screen" aria-labelledby="payment-title">
+    <div class="screen-label">
+      <span>03 · Fee disclosure, checkout return, & payment exceptions</span>
+      <small>Payment redirect is not payment success · Replay-safe provider verification</small>
+    </div>
+    <div class="screen-body">
+      <!-- Standard Checkout Review -->
+      <div class="grid">
+        <div class="card" style="grid-column: span 5;">
+          <h2 id="payment-title">Review application fee</h2>
+          <dl class="small" style="display:grid; grid-template-columns: 80px 1fr; gap:.4rem 0;">
+            <dt class="muted">School</dt><dd>[Approved school name]</dd>
+            <dt class="muted">Intake</dt><dd>[Published intake]</dd>
+            <dt class="muted">Product</dt><dd>One application slot for one child</dd>
+            <dt class="muted">Fee</dt><dd><strong>[Server-resolved amount / currency]</strong></dd>
+            <dt class="muted">Policy</dt><dd>[Published refund disclosure version]</dd>
+          </dl>
+          <label class="small" style="display:flex;gap:.5rem;align-items:flex-start;margin-top:1rem">
+            <input type="checkbox">
+            <span>I have reviewed the application fee and disclosure for this one-child slot.</span>
+          </label>
+          <div class="actions">
+            <button type="button">Continue to secure checkout</button>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column: span 7;">
+          <span class="pill warn">! Payment pending</span>
+          <h2>We are confirming your payment</h2>
+          <p>Your payment return was received, but confirmation is still in progress. <strong>Your application slot is not ready yet, and this does not confirm a school place.</strong></p>
+          <p class="small muted">Reference: ADM-••••4821 · Last checked just now</p>
+          <div class="actions">
+            <button type="button">Check payment again</button>
+            <button type="button" class="secondary">Contact support</button>
+          </div>
+          <div class="notice" style="margin-top:1rem">
+            <h3>If you see a problem</h3>
+            <p class="small">A failed payment creates no slot. If payment details conflict, we show "Payment needs a check" and ask support to reconcile it—never grant a slot from a screenshot or redirect alone.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRICE_CHANGED Warning State Overlay Mockup -->
+      <div class="notice danger" style="margin-top: 1.25rem;">
+        <span class="pill danger">× Price update required (`PRICE_CHANGED`)</span>
+        <h3 style="margin-top:.4rem;">The application fee has changed</h3>
+        <p class="small">The published fee for this intake was updated while your checkout was in progress. Please review the updated fee disclosure before starting a new checkout.</p>
+        <p class="small">Previous fee: ₦5,000 · <strong>Current published fee: ₦7,500</strong> (Disclosure v2)</p>
+        <div class="actions" style="margin-top:.6rem;">
+          <button type="button" class="secondary">Review new fee & re-confirm</button>
+          <button type="button" class="quiet">Cancel purchase</button>
+        </div>
+      </div>
+
+      <!-- Payment State Matrix -->
+      <h3 style="font-size:1rem; margin-top:1.5rem;">Payment Lifecycle State Matrix</h3>
+      <div class="state-grid">
+        <div class="state"><span class="pill">Checkout pending</span><p>Leaving-site handoff with return-safe action.</p></div>
+        <div class="state"><span class="pill success">Payment confirmed</span><p>"Your application slot is ready." Start one child draft.</p></div>
+        <div class="state"><span class="pill danger">Payment not completed</span><p>Review current fee, then start a new attempt.</p></div>
+        <div class="state"><span class="pill warn">Payment needs a check</span><p>Partial reference + support; no slot granted.</p></div>
+        <div class="state"><span class="pill warn">Checkout expired</span><p>Check payment status before starting again.</p></div>
+        <div class="state"><span class="pill danger">Refunded / Reversed (Unused)</span><p>Slot is voided and removed from available list.</p></div>
+        <div class="state" style="border-color: #f5aaa5; background: #fff8f8;">
+          <span class="pill danger">Refunded / Reversed (Consumed)</span>
+          <p><strong>Application Held:</strong> "The school is reviewing the payment status for this application." Preserves application history without automatic withdrawal.</p>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Build note</strong>
+      Do not show a success checkmark, available slot, or "place secured" copy until provider verification records `paid`. Price/product are server-resolved and a changed disclosure requires renewed confirmation (`PRICE_CHANGED`).
+    </div>
+  </section>
+
+  <!-- SCREEN 04: Slot Workspace / Sibling Dashboard & Full Lifecycle Cards -->
+  <section class="screen" id="workspace" aria-labelledby="workspace-title">
+    <div class="screen-label">
+      <span>04 · Slot workspace / sibling-safe dashboard</span>
+      <small>`/s/{schoolSlug}/account` · Independent entitlements per child</small>
+    </div>
+    <div class="screen-body">
+      <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <h2 id="workspace-title">Your applications</h2>
+          <p class="muted">[Approved school name] · Sibling-separated workspace</p>
+        </div>
+        <button type="button">Buy another application slot</button>
+      </div>
+
+      <!-- Zero-Slot Empty Workspace View (Alternative Render) -->
+      <div class="notice info" style="margin-top: 1rem;">
+        <h3>No application slots yet</h3>
+        <p class="small">You do not have any active or available application slots for this school. Purchase an application slot to begin applying for a child.</p>
+        <div class="actions" style="margin-top: .5rem;">
+          <button type="button">Buy your first application slot</button>
+        </div>
+      </div>
+
+      <!-- Full Slot Lifecycle Gallery -->
+      <h3 style="font-size:1rem; margin-top:1.5rem;">Slot Lifecycle Cards</h3>
+      <div class="grid">
+        <!-- 1. Available Slot -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill success">● Available slot</span>
+          <h3>Ready for one child</h3>
+          <p class="small muted">No child details have been added to this slot yet.</p>
+          <div class="actions"><button type="button">Start application</button></div>
+        </article>
+
+        <!-- 2. Draft -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill brand">● Draft · Step 3 of 6</span>
+          <h3>Adaobi Okonkwo</h3>
+          <p class="small muted">Last saved today, 10:42 · Documents next</p>
+          <div class="progress" aria-label="57% complete"><span style="width:57%;"></span></div>
+          <div class="actions"><button type="button">Resume</button></div>
+        </article>
+
+        <!-- 3. Action Needed (Changes Requested) -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill warn">! Action needed</span>
+          <h3>Chidi Okonkwo</h3>
+          <p class="small muted">The school requested updates to 2 items.</p>
+          <div class="actions"><button type="button">Review changes</button></div>
+        </article>
+
+        <!-- 4. Submitted -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill success">● Submitted · Revision 1</span>
+          <h3>Emeka Okonkwo</h3>
+          <p class="small muted">Submitted Jul 20, 2026 · Under review</p>
+          <div class="actions"><button type="button" class="secondary">View submitted copy</button></div>
+        </article>
+
+        <!-- 5. Decision Recorded (Accepted) -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill success">● Decision: Accepted</span>
+          <h3>Kelechi Okonkwo</h3>
+          <p class="small muted">School recorded acceptance on Jul 21, 2026.</p>
+          <div class="actions"><button type="button" class="secondary">Read decision letter</button></div>
+        </article>
+
+        <!-- 6. Conversion in Progress -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill brand">● Internal record setup</span>
+          <h3>Kelechi Okonkwo</h3>
+          <p class="small muted">The school is preparing internal records. Account setup communication pending.</p>
+          <div class="actions"><button type="button" class="secondary quiet" disabled>Setup in progress</button></div>
+        </article>
+
+        <!-- 7. Converted -->
+        <article class="card" style="grid-column: span 4;">
+          <span class="pill success">● Record Setup Complete</span>
+          <h3>Kelechi Okonkwo</h3>
+          <p class="small muted">Canonical school record created. Check your email for portal onboarding.</p>
+          <div class="actions"><button type="button" class="secondary">View onboarding guide</button></div>
+        </article>
+
+        <!-- 8. Held / Refunded -->
+        <article class="card" style="grid-column: span 4; border-color: #f5aaa5; background: #fff8f8;">
+          <span class="pill danger">× Held / Payment Review</span>
+          <h3>[Child Application]</h3>
+          <p class="small muted">This slot is on hold due to payment reconciliation or refund processing.</p>
+          <div class="actions"><button type="button" class="secondary">Contact support</button></div>
+        </article>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Interaction rule</strong>
+      Slot cards represent independent entitlements. A guardian may buy sibling slots, but a draft is permanently bound to its own slot; resetting or correcting uses the same draft, never "move this child to another slot."
+    </div>
+  </section>
+
+  <!-- SCREEN 05: Resumable Child Application & DRAFT_VERSION_CONFLICT Recovery -->
   <section class="screen" aria-labelledby="form-title">
-    <div class="screen-label"><span>05 · Resumable child application</span><small>`/s/{schoolSlug}/applications/{opaquePublicId}` · opaque ID is not authorization</small></div>
-    <div class="screen-body"><div class="mobile-bar"><strong>Step 3 of 6 · Optional details</strong><span class="pill brand">57% complete</span></div><div class="app-layout"><nav aria-label="Application steps"><ol class="stepper"><li class="done">Before you begin</li><li class="done">Child and entry</li><li class="current" aria-current="step">Optional details</li><li>Documents</li><li>Review</li><li>Declaration</li></ol></nav><div><div style="display:flex;justify-content:space-between;gap:1rem;align-items:center"><div><h2 id="form-title">Optional details</h2><p class="muted">You can save and return at any time.</p></div><span class="pill success">Saved at 10:42</span></div><div class="progress"><span></span></div><div class="split"><div class="field"><label for="previous">Previous school <span>Optional</span></label><input id="previous" placeholder="Enter school name"></div><div class="field"><label for="start">Dates attended <span>Optional</span></label><input id="start" placeholder="MM/YYYY – MM/YYYY"></div></div><div class="privacy"><span aria-hidden="true">◈</span><div><strong>Medical support information — Optional · Sensitive</strong><br>Share only what is needed for safety or accommodation. Only staff with specific admissions permissions can view it.</div></div><div class="field"><label for="support">Is there anything the school should know to support your child? <span>Optional · Sensitive</span></label><textarea id="support"></textarea><p class="help">You may leave this blank. [Approved retention/privacy policy link appears here when published.]</p></div><div class="sticky-save"><div class="actions" style="margin:0"><button>Save and continue</button><button class="secondary">Save and finish later</button></div></div></div></div></div>
-    <div class="annotation"><strong>Save and conflict behavior</strong>Autosave has textual states: Saving, Saved, Could not save, and Newer saved version available. On conflict, preserve unsent local text and offer reload/compare—never silently merge sensitive answers. Required, optional, and sensitive labels are always written out.</div>
+    <div class="screen-label">
+      <span>05 · Resumable child application & conflict recovery</span>
+      <small>`/s/{schoolSlug}/applications/{opaquePublicId}` · Opaque ID is not authorization</small>
+    </div>
+    <div class="screen-body">
+      <div class="mobile-bar">
+        <strong>Step 3 of 6 · Optional details</strong>
+        <span class="pill brand">57% complete</span>
+      </div>
+
+      <div class="app-layout">
+        <nav aria-label="Application steps">
+          <ol class="stepper">
+            <li class="done">Before you begin</li>
+            <li class="done">Child and entry</li>
+            <li class="current" aria-current="step">Optional details</li>
+            <li>Documents</li>
+            <li>Review</li>
+            <li>Declaration</li>
+          </ol>
+        </nav>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center">
+            <div>
+              <h2 id="form-title">Optional details</h2>
+              <p class="muted">You can save and return at any time.</p>
+            </div>
+            <span class="pill success">Saved at 10:42</span>
+          </div>
+          <div class="progress" aria-label="57% complete"><span style="width:57%;"></span></div>
+
+          <div class="split">
+            <div class="field">
+              <label for="previous">Previous school <span>Optional</span></label>
+              <input id="previous" placeholder="Enter school name">
+            </div>
+            <div class="field">
+              <label for="start">Dates attended <span>Optional</span></label>
+              <input id="start" placeholder="MM/YYYY – MM/YYYY">
+            </div>
+          </div>
+
+          <div class="privacy">
+            <span aria-hidden="true">◈</span>
+            <div>
+              <strong>Medical support information — Optional · Sensitive</strong><br>
+              Share only what is needed for safety or accommodation during the application process. Only staff with specific admissions permissions can view it.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="support">Is there anything the school should know to support your child? <span>Optional · Sensitive</span></label>
+            <textarea id="support"></textarea>
+            <p class="help">You may leave this blank. [Approved retention/privacy policy link appears here when published.]</p>
+          </div>
+
+          <!-- DRAFT_VERSION_CONFLICT Modal Mockup -->
+          <div class="modal-backdrop" role="region" aria-label="Version conflict warning">
+            <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+              <span class="pill warn">! Draft Version Conflict (`DRAFT_VERSION_CONFLICT`)</span>
+              <h3 id="conflict-title" style="margin:.4rem 0 .2rem;">A newer saved version is available</h3>
+              <p class="small muted">This application was modified from another device or browser session. Your local typed changes are preserved on this device.</p>
+              <div class="notice" style="margin: .8rem 0;">
+                <p class="small"><strong>Server version:</strong> Saved today at 10:45 AM by Guardian Account</p>
+                <p class="small"><strong>Your local changes:</strong> Typed in "Previous school" field 2 minutes ago</p>
+              </div>
+              <div class="actions">
+                <button type="button">Reload & compare latest version</button>
+                <button type="button" class="secondary">Keep local typed changes</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sticky-save">
+            <div class="actions" style="margin:0">
+              <button type="button">Save and continue</button>
+              <button type="button" class="secondary">Save and finish later</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Save and conflict behavior</strong>
+      Autosave status has textual feedback: Saving, Saved, Could not save, and Newer saved version available. On conflict (`DRAFT_VERSION_CONFLICT`), preserve local input and offer side-by-side reload/compare—never silently merge sensitive answers.
+    </div>
   </section>
 
+  <!-- SCREEN 06: Private Document Requirements & Bind Failure Recovery -->
   <section class="screen" id="documents" aria-labelledby="documents-title">
-    <div class="screen-label"><span>06 · Private document requirements and upload</span><small>Document categories/status only; never raw storage URLs</small></div>
-    <div class="screen-body split"><div><h2 id="documents-title">Documents</h2><p class="muted">Only the published requirements below are needed for this application.</p><div class="requirement"><div><strong>Child photo <span class="pill">Optional</span></strong><p class="small muted">[Published purpose] · JPG or PNG · Up to [limit]</p></div><span class="pill success">● Uploaded</span></div><div class="requirement"><div><strong>Proof of age <span class="pill brand">Required</span></strong><p class="small muted">[Published purpose] · PDF, JPG, or PNG · Up to [limit]</p></div><button class="secondary">Upload file</button></div><div class="requirement"><div><strong>Support document <span class="pill warn">Conditional</span></strong><p class="small muted">Only if the published form asks for it. Sensitive documents have restricted access.</p></div><span class="pill">Not requested</span></div></div><aside class="card"><h3>Upload proof of age</h3><div class="file"><strong>Choose a file</strong><p class="small muted">Drag-and-drop is optional; keyboard file selection is always available.</p><button class="secondary">Choose file</button></div><p class="small"><strong>Upload status:</strong> Waiting for file</p><p class="small muted">After upload, the file must be securely linked to this requirement. If that fails, it is not counted as provided and you can retry.</p></aside></div>
-    <div class="annotation"><strong>Privacy rule</strong>Guardian access uses a fresh checked action and temporary access only. A quarantined/unavailable file has no link. Replacing a file creates a new version; list UI shows status/version, not a public preview.</div>
+    <div class="screen-label">
+      <span>06 · Private document requirements & upload recovery</span>
+      <small>Document categories/status only; never raw storage URLs in routes or DOM</small>
+    </div>
+    <div class="screen-body split">
+      <div>
+        <h2 id="documents-title">Documents</h2>
+        <p class="muted">Only the published requirements below are needed for this application.</p>
+        
+        <div class="requirement">
+          <div>
+            <strong>Child photo <span class="pill">Optional</span></strong>
+            <p class="small muted">[Published purpose] · JPG or PNG · Up to 5 MB</p>
+            <p class="small text-muted" style="font-size: .78rem;">Version 1 uploaded · Status: Accepted</p>
+          </div>
+          <span class="pill success">● Uploaded</span>
+        </div>
+
+        <div class="requirement">
+          <div>
+            <strong>Proof of age <span class="pill brand">Required</span></strong>
+            <p class="small muted">[Published purpose] · PDF, JPG, or PNG · Up to 5 MB</p>
+          </div>
+          <button type="button" class="secondary">Upload file</button>
+        </div>
+
+        <div class="requirement">
+          <div>
+            <strong>Support document <span class="pill warn">Conditional</span></strong>
+            <p class="small muted">Only if requested. Sensitive documents have restricted staff access.</p>
+          </div>
+          <span class="pill">Not requested</span>
+        </div>
+
+        <!-- DOCUMENT_BIND_FAILED Error Recovery Card -->
+        <div class="notice danger" style="margin-top: 1.25rem;">
+          <span class="pill danger">× Upload Bind Error</span>
+          <h3 style="margin-top:.3rem;">Document could not be linked</h3>
+          <p class="small">The file was uploaded to secure storage, but server binding to this requirement failed. It has not been recorded as submitted.</p>
+          <div class="actions" style="margin-top:.5rem;">
+            <button type="button" class="secondary">Retry binding document</button>
+            <button type="button" class="quiet">Choose another file</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card">
+        <h3>Upload proof of age</h3>
+        <div class="file">
+          <strong>Choose a file</strong>
+          <p class="small muted">Drag-and-drop is optional; keyboard file selection is always available.</p>
+          <button type="button" class="secondary" style="margin-top:.5rem;">Choose file</button>
+        </div>
+        <p class="small" style="margin-top:1rem;"><strong>Upload status:</strong> Waiting for file</p>
+        <p class="small muted">After upload, the file must be securely bound to this requirement. If that fails, it is not counted as provided and you can retry.</p>
+      </aside>
+    </div>
+    <div class="annotation">
+      <strong>Privacy rule</strong>
+      Guardian access uses a fresh checked action and temporary access links. A quarantined/unavailable file has no link. Replacing a file creates a new version; list UI shows category/version, never a public file URL.
+    </div>
   </section>
 
+  <!-- SCREEN 07: Review, Declaration, Signer Evidence, & Submission Revision -->
   <section class="screen" aria-labelledby="submit-title">
-    <div class="screen-label"><span>07 · Review, declaration, submit, and change request</span><small>Submission creates an immutable revision</small></div>
-    <div class="screen-body grid"><div class="card" style="grid-column:span 7"><h2 id="submit-title">Review your application</h2><p class="muted">Check the summary below before you submit. You can return to editable sections until you submit.</p><div class="notice success"><h3>Ready to submit</h3><p>All published required fields and documents are complete.</p></div><h3>Declaration</h3><p class="small">[Exact published declaration title and version] · [Purpose] · [Date/version]</p><label class="small" style="display:flex;gap:.5rem;align-items:flex-start"><input type="checkbox"> <span>I confirm that the information in this application is accurate. <strong>Required</strong></span></label><label class="small" style="display:flex;gap:.5rem;align-items:flex-start;margin-top:.7rem"><input type="checkbox"> <span>I would like to receive optional communications. <strong>Optional</strong></span></label><div class="field"><label for="signer">Signer name and relationship <span>Required</span></label><input id="signer" placeholder="Name · relationship to child"></div><div class="actions"><button>Submit application</button><button class="secondary">Back to review</button></div></div><aside class="card"><h3>What happens when you submit?</h3><ol class="small"><li>This version is locked for school review.</li><li>You can edit only if the school requests changes.</li><li>Submission is not an acceptance decision or school place.</li></ol><hr style="border:0;border-top:1px solid var(--line);margin:1rem 0"><span class="pill success">● Submitted · Revision 1</span><p class="small">Submitted [date/time]. You can now track safe status and school messages.</p></aside></div>
-    <div class="annotation"><strong>Change-request state</strong>When staff request changes, replace the ready panel with an amber checklist of only named unlocked fields/documents, the guardian-safe message, and “Will be included in revision N+1.” Previous submitted revisions remain readable and locked.</div>
+    <div class="screen-label">
+      <span>07 · Review, declaration, signer evidence, & submit</span>
+      <small>Submission creates an immutable revision header/items snapshot</small>
+    </div>
+    <div class="screen-body grid">
+      <div class="card" style="grid-column: span 7;">
+        <h2 id="submit-title">Review your application</h2>
+        <p class="muted">Check the summary below before you submit. You can return to editable sections until you submit.</p>
+        <div class="notice success">
+          <h3>Ready to submit</h3>
+          <p class="small">All published required fields and documents are complete.</p>
+        </div>
+
+        <h3 style="margin-top: 1.2rem;">Declaration</h3>
+        <p class="small">[Exact published declaration title and version] · [Purpose] · [Date/version]</p>
+        
+        <label class="small" style="display:flex;gap:.5rem;align-items:flex-start; margin-top:.5rem;">
+          <input type="checkbox">
+          <span>I confirm that the information in this application is accurate. <strong>Required</strong></span>
+        </label>
+        <label class="small" style="display:flex;gap:.5rem;align-items:flex-start;margin-top:.7rem">
+          <input type="checkbox">
+          <span>I would like to receive optional communications. <strong>Optional</strong></span>
+        </label>
+
+        <!-- Signer Evidence Capture Fields -->
+        <div class="field" style="margin-top: 1rem;">
+          <label for="signer-name">Signer full legal name <span>Required</span></label>
+          <input id="signer-name" placeholder="Full name of accountable guardian">
+        </div>
+        <div class="field">
+          <label for="signer-rel">Relationship to child <span>Required</span></label>
+          <select id="signer-rel">
+            <option>Mother</option>
+            <option>Father</option>
+            <option>Legal Guardian</option>
+          </select>
+        </div>
+        <p class="small muted">Timestamp evidence (epoch ms) and guardian identity will be bound atomically to Revision 1 upon submission.</p>
+
+        <div class="actions">
+          <button type="button">Submit application</button>
+          <button type="button" class="secondary">Back to edit sections</button>
+        </div>
+      </div>
+
+      <aside class="card" style="grid-column: span 5;">
+        <h3>What happens when you submit?</h3>
+        <ol class="small" style="padding-left:1.2rem;">
+          <li>This revision is locked for school review.</li>
+          <li>You can edit only if the school requests changes.</li>
+          <li>Submission is not an acceptance decision or school place.</li>
+        </ol>
+        <hr style="border:0;border-top:1px solid var(--line);margin:1rem 0">
+        <span class="pill success">● Submitted · Revision 1</span>
+        <p class="small" style="margin-top:.4rem;">Submitted Jul 22, 2026 at 10:42 AM. You can now track safe status and school messages.</p>
+      </aside>
+    </div>
+    <div class="annotation">
+      <strong>Change-request state</strong>
+      When staff request changes, replace the ready panel with an amber checklist naming only unlocked fields/documents, the guardian-safe message, and "Will be included in revision N+1." Prior submitted revisions remain readable and locked.
+    </div>
   </section>
 
+  <!-- SCREEN 08: Status, Messages, Withdrawal Modal, & Recovery Gallery -->
   <section class="screen" id="support" aria-labelledby="status-title">
-    <div class="screen-label"><span>08 · Status, messages, and recovery gallery</span><small>No internal notes, candidate matches, or conversion failure detail</small></div>
-    <div class="screen-body split"><div><h2 id="status-title">Application status</h2><div class="notice"><h3>! Updates requested</h3><p>The school asked you to update 2 items before they continue review.</p><button>Continue updates</button></div><div class="timeline"><div><strong>Changes requested</strong><br><span class="small muted">Today · Safe school message available</span></div><div><strong>Revision 1 submitted</strong><br><span class="small muted">[date/time]</span></div></div></div><aside class="card"><h3>State language</h3><p class="small"><strong>Under review</strong> — staff are reviewing; no edit action.</p><p class="small"><strong>Waitlisted / accepted / decision recorded</strong> — show approved school message; never infer a timeline.</p><p class="small"><strong>Internal record setup</strong> — conversion may be in progress; do not expose staff identity/admission conflicts.</p><p class="small"><strong>Account setup is still being sent</strong> — decision remains recorded; communication retry does not repeat conversion.</p><button class="quiet">Withdraw application</button></aside></div>
-    <div class="annotation"><strong>Destructive recovery</strong>Withdrawal explains that submitted/payment history remains and the slot cannot be reassigned to another child. For locked/archived states, show a reason-safe support path rather than an unexplained disabled control.</div>
+    <div class="screen-label">
+      <span>08 · Status, messages, withdrawal, & recovery gallery</span>
+      <small>No internal notes, candidate matches, or conversion failure detail visible to guardian</small>
+    </div>
+    <div class="screen-body split">
+      <div>
+        <h2 id="status-title">Application status</h2>
+        <div class="notice">
+          <h3>! Updates requested</h3>
+          <p class="small">The school asked you to update 2 items before they continue review.</p>
+          <div class="actions" style="margin-top:.5rem;"><button type="button">Continue updates</button></div>
+        </div>
+        <div class="timeline" style="margin-top:1.2rem;">
+          <div>
+            <strong>Changes requested</strong><br>
+            <span class="small muted">Today · Safe school message available</span>
+          </div>
+          <div>
+            <strong>Revision 1 submitted</strong><br>
+            <span class="small muted">Jul 20, 2026 at 09:15 AM</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card">
+        <h3>State Language & Actions</h3>
+        <p class="small"><strong>Under review</strong> — staff are reviewing; no edit action.</p>
+        <p class="small"><strong>Waitlisted / Accepted</strong> — show approved school message; never infer a timeline.</p>
+        <p class="small"><strong>Internal record setup</strong> — conversion in progress; staff identity conflicts hidden.</p>
+        <p class="small"><strong>Account setup pending</strong> — decision recorded; communication retry does not repeat conversion.</p>
+        <hr style="border:0;border-top:1px solid var(--line);margin:1rem 0">
+        <button type="button" class="quiet danger" style="color:var(--danger);">Withdraw application</button>
+      </aside>
+    </div>
+
+    <!-- Withdrawal Modal Overlay Mockup -->
+    <div class="modal-backdrop" role="region" aria-label="Withdrawal confirmation modal">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="withdraw-title">
+        <span class="pill danger">× Destructive Action</span>
+        <h3 id="withdraw-title" style="margin:.4rem 0 .2rem;">Withdraw application?</h3>
+        <p class="small muted">Withdrawing is permanent. Submitted history and payment records remain logged, but this slot cannot be reassigned to another child.</p>
+        <div class="field">
+          <label for="withdraw-reason">Reason for withdrawal <span>Optional</span></label>
+          <select id="withdraw-reason">
+            <option>Moving to another city/school</option>
+            <option>Selected another intake</option>
+            <option>Personal reasons</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button type="button" class="danger">Confirm withdrawal</button>
+          <button type="button" class="secondary">Keep application active</button>
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>Destructive recovery</strong>
+      Withdrawal explains that submitted/payment history remains recorded and the slot cannot be reassigned to another child. For locked or archived states, show a reason-safe support path rather than an unexplained disabled control.
+    </div>
   </section>
 </main>
 </body>
