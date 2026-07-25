@@ -2,6 +2,19 @@
 
 B1 exposes tenant- and ownership-checked Convex functions under `functions/admissions/**`. All private IDs are inputs only; list/read output excludes storage IDs and raw document URLs.
 
+## Public bootstrap APIs (B2)
+
+All public bootstrap routes are keyed by `schoolSlug`, optional `intakeSlug`, and opaque public references. They never return Convex document IDs, storage IDs, or signed document URLs.
+
+- `public.getEntry({ schoolSlug, intakeSlug? })` → non-enumerating published programme/intake/offering projection. It returns `unavailable` for unknown, disabled, unpublished, productless, or improperly configured offerings; `closed` and `paused` expose no purchasable offering.
+- `public.getPublishedConfiguration({ schoolSlug, intakeSlug? })` → only the selected published form's active typed fields, published document requirements, and latest published declaration. Field and requirement references are stable keys, not IDs. Draft/retired configuration and staff metadata are excluded.
+- `public.getGuardianApplication({ schoolSlug, publicReference })` → authenticated owner-only redacted draft/status projection, safe guardian messages, revision/version, and allowed actions. The opaque `publicReference` is school-scoped and is not authority by itself.
+- `public.createAttemptForOffering({ schoolSlug, intakeSlug?, idempotencyKey, provider, providerMode })` → server-resolved price/disclosure purchase attempt without a product ID.
+- `public.createOrResumeForOffering({ schoolSlug, intakeSlug? })` → reserves/resumes one owned slot and returns only an opaque application reference.
+- `public.saveCoreByPublicReference`, `public.saveAnswerByPublicReference`, and `public.submitByPublicReference` accept school slug + opaque application reference. `saveAnswer...` takes a published field key, not a form-field ID.
+- `public.createUploadUrlByPublicReference` and `public.bindUploadByPublicReference` take a requirement key, not a requirement ID. The storage ID returned by Convex upload is transient request data only; it must never be placed in a route, list, log, or durable client state.
+- `public.initializeAttemptByReference` and `public.verifyReturnByReference` take the opaque `adm_` reference and never return an attempt or entitlement ID. A redirect remains pending until server verification reports `paid`.
+
 ## Guardian APIs (B2)
 
 - `guardian.getOrCreateIdentity({})` → `{ guardianId, status, verificationRequired }`. Identity derives from `tokenIdentifier`; B2 must satisfy auth verification before checkout.
