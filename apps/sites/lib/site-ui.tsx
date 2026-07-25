@@ -1,5 +1,4 @@
 import {
-buildSchoolStructuredData,
 getSchoolNavigationPages,
 siteThemeStyle,
 type ContactItem,
@@ -9,7 +8,7 @@ type ResolvedPage,
 type SchoolConfig,
 type SchoolTemplateConfig,
 type SummaryCard
-} from "@/site";
+} from "@/renderers/legacy-template/legacy-data";
 import { ArrowRight,Clock3,Mail,MapPin,Phone } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -511,22 +510,16 @@ export function PublicSchoolPage({
   school,
   template,
   page,
-  canonicalOrigin,
 }: {
   school: SchoolConfig;
   template: SchoolTemplateConfig;
   page: ResolvedPage;
-  canonicalOrigin: string;
 }) {
   const content = school.pageContent[page.key];
   const layout = template.pageLayouts[page.key];
-  const canonicalUrl = new URL(page.canonicalPath, canonicalOrigin).toString();
-  const structuredData = buildSchoolStructuredData({ canonicalUrl, school, page });
 
   return (
-    <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
-      <PublicSiteFrame school={school}>
+    <PublicSiteFrame school={school}>
         {layout.slots.map((slot) => {
           if (slot === "hero") {
             return <HeroSection key="hero" school={school} page={content} />;
@@ -536,6 +529,5 @@ export function PublicSchoolPage({
           return <div key={slot}>{section}</div>;
         })}
       </PublicSiteFrame>
-    </>
   );
 }

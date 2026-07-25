@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildCanonicalPublicOrigin, resolveSiteRequest } from "@/site";
+import { getRequestHostname, buildCanonicalOrigin } from "@/core/domain";
+import { loadSite } from "@/core/content";
+import { getSiteContentSource } from "@/core/source";
 
-export function proxy(request: NextRequest) {
-  const resolution = resolveSiteRequest(request.headers);
-
-  if (resolution.status !== "active" || !resolution.school || !resolution.template || !resolution.redirectToHostname) {
-    return NextResponse.next();
-  }
-
-  if (resolution.redirectToHostname === resolution.hostname) {
-    return NextResponse.next();
-  }
-
-  const canonicalOrigin = buildCanonicalPublicOrigin({ headers: request.headers, resolution });
-  const redirectUrl = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, canonicalOrigin);
-
-  return NextResponse.redirect(redirectUrl, 308);
+export async function proxy(request: NextRequest) {
+  const resolved = await loadSite({ hostname: getRequestHostname(request.headers), source: getSiteContentSource() });
+  if (resolved.status !== "available" || !resolved.redirectToHostname) return NextResponse.next();
+  return NextResponse.redirect(new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, buildCanonicalOrigin(resolved.canonicalDomain)), 308);
 }
 
-export const config = {
-  matcher: ["/((?!_next).*)"],
-};
+export const config = { matcher: ["/((?!_next).*)"] };
