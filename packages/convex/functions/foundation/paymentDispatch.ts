@@ -20,6 +20,8 @@ const admissionsDispatchContextValidator = v.object({
   provider: admissionsProviderValidator,
   providerMode: paymentProviderModeValidator,
   purchaseAttemptId: v.id("admissionsPurchaseAttempts"),
+  amountMinor: v.number(),
+  currency: v.string(),
 });
 
 export function matchesPaymentDispatchProviderModeV1(
@@ -50,6 +52,8 @@ export const resolvePaymentDispatchContextInternal = internalQuery({
         provider: attempt.provider,
         providerMode: attempt.providerMode,
         purchaseAttemptId: attempt._id,
+        amountMinor: attempt.amountMinor,
+        currency: attempt.currency,
       };
     }
 

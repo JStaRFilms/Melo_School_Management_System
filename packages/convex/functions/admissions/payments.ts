@@ -10,6 +10,11 @@ const safeAttemptValidator = v.object({
   amountMinor: v.number(), currency: v.string(), disclosure: v.string(),
 });
 
+/** Payment mode is deployment configuration, never a guardian-selected value. */
+export function configuredAdmissionsPaymentMode() {
+  return process.env.NODE_ENV === "production" ? "live" as const : "test" as const;
+}
+
 async function resolvePurchase(ctx: Parameters<typeof requireGuardian>[0], guardianId: any, productId: any) {
   const product: any = await ctx.db.get(productId);
   if (!product || product.status !== "active") throw new ConvexError("OFFERING_UNAVAILABLE");
@@ -26,7 +31,7 @@ async function resolvePurchase(ctx: Parameters<typeof requireGuardian>[0], guard
 }
 
 export const createAttempt = mutation({
-  args: { productId: v.id("admissionsProducts"), idempotencyKey: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator },
+  args: { productId: v.id("admissionsProducts"), idempotencyKey: v.string() },
   returns: safeAttemptValidator,
   handler: async (ctx, args) => {
     const { guardian } = await requireGuardian(ctx);
@@ -40,7 +45,7 @@ export const createAttempt = mutation({
     const now = Date.now();
     const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", {
       schoolId: resolved.product.schoolId, guardianId: guardian._id, productId: resolved.product._id, priceId: resolved.price._id,
-      provider: args.provider, providerMode: args.providerMode, reference: opaqueKey("adm_"), idempotencyKey,
+      provider: "paystack", providerMode: configuredAdmissionsPaymentMode(), reference: opaqueKey("adm_"), idempotencyKey,
       amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, feeDisclosureSnapshot: resolved.price.feeDisclosure,
       state: "created", createdAt: now, updatedAt: now,
     });

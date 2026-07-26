@@ -26,10 +26,19 @@ export const executeAcceptedConversion = mutation({
     try { profile = JSON.parse(profileItem.serializedValue); } catch { throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED"); }
     if (!profile.firstName || !profile.lastName || !profile.dateOfBirth) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
     const now = Date.now();
-    const existingParent = await ctx.db.query("users").withIndex("by_school_and_email", (q) => q.eq("schoolId", application.schoolId).eq("email", guardian.normalizedEmail)).unique();
-    const parentUserId = existingParent?._id ?? await ctx.db.insert("users", { schoolId: application.schoolId, authId: guardian.betterAuthUserId ?? guardian.authTokenIdentifier, authTokenIdentifier: guardian.authTokenIdentifier, name: guardian.normalizedEmail, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
+    const parentByIdentity = (await ctx.db.query("users").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(100)).find((user) => user.schoolId === application.schoolId) ?? null;
+    if (parentByIdentity && parentByIdentity.role !== "parent") throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    const parentByEmail = parentByIdentity ? null : await ctx.db.query("users").withIndex("by_school_and_email", (q) => q.eq("schoolId", application.schoolId).eq("email", guardian.normalizedEmail)).unique();
+    if (parentByEmail && (parentByEmail.role !== "parent" || parentByEmail.authTokenIdentifier !== guardian.authTokenIdentifier)) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    const parentUserId = parentByIdentity?._id ?? parentByEmail?._id ?? await ctx.db.insert("users", { schoolId: application.schoolId, authId: guardian.betterAuthUserId ?? guardian.authTokenIdentifier, authTokenIdentifier: guardian.authTokenIdentifier, name: guardian.normalizedEmail, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
     let familyId = args.familyId;
-    if (familyId) { const family = await ctx.db.get(familyId); if (!family || family.schoolId !== application.schoolId) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED"); }
+    if (familyId) {
+      const [family, existingLink] = await Promise.all([
+        ctx.db.get(familyId),
+        ctx.db.query("familyMembers").withIndex("by_family_and_parent", (q) => q.eq("familyId", familyId!).eq("parentUserId", parentUserId)).unique(),
+      ]);
+      if (!family || family.schoolId !== application.schoolId || !existingLink || existingLink.schoolId !== application.schoolId) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    }
     if (!familyId) familyId = await ctx.db.insert("families", { schoolId: application.schoolId, name: `${profile.lastName.trim()} Family`, createdAt: now, updatedAt: now, createdBy: membership.userId, updatedBy: membership.userId });
     const link = await ctx.db.query("familyMembers").withIndex("by_family_and_parent", (q) => q.eq("familyId", familyId!).eq("parentUserId", parentUserId)).unique();
     if (!link) await ctx.db.insert("familyMembers", { schoolId: application.schoolId, familyId: familyId!, parentUserId, isPrimaryContact: true, createdAt: now, updatedAt: now, createdBy: membership.userId, updatedBy: membership.userId });

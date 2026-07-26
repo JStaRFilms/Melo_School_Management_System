@@ -189,6 +189,22 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
   const eventId = buildPaystackEventId(payload);
   const eventType = normalizeWebhookText(payload?.event) ?? "payment.webhook";
 
+  if (referenceContext.domain === "admissions") {
+    const receipt = payload?.data ?? {};
+    const amountMinor = typeof receipt.amount === "number" && Number.isInteger(receipt.amount)
+      ? receipt.amount
+      : null;
+    const currency = normalizeWebhookText(receipt.currency)?.toUpperCase();
+    if (
+      eventType !== "charge.success" ||
+      receipt.status !== "success" ||
+      amountMinor !== referenceContext.amountMinor ||
+      currency !== referenceContext.currency.toUpperCase()
+    ) {
+      return jsonResponse({ ok: false, message: "Webhook payment receipt does not match the expected successful admissions payment." }, 400);
+    }
+  }
+
   const receivedAt = Date.now();
   if (referenceContext.domain === "billing") {
     await ctx.runMutation(
@@ -215,9 +231,9 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
       }
     );
   } else {
-    // Admissions payloads never persist raw webhook bodies. B1 will consume the
-    // verified replay-safe envelope to create an entitlement transactionally.
-    await ctx.runMutation(
+    // Admissions payloads never persist raw webhook bodies. Only a signed,
+    // successful receipt with the persisted amount/currency can be fulfilled.
+    const recorded: any = await ctx.runMutation(
       (internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal,
       {
         schoolId: referenceContext.schoolId,
@@ -229,6 +245,10 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
         bodyDigest: await sha256Hex(rawBody),
         receivedAt,
       }
+    );
+    await ctx.runMutation(
+      (internal as any).functions.admissions.payments.fulfilVerifiedEvent,
+      { paymentEventId: recorded.eventId }
     );
   }
 

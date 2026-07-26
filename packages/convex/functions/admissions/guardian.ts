@@ -3,6 +3,11 @@ import { ConvexError, v } from "convex/values";
 import { requireAuthIdentityV1 } from "../foundation/auth";
 import { requireGuardian } from "./helpers";
 
+function verifiedAtFromAuthIdentity(rawIdentity: unknown) {
+  const identity = rawIdentity as { emailVerified?: unknown; email_verified?: unknown } | null;
+  return identity?.emailVerified === true || identity?.email_verified === true ? Date.now() : undefined;
+}
+
 const workspaceItemValidator = v.object({
   entitlementId: v.id("admissionsEntitlements"),
   state: v.string(),
@@ -20,7 +25,13 @@ export const getOrCreateIdentity = mutation({
     const rawIdentity = await ctx.auth.getUserIdentity();
     const existing = await ctx.db.query("admissionsGuardians")
       .withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", identity.tokenIdentifier)).unique();
-    if (existing) return { guardianId: existing._id, status: existing.status, verificationRequired: !existing.emailVerifiedAt };
+    const verifiedAt = verifiedAtFromAuthIdentity(rawIdentity);
+    if (existing) {
+      if (verifiedAt && !existing.emailVerifiedAt) {
+        await ctx.db.patch(existing._id, { emailVerifiedAt: verifiedAt, updatedAt: verifiedAt });
+      }
+      return { guardianId: existing._id, status: existing.status, verificationRequired: !(existing.emailVerifiedAt || verifiedAt) };
+    }
 
     const email = rawIdentity?.email?.trim().toLowerCase();
     if (!email) throw new ConvexError("Verification required");
@@ -30,6 +41,7 @@ export const getOrCreateIdentity = mutation({
       betterAuthUserId: identity.subject,
       normalizedEmail: email,
       status: "active",
+      ...(verifiedAt ? { emailVerifiedAt: verifiedAt } : {}),
       createdAt: now,
       updatedAt: now,
     });

@@ -41,7 +41,7 @@ describe("B1 admissions domain", () => {
     const first = await t.withIdentity(guardianIdentity).mutation(create, { entitlementId });
     const second = await t.withIdentity(guardianIdentity).mutation(create, { entitlementId }); expect(second.applicationId).toBe(first.applicationId);
     const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: first.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
-    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: first.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent" });
+    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: first.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
     await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: first.applicationId, expectedVersion: version + 1, firstName: "Changed", lastName: "One", dateOfBirth: 1 })).rejects.toThrow("APPLICATION_LOCKED");
     const snapshots = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", first.applicationId)).take(2)); expect(snapshots).toHaveLength(1);
   });
@@ -69,7 +69,7 @@ describe("B1 admissions domain", () => {
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
     const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
     const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
-    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent" });
+    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
     const staff = { subject: "staff", tokenIdentifier: "issuer|staff", issuer: "issuer" };
     const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: staff.subject, authTokenIdentifier: staff.tokenIdentifier, name: "Staff", email: "staff@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
     await t.run(async (ctx) => { for (const capability of ["decisions.record", "conversions.execute"] as const) await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability, scope: "school", grantedByUserId: user, reason: "test", isBreakGlass: false, createdAt: Date.now() }); });
@@ -80,6 +80,22 @@ describe("B1 admissions domain", () => {
     const replay = await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, args);
     expect(replay.replayed).toBe(true); expect(replay.studentId).toBe(first.studentId);
     expect(await t.run((ctx) => ctx.db.query("students").withIndex("by_school_and_admission_number", (q) => q.eq("schoolId", ids.schoolA).eq("admissionNumber", "ADM-1")).take(2))).toHaveLength(1);
+  });
+
+  test("submission requires the displayed declaration to be affirmatively accepted", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: false })).rejects.toThrow("DECLARATION_ACCEPTANCE_REQUIRED");
+  });
+
+  test("an application keeps the paid attempt price after a later price change", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    await t.run((ctx) => ctx.db.insert("admissionsProductPrices", { schoolId: ids.schoolA, productId: ids.product, version: 2, amountMinor: 2000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "new", effectiveFrom: Date.now(), status: "published", createdAt: Date.now(), updatedAt: Date.now() }));
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    expect(await t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ priceId: ids.price });
   });
 
   test("illegal decision state is rejected", async () => {

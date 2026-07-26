@@ -10,6 +10,16 @@ async function applicationAndStaff(ctx: any, applicationId: any, capability: any
   return { application, membership };
 }
 
+function isRestrictedDocument(document: { category: string; sensitivity: string }) {
+  return document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security" || /medical|health|identity|passport|birth|government/i.test(document.category);
+}
+
+async function hasFreshAuth(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity() as { auth_time?: unknown; authenticatedAt?: unknown } | null;
+  const timestamp = typeof identity?.auth_time === "number" ? identity.auth_time * 1000 : identity?.authenticatedAt;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp <= Date.now() && Date.now() - timestamp <= 5 * 60_000;
+}
+
 export const listQueue = query({
   args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), state: v.optional(v.string()), limit: v.optional(v.number()) },
   returns: v.array(v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), updatedAt: v.number(), intakeId: v.id("admissionsIntakes") })),
@@ -61,7 +71,12 @@ export const getDocumentAccess = mutation({
     const application = document && await ctx.db.get(document.applicationId);
     if (!document || !application) return { status: "unavailable" as const, documentKey: args.documentKey };
     const membership = await requireStaffScope(ctx, { schoolId: application.schoolId, programmeId: application.programmeId, intakeId: application.intakeId, capability: args.action === "download" ? "documents.download" : "documents.review" });
-    return await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: "standard" }, action: args.action, requiresFreshAuth: false, authorize: async () => true });
+    const restricted = isRestrictedDocument(document);
+    if (restricted) {
+      await requireStaffScope(ctx, { schoolId: application.schoolId, programmeId: application.programmeId, intakeId: application.intakeId, capability: "applications.view_sensitive" });
+    }
+    const fresh = !restricted || await hasFreshAuth(ctx);
+    return await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: fresh ? "fresh" : "standard" }, action: args.action, requiresFreshAuth: restricted, authorize: async () => true });
   },
 });
 

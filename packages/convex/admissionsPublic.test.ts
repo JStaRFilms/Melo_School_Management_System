@@ -56,6 +56,13 @@ describe("B1 public admissions bootstrap", () => {
     expect(JSON.stringify(config)).not.toMatch(/_id|formVersionId|requirementId|storageId|Private draft|Retired/);
   });
 
+  test("creates public payment attempts with server-selected provider settings", async () => {
+    const t = convexTest(schema, modules); await publicFixture(t);
+    const attempt = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "checkout-1" });
+    expect(attempt).toMatchObject({ state: "created", amountMinor: 1000, currency: "NGN" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", attempt.reference)).unique())).toMatchObject({ provider: "paystack", providerMode: "test" });
+  });
+
   test("isolates school slugs and requires guardian ownership for public references", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     await expect(t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-b", publicReference: "app_public_reference" })).rejects.toThrow("Not found or access denied");

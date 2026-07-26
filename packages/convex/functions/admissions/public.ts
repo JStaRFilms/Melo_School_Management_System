@@ -1,8 +1,8 @@
 import { action, internalQuery, mutation, query } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
-import { admissionsProviderValidator, paymentProviderModeValidator } from "../foundation/contracts";
 import { audit, opaqueKey, requireGuardian } from "./helpers";
+import { configuredAdmissionsPaymentMode } from "./payments";
 
 type PublicEntry = {
   schoolSlug: string;
@@ -43,7 +43,15 @@ async function resolveEntry(ctx: any, schoolSlug: string, intakeSlug?: string): 
   } else {
     const candidates = await ctx.db.query("admissionsIntakes").withIndex("by_school_and_status_and_opens_at", (q: any) => q.eq("schoolId", school._id).eq("status", "open")).order("desc").take(100);
     const now = Date.now();
-    intake = candidates.find((candidate: any) => candidate.opensAt <= now && candidate.closesAt >= now) ?? candidates.find((candidate: any) => candidate.opensAt > now) ?? candidates[0] ?? null;
+    const configured: any[] = [];
+    for (const candidate of candidates) {
+      const products = await ctx.db.query("admissionsProducts").withIndex("by_intake_and_status", (q: any) => q.eq("intakeId", candidate._id).eq("status", "active")).take(2);
+      if (products.length !== 1 || products[0].schoolId !== school._id) continue;
+      const prices = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_status_and_effective_from", (q: any) => q.eq("productId", products[0]._id).eq("status", "published")).order("desc").take(50);
+      if (!prices.some((price: any) => price.schoolId === school._id && price.effectiveFrom <= now && (!price.effectiveTo || price.effectiveTo > now))) continue;
+      configured.push(candidate);
+    }
+    intake = configured.find((candidate) => candidate.opensAt <= now && candidate.closesAt >= now) ?? configured.find((candidate) => candidate.opensAt > now) ?? configured[0] ?? null;
   }
   if (!intake || intake.schoolId !== school._id) return { schoolSlug: school.slug, availability: "unavailable", intake: null, programme: null, offering: null };
   const programme = await ctx.db.get(intake.programmeId);
@@ -121,7 +129,7 @@ async function requireOwnedPublicApplication(ctx: any, args: { schoolSlug: strin
 export const getGuardianApplication = query({
   args: { schoolSlug: v.string(), publicReference: v.string() },
   returns: v.object({
-    publicReference: v.string(), state: v.string(), revision: v.number(), draftVersion: v.number(), allowedActions: v.array(v.string()),
+    publicReference: v.string(), intakeSlug: v.string(), state: v.string(), revision: v.number(), draftVersion: v.number(), allowedActions: v.array(v.string()),
     profile: v.union(v.null(), v.object({ firstName: v.string(), lastName: v.string(), middleName: v.union(v.string(), v.null()), preferredName: v.union(v.string(), v.null()), dateOfBirth: v.number(), gender: v.union(v.string(), v.null()), nationality: v.union(v.string(), v.null()), countryOfBirth: v.union(v.string(), v.null()), address: v.union(v.string(), v.null()), requestedEntryLabel: v.union(v.string(), v.null()) })),
     answers: v.array(v.object({ fieldKey: v.string(), valueType: v.string(), serializedValue: v.string(), dataClass: v.string() })),
     messages: v.array(v.object({ eventType: v.string(), reasonCode: v.union(v.string(), v.null()), message: v.union(v.string(), v.null()), createdAt: v.number() })),
@@ -129,16 +137,18 @@ export const getGuardianApplication = query({
   }),
   handler: async (ctx, args) => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
+    const intake: any = await ctx.db.get(application.intakeId);
     const [profile, answers, events, conversion] = await Promise.all([
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q: any) => q.eq("applicationId", application._id)).unique(),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q: any) => q.eq("applicationId", application._id)).take(200),
       ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q: any) => q.eq("applicationId", application._id)).order("desc").take(100),
       application.conversionId ? ctx.db.get(application.conversionId) as Promise<any> : null,
     ]);
+    if (!intake || intake.schoolId !== application.schoolId) throw new ConvexError("Not found or access denied");
     const editable = application.state === "draft" || application.state === "changes_requested";
     const allowedActions = editable ? ["save", "upload", "submit"] : application.state === "submitted" || application.state === "under_review" ? ["view_status"] : ["view_status"];
     return {
-      publicReference: application.publicId, state: application.state, revision: application.currentRevision, draftVersion: application.draftVersion, allowedActions,
+      publicReference: application.publicId, intakeSlug: intake.slug, state: application.state, revision: application.currentRevision, draftVersion: application.draftVersion, allowedActions,
       profile: profile ? { firstName: profile.firstName, lastName: profile.lastName, middleName: profile.middleName ?? null, preferredName: profile.preferredName ?? null, dateOfBirth: profile.dateOfBirth, gender: profile.gender ?? null, nationality: profile.nationality ?? null, countryOfBirth: profile.countryOfBirth ?? null, address: profile.address ?? null, requestedEntryLabel: application.requestedEntryLabel ?? null } : null,
       answers: answers.map((answer: any) => ({ fieldKey: answer.fieldKey, valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass })),
       messages: events.filter((event: any) => event.visibility === "guardian").map((event: any) => ({ eventType: event.eventType, reasonCode: event.reasonCode ?? null, message: event.message ?? null, createdAt: event.createdAt })),
@@ -149,7 +159,7 @@ export const getGuardianApplication = query({
 
 /** Creates/replays a purchase attempt from public slugs; the product and price are never client-selected IDs. */
 export const createAttemptForOffering = mutation({
-  args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()), idempotencyKey: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator },
+  args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()), idempotencyKey: v.string() },
   returns: v.object({ reference: v.string(), state: v.string(), amountMinor: v.number(), currency: v.string(), disclosure: v.string() }),
   handler: async (ctx, args) => {
     const { guardian } = await requireGuardian(ctx);
@@ -160,7 +170,7 @@ export const createAttemptForOffering = mutation({
     const existing = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_school_and_guardian_and_idempotency_key", (q: any) => q.eq("schoolId", entry.school._id).eq("guardianId", guardian._id).eq("idempotencyKey", key)).unique();
     if (existing) return { reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, disclosure: existing.feeDisclosureSnapshot };
     const now = Date.now();
-    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, priceId: entry.price._id, provider: args.provider, providerMode: args.providerMode, reference: opaqueKey("adm_"), idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
+    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, priceId: entry.price._id, provider: "paystack", providerMode: configuredAdmissionsPaymentMode(), reference: opaqueKey("adm_"), idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
     await audit({ ctx, schoolId: entry.school._id, actor: { kind: "guardian", guardianId: guardian._id }, action: "payment.attempt_created", entityType: "purchase_attempt", entityId: String(attemptId), outcome: "success" });
     const attempt = await ctx.db.get(attemptId);
     return { reference: attempt!.reference, state: "created", amountMinor: entry.price.amountMinor, currency: entry.price.currency, disclosure: entry.price.feeDisclosure };
@@ -270,10 +280,10 @@ export const saveAnswerByPublicReference = mutation({
 });
 
 export const submitByPublicReference = mutation({
-  args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), signerName: v.string(), signerRelationship: v.string() },
+  args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), signerName: v.string(), signerRelationship: v.string(), declarationVersion: v.number(), declarationAccepted: v.boolean() },
   returns: v.object({ revision: v.number(), state: v.literal("submitted") }),
   handler: async (ctx, args) => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
-    return await ctx.runMutation((api as any).functions.admissions.applications.submit, { applicationId: application._id, expectedVersion: args.expectedVersion, signerName: args.signerName, signerRelationship: args.signerRelationship });
+    return await ctx.runMutation((api as any).functions.admissions.applications.submit, { applicationId: application._id, expectedVersion: args.expectedVersion, signerName: args.signerName, signerRelationship: args.signerRelationship, declarationVersion: args.declarationVersion, declarationAccepted: args.declarationAccepted });
   },
 });

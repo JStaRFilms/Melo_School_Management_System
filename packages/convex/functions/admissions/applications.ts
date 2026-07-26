@@ -26,11 +26,14 @@ export const createOrResume = mutation({
     const product = await ctx.db.get(entitlement.productId);
     const intake = product && await ctx.db.get(product.intakeId);
     if (!product || !intake || product.schoolId !== entitlement.schoolId || intake.schoolId !== entitlement.schoolId) throw new ConvexError("Not found or access denied");
-    const forms = await ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(2);
-    const declarations = await ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId).eq("status", "published")).take(2);
-    const prices = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_status_and_effective_from", (q) => q.eq("productId", product._id).eq("status", "published")).order("desc").take(50);
-    const price = prices.find((candidate) => candidate.effectiveFrom <= Date.now() && (!candidate.effectiveTo || candidate.effectiveTo > Date.now()));
-    if (forms.length !== 1 || declarations.length !== 1 || !price) throw new ConvexError("OFFERING_UNAVAILABLE");
+    const [forms, declarations, sourceAttempt] = await Promise.all([
+      ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(2),
+      ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId).eq("status", "published")).take(2),
+      ctx.db.get(entitlement.sourcePurchaseAttemptId),
+    ]);
+    if (!sourceAttempt || sourceAttempt.schoolId !== entitlement.schoolId || sourceAttempt.productId !== product._id || sourceAttempt.guardianId !== owner.guardian._id) throw new ConvexError("Not found or access denied");
+    const price = await ctx.db.get(sourceAttempt.priceId);
+    if (!price || price.schoolId !== entitlement.schoolId || price.productId !== product._id || forms.length !== 1 || declarations.length !== 1) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
     const applicationId = await ctx.db.insert("admissionsApplications", {
       schoolId: entitlement.schoolId, guardianId: owner.guardian._id, entitlementId: entitlement._id, programmeId: intake.programmeId, intakeId: intake._id, productId: product._id, priceId: price._id,
@@ -91,7 +94,7 @@ export const saveAnswer = mutation({
 });
 
 export const submit = mutation({
-  args: { applicationId: v.id("admissionsApplications"), expectedVersion: v.number(), signerName: v.string(), signerRelationship: v.string() },
+  args: { applicationId: v.id("admissionsApplications"), expectedVersion: v.number(), signerName: v.string(), signerRelationship: v.string(), declarationVersion: v.number(), declarationAccepted: v.boolean() },
   returns: v.object({ revision: v.number(), state: v.literal("submitted") }),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
@@ -99,13 +102,19 @@ export const submit = mutation({
     if (application.draftVersion !== args.expectedVersion) throw new ConvexError("DRAFT_VERSION_CONFLICT");
     const entitlement = await ctx.db.get(application.entitlementId);
     if (!entitlement || entitlement.schoolId !== application.schoolId || (application.currentRevision === 0 && entitlement.state !== "reserved")) throw new ConvexError("APPLICATION_LOCKED");
-    const [profile, requirements, answers, documents] = await Promise.all([
+    const [{ declaration }, profile, fields, requirements, answers, documents] = await Promise.all([
+      resolvedForm(ctx, application),
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(),
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(200),
       ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200),
     ]);
-    if (!profile) throw new ConvexError("APPLICATION_INCOMPLETE");
+    if (!profile || !profile.firstName.trim() || !profile.lastName.trim() || !Number.isFinite(profile.dateOfBirth) || profile.dateOfBirth <= 0 || !args.signerName.trim() || !args.signerRelationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
+    if (!args.declarationAccepted || args.declarationVersion !== declaration.version) throw new ConvexError("DECLARATION_ACCEPTANCE_REQUIRED");
+    for (const field of fields) {
+      if (field.status === "active" && field.requiredMode === "required" && !answers.some((answer) => answer.formFieldId === field._id && answer.serializedValue.trim())) throw new ConvexError("APPLICATION_INCOMPLETE");
+    }
     for (const requirement of requirements) {
       if (requirement.requiredMode === "required" && !documents.some((document) => document.requirementId === requirement._id && document.state !== "deleted" && document.state !== "quarantined")) throw new ConvexError("APPLICATION_INCOMPLETE");
     }
