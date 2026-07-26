@@ -1,22 +1,6 @@
-/** Exact structural B0 public DTO. Sites consume href verbatim and never create it. */
-export type ApplicationAvailabilityV1 = "open" | "upcoming" | "paused" | "closed" | "unavailable";
-export type ApplicationLinkV1 = {
-  version: "1";
-  schoolSlug: string;
-  href: string;
-  availability: ApplicationAvailabilityV1;
-  intakeSlug: string | null;
-  opensAt: number | null;
-  closesAt: number | null;
-};
+import type { ApplicationLinkV1, SiteLinkIntentV1 } from "@school/shared";
 
-export type SiteLinkIntentV1 =
-  | { kind: "admissions_info" }
-  | { kind: "application"; intakeSlug?: string }
-  | { kind: "portal" }
-  | { kind: "contact" }
-  | { kind: "visit" }
-  | { kind: "reviewed_external"; linkId: string };
+export type { ApplicationLinkV1, SiteLinkIntentV1 };
 
 export function unavailableApplicationLink(schoolSlug: string): ApplicationLinkV1 {
   return { version: "1", schoolSlug, href: "", availability: "unavailable", intakeSlug: null, opensAt: null, closesAt: null };

@@ -46,11 +46,11 @@ test.describe("OBHIS public renderer", () => {
 
     const unavailable = await page.goto("http://unavailable.obhis.localhost:3005/");
     expect(unavailable?.status()).toBe(404);
-    const preview = await page.goto("http://alias.obhis.localhost:3005/__preview/opaque/visit");
+    const preview = await page.goto("http://alias.obhis.localhost:3005/__preview/test-preview-capability-bound-to-alias-and-draft/visit");
     expect(preview?.status()).toBe(200);
-    await expect(page).toHaveURL(/alias\.obhis\.localhost:3005\/__preview\/opaque\/visit$/);
+    await expect(page).toHaveURL(/alias\.obhis\.localhost:3005\/__preview\/test-preview-capability-bound-to-alias-and-draft\/visit$/);
     await expect(page.getByText("Draft preview — not public")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Approved test identity home" })).toHaveAttribute("href", "/__preview/opaque");
+    await expect(page.getByRole("link", { name: "Approved test identity home" })).toHaveAttribute("href", "/__preview/test-preview-capability-bound-to-alias-and-draft");
   });
 
   test("maintains AA text contrast for the approved code-owned palette", async ({ page }) => {

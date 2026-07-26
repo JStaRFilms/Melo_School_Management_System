@@ -28,11 +28,22 @@ export interface PublicDomainProjection {
   canonicalDomainId?: string;
 }
 
+export type PublicAssetKind = "logo" | "favicon" | "hero" | "gallery" | "staff" | "facility" | "document" | "social_share";
+export type PublicAssetPurpose = "brand_logo" | "browser_icon" | "hero" | "gallery" | "staff" | "facility" | "policy_document" | "social_share";
+export type PublicAssetChannel = "site" | "social_share";
+
 export interface ApprovedPublicAsset {
   id: string;
-  kind: "logo" | "favicon" | "hero" | "gallery" | "staff" | "facility" | "document" | "social_share";
+  kind: PublicAssetKind;
+  /** B0-approved semantic purpose; renderers cannot repurpose tenant media. */
+  purpose: PublicAssetPurpose;
+  /** Publication channels approved with the asset's rights evidence. */
+  channels: readonly PublicAssetChannel[];
   url: string;
   altText?: string;
+  /** Public attribution is projected only when approved for this channel. */
+  caption?: string;
+  credit?: string;
   decorative: boolean;
   /** Approved media metadata lets renderers reserve layout without guessing. */
   width?: number;

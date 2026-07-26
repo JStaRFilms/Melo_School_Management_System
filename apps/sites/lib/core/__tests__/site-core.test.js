@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { normalizeHostname } from "@/core/domain";
-import { loadSite } from "@/core/content";
+import { getRequestHostname, normalizeHostname } from "@/core/domain";
+import { loadSite, parsePublicSiteEnvelope } from "@/core/content";
 import { buildApplicationRedirectHref, getPublicLinkIntegration } from "@/core/links";
 import { getRenderer } from "@/core/renderers/registry";
 import { buildPageMetadata, buildRobotsMetadata, buildSiteManifest, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
@@ -64,6 +64,29 @@ describe("B4 shared site core", () => {
     expect((await loadSite({ hostname, source: currentSource })).site.links.application.availability).toBe("unavailable");
     expect((await loadSite({ hostname, source: currentSource })).site.links.application.availability).toBe("closed");
     expect(calls).toBe(2);
+  });
+
+  test("accepts forwarded host only with an explicit proxy policy", () => {
+    const oldProduction = process.env.NODE_ENV; const oldTrusted = process.env.SITE_TRUST_PROXY; const oldDevelopment = process.env.SITE_TRUST_FORWARDED_HOST;
+    try {
+      process.env.NODE_ENV = "production"; delete process.env.SITE_TRUST_PROXY; delete process.env.SITE_TRUST_FORWARDED_HOST;
+      expect(getRequestHostname(new Headers({ host: "localhost:3005", "x-forwarded-host": "tenant.example" }))).toBe("localhost");
+      process.env.SITE_TRUST_PROXY = "true";
+      expect(getRequestHostname(new Headers({ host: "localhost:3005", "x-forwarded-host": "tenant.example" }))).toBe("tenant.example");
+    } finally {
+      if (oldProduction === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldProduction;
+      if (oldTrusted === undefined) delete process.env.SITE_TRUST_PROXY; else process.env.SITE_TRUST_PROXY = oldTrusted;
+      if (oldDevelopment === undefined) delete process.env.SITE_TRUST_FORWARDED_HOST; else process.env.SITE_TRUST_FORWARDED_HOST = oldDevelopment;
+    }
+  });
+
+  test("fails closed when asset purpose/channel or social-share eligibility is invalid", () => {
+    const envelope = clone(getLegacyEnvelopeForHostname(hostname));
+    envelope.assets = [{ id: "share", url: "https://assets.example/share.jpg", kind: "social_share", purpose: "social_share", channels: ["site"], decorative: false, altText: "Approved share image", rightsStatus: "approved", status: "published" }];
+    envelope.revision.routeSeo = { home: { title: "Greenfield", description: "Approved description", shareAssetId: "share" } };
+    expect(parsePublicSiteEnvelope(envelope)).toBeNull();
+    envelope.assets[0].channels = ["social_share"];
+    expect(parsePublicSiteEnvelope(envelope)).not.toBeNull();
   });
 
   test("uses the compile-time registry and does not fall back on unknown renderers", async () => {

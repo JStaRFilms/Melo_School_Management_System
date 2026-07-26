@@ -17,9 +17,12 @@ export function getRequestHostname(headers: Pick<Headers, "get">): string | null
   const host = headers.get("host");
   const localHost = normalizeHostname(host);
   const forwarded = normalizeHostname(headers.get("x-forwarded-host"));
-  const trustProxy = process.env.SITE_TRUST_PROXY === "true";
-  if (trustProxy && forwarded) return forwarded;
-  if (localHost && (localHost === "localhost" || localHost.endsWith(".localhost")) && forwarded) return forwarded;
+  // Forwarded host is attacker-controlled unless an operator explicitly
+  // enables the deployment's trusted proxy. Local development has a separate,
+  // explicit opt-in so a localhost Host header never silently grants a mapping.
+  const trustProductionProxy = process.env.SITE_TRUST_PROXY === "true";
+  const trustDevelopmentProxy = process.env.NODE_ENV !== "production" && process.env.SITE_TRUST_FORWARDED_HOST === "true";
+  if ((trustProductionProxy || trustDevelopmentProxy) && forwarded) return forwarded;
   return localHost;
 }
 

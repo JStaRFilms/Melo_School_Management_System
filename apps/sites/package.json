@@ -10,9 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.mjs",
     "test:watch": "vitest --config vitest.config.mjs",
-    "test:browser": "playwright test --config playwright.config.ts"
+    "test:browser": "pnpm build && playwright test --config playwright.config.ts"
   },
   "dependencies": {
+    "@school/shared": "workspace:*",
     "lucide-react": "^0.400.0",
     "next": "^16.2.4",
     "react": "^18.3.0",

@@ -48,10 +48,13 @@ function parseDomains(value: unknown): PublicDomainProjection[] | null {
 function parseAssets(value: unknown, now: number): PublicSiteEnvelope["assets"] | null {
   if (!Array.isArray(value) || value.length > 200) return null;
   const allowedKinds = new Set(["logo", "favicon", "hero", "gallery", "staff", "facility", "document", "social_share"]);
+  const requiredPurpose: Record<string, string> = { logo: "brand_logo", favicon: "browser_icon", hero: "hero", gallery: "gallery", staff: "staff", facility: "facility", document: "policy_document", social_share: "social_share" };
+  const allowedChannels = new Set(["site", "social_share"]);
   const output: Array<PublicSiteEnvelope["assets"][number]> = [];
   for (const item of value) {
-    const asset = object(item); const id = string(asset?.id, 200); const url = string(asset?.url, 4000); const kind = string(asset?.kind, 30);
-    if (!id || !url || !kind || !allowedKinds.has(kind) || asset?.rightsStatus !== "approved" || asset?.status !== "published" || boolean(asset.decorative) === null) return null;
+    const asset = object(item); const id = string(asset?.id, 200); const url = string(asset?.url, 4000); const kind = string(asset?.kind, 30); const purpose = string(asset?.purpose, 30);
+    const channels = Array.isArray(asset?.channels) && asset.channels.length > 0 && asset.channels.length <= 2 && asset.channels.every((channel) => typeof channel === "string" && allowedChannels.has(channel)) ? [...new Set(asset.channels)] : null;
+    if (!id || !url || !kind || !purpose || !channels || !allowedKinds.has(kind) || requiredPurpose[kind] !== purpose || (kind === "social_share" && !channels.includes("social_share")) || asset?.rightsStatus !== "approved" || asset?.status !== "published" || boolean(asset.decorative) === null) return null;
     try { const parsedUrl = new URL(url); if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") return null; } catch { return null; }
     const expiresAt = typeof asset.rightsExpiresAt === "number" ? asset.rightsExpiresAt : undefined;
     if (expiresAt !== undefined && expiresAt <= now) continue;
@@ -73,7 +76,10 @@ function parseAssets(value: unknown, now: number): PublicSiteEnvelope["assets"] 
         responsiveSources.push({ url: derivativeUrl, width: derivativeWidth });
       }
     }
-    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, ...(width && height ? { width, height } : {}), ...(focalX !== undefined && focalY !== undefined ? { focalPoint: { x: focalX, y: focalY } } : {}), ...(responsiveSources ? { responsiveSources } : {}), rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
+    const caption = asset.caption === undefined ? undefined : string(asset.caption, 600);
+    const credit = asset.credit === undefined ? undefined : string(asset.credit, 300);
+    if (caption === null || credit === null || (asset.decorative === true && asset.altText !== undefined)) return null;
+    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], purpose: purpose as ApprovedPublicAsset["purpose"], channels: channels as ApprovedPublicAsset["channels"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, ...(caption ? { caption } : {}), ...(credit ? { credit } : {}), ...(width && height ? { width, height } : {}), ...(focalX !== undefined && focalY !== undefined ? { focalPoint: { x: focalX, y: focalY } } : {}), ...(responsiveSources ? { responsiveSources } : {}), rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
   }
   return output;
 }
@@ -91,6 +97,12 @@ export function parsePublicSiteEnvelope(value: unknown, now = Date.now()): Publi
   for (const [key, item] of Object.entries(rawFields)) { if (!/^[a-z0-9._-]{1,120}$/i.test(key)) return null; const field = parseField(item); if (!field) return null; fields[key] = field; }
   const routeSeo: Record<string, { title?: string; description?: string; shareAssetId?: string }> = {};
   for (const [key, item] of Object.entries(rawSeo)) { const seo = object(item); if (!/^[a-z0-9._-]{1,120}$/i.test(key) || !seo) return null; const title = seo.title === undefined ? undefined : string(seo.title, 120); const description = seo.description === undefined ? undefined : string(seo.description, 300); const shareAssetId = seo.shareAssetId === undefined ? undefined : string(seo.shareAssetId, 200); if ((seo.title !== undefined && title === null) || (seo.description !== undefined && description === null) || (seo.shareAssetId !== undefined && shareAssetId === null)) return null; routeSeo[key] = { ...(title ? { title } : {}), ...(description ? { description } : {}), ...(shareAssetId ? { shareAssetId } : {}) }; }
+  // Social metadata may only use an asset explicitly approved for social sharing.
+  for (const seo of Object.values(routeSeo)) {
+    if (!seo.shareAssetId) continue;
+    const shareAsset = assets.find((asset) => asset.id === seo.shareAssetId);
+    if (!shareAsset || shareAsset.kind !== "social_share" || !shareAsset.channels.includes("social_share")) return null;
+  }
   const portal = links?.portal;
   return { profile: { schoolId, schoolSlug, mode: profile.mode as PublicSiteEnvelope["profile"]["mode"], status: profile.status as PublicSiteEnvelope["profile"]["status"], rendererKey: rendererKey ?? undefined, rendererSchemaVersion: rendererSchemaVersion ?? undefined, canonicalDomainId: canonicalDomainId ?? undefined }, domains, revision: { id: revisionId, state: revision.state, rendererKey: revisionRendererKey, rendererSchemaVersion: revisionSchema, publishedAt: typeof revision.publishedAt === "number" ? revision.publishedAt : undefined, fields, routeSeo }, assets, links: { application, ...(isSafePortalLink(portal) ? { portal } : {}) }, ...(root.preview && object(root.preview)?.authorized === true && typeof object(root.preview)?.expiresAt === "number" ? { preview: { authorized: true, expiresAt: object(root.preview)!.expiresAt as number } } : {}) };
 }

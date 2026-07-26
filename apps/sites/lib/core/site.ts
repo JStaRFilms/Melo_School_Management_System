@@ -54,6 +54,18 @@ function presentationFor(page: ResolvedSitePage) {
   return page.renderer.getPresentation?.(page.context.rendererData, page.context);
 }
 
+function selectedAsset(page: ResolvedSitePage, fieldId: string, kind: "logo" | "favicon") {
+  const field = page.load.site.revision.fields[fieldId];
+  const asset = field?.kind === "asset_ref" ? page.context.assets[field.assetId] : undefined;
+  return asset?.kind === kind && asset.channels.includes("site") ? asset : undefined;
+}
+
+/** Published pages require non-empty, unique metadata before search indexing. */
+function hasUniqueRouteMetadata(page: ResolvedSitePage, title: string, description: string): boolean {
+  if (!title.trim() || !description.trim()) return false;
+  return !Object.entries(page.context.seo).some(([routeKey, seo]) => routeKey !== page.route.key && seo.title === title);
+}
+
 export function buildPageMetadata(page: ResolvedSitePage): Metadata {
   const routeSeo = page.context.seo[page.route.key];
   const presentation = presentationFor(page);
@@ -61,11 +73,14 @@ export function buildPageMetadata(page: ResolvedSitePage): Metadata {
   const description = presentation?.description ?? routeSeo?.description ?? "";
   const canonical = page.context.request.canonicalUrl;
   const preview = page.context.request.preview;
-  const favicon = presentation?.faviconUrl ?? Object.values(page.context.assets).find((asset) => asset.kind === "favicon")?.url;
+  // Managed revisions select their approved brand assets explicitly; never use
+  // an arbitrary tenant favicon or a platform fallback.
+  const favicon = selectedAsset(page, "brand.favicon", "favicon")?.url ?? (page.renderer.key === "legacy-template" ? presentation?.faviconUrl : undefined);
+  const indexable = !preview && page.route.indexable !== false && hasUniqueRouteMetadata(page, title, description);
   return {
     metadataBase: new URL(canonical), applicationName: presentation?.applicationName, title, description,
     alternates: preview ? undefined : { canonical },
-    robots: { index: !preview && page.route.indexable !== false, follow: !preview },
+    robots: { index: indexable, follow: indexable },
     openGraph: { title, description, url: canonical, type: "website", images: routeSeo?.shareAsset ? [{ url: routeSeo.shareAsset.url, alt: routeSeo.shareAsset.altText ?? title }] : undefined },
     twitter: { card: "summary_large_image", title, description, images: routeSeo?.shareAsset ? [routeSeo.shareAsset.url] : undefined },
     ...(favicon ? { icons: { icon: [{ url: favicon }] } } : {}),
@@ -83,9 +98,12 @@ export function buildSiteManifest(load: SiteLoadResult): MetadataRoute.Manifest 
   const origin = buildCanonicalOrigin(load.canonicalDomain);
   const assets = Object.fromEntries(load.site.assets.map((asset) => [asset.id, asset]));
   const context: SiteRenderContext = { school, assets, links: load.site.links, seo: {}, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request: { routeKey: "home", canonicalUrl: new URL("/", origin).toString(), preview: load.preview, params: {}, pathPrefix: "" }, rendererData };
-  const manifest = renderer.getPresentation?.(rendererData, context)?.manifest;
+  const presentation = renderer.getPresentation?.(rendererData, context);
+  const manifest = presentation?.manifest;
   const name = manifest?.name ?? school.displayName ?? fallback.name;
-  return { name, short_name: manifest?.shortName ?? school.shortName ?? name, start_url: "/", display: "browser", background_color: manifest?.backgroundColor ?? fallback.background_color, theme_color: manifest?.themeColor ?? fallback.theme_color };
+  const faviconField = load.site.revision.fields["brand.favicon"];
+  const favicon = faviconField?.kind === "asset_ref" ? assets[faviconField.assetId] : undefined;
+  return { name, short_name: manifest?.shortName ?? school.shortName ?? name, start_url: "/", display: "browser", background_color: manifest?.backgroundColor ?? fallback.background_color, theme_color: manifest?.themeColor ?? fallback.theme_color, ...(favicon?.kind === "favicon" && favicon.channels.includes("site") ? { icons: [{ src: favicon.url }] } : {}) };
 }
 
 export function buildRobotsMetadata(load: SiteLoadResult): MetadataRoute.Robots {
@@ -106,7 +124,12 @@ export async function buildSitemapEntries(hostname: string | null, source: SiteC
   const lastModified = new Date(load.site.revision.publishedAt ?? 0);
   const isIndexable = (route: { key: string; path: string; indexable?: boolean }, path: string, params: Record<string, string>) => {
     const context = { links: load.site.links, request: { routeKey: route.key, canonicalUrl: new URL(path, origin).toString(), preview: false, params, pathPrefix: "" } };
-    return route.indexable !== false && renderer.isRouteAvailable?.(rendererData, route.key, params, context) !== false && renderer.isRouteIndexable?.(rendererData, route.key, params, context) !== false;
+    const metadata = load.site.revision.routeSeo[route.key];
+    // Compatibility metadata is code-owned. Every B0-backed renderer needs
+    // unique, complete revision metadata before it can enter the sitemap.
+    const metadataIsUnique = renderer.key === "legacy-template" || Boolean(metadata?.title && metadata?.description)
+      && Object.entries(load.site.revision.routeSeo).filter(([key, other]) => key !== route.key && other.title === metadata?.title).length === 0;
+    return metadataIsUnique && route.indexable !== false && renderer.isRouteAvailable?.(rendererData, route.key, params, context) !== false && renderer.isRouteIndexable?.(rendererData, route.key, params, context) !== false;
   };
   const staticPaths = renderer.routes.filter((route) => !route.path.includes("[") && isIndexable(route, route.path, {})).map((route) => route.path);
   const dynamicPaths = renderer.sitemapPaths?.(rendererData).filter((path) => renderer.routes.some((route) => { const params = matchRoute(route.path, path); return params !== null && isIndexable(route, path, params); })) ?? [];

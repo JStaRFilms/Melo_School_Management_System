@@ -880,6 +880,14 @@ export default defineSchema({
     mediaType: v.string(),
     byteSize: v.number(),
     checksum: v.string(),
+    // Additive public-projection semantics. A renderer may only consume a
+    // matching kind/purpose/channel, never a generic storage object.
+    purpose: v.optional(v.union(v.literal("brand_logo"), v.literal("browser_icon"), v.literal("hero"), v.literal("gallery"), v.literal("staff"), v.literal("facility"), v.literal("policy_document"), v.literal("social_share"))),
+    channels: v.optional(v.array(v.union(v.literal("site"), v.literal("social_share")))),
+    caption: v.optional(v.string()),
+    credit: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
     altText: v.optional(v.string()),
     decorative: v.boolean(),
     rightsStatus: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"), v.literal("expired")),
@@ -911,6 +919,21 @@ export default defineSchema({
   })
     .index("by_school_and_state_and_revision_number", ["schoolId", "state", "revisionNumber"])
     .index("by_school_and_revision_number", ["schoolId", "revisionNumber"]),
+
+  // Opaque, hashed preview capabilities. The raw token is never persisted and
+  // a capability is bound to one tenant, revision, and requested hostname.
+  schoolSitePreviewTokens: defineTable({
+    schoolId: v.id("schools"),
+    revisionId: v.id("schoolSiteRevisions"),
+    hostname: v.string(),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    createdByUserId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_school_and_expires_at", ["schoolId", "expiresAt"]),
 
   schoolSiteAuditEvents: defineTable({
     schoolId: v.id("schools"),
