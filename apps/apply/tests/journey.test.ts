@@ -13,6 +13,10 @@ describe("guardian journey safety", () => {
     expect(paymentStatusCopy("checkout_pending")).toContain("does not reserve a school place");
     expect(applicationStatusCopy("accepted")).toContain("acceptance decision");
   });
+  test("shows reversal as a held slot rather than pending or successful payment", () => {
+    expect(paymentStatusCopy("refunded")).toContain("no longer available");
+    expect(paymentStatusCopy("reversed")).toContain("no longer available");
+  });
   test("keeps conversion separate from acceptance", () => {
     expect(applicationStatusCopy("accepted", "running")).toContain("preparing its internal records");
     expect(applicationStatusCopy("accepted", "succeeded")).toContain("internal record setup");

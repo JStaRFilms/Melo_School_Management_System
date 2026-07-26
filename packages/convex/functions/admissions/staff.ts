@@ -139,13 +139,32 @@ export const getDocumentAccess = mutation({
   },
 });
 
+/** Server-selected whitelist for a guardian correction request; staff never type opaque field IDs. */
+export const listChangeRequestItems = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.object({ fields: v.array(v.object({ key: v.string(), label: v.string() })), requirements: v.array(v.object({ key: v.string(), label: v.string() })) }),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
+    const [fields, requirements] = await Promise.all([
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
+    ]);
+    return { fields: fields.filter((field) => field.status === "active").map((field) => ({ key: field.fieldKey, label: field.label })), requirements: requirements.map((requirement) => ({ key: requirement.requirementKey, label: requirement.label })) };
+  },
+});
+
 export const requestChanges = mutation({
-  args: { applicationId: v.id("admissionsApplications"), message: v.string(), reasonCode: v.optional(v.string()) },
+  args: { applicationId: v.id("admissionsApplications"), message: v.string(), reasonCode: v.optional(v.string()), fieldKeys: v.array(v.string()), requirementKeys: v.array(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
-    if ((application.state !== "submitted" && application.state !== "under_review") || !args.message.trim()) throw new ConvexError("Invalid application transition");
-    const now = Date.now(); await ctx.db.patch(application._id, { state: "changes_requested", updatedAt: now });
+    if ((application.state !== "submitted" && application.state !== "under_review") || !args.message.trim() || args.message.trim().length > 4_000 || args.fieldKeys.length + args.requirementKeys.length < 1 || args.fieldKeys.length > 200 || args.requirementKeys.length > 100 || new Set(args.fieldKeys).size !== args.fieldKeys.length || new Set(args.requirementKeys).size !== args.requirementKeys.length) throw new ConvexError("Invalid application transition");
+    const [fields, requirements] = await Promise.all([
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
+    ]);
+    if (args.fieldKeys.some((key) => !fields.some((field) => field.fieldKey === key && field.status === "active")) || args.requirementKeys.some((key) => !requirements.some((requirement) => requirement.requirementKey === key))) throw new ConvexError("Invalid application transition");
+    const now = Date.now(); await ctx.db.patch(application._id, { state: "changes_requested", changeRequestFieldKeys: args.fieldKeys, changeRequestRequirementKeys: args.requirementKeys, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "changes_requested", visibility: "guardian", message: args.message.trim(), ...(args.reasonCode?.trim() ? { reasonCode: args.reasonCode.trim() } : {}), createdAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "application.changes_requested", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success" }); return null;
   },
@@ -165,7 +184,7 @@ export const recordDecision = mutation({
       ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200),
       ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id)).take(100),
     ]);
-    if (hold || evaluations.some((evaluation) => evaluation.state === "scheduled") || requirements.some((requirement) => requirement.requiredMode === "required" && !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("DECISION_PRECONDITIONS_UNMET");
+    if (hold || application.financeBlockedReason || evaluations.some((evaluation) => evaluation.state === "scheduled") || requirements.some((requirement) => requirement.requiredMode === "required" && !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("DECISION_PRECONDITIONS_UNMET");
     const now = Date.now(); const decisionId = await ctx.db.insert("admissionsDecisions", { schoolId: application.schoolId, applicationId: application._id, version: (previous?.version ?? 0) + 1, state: args.state, reasonCode: args.reasonCode.trim(), rationale: args.guardianMessage.trim(), decidedBy: membership.userId, decidedAt: now, ...(previous ? { supersedesDecisionId: previous._id } : {}), createdAt: now });
     await ctx.db.patch(application._id, { state: args.state, currentDecisionId: decisionId, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, actorUserId: membership.userId, eventType: "decision_recorded", visibility: "guardian", message: args.guardianMessage.trim(), reasonCode: args.reasonCode.trim(), createdAt: now });
@@ -292,12 +311,12 @@ export const setFinanceHold = mutation({
     if (args.action === "release") {
       if (!active) return null;
       await ctx.db.patch(active._id, { state: "released", releasedByUserId: membership.userId, releasedAt: now, updatedAt: now });
-      await ctx.db.patch(application._id, { activeFinanceHoldId: undefined, updatedAt: now });
+      await ctx.db.patch(application._id, { activeFinanceHoldId: undefined, financeBlockedReason: undefined, updatedAt: now });
       await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "finance_hold.released", entityType: "finance_hold", entityId: String(active._id), applicationId: application._id, outcome: "success" }); return null;
     }
     if (active) return active._id;
     const holdId = await ctx.db.insert("admissionsFinanceHolds", { schoolId: application.schoolId, applicationId: application._id, state: "active", reasonCode: args.reasonCode.trim().slice(0, 128), ...(args.note?.trim() ? { note: args.note.trim().slice(0, 1_000) } : {}), createdByUserId: membership.userId, createdAt: now, updatedAt: now });
-    await ctx.db.patch(application._id, { activeFinanceHoldId: holdId, updatedAt: now });
+    await ctx.db.patch(application._id, { activeFinanceHoldId: holdId, financeBlockedReason: args.reasonCode.trim().slice(0, 128), updatedAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "finance_hold.placed", entityType: "finance_hold", entityId: String(holdId), applicationId: application._id, outcome: "success" }); return holdId;
   },
 });

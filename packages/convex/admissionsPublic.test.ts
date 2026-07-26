@@ -86,6 +86,14 @@ describe("B1 public admissions bootstrap", () => {
     await expect(t.withIdentity(other).query((api as any).functions.admissions.public.getGuardianWorkspace, { schoolSlug: "school-a" })).resolves.toMatchObject({ slots: [] });
   });
 
+  test("payment return reserves only the entitlement bound to its exact attempt and intake", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run(async (ctx) => { const attempt = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", "adm_public_fixture")).unique(); const entitlement = await ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt!._id)).unique(); await ctx.db.patch(attempt!._id, { entitlementId: entitlement!._id, updatedAt: Date.now() }); await ctx.db.patch(entitlement!._id, { applicationId: ids.application, updatedAt: Date.now() }); });
+    const result = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createOrResumeForReference, { schoolSlug: "school-a", reference: "adm_public_fixture" });
+    expect(result.publicReference).toBe("app_public_reference");
+    await expect(t.withIdentity(other).mutation((api as any).functions.admissions.public.createOrResumeForReference, { schoolSlug: "school-a", reference: "adm_public_fixture" })).rejects.toThrow("PAYMENT_PENDING");
+  });
+
   test("returns only guardian-safe application data and allowed actions", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     const application = await t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-a", publicReference: "app_public_reference" });

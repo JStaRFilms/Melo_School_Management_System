@@ -252,6 +252,22 @@ const resolveOwnedAttemptReferenceInternal = internalQuery({
   },
 });
 
+/** Reserves the exact paid attempt's entitlement; a return can never consume a slot from another intake. */
+export const createOrResumeForReference = mutation({
+  args: { schoolSlug: v.string(), reference: v.string() },
+  returns: v.object({ publicReference: v.string(), state: v.string(), draftVersion: v.number(), currentRevision: v.number() }),
+  handler: async (ctx, args) => {
+    const { guardian } = await requireGuardian(ctx);
+    const school = await ctx.db.query("schools").withIndex("by_slug", (q: any) => q.eq("slug", args.schoolSlug.trim())).unique();
+    const attempt = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q: any) => q.eq("reference", args.reference.trim())).unique();
+    if (!school || !attempt || attempt.schoolId !== school._id || attempt.guardianId !== guardian._id || attempt.state !== "paid" || !attempt.entitlementId) throw new ConvexError("PAYMENT_PENDING");
+    const entitlement = await ctx.db.get(attempt.entitlementId);
+    if (!entitlement || entitlement.schoolId !== school._id || entitlement.sourcePurchaseAttemptId !== attempt._id || !["available", "reserved"].includes(entitlement.state)) throw new ConvexError("No application slot is available");
+    const result: any = await ctx.runMutation((api as any).functions.admissions.applications.createOrResume, { entitlementId: entitlement._id });
+    return { publicReference: result.publicId, state: result.state, draftVersion: result.draftVersion, currentRevision: result.currentRevision };
+  },
+});
+
 /** Provider handoff accepts the opaque payment reference; it never returns an internal attempt ID. */
 export const initializeAttemptByReference = action({
   args: { reference: v.string() },

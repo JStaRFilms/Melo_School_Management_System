@@ -20,7 +20,7 @@ export const executeAcceptedConversion = mutation({
       ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique(),
       ctx.db.query("admissionsConversions").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(),
     ]);
-    if (!decision || decision.schoolId !== application.schoolId || decision.state !== "accepted" || hold) throw new ConvexError(hold ? "FINANCE_HOLD" : "CONVERSION_RESOLUTION_REQUIRED");
+    if (!decision || decision.schoolId !== application.schoolId || decision.state !== "accepted" || application.state !== "accepted" || hold || application.financeBlockedReason) throw new ConvexError(hold || application.financeBlockedReason ? "FINANCE_HOLD" : "CONVERSION_RESOLUTION_REQUIRED");
     if (existing) {
       if (existing.state === "succeeded") return { conversionId: existing._id, studentId: existing.studentId ?? null, state: existing.state, replayed: true };
       throw new ConvexError("CONVERSION_RECOVERY_REQUIRED");
@@ -42,10 +42,10 @@ export const executeAcceptedConversion = mutation({
     // Identity resolution is school-only and deliberately rejects ambiguity.
     const identityMatches = (await ctx.db.query("users").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(100)).filter((user) => user.schoolId === application.schoolId && !user.isArchived);
     if (identityMatches.length > 1 || identityMatches.some((user) => user.role !== "parent")) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    // Email likeness is never an identity resolver. Only the authenticated token bridge
+    // may reuse a parent; otherwise this conversion creates a distinct parent record.
     const identityParent = identityMatches[0] ?? null;
-    const emailParent = identityParent ? null : await ctx.db.query("users").withIndex("by_school_and_email", (q) => q.eq("schoolId", application.schoolId).eq("email", guardian.normalizedEmail)).unique();
-    if (emailParent && (emailParent.role !== "parent" || (emailParent.authTokenIdentifier && emailParent.authTokenIdentifier !== guardian.authTokenIdentifier))) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
-    const parentUserId = identityParent?._id ?? emailParent?._id ?? await ctx.db.insert("users", { schoolId: application.schoolId, authId: guardian.betterAuthUserId ?? guardian.authTokenIdentifier, authTokenIdentifier: guardian.authTokenIdentifier, name: guardian.normalizedEmail, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
+    const parentUserId = identityParent?._id ?? await ctx.db.insert("users", { schoolId: application.schoolId, authId: guardian.betterAuthUserId ?? guardian.authTokenIdentifier, authTokenIdentifier: guardian.authTokenIdentifier, name: guardian.normalizedEmail, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
 
     let familyId = args.familyId;
     if (familyId) {

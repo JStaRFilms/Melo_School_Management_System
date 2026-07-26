@@ -86,11 +86,13 @@ export const verifyReturn = action({
     const attempt: any = await ctx.runQuery((api as any).functions.admissions.payments.getOwnedAttemptForInitialization, args);
     if (!attempt) throw new ConvexError("Not found or access denied");
     if (attempt.state === "paid") return { state: "paid", entitlementId: attempt.entitlementId ?? null };
+    if (attempt.state === "refunded" || attempt.state === "reversed" || attempt.state === "manual_attention") return { state: attempt.state, entitlementId: null };
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_verification" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
     const receipt = await createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode }).verifyPayment(attempt.reference);
     if (receipt.status !== "success" || Math.round(receipt.amount * 100) !== attempt.amountMinor || receipt.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
+      await ctx.runMutation((internal as any).functions.admissions.payments.recordManualAttention, { attemptId: attempt.attemptId, reasonCode: "RECEIPT_MISMATCH_OR_UNRESOLVED" });
       return { state: "manual_attention", entitlementId: null };
     }
     const event: any = await ctx.runMutation((internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal, {
@@ -99,6 +101,18 @@ export const verifyReturn = action({
     });
     const fulfilled: any = await ctx.runMutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: event.eventId });
     return { state: "paid", entitlementId: fulfilled.entitlementId };
+  },
+});
+
+/** A redirect/receipt mismatch is durable and truthful: it never grants a slot. */
+export const recordManualAttention = internalMutation({
+  args: { attemptId: v.id("admissionsPurchaseAttempts"), reasonCode: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    if (!attempt || attempt.state === "paid" || attempt.state === "refunded" || attempt.state === "reversed") return null;
+    await ctx.db.patch(attempt._id, { state: "manual_attention", failureCode: args.reasonCode.slice(0, 128), updatedAt: Date.now() });
+    return null;
   },
 });
 
@@ -121,6 +135,7 @@ export const initializeAttempt = action({
     const attempt: any = await ctx.runQuery((api as any).functions.admissions.payments.getOwnedAttemptForInitialization, args);
     if (!attempt) throw new ConvexError("Not found or access denied");
     if (attempt.state === "paid") return { state: "paid", checkoutUrl: null };
+    if (attempt.state === "refunded" || attempt.state === "reversed" || attempt.state === "manual_attention") return { state: attempt.state, checkoutUrl: null };
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_initialization" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
@@ -144,6 +159,26 @@ export const fulfilVerifiedEvent = internalMutation({
     const attempt = await ctx.db.get(event.purchaseAttemptId);
     if (!attempt || attempt.schoolId !== event.schoolId || attempt.provider !== event.provider || attempt.providerMode !== event.providerMode) throw new ConvexError("Payment dispatch context mismatch");
     const existing = await ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt._id)).unique();
+    const normalizedEvent = event.eventType.toLowerCase();
+    const reversalState = normalizedEvent.includes("refund") ? "refunded" : normalizedEvent.includes("reversal") || normalizedEvent.includes("chargeback") || normalizedEvent.includes("dispute") ? "reversed" : null;
+    if (reversalState) {
+      const now = Date.now();
+      await ctx.db.patch(attempt._id, { state: reversalState, failureCode: normalizedEvent.slice(0, 128), updatedAt: now });
+      if (!existing) { await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: now, updatedAt: now }); throw new ConvexError("Verified finance event has no entitlement"); }
+      const entitlementState = reversalState === "refunded" ? "refunded" : "revoked";
+      await ctx.db.patch(existing._id, { state: entitlementState, voidReason: normalizedEvent.slice(0, 128), updatedAt: now });
+      if (existing.applicationId) {
+        const application = await ctx.db.get(existing.applicationId);
+        if (application) {
+          const hold = await ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique();
+          const holdId = hold?._id ?? await ctx.db.insert("admissionsFinanceHolds", { schoolId: application.schoolId, applicationId: application._id, state: "active", reasonCode: reversalState === "refunded" ? "PAYMENT_REFUNDED" : "PAYMENT_REVERSED", createdAt: now, updatedAt: now });
+          await ctx.db.patch(application._id, { activeFinanceHoldId: holdId, financeBlockedReason: reversalState === "refunded" ? "PAYMENT_REFUNDED" : "PAYMENT_REVERSED", updatedAt: now });
+        }
+      }
+      await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: now, updatedAt: now });
+      await audit({ ctx, schoolId: attempt.schoolId, actor: { kind: "system" }, action: "payment.entitlement_voided", entityType: "entitlement", entityId: String(existing._id), ...(existing.applicationId ? { applicationId: existing.applicationId } : {}), outcome: "success", reasonCode: reversalState });
+      return { entitlementId: existing._id, replayed: event.processingStatus === "processed" };
+    }
     if (existing) {
       if (event.processingStatus !== "processed") await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: Date.now(), updatedAt: Date.now() });
       return { entitlementId: existing._id, replayed: true };

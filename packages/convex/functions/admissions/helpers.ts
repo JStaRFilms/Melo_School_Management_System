@@ -120,6 +120,37 @@ type ConditionalRule = {
   exists?: boolean;
 };
 
+/** The renderer and validator deliberately share this closed, data-only field vocabulary. */
+export const admissionFieldKinds = ["text", "textarea", "select", "date", "number", "boolean", "checkbox", "multi_select"] as const;
+const validationKeys = new Set(["minLength", "maxLength", "pattern", "choices", "min", "max", "maxSelections"]);
+const conditionKeys = new Set(["fieldKey", "equals", "notEquals", "includes", "exists"]);
+
+export function assertClosedValidationGrammar(value: string) {
+  const policy = parseDeclarativeJson<DeclarativeValidation>(value, "Field validation") ?? {};
+  if (Object.keys(policy).some((key) => !validationKeys.has(key)) ||
+    (policy.minLength !== undefined && (!Number.isInteger(policy.minLength) || policy.minLength < 0 || policy.minLength > 16_000)) ||
+    (policy.maxLength !== undefined && (!Number.isInteger(policy.maxLength) || policy.maxLength < 0 || policy.maxLength > 16_000)) ||
+    (policy.minLength !== undefined && policy.maxLength !== undefined && policy.minLength > policy.maxLength) ||
+    (policy.pattern !== undefined && (typeof policy.pattern !== "string" || policy.pattern.length > 256)) ||
+    (policy.min !== undefined && (!Number.isFinite(policy.min) || policy.min < -1_000_000_000 || policy.min > 1_000_000_000)) ||
+    (policy.max !== undefined && (!Number.isFinite(policy.max) || policy.max < -1_000_000_000 || policy.max > 1_000_000_000)) ||
+    (policy.min !== undefined && policy.max !== undefined && policy.min > policy.max) ||
+    (policy.maxSelections !== undefined && (!Number.isInteger(policy.maxSelections) || policy.maxSelections < 1 || policy.maxSelections > 50)) ||
+    (policy.choices !== undefined && (!Array.isArray(policy.choices) || policy.choices.length > 100 || policy.choices.some((choice) => typeof choice !== "string" || !choice.trim() || choice.length > 256)))) {
+    throw new ConvexError("Field validation is invalid");
+  }
+  if (policy.pattern) try { new RegExp(policy.pattern, "u"); } catch { throw new ConvexError("Field validation is invalid"); }
+  return policy;
+}
+
+export function assertClosedConditionalGrammar(value: string) {
+  const rule = parseDeclarativeJson<ConditionalRule>(value, "Conditional rule");
+  if (!rule || Object.keys(rule).some((key) => !conditionKeys.has(key)) || !rule.fieldKey || typeof rule.fieldKey !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rule.fieldKey) || rule.fieldKey.length > 128) throw new ConvexError("Conditional rule is invalid");
+  const operators = [rule.equals, rule.notEquals, rule.includes, rule.exists].filter((value) => value !== undefined);
+  if (operators.length !== 1 || (rule.exists !== undefined && typeof rule.exists !== "boolean") || (rule.exists === undefined && scalar(operators[0]) === null)) throw new ConvexError("Conditional rule is invalid");
+  return rule;
+}
+
 /** Only a bounded, data-only grammar is accepted; form configuration is never executable. */
 export function parseDeclarativeJson<T>(value: string | undefined, label: string): T | null {
   if (!value) return null;
@@ -160,7 +191,7 @@ export function answerValue(serializedValue: string, valueType: string): unknown
 export function validateTypedAnswer(args: { kind: string; valueType: string; serializedValue: string; validationJson: string }) {
   if (args.serializedValue.length > 16_000) throw new ConvexError("Answer is too large");
   const value = answerValue(args.serializedValue, args.valueType);
-  const policy = parseDeclarativeJson<DeclarativeValidation>(args.validationJson, "Field validation") ?? {};
+  const policy = assertClosedValidationGrammar(args.validationJson);
   const isText = typeof value === "string";
   if (isText && (policy.minLength !== undefined && value.length < policy.minLength || policy.maxLength !== undefined && value.length > policy.maxLength)) throw new ConvexError("ANSWER_INVALID");
   if (isText && policy.pattern) {
@@ -175,9 +206,8 @@ export function validateTypedAnswer(args: { kind: string; valueType: string; ser
 }
 
 export function conditionalRuleMatches(ruleJson: string | undefined, answers: Map<string, unknown>): boolean {
-  const rule = parseDeclarativeJson<ConditionalRule>(ruleJson, "Conditional rule");
-  if (!rule) return false;
-  if (!rule.fieldKey || typeof rule.fieldKey !== "string" || rule.fieldKey.length > 128) throw new ConvexError("Conditional rule is invalid");
+  if (!ruleJson) return false;
+  const rule = assertClosedConditionalGrammar(ruleJson);
   const value = answers.get(rule.fieldKey);
   if (rule.exists !== undefined && (typeof rule.exists !== "boolean" || (rule.exists ? value === undefined || value === "" : value !== undefined && value !== ""))) return false;
   for (const [key, expected] of [["equals", rule.equals], ["notEquals", rule.notEquals], ["includes", rule.includes]] as const) {

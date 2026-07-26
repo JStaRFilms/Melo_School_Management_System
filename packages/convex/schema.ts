@@ -314,6 +314,10 @@ export default defineSchema({
     requiredMode: v.union(v.literal("required"), v.literal("optional"), v.literal("conditional")),
     dataClass: admissionsDataClassValidator,
     purpose: v.optional(v.string()),
+    /** Additive privacy governance for sensitive collection; legacy low-risk fields omit these. */
+    retentionPolicyKey: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     validationJson: v.string(),
     conditionalRuleJson: v.optional(v.string()),
     order: v.number(),
@@ -337,6 +341,10 @@ export default defineSchema({
     maxFiles: v.number(),
     sensitivity: admissionsDataClassValidator,
     purpose: v.string(),
+    /** Additive privacy governance for high-risk requirements. */
+    retentionPolicyKey: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     conditionJson: v.optional(v.string()),
     order: v.number(),
     createdAt: v.number(),
@@ -480,6 +488,10 @@ export default defineSchema({
     requestedEntryLabel: v.optional(v.string()),
     /** Additive operational pointer; historical applications remain valid. */
     activeFinanceHoldId: v.optional(v.id("admissionsFinanceHolds")),
+    /** Named guardian-editable items from the active change request. */
+    changeRequestFieldKeys: v.optional(v.array(v.string())),
+    changeRequestRequirementKeys: v.optional(v.array(v.string())),
+    financeBlockedReason: v.optional(v.string()),
     draftVersion: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -650,7 +662,8 @@ export default defineSchema({
     state: v.union(v.literal("active"), v.literal("released")),
     reasonCode: v.string(),
     note: v.optional(v.string()),
-    createdByUserId: v.id("users"),
+    /** Optional only for verified provider reversals, which have no staff actor. */
+    createdByUserId: v.optional(v.id("users")),
     releasedByUserId: v.optional(v.id("users")),
     releasedAt: v.optional(v.number()),
     createdAt: v.number(),

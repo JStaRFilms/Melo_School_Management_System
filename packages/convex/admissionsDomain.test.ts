@@ -124,6 +124,34 @@ describe("B1 admissions domain", () => {
     await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability: "admissions.catalogue.manage", scope: "school", grantedByUserId: user, reason: "test", isBreakGlass: false, createdAt: Date.now() }));
     const draft = await t.withIdentity(staff).mutation((api as any).functions.admissions.settings.createDraftForm, { schoolId: ids.schoolA, programmeId: ids.programme, intakeId: ids.intake, schemaVersion: "2" });
     await expect(t.withIdentity(staff).mutation((api as any).functions.admissions.settings.addDraftField, { formVersionId: draft, fieldKey: "medical", sectionKey: "support", kind: "text", label: "Medical", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "safety", validationJson: "{}", order: 1 })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(staff).mutation((api as any).functions.admissions.settings.addDraftField, { formVersionId: draft, fieldKey: "bad-kind", sectionKey: "support", kind: "script", label: "Bad", requiredMode: "optional", dataClass: "personal", validationJson: JSON.stringify({ callback: "unsafe" }), order: 2 })).rejects.toThrow("Field kind is invalid");
+    const declaration = await t.withIdentity(staff).mutation((api as any).functions.admissions.settings.createDeclaration, { schoolId: ids.schoolA, programmeId: ids.programme, version: 2, title: "New declaration", body: "Draft only", purpose: "service" });
+    expect(await t.run((ctx) => ctx.db.get(declaration))).toMatchObject({ status: "draft" });
+  });
+
+  test("verified refund voids the entitlement and places a durable finance hold on a consumed application", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const paid = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId: paid.entitlementId });
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
+    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
+    const reversal = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: ids.attempt, provider: "paystack", providerMode: "test", providerEventId: "refund-1", eventType: "charge.refund", bodyDigest: "refund", signatureValid: true, processingStatus: "verified", receivedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal });
+    expect(await t.run((ctx) => ctx.db.get(paid.entitlementId))).toMatchObject({ state: "refunded" });
+    expect(await t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ financeBlockedReason: "PAYMENT_REFUNDED" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application.applicationId).eq("state", "active")).unique())).toBeTruthy();
+  });
+
+  test("rejects unlisted change-request answers and non-applicable conditional answers", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const controlling = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "support-needed", sectionKey: "support", kind: "select", label: "Support", requiredMode: "optional", dataClass: "personal", validationJson: JSON.stringify({ choices: ["yes", "no"] }), order: 1, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    const conditional = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "support-detail", sectionKey: "support", kind: "text", label: "Detail", requiredMode: "conditional", dataClass: "personal", validationJson: "{}", conditionalRuleJson: JSON.stringify({ fieldKey: "support-needed", equals: "yes" }), order: 2, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: conditional, expectedVersion: 1, valueType: "text", serializedValue: "not applicable" })).rejects.toThrow("ANSWER_NOT_APPLICABLE");
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: controlling, expectedVersion: 1, valueType: "select", serializedValue: "no" });
+    await t.run((ctx) => ctx.db.patch(application.applicationId, { state: "changes_requested", changeRequestFieldKeys: ["support-needed"], changeRequestRequirementKeys: [], updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: conditional, expectedVersion: version, valueType: "text", serializedValue: "still blocked" })).rejects.toThrow("ANSWER_NOT_APPLICABLE");
   });
 
   test("illegal decision state is rejected", async () => {

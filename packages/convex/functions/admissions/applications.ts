@@ -83,6 +83,14 @@ export const saveAnswer = mutation({
     if (application.draftVersion !== args.expectedVersion) throw new ConvexError("DRAFT_VERSION_CONFLICT");
     const field = await ctx.db.get(args.formFieldId);
     if (!field || field.schoolId !== application.schoolId || field.formVersionId !== application.formVersionId || field.status !== "active") throw new ConvexError("Not found or access denied");
+    if (application.state === "changes_requested" && application.changeRequestFieldKeys && !application.changeRequestFieldKeys.includes(field.fieldKey)) throw new ConvexError("ANSWER_NOT_APPLICABLE");
+    const existingAnswers = await ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(200);
+    const answerMap = new Map<string, unknown>();
+    for (const answer of existingAnswers) {
+      const configured = await ctx.db.get(answer.formFieldId);
+      if (configured) answerMap.set(answer.fieldKey, validateTypedAnswer({ kind: configured.kind, valueType: answer.valueType, serializedValue: answer.serializedValue, validationJson: configured.validationJson }));
+    }
+    if (field.requiredMode === "conditional" && !conditionalRuleMatches(field.conditionalRuleJson, answerMap)) throw new ConvexError("ANSWER_NOT_APPLICABLE");
     validateTypedAnswer({ kind: field.kind, valueType: args.valueType, serializedValue: args.serializedValue, validationJson: field.validationJson });
     const existing = await ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id).eq("fieldKey", field.fieldKey)).unique();
     const now = Date.now(); const valueVersion = (existing?.valueVersion ?? 0) + 1;
@@ -141,7 +149,8 @@ export const submit = mutation({
     }
     for (const field of fields) {
       if (field.status !== "active") continue;
-      const required = field.requiredMode === "required" || (field.requiredMode === "conditional" && conditionalRuleMatches(field.conditionalRuleJson, answerMap));
+      const applicable = field.requiredMode !== "conditional" || conditionalRuleMatches(field.conditionalRuleJson, answerMap);
+      const required = applicable && field.requiredMode !== "optional";
       const answer = answers.find((candidate) => candidate.formFieldId === field._id);
       if (required && (!answer || !answer.serializedValue.trim())) throw new ConvexError("APPLICATION_INCOMPLETE");
     }
@@ -157,7 +166,10 @@ export const submit = mutation({
       { itemKey: "provenance:form", kind: "provenance", valueType: "json", serializedValue: JSON.stringify({ formVersionId: String(application.formVersionId), schemaVersion: (await resolvedForm(ctx, application)).form.schemaVersion, intakeId: String(application.intakeId), priceId: String(application.priceId) }), dataClass: "internal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:declaration", kind: "declaration", valueType: "json", serializedValue: JSON.stringify({ declarationVersion: declaration.version, bodyDigest: declaration.bodyDigest, signerName: args.signerName.trim(), signerRelationship: args.signerRelationship.trim(), acceptedAt: submittedAt }), dataClass: "personal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:requirements", kind: "requirements", valueType: "json", serializedValue: JSON.stringify(requirements.map((requirement) => ({ key: requirement.requirementKey, requiredMode: requirement.requiredMode, condition: requirement.conditionJson ?? null, mime: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles }))), dataClass: "internal", sourceVersion: application.draftVersion },
-      ...answers.map((answer) => ({ itemKey: `answer:${answer.fieldKey}`, kind: "answer", valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass, sourceRowId: String(answer._id), sourceVersion: answer.valueVersion })),
+      ...answers.filter((answer) => {
+        const field = fields.find((candidate) => candidate._id === answer.formFieldId);
+        return field && (field.requiredMode !== "conditional" || conditionalRuleMatches(field.conditionalRuleJson, answerMap));
+      }).map((answer) => ({ itemKey: `answer:${answer.fieldKey}`, kind: "answer", valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass, sourceRowId: String(answer._id), sourceVersion: answer.valueVersion })),
       ...contacts.map((contact) => ({ itemKey: `contact:${contact.contactKey}`, kind: "contact", valueType: "json", serializedValue: JSON.stringify({ kind: contact.kind, fullName: contact.fullName, relationship: contact.relationship, email: contact.email ?? null, phone: contact.phone ?? null, address: contact.address ?? null, isApplicantGuardian: contact.isApplicantGuardian, isPrimary: contact.isPrimary }), dataClass: "personal", sourceRowId: String(contact._id), sourceVersion: application.draftVersion })),
       ...previousSchools.map((school) => ({ itemKey: `previous_school:${String(school._id)}`, kind: "previous_school", valueType: "json", serializedValue: JSON.stringify({ name: school.name, startDate: school.startDate ?? null, endDate: school.endDate ?? null, classLabel: school.classLabel ?? null }), dataClass: "personal", sourceRowId: String(school._id), sourceVersion: application.draftVersion })),
       ...documents.filter((document) => document.state !== "deleted").map((document) => ({ itemKey: `document:${document.documentKey}`, kind: "document", valueType: "manifest", serializedValue: JSON.stringify({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, state: document.state, sha256: document.sha256, mimeType: document.mimeType, byteSize: document.byteSize, version: document.version }), dataClass: document.sensitivity, sourceRowId: String(document._id), sourceVersion: document.version })),
@@ -165,7 +177,7 @@ export const submit = mutation({
     const canonicalDigest = await digest(JSON.stringify(items)); const requirementsDigest = await digest(JSON.stringify(requirements.map((requirement) => [requirement.requirementKey, requirement.requiredMode, requirement.category])));
     const snapshotId = await ctx.db.insert("admissionsSubmissionSnapshots", { schoolId: application.schoolId, applicationId: application._id, revision, formVersionId: application.formVersionId, declarationVersionId: application.declarationVersionId, productPriceId: application.priceId, requirementsDigest, canonicalDigest, signerGuardianId: guardian._id, signerName: args.signerName.trim(), signerRelationship: args.signerRelationship.trim(), submittedAt, declarationAcceptedAt: submittedAt, createdAt: submittedAt });
     for (const item of items) await ctx.db.insert("admissionsSubmissionSnapshotItems", { schoolId: application.schoolId, snapshotId, ...item, createdAt: submittedAt } as any);
-    await ctx.db.patch(application._id, { state: "submitted", currentRevision: revision, latestSnapshotId: snapshotId, draftVersion: application.draftVersion + 1, updatedAt: submittedAt });
+    await ctx.db.patch(application._id, { state: "submitted", currentRevision: revision, latestSnapshotId: snapshotId, draftVersion: application.draftVersion + 1, changeRequestFieldKeys: undefined, changeRequestRequirementKeys: undefined, updatedAt: submittedAt });
     if (entitlement.state === "reserved") await ctx.db.patch(entitlement._id, { state: "consumed", consumedAt: submittedAt, updatedAt: submittedAt });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "application.submitted", entityType: "submission_snapshot", entityId: String(snapshotId), applicationId: application._id, outcome: "success" });
     return { revision, state: "submitted" as const };

@@ -14,6 +14,9 @@ export function formatMinorCurrency(amountMinor: number, currency: string, local
 export function paymentStatusCopy(state: string) {
   if (state === "paid") return "Payment confirmed. Your application slot is ready.";
   if (state === "manual_attention") return "Your payment needs a check. We cannot make an application slot available yet.";
+  if (state === "refunded" || state === "reversed") return "This application slot is no longer available. The school is reviewing the payment status for any existing application.";
+  if (state === "failed") return "Payment was not completed. No application slot has been created from this attempt.";
+  if (state === "expired") return "This checkout session expired. Check payment status before starting another checkout.";
   return "We are confirming your payment. A payment start does not reserve a school place.";
 }
 
