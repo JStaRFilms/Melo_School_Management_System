@@ -36,6 +36,8 @@ describe("B4 B0 public-site projections", () => {
       const alias = await t.query(siteProjectionApi.functions.foundation.siteProjections.getPublishedProjection, { hostname: "www.first.example.test" });
       expect(alias?.domains.map((domain) => domain.hostname)).toEqual(expect.arrayContaining(["first.example.test", "www.first.example.test"]));
       expect(await t.query(siteProjectionApi.functions.foundation.siteProjections.getPublishedProjection, { hostname: "second.example.test" })).toMatchObject({ profile: { schoolSlug: "second" } });
+      await t.run(async (ctx) => { await ctx.db.patch(first.schoolId, { status: "pending" }); });
+      expect(await t.query(siteProjectionApi.functions.foundation.siteProjections.getPublishedProjection, { hostname: "first.example.test" })).toBeNull();
       expect(await t.query(siteProjectionApi.functions.foundation.siteProjections.getPublishedProjection, { hostname: "unknown.example.test" })).toBeNull();
     } finally {
       if (previousOrigin === undefined) delete process.env.APPLICATION_ORIGIN;

@@ -828,6 +828,9 @@ export default defineSchema({
     subjectType: v.string(),
     subjectKey: v.string(),
     evidenceReference: v.string(),
+    // SHA-256 of the exact approved public field/SEO/asset payload. Optional
+    // for legacy evidence; publication requires it for new revisions.
+    approvedValueDigest: v.optional(v.string()),
     approvedByUserId: v.optional(v.id("users")),
     approvedAt: v.number(),
     expiresAt: v.optional(v.number()),
@@ -848,6 +851,9 @@ export default defineSchema({
     draftRevisionId: v.optional(v.id("schoolSiteRevisions")),
     publishedRevisionId: v.optional(v.id("schoolSiteRevisions")),
     canonicalDomainId: v.optional(v.id("schoolDomains")),
+    // Bounded active-host count makes canonical transitions transactionally
+    // safe without an unbounded domain scan. Existing rows are migrated lazily.
+    activePublicDomainCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -938,7 +944,7 @@ export default defineSchema({
   schoolSiteAuditEvents: defineTable({
     schoolId: v.id("schools"),
     actorUserId: v.optional(v.id("users")),
-    eventType: v.union(v.literal("draft_saved"), v.literal("previewed"), v.literal("published"), v.literal("reverted"), v.literal("domain_changed"), v.literal("asset_approved"), v.literal("grant_changed")),
+    eventType: v.union(v.literal("draft_saved"), v.literal("previewed"), v.literal("preview_revoked"), v.literal("published"), v.literal("reverted"), v.literal("domain_changed"), v.literal("asset_approved"), v.literal("grant_changed")),
     revisionId: v.optional(v.id("schoolSiteRevisions")),
     outcome: v.union(v.literal("success"), v.literal("denied"), v.literal("blocked")),
     summary: v.string(),
