@@ -80,6 +80,7 @@ describe("B1 admissions domain", () => {
     const replay = await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, args);
     expect(replay.replayed).toBe(true); expect(replay.studentId).toBe(first.studentId);
     expect(await t.run((ctx) => ctx.db.query("students").withIndex("by_school_and_admission_number", (q) => q.eq("schoolId", ids.schoolA).eq("admissionNumber", "ADM-1")).take(2))).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", first.conversionId).eq("eventKey", "portal_onboarding")).take(2))).toHaveLength(1);
   });
 
   test("submission requires the displayed declaration to be affirmatively accepted", async () => {
@@ -96,6 +97,33 @@ describe("B1 admissions domain", () => {
     await t.run((ctx) => ctx.db.insert("admissionsProductPrices", { schoolId: ids.schoolA, productId: ids.product, version: 2, amountMinor: 2000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "new", effectiveFrom: Date.now(), status: "published", createdAt: Date.now(), updatedAt: Date.now() }));
     const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
     expect(await t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ priceId: ids.price });
+  });
+
+  test("rejects invalid configured choices before persisting an answer", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const field = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "entry_choice", sectionKey: "child", kind: "select", label: "Entry", requiredMode: "required", dataClass: "personal", validationJson: JSON.stringify({ choices: ["day", "board"] }), order: 1, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: field, expectedVersion: 1, valueType: "select", serializedValue: "invalid" })).rejects.toThrow("ANSWER_INVALID");
+  });
+
+  test("a finance hold blocks submission until explicitly released", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
+    const staff = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: "hold", authTokenIdentifier: "issuer|hold", name: "Hold", email: "hold@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.insert("admissionsFinanceHolds", { schoolId: ids.schoolA, applicationId: application.applicationId, state: "active", reasonCode: "payment_review", createdByUserId: staff, createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true })).rejects.toThrow("FINANCE_HOLD");
+  });
+
+  test("settings drafts are school-scoped and sensitive fields need an extra grant", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const staff = { subject: "catalogue", tokenIdentifier: "issuer|catalogue", issuer: "issuer" };
+    const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: staff.subject, authTokenIdentifier: staff.tokenIdentifier, name: "Catalogue", email: "catalogue@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability: "admissions.catalogue.manage", scope: "school", grantedByUserId: user, reason: "test", isBreakGlass: false, createdAt: Date.now() }));
+    const draft = await t.withIdentity(staff).mutation((api as any).functions.admissions.settings.createDraftForm, { schoolId: ids.schoolA, programmeId: ids.programme, intakeId: ids.intake, schemaVersion: "2" });
+    await expect(t.withIdentity(staff).mutation((api as any).functions.admissions.settings.addDraftField, { formVersionId: draft, fieldKey: "medical", sectionKey: "support", kind: "text", label: "Medical", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "safety", validationJson: "{}", order: 1 })).rejects.toThrow("Not found or access denied");
   });
 
   test("illegal decision state is rejected", async () => {

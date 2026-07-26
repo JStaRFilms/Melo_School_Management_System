@@ -33,6 +33,19 @@ All public bootstrap routes are keyed by `schoolSlug`, optional `intakeSlug`, an
 - `staff.recordDocumentReview`, `staff.requestChanges`, `staff.recordDecision`, and `conversions.executeAcceptedConversion` enforce scoped capability and legal state.
 - `staff.createRetentionJob` creates a dry-run-ready draft only; B1 never auto-deletes admissions records.
 
+## Phase A stable domain APIs (UI consumers)
+
+The following server-authorized APIs are stable for the later UI phase. They use Convex IDs only after an authenticated owner/staff boundary has been established; public wrappers remain slug/reference based.
+
+- `applications.withdraw({ applicationId, reason })` withdraws only the owning guardian's nonterminal application and retains its history.
+- `staff.startReview`, `staff.assignReview`, `staff.recordEvaluation`, `staff.requestChanges`, `staff.recordDecision`, `staff.reopenDecision`, `staff.withdrawApplication`, and `staff.overrideApplicationState` are school/programme/intake capability-gated lifecycle operations. Decisions require a current snapshot, no active finance hold, accepted required documents, and no scheduled evaluation.
+- `staff.setFinanceHold({ applicationId, action, reasonCode, note? })` places/releases a durable hold; holds block submission, decisions, and conversion. `staff.getAuditPage({ applicationId, paginationOpts })` is the redacted cursor-based audit projection.
+- `staff.listQueuePage({ schoolId, intakeId, state?, paginationOpts })` is the cursor-based redacted queue contract. It does not return names, answers, documents, storage IDs, or URLs.
+- `conversions.executeAcceptedConversion({ applicationId, classId, admissionNumber, familyId?, existingStudentId?, photoDocumentId?, idempotencyKey })` is idempotent. It rejects ambiguous same-school guardian/family resolution, requires an accepted decision and optional approved current-snapshot photo, writes canonical provenance, and creates one `portal_onboarding` outbox event. `internal.functions.admissions.conversions.recoverStaleLeases` is internal-only bounded stale-lease recovery.
+- `settings.getCatalogue`, `settings.createProgramme`, `settings.createIntake`, `settings.createProduct`, `settings.publishPrice`, `settings.createDraftForm`, `settings.addDraftField`, `settings.addDraftDocumentRequirement`, `settings.publishForm`, and `settings.createDeclaration` are tenant-scoped persisted B3 catalogue/publication APIs. Published forms/declarations are immutable; sensitive configuration requires its explicit capability.
+
+Form configuration uses a data-only JSON grammar: validation supports bounded `minLength`, `maxLength`, `pattern`, `choices`, `min`, `max`, and `maxSelections`; conditional requiredness supports one field key with `equals`, `notEquals`, `includes`, or `exists`. No expression, code, HTML, or callback is evaluated. Submission records profile, answers, contact/previous-school rows, document manifests, form/declaration/requirement provenance, signer/declaration evidence, and canonical digest as immutable snapshot items.
+
 ## Integration requests
 
 1. B6 must dispatch the B0 verified `adm_` webhook envelope to `internal.functions.admissions.payments.fulfilVerifiedEvent`. No other function creates entitlements.

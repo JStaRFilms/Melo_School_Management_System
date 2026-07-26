@@ -118,10 +118,136 @@ export const recordDecision = mutation({
     if (!application.latestSnapshotId || !["submitted", "under_review", "waitlisted"].includes(application.state) || !args.reasonCode.trim() || !args.guardianMessage.trim()) throw new ConvexError("Invalid decision transition");
     const previous: any = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
     if (previous && ["accepted", "rejected"].includes(previous.state)) throw new ConvexError("Invalid decision transition");
+    const [hold, requirements, documents, evaluations] = await Promise.all([
+      ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique(),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
+      ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200),
+      ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id)).take(100),
+    ]);
+    if (hold || evaluations.some((evaluation) => evaluation.state === "scheduled") || requirements.some((requirement) => requirement.requiredMode === "required" && !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("DECISION_PRECONDITIONS_UNMET");
     const now = Date.now(); const decisionId = await ctx.db.insert("admissionsDecisions", { schoolId: application.schoolId, applicationId: application._id, version: (previous?.version ?? 0) + 1, state: args.state, reasonCode: args.reasonCode.trim(), rationale: args.guardianMessage.trim(), decidedBy: membership.userId, decidedAt: now, ...(previous ? { supersedesDecisionId: previous._id } : {}), createdAt: now });
     await ctx.db.patch(application._id, { state: args.state, currentDecisionId: decisionId, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, actorUserId: membership.userId, eventType: "decision_recorded", visibility: "guardian", message: args.guardianMessage.trim(), reasonCode: args.reasonCode.trim(), createdAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "decision.recorded", entityType: "decision", entityId: String(decisionId), applicationId: application._id, outcome: "success" }); return decisionId;
+  },
+});
+
+export const startReview = mutation({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
+    if (application.state !== "submitted") throw new ConvexError("Invalid application transition");
+    const now = Date.now();
+    await ctx.db.patch(application._id, { state: "under_review", updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, actorUserId: membership.userId, eventType: "review_started", visibility: "staff", createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "review.started", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success" });
+    return null;
+  },
+});
+
+export const assignReview = mutation({
+  args: { applicationId: v.id("admissionsApplications"), assigneeUserId: v.id("users"), role: v.string(), dueAt: v.optional(v.number()) },
+  returns: v.id("admissionsReviewAssignments"),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.assign");
+    const assignee = await ctx.db.get(args.assigneeUserId);
+    if (!assignee || assignee.schoolId !== application.schoolId || assignee.isArchived || !args.role.trim()) throw new ConvexError("Not found or access denied");
+    const now = Date.now();
+    const assignmentId = await ctx.db.insert("admissionsReviewAssignments", { schoolId: application.schoolId, applicationId: application._id, assigneeUserId: assignee._id, role: args.role.trim().slice(0, 128), state: "assigned", ...(args.dueAt ? { dueAt: args.dueAt } : {}), assignedByUserId: membership.userId, createdAt: now, updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "assignment_created", visibility: "staff", metadataJson: JSON.stringify({ assignmentId: String(assignmentId), role: args.role.trim().slice(0, 128) }), createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "review.assigned", entityType: "assignment", entityId: String(assignmentId), applicationId: application._id, outcome: "success" });
+    return assignmentId;
+  },
+});
+
+export const recordEvaluation = mutation({
+  args: { applicationId: v.id("admissionsApplications"), type: v.union(v.literal("entrance_assessment"), v.literal("interview")), state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")), scheduledAt: v.optional(v.number()), resultCode: v.optional(v.string()), score: v.optional(v.number()), notes: v.optional(v.string()) },
+  returns: v.id("admissionsEvaluations"),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
+    if (!["submitted", "under_review", "waitlisted"].includes(application.state) || (args.state === "completed" && !args.resultCode?.trim()) || (args.score !== undefined && (!Number.isFinite(args.score) || args.score < 0 || args.score > 100))) throw new ConvexError("Invalid evaluation");
+    const previous = await ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", args.type)).order("desc").take(1);
+    const now = Date.now();
+    const evaluationId = await ctx.db.insert("admissionsEvaluations", { schoolId: application.schoolId, applicationId: application._id, type: args.type, state: args.state, ...(args.scheduledAt ? { scheduledAt: args.scheduledAt } : {}), ...(args.state === "completed" ? { completedAt: now, evaluatorUserId: membership.userId } : {}), ...(args.resultCode?.trim() ? { resultCode: args.resultCode.trim().slice(0, 128) } : {}), ...(args.score !== undefined ? { score: args.score } : {}), ...(args.notes?.trim() ? { notes: args.notes.trim().slice(0, 4_000) } : {}), version: (previous[0]?.version ?? 0) + 1, createdAt: now, updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "evaluation_recorded", visibility: "staff", metadataJson: JSON.stringify({ type: args.type, state: args.state, evaluationId: String(evaluationId) }), createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "evaluation.recorded", entityType: "evaluation", entityId: String(evaluationId), applicationId: application._id, outcome: "success" });
+    return evaluationId;
+  },
+});
+
+export const reopenDecision = mutation({
+  args: { applicationId: v.id("admissionsApplications"), reasonCode: v.string(), guardianMessage: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "decisions.record");
+    const decision = application.currentDecisionId && await ctx.db.get(application.currentDecisionId);
+    const conversion = application.conversionId && await ctx.db.get(application.conversionId);
+    if (!decision || !["accepted", "rejected"].includes(decision.state) || conversion?.state === "succeeded" || !args.reasonCode.trim() || !args.guardianMessage.trim()) throw new ConvexError("Invalid decision transition");
+    const now = Date.now();
+    await ctx.db.patch(application._id, { state: "under_review", currentDecisionId: undefined, updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, actorUserId: membership.userId, eventType: "decision_reopened", visibility: "guardian", reasonCode: args.reasonCode.trim().slice(0, 128), message: args.guardianMessage.trim().slice(0, 4_000), createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "decision.reopened", entityType: "decision", entityId: String(decision._id), applicationId: application._id, outcome: "success" });
+    return null;
+  },
+});
+
+export const withdrawApplication = mutation({
+  args: { applicationId: v.id("admissionsApplications"), reasonCode: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
+    if (["archived", "withdrawn"].includes(application.state) || !args.reasonCode.trim()) throw new ConvexError("Invalid application transition");
+    const now = Date.now(); await ctx.db.patch(application._id, { state: "withdrawn", updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "staff_withdrawal", visibility: "guardian", reasonCode: args.reasonCode.trim().slice(0, 128), createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "application.withdrawn_by_staff", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success" }); return null;
+  },
+});
+
+/** Exceptional recovery only: it is visible to the guardian and never rewrites a snapshot or decision. */
+export const overrideApplicationState = mutation({
+  args: { applicationId: v.id("admissionsApplications"), state: v.union(v.literal("under_review"), v.literal("withdrawn")), reasonCode: v.string(), guardianMessage: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "decisions.record");
+    const conversion = application.conversionId && await ctx.db.get(application.conversionId);
+    if (!args.reasonCode.trim() || !args.guardianMessage.trim() || conversion?.state === "succeeded" || (args.state === "under_review" && application.state !== "withdrawn") || (args.state === "withdrawn" && ["archived", "withdrawn"].includes(application.state))) throw new ConvexError("Invalid application transition");
+    const now = Date.now();
+    await ctx.db.patch(application._id, { state: args.state, updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "authorized_override", visibility: "guardian", reasonCode: args.reasonCode.trim().slice(0, 128), message: args.guardianMessage.trim().slice(0, 4_000), createdAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "application.authorized_override", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success", reasonCode: args.reasonCode.trim().slice(0, 128) });
+    return null;
+  },
+});
+
+export const setFinanceHold = mutation({
+  args: { applicationId: v.id("admissionsApplications"), action: v.union(v.literal("place"), v.literal("release")), reasonCode: v.string(), note: v.optional(v.string()) },
+  returns: v.union(v.id("admissionsFinanceHolds"), v.null()),
+  handler: async (ctx, args) => {
+    const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "decisions.record");
+    if (!args.reasonCode.trim()) throw new ConvexError("FINANCE_HOLD_REASON_REQUIRED");
+    const active = await ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique();
+    const now = Date.now();
+    if (args.action === "release") {
+      if (!active) return null;
+      await ctx.db.patch(active._id, { state: "released", releasedByUserId: membership.userId, releasedAt: now, updatedAt: now });
+      await ctx.db.patch(application._id, { activeFinanceHoldId: undefined, updatedAt: now });
+      await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "finance_hold.released", entityType: "finance_hold", entityId: String(active._id), applicationId: application._id, outcome: "success" }); return null;
+    }
+    if (active) return active._id;
+    const holdId = await ctx.db.insert("admissionsFinanceHolds", { schoolId: application.schoolId, applicationId: application._id, state: "active", reasonCode: args.reasonCode.trim().slice(0, 128), ...(args.note?.trim() ? { note: args.note.trim().slice(0, 1_000) } : {}), createdByUserId: membership.userId, createdAt: now, updatedAt: now });
+    await ctx.db.patch(application._id, { activeFinanceHoldId: holdId, updatedAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "finance_hold.placed", entityType: "finance_hold", entityId: String(holdId), applicationId: application._id, outcome: "success" }); return holdId;
+  },
+});
+
+export const getAuditPage = query({
+  args: { applicationId: v.id("admissionsApplications"), paginationOpts: paginationOptsValidator },
+  returns: v.object({ page: v.array(v.object({ action: v.string(), entityType: v.string(), entityId: v.string(), outcome: v.string(), reasonCode: v.union(v.string(), v.null()), createdAt: v.number() })), isDone: v.boolean(), continueCursor: v.string() }),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "audit.view");
+    const result = await ctx.db.query("admissionsAuditEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").paginate(args.paginationOpts);
+    return { ...result, page: result.page.map((event) => ({ action: event.action, entityType: event.entityType, entityId: event.entityId, outcome: event.outcome, reasonCode: event.reasonCode ?? null, createdAt: event.createdAt })) };
   },
 });
 

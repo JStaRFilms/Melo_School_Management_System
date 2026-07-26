@@ -101,3 +101,91 @@ export function assertEditable(state: string) {
     throw new ConvexError("APPLICATION_LOCKED");
   }
 }
+
+type DeclarativeValidation = {
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  choices?: string[];
+  min?: number;
+  max?: number;
+  maxSelections?: number;
+};
+
+type ConditionalRule = {
+  fieldKey: string;
+  equals?: string | number | boolean;
+  notEquals?: string | number | boolean;
+  includes?: string | number | boolean;
+  exists?: boolean;
+};
+
+/** Only a bounded, data-only grammar is accepted; form configuration is never executable. */
+export function parseDeclarativeJson<T>(value: string | undefined, label: string): T | null {
+  if (!value) return null;
+  if (value.length > 4_000) throw new ConvexError(`${label} is invalid`);
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("object required");
+    return parsed as T;
+  } catch {
+    throw new ConvexError(`${label} is invalid`);
+  }
+}
+
+function scalar(value: unknown): string | number | boolean | null {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : null;
+}
+
+export function answerValue(serializedValue: string, valueType: string): unknown {
+  const type = valueType.trim();
+  if (type === "text" || type === "textarea" || type === "select" || type === "date") return serializedValue;
+  if (type === "number") {
+    const number = Number(serializedValue);
+    if (!Number.isFinite(number)) throw new ConvexError("ANSWER_INVALID");
+    return number;
+  }
+  if (type === "boolean" || type === "checkbox") {
+    if (serializedValue !== "true" && serializedValue !== "false") throw new ConvexError("ANSWER_INVALID");
+    return serializedValue === "true";
+  }
+  if (type === "multi_select") {
+    const parsed: unknown = JSON.parse(serializedValue);
+    if (!Array.isArray(parsed) || parsed.length > 50 || parsed.some((item) => typeof item !== "string")) throw new ConvexError("ANSWER_INVALID");
+    return parsed;
+  }
+  throw new ConvexError("ANSWER_INVALID");
+}
+
+export function validateTypedAnswer(args: { kind: string; valueType: string; serializedValue: string; validationJson: string }) {
+  if (args.serializedValue.length > 16_000) throw new ConvexError("Answer is too large");
+  const value = answerValue(args.serializedValue, args.valueType);
+  const policy = parseDeclarativeJson<DeclarativeValidation>(args.validationJson, "Field validation") ?? {};
+  const isText = typeof value === "string";
+  if (isText && (policy.minLength !== undefined && value.length < policy.minLength || policy.maxLength !== undefined && value.length > policy.maxLength)) throw new ConvexError("ANSWER_INVALID");
+  if (isText && policy.pattern) {
+    if (policy.pattern.length > 256) throw new ConvexError("Field validation is invalid");
+    try { if (!new RegExp(policy.pattern, "u").test(value)) throw new ConvexError("ANSWER_INVALID"); } catch (error) { if (error instanceof ConvexError) throw error; throw new ConvexError("Field validation is invalid"); }
+  }
+  if (typeof value === "number" && ((policy.min !== undefined && value < policy.min) || (policy.max !== undefined && value > policy.max))) throw new ConvexError("ANSWER_INVALID");
+  const selections = Array.isArray(value) ? value : [value];
+  if (policy.maxSelections !== undefined && Array.isArray(value) && value.length > policy.maxSelections) throw new ConvexError("ANSWER_INVALID");
+  if (policy.choices && (!Array.isArray(policy.choices) || policy.choices.length > 100 || policy.choices.some((choice) => typeof choice !== "string") || selections.some((selection) => !policy.choices!.includes(String(selection))))) throw new ConvexError("ANSWER_INVALID");
+  return value;
+}
+
+export function conditionalRuleMatches(ruleJson: string | undefined, answers: Map<string, unknown>): boolean {
+  const rule = parseDeclarativeJson<ConditionalRule>(ruleJson, "Conditional rule");
+  if (!rule) return false;
+  if (!rule.fieldKey || typeof rule.fieldKey !== "string" || rule.fieldKey.length > 128) throw new ConvexError("Conditional rule is invalid");
+  const value = answers.get(rule.fieldKey);
+  if (rule.exists !== undefined && (typeof rule.exists !== "boolean" || (rule.exists ? value === undefined || value === "" : value !== undefined && value !== ""))) return false;
+  for (const [key, expected] of [["equals", rule.equals], ["notEquals", rule.notEquals], ["includes", rule.includes]] as const) {
+    if (expected === undefined) continue;
+    if (scalar(expected) === null) throw new ConvexError("Conditional rule is invalid");
+    if (key === "equals" && value !== expected) return false;
+    if (key === "notEquals" && value === expected) return false;
+    if (key === "includes" && (!Array.isArray(value) || !value.includes(expected))) return false;
+  }
+  return true;
+}

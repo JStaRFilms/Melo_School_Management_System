@@ -478,6 +478,8 @@ export default defineSchema({
     currentDecisionId: v.optional(v.id("admissionsDecisions")),
     conversionId: v.optional(v.id("admissionsConversions")),
     requestedEntryLabel: v.optional(v.string()),
+    /** Additive operational pointer; historical applications remain valid. */
+    activeFinanceHoldId: v.optional(v.id("admissionsFinanceHolds")),
     draftVersion: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -621,7 +623,13 @@ export default defineSchema({
     acceptedDecisionId: v.id("admissionsDecisions"),
     snapshotId: v.id("admissionsSubmissionSnapshots"),
     idempotencyKey: v.string(),
-    state: v.union(v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    state: v.union(v.literal("requested"), v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    /** Lease and canonical-output fields are additive for interrupted conversion recovery. */
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    attemptCount: v.optional(v.number()),
+    parentUserId: v.optional(v.id("users")),
+    studentUserId: v.optional(v.id("users")),
     classId: v.optional(v.id("classes")),
     admissionNumber: v.optional(v.string()),
     familyId: v.optional(v.id("families")),
@@ -635,6 +643,21 @@ export default defineSchema({
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_student", ["studentId"]),
+
+  admissionsFinanceHolds: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    state: v.union(v.literal("active"), v.literal("released")),
+    reasonCode: v.string(),
+    note: v.optional(v.string()),
+    createdByUserId: v.id("users"),
+    releasedByUserId: v.optional(v.id("users")),
+    releasedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_state", ["applicationId", "state"])
+    .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"]),
 
   admissionsApplicationContacts: defineTable({
     schoolId: v.id("schools"),
