@@ -62,7 +62,18 @@ function parseAssets(value: unknown, now: number): PublicSiteEnvelope["assets"] 
     const focalX = typeof focalPoint?.x === "number" ? focalPoint.x : undefined;
     const focalY = typeof focalPoint?.y === "number" ? focalPoint.y : undefined;
     if ((asset.focalPoint !== undefined && !focalPoint) || (focalPoint && (focalX === undefined || focalY === undefined || focalX < 0 || focalX > 1 || focalY < 0 || focalY > 1))) return null;
-    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, ...(width && height ? { width, height } : {}), ...(focalX !== undefined && focalY !== undefined ? { focalPoint: { x: focalX, y: focalY } } : {}), rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
+    let responsiveSources: Array<{ url: string; width: number }> | undefined;
+    if (asset.responsiveSources !== undefined) {
+      if (!Array.isArray(asset.responsiveSources) || asset.responsiveSources.length === 0 || asset.responsiveSources.length > 8) return null;
+      responsiveSources = [];
+      for (const source of asset.responsiveSources) {
+        const derivative = object(source); const derivativeUrl = string(derivative?.url, 4000); const derivativeWidth = derivative?.width;
+        if (!derivativeUrl || typeof derivativeWidth !== "number" || !Number.isInteger(derivativeWidth) || derivativeWidth <= 0 || derivativeWidth > 20_000) return null;
+        try { const parsedUrl = new URL(derivativeUrl); if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") return null; } catch { return null; }
+        responsiveSources.push({ url: derivativeUrl, width: derivativeWidth });
+      }
+    }
+    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, ...(width && height ? { width, height } : {}), ...(focalX !== undefined && focalY !== undefined ? { focalPoint: { x: focalX, y: focalY } } : {}), ...(responsiveSources ? { responsiveSources } : {}), rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
   }
   return output;
 }
@@ -107,51 +118,14 @@ function validateLoadedSite(site: PublicSiteEnvelope, hostname: string, preview:
   return { status: "available", site, canonicalDomain: canonical, redirectToHostname: isCanonicalHost ? undefined : getRedirectTarget(matched, canonical), preview: false };
 }
 
-type CachedRevision = { site: PublicSiteEnvelope; expiresAt: number };
-const revisionCache = new Map<string, CachedRevision>();
-const hostnameCache = new Map<string, { revisionKey: string; expiresAt: number }>();
-const sourceIds = new WeakMap<SiteContentSource, number>();
-let nextSourceId = 1;
-function sourceCacheKey(source: SiteContentSource, hostname: string): string {
-  let sourceId = sourceIds.get(source);
-  if (!sourceId) { sourceId = nextSourceId++; sourceIds.set(source, sourceId); }
-  return `${sourceId}:${hostname}`;
-}
-
-function cacheTtlMilliseconds(): number {
-  const seconds = Number(process.env.SITE_PUBLIC_CONTENT_CACHE_SECONDS ?? 60);
-  return Number.isFinite(seconds) ? Math.min(Math.max(seconds, 1), 300) * 1_000 : 60_000;
-}
-function cacheExpiry(site: PublicSiteEnvelope, now: number): number {
-  const boundaries = [now + cacheTtlMilliseconds(), ...site.assets.map((asset) => asset.rightsExpiresAt).filter((value): value is number => typeof value === "number" && value > now), site.links.application.opensAt, site.links.application.closesAt].filter((value): value is number => typeof value === "number" && value > now);
-  return Math.min(...boundaries);
-}
-function getCachedRevision(source: SiteContentSource, hostname: string, now: number): PublicSiteEnvelope | null {
-  const host = hostnameCache.get(sourceCacheKey(source, hostname));
-  if (!host || host.expiresAt <= now) return null;
-  const entry = revisionCache.get(host.revisionKey);
-  return entry && entry.expiresAt > now ? entry.site : null;
-}
-function cachePublishedRevision(source: SiteContentSource, hostname: string, site: PublicSiteEnvelope, now: number) {
-  if (site.profile.status !== "published" || site.revision.state !== "published") return;
-  const expiresAt = cacheExpiry(site, now); const revisionKey = `${sourceCacheKey(source, hostname)}:${site.profile.schoolId}:${site.revision.id}`;
-  revisionCache.set(revisionKey, { site, expiresAt }); hostnameCache.set(sourceCacheKey(source, hostname), { revisionKey, expiresAt });
-}
-/** Called by a publish/revert integration after the B0 public projection changes. */
-export function invalidatePublishedSiteCache(schoolId: string) {
-  for (const [revisionKey] of revisionCache) if (revisionKey.includes(`:${schoolId}:`)) revisionCache.delete(revisionKey);
-  for (const [hostname, entry] of hostnameCache) if (entry.revisionKey.includes(`:${schoolId}:`)) hostnameCache.delete(hostname);
-}
-
 export async function loadSite(input: { hostname: string | null; source: SiteContentSource; previewToken?: string; now?: number }): Promise<SiteLoadResult> {
   const hostname = normalizeHostname(input.hostname); const now = input.now ?? Date.now();
   if (!hostname) return { status: "unavailable", reason: "unknown_host" };
   const preview = Boolean(input.previewToken);
-  const cached = !preview ? getCachedRevision(input.source, hostname, now) : null;
-  if (cached) return validateLoadedSite(cached, hostname, false, now);
+  // Availability and the published-revision pointer are mutable B0 projections.
+  // Do not retain them in process memory: a close, publish, or revert must be
+  // observable on the next request even if an invalidation hook is delayed.
   const raw = preview && input.source.loadPreview ? await input.source.loadPreview({ hostname, previewToken: input.previewToken! }) : await input.source.loadPublished(hostname);
   const site = raw ? parsePublicSiteEnvelope(raw, now) : null;
-  if (!site) return { status: "unavailable", reason: preview ? "unauthorized_preview" : "unknown_host" };
-  if (!preview) cachePublishedRevision(input.source, hostname, site, now);
-  return validateLoadedSite(site, hostname, preview, now);
+  return site ? validateLoadedSite(site, hostname, preview, now) : { status: "unavailable", reason: preview ? "unauthorized_preview" : "unknown_host" };
 }

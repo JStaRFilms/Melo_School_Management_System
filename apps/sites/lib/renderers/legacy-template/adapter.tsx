@@ -12,18 +12,18 @@ export const legacyTemplateRenderer: SiteRenderer<LegacyRendererData> = {
     { key: "admissions", path: "/admissions" }, { key: "fees", path: "/fees" }, { key: "visit", path: "/visit" }, { key: "contact", path: "/contact" },
   ],
   validateRendererData(input) {
-    const field = input.schoolKey;
+    const field = input.fields.schoolKey;
     const schoolKey = field && typeof field === "object" && "kind" in field && field.kind === "text" && "value" in field && typeof field.value === "string"
       ? field.value
       : null;
-    return schoolKey && legacyDemoSchools.some((school) => school.key === schoolKey) ? { schoolKey } : null;
+    return schoolKey && input.school.id === `legacy:${schoolKey}` && input.school.slug === schoolKey && legacyDemoSchools.some((school) => school.key === schoolKey) ? { schoolKey } : null;
   },
   render(context) {
     const school = legacyDemoSchools.find((candidate) => candidate.key === context.rendererData.schoolKey);
     if (!school) return null;
     const page = resolveLegacyPage(school, context.request.routeKey);
     const template = schoolTemplatesForLegacy(school);
-    return page && template ? <PublicSchoolPage school={school} template={template} page={page} /> : null;
+    return page && template ? <>{context.request.preview ? <p className="fixed bottom-4 left-4 z-50 bg-slate-950 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white">Draft preview — not public</p> : null}<PublicSchoolPage school={school} template={template} page={page} pathPrefix={context.request.pathPrefix} /></> : null;
   },
 };
 

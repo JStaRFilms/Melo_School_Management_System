@@ -38,6 +38,8 @@ export interface ApprovedPublicAsset {
   width?: number;
   height?: number;
   focalPoint?: { x: number; y: number };
+  /** Pre-approved optimized derivatives; never renderer-generated remote URLs. */
+  responsiveSources?: readonly { url: string; width: number }[];
 }
 
 export interface PublicSiteEnvelope {
@@ -72,9 +74,14 @@ export interface PublicSchoolIdentity {
   shortName?: string;
 }
 
+export interface RendererValidationInput {
+  school: PublicSchoolIdentity;
+  /** Internal core input: renderers validate this once, but render() never receives it. */
+  fields: Readonly<Record<string, RendererFieldValue>>;
+}
+
 export interface SiteRenderContext<TData = unknown> {
   school: PublicSchoolIdentity;
-  fields: Readonly<Record<string, RendererFieldValue>>;
   assets: Readonly<Record<string, ApprovedPublicAsset>>;
   links: Readonly<{ application: ApplicationLinkV1; portal?: { href: string; enabled: true } }>;
   seo: Readonly<Record<string, { title?: string; description?: string; shareAsset?: ApprovedPublicAsset }>>;

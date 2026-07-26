@@ -14,23 +14,30 @@ const routes = [
   { key: "contact", path: "/contact" }, { key: "policy-index", path: "/policies" }, { key: "policy-detail", path: "/policies/[policySlug]" },
 ] as const;
 
+function isObhisRouteAvailable(data: ObhisRendererData, routeKey: string, params: Readonly<Record<string, string>>) {
+  switch (routeKey) {
+    case "home": return true;
+    case "admissions": return Boolean(data.admissions.lead || data.admissions.steps.length);
+    case "about": return Boolean(data.about.lead || data.about.values.length || data.about.story.length);
+    case "programmes": return data.programmes.length > 0;
+    case "school-life": return Boolean(data.schoolLife.lead || data.schoolLife.galleryAssetIds.length || data.schoolLife.features.length);
+    case "visit": return Boolean(data.visit.lead || data.visit.directions || data.visit.hours || data.contact.phone || data.contact.email);
+    case "contact": return Boolean(data.contact.phone || data.contact.email || data.contact.address || data.contact.hours);
+    case "policy-index": return data.policies.length > 0;
+    case "policy-detail": return data.policies.some((policy) => policy.slug === params.policySlug);
+    default: return false;
+  }
+}
+
 export const obhisRenderer: SiteRenderer<ObhisRendererData> = {
   key: "obhis-v1",
   schemaVersion: "1",
   routes,
-  validateRendererData: validateObhisRendererData,
-  isRouteAvailable(data, routeKey, params) {
-    switch (routeKey) {
-      case "home": case "admissions": return true;
-      case "about": return Boolean(data.about.lead || data.about.values.length || data.about.story.length);
-      case "programmes": return data.programmes.length > 0;
-      case "school-life": return Boolean(data.schoolLife.lead || data.schoolLife.galleryAssetIds.length || data.schoolLife.features.length);
-      case "visit": return Boolean(data.visit.lead || data.visit.directions || data.visit.hours || data.contact.phone || data.contact.email);
-      case "contact": return Boolean(data.contact.phone || data.contact.email || data.contact.address || data.contact.hours);
-      case "policy-index": return data.policies.length > 0;
-      case "policy-detail": return data.policies.some((policy) => policy.slug === params.policySlug);
-      default: return false;
-    }
+  validateRendererData(input) { return validateObhisRendererData(input.fields); },
+  isRouteAvailable(data, routeKey, params) { return isObhisRouteAvailable(data, routeKey, params); },
+  isRouteIndexable(data, routeKey, params, context) {
+    if (routeKey === "admissions") return Boolean(data.admissions.lead && data.admissions.steps.length && context.links.application.availability === "open");
+    return isObhisRouteAvailable(data, routeKey, params);
   },
   sitemapPaths(data) { return data.policies.map((policy) => `/policies/${policy.slug}`); },
   render(context) { return <ObhisSite context={context} />; },
@@ -41,10 +48,10 @@ function ObhisSite({ context }: { context: SiteRenderContext<ObhisRendererData> 
   const applicationHref = applicationCtaHref(context.links.application);
   const path = (value: string) => internalPath(context, value);
   const nav = [
-    { href: "/", label: "Home", visible: true }, { href: "/about", label: "About", visible: Boolean(data.about.lead || data.about.values.length || data.about.story.length) },
-    { href: "/programmes", label: "Programmes", visible: data.programmes.length > 0 }, { href: "/admissions", label: "Admissions", visible: true },
-    { href: "/school-life", label: "School life", visible: Boolean(data.schoolLife.lead || data.schoolLife.galleryAssetIds.length || data.schoolLife.features.length) }, { href: "/visit", label: "Visit", visible: Boolean(data.visit.lead || data.contact.phone || data.contact.email) },
-  ].filter((item) => item.visible).map((item) => ({ ...item, href: path(item.href), current: context.request.canonicalUrl.endsWith(item.href === "/" ? "/" : item.href) }));
+    { href: "/", label: "Home", key: "home" }, { href: "/about", label: "About", key: "about" },
+    { href: "/programmes", label: "Programmes", key: "programmes" }, { href: "/admissions", label: "Admissions", key: "admissions" },
+    { href: "/school-life", label: "School life", key: "school-life" }, { href: "/visit", label: "Visit", key: "visit" },
+  ].filter((item) => isObhisRouteAvailable(data, item.key, {})).map((item) => ({ ...item, href: path(item.href), current: context.request.canonicalUrl.endsWith(item.href === "/" ? "/" : item.href) }));
   return <div className={styles.site}>
     {context.request.preview ? <p className={styles.previewWatermark} role="status">Draft preview — not public</p> : null}
     <a className={styles.skipLink} href="#main-content">Skip to content</a>
@@ -73,11 +80,20 @@ function renderRoute(context: SiteRenderContext<ObhisRendererData>) {
 }
 
 function Container({ children, className = "" }: { children: ReactNode; className?: string }) { return <div className={`${styles.container} ${className}`}>{children}</div>; }
-function SiteLink({ context, href, className, children }: { context: SiteRenderContext<ObhisRendererData>; href: string; className?: string; children: ReactNode }) { return <Link className={className} href={internalPath(context, href)}>{children}</Link>; }
+function routeForInternalPath(path: string): { key: string; params: Record<string, string> } | null {
+  const staticRoute = routes.find((route) => route.path === path);
+  if (staticRoute) return { key: staticRoute.key, params: {} };
+  const policySlug = /^\/policies\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(path)?.[1];
+  return policySlug ? { key: "policy-detail", params: { policySlug } } : null;
+}
+function SiteLink({ context, href, className, children }: { context: SiteRenderContext<ObhisRendererData>; href: string; className?: string; children: ReactNode }) {
+  const route = routeForInternalPath(href);
+  return route && isObhisRouteAvailable(context.rendererData, route.key, route.params) ? <Link className={className} href={internalPath(context, href)}>{children}</Link> : null;
+}
 function PageLead({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) { return <section className={styles.pageLead}><Container><p className={styles.eyebrow}>{eyebrow}</p><h1>{title}</h1>{body ? <p className={styles.lead}>{body}</p> : null}</Container></section>; }
 function asset(context: SiteRenderContext<ObhisRendererData>, id?: string): ApprovedPublicAsset | null { const value = id ? context.assets[id] : undefined; return value && (value.decorative || Boolean(value.altText)) ? value : null; }
 function Media({ item, className = "", priority = false }: { item: ApprovedPublicAsset | null; className?: string; priority?: boolean }) {
-  return item ? <figure className={className}><img src={item.url} alt={item.decorative ? "" : item.altText} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" {...(item.width && item.height ? { width: item.width, height: item.height } : {})} style={item.focalPoint ? { objectPosition: `${item.focalPoint.x * 100}% ${item.focalPoint.y * 100}%` } : undefined} /></figure> : null;
+  return item ? <figure className={className}><img src={item.url} alt={item.decorative ? "" : item.altText} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" {...(item.width && item.height ? { width: item.width, height: item.height } : {})} {...(item.responsiveSources ? { srcSet: item.responsiveSources.map((source) => `${source.url} ${source.width}w`).join(", "), sizes: priority ? "(max-width: 1023px) 100vw, 50vw" : "(max-width: 767px) 100vw, 33vw" } : {})} style={item.focalPoint ? { objectPosition: `${item.focalPoint.x * 100}% ${item.focalPoint.y * 100}%` } : undefined} /></figure> : null;
 }
 function ApplicationCta({ context, className = "" }: { context: SiteRenderContext<ObhisRendererData>; className?: string }) {
   const href = applicationCtaHref(context.links.application);

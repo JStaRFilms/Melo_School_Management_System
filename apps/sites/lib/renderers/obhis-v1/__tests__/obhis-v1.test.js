@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRenderer } from "@/core/renderers/registry";
-import { buildSitemapEntries, resolveSitePage } from "@/core/site";
+import { buildPageMetadata, buildSitemapEntries, resolveSitePage } from "@/core/site";
 import { obhisRenderer } from "@/renderers/obhis-v1/definition";
+
+const school = { id: "obhis", slug: "approved-school", displayName: "Approved School" };
+const validationInput = () => ({ school, fields });
 
 const fields = {
   "identity.displayName": { kind: "text", value: "Approved School" },
@@ -35,16 +38,16 @@ describe("obhis-v1", () => {
   });
 
   test("accepts only bounded semantic fields and omits malformed contact data", () => {
-    const data = obhisRenderer.validateRendererData(fields);
+    const data = obhisRenderer.validateRendererData(validationInput());
     expect(data).toMatchObject({ identity: { displayName: "Approved School" }, programmes: [{ slug: "early-years" }], contact: {} });
     expect(data.contact.email).toBeUndefined();
-    expect(obhisRenderer.validateRendererData({})).toBeNull();
+    expect(obhisRenderer.validateRendererData({ school, fields: {} })).toBeNull();
   });
 
   test("renders the B0 application href verbatim without historic claims or a portal fallback", () => {
-    const data = obhisRenderer.validateRendererData(fields);
+    const data = obhisRenderer.validateRendererData(validationInput());
     const markup = renderToStaticMarkup(obhisRenderer.render({
-      school: { id: "obhis", slug: "approved-school", displayName: "Approved School" }, fields, assets: {},
+      school, assets: {},
       links: { application: envelope().links.application }, seo: {}, publication: { revisionId: "revision", publishedAt: 1_700_000_000_000 },
       request: { routeKey: "home", canonicalUrl: "https://school.example/", preview: false, params: {}, pathPrefix: "" }, rendererData: data,
     }));
@@ -52,12 +55,32 @@ describe("obhis-v1", () => {
     expect(markup).not.toContain("₦5,000");
     expect(markup).not.toContain("Family portal");
     expect(markup).not.toContain("Obhis Heritage Academy");
+    expect(markup).not.toContain('href="/visit"');
+  });
+
+  test("uses approved responsive asset derivatives with reserved dimensions", () => {
+    const responsiveFields = { ...fields, "home.hero.asset": { kind: "asset_ref", assetId: "hero" } };
+    const data = obhisRenderer.validateRendererData({ school, fields: responsiveFields });
+    const markup = renderToStaticMarkup(obhisRenderer.render({
+      school, assets: { hero: { id: "hero", kind: "hero", url: "https://assets.example/hero-1200.webp", altText: "Approved campus view", decorative: false, width: 1200, height: 1500, responsiveSources: [{ url: "https://assets.example/hero-640.webp", width: 640 }, { url: "https://assets.example/hero-1200.webp", width: 1200 }] } },
+      links: { application: envelope().links.application }, seo: {}, publication: { revisionId: "revision", publishedAt: 1 }, request: { routeKey: "home", canonicalUrl: "https://school.example/", preview: false, params: {}, pathPrefix: "" }, rendererData: data,
+    }));
+    expect(markup).toContain("hero-640.webp");
+    expect(markup).toContain('width="1200"');
+  });
+
+  test("uses only an approved tenant favicon and never depends on a global app icon", async () => {
+    const site = envelope();
+    site.assets = [{ id: "favicon", kind: "favicon", url: "https://assets.example/favicon.png", decorative: true, rightsStatus: "approved", status: "published" }];
+    const page = await resolveSitePage({ hostname: "school.example", source: { loadPublished: async () => site } });
+    expect(buildPageMetadata(page).icons).toMatchObject({ icon: [{ url: "https://assets.example/favicon.png" }] });
   });
 
   test("keeps preview navigation scoped to its authorized preview path and shows a watermark", () => {
-    const data = obhisRenderer.validateRendererData(fields);
+    const previewFields = { ...fields, "visit.lead": { kind: "text", value: "Approved visit information." } };
+    const data = obhisRenderer.validateRendererData({ school, fields: previewFields });
     const markup = renderToStaticMarkup(obhisRenderer.render({
-      school: { id: "obhis", slug: "approved-school", displayName: "Approved School" }, fields, assets: {},
+      school, assets: {},
       links: { application: envelope().links.application }, seo: {}, publication: { revisionId: "draft", publishedAt: 0 },
       request: { routeKey: "home", canonicalUrl: "https://preview.example/", preview: true, params: {}, pathPrefix: "/__preview/opaque-token" }, rendererData: data,
     }));
@@ -74,6 +97,7 @@ describe("obhis-v1", () => {
     const unavailable = envelope();
     unavailable.revision.fields = { "identity.displayName": fields["identity.displayName"] };
     const unavailableSitemap = await buildSitemapEntries("school.example", { loadPublished: async () => unavailable });
-    expect(unavailableSitemap.map((entry) => entry.url)).toEqual(["http://school.example/", "http://school.example/admissions"]);
+    expect(unavailableSitemap.map((entry) => entry.url)).toEqual(["http://school.example/"]);
+    expect(await resolveSitePage({ hostname: "school.example", slugParts: ["admissions"], source: { loadPublished: async () => unavailable } })).toBeNull();
   });
 });

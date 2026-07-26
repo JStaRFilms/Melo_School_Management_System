@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { normalizeHostname } from "@/core/domain";
-import { invalidatePublishedSiteCache, loadSite } from "@/core/content";
+import { loadSite } from "@/core/content";
 import { buildApplicationRedirectHref, getPublicLinkIntegration } from "@/core/links";
 import { getRenderer } from "@/core/renderers/registry";
 import { buildRobotsMetadata, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
@@ -48,13 +48,11 @@ describe("B4 shared site core", () => {
     expect(await loadSite({ hostname, source: source(missingPublication) })).toMatchObject({ status: "unavailable", reason: "invalid_content" });
   });
 
-  test("caches an immutable published revision by school and revision, then supports invalidation", async () => {
-    const site = clone(getLegacyEnvelopeForHostname(hostname)); let calls = 0;
-    const cachedSource = { loadPublished: async () => { calls += 1; return site; } };
-    await loadSite({ hostname, source: cachedSource }); await loadSite({ hostname, source: cachedSource });
-    expect(calls).toBe(1);
-    invalidatePublishedSiteCache(site.profile.schoolId);
-    await loadSite({ hostname, source: cachedSource });
+  test("fetches current publication and application availability on every public request", async () => {
+    const open = clone(getLegacyEnvelopeForHostname(hostname)); const closed = clone(open); closed.links.application.availability = "closed";
+    let calls = 0; const currentSource = { loadPublished: async () => (++calls === 1 ? open : closed) };
+    expect((await loadSite({ hostname, source: currentSource })).site.links.application.availability).toBe("unavailable");
+    expect((await loadSite({ hostname, source: currentSource })).site.links.application.availability).toBe("closed");
     expect(calls).toBe(2);
   });
 

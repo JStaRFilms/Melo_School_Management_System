@@ -2,7 +2,7 @@ import type { Metadata, MetadataRoute } from "next";
 import { buildCanonicalOrigin } from "@/core/domain";
 import { loadSite, type SiteContentSource } from "@/core/content";
 import { getRenderer } from "@/core/renderers/registry";
-import type { SiteLoadResult, SiteRenderContext } from "@/core/contracts";
+import type { RendererFieldValue, SiteLoadResult, SiteRenderContext } from "@/core/contracts";
 
 export interface ResolvedSitePage {
   load: Extract<SiteLoadResult, { status: "available" }>;
@@ -20,12 +20,17 @@ export async function resolveSitePage(input: { hostname: string | null; slugPart
   const matchedRoute = renderer.routes.map((candidate) => ({ candidate, params: matchRoute(candidate.path, routePath) })).find((candidate) => candidate.params !== null);
   if (!matchedRoute || !matchedRoute.params) return null;
   const route = matchedRoute.candidate;
-  const rendererData = renderer.validateRendererData(load.site.revision.fields);
-  if (rendererData === null || renderer.isRouteAvailable?.(rendererData, route.key, matchedRoute.params) === false) return null;
+  const school = { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) };
+  const rendererData = renderer.validateRendererData({ school, fields: load.site.revision.fields });
+  if (rendererData === null) return null;
   const origin = buildCanonicalOrigin(load.canonicalDomain);
+  const request = { routeKey: route.key, canonicalUrl: new URL(routePath, origin).toString(), preview: load.preview, params: matchedRoute.params, pathPrefix: load.preview ? input.previewPathPrefix ?? "" : "" };
+  const routeContext = { links: load.site.links, request };
+  if (renderer.isRouteAvailable?.(rendererData, route.key, matchedRoute.params, routeContext) === false) return null;
   const assets = Object.fromEntries(load.site.assets.map((asset) => [asset.id, asset]));
   const seo = Object.fromEntries(Object.entries(load.site.revision.routeSeo).map(([key, value]) => [key, { ...value, ...(value.shareAssetId && assets[value.shareAssetId] ? { shareAsset: assets[value.shareAssetId] } : {}) }]));
-  return { load, renderer, route, context: { school: { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) }, fields: load.site.revision.fields, assets, links: load.site.links, seo, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request: { routeKey: route.key, canonicalUrl: new URL(routePath, origin).toString(), preview: load.preview, params: matchedRoute.params, pathPrefix: load.preview ? input.previewPathPrefix ?? "" : "" }, rendererData } };
+  const routeIndexable = route.indexable !== false && renderer.isRouteIndexable?.(rendererData, route.key, matchedRoute.params, routeContext) !== false;
+  return { load, renderer, route: { ...route, indexable: routeIndexable }, context: { school, assets, links: load.site.links, seo, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request, rendererData } };
 }
 
 function matchRoute(pattern: string, pathname: string): Record<string, string> | null {
@@ -41,7 +46,7 @@ function matchRoute(pattern: string, pathname: string): Record<string, string> |
   return params;
 }
 
-function fieldText(value: SiteRenderContext["fields"][string] | undefined): string | undefined {
+function fieldText(value: RendererFieldValue | undefined): string | undefined {
   return value?.kind === "text" ? value.value : undefined;
 }
 
@@ -51,12 +56,14 @@ export function buildPageMetadata(page: ResolvedSitePage): Metadata {
   const description = routeSeo?.description ?? "";
   const canonical = page.context.request.canonicalUrl;
   const preview = page.context.request.preview;
+  const favicon = Object.values(page.context.assets).find((asset) => asset.kind === "favicon");
   return {
     metadataBase: new URL(canonical), title, description,
     alternates: preview ? undefined : { canonical },
     robots: { index: !preview && page.route.indexable !== false, follow: !preview },
     openGraph: { title, description, url: canonical, type: "website", images: routeSeo?.shareAsset ? [{ url: routeSeo.shareAsset.url, alt: routeSeo.shareAsset.altText ?? title }] : undefined },
     twitter: { card: "summary_large_image", title, description, images: routeSeo?.shareAsset ? [routeSeo.shareAsset.url] : undefined },
+    ...(favicon ? { icons: { icon: [{ url: favicon.url }] } } : {}),
   };
 }
 
@@ -71,17 +78,22 @@ export async function buildSitemapEntries(hostname: string | null, source: SiteC
   if (load.status !== "available") return [];
   const renderer = getRenderer(load.site.revision.rendererKey, load.site.revision.rendererSchemaVersion);
   if (!renderer) return [];
-  const rendererData = renderer.validateRendererData(load.site.revision.fields);
+  const school = { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) };
+  const rendererData = renderer.validateRendererData({ school, fields: load.site.revision.fields });
   if (rendererData === null) return [];
   const origin = buildCanonicalOrigin(load.canonicalDomain);
   const lastModified = new Date(load.site.revision.publishedAt ?? 0);
-  const staticPaths = renderer.routes.filter((route) => route.indexable !== false && !route.path.includes("[") && renderer.isRouteAvailable?.(rendererData, route.key, {}) !== false).map((route) => route.path);
-  const dynamicPaths = renderer.sitemapPaths?.(rendererData).filter((path) => renderer.routes.some((route) => { const params = matchRoute(route.path, path); return params !== null && route.indexable !== false && renderer.isRouteAvailable?.(rendererData, route.key, params) !== false; })) ?? [];
+  const isIndexable = (route: { key: string; path: string; indexable?: boolean }, path: string, params: Record<string, string>) => {
+    const context = { links: load.site.links, request: { routeKey: route.key, canonicalUrl: new URL(path, origin).toString(), preview: false, params, pathPrefix: "" } };
+    return route.indexable !== false && renderer.isRouteAvailable?.(rendererData, route.key, params, context) !== false && renderer.isRouteIndexable?.(rendererData, route.key, params, context) !== false;
+  };
+  const staticPaths = renderer.routes.filter((route) => !route.path.includes("[") && isIndexable(route, route.path, {})).map((route) => route.path);
+  const dynamicPaths = renderer.sitemapPaths?.(rendererData).filter((path) => renderer.routes.some((route) => { const params = matchRoute(route.path, path); return params !== null && isIndexable(route, path, params); })) ?? [];
   return [...new Set([...staticPaths, ...dynamicPaths])].map((path) => ({ url: new URL(path, origin).toString(), lastModified, changeFrequency: path === "/" ? "weekly" : "monthly", priority: path === "/" ? 1 : 0.7 }));
 }
 
 export function buildStructuredData(page: ResolvedSitePage): string {
-  const text = (fieldId: string) => fieldText(page.context.fields[fieldId]);
+  const text = (fieldId: string) => fieldText(page.load.site.revision.fields[fieldId]);
   const name = text("identity.displayName") ?? page.context.school.displayName;
   const graph: Record<string, unknown>[] = [{ "@type": "WebSite", name, url: page.context.request.canonicalUrl }];
   if (name) {
