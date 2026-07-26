@@ -1,4 +1,5 @@
 import { mutation, query } from "../../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { issueCheckedDocumentAccessV1 } from "../foundation/documentAccess";
 import { audit, requireStaffScope } from "./helpers";
@@ -32,6 +33,21 @@ export const listQueue = query({
       ? await ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id).eq("state", args.state as any)).order("desc").take(limit)
       : await ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).order("desc").take(limit);
     return applications.map((application) => ({ applicationId: application._id, publicId: application.publicId, state: application.state, updatedAt: application.updatedAt, intakeId: application.intakeId }));
+  },
+});
+
+export const listQueuePage = query({
+  args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), state: v.optional(v.string()), paginationOpts: paginationOptsValidator },
+  returns: v.object({ page: v.array(v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), updatedAt: v.number(), intakeId: v.id("admissionsIntakes") })), isDone: v.boolean(), continueCursor: v.string() }),
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.intakeId);
+    if (!intake || intake.schoolId !== args.schoolId) return { page: [], isDone: true, continueCursor: "" };
+    await requireStaffScope(ctx, { schoolId: args.schoolId, programmeId: intake.programmeId, intakeId: intake._id, capability: "applications.list" });
+    const source = args.state
+      ? ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id).eq("state", args.state as any)).order("desc")
+      : ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).order("desc");
+    const result = await source.paginate(args.paginationOpts);
+    return { ...result, page: result.page.map((application) => ({ applicationId: application._id, publicId: application.publicId, state: application.state, updatedAt: application.updatedAt, intakeId: application.intakeId })) };
   },
 });
 
@@ -76,7 +92,9 @@ export const getDocumentAccess = mutation({
       await requireStaffScope(ctx, { schoolId: application.schoolId, programmeId: application.programmeId, intakeId: application.intakeId, capability: "applications.view_sensitive" });
     }
     const fresh = !restricted || await hasFreshAuth(ctx);
-    return await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: fresh ? "fresh" : "standard" }, action: args.action, requiresFreshAuth: restricted, authorize: async () => true });
+    const reason = args.reason?.trim();
+    const reasonValid = Boolean(reason && reason.length >= 8 && reason.length <= 250);
+    return await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: fresh ? "fresh" : "standard" }, action: args.action, reason: reasonValid ? reason : "reason_required", requiresFreshAuth: restricted, authorize: async () => reasonValid });
   },
 });
 

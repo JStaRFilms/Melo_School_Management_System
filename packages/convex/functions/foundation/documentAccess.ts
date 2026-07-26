@@ -23,6 +23,7 @@ export async function issueCheckedDocumentAccessV1(args: {
   documentKey: string;
   actor: DocumentAccessActorV1;
   action: "view" | "download";
+  reason?: string;
   requiresFreshAuth: boolean;
   authorize: (document: { schoolId: Id<"schools">; state: string }) => Promise<boolean>;
 }): Promise<CheckedDocumentAccessResultV1> {
@@ -50,6 +51,7 @@ export async function issueCheckedDocumentAccessV1(args: {
     ...(args.actor.guardianId ? { guardianId: args.actor.guardianId } : {}),
     ...(args.actor.userId ? { actorUserId: args.actor.userId } : {}),
     action: args.action,
+    ...(args.reason ? { reason: args.reason } : {}),
     outcome: allowed ? "granted" : "denied",
     createdAt: Date.now(),
   });
