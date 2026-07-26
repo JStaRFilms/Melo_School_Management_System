@@ -11,6 +11,7 @@ export interface PaymentLinkInput {
   reference: string;
   callbackUrl?: string;
   providerMode?: "test" | "live";
+  paymentDomain?: "billing" | "admissions";
 }
 
 export interface PaymentLinkResult {
@@ -86,6 +87,7 @@ function buildPaystackGateway(secretKey: string, mode: "test" | "live" = "test")
             invoiceNumber: input.invoiceNumber,
             description: input.description,
             paymentProviderMode: input.providerMode ?? mode,
+            paymentDomain: input.paymentDomain ?? "billing",
           },
         }),
       });

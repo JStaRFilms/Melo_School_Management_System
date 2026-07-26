@@ -1,4 +1,4 @@
-import { action, internalMutation, mutation, query } from "../../_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import { createBillingGatewayAdapter } from "../billingGateway";
@@ -10,10 +10,17 @@ const safeAttemptValidator = v.object({
   amountMinor: v.number(), currency: v.string(), disclosure: v.string(),
 });
 
-/** Payment mode is deployment configuration, never a guardian-selected value. */
-export function configuredAdmissionsPaymentMode() {
-  return process.env.NODE_ENV === "production" ? "live" as const : "test" as const;
-}
+export const getConfiguredAdmissionsPaymentProviderInternal = internalQuery({
+  args: { schoolId: v.id("schools") },
+  returns: v.union(v.null(), v.object({ provider: v.literal("paystack"), providerMode: paymentProviderModeValidator })),
+  handler: async (ctx, args) => {
+    const overview: { activeMode: "test" | "live"; readyForPayments: boolean } = await ctx.runQuery(
+      (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
+      { schoolId: args.schoolId },
+    );
+    return overview.readyForPayments ? { provider: "paystack" as const, providerMode: overview.activeMode } : null;
+  },
+});
 
 async function resolvePurchase(ctx: Parameters<typeof requireGuardian>[0], guardianId: any, productId: any) {
   const product: any = await ctx.db.get(productId);
@@ -42,10 +49,15 @@ export const createAttempt = mutation({
     const existing = await ctx.db.query("admissionsPurchaseAttempts")
       .withIndex("by_school_and_guardian_and_idempotency_key", (q) => q.eq("schoolId", resolved.product.schoolId).eq("guardianId", guardian._id).eq("idempotencyKey", idempotencyKey)).unique();
     if (existing) return { attemptId: existing._id, reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, disclosure: existing.feeDisclosureSnapshot };
+    const providerConfig: { provider: "paystack"; providerMode: "test" | "live" } | null = await ctx.runQuery(
+      (internal as any).functions.admissions.payments.getConfiguredAdmissionsPaymentProviderInternal,
+      { schoolId: resolved.product.schoolId },
+    );
+    if (!providerConfig) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
     const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", {
       schoolId: resolved.product.schoolId, guardianId: guardian._id, productId: resolved.product._id, priceId: resolved.price._id,
-      provider: "paystack", providerMode: configuredAdmissionsPaymentMode(), reference: opaqueKey("adm_"), idempotencyKey,
+      provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference: opaqueKey("adm_"), idempotencyKey,
       amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, feeDisclosureSnapshot: resolved.price.feeDisclosure,
       state: "created", createdAt: now, updatedAt: now,
     });
@@ -56,12 +68,14 @@ export const createAttempt = mutation({
 
 export const getOwnedAttemptForInitialization = query({
   args: { attemptId: v.id("admissionsPurchaseAttempts") },
-  returns: v.union(v.null(), v.object({ schoolId: v.id("schools"), attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, amountMinor: v.number(), currency: v.string(), email: v.string(), state: v.string(), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()) })),
+  returns: v.union(v.null(), v.object({ schoolId: v.id("schools"), schoolSlug: v.string(), attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, amountMinor: v.number(), currency: v.string(), email: v.string(), state: v.string(), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()) })),
   handler: async (ctx, args) => {
     const { guardian } = await requireGuardian(ctx);
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || attempt.guardianId !== guardian._id) return null;
-    return { schoolId: attempt.schoolId, attemptId: attempt._id, reference: attempt.reference, provider: attempt.provider, providerMode: attempt.providerMode, amountMinor: attempt.amountMinor, currency: attempt.currency, email: guardian.normalizedEmail, state: attempt.state, entitlementId: attempt.entitlementId ?? null };
+    const school = await ctx.db.get(attempt.schoolId);
+    if (!school) return null;
+    return { schoolId: attempt.schoolId, schoolSlug: school.slug, attemptId: attempt._id, reference: attempt.reference, provider: attempt.provider, providerMode: attempt.providerMode, amountMinor: attempt.amountMinor, currency: attempt.currency, email: guardian.normalizedEmail, state: attempt.state, entitlementId: attempt.entitlementId ?? null };
   },
 });
 
@@ -110,8 +124,10 @@ export const initializeAttempt = action({
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_initialization" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
+    const applicationOrigin = process.env.APPLICATION_ORIGIN?.trim() ?? process.env.APPLY_APP_ORIGIN?.trim();
+    if (!applicationOrigin) throw new ConvexError("Payment provider is unavailable");
     const result = await createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode }).createPaymentLink({
-      amount: attempt.amountMinor / 100, email: attempt.email, schoolId: String(attempt.schoolId), schoolSlug: "admissions", invoiceId: String(attempt.attemptId), invoiceNumber: "ADMISSIONS", description: "Admissions application slot", reference: attempt.reference, providerMode: attempt.providerMode,
+      amount: attempt.amountMinor / 100, email: attempt.email, schoolId: String(attempt.schoolId), schoolSlug: attempt.schoolSlug, invoiceId: String(attempt.attemptId), invoiceNumber: "ADMISSIONS", description: "Admissions application slot", reference: attempt.reference, providerMode: attempt.providerMode, paymentDomain: "admissions", callbackUrl: `${applicationOrigin.replace(/\/$/, "")}/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return?reference=${encodeURIComponent(attempt.reference)}`,
     });
     await ctx.runMutation((internal as any).functions.admissions.payments.recordInitialization, { attemptId: attempt.attemptId, authorizationReference: result.reference });
     return { state: "checkout_pending", checkoutUrl: result.authorizationUrl };

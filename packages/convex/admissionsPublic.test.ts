@@ -13,6 +13,9 @@ async function publicFixture(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
     const schoolA = await ctx.db.insert("schools", { name: "School A", slug: "school-a", status: "active", createdAt: now, updatedAt: now });
     const schoolB = await ctx.db.insert("schools", { name: "School B", slug: "school-b", status: "active", createdAt: now, updatedAt: now });
+    const secret = await ctx.db.insert("schoolPaymentProviderSecrets", { schoolId: schoolA, provider: "paystack", mode: "test", encryptedSecret: "test-only", secretFingerprint: "test", createdAt: now, updatedAt: now, createdBy: null, updatedBy: null });
+    await ctx.db.insert("schoolPaymentProviders", { schoolId: schoolA, provider: "paystack", mode: "test", isEnabled: true, status: "ready", publicKey: null, publicKeyMasked: null, publicKeyFingerprint: null, activeSecretMasked: "****", pendingSecretMasked: null, activeSecretId: secret, pendingSecretId: null, activeSecretFingerprint: "test", pendingSecretFingerprint: null, lastValidatedAt: now, lastValidationMessage: "ready", createdAt: now, updatedAt: now, createdBy: null, updatedBy: null });
+    await ctx.db.insert("schoolBillingSettings", { schoolId: schoolA, invoicePrefix: "A", defaultCurrency: "NGN", defaultDueDays: 7, preferredProvider: "paystack", paymentProviderMode: "test", allowManualPayments: true, allowOnlinePayments: true, createdAt: now, updatedAt: now, updatedBy: null });
     const guardian = await ctx.db.insert("admissionsGuardians", { authTokenIdentifier: owner.tokenIdentifier, betterAuthUserId: owner.subject, normalizedEmail: owner.email, emailVerifiedAt: now, status: "active", createdAt: now, updatedAt: now });
     await ctx.db.insert("admissionsGuardians", { authTokenIdentifier: other.tokenIdentifier, betterAuthUserId: other.subject, normalizedEmail: other.email, emailVerifiedAt: now, status: "active", createdAt: now, updatedAt: now });
     const programme = await ctx.db.insert("admissionsProgrammes", { schoolId: schoolA, slug: "primary", name: "Primary", status: "published", createdAt: now, updatedAt: now });
@@ -56,7 +59,7 @@ describe("B1 public admissions bootstrap", () => {
     expect(JSON.stringify(config)).not.toMatch(/_id|formVersionId|requirementId|storageId|Private draft|Retired/);
   });
 
-  test("creates public payment attempts with server-selected provider settings", async () => {
+  test("creates public payment attempts with the school-configured merchant mode", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     const attempt = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "checkout-1" });
     expect(attempt).toMatchObject({ state: "created", amountMinor: 1000, currency: "NGN" });
