@@ -130,6 +130,35 @@ async function requireOwnedPublicApplication(ctx: any, args: { schoolSlug: strin
   return { guardian, school, application };
 }
 
+/** Guardian workspace is school-slug scoped so an external application host never needs a school ID. */
+export const getGuardianWorkspace = query({
+  args: { schoolSlug: v.string(), limit: v.optional(v.number()) },
+  returns: v.object({
+    schoolName: v.string(),
+    slots: v.array(v.object({ state: v.string(), publicReference: v.union(v.string(), v.null()), applicationState: v.union(v.string(), v.null()), updatedAt: v.number() })),
+  }),
+  handler: async (ctx, args) => {
+    const { guardian } = await requireGuardian(ctx);
+    const school = await ctx.db.query("schools").withIndex("by_slug", (q: any) => q.eq("slug", args.schoolSlug.trim())).unique();
+    if (!school || school.status !== "active") throw new ConvexError("Not found or access denied");
+    const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
+    const entitlements = await ctx.db.query("admissionsEntitlements")
+      .withIndex("by_guardian_and_state_and_created_at", (q: any) => q.eq("guardianId", guardian._id)).order("desc").take(100);
+    const slots = [];
+    for (const entitlement of entitlements) {
+      if (entitlement.schoolId !== school._id || slots.length >= limit) continue;
+      const application = entitlement.applicationId ? await ctx.db.get(entitlement.applicationId) : null;
+      slots.push({
+        state: entitlement.state,
+        publicReference: application?.publicId ?? null,
+        applicationState: application?.state ?? null,
+        updatedAt: application?.updatedAt ?? entitlement.updatedAt,
+      });
+    }
+    return { schoolName: school.name, slots };
+  },
+});
+
 export const getGuardianApplication = query({
   args: { schoolSlug: v.string(), publicReference: v.string() },
   returns: v.object({

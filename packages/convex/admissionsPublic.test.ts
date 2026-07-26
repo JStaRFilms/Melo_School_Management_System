@@ -72,6 +72,20 @@ describe("B1 public admissions bootstrap", () => {
     await expect(t.withIdentity(other).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-a", publicReference: "app_public_reference" })).rejects.toThrow("Not found or access denied");
   });
 
+  test("recovers multiple workspace slots by school slug without entitlement or storage identifiers", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run(async (ctx) => {
+      const guardian = await ctx.db.query("admissionsGuardians").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", owner.tokenIdentifier)).unique();
+      const attempt = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", "adm_public_fixture")).unique();
+      await ctx.db.insert("admissionsEntitlements", { schoolId: ids.schoolA, guardianId: guardian!._id, productId: ids.product, intakeId: ids.intake, sourcePurchaseAttemptId: attempt!._id, state: "available", createdAt: Date.now(), updatedAt: Date.now() });
+    });
+    const workspace = await t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianWorkspace, { schoolSlug: "school-a" });
+    expect(workspace.slots).toHaveLength(2);
+    expect(workspace.slots.map((slot: any) => slot.state)).toEqual(expect.arrayContaining(["reserved", "available"]));
+    expect(JSON.stringify(workspace)).not.toMatch(/entitlementId|storageId|schoolId|applicationId/);
+    await expect(t.withIdentity(other).query((api as any).functions.admissions.public.getGuardianWorkspace, { schoolSlug: "school-a" })).resolves.toMatchObject({ slots: [] });
+  });
+
   test("returns only guardian-safe application data and allowed actions", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     const application = await t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-a", publicReference: "app_public_reference" });

@@ -2,6 +2,7 @@ import { mutation, query } from "../../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { issueCheckedDocumentAccessV1 } from "../foundation/documentAccess";
+import { hasSchoolCapabilityV1 } from "../foundation/auth";
 import { audit, requireStaffScope } from "./helpers";
 
 async function applicationAndStaff(ctx: any, applicationId: any, capability: any) {
@@ -20,6 +21,23 @@ async function hasFreshAuth(ctx: any) {
   const timestamp = typeof identity?.auth_time === "number" ? identity.auth_time * 1000 : identity?.authenticatedAt;
   return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp <= Date.now() && Date.now() - timestamp <= 5 * 60_000;
 }
+
+/** Safe intake labels for queue filters; configuration and applicant data remain separate. */
+export const listAccessibleIntakes = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(v.object({ intakeId: v.id("admissionsIntakes"), name: v.string(), status: v.string() })),
+  handler: async (ctx, args) => {
+    const rows = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200);
+    const result = [];
+    for (const intake of rows) {
+      try {
+        await requireStaffScope(ctx, { schoolId: args.schoolId, programmeId: intake.programmeId, intakeId: intake._id, capability: "applications.list" });
+        result.push({ intakeId: intake._id, name: intake.name, status: intake.status });
+      } catch { /* Non-enumerating omission for an out-of-scope intake. */ }
+    }
+    return result;
+  },
+});
 
 export const listQueue = query({
   args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), state: v.optional(v.string()), limit: v.optional(v.number()) },
@@ -59,6 +77,29 @@ export const getApplicationDetail = query({
     const documents = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200);
     const decision: any = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
     return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, decisionState: decision?.state ?? null, documentCount: documents.length };
+  },
+});
+
+/** Metadata-only document projection. Checked access is a separate audited mutation. */
+export const listApplicationDocuments = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.array(v.object({ documentId: v.id("admissionsDocuments"), documentKey: v.string(), category: v.string(), state: v.string(), sensitivity: v.string(), version: v.number(), updatedAt: v.number() })),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "documents.review");
+    const rows = await ctx.db.query("admissionsDocuments")
+      .withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200);
+    return rows.map((document) => ({ documentId: document._id, documentKey: document.documentKey, category: document.category, state: document.state, sensitivity: document.sensitivity, version: document.version, updatedAt: document.updatedAt }));
+  },
+});
+
+/** Conversion target choices are server-scoped to the accepted application's school. */
+export const listConversionClasses = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.array(v.object({ classId: v.id("classes"), name: v.string() })),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "conversions.execute");
+    const rows = await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", application.schoolId)).take(200);
+    return rows.filter((row) => !row.isArchived).map((row) => ({ classId: row._id, name: row.name }));
   },
 });
 
@@ -132,6 +173,24 @@ export const recordDecision = mutation({
   },
 });
 
+/** Selection list avoids a client-entered staff ID; assignments still authorize actor and scope transactionally. */
+export const listAssignableStaff = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.array(v.object({ userId: v.id("users"), name: v.string() })),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "reviews.assign");
+    const users = await ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", application.schoolId)).take(200);
+    const result = [];
+    for (const user of users) {
+      if (user.isArchived) continue;
+      const grants = await ctx.db.query("schoolCapabilityGrants").withIndex("by_school_and_user", (q) => q.eq("schoolId", application.schoolId).eq("userId", user._id)).take(100);
+      const eligible = grants.some((grant) => !grant.revokedAt && (!grant.expiresAt || grant.expiresAt > Date.now()) && (grant.capability === "reviews.record" || grant.capability === "reviews.assign") && (grant.scope === "school" || grant.scope === "programme" && grant.programmeId === application.programmeId || grant.scope === "intake" && grant.intakeId === application.intakeId));
+      if (eligible) result.push({ userId: user._id, name: user.name });
+    }
+    return result;
+  },
+});
+
 export const startReview = mutation({
   args: { applicationId: v.id("admissionsApplications") },
   returns: v.null(),
@@ -153,6 +212,8 @@ export const assignReview = mutation({
     const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.assign");
     const assignee = await ctx.db.get(args.assigneeUserId);
     if (!assignee || assignee.schoolId !== application.schoolId || assignee.isArchived || !args.role.trim()) throw new ConvexError("Not found or access denied");
+    const assigneeCanReview = await hasSchoolCapabilityV1(ctx, { userId: assignee._id, schoolId: assignee.schoolId, role: assignee.role, isSchoolAdmin: assignee.role === "admin" || assignee.isSchoolAdmin === true }, "reviews.record", { programmeId: application.programmeId, intakeId: application.intakeId });
+    if (!assigneeCanReview) throw new ConvexError("Not found or access denied");
     const now = Date.now();
     const assignmentId = await ctx.db.insert("admissionsReviewAssignments", { schoolId: application.schoolId, applicationId: application._id, assigneeUserId: assignee._id, role: args.role.trim().slice(0, 128), state: "assigned", ...(args.dueAt ? { dueAt: args.dueAt } : {}), assignedByUserId: membership.userId, createdAt: now, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "assignment_created", visibility: "staff", metadataJson: JSON.stringify({ assignmentId: String(assignmentId), role: args.role.trim().slice(0, 128) }), createdAt: now });

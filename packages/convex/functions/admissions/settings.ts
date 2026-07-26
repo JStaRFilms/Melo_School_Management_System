@@ -15,13 +15,24 @@ async function assertSensitiveConfiguration(ctx: any, schoolId: any, dataClass: 
 /** Tenant-scoped persisted catalogue projection for B3; no private application data. */
 export const getCatalogue = query({
   args: { schoolId: v.id("schools") },
-  returns: v.object({ programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string() })), intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })) }),
+  returns: v.object({ programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string() })), intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })), products: v.array(v.object({ id: v.id("admissionsProducts"), intakeId: v.id("admissionsIntakes"), slug: v.string(), name: v.string(), status: v.string() })), forms: v.array(v.object({ id: v.id("admissionsFormVersions"), intakeId: v.union(v.id("admissionsIntakes"), v.null()), version: v.number(), schemaVersion: v.string(), status: v.string() })) }),
   handler: async (ctx, args) => {
     await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
     const programmes = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100);
-    const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200);
-    return { programmes: programmes.map((item) => ({ id: item._id, slug: item.slug, name: item.name, status: item.status })), intakes: intakes.map((item) => ({ id: item._id, programmeId: item.programmeId, slug: item.slug, name: item.name, status: item.status, opensAt: item.opensAt, closesAt: item.closesAt })) };
+    const [intakes, forms] = await Promise.all([
+      ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
+      ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId)).take(200),
+    ]);
+    const productLists = await Promise.all(intakes.map((intake) => ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(20)));
+    const products = productLists.flat();
+    return { programmes: programmes.map((item) => ({ id: item._id, slug: item.slug, name: item.name, status: item.status })), intakes: intakes.map((item) => ({ id: item._id, programmeId: item.programmeId, slug: item.slug, name: item.name, status: item.status, opensAt: item.opensAt, closesAt: item.closesAt })), products: products.map((item) => ({ id: item._id, intakeId: item.intakeId, slug: item.slug, name: item.name, status: item.status })), forms: forms.map((item) => ({ id: item._id, intakeId: item.intakeId ?? null, version: item.version, schemaVersion: item.schemaVersion, status: item.status })) };
   },
+});
+
+export const listConversionClasses = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(v.object({ id: v.id("classes"), name: v.string() })),
+  handler: async (ctx, args) => { await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const rows = await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200); return rows.filter((row) => !row.isArchived).map((row) => ({ id: row._id, name: row.name })); },
 });
 
 export const createProgramme = mutation({
@@ -32,6 +43,27 @@ export const createProgramme = mutation({
 export const createIntake = mutation({
   args: { schoolId: v.id("schools"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), cycleLabel: v.string(), opensAt: v.number(), closesAt: v.number(), targetClassId: v.optional(v.id("classes")) }, returns: v.id("admissionsIntakes"),
   handler: async (ctx, args) => { const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const programme = await ctx.db.get(args.programmeId); const intakeSlug = slug(args.slug); if (!programme || programme.schoolId !== args.schoolId || !Number.isFinite(args.opensAt) || args.opensAt >= args.closesAt) throw new ConvexError("Invalid intake"); if (args.targetClassId) { const classDoc = await ctx.db.get(args.targetClassId); if (!classDoc || classDoc.schoolId !== args.schoolId) throw new ConvexError("Invalid intake"); } const duplicate = await ctx.db.query("admissionsIntakes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", intakeSlug)).unique(); if (duplicate) throw new ConvexError("Intake slug already exists"); const now = Date.now(); const id = await ctx.db.insert("admissionsIntakes", { schoolId: args.schoolId, programmeId: programme._id, slug: intakeSlug, name: text(args.name, "Intake name", 256), cycleLabel: text(args.cycleLabel, "Cycle label", 128), ...(args.targetClassId ? { targetClassId: args.targetClassId } : {}), opensAt: args.opensAt, closesAt: args.closesAt, status: "draft", createdAt: now, updatedAt: now }); await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.intake_created", entityType: "intake", entityId: String(id), outcome: "success" }); return id; },
+});
+
+/** Availability changes are explicit publication actions; they never rewrite existing applications. */
+export const setProgrammeStatus = mutation({
+  args: { programmeId: v.id("admissionsProgrammes"), status: v.union(v.literal("published"), v.literal("closed")) }, returns: v.null(),
+  handler: async (ctx, args) => { const programme = await ctx.db.get(args.programmeId); if (!programme) throw new ConvexError("Not found or access denied"); const member = await requireCatalogue(ctx, programme.schoolId, "admissions.publish"); const now = Date.now(); await ctx.db.patch(programme._id, { status: args.status, updatedAt: now }); await audit({ ctx, schoolId: programme.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.programme_status_changed", entityType: "programme", entityId: String(programme._id), outcome: "success" }); return null; },
+});
+
+export const setIntakeStatus = mutation({
+  args: { intakeId: v.id("admissionsIntakes"), status: v.union(v.literal("open"), v.literal("paused"), v.literal("closed"), v.literal("archived")) }, returns: v.null(),
+  handler: async (ctx, args) => { const intake = await ctx.db.get(args.intakeId); if (!intake) throw new ConvexError("Not found or access denied"); const member = await requireCatalogue(ctx, intake.schoolId, "admissions.publish"); const now = Date.now(); await ctx.db.patch(intake._id, { status: args.status, updatedAt: now }); await audit({ ctx, schoolId: intake.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.intake_status_changed", entityType: "intake", entityId: String(intake._id), outcome: "success" }); return null; },
+});
+
+export const setProductStatus = mutation({
+  args: { productId: v.id("admissionsProducts"), status: v.union(v.literal("active"), v.literal("paused"), v.literal("retired")) }, returns: v.null(),
+  handler: async (ctx, args) => { const product = await ctx.db.get(args.productId); if (!product) throw new ConvexError("Not found or access denied"); const member = await requireCatalogue(ctx, product.schoolId, "admissions.publish"); const now = Date.now(); await ctx.db.patch(product._id, { status: args.status, updatedAt: now }); await audit({ ctx, schoolId: product.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.product_status_changed", entityType: "product", entityId: String(product._id), outcome: "success" }); return null; },
+});
+
+export const retireForm = mutation({
+  args: { formVersionId: v.id("admissionsFormVersions") }, returns: v.null(),
+  handler: async (ctx, args) => { const form = await ctx.db.get(args.formVersionId); if (!form || form.status !== "published") throw new ConvexError("Form is not retireable"); const member = await requireCatalogue(ctx, form.schoolId, "admissions.publish"); const now = Date.now(); await ctx.db.patch(form._id, { status: "retired", updatedAt: now }); await audit({ ctx, schoolId: form.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.form_retired", entityType: "form", entityId: String(form._id), outcome: "success" }); return null; },
 });
 
 export const createDraftForm = mutation({
