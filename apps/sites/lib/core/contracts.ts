@@ -18,6 +18,7 @@ export type RendererFieldValue =
   | { kind: "boolean"; value: boolean }
   | { kind: "link_intent"; value: SiteLinkIntentV1 }
   | { kind: "asset_ref"; assetId: string }
+  | { kind: "asset_list"; assetIds: readonly string[] }
   | { kind: "string_list"; value: readonly string[] };
 
 export interface PublicDomainProjection {

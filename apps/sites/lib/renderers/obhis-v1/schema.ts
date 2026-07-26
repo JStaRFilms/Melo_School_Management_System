@@ -42,6 +42,11 @@ function ids(fields: Fields, id: string, maximum: number): readonly string[] {
   const values = list(fields, id, maximum);
   return values.every((value) => slugPattern.test(value)) ? values : [];
 }
+function assetIds(fields: Fields, id: string, maximum: number): readonly string[] {
+  const value = fieldValue(fields, id);
+  return value?.kind === "asset_list" && value.assetIds.length > 0 && value.assetIds.length <= maximum && value.assetIds.every((assetId) => /^[a-zA-Z0-9:_-]{1,200}$/.test(assetId))
+    ? value.assetIds : [];
+}
 function phone(fields: Fields): string | undefined {
   const value = text(fields, "contact.phone", 32);
   return value && /^\+?[0-9][0-9\s()-]{6,30}$/.test(value) ? value : undefined;
@@ -74,7 +79,7 @@ export function validateObhisRendererData(fields: Fields): ObhisRendererData | n
     about: { lead: text(fields, "about.lead", 1_200), values: recordList(fields, "about.values", 4), story: recordList(fields, "about.story", 3) },
     programmes,
     admissions: { lead: text(fields, "admissions.lead", 1_200), steps: list(fields, "admissions.steps", 4).filter((step) => step.length <= 360), questionsCopy: text(fields, "admissions.questionsCopy", 500) },
-    schoolLife: { lead: text(fields, "schoolLife.lead", 700), galleryAssetIds: list(fields, "schoolLife.gallery", 12).filter((id) => /^[a-zA-Z0-9:_-]{1,200}$/.test(id)), features: recordList(fields, "schoolLife.features", 6) },
+    schoolLife: { lead: text(fields, "schoolLife.lead", 700), galleryAssetIds: assetIds(fields, "schoolLife.gallery", 12), features: recordList(fields, "schoolLife.features", 6) },
     visit: { lead: text(fields, "visit.lead", 700), directions: text(fields, "contact.directions", 700), hours: text(fields, "contact.hours", 200) },
     contact: (() => { const display = text(fields, "contact.address", 500); return { phone: phone(fields), email: email(fields), ...(display ? { address: { display, streetAddress: text(fields, "contact.address.streetAddress", 200), addressLocality: text(fields, "contact.address.locality", 120), addressRegion: text(fields, "contact.address.region", 120), postalCode: text(fields, "contact.address.postalCode", 40), addressCountry: text(fields, "contact.address.country", 120) } } : {}), hours: text(fields, "contact.hours", 200) }; })(),
     policies,

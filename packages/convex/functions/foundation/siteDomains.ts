@@ -87,11 +87,10 @@ export const advanceDomainLifecycleInternal = internalMutation({
 });
 
 /** Selects exactly one active canonical domain and binds every bounded active alias to it. */
-export const setCanonicalDomain = mutation({
+export const setCanonicalDomain = internalMutation({
   args: { schoolId: v.id("schools"), domainId: v.id("schoolDomains") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const membership = await requireDomainPublisher(ctx, args.schoolId);
     const selected = await ctx.db.get(args.domainId);
     if (!selected || selected.schoolId !== args.schoolId || selected.surface !== "public" || selected.status !== "active") throw new ConvexError("Active school domain not found");
     const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).unique();
@@ -104,7 +103,7 @@ export const setCanonicalDomain = mutation({
       else await ctx.db.patch(domain._id, { canonicalIntent: "redirect", canonicalDomainId: selected._id, updatedAt: now });
     }
     await ctx.db.patch(profile._id, { canonicalDomainId: selected._id, updatedAt: now });
-    await ctx.db.insert("schoolSiteAuditEvents", { schoolId: args.schoolId, actorUserId: membership.userId, eventType: "domain_changed", outcome: "success", summary: "Set one active canonical domain and bound active aliases", createdAt: now });
+    await ctx.db.insert("schoolSiteAuditEvents", { schoolId: args.schoolId, eventType: "domain_changed", outcome: "success", summary: "Platform-authorized canonical cutover and active alias binding", createdAt: now });
     return null;
   },
 });

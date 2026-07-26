@@ -832,6 +832,9 @@ export default defineSchema({
     // for legacy evidence; publication requires it for new revisions.
     approvedValueDigest: v.optional(v.string()),
     approvedByUserId: v.optional(v.id("users")),
+    // New public approvals record an accountable in-school approver. Legacy
+    // evidence remains readable but cannot authorize a new publication.
+    approvalProvenance: v.optional(v.literal("accountable_school_approver")),
     approvedAt: v.number(),
     expiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
@@ -897,6 +900,11 @@ export default defineSchema({
     altText: v.optional(v.string()),
     decorative: v.boolean(),
     rightsStatus: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"), v.literal("expired")),
+    // Rights scope is additive so legacy records remain valid at rest. New
+    // public references require these fields and fail closed when absent.
+    rightsSubject: v.optional(v.union(v.literal("no_identifiable_people"), v.literal("identifiable_people"), v.literal("child_identifiable_people"))),
+    consentScope: v.optional(v.literal("public_site")),
+    consentExpiresAt: v.optional(v.number()),
     approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     rightsExpiresAt: v.optional(v.number()),
     status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
@@ -920,6 +928,9 @@ export default defineSchema({
     expectedDraftVersion: v.number(),
     publishedAt: v.optional(v.number()),
     publishedByUserId: v.optional(v.id("users")),
+    // A server-computed manifest marker distinguishes lifecycle publications
+    // from arbitrary/synthetic rows in the public projection.
+    publicationManifestDigest: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -931,6 +942,12 @@ export default defineSchema({
   schoolSitePreviewTokens: defineTable({
     schoolId: v.id("schools"),
     revisionId: v.id("schoolSiteRevisions"),
+    // Bound snapshot of the currently selected mutable draft. Any pointer,
+    // draft-version, digest, or profile-state change invalidates the token.
+    draftRevisionId: v.optional(v.id("schoolSiteRevisions")),
+    draftVersion: v.optional(v.number()),
+    contentDigest: v.optional(v.string()),
+    profileStatus: v.optional(v.union(v.literal("draft"), v.literal("review"), v.literal("published"))),
     hostname: v.string(),
     tokenHash: v.string(),
     expiresAt: v.number(),
@@ -939,6 +956,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_token_hash", ["tokenHash"])
+    .index("by_school_and_revision", ["schoolId", "revisionId"])
     .index("by_school_and_expires_at", ["schoolId", "expiresAt"]),
 
   schoolSiteAuditEvents: defineTable({

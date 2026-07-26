@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { getRequestHostname, buildCanonicalOrigin } from "@/core/domain";
 import { loadSite } from "@/core/content";
 import { buildApplicationRedirectHref } from "@/core/links";
@@ -47,9 +47,14 @@ export default async function SitePage({ params, searchParams }: RouteProps) {
   const page = await resolveSitePage({ hostname, slugParts: routeParts, source, previewToken, previewPathPrefix });
   if (!page) notFound();
   if (!page.context.request.preview && page.load.redirectToHostname) {
-    // `proxy.ts` owns the actual 308; this is a safe fallback for hosts where
-    // middleware is not installed.
-    redirect(page.context.request.canonicalUrl);
+    // `proxy.ts` owns the normal 308. This fallback remains permanent and
+    // preserves the complete query string when middleware is unavailable.
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(await searchParams)) {
+      if (typeof value === "string") query.set(key, value);
+      else if (Array.isArray(value)) for (const item of value) query.append(key, item);
+    }
+    permanentRedirect(`${page.context.request.canonicalUrl}${query.size ? `?${query}` : ""}`);
   }
   return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: buildStructuredData(page) }} />{page.renderer.render(page.context)}</>;
 }

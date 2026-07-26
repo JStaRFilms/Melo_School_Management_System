@@ -7,7 +7,7 @@ export interface SiteContentSource {
   loadPreview?(input: { hostname: string; previewToken: string }): Promise<unknown | null>;
 }
 
-const fieldKinds = new Set(["text", "rich_text", "boolean", "link_intent", "asset_ref", "string_list"]);
+const fieldKinds = new Set(["text", "rich_text", "boolean", "link_intent", "asset_ref", "asset_list", "string_list"]);
 const domainStates = new Set(["requested", "verification_pending", "verified", "routing_pending", "certificate_pending", "ready", "active", "suspended", "retired"]);
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -23,6 +23,10 @@ function parseField(value: unknown): RendererFieldValue | null {
   if (kind === "rich_text") { const text = string(field.value); return text === null ? null : { kind: "rich_text", value: text }; }
   if (kind === "boolean") { const flag = boolean(field.value); return flag === null ? null : { kind: "boolean", value: flag }; }
   if (kind === "asset_ref") { const assetId = string(field.assetId, 200); return assetId ? { kind: "asset_ref", assetId } : null; }
+  if (kind === "asset_list") {
+    if (!Array.isArray(field.assetIds) || field.assetIds.length === 0 || field.assetIds.length > 12 || !field.assetIds.every((item) => string(item, 200) !== null) || new Set(field.assetIds).size !== field.assetIds.length) return null;
+    return { kind: "asset_list", assetIds: field.assetIds as string[] };
+  }
   if (kind === "string_list") {
     if (!Array.isArray(field.value) || field.value.length > 100 || !field.value.every((item) => string(item, 1000) !== null)) return null;
     return { kind: "string_list", value: field.value as string[] };
