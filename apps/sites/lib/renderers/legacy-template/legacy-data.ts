@@ -1160,12 +1160,14 @@ export function getSchoolUploadedFaviconUrl(school: SchoolConfig): string | null
   return school.brand.faviconUrl ?? school.brand.profileImageUrl ?? null;
 }
 
-export function getSchoolFaviconHref(school: SchoolConfig): string {
-  return getSchoolUploadedFaviconUrl(school) ?? "/melo-favicon.png";
+export function getSchoolFaviconHref(school: SchoolConfig): string | null {
+  // Compatibility tenants may use only a school-projected icon; no platform fallback.
+  return getSchoolUploadedFaviconUrl(school);
 }
 
-export function getSchoolFaviconAbsoluteUrl({ origin, school }: { origin: string; school: SchoolConfig }): string {
-  return toAbsoluteUrl(getSchoolFaviconHref(school), origin);
+export function getSchoolFaviconAbsoluteUrl({ origin, school }: { origin: string; school: SchoolConfig }): string | null {
+  const favicon = getSchoolFaviconHref(school);
+  return favicon ? toAbsoluteUrl(favicon, origin) : null;
 }
 
 export function buildOpenGraphImageUrl({ origin }: { origin: string }): string {
@@ -1210,11 +1212,10 @@ export function buildPageMetadata({
       description: page.description,
       images: [ogImageUrl],
     },
-    icons: {
+    ...(faviconHref ? { icons: {
       icon: [{ url: faviconHref, type: faviconHref.endsWith(".png") ? "image/png" : undefined }],
-      shortcut: [faviconHref],
-      apple: [{ url: getSchoolUploadedFaviconUrl(school) ?? "/apple-icon.png" }],
-    },
+      shortcut: [faviconHref], apple: [{ url: faviconHref }],
+    } } : {}),
     robots: {
       index: true,
       follow: true,
@@ -1256,8 +1257,7 @@ export function buildSchoolStructuredData({
         telephone: school.contact.phone,
         email: school.contact.email,
         address: school.contact.address,
-        logo: logoUrl,
-        image: logoUrl,
+        ...(logoUrl ? { logo: logoUrl, image: logoUrl } : {}),
       },
     ],
   };

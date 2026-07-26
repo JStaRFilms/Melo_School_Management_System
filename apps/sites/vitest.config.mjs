@@ -6,7 +6,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const config = {
   root,
   resolve: { alias: { "@": path.resolve(root, "lib") } },
-  test: { environment: "node", include: ["lib/**/__tests__/**/*.test.js"] },
+  test: { environment: "node", include: ["lib/**/__tests__/**/*.test.{js,ts,tsx}"] },
 };
 
 export default config;

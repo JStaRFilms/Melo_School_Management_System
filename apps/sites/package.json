@@ -9,7 +9,8 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.mjs",
-    "test:watch": "vitest --config vitest.config.mjs"
+    "test:watch": "vitest --config vitest.config.mjs",
+    "test:browser": "playwright test --config playwright.config.ts"
   },
   "dependencies": {
     "lucide-react": "^0.400.0",

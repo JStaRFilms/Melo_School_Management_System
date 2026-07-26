@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRenderer } from "@/core/renderers/registry";
-import { buildPageMetadata, buildSitemapEntries, resolveSitePage } from "@/core/site";
+import { buildPageMetadata, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
 import { obhisRenderer } from "@/renderers/obhis-v1/definition";
 
 const school = { id: "obhis", slug: "approved-school", displayName: "Approved School" };
@@ -71,13 +71,14 @@ describe("obhis-v1", () => {
 
   test("uses only an approved tenant favicon and never depends on a global app icon", async () => {
     const site = envelope();
+    site.revision.fields = { ...fields, "contact.address": { kind: "text", value: "Approved address" } };
     site.assets = [{ id: "favicon", kind: "favicon", url: "https://assets.example/favicon.png", decorative: true, rightsStatus: "approved", status: "published" }];
     const page = await resolveSitePage({ hostname: "school.example", source: { loadPublished: async () => site } });
     expect(buildPageMetadata(page).icons).toMatchObject({ icon: [{ url: "https://assets.example/favicon.png" }] });
   });
 
   test("keeps preview navigation scoped to its authorized preview path and shows a watermark", () => {
-    const previewFields = { ...fields, "visit.lead": { kind: "text", value: "Approved visit information." } };
+    const previewFields = { ...fields, "contact.address": { kind: "text", value: "Approved address" }, "visit.lead": { kind: "text", value: "Approved visit information." } };
     const data = obhisRenderer.validateRendererData({ school, fields: previewFields });
     const markup = renderToStaticMarkup(obhisRenderer.render({
       school, assets: {},
@@ -92,12 +93,29 @@ describe("obhis-v1", () => {
     const source = { loadPublished: async () => envelope() };
     const page = await resolveSitePage({ hostname: "school.example", slugParts: ["policies", "family-guide"], source });
     expect(page.context).toMatchObject({ request: { routeKey: "policy-detail", canonicalUrl: "http://school.example/policies/family-guide", params: { policySlug: "family-guide" } }, links: { application: { href: "https://apply.example/s/approved-school" } } });
+    expect(buildPageMetadata(page)).toMatchObject({ title: "Family guide — Approved School", description: "Approved policy summary." });
+    const structured = JSON.parse(buildStructuredData(page));
+    expect(structured["@graph"].map((entry) => entry.url)).toEqual(["http://school.example/", "http://school.example/"]);
     const sitemap = await buildSitemapEntries("school.example", source);
     expect(sitemap.map((entry) => entry.url)).toContain("http://school.example/policies/family-guide");
     const unavailable = envelope();
     unavailable.revision.fields = { "identity.displayName": fields["identity.displayName"] };
     const unavailableSitemap = await buildSitemapEntries("school.example", { loadPublished: async () => unavailable });
-    expect(unavailableSitemap.map((entry) => entry.url)).toEqual(["http://school.example/"]);
+    expect(unavailableSitemap.map((entry) => entry.url)).toEqual([]);
     expect(await resolveSitePage({ hostname: "school.example", slugParts: ["admissions"], source: { loadPublished: async () => unavailable } })).toBeNull();
+    expect(await resolveSitePage({ hostname: "school.example", slugParts: [], source: { loadPublished: async () => unavailable } })).toBeNull();
+  });
+
+  test("requires approved admissions content, an open application, and an approved address next step", async () => {
+    const complete = envelope();
+    complete.revision.fields = { ...fields, "admissions.lead": { kind: "text", value: "Approved admissions guidance." }, "contact.address": { kind: "text", value: "Approved address" } };
+    const completeSource = { loadPublished: async () => complete };
+    expect((await resolveSitePage({ hostname: "school.example", slugParts: ["admissions"], source: completeSource })).route.key).toBe("admissions");
+    complete.links.application.availability = "closed";
+    expect(await resolveSitePage({ hostname: "school.example", slugParts: ["admissions"], source: completeSource })).toBeNull();
+    const addressOnly = envelope();
+    addressOnly.revision.fields = { ...fields, "contact.address": { kind: "text", value: "Approved address" } };
+    expect((await resolveSitePage({ hostname: "school.example", source: { loadPublished: async () => addressOnly } })).route.key).toBe("home");
+    expect((await resolveSitePage({ hostname: "school.example", slugParts: ["visit"], source: { loadPublished: async () => addressOnly } })).route.key).toBe("visit");
   });
 });

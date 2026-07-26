@@ -3,6 +3,7 @@ import type { RendererFieldValue } from "@/core/contracts";
 export type ObhisProgramme = { slug: string; name: string; descriptor?: string; summary?: string; assetId?: string };
 export type ObhisValue = { id: string; title: string; body?: string };
 export type ObhisPolicy = { slug: string; title: string; summary?: string; issued?: string; reviewed?: string; assetId?: string };
+export type ObhisAddress = { display: string; streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string; addressCountry?: string };
 
 export type ObhisRendererData = {
   identity: { displayName: string; shortName?: string; motto?: string; logoAssetId?: string };
@@ -12,7 +13,7 @@ export type ObhisRendererData = {
   admissions: { lead?: string; steps: readonly string[]; questionsCopy?: string };
   schoolLife: { lead?: string; galleryAssetIds: readonly string[]; features: readonly ObhisValue[] };
   visit: { lead?: string; directions?: string; hours?: string };
-  contact: { phone?: string; email?: string; address?: string; hours?: string };
+  contact: { phone?: string; email?: string; address?: ObhisAddress; hours?: string };
   policies: readonly ObhisPolicy[];
 };
 
@@ -75,7 +76,7 @@ export function validateObhisRendererData(fields: Fields): ObhisRendererData | n
     admissions: { lead: text(fields, "admissions.lead", 1_200), steps: list(fields, "admissions.steps", 4).filter((step) => step.length <= 360), questionsCopy: text(fields, "admissions.questionsCopy", 500) },
     schoolLife: { lead: text(fields, "schoolLife.lead", 700), galleryAssetIds: list(fields, "schoolLife.gallery", 12).filter((id) => /^[a-zA-Z0-9:_-]{1,200}$/.test(id)), features: recordList(fields, "schoolLife.features", 6) },
     visit: { lead: text(fields, "visit.lead", 700), directions: text(fields, "contact.directions", 700), hours: text(fields, "contact.hours", 200) },
-    contact: { phone: phone(fields), email: email(fields), address: text(fields, "contact.address", 500), hours: text(fields, "contact.hours", 200) },
+    contact: (() => { const display = text(fields, "contact.address", 500); return { phone: phone(fields), email: email(fields), ...(display ? { address: { display, streetAddress: text(fields, "contact.address.streetAddress", 200), addressLocality: text(fields, "contact.address.locality", 120), addressRegion: text(fields, "contact.address.region", 120), postalCode: text(fields, "contact.address.postalCode", 40), addressCountry: text(fields, "contact.address.country", 120) } } : {}), hours: text(fields, "contact.hours", 200) }; })(),
     policies,
   };
 }

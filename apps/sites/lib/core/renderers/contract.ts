@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { RendererValidationInput, SiteRenderContext } from "@/core/contracts";
+import type { RendererPresentation, RendererValidationInput, SiteRenderContext } from "@/core/contracts";
 
 export interface SiteRouteDefinition {
   key: string;
@@ -18,5 +18,7 @@ export interface SiteRenderer<TData = unknown> {
   isRouteIndexable?(data: TData, routeKey: string, params: Readonly<Record<string, string>>, context: Pick<SiteRenderContext, "links" | "request">): boolean;
   /** Optional concrete, published paths for a compile-time dynamic route pattern. */
   sitemapPaths?(data: TData): readonly string[];
+  /** Code-owned presentation data, primarily for quarantined compatibility renderers. */
+  getPresentation?(data: TData, context: SiteRenderContext<TData>): RendererPresentation | undefined;
   render(context: SiteRenderContext<TData>): ReactNode;
 }

@@ -74,6 +74,16 @@ export interface PublicSchoolIdentity {
   shortName?: string;
 }
 
+export interface RendererPresentation {
+  /** Code-owned renderer/compatibility metadata, never editable route content. */
+  title?: string;
+  description?: string;
+  applicationName?: string;
+  faviconUrl?: string;
+  manifest?: { name: string; shortName: string; themeColor?: string; backgroundColor?: string };
+  structuredData?: Readonly<Record<string, unknown>>;
+}
+
 export interface RendererValidationInput {
   school: PublicSchoolIdentity;
   /** Internal core input: renderers validate this once, but render() never receives it. */

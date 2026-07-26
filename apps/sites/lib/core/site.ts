@@ -50,21 +50,42 @@ function fieldText(value: RendererFieldValue | undefined): string | undefined {
   return value?.kind === "text" ? value.value : undefined;
 }
 
+function presentationFor(page: ResolvedSitePage) {
+  return page.renderer.getPresentation?.(page.context.rendererData, page.context);
+}
+
 export function buildPageMetadata(page: ResolvedSitePage): Metadata {
   const routeSeo = page.context.seo[page.route.key];
-  const title = routeSeo?.title ?? page.context.school.displayName ?? "School website";
-  const description = routeSeo?.description ?? "";
+  const presentation = presentationFor(page);
+  const title = presentation?.title ?? routeSeo?.title ?? page.context.school.displayName ?? "School website";
+  const description = presentation?.description ?? routeSeo?.description ?? "";
   const canonical = page.context.request.canonicalUrl;
   const preview = page.context.request.preview;
-  const favicon = Object.values(page.context.assets).find((asset) => asset.kind === "favicon");
+  const favicon = presentation?.faviconUrl ?? Object.values(page.context.assets).find((asset) => asset.kind === "favicon")?.url;
   return {
-    metadataBase: new URL(canonical), title, description,
+    metadataBase: new URL(canonical), applicationName: presentation?.applicationName, title, description,
     alternates: preview ? undefined : { canonical },
     robots: { index: !preview && page.route.indexable !== false, follow: !preview },
     openGraph: { title, description, url: canonical, type: "website", images: routeSeo?.shareAsset ? [{ url: routeSeo.shareAsset.url, alt: routeSeo.shareAsset.altText ?? title }] : undefined },
     twitter: { card: "summary_large_image", title, description, images: routeSeo?.shareAsset ? [routeSeo.shareAsset.url] : undefined },
-    ...(favicon ? { icons: { icon: [{ url: favicon.url }] } } : {}),
+    ...(favicon ? { icons: { icon: [{ url: favicon }] } } : {}),
   };
+}
+
+export function buildSiteManifest(load: SiteLoadResult): MetadataRoute.Manifest {
+  const fallback = { name: "Managed school site", short_name: "School", start_url: "/", display: "browser" as const, background_color: "#ffffff", theme_color: "#173B72" };
+  if (load.status !== "available") return fallback;
+  const renderer = getRenderer(load.site.revision.rendererKey, load.site.revision.rendererSchemaVersion);
+  if (!renderer) return fallback;
+  const school = { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) };
+  const rendererData = renderer.validateRendererData({ school, fields: load.site.revision.fields });
+  if (rendererData === null) return fallback;
+  const origin = buildCanonicalOrigin(load.canonicalDomain);
+  const assets = Object.fromEntries(load.site.assets.map((asset) => [asset.id, asset]));
+  const context: SiteRenderContext = { school, assets, links: load.site.links, seo: {}, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request: { routeKey: "home", canonicalUrl: new URL("/", origin).toString(), preview: load.preview, params: {}, pathPrefix: "" }, rendererData };
+  const manifest = renderer.getPresentation?.(rendererData, context)?.manifest;
+  const name = manifest?.name ?? school.displayName ?? fallback.name;
+  return { name, short_name: manifest?.shortName ?? school.shortName ?? name, start_url: "/", display: "browser", background_color: manifest?.backgroundColor ?? fallback.background_color, theme_color: manifest?.themeColor ?? fallback.theme_color };
 }
 
 export function buildRobotsMetadata(load: SiteLoadResult): MetadataRoute.Robots {
@@ -93,11 +114,14 @@ export async function buildSitemapEntries(hostname: string | null, source: SiteC
 }
 
 export function buildStructuredData(page: ResolvedSitePage): string {
+  const presentation = presentationFor(page);
+  if (presentation?.structuredData) return JSON.stringify(presentation.structuredData).replace(/</g, "\\u003c");
   const text = (fieldId: string) => fieldText(page.load.site.revision.fields[fieldId]);
   const name = text("identity.displayName") ?? page.context.school.displayName;
-  const graph: Record<string, unknown>[] = [{ "@type": "WebSite", name, url: page.context.request.canonicalUrl }];
+  const root = new URL("/", page.context.request.canonicalUrl).toString();
+  const graph: Record<string, unknown>[] = [{ "@type": "WebSite", name, url: root }];
   if (name) {
-    const organization: Record<string, unknown> = { "@type": "EducationalOrganization", name, url: page.context.request.canonicalUrl };
+    const organization: Record<string, unknown> = { "@type": "EducationalOrganization", name, url: root };
     const phone = text("contact.phone"); const email = text("contact.email");
     if (phone) organization.telephone = phone;
     if (email) organization.email = email;

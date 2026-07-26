@@ -3,7 +3,8 @@ import { normalizeHostname } from "@/core/domain";
 import { loadSite } from "@/core/content";
 import { buildApplicationRedirectHref, getPublicLinkIntegration } from "@/core/links";
 import { getRenderer } from "@/core/renderers/registry";
-import { buildRobotsMetadata, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
+import { buildPageMetadata, buildRobotsMetadata, buildSiteManifest, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
+import { previewTokenFromPath } from "@/core/preview";
 import { getLegacyEnvelopeForHostname } from "@/renderers/legacy-template/fixtures";
 
 const hostname = "greenfield.schoolos.localhost";
@@ -48,6 +49,15 @@ describe("B4 shared site core", () => {
     expect(await loadSite({ hostname, source: source(missingPublication) })).toMatchObject({ status: "unavailable", reason: "invalid_content" });
   });
 
+  test("authorizes active-alias previews without emitting a canonical redirect", async () => {
+    const preview = clone(getLegacyEnvelopeForHostname(hostname));
+    preview.preview = { authorized: true, expiresAt: Date.now() + 60_000 };
+    const result = await loadSite({ hostname: "greenfield.localhost", previewToken: "opaque", source: source(preview) });
+    expect(result).toMatchObject({ status: "available", preview: true, canonicalDomain: { hostname: "greenfield.localhost" } });
+    expect(result.redirectToHostname).toBeUndefined();
+    expect(previewTokenFromPath("/__preview/opaque/visit")).toBe("opaque");
+  });
+
   test("fetches current publication and application availability on every public request", async () => {
     const open = clone(getLegacyEnvelopeForHostname(hostname)); const closed = clone(open); closed.links.application.availability = "closed";
     let calls = 0; const currentSource = { loadPublished: async () => (++calls === 1 ? open : closed) };
@@ -74,7 +84,17 @@ describe("B4 shared site core", () => {
     expect(sitemap[0]).toMatchObject({ url: `http://${hostname}/`, lastModified: new Date(1_700_000_000_000) });
     site.revision.fields["identity.displayName"] = { kind: "text", value: "Safe </script> name" };
     const page = await resolveSitePage({ hostname, source: source(site) });
-    expect(buildStructuredData(page)).toContain("Safe \\u003c/script> name");
+    expect(buildStructuredData(page)).not.toContain("</script>");
+  });
+
+  test("preserves legacy presentation metadata through its compatibility renderer only", async () => {
+    const page = await resolveSitePage({ hostname, slugParts: ["about"], source: { loadPublished: async (host) => getLegacyEnvelopeForHostname(host) } });
+    expect(buildPageMetadata(page)).toMatchObject({ applicationName: "Greenfield Preparatory School", title: "About — Greenfield Preparatory School" });
+    expect(buildSiteManifest(page.load)).toMatchObject({ name: "Greenfield Preparatory School", short_name: "Greenfield" });
+    const graph = JSON.parse(buildStructuredData(page))["@graph"];
+    expect(graph[0]).toMatchObject({ "@type": "WebSite", url: `http://${hostname}/` });
+    expect(graph[1]).toMatchObject({ "@type": "EducationalOrganization", email: "hello@greenfieldprep.example" });
+    expect(buildPageMetadata(page).icons).toBeDefined();
   });
 
   test("uses the B0 application href verbatim and rejects unavailable or open redirects", () => {
