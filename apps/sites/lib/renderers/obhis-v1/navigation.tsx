@@ -6,7 +6,7 @@ import styles from "./obhis.module.css";
 
 type NavItem = { href: string; label: string; current: boolean };
 
-export function ObhisNavigation({ name, items, applicationHref, portalHref }: { name: string; items: readonly NavItem[]; applicationHref: string | null; portalHref?: string }) {
+export function ObhisNavigation({ name, homeHref, items, applicationHref, portalHref }: { name: string; homeHref: string; items: readonly NavItem[]; applicationHref: string | null; portalHref?: string }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,7 @@ export function ObhisNavigation({ name, items, applicationHref, portalHref }: { 
   }, [open]);
 
   return <header className={styles.header}>
-    <Link className={styles.brand} href="/" aria-label={`${name} home`}><span className={styles.mark} aria-hidden="true">◒</span><span>{name}</span></Link>
+    <Link className={styles.brand} href={homeHref} aria-label={`${name} home`}><span className={styles.mark} aria-hidden="true">◒</span><span>{name}</span></Link>
     <nav className={styles.desktopNav} aria-label="Primary navigation">{items.map((item) => <Link key={item.href} href={item.href} aria-current={item.current ? "page" : undefined}>{item.label}</Link>)}{applicationHref ? <a className={styles.applyButton} href={applicationHref}>Start an application<span className={styles.srOnly}> — opens the secure application</span></a> : null}</nav>
     <button ref={triggerRef} type="button" className={styles.menuButton} aria-expanded={open} aria-controls="obhis-mobile-navigation" onClick={() => setOpen(true)}><span className={styles.srOnly}>Open menu</span><span aria-hidden="true">Menu</span></button>
     {open ? <div id="obhis-mobile-navigation" ref={panelRef} className={styles.mobileDialog} role="dialog" aria-modal="true" aria-label="Site navigation">

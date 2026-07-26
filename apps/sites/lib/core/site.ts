@@ -11,7 +11,7 @@ export interface ResolvedSitePage {
   context: SiteRenderContext;
 }
 
-export async function resolveSitePage(input: { hostname: string | null; slugParts?: string[]; source: SiteContentSource; previewToken?: string }): Promise<ResolvedSitePage | null> {
+export async function resolveSitePage(input: { hostname: string | null; slugParts?: string[]; source: SiteContentSource; previewToken?: string; previewPathPrefix?: string }): Promise<ResolvedSitePage | null> {
   const load = await loadSite({ hostname: input.hostname, source: input.source, previewToken: input.previewToken });
   if (load.status !== "available") return null;
   const renderer = getRenderer(load.site.revision.rendererKey, load.site.revision.rendererSchemaVersion);
@@ -21,11 +21,11 @@ export async function resolveSitePage(input: { hostname: string | null; slugPart
   if (!matchedRoute || !matchedRoute.params) return null;
   const route = matchedRoute.candidate;
   const rendererData = renderer.validateRendererData(load.site.revision.fields);
-  if (rendererData === null) return null;
+  if (rendererData === null || renderer.isRouteAvailable?.(rendererData, route.key, matchedRoute.params) === false) return null;
   const origin = buildCanonicalOrigin(load.canonicalDomain);
   const assets = Object.fromEntries(load.site.assets.map((asset) => [asset.id, asset]));
   const seo = Object.fromEntries(Object.entries(load.site.revision.routeSeo).map(([key, value]) => [key, { ...value, ...(value.shareAssetId && assets[value.shareAssetId] ? { shareAsset: assets[value.shareAssetId] } : {}) }]));
-  return { load, renderer, route, context: { school: { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) }, fields: load.site.revision.fields, assets, links: load.site.links, seo, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request: { routeKey: route.key, canonicalUrl: new URL(routePath, origin).toString(), preview: load.preview, params: matchedRoute.params }, rendererData } };
+  return { load, renderer, route, context: { school: { id: load.site.profile.schoolId, slug: load.site.profile.schoolSlug, displayName: fieldText(load.site.revision.fields["identity.displayName"]), shortName: fieldText(load.site.revision.fields["identity.shortName"]) }, fields: load.site.revision.fields, assets, links: load.site.links, seo, publication: { revisionId: load.site.revision.id, publishedAt: load.site.revision.publishedAt ?? 0 }, request: { routeKey: route.key, canonicalUrl: new URL(routePath, origin).toString(), preview: load.preview, params: matchedRoute.params, pathPrefix: load.preview ? input.previewPathPrefix ?? "" : "" }, rendererData } };
 }
 
 function matchRoute(pattern: string, pathname: string): Record<string, string> | null {
@@ -75,8 +75,8 @@ export async function buildSitemapEntries(hostname: string | null, source: SiteC
   if (rendererData === null) return [];
   const origin = buildCanonicalOrigin(load.canonicalDomain);
   const lastModified = new Date(load.site.revision.publishedAt ?? 0);
-  const staticPaths = renderer.routes.filter((route) => route.indexable !== false && !route.path.includes("[")).map((route) => route.path);
-  const dynamicPaths = renderer.sitemapPaths?.(rendererData).filter((path) => renderer.routes.some((route) => matchRoute(route.path, path) !== null)) ?? [];
+  const staticPaths = renderer.routes.filter((route) => route.indexable !== false && !route.path.includes("[") && renderer.isRouteAvailable?.(rendererData, route.key, {}) !== false).map((route) => route.path);
+  const dynamicPaths = renderer.sitemapPaths?.(rendererData).filter((path) => renderer.routes.some((route) => { const params = matchRoute(route.path, path); return params !== null && route.indexable !== false && renderer.isRouteAvailable?.(rendererData, route.key, params) !== false; })) ?? [];
   return [...new Set([...staticPaths, ...dynamicPaths])].map((path) => ({ url: new URL(path, origin).toString(), lastModified, changeFrequency: path === "/" ? "weekly" : "monthly", priority: path === "/" ? 1 : 0.7 }));
 }
 

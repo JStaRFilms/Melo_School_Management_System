@@ -12,6 +12,8 @@ export interface SiteRenderer<TData = unknown> {
   readonly schemaVersion: string;
   readonly routes: readonly SiteRouteDefinition[];
   validateRendererData(input: Readonly<Record<string, unknown>>): TData | null;
+  /** Reject a declared route when its required approved content is absent. */
+  isRouteAvailable?(data: TData, routeKey: string, params: Readonly<Record<string, string>>): boolean;
   /** Optional concrete, published paths for a compile-time dynamic route pattern. */
   sitemapPaths?(data: TData): readonly string[];
   render(context: SiteRenderContext<TData>): ReactNode;

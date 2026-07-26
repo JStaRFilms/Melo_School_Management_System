@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { normalizeHostname } from "@/core/domain";
-import { loadSite } from "@/core/content";
+import { invalidatePublishedSiteCache, loadSite } from "@/core/content";
 import { buildApplicationRedirectHref, getPublicLinkIntegration } from "@/core/links";
 import { getRenderer } from "@/core/renderers/registry";
 import { buildRobotsMetadata, buildSitemapEntries, buildStructuredData, resolveSitePage } from "@/core/site";
@@ -22,6 +22,9 @@ describe("B4 shared site core", () => {
   test("issues a canonical target only for an active declared alias", async () => {
     const result = await loadSite({ hostname: "greenfield.localhost", source: { loadPublished: async (host) => getLegacyEnvelopeForHostname(host) } });
     expect(result).toMatchObject({ status: "available", redirectToHostname: hostname });
+    const invalidAlias = clone(getLegacyEnvelopeForHostname(hostname));
+    invalidAlias.domains.push({ id: "invalid-alias", hostname: "invalid-alias.localhost", status: "active", canonicalIntent: "canonical" });
+    expect(await loadSite({ hostname: "invalid-alias.localhost", source: source(invalidAlias) })).toMatchObject({ status: "unavailable", reason: "inactive_domain" });
   });
 
   test("fails closed for unknown hosts, unpublished revisions, and unauthorized previews", async () => {
@@ -31,7 +34,28 @@ describe("B4 shared site core", () => {
     expect(await loadSite({ hostname, source: source(draft) })).toMatchObject({ status: "unavailable", reason: "unpublished" });
     expect(await loadSite({ hostname, previewToken: "opaque", source: source(draft) })).toMatchObject({ status: "unavailable", reason: "unauthorized_preview" });
     draft.preview = { authorized: true, expiresAt: Date.now() + 60_000 };
+    draft.profile.status = "draft";
+    draft.domains.find((domain) => domain.hostname === hostname).status = "verification_pending";
     expect(await loadSite({ hostname, previewToken: "opaque", source: source(draft) })).toMatchObject({ status: "available", preview: true });
+    const invalidState = clone(getLegacyEnvelopeForHostname(hostname));
+    invalidState.revision.state = "not-published";
+    expect(await loadSite({ hostname, source: source(invalidState) })).toMatchObject({ status: "unavailable", reason: "unknown_host" });
+    const wrongLink = clone(getLegacyEnvelopeForHostname(hostname));
+    wrongLink.links.application.schoolSlug = "another-school";
+    expect(await loadSite({ hostname, source: source(wrongLink) })).toMatchObject({ status: "unavailable", reason: "unknown_host" });
+    const missingPublication = clone(getLegacyEnvelopeForHostname(hostname));
+    delete missingPublication.revision.publishedAt;
+    expect(await loadSite({ hostname, source: source(missingPublication) })).toMatchObject({ status: "unavailable", reason: "invalid_content" });
+  });
+
+  test("caches an immutable published revision by school and revision, then supports invalidation", async () => {
+    const site = clone(getLegacyEnvelopeForHostname(hostname)); let calls = 0;
+    const cachedSource = { loadPublished: async () => { calls += 1; return site; } };
+    await loadSite({ hostname, source: cachedSource }); await loadSite({ hostname, source: cachedSource });
+    expect(calls).toBe(1);
+    invalidatePublishedSiteCache(site.profile.schoolId);
+    await loadSite({ hostname, source: cachedSource });
+    expect(calls).toBe(2);
   });
 
   test("uses the compile-time registry and does not fall back on unknown renderers", async () => {

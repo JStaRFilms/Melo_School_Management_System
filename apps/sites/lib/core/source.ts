@@ -6,6 +6,11 @@ import { getLegacyEnvelopeForHostname } from "@/renderers/legacy-template/fixtur
  * endpoint once the public/preview Convex projection is exposed. It is not a
  * content field and it is never passed to a renderer or browser.
  */
+function publicRevalidateSeconds(): number {
+  const seconds = Number(process.env.SITE_PUBLIC_CONTENT_CACHE_SECONDS ?? 60);
+  return Number.isFinite(seconds) ? Math.min(Math.max(seconds, 1), 300) : 60;
+}
+
 function configuredProjectionSource(): SiteContentSource | null {
   const publishedEndpoint = process.env.SITE_PUBLIC_CONTENT_ENDPOINT;
   if (!publishedEndpoint) return null;
@@ -13,7 +18,7 @@ function configuredProjectionSource(): SiteContentSource | null {
     async loadPublished(hostname) {
       const url = new URL(publishedEndpoint);
       url.searchParams.set("hostname", hostname);
-      const response = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
+      const response = await fetch(url, { headers: { accept: "application/json" }, next: { revalidate: publicRevalidateSeconds() } });
       return response.ok ? response.json() : null;
     },
     async loadPreview({ hostname, previewToken }) {
@@ -34,6 +39,10 @@ const legacyCompatibilitySource: SiteContentSource = {
   async loadPublished(hostname) { return getLegacyEnvelopeForHostname(hostname); },
 };
 
+let siteContentSource: SiteContentSource | undefined;
+
 export function getSiteContentSource(): SiteContentSource {
-  return configuredProjectionSource() ?? legacyCompatibilitySource;
+  // Reused per server process so revision-keyed cache entries survive requests.
+  siteContentSource ??= configuredProjectionSource() ?? legacyCompatibilitySource;
+  return siteContentSource;
 }

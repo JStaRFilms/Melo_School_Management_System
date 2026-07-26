@@ -1,5 +1,5 @@
 import { getActiveCanonicalDomain, getRedirectTarget, normalizeHostname } from "@/core/domain";
-import { isApplicationLinkV1, isSafePortalLink, unavailableApplicationLink } from "@/core/links";
+import { isApplicationLinkV1, isSafePortalLink } from "@/core/links";
 import type { ApprovedPublicAsset, PublicDomainProjection, PublicSiteEnvelope, RendererFieldValue, SiteLoadResult } from "@/core/contracts";
 
 export interface SiteContentSource {
@@ -55,7 +55,14 @@ function parseAssets(value: unknown, now: number): PublicSiteEnvelope["assets"] 
     try { const parsedUrl = new URL(url); if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") return null; } catch { return null; }
     const expiresAt = typeof asset.rightsExpiresAt === "number" ? asset.rightsExpiresAt : undefined;
     if (expiresAt !== undefined && expiresAt <= now) continue;
-    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
+    const width = typeof asset.width === "number" && Number.isInteger(asset.width) && asset.width > 0 && asset.width <= 20_000 ? asset.width : undefined;
+    const height = typeof asset.height === "number" && Number.isInteger(asset.height) && asset.height > 0 && asset.height <= 20_000 ? asset.height : undefined;
+    if ((asset.width !== undefined && width === undefined) || (asset.height !== undefined && height === undefined) || Boolean(width) !== Boolean(height)) return null;
+    const focalPoint = object(asset.focalPoint);
+    const focalX = typeof focalPoint?.x === "number" ? focalPoint.x : undefined;
+    const focalY = typeof focalPoint?.y === "number" ? focalPoint.y : undefined;
+    if ((asset.focalPoint !== undefined && !focalPoint) || (focalPoint && (focalX === undefined || focalY === undefined || focalX < 0 || focalX > 1 || focalY < 0 || focalY > 1))) return null;
+    output.push({ id, url, kind: kind as ApprovedPublicAsset["kind"], decorative: Boolean(asset.decorative), altText: typeof asset.altText === "string" ? asset.altText : undefined, ...(width && height ? { width, height } : {}), ...(focalX !== undefined && focalY !== undefined ? { focalPoint: { x: focalX, y: focalY } } : {}), rightsStatus: "approved", status: "published", rightsExpiresAt: expiresAt });
   }
   return output;
 }
@@ -65,33 +72,86 @@ export function parsePublicSiteEnvelope(value: unknown, now = Date.now()): Publi
   if (!root || !profile || !revision || !["managed", "external", "none"].includes(String(profile.mode)) || !["draft", "review", "published", "suspended", "retired"].includes(String(profile.status))) return null;
   const schoolId = string(profile.schoolId, 200); const schoolSlug = string(profile.schoolSlug, 160); const rendererKey = string(profile.rendererKey, 100); const rendererSchemaVersion = string(profile.rendererSchemaVersion, 100); const canonicalDomainId = string(profile.canonicalDomainId, 200);
   const revisionId = string(revision.id, 200); const revisionRendererKey = string(revision.rendererKey, 100); const revisionSchema = string(revision.rendererSchemaVersion, 100);
-  if (!schoolId || !schoolSlug || !revisionId || !revisionRendererKey || !revisionSchema || !isApplicationLinkV1(root.links && object(root.links)?.application)) return null;
+  const links = object(root.links); const application = links?.application;
+  if (!schoolId || !schoolSlug || !revisionId || !revisionRendererKey || !revisionSchema || (revision.state !== "draft" && revision.state !== "published") || !isApplicationLinkV1(application) || application.schoolSlug !== schoolSlug) return null;
   const domains = parseDomains(root.domains); const assets = parseAssets(root.assets, now); const rawFields = object(revision.fields); const rawSeo = object(revision.routeSeo);
   if (!domains || !assets || !rawFields || !rawSeo) return null;
   const fields: Record<string, RendererFieldValue> = {};
   for (const [key, item] of Object.entries(rawFields)) { if (!/^[a-z0-9._-]{1,120}$/i.test(key)) return null; const field = parseField(item); if (!field) return null; fields[key] = field; }
   const routeSeo: Record<string, { title?: string; description?: string; shareAssetId?: string }> = {};
   for (const [key, item] of Object.entries(rawSeo)) { const seo = object(item); if (!/^[a-z0-9._-]{1,120}$/i.test(key) || !seo) return null; const title = seo.title === undefined ? undefined : string(seo.title, 120); const description = seo.description === undefined ? undefined : string(seo.description, 300); const shareAssetId = seo.shareAssetId === undefined ? undefined : string(seo.shareAssetId, 200); if ((seo.title !== undefined && title === null) || (seo.description !== undefined && description === null) || (seo.shareAssetId !== undefined && shareAssetId === null)) return null; routeSeo[key] = { ...(title ? { title } : {}), ...(description ? { description } : {}), ...(shareAssetId ? { shareAssetId } : {}) }; }
-  const portal = object(root.links)?.portal;
-  return { profile: { schoolId, schoolSlug, mode: profile.mode as PublicSiteEnvelope["profile"]["mode"], status: profile.status as PublicSiteEnvelope["profile"]["status"], rendererKey: rendererKey ?? undefined, rendererSchemaVersion: rendererSchemaVersion ?? undefined, canonicalDomainId: canonicalDomainId ?? undefined }, domains, revision: { id: revisionId, state: revision.state === "draft" ? "draft" : "published", rendererKey: revisionRendererKey, rendererSchemaVersion: revisionSchema, publishedAt: typeof revision.publishedAt === "number" ? revision.publishedAt : undefined, fields, routeSeo }, assets, links: { application: object(root.links)!.application as unknown as ReturnType<typeof unavailableApplicationLink>, ...(isSafePortalLink(portal) ? { portal } : {}) }, ...(root.preview && object(root.preview)?.authorized === true && typeof object(root.preview)?.expiresAt === "number" ? { preview: { authorized: true, expiresAt: object(root.preview)!.expiresAt as number } } : {}) };
+  const portal = links?.portal;
+  return { profile: { schoolId, schoolSlug, mode: profile.mode as PublicSiteEnvelope["profile"]["mode"], status: profile.status as PublicSiteEnvelope["profile"]["status"], rendererKey: rendererKey ?? undefined, rendererSchemaVersion: rendererSchemaVersion ?? undefined, canonicalDomainId: canonicalDomainId ?? undefined }, domains, revision: { id: revisionId, state: revision.state, rendererKey: revisionRendererKey, rendererSchemaVersion: revisionSchema, publishedAt: typeof revision.publishedAt === "number" ? revision.publishedAt : undefined, fields, routeSeo }, assets, links: { application, ...(isSafePortalLink(portal) ? { portal } : {}) }, ...(root.preview && object(root.preview)?.authorized === true && typeof object(root.preview)?.expiresAt === "number" ? { preview: { authorized: true, expiresAt: object(root.preview)!.expiresAt as number } } : {}) };
 }
 
 function validateLoadedSite(site: PublicSiteEnvelope, hostname: string, preview: boolean, now: number): SiteLoadResult {
   const unavailable = (reason: "unknown_host" | "inactive_domain" | "unpublished" | "invalid_content" | "unauthorized_preview"): SiteLoadResult => ({ status: "unavailable", reason });
-  if (site.profile.mode !== "managed" || site.profile.status !== "published") return unavailable("unpublished");
-  if (!preview && site.revision.state !== "published") return unavailable("unpublished");
-  if (preview && (!site.preview || site.preview.expiresAt <= now)) return unavailable("unauthorized_preview");
+  if (site.profile.mode !== "managed") return unavailable("unpublished");
   if (!site.profile.rendererKey || !site.profile.rendererSchemaVersion || site.revision.rendererKey !== site.profile.rendererKey || site.revision.rendererSchemaVersion !== site.profile.rendererSchemaVersion) return unavailable("invalid_content");
   const matched = site.domains.find((domain) => domain.hostname === hostname);
+
+  if (preview) {
+    if (!site.preview || site.preview.expiresAt <= now) return unavailable("unauthorized_preview");
+    if (!["draft", "review", "published"].includes(site.profile.status) || !matched || ["suspended", "retired"].includes(matched.status)) return unavailable("unpublished");
+    // An authorized preview may use a pending domain; it never redirects or becomes canonical.
+    return { status: "available", site, canonicalDomain: matched, preview: true };
+  }
+
+  if (site.profile.status !== "published" || site.revision.state !== "published") return unavailable("unpublished");
+  if (!Number.isFinite(site.revision.publishedAt) || (site.revision.publishedAt ?? 0) <= 0) return unavailable("invalid_content");
   const canonical = getActiveCanonicalDomain(site.domains, site.profile.canonicalDomainId);
   if (!matched || !canonical || matched.status !== "active") return unavailable("inactive_domain");
-  return { status: "available", site, canonicalDomain: canonical, redirectToHostname: getRedirectTarget(matched, canonical), preview };
+  const isCanonicalHost = matched.id === canonical.id;
+  const isValidAlias = matched.canonicalIntent === "redirect" && matched.canonicalDomainId === canonical.id;
+  if (!isCanonicalHost && !isValidAlias) return unavailable("inactive_domain");
+  return { status: "available", site, canonicalDomain: canonical, redirectToHostname: isCanonicalHost ? undefined : getRedirectTarget(matched, canonical), preview: false };
+}
+
+type CachedRevision = { site: PublicSiteEnvelope; expiresAt: number };
+const revisionCache = new Map<string, CachedRevision>();
+const hostnameCache = new Map<string, { revisionKey: string; expiresAt: number }>();
+const sourceIds = new WeakMap<SiteContentSource, number>();
+let nextSourceId = 1;
+function sourceCacheKey(source: SiteContentSource, hostname: string): string {
+  let sourceId = sourceIds.get(source);
+  if (!sourceId) { sourceId = nextSourceId++; sourceIds.set(source, sourceId); }
+  return `${sourceId}:${hostname}`;
+}
+
+function cacheTtlMilliseconds(): number {
+  const seconds = Number(process.env.SITE_PUBLIC_CONTENT_CACHE_SECONDS ?? 60);
+  return Number.isFinite(seconds) ? Math.min(Math.max(seconds, 1), 300) * 1_000 : 60_000;
+}
+function cacheExpiry(site: PublicSiteEnvelope, now: number): number {
+  const boundaries = [now + cacheTtlMilliseconds(), ...site.assets.map((asset) => asset.rightsExpiresAt).filter((value): value is number => typeof value === "number" && value > now), site.links.application.opensAt, site.links.application.closesAt].filter((value): value is number => typeof value === "number" && value > now);
+  return Math.min(...boundaries);
+}
+function getCachedRevision(source: SiteContentSource, hostname: string, now: number): PublicSiteEnvelope | null {
+  const host = hostnameCache.get(sourceCacheKey(source, hostname));
+  if (!host || host.expiresAt <= now) return null;
+  const entry = revisionCache.get(host.revisionKey);
+  return entry && entry.expiresAt > now ? entry.site : null;
+}
+function cachePublishedRevision(source: SiteContentSource, hostname: string, site: PublicSiteEnvelope, now: number) {
+  if (site.profile.status !== "published" || site.revision.state !== "published") return;
+  const expiresAt = cacheExpiry(site, now); const revisionKey = `${sourceCacheKey(source, hostname)}:${site.profile.schoolId}:${site.revision.id}`;
+  revisionCache.set(revisionKey, { site, expiresAt }); hostnameCache.set(sourceCacheKey(source, hostname), { revisionKey, expiresAt });
+}
+/** Called by a publish/revert integration after the B0 public projection changes. */
+export function invalidatePublishedSiteCache(schoolId: string) {
+  for (const [revisionKey] of revisionCache) if (revisionKey.includes(`:${schoolId}:`)) revisionCache.delete(revisionKey);
+  for (const [hostname, entry] of hostnameCache) if (entry.revisionKey.includes(`:${schoolId}:`)) hostnameCache.delete(hostname);
 }
 
 export async function loadSite(input: { hostname: string | null; source: SiteContentSource; previewToken?: string; now?: number }): Promise<SiteLoadResult> {
   const hostname = normalizeHostname(input.hostname); const now = input.now ?? Date.now();
   if (!hostname) return { status: "unavailable", reason: "unknown_host" };
-  const raw = input.previewToken && input.source.loadPreview ? await input.source.loadPreview({ hostname, previewToken: input.previewToken }) : await input.source.loadPublished(hostname);
+  const preview = Boolean(input.previewToken);
+  const cached = !preview ? getCachedRevision(input.source, hostname, now) : null;
+  if (cached) return validateLoadedSite(cached, hostname, false, now);
+  const raw = preview && input.source.loadPreview ? await input.source.loadPreview({ hostname, previewToken: input.previewToken! }) : await input.source.loadPublished(hostname);
   const site = raw ? parsePublicSiteEnvelope(raw, now) : null;
-  return site ? validateLoadedSite(site, hostname, Boolean(input.previewToken), now) : { status: "unavailable", reason: input.previewToken ? "unauthorized_preview" : "unknown_host" };
+  if (!site) return { status: "unavailable", reason: preview ? "unauthorized_preview" : "unknown_host" };
+  if (!preview) cachePublishedRevision(input.source, hostname, site, now);
+  return validateLoadedSite(site, hostname, preview, now);
 }

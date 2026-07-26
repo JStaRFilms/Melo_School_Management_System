@@ -19,7 +19,8 @@ function splitPreview(slug: string[] | undefined) {
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
   const { previewToken, routeParts } = splitPreview((await params).slug);
-  const page = await resolveSitePage({ hostname: getRequestHostname(await headers()), slugParts: routeParts, source: getSiteContentSource(), previewToken });
+  const previewPathPrefix = previewToken ? `/__preview/${encodeURIComponent(previewToken)}` : undefined;
+  const page = await resolveSitePage({ hostname: getRequestHostname(await headers()), slugParts: routeParts, source: getSiteContentSource(), previewToken, previewPathPrefix });
   return page ? buildPageMetadata(page) : buildMissingSiteMetadata();
 }
 
@@ -42,7 +43,8 @@ export default async function SitePage({ params, searchParams }: RouteProps) {
     redirect(destination);
   }
 
-  const page = await resolveSitePage({ hostname, slugParts: routeParts, source, previewToken });
+  const previewPathPrefix = previewToken ? `/__preview/${encodeURIComponent(previewToken)}` : undefined;
+  const page = await resolveSitePage({ hostname, slugParts: routeParts, source, previewToken, previewPathPrefix });
   if (!page) notFound();
   if (!page.context.request.preview && page.load.redirectToHostname) {
     // `proxy.ts` owns the actual 308; this is a safe fallback for hosts where

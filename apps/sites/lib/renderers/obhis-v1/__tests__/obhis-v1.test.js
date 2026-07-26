@@ -46,12 +46,23 @@ describe("obhis-v1", () => {
     const markup = renderToStaticMarkup(obhisRenderer.render({
       school: { id: "obhis", slug: "approved-school", displayName: "Approved School" }, fields, assets: {},
       links: { application: envelope().links.application }, seo: {}, publication: { revisionId: "revision", publishedAt: 1_700_000_000_000 },
-      request: { routeKey: "home", canonicalUrl: "https://school.example/", preview: false, params: {} }, rendererData: data,
+      request: { routeKey: "home", canonicalUrl: "https://school.example/", preview: false, params: {}, pathPrefix: "" }, rendererData: data,
     }));
     expect(markup).toContain('href="https://apply.example/s/approved-school"');
     expect(markup).not.toContain("₦5,000");
     expect(markup).not.toContain("Family portal");
     expect(markup).not.toContain("Obhis Heritage Academy");
+  });
+
+  test("keeps preview navigation scoped to its authorized preview path and shows a watermark", () => {
+    const data = obhisRenderer.validateRendererData(fields);
+    const markup = renderToStaticMarkup(obhisRenderer.render({
+      school: { id: "obhis", slug: "approved-school", displayName: "Approved School" }, fields, assets: {},
+      links: { application: envelope().links.application }, seo: {}, publication: { revisionId: "draft", publishedAt: 0 },
+      request: { routeKey: "home", canonicalUrl: "https://preview.example/", preview: true, params: {}, pathPrefix: "/__preview/opaque-token" }, rendererData: data,
+    }));
+    expect(markup).toContain("Draft preview — not public");
+    expect(markup).toContain('href="/__preview/opaque-token/visit"');
   });
 
   test("resolves canonical dynamic policy paths and emits only declared sitemap paths", async () => {
@@ -60,5 +71,9 @@ describe("obhis-v1", () => {
     expect(page.context).toMatchObject({ request: { routeKey: "policy-detail", canonicalUrl: "http://school.example/policies/family-guide", params: { policySlug: "family-guide" } }, links: { application: { href: "https://apply.example/s/approved-school" } } });
     const sitemap = await buildSitemapEntries("school.example", source);
     expect(sitemap.map((entry) => entry.url)).toContain("http://school.example/policies/family-guide");
+    const unavailable = envelope();
+    unavailable.revision.fields = { "identity.displayName": fields["identity.displayName"] };
+    const unavailableSitemap = await buildSitemapEntries("school.example", { loadPublished: async () => unavailable });
+    expect(unavailableSitemap.map((entry) => entry.url)).toEqual(["http://school.example/", "http://school.example/admissions"]);
   });
 });

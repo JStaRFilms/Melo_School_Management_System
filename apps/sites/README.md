@@ -4,9 +4,9 @@
 
 ## Deployment boundary
 
-Production managed tenants require a server-to-server B0 public-projection endpoint in `SITE_PUBLIC_CONTENT_ENDPOINT`. It must return the validated published profile/revision/domain/asset/link envelope consumed by `parsePublicSiteEnvelope`. Draft preview additionally requires `SITE_PREVIEW_CONTENT_ENDPOINT`; it receives an opaque preview token and must authenticate/authorize it server-side, bind it to the hostname/revision, and return `preview.authorized: true` with an expiry. Missing or invalid projections fail closed.
+Production managed tenants require a server-to-server B0 public-projection endpoint in `SITE_PUBLIC_CONTENT_ENDPOINT`. It must return the validated published profile/revision/domain/asset/link envelope consumed by `parsePublicSiteEnvelope`. Public reads are cached per `schoolId:revisionId` (default 60 seconds, bounded by asset/application expiry); publish/revert integrations call `invalidatePublishedSiteCache(schoolId)`. Draft preview additionally requires `SITE_PREVIEW_CONTENT_ENDPOINT`; it receives an opaque preview token and must authenticate/authorize it server-side, bind it to the hostname/revision, and return `preview.authorized: true` with an expiry. Preview may use a pending domain, is no-index, retains its `/__preview/{token}` navigation prefix, and never redirects to canonical. Missing or invalid projections fail closed.
 
-The only fallback is `legacy-template`, an explicit compatibility adapter for Greenfield and Aster demo tenants. It is not a B0 data seed, does not include OBHIS, and should be removed after those demos are migrated to published revisions.
+The public envelope must bind `links.application.schoolSlug` exactly to `profile.schoolSlug`; publication state, revision state, canonical domain, and active aliases are all fail-closed. The only fallback is `legacy-template`, an explicit compatibility adapter for Greenfield and Aster demo tenants. It is not a B0 data seed, does not include OBHIS, and should be removed after those demos are migrated to published revisions.
 
 External and no-site schools do not acquire a managed hostname. Their own website/directory consumes the B0 `ApplicationLinkV1` directly; `getPublicLinkIntegration` keeps the same canonical application/optional portal projection for `managed`, `external`, and `none` modes.
 

@@ -34,6 +34,10 @@ export interface ApprovedPublicAsset {
   url: string;
   altText?: string;
   decorative: boolean;
+  /** Approved media metadata lets renderers reserve layout without guessing. */
+  width?: number;
+  height?: number;
+  focalPoint?: { x: number; y: number };
 }
 
 export interface PublicSiteEnvelope {
@@ -75,7 +79,7 @@ export interface SiteRenderContext<TData = unknown> {
   links: Readonly<{ application: ApplicationLinkV1; portal?: { href: string; enabled: true } }>;
   seo: Readonly<Record<string, { title?: string; description?: string; shareAsset?: ApprovedPublicAsset }>>;
   publication: { revisionId: string; publishedAt: number };
-  request: { routeKey: string; canonicalUrl: string; preview: boolean; params: Readonly<Record<string, string>> };
+  request: { routeKey: string; canonicalUrl: string; preview: boolean; params: Readonly<Record<string, string>>; pathPrefix: string };
   rendererData: TData;
 }
 
