@@ -1,0 +1,159 @@
+import type { ApplicationLinkV1, AdmissionsPermissionV1 } from "@school/shared";
+
+export type AdmissionsScope = {
+  schoolId: string;
+  programmeId?: string | null;
+  intakeId?: string | null;
+};
+
+export type CapabilityGrant = {
+  capability: AdmissionsPermissionV1;
+  scope: "school" | "programme" | "intake";
+  programmeId: string | null;
+  intakeId: string | null;
+};
+
+export type QueueState =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "changes_requested"
+  | "accepted"
+  | "rejected"
+  | "waitlisted"
+  | "withdrawn"
+  | "archived";
+
+export type QueueRow = {
+  applicationId: string;
+  publicId: string;
+  state: string;
+  updatedAt: number;
+  intakeId: string;
+};
+
+export type RedactedQueueRow = Pick<QueueRow, "applicationId" | "publicId" | "state" | "updatedAt" | "intakeId">;
+
+export const MAX_QUEUE_PAGE_SIZE = 100;
+export const DEFAULT_QUEUE_PAGE_SIZE = 25;
+
+/** Never add names, documents, addresses, answers, or storage metadata here. */
+export function redactQueueRows(rows: readonly QueueRow[]): RedactedQueueRow[] {
+  return rows.map(({ applicationId, publicId, state, updatedAt, intakeId }) => ({
+    applicationId,
+    publicId,
+    state,
+    updatedAt,
+    intakeId,
+  }));
+}
+
+export function boundedQueueLimit(value?: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_QUEUE_PAGE_SIZE;
+  return Math.min(MAX_QUEUE_PAGE_SIZE, Math.max(1, Math.floor(value ?? DEFAULT_QUEUE_PAGE_SIZE)));
+}
+
+export function pageRows<T>(rows: readonly T[], page: number, pageSize = DEFAULT_QUEUE_PAGE_SIZE) {
+  const boundedSize = boundedQueueLimit(pageSize);
+  const boundedPage = Math.max(0, Math.floor(page));
+  const start = boundedPage * boundedSize;
+  return {
+    items: rows.slice(start, start + boundedSize),
+    page: boundedPage,
+    pageSize: boundedSize,
+    hasNextPage: start + boundedSize < rows.length,
+    hasPreviousPage: boundedPage > 0,
+  };
+}
+
+/** Client visibility only. Convex remains the authorization authority. */
+export function hasScopedCapability(
+  grants: readonly CapabilityGrant[] | undefined,
+  capability: AdmissionsPermissionV1,
+  scope: Pick<AdmissionsScope, "programmeId" | "intakeId">,
+): boolean {
+  return Boolean(grants?.some((grant) => {
+    if (grant.capability !== capability) return false;
+    if (grant.scope === "school") return true;
+    if (grant.scope === "programme") return Boolean(scope.programmeId && grant.programmeId === scope.programmeId);
+    return Boolean(scope.intakeId && grant.intakeId === scope.intakeId);
+  }));
+}
+
+export function canRequestChanges(state: string, message: string): boolean {
+  return (state === "submitted" || state === "under_review") && Boolean(message.trim());
+}
+
+export function canRecordDecision(args: { applicationState: string; hasSnapshot: boolean; reasonCode: string; guardianMessage: string }) {
+  return args.hasSnapshot
+    && ["submitted", "under_review", "waitlisted"].includes(args.applicationState)
+    && Boolean(args.reasonCode.trim())
+    && Boolean(args.guardianMessage.trim());
+}
+
+export function canReviewDocument(state: string, result: "accepted" | "rejected" | "needs_replacement", guardianMessage: string) {
+  return state === "uploaded" && (result === "accepted" || Boolean(guardianMessage.trim()));
+}
+
+export type ConversionState = "requested" | "running" | "succeeded" | "failed_retryable" | "failed_terminal" | "resolution_required";
+export type ConversionAction = "start" | "wait" | "retry_same_ledger" | "resolve" | "none";
+
+export function conversionAction(state: ConversionState | null, accepted: boolean): ConversionAction {
+  if (!accepted) return "none";
+  if (!state) return "start";
+  if (state === "requested" || state === "running") return "wait";
+  if (state === "failed_retryable") return "retry_same_ledger";
+  if (state === "failed_terminal" || state === "resolution_required") return "resolve";
+  return "none";
+}
+
+export type ProgrammeDraft = { name: string; slug: string; status: "draft" | "published" | "inactive" };
+export type IntakeDraft = { name: string; slug: string; cycleLabel: string; opensAt: string; closesAt: string; status: "draft" | "open" | "paused" | "closed" };
+export type ProductDraft = { name: string; slug: string; slotCount: 1; amountMinor: string; currency: string; feeDisclosure: string; refundPolicyKey: string };
+export type FormFieldDraft = { key: string; label: string; kind: "text" | "textarea" | "select" | "date" | "checkbox"; requiredMode: "required" | "optional" | "conditional"; dataClass: "child_confidential" | "sensitive"; purpose: string; retentionPolicy: string; privacyApproval: string };
+export type DocumentRequirementDraft = { key: string; label: string; category: string; requiredMode: "required" | "optional" | "conditional"; sensitivity: "child_confidential" | "sensitive"; purpose: string; acceptedMimeTypes: string; maxBytes: string; privacyApproval: string };
+export type DeclarationDraft = { title: string; body: string; purpose: string; version: string; mandatory: boolean };
+
+export type AdmissionsSettingsDraft = {
+  programme: ProgrammeDraft;
+  intake: IntakeDraft;
+  product: ProductDraft;
+  fields: FormFieldDraft[];
+  requirements: DocumentRequirementDraft[];
+  declaration: DeclarationDraft;
+};
+
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function validateAdmissionsSettings(draft: AdmissionsSettingsDraft): string[] {
+  const errors: string[] = [];
+  if (!draft.programme.name.trim()) errors.push("Programme name is required.");
+  if (!slugPattern.test(draft.programme.slug.trim())) errors.push("Programme slug must be URL-safe.");
+  if (!draft.intake.name.trim() || !slugPattern.test(draft.intake.slug.trim())) errors.push("Intake name and URL-safe slug are required.");
+  if (!draft.intake.opensAt || !draft.intake.closesAt || new Date(draft.intake.opensAt).getTime() >= new Date(draft.intake.closesAt).getTime()) errors.push("The intake closing date must be after its opening date.");
+  if (draft.product.slotCount !== 1) errors.push("Each admissions product must create exactly one application slot.");
+  if (!/^\d+$/.test(draft.product.amountMinor) || !draft.product.currency.trim() || !draft.product.feeDisclosure.trim() || !draft.product.refundPolicyKey.trim()) errors.push("Price, currency, fee disclosure, and refund policy are required.");
+  const keys = new Set<string>();
+  for (const field of draft.fields) {
+    if (!slugPattern.test(field.key) || !field.label.trim()) errors.push("Each form field needs a stable key and label.");
+    if (keys.has(field.key)) errors.push(`Field key “${field.key}” is duplicated.`);
+    keys.add(field.key);
+    if (field.dataClass === "sensitive" && (!field.purpose.trim() || !field.retentionPolicy.trim() || !field.privacyApproval.trim())) errors.push(`Sensitive field “${field.key}” needs purpose, retention, and privacy approval.`);
+  }
+  for (const requirement of draft.requirements) {
+    if (!slugPattern.test(requirement.key) || !requirement.label.trim() || !requirement.category.trim()) errors.push("Each document requirement needs a stable key, label, and category.");
+    if (!/^\d+$/.test(requirement.maxBytes) || !requirement.acceptedMimeTypes.trim()) errors.push(`Document requirement “${requirement.key}” needs bounded file types and size.`);
+    if (requirement.sensitivity === "sensitive" && (!requirement.purpose.trim() || !requirement.privacyApproval.trim())) errors.push(`Sensitive document “${requirement.key}” needs purpose and privacy approval.`);
+  }
+  if (!draft.declaration.title.trim() || !draft.declaration.body.trim() || !draft.declaration.purpose.trim() || !draft.declaration.version.trim()) errors.push("Declaration title, text, purpose, and version are required.");
+  return errors;
+}
+
+export async function copyCanonicalApplicationLink(
+  link: Pick<ApplicationLinkV1, "href">,
+  clipboard: Pick<Clipboard, "writeText"> | undefined = typeof navigator === "undefined" ? undefined : navigator.clipboard,
+): Promise<boolean> {
+  if (!link.href || !clipboard) return false;
+  await clipboard.writeText(link.href);
+  return true;
+}
