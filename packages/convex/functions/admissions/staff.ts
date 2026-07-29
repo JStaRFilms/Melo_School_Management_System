@@ -76,14 +76,59 @@ export const listQueuePage = query({
   },
 });
 
+const snapshotAnswerValidator = v.object({ key: v.string(), label: v.string(), valueType: v.string(), value: v.union(v.string(), v.null()), dataClass: v.string(), redacted: v.boolean() });
+const applicantProfileValidator = v.object({ firstName: v.string(), lastName: v.string(), middleName: v.union(v.string(), v.null()), preferredName: v.union(v.string(), v.null()), dateOfBirth: v.number(), gender: v.union(v.string(), v.null()), nationality: v.union(v.string(), v.null()), countryOfBirth: v.union(v.string(), v.null()), address: v.union(v.string(), v.null()) });
+const decisionReadinessValidator = v.object({ hasSnapshot: v.boolean(), requiredDocumentsAccepted: v.boolean(), legalEvidenceBound: v.boolean(), financeClear: v.boolean(), evaluationsComplete: v.boolean(), ready: v.boolean() });
+const applicationDetailValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), revision: v.number(), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), decisionState: v.union(v.string(), v.null()), documentCount: v.number(), profile: v.union(applicantProfileValidator, v.null()), answers: v.array(snapshotAnswerValidator), sensitiveAnswerCount: v.number(), decisionReadiness: decisionReadinessValidator });
+
+function restrictedDataClass(dataClass: string) { return dataClass === "highly_sensitive" || dataClass === "financial_security"; }
+async function snapshotProjection(ctx: any, application: any, revealSensitive: boolean) {
+  const [documents, requirements, evaluations, hold] = await Promise.all([
+    ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q: any) => q.eq("applicationId", application._id)).take(200),
+    ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(100),
+    ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q: any) => q.eq("applicationId", application._id)).take(100),
+    ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q: any) => q.eq("applicationId", application._id).eq("state", "active")).unique(),
+  ]);
+  const decision: any = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+  const requiredDocumentsAccepted = requirements.every((requirement: any) => requirement.requiredMode !== "required" || documents.some((document: any) => document.requirementId === requirement._id && document.state === "accepted"));
+  const readinessBase = { hasSnapshot: Boolean(application.latestSnapshotId), requiredDocumentsAccepted, legalEvidenceBound: false, financeClear: !hold && !application.financeBlockedReason, evaluationsComplete: !evaluations.some((evaluation: any) => evaluation.state === "scheduled") };
+  if (!application.latestSnapshotId) return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: null, decisionState: decision?.state ?? null, documentCount: documents.length, profile: null, answers: [], sensitiveAnswerCount: 0, decisionReadiness: { ...readinessBase, ready: false } };
+  const [items, fields] = await Promise.all([
+    ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q: any) => q.eq("snapshotId", application.latestSnapshotId)).take(500),
+    ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(200),
+  ]);
+  const profileItem = items.find((item: any) => item.kind === "profile");
+  let profile = null;
+  if (profileItem) { try { profile = JSON.parse(profileItem.serializedValue); } catch { profile = null; } }
+  const labels = new Map(fields.map((field: any) => [field.fieldKey, field.label]));
+  const answerItems = items.filter((item: any) => item.kind === "answer");
+  const answers = answerItems.map((item: any) => { const key = item.itemKey.replace(/^answer:/, ""); const redacted = restrictedDataClass(item.dataClass) && !revealSensitive; return { key, label: labels.get(key) ?? key, valueType: item.valueType, value: redacted ? null : item.serializedValue, dataClass: item.dataClass, redacted }; });
+  const legalEvidenceBound = items.some((item: any) => item.kind === "declaration");
+  const decisionReadiness = { ...readinessBase, legalEvidenceBound, ready: readinessBase.hasSnapshot && requiredDocumentsAccepted && legalEvidenceBound && readinessBase.financeClear && readinessBase.evaluationsComplete };
+  return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: application.latestSnapshotId, decisionState: decision?.state ?? null, documentCount: documents.length, profile, answers, sensitiveAnswerCount: answerItems.filter((item: any) => restrictedDataClass(item.dataClass)).length, decisionReadiness };
+}
+
+/** Snapshot-backed review projection. High-risk answers are represented but redacted. */
 export const getApplicationDetail = query({
   args: { applicationId: v.id("admissionsApplications") },
-  returns: v.union(v.null(), v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), revision: v.number(), decisionState: v.union(v.string(), v.null()), documentCount: v.number() })),
+  returns: v.union(v.null(), applicationDetailValidator),
   handler: async (ctx, args) => {
     const { application } = await applicationAndStaff(ctx, args.applicationId, "applications.view_basic");
-    const documents = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200);
-    const decision: any = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
-    return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, decisionState: decision?.state ?? null, documentCount: documents.length };
+    return await snapshotProjection(ctx, application, false);
+  },
+});
+
+/** Sensitive disclosure requires the exact grant and fresh authentication, and is audited first. */
+export const revealSensitiveApplicationDetail = mutation({
+  args: { applicationId: v.id("admissionsApplications"), reason: v.string() },
+  returns: applicationDetailValidator,
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "applications.view_basic");
+    const { membership } = await applicationAndStaff(ctx, args.applicationId, "applications.view_sensitive");
+    const reason = args.reason.trim();
+    if (reason.length < 8 || reason.length > 250 || !await hasFreshAuth(ctx)) throw new ConvexError("Sensitive detail requires fresh authentication and a reason");
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "application.sensitive_detail_viewed", entityType: "submission_snapshot", entityId: String(application.latestSnapshotId ?? application._id), applicationId: application._id, outcome: "success", reasonCode: reason.slice(0, 128) });
+    return await snapshotProjection(ctx, application, true);
   },
 });
 

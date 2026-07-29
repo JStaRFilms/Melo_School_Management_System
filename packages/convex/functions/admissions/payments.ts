@@ -10,6 +10,9 @@ const safeAttemptValidator = v.object({
   amountMinor: v.number(), currency: v.string(), disclosure: v.string(),
 });
 
+const terminalFinanceStates = new Set(["refunded", "reversed", "voided", "chargeback", "disputed"]);
+function isTerminalFinanceState(state: string) { return terminalFinanceStates.has(state.trim().toLowerCase()); }
+
 export const getConfiguredAdmissionsPaymentProviderInternal = internalQuery({
   args: { schoolId: v.id("schools") },
   returns: v.union(v.null(), v.object({ provider: v.literal("paystack"), providerMode: paymentProviderModeValidator })),
@@ -86,7 +89,7 @@ export const verifyReturn = action({
     const attempt: any = await ctx.runQuery((api as any).functions.admissions.payments.getOwnedAttemptForInitialization, args);
     if (!attempt) throw new ConvexError("Not found or access denied");
     if (attempt.state === "paid") return { state: "paid", entitlementId: attempt.entitlementId ?? null };
-    if (attempt.state === "refunded" || attempt.state === "reversed" || attempt.state === "manual_attention") return { state: attempt.state, entitlementId: null };
+    if (isTerminalFinanceState(attempt.state) || attempt.state === "manual_attention") return { state: attempt.state, entitlementId: null };
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_verification" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
@@ -104,14 +107,16 @@ export const verifyReturn = action({
       providerEventId: `receipt:${attempt.reference}`, eventType: "payment.receipt_verified", bodyDigest: await digest(`${attempt.reference}:${receipt.status}:${receipt.amount}:${receipt.currency}`), receivedAt: Date.now(),
     });
     const fulfilled: any = await ctx.runMutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: event.eventId });
-    return { state: "paid", entitlementId: fulfilled.entitlementId };
+    const current: any = await ctx.runQuery((api as any).functions.admissions.payments.getOwnedAttemptForInitialization, args);
+    if (!current || isTerminalFinanceState(current.state)) return { state: current?.state ?? "verification_pending", entitlementId: null };
+    return { state: current.state, entitlementId: current.state === "paid" ? fulfilled.entitlementId : null };
   },
 });
 
 export const recordAttemptOutcome = internalMutation({
   args: { attemptId: v.id("admissionsPurchaseAttempts"), state: v.union(v.literal("failed"), v.literal("verification_pending")), reasonCode: v.string() },
   returns: v.null(),
-  handler: async (ctx, args) => { const attempt = await ctx.db.get(args.attemptId); if (attempt && !["paid", "refunded", "reversed"].includes(attempt.state)) await ctx.db.patch(attempt._id, { state: args.state, failureCode: args.reasonCode.slice(0, 128), updatedAt: Date.now() }); return null; },
+  handler: async (ctx, args) => { const attempt = await ctx.db.get(args.attemptId); if (attempt && attempt.state !== "paid" && !isTerminalFinanceState(attempt.state)) await ctx.db.patch(attempt._id, { state: args.state, failureCode: args.reasonCode.slice(0, 128), updatedAt: Date.now() }); return null; },
 });
 
 /** A receipt mismatch is durable and truthful: it never grants a slot. */
@@ -120,7 +125,7 @@ export const recordManualAttention = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const attempt = await ctx.db.get(args.attemptId);
-    if (!attempt || attempt.state === "paid" || attempt.state === "refunded" || attempt.state === "reversed") return null;
+    if (!attempt || attempt.state === "paid" || isTerminalFinanceState(attempt.state)) return null;
     await ctx.db.patch(attempt._id, { state: "manual_attention", failureCode: args.reasonCode.slice(0, 128), updatedAt: Date.now() });
     return null;
   },
@@ -145,7 +150,7 @@ export const initializeAttempt = action({
     const attempt: any = await ctx.runQuery((api as any).functions.admissions.payments.getOwnedAttemptForInitialization, args);
     if (!attempt) throw new ConvexError("Not found or access denied");
     if (attempt.state === "paid") return { state: "paid", checkoutUrl: null };
-    if (attempt.state === "refunded" || attempt.state === "reversed" || attempt.state === "manual_attention") return { state: attempt.state, checkoutUrl: null };
+    if (isTerminalFinanceState(attempt.state) || attempt.state === "manual_attention") return { state: attempt.state, checkoutUrl: null };
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_initialization" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
@@ -178,7 +183,7 @@ export const fulfilVerifiedEvent = internalMutation({
     if (event.processingStatus === "processed") return { entitlementId: existing?._id ?? null, replayed: true };
     if (pendingEvents.has(normalizedEvent) || failedEvents.has(normalizedEvent)) {
       const now = Date.now(); const state = failedEvents.has(normalizedEvent) ? "failed" : "verification_pending";
-      if (attempt.state !== "paid" && attempt.state !== "refunded" && attempt.state !== "reversed") await ctx.db.patch(attempt._id, { state, failureCode: normalizedEvent.slice(0, 128), updatedAt: now });
+      if (attempt.state !== "paid" && !isTerminalFinanceState(attempt.state)) await ctx.db.patch(attempt._id, { state, failureCode: normalizedEvent.slice(0, 128), updatedAt: now });
       await ctx.db.patch(event._id, { processingStatus: "processed", processingMessage: state, processedAt: now, updatedAt: now });
       return { entitlementId: existing?._id ?? null, replayed: false };
     }
@@ -205,6 +210,13 @@ export const fulfilVerifiedEvent = internalMutation({
       const now = Date.now();
       await ctx.db.patch(event._id, { processingStatus: "rejected", processingMessage: "Unsupported admissions payment event", processedAt: now, updatedAt: now });
       return { entitlementId: existing?._id ?? null, replayed: false };
+    }
+    // A reversal is monotonic. Delayed success/receipt events are acknowledged but
+    // cannot resurrect the attempt, its entitlement, or an application finance hold.
+    if (isTerminalFinanceState(attempt.state)) {
+      const now = Date.now();
+      await ctx.db.patch(event._id, { processingStatus: "processed", processingMessage: `Ignored after terminal finance state: ${attempt.state}`, processedAt: now, updatedAt: now });
+      return { entitlementId: null, replayed: true };
     }
     if (existing) {
       await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: Date.now(), updatedAt: Date.now() });

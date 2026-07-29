@@ -84,11 +84,31 @@ export function canRequestChanges(state: string, message: string): boolean {
   return (state === "submitted" || state === "under_review") && Boolean(message.trim());
 }
 
-export function canRecordDecision(args: { applicationState: string; hasSnapshot: boolean; reasonCode: string; guardianMessage: string }) {
-  return args.hasSnapshot
+export type DecisionReadiness = {
+  hasSnapshot: boolean;
+  requiredDocumentsAccepted: boolean;
+  legalEvidenceBound: boolean;
+  financeClear: boolean;
+  evaluationsComplete: boolean;
+  ready: boolean;
+};
+
+export function canRecordDecision(args: { applicationState: string; readiness?: DecisionReadiness; hasSnapshot?: boolean; reasonCode: string; guardianMessage: string }) {
+  const ready = args.readiness?.ready ?? Boolean(args.hasSnapshot);
+  return ready
     && ["submitted", "under_review", "waitlisted"].includes(args.applicationState)
     && Boolean(args.reasonCode.trim())
     && Boolean(args.guardianMessage.trim());
+}
+
+export function settingsPublicationGate(args: { validationErrors: readonly string[]; hasPublishCapability: boolean; containsSensitiveConfiguration: boolean; hasSensitiveCapability: boolean; privacyEvidenceCurrent: boolean; financeEvidenceCurrent: boolean; declarationPublished: boolean }) {
+  const blockers = [...args.validationErrors];
+  if (!args.hasPublishCapability) blockers.push("Admissions publish capability is required.");
+  if (args.containsSensitiveConfiguration && !args.hasSensitiveCapability) blockers.push("Sensitive configuration capability is required.");
+  if (args.containsSensitiveConfiguration && !args.privacyEvidenceCurrent) blockers.push("Current privacy approval evidence is required.");
+  if (!args.financeEvidenceCurrent) blockers.push("Current finance approval evidence is required.");
+  if (!args.declarationPublished) blockers.push("A published declaration is required.");
+  return { allowed: blockers.length === 0, blockers };
 }
 
 export function canReviewDocument(state: string, result: "accepted" | "rejected" | "needs_replacement", guardianMessage: string) {

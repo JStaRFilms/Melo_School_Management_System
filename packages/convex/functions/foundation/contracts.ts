@@ -84,7 +84,10 @@ export const admissionsPurchaseStateValidator = v.union(
   v.literal("expired"),
   v.literal("manual_attention"),
   v.literal("refunded"),
-  v.literal("reversed")
+  v.literal("reversed"),
+  v.literal("voided"),
+  v.literal("chargeback"),
+  v.literal("disputed")
 );
 
 export const admissionsEntitlementStateValidator = v.union(

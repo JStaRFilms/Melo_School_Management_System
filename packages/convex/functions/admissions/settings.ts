@@ -36,6 +36,39 @@ export const getCatalogue = query({
   },
 });
 
+export const getFormConfiguration = query({
+  args: { formVersionId: v.id("admissionsFormVersions") },
+  returns: v.object({ form: v.object({ id: v.id("admissionsFormVersions"), version: v.number(), status: v.string() }), fields: v.array(v.object({ id: v.id("admissionsFormFields"), key: v.string(), label: v.string(), kind: v.string(), requiredMode: v.string(), dataClass: v.string(), purpose: v.union(v.string(), v.null()), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), validationJson: v.string(), conditionalRuleJson: v.union(v.string(), v.null()) })), requirements: v.array(v.object({ id: v.id("admissionsDocumentRequirements"), key: v.string(), label: v.string(), category: v.string(), requiredMode: v.string(), sensitivity: v.string(), acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), purpose: v.string(), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), conditionJson: v.union(v.string(), v.null()) })) }),
+  handler: async (ctx, args) => {
+    const form = await ctx.db.get(args.formVersionId); if (!form) throw new ConvexError("Not found or access denied");
+    await requireCatalogue(ctx, form.schoolId, "admissions.catalogue.manage");
+    const [fields, requirements] = await Promise.all([ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(200), ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(100)]);
+    return { form: { id: form._id, version: form.version, status: form.status }, fields: fields.map((field) => ({ id: field._id, key: field.fieldKey, label: field.label, kind: field.kind, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, retentionPolicyKey: field.retentionPolicyKey ?? null, audience: field.audience ?? null, approvalEvidenceId: field.approvalEvidenceId ?? null, validationJson: field.validationJson, conditionalRuleJson: field.conditionalRuleJson ?? null })), requirements: requirements.map((requirement) => ({ id: requirement._id, key: requirement.requirementKey, label: requirement.label, category: requirement.category, requiredMode: requirement.requiredMode, sensitivity: requirement.sensitivity, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, purpose: requirement.purpose, retentionPolicyKey: requirement.retentionPolicyKey ?? null, audience: requirement.audience ?? null, approvalEvidenceId: requirement.approvalEvidenceId ?? null, conditionJson: requirement.conditionJson ?? null })) };
+  },
+});
+
+export const listApprovalEvidence = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(v.object({ id: v.id("schoolApprovalEvidence"), approvalClass: v.string(), subjectType: v.string(), subjectKey: v.string(), evidenceReference: v.string(), approvedAt: v.number(), expiresAt: v.union(v.number(), v.null()), active: v.boolean() })),
+  handler: async (ctx, args) => {
+    await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
+    const rows = await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_approval_class", (q) => q.eq("schoolId", args.schoolId)).take(200);
+    const now = Date.now(); return rows.map((row) => ({ id: row._id, approvalClass: row.approvalClass, subjectType: row.subjectType, subjectKey: row.subjectKey, evidenceReference: row.evidenceReference, approvedAt: row.approvedAt, expiresAt: row.expiresAt ?? null, active: !row.revokedAt && row.approvedAt <= now && (!row.expiresAt || row.expiresAt > now) }));
+  },
+});
+
+export const listDeclarations = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(v.object({ id: v.id("admissionsDeclarationVersions"), programmeId: v.id("admissionsProgrammes"), version: v.number(), title: v.string(), body: v.string(), purpose: v.string(), status: v.string() })),
+  handler: async (ctx, args) => { await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const programmes = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100); const rows = (await Promise.all(programmes.map((programme) => ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(100)))).flat(); return rows.map((row) => ({ id: row._id, programmeId: row.programmeId, version: row.version, title: row.title, body: row.body, purpose: row.purpose, status: row.status })); },
+});
+
+export const listProductPrices = query({
+  args: { productId: v.id("admissionsProducts") },
+  returns: v.array(v.object({ id: v.id("admissionsProductPrices"), version: v.number(), amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), effectiveFrom: v.number(), effectiveTo: v.union(v.number(), v.null()), status: v.string(), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()) })),
+  handler: async (ctx, args) => { const product = await ctx.db.get(args.productId); if (!product) throw new ConvexError("Not found or access denied"); await requireCatalogue(ctx, product.schoolId, "admissions.catalogue.manage"); const rows = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).order("desc").take(100); return rows.map((row) => ({ id: row._id, version: row.version, amountMinor: row.amountMinor, currency: row.currency, refundPolicyKey: row.refundPolicyKey, feeDisclosure: row.feeDisclosure, effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo ?? null, status: row.status, approvalEvidenceId: row.approvalEvidenceId ?? null })); },
+});
+
 export const listConversionClasses = query({
   args: { schoolId: v.id("schools") },
   returns: v.array(v.object({ id: v.id("classes"), name: v.string() })),

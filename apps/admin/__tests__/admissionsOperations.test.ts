@@ -8,6 +8,7 @@ import {
   hasScopedCapability,
   pageRows,
   redactQueueRows,
+  settingsPublicationGate,
   validateAdmissionsSettings,
   type AdmissionsSettingsDraft,
 } from "../lib/admissions/models";
@@ -56,6 +57,20 @@ describe("admissions admin operations", () => {
     expect(canRequestChanges("accepted", "Please edit this.")).toBe(false);
     expect(canRecordDecision({ applicationState: "submitted", hasSnapshot: true, reasonCode: "approved", guardianMessage: "A decision was recorded." })).toBe(true);
     expect(canRecordDecision({ applicationState: "draft", hasSnapshot: true, reasonCode: "approved", guardianMessage: "A decision was recorded." })).toBe(false);
+  });
+
+  test("blocks metadata-only decisions until snapshot, document, legal, finance and evaluation preconditions are ready", () => {
+    const readiness = { hasSnapshot: true, requiredDocumentsAccepted: false, legalEvidenceBound: true, financeClear: true, evaluationsComplete: true, ready: false };
+    expect(canRecordDecision({ applicationState: "under_review", readiness, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(false);
+    expect(canRecordDecision({ applicationState: "under_review", readiness: { ...readiness, requiredDocumentsAccepted: true, ready: true }, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(true);
+  });
+
+  test("models standard and sensitive settings publication gates", () => {
+    const standard = settingsPublicationGate({ validationErrors: [], hasPublishCapability: true, containsSensitiveConfiguration: false, hasSensitiveCapability: false, privacyEvidenceCurrent: false, financeEvidenceCurrent: true, declarationPublished: true });
+    expect(standard).toEqual({ allowed: true, blockers: [] });
+    const sensitive = settingsPublicationGate({ validationErrors: [], hasPublishCapability: true, containsSensitiveConfiguration: true, hasSensitiveCapability: false, privacyEvidenceCurrent: false, financeEvidenceCurrent: true, declarationPublished: true });
+    expect(sensitive.allowed).toBe(false);
+    expect(sensitive.blockers).toEqual(expect.arrayContaining(["Sensitive configuration capability is required.", "Current privacy approval evidence is required."]));
   });
 
   test("never treats accepted as converted and only retries the same ledger", () => {

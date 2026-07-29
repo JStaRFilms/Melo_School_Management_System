@@ -66,6 +66,37 @@ describe("B1 admissions domain", () => {
     await expect(t.withIdentity(staffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).rejects.toThrow("Not found or access denied");
   });
 
+  test("staff detail is snapshot-backed, redacted by default, and sensitive reveal is fresh-auth audited", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const field = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "medical-note", sectionKey: "support", kind: "text", label: "Medical note", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "support", validationJson: "{}", order: 1, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    let version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Snapshot", lastName: "Applicant", dateOfBirth: 1 });
+    version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: field, expectedVersion: version, valueType: "text", serializedValue: "private diagnosis" });
+    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
+    const staleIdentity = { subject: "reviewer", tokenIdentifier: "issuer|reviewer", issuer: "issuer", auth_time: Math.floor((Date.now() - 10 * 60_000) / 1000) };
+    const freshIdentity = { ...staleIdentity, auth_time: Math.floor(Date.now() / 1000) };
+    const reviewer = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: staleIdentity.subject, authTokenIdentifier: staleIdentity.tokenIdentifier, name: "Reviewer", email: "reviewer@example.test", role: "teacher", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run(async (ctx) => { for (const capability of ["applications.view_basic", "applications.view_sensitive"] as const) await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: reviewer, capability, scope: "intake", intakeId: ids.intake, grantedByUserId: reviewer, reason: "review", isBreakGlass: false, createdAt: Date.now() }); });
+    const basic = await t.withIdentity(staleIdentity).query((api as any).functions.admissions.staff.getApplicationDetail, { applicationId: application.applicationId });
+    expect(basic.profile).toMatchObject({ firstName: "Snapshot", lastName: "Applicant" });
+    expect(basic.answers).toEqual([expect.objectContaining({ key: "medical-note", value: null, redacted: true })]);
+    await expect(t.withIdentity(staleIdentity).mutation((api as any).functions.admissions.staff.revealSensitiveApplicationDetail, { applicationId: application.applicationId, reason: "Review support requirements" })).rejects.toThrow("fresh authentication");
+    const revealed = await t.withIdentity(freshIdentity).mutation((api as any).functions.admissions.staff.revealSensitiveApplicationDetail, { applicationId: application.applicationId, reason: "Review support requirements" });
+    expect(revealed.answers).toEqual([expect.objectContaining({ value: "private diagnosis", redacted: false })]);
+    expect(await t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application.applicationId)).order("desc").take(10))).toEqual(expect.arrayContaining([expect.objectContaining({ action: "application.sensitive_detail_viewed" })]));
+  });
+
+  test("sensitive detail reveal is denied without the exact capability", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const identity = { subject: "basic", tokenIdentifier: "issuer|basic", issuer: "issuer", auth_time: Math.floor(Date.now() / 1000) };
+    const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name: "Basic", email: "basic@example.test", role: "teacher", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability: "applications.view_basic", scope: "school", grantedByUserId: user, reason: "basic only", isBreakGlass: false, createdAt: Date.now() }));
+    await expect(t.withIdentity(identity).mutation((api as any).functions.admissions.staff.revealSensitiveApplicationDetail, { applicationId: application.applicationId, reason: "Review sensitive answers" })).rejects.toThrow("Not found or access denied");
+  });
+
   test("document ownership denies a different verified guardian", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
@@ -145,6 +176,18 @@ describe("B1 admissions domain", () => {
     expect(await t.run((ctx) => ctx.db.get(declaration))).toMatchObject({ status: "draft" });
   });
 
+  test("sensitive form publication rechecks privacy evidence expiry", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const identity = { subject: "publisher", tokenIdentifier: "issuer|publisher", issuer: "issuer" };
+    const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name: "Publisher", email: "publisher@example.test", role: "teacher", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run(async (ctx) => { for (const capability of ["admissions.catalogue.manage", "admissions.publish", "admissions.sensitive.configure"] as const) await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability, scope: "school", grantedByUserId: user, reason: "publication test", isBreakGlass: false, createdAt: Date.now() }); });
+    const draft = await t.withIdentity(identity).mutation((api as any).functions.admissions.settings.createDraftForm, { schoolId: ids.schoolA, programmeId: ids.programme, intakeId: ids.intake, schemaVersion: "privacy-gate" });
+    const evidence = await t.run((ctx) => ctx.db.insert("schoolApprovalEvidence", { schoolId: ids.schoolA, approvalClass: "privacy", subjectType: "admissions_field", subjectKey: "medical-history", evidenceReference: "privacy-ticket", approvedByUserId: user, approvedAt: Date.now() - 1_000, expiresAt: Date.now() + 60_000, createdAt: Date.now() }));
+    await t.withIdentity(identity).mutation((api as any).functions.admissions.settings.addDraftField, { formVersionId: draft, fieldKey: "medical-history", sectionKey: "support", kind: "textarea", label: "Medical history", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "support planning", retentionPolicyKey: "admissions-v1", audience: "admissions-reviewers", approvalEvidenceId: evidence, validationJson: "{}", order: 1 });
+    await t.run((ctx) => ctx.db.patch(evidence, { expiresAt: Date.now() - 1 }));
+    await expect(t.withIdentity(identity).mutation((api as any).functions.admissions.settings.publishForm, { formVersionId: draft })).rejects.toThrow("Sensitive configuration approval is unavailable");
+  });
+
   test("verified refund voids the entitlement and places a durable finance hold on a consumed application", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const paid = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
@@ -205,6 +248,35 @@ describe("B1 admissions domain", () => {
     expect(await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal })).toEqual({ entitlementId: null, replayed: false });
     expect(await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal })).toEqual({ entitlementId: null, replayed: true });
     expect(await t.run((ctx) => ctx.db.get(ids.attempt))).toMatchObject({ state: "reversed" });
+  });
+
+  test("a delayed success cannot resurrect a reversed attempt", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const reversal = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: ids.attempt, provider: "paystack", providerMode: "test", providerEventId: "reverse-first", eventType: "charge.reversed", bodyDigest: "reverse", signatureValid: true, processingStatus: "verified", receivedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal });
+    const delayed = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    expect(delayed).toEqual({ entitlementId: null, replayed: true });
+    expect(await t.run((ctx) => ctx.db.get(ids.attempt))).toMatchObject({ state: "reversed" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", ids.attempt)).take(2))).toEqual([]);
+  });
+
+  test("refund remains terminal across repeated mixed-order payment events", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const refund = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: ids.attempt, provider: "paystack", providerMode: "test", providerEventId: "refund-first", eventType: "refund.processed", bodyDigest: "refund", signatureValid: true, processingStatus: "verified", receivedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+    const pending = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: ids.attempt, provider: "paystack", providerMode: "test", providerEventId: "pending-late", eventType: "charge.pending", bodyDigest: "pending", signatureValid: true, processingStatus: "verified", receivedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: refund });
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: pending });
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    expect(await t.run((ctx) => ctx.db.get(ids.attempt))).toMatchObject({ state: "refunded" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", ids.attempt)).take(2))).toEqual([]);
+  });
+
+  test("owned receipt state remains truthful after a terminal finance event", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    await t.run((ctx) => ctx.db.patch(ids.attempt, { state: "chargeback", updatedAt: Date.now() }));
+    const receipt = await t.withIdentity(guardianIdentity).action((api as any).functions.admissions.payments.verifyReturn, { attemptId: ids.attempt });
+    expect(receipt).toEqual({ state: "chargeback", entitlementId: null });
   });
 
   test("Better Auth verification evidence unlocks a newly created guardian without client input", async () => {
