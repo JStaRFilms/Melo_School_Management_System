@@ -52,6 +52,20 @@ describe("B1 admissions domain", () => {
     await expect(t.withIdentity({ subject: "other", tokenIdentifier: "issuer|other", issuer: "issuer", email: "other@example.test" }).mutation((api as any).functions.admissions.documents.getOwnAccess, { documentKey: "missing", action: "view" })).rejects.toThrow("Verification required");
   });
 
+  test("real scoped grants do not cross tenants or unlock sensitive documents", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const staffIdentity = { subject: "scoped", tokenIdentifier: "issuer|scoped", issuer: "issuer", auth_time: Math.floor(Date.now() / 1000) };
+    const staff = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolB, authId: staffIdentity.subject, authTokenIdentifier: staffIdentity.tokenIdentifier, name: "Scoped", email: "scoped@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolB, userId: staff, capability: "applications.view_basic", scope: "school", grantedByUserId: staff, reason: "other tenant", isBreakGlass: false, createdAt: Date.now() }));
+    await expect(t.withIdentity(staffIdentity).query((api as any).functions.admissions.staff.getApplicationDetail, { applicationId: application.applicationId })).rejects.toThrow("Not found or access denied");
+    await t.run(async (ctx) => { await ctx.db.patch(staff, { schoolId: ids.schoolA, updatedAt: Date.now() }); await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: staff, capability: "documents.review", scope: "intake", intakeId: ids.intake, grantedByUserId: staff, reason: "document metadata only", isBreakGlass: false, createdAt: Date.now() }); });
+    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["identity"], { type: "image/jpeg" })));
+    await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, category: "identity", documentKey: "doc_sensitive", storageId, fileName: "identity.jpg", mimeType: "image/jpeg", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "highly_sensitive", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(staffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).rejects.toThrow("Not found or access denied");
+  });
+
   test("document ownership denies a different verified guardian", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
@@ -76,6 +90,8 @@ describe("B1 admissions domain", () => {
     await t.withIdentity(staff).mutation((api as any).functions.admissions.staff.recordDecision, { applicationId: application.applicationId, state: "accepted", reasonCode: "approved", guardianMessage: "accepted" });
     const classId = await t.run((ctx) => ctx.db.insert("classes", { schoolId: ids.schoolA, name: "P1", level: "P1", createdAt: Date.now(), updatedAt: Date.now() }));
     const args = { applicationId: application.applicationId, classId, admissionNumber: "ADM-1", idempotencyKey: "convert-1" };
+    await expect(t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, args)).rejects.toThrow("CONVERSION_RESOLUTION_REQUIRED");
+    await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.resolveConversion, { applicationId: application.applicationId, parentMode: "create", familyMode: "create", studentMode: "create", reason: "Create distinct records for this accepted child" });
     const first = await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, args);
     const replay = await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, args);
     expect(replay.replayed).toBe(true); expect(replay.studentId).toBe(first.studentId);
@@ -152,6 +168,43 @@ describe("B1 admissions domain", () => {
     const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: controlling, expectedVersion: 1, valueType: "select", serializedValue: "no" });
     await t.run((ctx) => ctx.db.patch(application.applicationId, { state: "changes_requested", changeRequestFieldKeys: ["support-needed"], changeRequestRequirementKeys: [], updatedAt: Date.now() }));
     await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: conditional, expectedVersion: version, valueType: "text", serializedValue: "still blocked" })).rejects.toThrow("ANSWER_NOT_APPLICABLE");
+  });
+
+  test("change requests lock unrelated core fields", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "Locked", dateOfBirth: 1 });
+    await t.run((ctx) => ctx.db.patch(application.applicationId, { state: "changes_requested", changeRequestCoreKeys: ["firstName"], changeRequestFieldKeys: [], changeRequestRequirementKeys: [], updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: version, firstName: "Allowed", lastName: "Changed illegally", dateOfBirth: 1 })).rejects.toThrow("CORE_FIELD_LOCKED");
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: version, firstName: "Allowed", lastName: "Locked", dateOfBirth: 1 })).resolves.toBe(version + 1);
+  });
+
+  test("rejects client serialization type spoofing", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const field = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "age", sectionKey: "child", kind: "number", label: "Age", requiredMode: "optional", dataClass: "personal", validationJson: JSON.stringify({ min: 1 }), order: 1, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: field, expectedVersion: 1, valueType: "text", serializedValue: "not-a-number" })).rejects.toThrow("ANSWER_INVALID");
+  });
+
+  test("rejected required documents cannot satisfy submission", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const requirement = await t.run((ctx) => ctx.db.insert("admissionsDocumentRequirements", { schoolId: ids.schoolA, formVersionId: ids.form, requirementKey: "identity", category: "identity", label: "Identity", requiredMode: "required", acceptedMimeTypes: ["image/jpeg"], maxBytes: 100, maxFiles: 1, sensitivity: "highly_sensitive", purpose: "identity", order: 1, createdAt: Date.now(), updatedAt: Date.now() }));
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
+    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["x"], { type: "image/jpeg" })));
+    await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, requirementId: requirement, category: "identity", documentKey: "doc_rejected", storageId, fileName: "id.jpg", mimeType: "image/jpeg", byteSize: 1, sha256: "digest", version: 1, state: "rejected", sensitivity: "highly_sensitive", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true })).rejects.toThrow("APPLICATION_INCOMPLETE");
+  });
+
+  test("reversal before fulfilment is durable and replay-safe", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const reversal = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: ids.attempt, provider: "paystack", providerMode: "test", providerEventId: "reverse-before-paid", eventType: "charge.reversed", bodyDigest: "reverse", signatureValid: true, processingStatus: "verified", receivedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+    expect(await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal })).toEqual({ entitlementId: null, replayed: false });
+    expect(await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: reversal })).toEqual({ entitlementId: null, replayed: true });
+    expect(await t.run((ctx) => ctx.db.get(ids.attempt))).toMatchObject({ state: "reversed" });
   });
 
   test("illegal decision state is rejected", async () => {

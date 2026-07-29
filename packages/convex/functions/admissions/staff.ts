@@ -12,6 +12,13 @@ async function applicationAndStaff(ctx: any, applicationId: any, capability: any
   return { application, membership };
 }
 
+const changeRequestCoreItems = [
+  ["firstName", "Legal first name"], ["lastName", "Legal last name"], ["middleName", "Middle name"],
+  ["preferredName", "Preferred name"], ["dateOfBirth", "Date of birth"], ["gender", "Gender"],
+  ["nationality", "Nationality"], ["countryOfBirth", "Country of birth"], ["address", "Address"],
+  ["requestedEntryLabel", "Requested entry"],
+] as const;
+
 function isRestrictedDocument(document: { category: string; sensitivity: string }) {
   return document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security" || /medical|health|identity|passport|birth|government/i.test(document.category);
 }
@@ -142,29 +149,30 @@ export const getDocumentAccess = mutation({
 /** Server-selected whitelist for a guardian correction request; staff never type opaque field IDs. */
 export const listChangeRequestItems = query({
   args: { applicationId: v.id("admissionsApplications") },
-  returns: v.object({ fields: v.array(v.object({ key: v.string(), label: v.string() })), requirements: v.array(v.object({ key: v.string(), label: v.string() })) }),
+  returns: v.object({ core: v.array(v.object({ key: v.string(), label: v.string() })), fields: v.array(v.object({ key: v.string(), label: v.string() })), requirements: v.array(v.object({ key: v.string(), label: v.string() })) }),
   handler: async (ctx, args) => {
     const { application } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
     const [fields, requirements] = await Promise.all([
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
     ]);
-    return { fields: fields.filter((field) => field.status === "active").map((field) => ({ key: field.fieldKey, label: field.label })), requirements: requirements.map((requirement) => ({ key: requirement.requirementKey, label: requirement.label })) };
+    return { core: changeRequestCoreItems.map(([key, label]) => ({ key, label })), fields: fields.filter((field) => field.status === "active").map((field) => ({ key: field.fieldKey, label: field.label })), requirements: requirements.map((requirement) => ({ key: requirement.requirementKey, label: requirement.label })) };
   },
 });
 
 export const requestChanges = mutation({
-  args: { applicationId: v.id("admissionsApplications"), message: v.string(), reasonCode: v.optional(v.string()), fieldKeys: v.array(v.string()), requirementKeys: v.array(v.string()) },
+  args: { applicationId: v.id("admissionsApplications"), message: v.string(), reasonCode: v.optional(v.string()), coreKeys: v.optional(v.array(v.string())), fieldKeys: v.array(v.string()), requirementKeys: v.array(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { application, membership } = await applicationAndStaff(ctx, args.applicationId, "reviews.record");
-    if ((application.state !== "submitted" && application.state !== "under_review") || !args.message.trim() || args.message.trim().length > 4_000 || args.fieldKeys.length + args.requirementKeys.length < 1 || args.fieldKeys.length > 200 || args.requirementKeys.length > 100 || new Set(args.fieldKeys).size !== args.fieldKeys.length || new Set(args.requirementKeys).size !== args.requirementKeys.length) throw new ConvexError("Invalid application transition");
+    const coreKeys = args.coreKeys ?? [];
+    if ((application.state !== "submitted" && application.state !== "under_review") || !args.message.trim() || args.message.trim().length > 4_000 || coreKeys.length + args.fieldKeys.length + args.requirementKeys.length < 1 || coreKeys.length > changeRequestCoreItems.length || args.fieldKeys.length > 200 || args.requirementKeys.length > 100 || new Set(coreKeys).size !== coreKeys.length || new Set(args.fieldKeys).size !== args.fieldKeys.length || new Set(args.requirementKeys).size !== args.requirementKeys.length) throw new ConvexError("Invalid application transition");
     const [fields, requirements] = await Promise.all([
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
     ]);
-    if (args.fieldKeys.some((key) => !fields.some((field) => field.fieldKey === key && field.status === "active")) || args.requirementKeys.some((key) => !requirements.some((requirement) => requirement.requirementKey === key))) throw new ConvexError("Invalid application transition");
-    const now = Date.now(); await ctx.db.patch(application._id, { state: "changes_requested", changeRequestFieldKeys: args.fieldKeys, changeRequestRequirementKeys: args.requirementKeys, updatedAt: now });
+    if (coreKeys.some((key) => !changeRequestCoreItems.some(([allowed]) => allowed === key)) || args.fieldKeys.some((key) => !fields.some((field) => field.fieldKey === key && field.status === "active")) || args.requirementKeys.some((key) => !requirements.some((requirement) => requirement.requirementKey === key))) throw new ConvexError("Invalid application transition");
+    const now = Date.now(); await ctx.db.patch(application._id, { state: "changes_requested", changeRequestCoreKeys: coreKeys, changeRequestFieldKeys: args.fieldKeys, changeRequestRequirementKeys: args.requirementKeys, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "changes_requested", visibility: "guardian", message: args.message.trim(), ...(args.reasonCode?.trim() ? { reasonCode: args.reasonCode.trim() } : {}), createdAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "application.changes_requested", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success" }); return null;
   },

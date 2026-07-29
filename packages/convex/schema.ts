@@ -489,6 +489,7 @@ export default defineSchema({
     /** Additive operational pointer; historical applications remain valid. */
     activeFinanceHoldId: v.optional(v.id("admissionsFinanceHolds")),
     /** Named guardian-editable items from the active change request. */
+    changeRequestCoreKeys: v.optional(v.array(v.string())),
     changeRequestFieldKeys: v.optional(v.array(v.string())),
     changeRequestRequirementKeys: v.optional(v.array(v.string())),
     financeBlockedReason: v.optional(v.string()),
@@ -628,6 +629,24 @@ export default defineSchema({
     .index("by_application_and_version", ["applicationId", "version"])
     .index("by_school_and_state_and_decided_at", ["schoolId", "state", "decidedAt"])
     .index("by_school_and_decided_by_and_decided_at", ["schoolId", "decidedBy", "decidedAt"]),
+
+  admissionsConversionResolutions: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    parentMode: v.union(v.literal("create"), v.literal("existing")),
+    parentUserId: v.optional(v.id("users")),
+    familyMode: v.union(v.literal("create"), v.literal("existing")),
+    familyId: v.optional(v.id("families")),
+    studentMode: v.union(v.literal("create"), v.literal("existing")),
+    existingStudentId: v.optional(v.id("students")),
+    guardianAuthTokenIdentifier: v.string(),
+    resolvedByUserId: v.id("users"),
+    reason: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationId"])
+    .index("by_school_and_updated_at", ["schoolId", "updatedAt"]),
 
   admissionsConversions: defineTable({
     schoolId: v.id("schools"),

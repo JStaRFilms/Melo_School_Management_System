@@ -33,7 +33,7 @@ function extractPayloadMetadata(payload: any) {
     invoiceId: normalizeWebhookText(metadata.invoiceId),
     invoiceNumber: normalizeWebhookText(metadata.invoiceNumber),
     gatewayReference: normalizeWebhookText(
-      data.reference ?? data.gateway_reference ?? payload?.reference
+      data.reference ?? data.gateway_reference ?? data?.transaction?.reference ?? payload?.reference
     ),
     providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? payload?.paymentProviderMode),
     amountReceived:
@@ -53,7 +53,7 @@ function extractPayloadMetadata(payload: any) {
 
 function buildPaystackEventId(payload: any) {
   const data = payload?.data ?? {};
-  const reference = normalizeWebhookText(data.reference ?? payload?.reference) ?? "unknown";
+  const reference = normalizeWebhookText(data.reference ?? data?.transaction?.reference ?? payload?.reference) ?? "unknown";
   const eventMarker = normalizeWebhookText(data.id ?? payload?.event_id) ?? reference;
   return `paystack:${eventMarker}`;
 }
@@ -191,17 +191,14 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
 
   if (referenceContext.domain === "admissions") {
     const receipt = payload?.data ?? {};
-    const amountMinor = typeof receipt.amount === "number" && Number.isInteger(receipt.amount)
-      ? receipt.amount
-      : null;
-    const currency = normalizeWebhookText(receipt.currency)?.toUpperCase();
-    if (
-      eventType !== "charge.success" ||
-      receipt.status !== "success" ||
-      amountMinor !== referenceContext.amountMinor ||
-      currency !== referenceContext.currency.toUpperCase()
-    ) {
-      return jsonResponse({ ok: false, message: "Webhook payment receipt does not match the expected successful admissions payment." }, 400);
+    const supported = new Set(["charge.success", "charge.failed", "charge.pending", "refund.pending", "refund.processed", "refund.failed", "charge.refund", "charge.reversed", "charge.reversal", "chargeback.created", "chargeback.resolved", "charge.dispute.create", "charge.dispute.remind", "charge.dispute.resolve"]);
+    if (!supported.has(eventType)) return jsonResponse({ ok: false, message: "Unsupported admissions payment event." }, 400);
+    if (eventType === "charge.success") {
+      const amountMinor = typeof receipt.amount === "number" && Number.isInteger(receipt.amount) ? receipt.amount : null;
+      const currency = normalizeWebhookText(receipt.currency)?.toUpperCase();
+      if (receipt.status !== "success" || amountMinor !== referenceContext.amountMinor || currency !== referenceContext.currency.toUpperCase()) {
+        return jsonResponse({ ok: false, message: "Webhook payment receipt does not match the expected successful admissions payment." }, 400);
+      }
     }
   }
 
@@ -231,8 +228,8 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
       }
     );
   } else {
-    // Admissions payloads never persist raw webhook bodies. Only a signed,
-    // successful receipt with the persisted amount/currency can be fulfilled.
+    // Admissions payloads never persist raw webhook bodies. Supported signed
+    // finance lifecycle events are reduced to a digest and replay ledger.
     const recorded: any = await ctx.runMutation(
       (internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal,
       {

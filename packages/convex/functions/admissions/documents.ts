@@ -13,6 +13,7 @@ export const createUploadUrl = mutation({
     assertEditable(application.state);
     const requirement = await ctx.db.get(args.requirementId);
     if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId) throw new ConvexError("Not found or access denied");
+    if (application.state === "changes_requested" && !(application.changeRequestRequirementKeys ?? []).includes(requirement.requirementKey)) throw new ConvexError("DOCUMENT_REQUIREMENT_LOCKED");
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -28,11 +29,12 @@ export const bindUpload = mutation({
       ctx.db.query("admissionsDocuments").withIndex("by_storage", (q) => q.eq("storageId", args.storageId)).unique(),
     ]);
     if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId || bound) throw new ConvexError("DOCUMENT_UNAVAILABLE");
+    if (application.state === "changes_requested" && !(application.changeRequestRequirementKeys ?? []).includes(requirement.requirementKey)) throw new ConvexError("DOCUMENT_REQUIREMENT_LOCKED");
     const metadata = await ctx.db.system.get(args.storageId);
     const contentType = metadata?.contentType?.trim();
     if (!metadata || !contentType || !requirement.acceptedMimeTypes.includes(contentType) || typeof metadata.size !== "number" || metadata.size > requirement.maxBytes) throw new ConvexError("DOCUMENT_UNAVAILABLE");
     const prior = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id).eq("requirementId", requirement._id)).take(100);
-    const activeCount = prior.filter((document) => document.state !== "deleted" && document.state !== "superseded").length;
+    const activeCount = prior.filter((document) => document.state === "uploaded" || document.state === "accepted").length;
     if (activeCount >= requirement.maxFiles) {
       // A new upload supersedes the current version only when the configured rule permits one file.
       if (requirement.maxFiles !== 1) throw new ConvexError("DOCUMENT_LIMIT_REACHED");

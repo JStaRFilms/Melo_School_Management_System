@@ -159,6 +159,26 @@ export const getGuardianWorkspace = query({
   },
 });
 
+/** Owner-authorized projection of the exact immutable versions bound at reservation. */
+export const getApplicationConfiguration = query({
+  args: { schoolSlug: v.string(), publicReference: v.string() },
+  returns: v.object({ fields: v.array(publicFieldValidator), requirements: v.array(publicRequirementValidator), declaration: v.object({ version: v.number(), title: v.string(), body: v.string(), purpose: v.string() }) }),
+  handler: async (ctx, args) => {
+    const { application } = await requireOwnedPublicApplication(ctx, args);
+    const [form, declaration, fieldRows, requirementRows]: [any, any, any[], any[]] = await Promise.all([
+      ctx.db.get(application.formVersionId), ctx.db.get(application.declarationVersionId),
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(200),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(100),
+    ]);
+    if (!form || !declaration || form.schoolId !== application.schoolId || declaration.schoolId !== application.schoolId) throw new ConvexError("APPLICATION_INCOMPLETE");
+    return {
+      fields: fieldRows.filter((field: any) => field.status === "active").map((field: any) => ({ key: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, helpText: field.helpText ?? null, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, validation: field.validationJson, conditionalRule: field.conditionalRuleJson ?? null, order: field.order })),
+      requirements: requirementRows.map((requirement: any) => ({ key: requirement.requirementKey, category: requirement.category, label: requirement.label, requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: requirement.purpose, condition: requirement.conditionJson ?? null, order: requirement.order })),
+      declaration: { version: declaration.version, title: declaration.title, body: declaration.body, purpose: declaration.purpose },
+    };
+  },
+});
+
 export const getGuardianApplication = query({
   args: { schoolSlug: v.string(), publicReference: v.string() },
   returns: v.object({
@@ -166,16 +186,23 @@ export const getGuardianApplication = query({
     profile: v.union(v.null(), v.object({ firstName: v.string(), lastName: v.string(), middleName: v.union(v.string(), v.null()), preferredName: v.union(v.string(), v.null()), dateOfBirth: v.number(), gender: v.union(v.string(), v.null()), nationality: v.union(v.string(), v.null()), countryOfBirth: v.union(v.string(), v.null()), address: v.union(v.string(), v.null()), requestedEntryLabel: v.union(v.string(), v.null()) })),
     answers: v.array(v.object({ fieldKey: v.string(), valueType: v.string(), serializedValue: v.string(), dataClass: v.string() })),
     messages: v.array(v.object({ eventType: v.string(), reasonCode: v.union(v.string(), v.null()), message: v.union(v.string(), v.null()), createdAt: v.number() })),
+    permittedEdits: v.object({ coreKeys: v.array(v.string()), fieldKeys: v.array(v.string()), requirementKeys: v.array(v.string()) }),
+    documents: v.array(v.object({ documentKey: v.string(), requirementKey: v.union(v.string(), v.null()), fileName: v.string(), state: v.string(), version: v.number(), updatedAt: v.number() })),
+    contacts: v.array(v.object({ contactKey: v.string(), kind: v.string(), fullName: v.string(), relationship: v.string(), email: v.union(v.string(), v.null()), phone: v.union(v.string(), v.null()), address: v.union(v.string(), v.null()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() })),
     conversionState: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
     const intake: any = await ctx.db.get(application.intakeId);
-    const [profile, answers, events, conversion] = await Promise.all([
+    const [profile, answers, events, conversion, documents, contacts, requirements, configuredFields] = await Promise.all([
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q: any) => q.eq("applicationId", application._id)).unique(),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q: any) => q.eq("applicationId", application._id)).take(200),
       ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q: any) => q.eq("applicationId", application._id)).order("desc").take(100),
       application.conversionId ? ctx.db.get(application.conversionId) as Promise<any> : null,
+      ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q: any) => q.eq("applicationId", application._id)).order("desc").take(200),
+      ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q: any) => q.eq("applicationId", application._id)).take(100),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(100),
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(200),
     ]);
     if (!intake || intake.schoolId !== application.schoolId) throw new ConvexError("Not found or access denied");
     const editable = application.state === "draft" || application.state === "changes_requested";
@@ -185,6 +212,9 @@ export const getGuardianApplication = query({
       profile: profile ? { firstName: profile.firstName, lastName: profile.lastName, middleName: profile.middleName ?? null, preferredName: profile.preferredName ?? null, dateOfBirth: profile.dateOfBirth, gender: profile.gender ?? null, nationality: profile.nationality ?? null, countryOfBirth: profile.countryOfBirth ?? null, address: profile.address ?? null, requestedEntryLabel: application.requestedEntryLabel ?? null } : null,
       answers: answers.map((answer: any) => ({ fieldKey: answer.fieldKey, valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass })),
       messages: events.filter((event: any) => event.visibility === "guardian").map((event: any) => ({ eventType: event.eventType, reasonCode: event.reasonCode ?? null, message: event.message ?? null, createdAt: event.createdAt })),
+      permittedEdits: { coreKeys: application.state === "changes_requested" ? application.changeRequestCoreKeys ?? [] : ["firstName", "lastName", "middleName", "preferredName", "dateOfBirth", "gender", "nationality", "countryOfBirth", "address", "requestedEntryLabel"], fieldKeys: application.state === "changes_requested" ? application.changeRequestFieldKeys ?? [] : configuredFields.filter((field: any) => field.status === "active").map((field: any) => field.fieldKey), requirementKeys: application.state === "changes_requested" ? application.changeRequestRequirementKeys ?? [] : requirements.map((requirement: any) => requirement.requirementKey) },
+      documents: documents.map((document: any) => ({ documentKey: document.documentKey, requirementKey: requirements.find((requirement: any) => requirement._id === document.requirementId)?.requirementKey ?? null, fileName: document.fileName, state: document.state, version: document.version, updatedAt: document.updatedAt })),
+      contacts: contacts.map((contact: any) => ({ contactKey: contact.contactKey, kind: contact.kind, fullName: contact.fullName, relationship: contact.relationship, email: contact.email ?? null, phone: contact.phone ?? null, address: contact.address ?? null, isApplicantGuardian: contact.isApplicantGuardian, isPrimary: contact.isPrimary })),
       conversionState: conversion?.state ?? null,
     };
   },
@@ -311,6 +341,23 @@ export const bindUploadByPublicReference = mutation({
     const result: any = await ctx.runMutation((api as any).functions.admissions.documents.bindUpload, { applicationId: application._id, requirementId: requirement._id, storageId: args.storageId, fileName: args.fileName });
     return { state: result.state, version: result.version };
   },
+});
+
+export const saveContactByPublicReference = mutation({
+  args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
+  returns: v.number(),
+  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); return await ctx.runMutation((api as any).functions.admissions.applications.saveContact, { ...args, applicationId: application._id }); },
+});
+
+export const withdrawByPublicReference = mutation({
+  args: { schoolSlug: v.string(), publicReference: v.string(), reason: v.string() }, returns: v.null(),
+  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); return await ctx.runMutation((api as any).functions.admissions.applications.withdraw, { applicationId: application._id, reason: args.reason }); },
+});
+
+export const getOwnDocumentAccessByPublicReference = mutation({
+  args: { schoolSlug: v.string(), publicReference: v.string(), documentKey: v.string(), action: v.union(v.literal("view"), v.literal("download")) },
+  returns: v.union(v.object({ status: v.literal("available"), documentKey: v.string(), url: v.string(), expiresAt: v.null() }), v.object({ status: v.literal("unavailable"), documentKey: v.string() })),
+  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q: any) => q.eq("documentKey", args.documentKey)).unique(); if (!document || document.applicationId !== application._id) return { status: "unavailable" as const, documentKey: args.documentKey }; return await ctx.runMutation((api as any).functions.admissions.documents.getOwnAccess, { documentKey: args.documentKey, action: args.action }); },
 });
 
 export const saveCoreByPublicReference = mutation({

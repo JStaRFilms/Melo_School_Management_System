@@ -91,8 +91,12 @@ export const verifyReturn = action({
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_verification" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
     const receipt = await createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode }).verifyPayment(attempt.reference);
-    if (receipt.status !== "success" || Math.round(receipt.amount * 100) !== attempt.amountMinor || receipt.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
-      await ctx.runMutation((internal as any).functions.admissions.payments.recordManualAttention, { attemptId: attempt.attemptId, reasonCode: "RECEIPT_MISMATCH_OR_UNRESOLVED" });
+    if (receipt.status !== "success") {
+      await ctx.runMutation((internal as any).functions.admissions.payments.recordAttemptOutcome, { attemptId: attempt.attemptId, state: receipt.status === "failed" ? "failed" : "verification_pending", reasonCode: `RECEIPT_${String(receipt.status).toUpperCase()}` });
+      return { state: receipt.status === "failed" ? "failed" : "verification_pending", entitlementId: null };
+    }
+    if (Math.round(receipt.amount * 100) !== attempt.amountMinor || receipt.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
+      await ctx.runMutation((internal as any).functions.admissions.payments.recordManualAttention, { attemptId: attempt.attemptId, reasonCode: "RECEIPT_MISMATCH" });
       return { state: "manual_attention", entitlementId: null };
     }
     const event: any = await ctx.runMutation((internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal, {
@@ -104,7 +108,13 @@ export const verifyReturn = action({
   },
 });
 
-/** A redirect/receipt mismatch is durable and truthful: it never grants a slot. */
+export const recordAttemptOutcome = internalMutation({
+  args: { attemptId: v.id("admissionsPurchaseAttempts"), state: v.union(v.literal("failed"), v.literal("verification_pending")), reasonCode: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => { const attempt = await ctx.db.get(args.attemptId); if (attempt && !["paid", "refunded", "reversed"].includes(attempt.state)) await ctx.db.patch(attempt._id, { state: args.state, failureCode: args.reasonCode.slice(0, 128), updatedAt: Date.now() }); return null; },
+});
+
+/** A receipt mismatch is durable and truthful: it never grants a slot. */
 export const recordManualAttention = internalMutation({
   args: { attemptId: v.id("admissionsPurchaseAttempts"), reasonCode: v.string() },
   returns: v.null(),
@@ -152,19 +162,31 @@ export const initializeAttempt = action({
 /** B1-only entitlement fulfilment. A B0 verified envelope is consumed once, and replays return the same entitlement. */
 export const fulfilVerifiedEvent = internalMutation({
   args: { paymentEventId: v.id("admissionsPaymentEvents") },
-  returns: v.object({ entitlementId: v.id("admissionsEntitlements"), replayed: v.boolean() }),
+  returns: v.object({ entitlementId: v.union(v.id("admissionsEntitlements"), v.null()), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.paymentEventId);
     if (!event || !event.signatureValid || (event.processingStatus !== "verified" && event.processingStatus !== "processed")) throw new ConvexError("Verified payment event required");
     const attempt = await ctx.db.get(event.purchaseAttemptId);
     if (!attempt || attempt.schoolId !== event.schoolId || attempt.provider !== event.provider || attempt.providerMode !== event.providerMode) throw new ConvexError("Payment dispatch context mismatch");
     const existing = await ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt._id)).unique();
-    const normalizedEvent = event.eventType.toLowerCase();
-    const reversalState = normalizedEvent.includes("refund") ? "refunded" : normalizedEvent.includes("reversal") || normalizedEvent.includes("chargeback") || normalizedEvent.includes("dispute") ? "reversed" : null;
+    const normalizedEvent = event.eventType.trim().toLowerCase();
+    const successEvents = new Set(["charge.success", "payment.receipt_verified"]);
+    const pendingEvents = new Set(["charge.pending", "refund.pending"]);
+    const failedEvents = new Set(["charge.failed", "refund.failed"]);
+    const refundEvents = new Set(["refund.processed", "charge.refund"]);
+    const reversalEvents = new Set(["charge.reversed", "charge.reversal", "chargeback.created", "chargeback.resolved", "charge.dispute.create", "charge.dispute.remind", "charge.dispute.resolve"]);
+    if (event.processingStatus === "processed") return { entitlementId: existing?._id ?? null, replayed: true };
+    if (pendingEvents.has(normalizedEvent) || failedEvents.has(normalizedEvent)) {
+      const now = Date.now(); const state = failedEvents.has(normalizedEvent) ? "failed" : "verification_pending";
+      if (attempt.state !== "paid" && attempt.state !== "refunded" && attempt.state !== "reversed") await ctx.db.patch(attempt._id, { state, failureCode: normalizedEvent.slice(0, 128), updatedAt: now });
+      await ctx.db.patch(event._id, { processingStatus: "processed", processingMessage: state, processedAt: now, updatedAt: now });
+      return { entitlementId: existing?._id ?? null, replayed: false };
+    }
+    const reversalState = refundEvents.has(normalizedEvent) ? "refunded" : reversalEvents.has(normalizedEvent) ? "reversed" : null;
     if (reversalState) {
       const now = Date.now();
       await ctx.db.patch(attempt._id, { state: reversalState, failureCode: normalizedEvent.slice(0, 128), updatedAt: now });
-      if (!existing) { await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: now, updatedAt: now }); throw new ConvexError("Verified finance event has no entitlement"); }
+      if (!existing) { await ctx.db.patch(event._id, { processingStatus: "processed", processingMessage: "No entitlement had been issued", processedAt: now, updatedAt: now }); return { entitlementId: null, replayed: false }; }
       const entitlementState = reversalState === "refunded" ? "refunded" : "revoked";
       await ctx.db.patch(existing._id, { state: entitlementState, voidReason: normalizedEvent.slice(0, 128), updatedAt: now });
       if (existing.applicationId) {
@@ -177,13 +199,17 @@ export const fulfilVerifiedEvent = internalMutation({
       }
       await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: now, updatedAt: now });
       await audit({ ctx, schoolId: attempt.schoolId, actor: { kind: "system" }, action: "payment.entitlement_voided", entityType: "entitlement", entityId: String(existing._id), ...(existing.applicationId ? { applicationId: existing.applicationId } : {}), outcome: "success", reasonCode: reversalState });
-      return { entitlementId: existing._id, replayed: event.processingStatus === "processed" };
+      return { entitlementId: existing._id, replayed: false };
+    }
+    if (!successEvents.has(normalizedEvent)) {
+      const now = Date.now();
+      await ctx.db.patch(event._id, { processingStatus: "rejected", processingMessage: "Unsupported admissions payment event", processedAt: now, updatedAt: now });
+      return { entitlementId: existing?._id ?? null, replayed: false };
     }
     if (existing) {
-      if (event.processingStatus !== "processed") await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: Date.now(), updatedAt: Date.now() });
+      await ctx.db.patch(event._id, { processingStatus: "processed", processedAt: Date.now(), updatedAt: Date.now() });
       return { entitlementId: existing._id, replayed: true };
     }
-    if (event.processingStatus !== "verified") throw new ConvexError("Verified payment event required");
     const product: any = await ctx.db.get(attempt.productId);
     if (!product || product.schoolId !== attempt.schoolId) throw new ConvexError("Payment dispatch context mismatch");
     const now = Date.now();

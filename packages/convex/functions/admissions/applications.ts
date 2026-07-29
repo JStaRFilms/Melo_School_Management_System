@@ -65,10 +65,18 @@ export const saveCoreSection = mutation({
     if (!args.firstName.trim() || !args.lastName.trim() || !Number.isFinite(args.dateOfBirth) || args.dateOfBirth <= 0) throw new ConvexError("APPLICATION_INCOMPLETE");
     const now = Date.now();
     const existing = await ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique();
-    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName: args.firstName.trim(), lastName: args.lastName.trim(), dateOfBirth: args.dateOfBirth, normalizedName: `${args.firstName} ${args.lastName}`.trim().toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(args.middleName?.trim() ? { middleName: args.middleName.trim() } : {}), ...(args.preferredName?.trim() ? { preferredName: args.preferredName.trim() } : {}), ...(args.gender?.trim() ? { gender: args.gender.trim() } : {}), ...(args.nationality?.trim() ? { nationality: args.nationality.trim() } : {}), ...(args.countryOfBirth?.trim() ? { countryOfBirth: args.countryOfBirth.trim() } : {}), ...(args.address?.trim() ? { address: args.address.trim() } : {}) };
+    const optional = (value: string | undefined, current: string | undefined) => value === undefined ? current : value.trim() || undefined;
+    const resolvedOptional = { middleName: optional(args.middleName, existing?.middleName), preferredName: optional(args.preferredName, existing?.preferredName), gender: optional(args.gender, existing?.gender), nationality: optional(args.nationality, existing?.nationality), countryOfBirth: optional(args.countryOfBirth, existing?.countryOfBirth), address: optional(args.address, existing?.address), requestedEntryLabel: optional(args.requestedEntryLabel, application.requestedEntryLabel) };
+    if (application.state === "changes_requested") {
+      const allowed = new Set(application.changeRequestCoreKeys ?? []);
+      const proposed: Record<string, unknown> = { firstName: args.firstName.trim(), lastName: args.lastName.trim(), dateOfBirth: args.dateOfBirth, ...resolvedOptional };
+      const current: Record<string, unknown> = { firstName: existing?.firstName, lastName: existing?.lastName, dateOfBirth: existing?.dateOfBirth, middleName: existing?.middleName, preferredName: existing?.preferredName, gender: existing?.gender, nationality: existing?.nationality, countryOfBirth: existing?.countryOfBirth, address: existing?.address, requestedEntryLabel: application.requestedEntryLabel };
+      if (Object.keys(proposed).some((key) => proposed[key] !== current[key] && !allowed.has(key))) throw new ConvexError("CORE_FIELD_LOCKED");
+    }
+    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName: args.firstName.trim(), lastName: args.lastName.trim(), dateOfBirth: args.dateOfBirth, normalizedName: `${args.firstName} ${args.lastName}`.trim().toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(resolvedOptional.middleName ? { middleName: resolvedOptional.middleName } : {}), ...(resolvedOptional.preferredName ? { preferredName: resolvedOptional.preferredName } : {}), ...(resolvedOptional.gender ? { gender: resolvedOptional.gender } : {}), ...(resolvedOptional.nationality ? { nationality: resolvedOptional.nationality } : {}), ...(resolvedOptional.countryOfBirth ? { countryOfBirth: resolvedOptional.countryOfBirth } : {}), ...(resolvedOptional.address ? { address: resolvedOptional.address } : {}) };
     if (existing) await ctx.db.replace(existing._id, profile); else await ctx.db.insert("admissionsApplicantProfiles", profile);
     const nextVersion = application.draftVersion + 1;
-    await ctx.db.patch(application._id, { draftVersion: nextVersion, requestedEntryLabel: args.requestedEntryLabel?.trim() || undefined, updatedAt: now });
+    await ctx.db.patch(application._id, { draftVersion: nextVersion, requestedEntryLabel: resolvedOptional.requestedEntryLabel, updatedAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "application.core_saved", entityType: "application", entityId: String(application._id), applicationId: application._id, outcome: "success" });
     return nextVersion;
   },
@@ -102,6 +110,27 @@ export const saveAnswer = mutation({
   },
 });
 
+export const saveContact = mutation({
+  args: { applicationId: v.id("admissionsApplications"), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
+    assertEditable(application.state);
+    if (application.draftVersion !== args.expectedVersion) throw new ConvexError("DRAFT_VERSION_CONFLICT");
+    const key = args.contactKey.trim().toLowerCase();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || !args.fullName.trim() || !args.relationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
+    if (application.state === "changes_requested" && !(application.changeRequestCoreKeys ?? []).includes(`contact:${key}`)) throw new ConvexError("CORE_FIELD_LOCKED");
+    const existing = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id).eq("contactKey", key)).unique();
+    const now = Date.now();
+    const row = { schoolId: application.schoolId, applicationId: application._id, contactKey: key, kind: args.kind, fullName: args.fullName.trim(), relationship: args.relationship.trim(), ...(args.email?.trim() ? { email: args.email.trim().toLowerCase() } : {}), ...(args.phone?.trim() ? { phone: args.phone.trim() } : {}), ...(args.address?.trim() ? { address: args.address.trim() } : {}), isApplicantGuardian: args.isApplicantGuardian, isPrimary: args.isPrimary, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    if (existing) await ctx.db.replace(existing._id, row); else await ctx.db.insert("admissionsApplicationContacts", row);
+    const nextVersion = application.draftVersion + 1;
+    await ctx.db.patch(application._id, { draftVersion: nextVersion, updatedAt: now });
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "application.contact_saved", entityType: "application_contact", entityId: key, applicationId: application._id, outcome: "success" });
+    return nextVersion;
+  },
+});
+
 export const withdraw = mutation({
   args: { applicationId: v.id("admissionsApplications"), reason: v.string() },
   returns: v.null(),
@@ -127,7 +156,7 @@ export const submit = mutation({
     if (!entitlement || entitlement.schoolId !== application.schoolId || (application.currentRevision === 0 && entitlement.state !== "reserved")) throw new ConvexError("APPLICATION_LOCKED");
     const intake = await ctx.db.get(application.intakeId);
     const activeHold = await ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique();
-    if (!intake || intake.schoolId !== application.schoolId || intake.status !== "open" || intake.opensAt > Date.now() || intake.closesAt < Date.now()) throw new ConvexError("INTAKE_UNAVAILABLE");
+    if (!intake || intake.schoolId !== application.schoolId || (application.currentRevision === 0 && (intake.status !== "open" || intake.opensAt > Date.now() || intake.closesAt < Date.now()))) throw new ConvexError("INTAKE_UNAVAILABLE");
     if (activeHold) throw new ConvexError("FINANCE_HOLD");
     const [{ declaration }, profile, fields, requirements, answers, documents, contacts, previousSchools] = await Promise.all([
       resolvedForm(ctx, application),
@@ -156,7 +185,7 @@ export const submit = mutation({
     }
     for (const requirement of requirements) {
       const required = requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionalRuleMatches(requirement.conditionJson, answerMap));
-      const matching = documents.filter((document) => document.requirementId === requirement._id && document.state !== "deleted" && document.state !== "quarantined" && document.state !== "superseded");
+      const matching = documents.filter((document) => document.requirementId === requirement._id && (document.state === "uploaded" || document.state === "accepted") && requirement.acceptedMimeTypes.includes(document.mimeType) && document.byteSize <= requirement.maxBytes);
       if (matching.length > requirement.maxFiles || (required && matching.length === 0)) throw new ConvexError("APPLICATION_INCOMPLETE");
     }
     const revision = application.currentRevision + 1; const submittedAt = Date.now();
@@ -172,12 +201,12 @@ export const submit = mutation({
       }).map((answer) => ({ itemKey: `answer:${answer.fieldKey}`, kind: "answer", valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass, sourceRowId: String(answer._id), sourceVersion: answer.valueVersion })),
       ...contacts.map((contact) => ({ itemKey: `contact:${contact.contactKey}`, kind: "contact", valueType: "json", serializedValue: JSON.stringify({ kind: contact.kind, fullName: contact.fullName, relationship: contact.relationship, email: contact.email ?? null, phone: contact.phone ?? null, address: contact.address ?? null, isApplicantGuardian: contact.isApplicantGuardian, isPrimary: contact.isPrimary }), dataClass: "personal", sourceRowId: String(contact._id), sourceVersion: application.draftVersion })),
       ...previousSchools.map((school) => ({ itemKey: `previous_school:${String(school._id)}`, kind: "previous_school", valueType: "json", serializedValue: JSON.stringify({ name: school.name, startDate: school.startDate ?? null, endDate: school.endDate ?? null, classLabel: school.classLabel ?? null }), dataClass: "personal", sourceRowId: String(school._id), sourceVersion: application.draftVersion })),
-      ...documents.filter((document) => document.state !== "deleted").map((document) => ({ itemKey: `document:${document.documentKey}`, kind: "document", valueType: "manifest", serializedValue: JSON.stringify({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, state: document.state, sha256: document.sha256, mimeType: document.mimeType, byteSize: document.byteSize, version: document.version }), dataClass: document.sensitivity, sourceRowId: String(document._id), sourceVersion: document.version })),
+      ...documents.filter((document) => document.state === "uploaded" || document.state === "accepted").map((document) => ({ itemKey: `document:${document.documentKey}`, kind: "document", valueType: "manifest", serializedValue: JSON.stringify({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, state: document.state, sha256: document.sha256, mimeType: document.mimeType, byteSize: document.byteSize, version: document.version }), dataClass: document.sensitivity, sourceRowId: String(document._id), sourceVersion: document.version })),
     ].sort((left, right) => left.itemKey.localeCompare(right.itemKey));
     const canonicalDigest = await digest(JSON.stringify(items)); const requirementsDigest = await digest(JSON.stringify(requirements.map((requirement) => [requirement.requirementKey, requirement.requiredMode, requirement.category])));
     const snapshotId = await ctx.db.insert("admissionsSubmissionSnapshots", { schoolId: application.schoolId, applicationId: application._id, revision, formVersionId: application.formVersionId, declarationVersionId: application.declarationVersionId, productPriceId: application.priceId, requirementsDigest, canonicalDigest, signerGuardianId: guardian._id, signerName: args.signerName.trim(), signerRelationship: args.signerRelationship.trim(), submittedAt, declarationAcceptedAt: submittedAt, createdAt: submittedAt });
     for (const item of items) await ctx.db.insert("admissionsSubmissionSnapshotItems", { schoolId: application.schoolId, snapshotId, ...item, createdAt: submittedAt } as any);
-    await ctx.db.patch(application._id, { state: "submitted", currentRevision: revision, latestSnapshotId: snapshotId, draftVersion: application.draftVersion + 1, changeRequestFieldKeys: undefined, changeRequestRequirementKeys: undefined, updatedAt: submittedAt });
+    await ctx.db.patch(application._id, { state: "submitted", currentRevision: revision, latestSnapshotId: snapshotId, draftVersion: application.draftVersion + 1, changeRequestCoreKeys: undefined, changeRequestFieldKeys: undefined, changeRequestRequirementKeys: undefined, updatedAt: submittedAt });
     if (entitlement.state === "reserved") await ctx.db.patch(entitlement._id, { state: "consumed", consumedAt: submittedAt, updatedAt: submittedAt });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "application.submitted", entityType: "submission_snapshot", entityId: String(snapshotId), applicationId: application._id, outcome: "success" });
     return { revision, state: "submitted" as const };

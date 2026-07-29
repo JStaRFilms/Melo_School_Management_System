@@ -122,6 +122,15 @@ type ConditionalRule = {
 
 /** The renderer and validator deliberately share this closed, data-only field vocabulary. */
 export const admissionFieldKinds = ["text", "textarea", "select", "date", "number", "boolean", "checkbox", "multi_select"] as const;
+export const serializationTypeByFieldKind: Readonly<Record<(typeof admissionFieldKinds)[number], string>> = {
+  text: "text", textarea: "textarea", select: "select", date: "date", number: "number",
+  boolean: "boolean", checkbox: "boolean", multi_select: "multi_select",
+};
+
+export function serializationTypeForFieldKind(kind: string) {
+  if (!(admissionFieldKinds as readonly string[]).includes(kind)) throw new ConvexError("ANSWER_INVALID");
+  return serializationTypeByFieldKind[kind as keyof typeof serializationTypeByFieldKind];
+}
 const validationKeys = new Set(["minLength", "maxLength", "pattern", "choices", "min", "max", "maxSelections"]);
 const conditionKeys = new Set(["fieldKey", "equals", "notEquals", "includes", "exists"]);
 
@@ -190,7 +199,9 @@ export function answerValue(serializedValue: string, valueType: string): unknown
 
 export function validateTypedAnswer(args: { kind: string; valueType: string; serializedValue: string; validationJson: string }) {
   if (args.serializedValue.length > 16_000) throw new ConvexError("Answer is too large");
-  const value = answerValue(args.serializedValue, args.valueType);
+  const serverType = serializationTypeForFieldKind(args.kind);
+  if (args.valueType.trim() !== serverType) throw new ConvexError("ANSWER_INVALID");
+  const value = answerValue(args.serializedValue, serverType);
   const policy = assertClosedValidationGrammar(args.validationJson);
   const isText = typeof value === "string";
   if (isText && (policy.minLength !== undefined && value.length < policy.minLength || policy.maxLength !== undefined && value.length > policy.maxLength)) throw new ConvexError("ANSWER_INVALID");

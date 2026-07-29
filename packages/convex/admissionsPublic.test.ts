@@ -94,11 +94,22 @@ describe("B1 public admissions bootstrap", () => {
     await expect(t.withIdentity(other).mutation((api as any).functions.admissions.public.createOrResumeForReference, { schoolSlug: "school-a", reference: "adm_public_fixture" })).rejects.toThrow("PAYMENT_PENDING");
   });
 
+  test("owner configuration stays bound after form retirement and intake closure", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run(async (ctx) => { await ctx.db.patch(ids.form, { status: "retired", updatedAt: Date.now() }); await ctx.db.patch(ids.intake, { status: "closed", updatedAt: Date.now() }); });
+    const config = await t.withIdentity(owner).query((api as any).functions.admissions.public.getApplicationConfiguration, { schoolSlug: "school-a", publicReference: "app_public_reference" });
+    expect(config.fields.map((field: any) => field.key)).toEqual(["child_name"]);
+    expect(config.requirements.map((requirement: any) => requirement.key)).toEqual(["photo"]);
+    expect(config.declaration.version).toBe(1);
+    await expect(t.withIdentity(other).query((api as any).functions.admissions.public.getApplicationConfiguration, { schoolSlug: "school-a", publicReference: "app_public_reference" })).rejects.toThrow("Not found or access denied");
+  });
+
   test("returns only guardian-safe application data and allowed actions", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     const application = await t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-a", publicReference: "app_public_reference" });
     expect(application.allowedActions).toEqual(["save", "upload", "submit"]);
     expect(application.messages).toEqual([expect.objectContaining({ message: "Please update this item" })]);
+    expect(application.permittedEdits).toEqual({ coreKeys: [], fieldKeys: [], requirementKeys: [] });
     expect(JSON.stringify(application)).not.toMatch(/Staff only|metadataJson|actorUserId|applicationId|storageId/);
   });
 });
