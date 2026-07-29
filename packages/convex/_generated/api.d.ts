@@ -9,6 +9,7 @@
  */
 
 import type * as betterAuth from "../betterAuth.js";
+import type * as crons from "../crons.js";
 import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
 import type * as functions_academic_adminLeadership from "../functions/academic/adminLeadership.js";
 import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
@@ -69,6 +70,16 @@ import type * as functions_academic_subjectAggregationHelpers from "../functions
 import type * as functions_academic_subjectAggregationSelectionHelpers from "../functions/academic/subjectAggregationSelectionHelpers.js";
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
+import type * as functions_admissions_applications from "../functions/admissions/applications.js";
+import type * as functions_admissions_conversions from "../functions/admissions/conversions.js";
+import type * as functions_admissions_documents from "../functions/admissions/documents.js";
+import type * as functions_admissions_guardian from "../functions/admissions/guardian.js";
+import type * as functions_admissions_helpers from "../functions/admissions/helpers.js";
+import type * as functions_admissions_payments from "../functions/admissions/payments.js";
+import type * as functions_admissions_public from "../functions/admissions/public.js";
+import type * as functions_admissions_recovery from "../functions/admissions/recovery.js";
+import type * as functions_admissions_settings from "../functions/admissions/settings.js";
+import type * as functions_admissions_staff from "../functions/admissions/staff.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_billing from "../functions/billing.js";
 import type * as functions_billingGateway from "../functions/billingGateway.js";
@@ -80,6 +91,10 @@ import type * as functions_foundation_auth from "../functions/foundation/auth.js
 import type * as functions_foundation_contracts from "../functions/foundation/contracts.js";
 import type * as functions_foundation_documentAccess from "../functions/foundation/documentAccess.js";
 import type * as functions_foundation_paymentDispatch from "../functions/foundation/paymentDispatch.js";
+import type * as functions_foundation_siteDomains from "../functions/foundation/siteDomains.js";
+import type * as functions_foundation_siteLifecycle from "../functions/foundation/siteLifecycle.js";
+import type * as functions_foundation_siteProjections from "../functions/foundation/siteProjections.js";
+import type * as functions_foundation_sitePublicationPolicy from "../functions/foundation/sitePublicationPolicy.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
@@ -95,6 +110,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   betterAuth: typeof betterAuth;
+  crons: typeof crons;
   "functions/academic/academicSetup": typeof functions_academic_academicSetup;
   "functions/academic/adminLeadership": typeof functions_academic_adminLeadership;
   "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
@@ -155,6 +171,16 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/subjectAggregationSelectionHelpers": typeof functions_academic_subjectAggregationSelectionHelpers;
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
+  "functions/admissions/applications": typeof functions_admissions_applications;
+  "functions/admissions/conversions": typeof functions_admissions_conversions;
+  "functions/admissions/documents": typeof functions_admissions_documents;
+  "functions/admissions/guardian": typeof functions_admissions_guardian;
+  "functions/admissions/helpers": typeof functions_admissions_helpers;
+  "functions/admissions/payments": typeof functions_admissions_payments;
+  "functions/admissions/public": typeof functions_admissions_public;
+  "functions/admissions/recovery": typeof functions_admissions_recovery;
+  "functions/admissions/settings": typeof functions_admissions_settings;
+  "functions/admissions/staff": typeof functions_admissions_staff;
   "functions/auth": typeof functions_auth;
   "functions/billing": typeof functions_billing;
   "functions/billingGateway": typeof functions_billingGateway;
@@ -166,6 +192,10 @@ declare const fullApi: ApiFromModules<{
   "functions/foundation/contracts": typeof functions_foundation_contracts;
   "functions/foundation/documentAccess": typeof functions_foundation_documentAccess;
   "functions/foundation/paymentDispatch": typeof functions_foundation_paymentDispatch;
+  "functions/foundation/siteDomains": typeof functions_foundation_siteDomains;
+  "functions/foundation/siteLifecycle": typeof functions_foundation_siteLifecycle;
+  "functions/foundation/siteProjections": typeof functions_foundation_siteProjections;
+  "functions/foundation/sitePublicationPolicy": typeof functions_foundation_sitePublicationPolicy;
   "functions/platform/auth": typeof functions_platform_auth;
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;

@@ -144,11 +144,12 @@ export const requestCurriculumGeneration = action({
     try {
       const input: CurriculumExtractionInput = await ctx.runQuery(internal.functions.academic.curriculumGeneration.getGenerationInput, args);
       const runtime = resolveCurriculumAiRuntime();
-      aiRunLogId = await ctx.runMutation(internal.functions.academic.curriculumGeneration.startGeneration, { importId: args.importId, provider: runtime.provider, model: runtime.modelId, sourceCount: input.pages.length });
+      const startedAiRunLogId: Id<"aiRunLogs"> = await ctx.runMutation(internal.functions.academic.curriculumGeneration.startGeneration, { importId: args.importId, provider: runtime.provider, model: runtime.modelId, sourceCount: input.pages.length });
+      aiRunLogId = startedAiRunLogId;
       const result = await generateCurriculumExtraction({ input });
       const reconciledUnits = reconcileCurriculumExtractionEvidence(result.extraction.units, input.pages);
       const completion: { proposalCount: number } = await ctx.runMutation(internal.functions.academic.curriculumGeneration.completeGeneration, {
-        importId: args.importId, aiRunLogId, proposals: reconciledUnits.map((unit) => ({
+        importId: args.importId, aiRunLogId: startedAiRunLogId, proposals: reconciledUnits.map((unit) => ({
           ...(unit.weekNumber === null ? {} : { weekNumber: unit.weekNumber }), title: unit.title,
           subtopics: unit.subtopics, learningObjectives: unit.learningObjectives,
           ...(unit.suggestedDuration === null ? {} : { suggestedDuration: unit.suggestedDuration }),
@@ -156,7 +157,7 @@ export const requestCurriculumGeneration = action({
           supportingExcerpt: unit.supportingExcerpt, confidence: unit.confidence,
         })), tokenPromptCount: result.inputTokens, tokenCompletionCount: result.outputTokens,
       });
-      return { importId: args.importId, aiRunLogId, proposalCount: completion.proposalCount };
+      return { importId: args.importId, aiRunLogId: startedAiRunLogId, proposalCount: completion.proposalCount };
     } catch (error) {
       const failure = toCurriculumGenerationFailure(error);
       if (aiRunLogId) await ctx.runMutation(internal.functions.academic.curriculumGeneration.failGeneration, { importId: args.importId, aiRunLogId, ...failure });

@@ -1,5 +1,6 @@
 import { action, internalQuery, mutation, query } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { audit, opaqueKey, requireGuardian } from "./helpers";
 
@@ -10,6 +11,25 @@ type PublicEntry = {
   programme: { slug: string; name: string } | null;
   offering: { slug: string; name: string; amountMinor: number; currency: string; feeDisclosure: string } | null;
 };
+
+type PublicPurchaseAttempt = {
+  reference: string;
+  state: string;
+  amountMinor: number;
+  currency: string;
+  disclosure: string;
+};
+
+type InitializeAttemptResult = {
+  state: string;
+  checkoutUrl: string | null;
+};
+
+type DocumentAccessResult =
+  | { status: "available"; documentKey: string; url: string; expiresAt: null }
+  | { status: "unavailable"; documentKey: string };
+
+type SubmissionResult = { revision: number; state: "submitted" };
 
 const publicEntryValidator = v.object({
   schoolSlug: v.string(),
@@ -224,7 +244,7 @@ export const getGuardianApplication = query({
 export const createAttemptForOffering = mutation({
   args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()), idempotencyKey: v.string() },
   returns: v.object({ reference: v.string(), state: v.string(), amountMinor: v.number(), currency: v.string(), disclosure: v.string() }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<PublicPurchaseAttempt> => {
     const { guardian } = await requireGuardian(ctx);
     if (!guardian.emailVerifiedAt) throw new ConvexError("VERIFICATION_REQUIRED");
     const entry = await resolveEntry(ctx, args.schoolSlug, args.intakeSlug);
@@ -238,10 +258,10 @@ export const createAttemptForOffering = mutation({
     );
     if (!providerConfig) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
-    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, priceId: entry.price._id, provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference: opaqueKey("adm_"), idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
+    const reference = opaqueKey("adm_");
+    const attemptId: Id<"admissionsPurchaseAttempts"> = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, priceId: entry.price._id, provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference, idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
     await audit({ ctx, schoolId: entry.school._id, actor: { kind: "guardian", guardianId: guardian._id }, action: "payment.attempt_created", entityType: "purchase_attempt", entityId: String(attemptId), outcome: "success" });
-    const attempt = await ctx.db.get(attemptId);
-    return { reference: attempt!.reference, state: "created", amountMinor: entry.price.amountMinor, currency: entry.price.currency, disclosure: entry.price.feeDisclosure };
+    return { reference, state: "created", amountMinor: entry.price.amountMinor, currency: entry.price.currency, disclosure: entry.price.feeDisclosure };
   },
 });
 
@@ -302,20 +322,21 @@ export const createOrResumeForReference = mutation({
 export const initializeAttemptByReference = action({
   args: { reference: v.string() },
   returns: v.object({ state: v.string(), checkoutUrl: v.union(v.string(), v.null()) }),
-  handler: async (ctx, args) => {
-    const handle: { attemptId: any } | null = await ctx.runQuery((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, args);
+  handler: async (ctx, args): Promise<InitializeAttemptResult> => {
+    const handle: { attemptId: Id<"admissionsPurchaseAttempts"> } | null = await ctx.runQuery((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, args);
     if (!handle) throw new ConvexError("Not found or access denied");
-    return await ctx.runAction((api as any).functions.admissions.payments.initializeAttempt, { attemptId: handle.attemptId });
+    const result: InitializeAttemptResult = await ctx.runAction((api as any).functions.admissions.payments.initializeAttempt, { attemptId: handle.attemptId });
+    return result;
   },
 });
 
 export const verifyReturnByReference = action({
   args: { reference: v.string() },
   returns: v.object({ state: v.string(), entitlementAvailable: v.boolean() }),
-  handler: async (ctx, args) => {
-    const handle: { attemptId: any } | null = await ctx.runQuery((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, args);
+  handler: async (ctx, args): Promise<{ state: string; entitlementAvailable: boolean }> => {
+    const handle: { attemptId: Id<"admissionsPurchaseAttempts"> } | null = await ctx.runQuery((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, args);
     if (!handle) throw new ConvexError("Not found or access denied");
-    const result: any = await ctx.runAction((api as any).functions.admissions.payments.verifyReturn, { attemptId: handle.attemptId });
+    const result: { state: string; entitlementId?: Id<"admissionsEntitlements"> } = await ctx.runAction((api as any).functions.admissions.payments.verifyReturn, { attemptId: handle.attemptId });
     return { state: result.state, entitlementAvailable: Boolean(result.entitlementId) };
   },
 });
@@ -323,11 +344,12 @@ export const verifyReturnByReference = action({
 export const createUploadUrlByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), requirementKey: v.string() },
   returns: v.string(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<string> => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
     const requirement = await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q: any) => q.eq("formVersionId", application.formVersionId).eq("requirementKey", args.requirementKey.trim())).unique();
     if (!requirement) throw new ConvexError("Not found or access denied");
-    return await ctx.runMutation((api as any).functions.admissions.documents.createUploadUrl, { applicationId: application._id, requirementId: requirement._id });
+    const uploadUrl: string = await ctx.runMutation((api as any).functions.admissions.documents.createUploadUrl, { applicationId: application._id, requirementId: requirement._id });
+    return uploadUrl;
   },
 });
 
@@ -346,45 +368,48 @@ export const bindUploadByPublicReference = mutation({
 export const saveContactByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
   returns: v.number(),
-  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); return await ctx.runMutation((api as any).functions.admissions.applications.saveContact, { ...args, applicationId: application._id }); },
+  handler: async (ctx, args): Promise<number> => { const { application } = await requireOwnedPublicApplication(ctx, args); const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveContact, { ...args, applicationId: application._id }); return nextVersion; },
 });
 
 export const withdrawByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), reason: v.string() }, returns: v.null(),
-  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); return await ctx.runMutation((api as any).functions.admissions.applications.withdraw, { applicationId: application._id, reason: args.reason }); },
+  handler: async (ctx, args): Promise<null> => { const { application } = await requireOwnedPublicApplication(ctx, args); const result: null = await ctx.runMutation((api as any).functions.admissions.applications.withdraw, { applicationId: application._id, reason: args.reason }); return result; },
 });
 
 export const getOwnDocumentAccessByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), documentKey: v.string(), action: v.union(v.literal("view"), v.literal("download")) },
   returns: v.union(v.object({ status: v.literal("available"), documentKey: v.string(), url: v.string(), expiresAt: v.null() }), v.object({ status: v.literal("unavailable"), documentKey: v.string() })),
-  handler: async (ctx, args) => { const { application } = await requireOwnedPublicApplication(ctx, args); const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q: any) => q.eq("documentKey", args.documentKey)).unique(); if (!document || document.applicationId !== application._id) return { status: "unavailable" as const, documentKey: args.documentKey }; return await ctx.runMutation((api as any).functions.admissions.documents.getOwnAccess, { documentKey: args.documentKey, action: args.action }); },
+  handler: async (ctx, args): Promise<DocumentAccessResult> => { const { application } = await requireOwnedPublicApplication(ctx, args); const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q: any) => q.eq("documentKey", args.documentKey)).unique(); if (!document || document.applicationId !== application._id) return { status: "unavailable", documentKey: args.documentKey }; const result: DocumentAccessResult = await ctx.runMutation((api as any).functions.admissions.documents.getOwnAccess, { documentKey: args.documentKey, action: args.action }); return result; },
 });
 
 export const saveCoreByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), firstName: v.string(), lastName: v.string(), dateOfBirth: v.number(), middleName: v.optional(v.string()), preferredName: v.optional(v.string()), gender: v.optional(v.string()), nationality: v.optional(v.string()), countryOfBirth: v.optional(v.string()), address: v.optional(v.string()), requestedEntryLabel: v.optional(v.string()) },
   returns: v.number(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<number> => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
-    return await ctx.runMutation((api as any).functions.admissions.applications.saveCoreSection, { ...args, applicationId: application._id });
+    const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveCoreSection, { ...args, applicationId: application._id });
+    return nextVersion;
   },
 });
 
 export const saveAnswerByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), fieldKey: v.string(), expectedVersion: v.number(), valueType: v.string(), serializedValue: v.string() },
   returns: v.number(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<number> => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
     const field = await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_field_key", (q: any) => q.eq("formVersionId", application.formVersionId).eq("fieldKey", args.fieldKey.trim())).unique();
     if (!field || field.status !== "active") throw new ConvexError("Not found or access denied");
-    return await ctx.runMutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application._id, formFieldId: field._id, expectedVersion: args.expectedVersion, valueType: args.valueType, serializedValue: args.serializedValue });
+    const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application._id, formFieldId: field._id, expectedVersion: args.expectedVersion, valueType: args.valueType, serializedValue: args.serializedValue });
+    return nextVersion;
   },
 });
 
 export const submitByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), signerName: v.string(), signerRelationship: v.string(), declarationVersion: v.number(), declarationAccepted: v.boolean() },
   returns: v.object({ revision: v.number(), state: v.literal("submitted") }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SubmissionResult> => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
-    return await ctx.runMutation((api as any).functions.admissions.applications.submit, { applicationId: application._id, expectedVersion: args.expectedVersion, signerName: args.signerName, signerRelationship: args.signerRelationship, declarationVersion: args.declarationVersion, declarationAccepted: args.declarationAccepted });
+    const result: SubmissionResult = await ctx.runMutation((api as any).functions.admissions.applications.submit, { applicationId: application._id, expectedVersion: args.expectedVersion, signerName: args.signerName, signerRelationship: args.signerRelationship, declarationVersion: args.declarationVersion, declarationAccepted: args.declarationAccepted });
+    return result;
   },
 });

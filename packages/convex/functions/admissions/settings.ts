@@ -1,21 +1,22 @@
-import { mutation, query } from "../../_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { hasSchoolCapabilityV1, resolveSchoolMembershipV1 } from "../foundation/auth";
 import { admissionFieldKinds, assertClosedConditionalGrammar, assertClosedValidationGrammar, audit, digest } from "./helpers";
 
-async function requireCatalogue(ctx: any, schoolId: any, capability: "admissions.catalogue.manage" | "admissions.publish" | "admissions.sensitive.configure") {
+async function requireCatalogue(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, capability: "admissions.catalogue.manage" | "admissions.publish" | "admissions.sensitive.configure") {
   const membership = await resolveSchoolMembershipV1(ctx, schoolId);
   if (!membership || !await hasSchoolCapabilityV1(ctx, membership, capability)) throw new ConvexError("Not found or access denied");
   return membership;
 }
 function slug(value: string) { const result = value.trim().toLowerCase(); if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(result)) throw new ConvexError("Invalid slug"); return result; }
 function text(value: string, label: string, max = 4_000) { const result = value.trim(); if (!result || result.length > max) throw new ConvexError(`${label} is required`); return result; }
-async function assertSensitiveConfiguration(ctx: any, schoolId: any, dataClass: string, approvalEvidenceId?: any, purpose?: string, retentionPolicyKey?: string, audience?: string, subject?: { type: string; key: string }) {
+async function assertSensitiveConfiguration(ctx: MutationCtx, schoolId: Id<"schools">, dataClass: string, approvalEvidenceId?: Id<"schoolApprovalEvidence">, purpose?: string, retentionPolicyKey?: string, audience?: string, subject?: { type: string; key: string }) {
   if (dataClass !== "highly_sensitive" && dataClass !== "financial_security") return;
   await requireCatalogue(ctx, schoolId, "admissions.sensitive.configure");
   if (!approvalEvidenceId || !purpose?.trim() || !retentionPolicyKey?.trim() || !audience?.trim()) throw new ConvexError("Sensitive configuration needs purpose, audience, retention, and approval");
-  const evidence = await ctx.db.get(approvalEvidenceId);
-  const approver = evidence?.approvedByUserId ? await ctx.db.get(evidence.approvedByUserId) : null;
+  const evidence = await ctx.db.get("schoolApprovalEvidence", approvalEvidenceId);
+  const approver = evidence?.approvedByUserId ? await ctx.db.get("users", evidence.approvedByUserId) : null;
   if (!evidence || evidence.schoolId !== schoolId || evidence.approvalClass !== "privacy" || !approver || approver.schoolId !== schoolId || approver.isArchived || evidence.revokedAt || evidence.approvedAt > Date.now() || (evidence.expiresAt && evidence.expiresAt <= Date.now()) || (subject && (evidence.subjectType !== subject.type || evidence.subjectKey !== subject.key))) throw new ConvexError("Sensitive configuration approval is unavailable");
 }
 
@@ -25,8 +26,8 @@ export const getCatalogue = query({
   returns: v.object({ programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string() })), intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })), products: v.array(v.object({ id: v.id("admissionsProducts"), intakeId: v.id("admissionsIntakes"), slug: v.string(), name: v.string(), status: v.string() })), forms: v.array(v.object({ id: v.id("admissionsFormVersions"), intakeId: v.union(v.id("admissionsIntakes"), v.null()), version: v.number(), schemaVersion: v.string(), status: v.string() })) }),
   handler: async (ctx, args) => {
     await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
-    const programmes = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100);
-    const [intakes, forms] = await Promise.all([
+    const programmes: Doc<"admissionsProgrammes">[] = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100);
+    const [intakes, forms]: [Doc<"admissionsIntakes">[], Doc<"admissionsFormVersions">[]] = await Promise.all([
       ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
       ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId)).take(200),
     ]);
@@ -125,7 +126,19 @@ export const retireForm = mutation({
 
 export const createDraftForm = mutation({
   args: { schoolId: v.id("schools"), programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), schemaVersion: v.string() }, returns: v.id("admissionsFormVersions"),
-  handler: async (ctx, args) => { const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const [programme, intake, versions] = await Promise.all([ctx.db.get(args.programmeId), ctx.db.get(args.intakeId), ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", args.programmeId)).take(100)]); if (!programme || !intake || programme.schoolId !== args.schoolId || intake.schoolId !== args.schoolId || intake.programmeId !== programme._id) throw new ConvexError("Invalid form scope"); const now = Date.now(); const id = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...versions.map((item) => item.version)) + 1, schemaVersion: text(args.schemaVersion, "Schema version", 128), status: "draft", createdAt: now, updatedAt: now }); await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.form_drafted", entityType: "form", entityId: String(id), outcome: "success" }); return id; },
+  handler: async (ctx, args) => {
+    const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
+    const [programme, intake, versions]: [Doc<"admissionsProgrammes"> | null, Doc<"admissionsIntakes"> | null, Doc<"admissionsFormVersions">[]] = await Promise.all([
+      ctx.db.get("admissionsProgrammes", args.programmeId),
+      ctx.db.get("admissionsIntakes", args.intakeId),
+      ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", args.programmeId)).take(100),
+    ]);
+    if (!programme || !intake || programme.schoolId !== args.schoolId || intake.schoolId !== args.schoolId || intake.programmeId !== programme._id) throw new ConvexError("Invalid form scope");
+    const now = Date.now();
+    const id = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...versions.map((item: Doc<"admissionsFormVersions">) => item.version)) + 1, schemaVersion: text(args.schemaVersion, "Schema version", 128), status: "draft", createdAt: now, updatedAt: now });
+    await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.form_drafted", entityType: "form", entityId: String(id), outcome: "success" });
+    return id;
+  },
 });
 
 export const addDraftField = mutation({

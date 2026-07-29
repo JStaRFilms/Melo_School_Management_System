@@ -1,11 +1,18 @@
-import { mutation, query } from "../../_generated/server";
+import { mutation, query, type MutationCtx } from "../../_generated/server";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { assertEditable, audit, conditionalRuleMatches, digest, opaqueKey, requireGuardian, requireOwnedApplication, validateTypedAnswer } from "./helpers";
 
 const applicationSummaryValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), draftVersion: v.number(), currentRevision: v.number() });
 
-async function resolvedForm(ctx: any, application: any) {
-  const [form, declaration] = await Promise.all([ctx.db.get(application.formVersionId), ctx.db.get(application.declarationVersionId)]);
+async function resolvedForm(
+  ctx: MutationCtx,
+  application: Doc<"admissionsApplications">,
+): Promise<{ form: Doc<"admissionsFormVersions">; declaration: Doc<"admissionsDeclarationVersions"> }> {
+  const [form, declaration] = await Promise.all([
+    ctx.db.get("admissionsFormVersions", application.formVersionId),
+    ctx.db.get("admissionsDeclarationVersions", application.declarationVersionId),
+  ]);
   if (!form || !declaration || form.schoolId !== application.schoolId || declaration.schoolId !== application.schoolId) throw new ConvexError("APPLICATION_INCOMPLETE");
   return { form, declaration };
 }
@@ -13,36 +20,36 @@ async function resolvedForm(ctx: any, application: any) {
 export const createOrResume = mutation({
   args: { entitlementId: v.id("admissionsEntitlements") },
   returns: applicationSummaryValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ applicationId: Id<"admissionsApplications">; publicId: string; state: string; draftVersion: number; currentRevision: number }> => {
     const owner = await requireGuardian(ctx);
-    const entitlement = await ctx.db.get(args.entitlementId);
+    const entitlement = await ctx.db.get("admissionsEntitlements", args.entitlementId);
     if (!entitlement || entitlement.guardianId !== owner.guardian._id) throw new ConvexError("Not found or access denied");
     if (entitlement.applicationId) {
-      const existing = await ctx.db.get(entitlement.applicationId);
+      const existing = await ctx.db.get("admissionsApplications", entitlement.applicationId);
       if (!existing) throw new ConvexError("Not found or access denied");
       return { applicationId: existing._id, publicId: existing.publicId, state: existing.state, draftVersion: existing.draftVersion, currentRevision: existing.currentRevision };
     }
     if (entitlement.state !== "available") throw new ConvexError("APPLICATION_ALREADY_EXISTS");
-    const product = await ctx.db.get(entitlement.productId);
-    const intake = product && await ctx.db.get(product.intakeId);
+    const product = await ctx.db.get("admissionsProducts", entitlement.productId);
+    const intake = product && await ctx.db.get("admissionsIntakes", product.intakeId);
     if (!product || !intake || product.schoolId !== entitlement.schoolId || intake.schoolId !== entitlement.schoolId) throw new ConvexError("Not found or access denied");
     const [forms, declarations, sourceAttempt] = await Promise.all([
       ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(2),
       ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId).eq("status", "published")).take(2),
-      ctx.db.get(entitlement.sourcePurchaseAttemptId),
+      ctx.db.get("admissionsPurchaseAttempts", entitlement.sourcePurchaseAttemptId),
     ]);
     if (!sourceAttempt || sourceAttempt.schoolId !== entitlement.schoolId || sourceAttempt.productId !== product._id || sourceAttempt.guardianId !== owner.guardian._id) throw new ConvexError("Not found or access denied");
-    const price = await ctx.db.get(sourceAttempt.priceId);
+    const price = await ctx.db.get("admissionsProductPrices", sourceAttempt.priceId);
     if (!price || price.schoolId !== entitlement.schoolId || price.productId !== product._id || forms.length !== 1 || declarations.length !== 1) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
-    const applicationId = await ctx.db.insert("admissionsApplications", {
+    const publicId = opaqueKey("app_");
+    const applicationId: Id<"admissionsApplications"> = await ctx.db.insert("admissionsApplications", {
       schoolId: entitlement.schoolId, guardianId: owner.guardian._id, entitlementId: entitlement._id, programmeId: intake.programmeId, intakeId: intake._id, productId: product._id, priceId: price._id,
-      formVersionId: forms[0]._id, declarationVersionId: declarations[0]._id, publicId: opaqueKey("app_"), state: "draft", currentRevision: 0, draftVersion: 1, createdAt: now, updatedAt: now,
+      formVersionId: forms[0]._id, declarationVersionId: declarations[0]._id, publicId, state: "draft", currentRevision: 0, draftVersion: 1, createdAt: now, updatedAt: now,
     });
     await ctx.db.patch(entitlement._id, { state: "reserved", applicationId, reservedAt: now, updatedAt: now });
     await audit({ ctx, schoolId: entitlement.schoolId, actor: { kind: "guardian", guardianId: owner.guardian._id }, action: "application.reserved", entityType: "application", entityId: String(applicationId), applicationId, outcome: "success" });
-    const application = await ctx.db.get(applicationId);
-    return { applicationId, publicId: application!.publicId, state: "draft", draftVersion: 1, currentRevision: 0 };
+    return { applicationId, publicId, state: "draft", draftVersion: 1, currentRevision: 0 };
   },
 });
 

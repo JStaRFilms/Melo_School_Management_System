@@ -1,4 +1,5 @@
 import { mutation, query } from "../../_generated/server";
+import type { Doc } from "../../_generated/dataModel";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { issueCheckedDocumentAccessV1 } from "../foundation/documentAccess";
@@ -237,7 +238,7 @@ export const recordDecision = mutation({
       ctx.db.query("admissionsDocuments").withIndex("by_application_and_category_and_version", (q) => q.eq("applicationId", application._id)).take(200),
       ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id)).take(100),
     ]);
-    if (hold || application.financeBlockedReason || evaluations.some((evaluation) => evaluation.state === "scheduled") || requirements.some((requirement) => requirement.requiredMode === "required" && !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("DECISION_PRECONDITIONS_UNMET");
+    if (hold || application.financeBlockedReason || evaluations.some((evaluation: Doc<"admissionsEvaluations">) => evaluation.state === "scheduled") || requirements.some((requirement: Doc<"admissionsDocumentRequirements">) => requirement.requiredMode === "required" && !documents.some((document: Doc<"admissionsDocuments">) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("DECISION_PRECONDITIONS_UNMET");
     const now = Date.now(); const decisionId = await ctx.db.insert("admissionsDecisions", { schoolId: application.schoolId, applicationId: application._id, version: (previous?.version ?? 0) + 1, state: args.state, reasonCode: args.reasonCode.trim(), rationale: args.guardianMessage.trim(), decidedBy: membership.userId, decidedAt: now, ...(previous ? { supersedesDecisionId: previous._id } : {}), createdAt: now });
     await ctx.db.patch(application._id, { state: args.state, currentDecisionId: decisionId, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, actorUserId: membership.userId, eventType: "decision_recorded", visibility: "guardian", message: args.guardianMessage.trim(), reasonCode: args.reasonCode.trim(), createdAt: now });

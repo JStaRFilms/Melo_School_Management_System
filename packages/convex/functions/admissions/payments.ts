@@ -1,6 +1,7 @@
 import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import { createBillingGatewayAdapter } from "../billingGateway";
 import { admissionsProviderValidator, paymentProviderModeValidator } from "../foundation/contracts";
 import { audit, digest, opaqueKey, requireGuardian } from "./helpers";
@@ -9,6 +10,15 @@ const safeAttemptValidator = v.object({
   attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), state: v.string(),
   amountMinor: v.number(), currency: v.string(), disclosure: v.string(),
 });
+
+type SafeAttempt = {
+  attemptId: Id<"admissionsPurchaseAttempts">;
+  reference: string;
+  state: string;
+  amountMinor: number;
+  currency: string;
+  disclosure: string;
+};
 
 const terminalFinanceStates = new Set(["refunded", "reversed", "voided", "chargeback", "disputed"]);
 function isTerminalFinanceState(state: string) { return terminalFinanceStates.has(state.trim().toLowerCase()); }
@@ -43,7 +53,7 @@ async function resolvePurchase(ctx: Parameters<typeof requireGuardian>[0], guard
 export const createAttempt = mutation({
   args: { productId: v.id("admissionsProducts"), idempotencyKey: v.string() },
   returns: safeAttemptValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SafeAttempt> => {
     const { guardian } = await requireGuardian(ctx);
     if (!guardian.emailVerifiedAt) throw new ConvexError("VERIFICATION_REQUIRED");
     const idempotencyKey = args.idempotencyKey.trim();
@@ -58,14 +68,15 @@ export const createAttempt = mutation({
     );
     if (!providerConfig) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
-    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", {
+    const reference = opaqueKey("adm_");
+    const attemptId: Id<"admissionsPurchaseAttempts"> = await ctx.db.insert("admissionsPurchaseAttempts", {
       schoolId: resolved.product.schoolId, guardianId: guardian._id, productId: resolved.product._id, priceId: resolved.price._id,
-      provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference: opaqueKey("adm_"), idempotencyKey,
+      provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference, idempotencyKey,
       amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, feeDisclosureSnapshot: resolved.price.feeDisclosure,
       state: "created", createdAt: now, updatedAt: now,
     });
     await audit({ ctx, schoolId: resolved.product.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "payment.attempt_created", entityType: "purchase_attempt", entityId: String(attemptId), outcome: "success" });
-    return { attemptId, reference: (await ctx.db.get(attemptId))!.reference, state: "created", amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, disclosure: resolved.price.feeDisclosure };
+    return { attemptId, reference, state: "created", amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, disclosure: resolved.price.feeDisclosure };
   },
 });
 
