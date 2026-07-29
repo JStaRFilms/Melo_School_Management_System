@@ -1,6 +1,7 @@
 # OBHIS admissions integration release checklist (B6)
 
-**Status:** release candidate; production publication remains approval-gated.  
+**Status:** release candidate; production publication remains approval-gated.
+
 **Integration order:** `feature/admissions-platform`, then `feature/obhis-public-site`, each as a non-fast-forward merge.
 
 ## Integrated contract
