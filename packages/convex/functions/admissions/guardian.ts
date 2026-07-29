@@ -45,7 +45,7 @@ export const getOrCreateIdentity = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { guardianId, status: "active", verificationRequired: true };
+    return { guardianId, status: "active", verificationRequired: !verifiedAt };
   },
 });
 

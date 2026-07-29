@@ -207,6 +207,31 @@ describe("B1 admissions domain", () => {
     expect(await t.run((ctx) => ctx.db.get(ids.attempt))).toMatchObject({ state: "reversed" });
   });
 
+  test("Better Auth verification evidence unlocks a newly created guardian without client input", async () => {
+    const t = convexTest(schema, modules);
+    const identity = { subject: "verified", tokenIdentifier: "issuer|verified", issuer: "issuer", email: "verified@example.test", emailVerified: true };
+    const result = await t.withIdentity(identity).mutation((api as any).functions.admissions.guardian.getOrCreateIdentity, {});
+    expect(result.verificationRequired).toBe(false);
+    expect(await t.run((ctx) => ctx.db.get(result.guardianId))).toMatchObject({ normalizedEmail: "verified@example.test", status: "active" });
+  });
+
+  test("scheduled recovery makes stale conversion and outbox leases retryable without duplicating records", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t); const old = Date.now() - 60 * 60 * 1000;
+    const entitlement = await t.run((ctx) => ctx.db.insert("admissionsEntitlements", { schoolId: ids.schoolA, guardianId: ids.guardian, productId: ids.product, intakeId: ids.intake, sourcePurchaseAttemptId: ids.attempt, state: "consumed", createdAt: old, updatedAt: old }));
+    const application = await t.run((ctx) => ctx.db.insert("admissionsApplications", { schoolId: ids.schoolA, guardianId: ids.guardian, entitlementId: entitlement, programmeId: ids.programme, intakeId: ids.intake, productId: ids.product, priceId: ids.price, formVersionId: ids.form, declarationVersionId: ids.declaration, publicId: "recovery-app", state: "accepted", currentRevision: 1, draftVersion: 1, createdAt: old, updatedAt: old }));
+    // Build the recovery-only fixture directly; no canonical student is created.
+    const staff = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: "recovery-staff", name: "Recovery Staff", email: "recovery@example.test", role: "admin", createdAt: old, updatedAt: old }));
+    const decision = await t.run((ctx) => ctx.db.insert("admissionsDecisions", { schoolId: ids.schoolA, applicationId: application, version: 1, state: "accepted", reasonCode: "approved", decidedBy: staff, decidedAt: old, createdAt: old }));
+    const snapshot = await t.run((ctx) => ctx.db.insert("admissionsSubmissionSnapshots", { schoolId: ids.schoolA, applicationId: application, revision: 1, formVersionId: ids.form, declarationVersionId: ids.declaration, productPriceId: ids.price, requirementsDigest: "r", canonicalDigest: "c", signerGuardianId: ids.guardian, signerName: "Guardian", signerRelationship: "Parent", submittedAt: old, declarationAcceptedAt: old, createdAt: old }));
+    const conversion = await t.run((ctx) => ctx.db.insert("admissionsConversions", { schoolId: ids.schoolA, applicationId: application, acceptedDecisionId: decision, snapshotId: snapshot, idempotencyKey: "recover", state: "running", leaseOwner: "dead-worker", leaseExpiresAt: old, attemptCount: 1, createdAt: old, updatedAt: old }));
+    const outbox = await t.run((ctx) => ctx.db.insert("admissionsCommunicationOutbox", { schoolId: ids.schoolA, applicationId: application, conversionId: conversion, eventKey: "portal_onboarding", recipientGuardianId: ids.guardian, channel: "email", templateKey: "portal", templateVersion: "1", state: "sending", nextAttemptAt: old, createdAt: old, updatedAt: old }));
+    const result = await t.mutation((internal as any).functions.admissions.recovery.sweep, { now: Date.now(), staleAfterMs: 60_000 });
+    expect(result).toEqual({ conversionsRecovered: 1, outboxRecovered: 1 });
+    expect(await t.run((ctx) => ctx.db.get(conversion))).toMatchObject({ state: "failed_retryable", errorCode: "STALE_LEASE" });
+    expect(await t.run((ctx) => ctx.db.get(outbox))).toMatchObject({ state: "pending" });
+    expect(await t.run((ctx) => ctx.db.query("students").take(1))).toEqual([]);
+  });
+
   test("illegal decision state is rejected", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: "staff", authTokenIdentifier: "issuer|staff", name: "Staff", email: "staff@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));

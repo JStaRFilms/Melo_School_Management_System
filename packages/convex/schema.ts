@@ -672,6 +672,7 @@ export default defineSchema({
   })
     .index("by_application", ["applicationId"])
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
+    .index("by_state_and_updated_at", ["state", "updatedAt"])
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_student", ["studentId"]),
 
@@ -817,6 +818,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_state_and_next_attempt_at", ["schoolId", "state", "nextAttemptAt"])
+    .index("by_state_and_next_attempt_at", ["state", "nextAttemptAt"])
     .index("by_conversion_and_event_key", ["conversionId", "eventKey"])
     .index("by_application_and_event_key", ["applicationId", "eventKey"]),
 

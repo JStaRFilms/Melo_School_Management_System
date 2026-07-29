@@ -124,6 +124,9 @@ describe("B4 shared site core", () => {
     const link = { version: "1", schoolSlug: "greenfield-preparatory", href: "https://apply.example/s/greenfield-preparatory/i/2027", availability: "open", intakeSlug: "2027", opensAt: null, closesAt: null };
     expect(buildApplicationRedirectHref(link, new URL("https://school.example/apply?source=managed_site&campaign=spring&returnTo=https://evil.example"))).toBe("https://apply.example/s/greenfield-preparatory/i/2027?source=managed_site&campaign=spring");
     expect(buildApplicationRedirectHref({ ...link, availability: "closed" }, new URL("https://school.example/apply"))).toBeNull();
+    const portal = { href: "https://portal.example/s/greenfield-preparatory", enabled: true };
+    expect(getPublicLinkIntegration({ mode: "managed", application: link, portal }).application.href).toBe(link.href);
+    expect(getPublicLinkIntegration({ mode: "managed", application: link, portal }).portal).toEqual(portal);
     expect(getPublicLinkIntegration({ mode: "external", application: link }).application.href).toBe(link.href);
     expect(getPublicLinkIntegration({ mode: "none", application: link }).application.href).toBe(link.href);
   });
