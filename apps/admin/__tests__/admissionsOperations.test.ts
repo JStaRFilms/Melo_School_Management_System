@@ -9,6 +9,7 @@ import {
   pageRows,
   redactQueueRows,
   settingsPublicationGate,
+  settingsSurfaceAccess,
   validateAdmissionsSettings,
   type AdmissionsSettingsDraft,
 } from "../lib/admissions/models";
@@ -63,6 +64,15 @@ describe("admissions admin operations", () => {
     const readiness = { hasSnapshot: true, requiredDocumentsAccepted: false, legalEvidenceBound: true, financeClear: true, evaluationsComplete: true, ready: false };
     expect(canRecordDecision({ applicationState: "under_review", readiness, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(false);
     expect(canRecordDecision({ applicationState: "under_review", readiness: { ...readiness, requiredDocumentsAccepted: true, ready: true }, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(true);
+  });
+
+  test.each([
+    { role: "editor-only", catalogue: true, publish: false, expected: { allowed: true, canEditDrafts: true, canPublish: false } },
+    { role: "publisher-only", catalogue: false, publish: true, expected: { allowed: true, canEditDrafts: false, canPublish: true } },
+    { role: "combined", catalogue: true, publish: true, expected: { allowed: true, canEditDrafts: true, canPublish: true } },
+    { role: "denied", catalogue: false, publish: false, expected: { allowed: false, canEditDrafts: false, canPublish: false } },
+  ])("separates settings workflows for $role access", ({ catalogue, publish, expected }) => {
+    expect(settingsSurfaceAccess({ hasCatalogueCapability: catalogue, hasPublishCapability: publish })).toEqual(expected);
   });
 
   test("models standard and sensitive settings publication gates", () => {

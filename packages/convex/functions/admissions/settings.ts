@@ -36,6 +36,23 @@ export const getCatalogue = query({
   },
 });
 
+/** Read-only catalogue projection for publication review. Draft editing still requires catalogue.manage. */
+export const getPublicationReview = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.object({ programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string() })), intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })), products: v.array(v.object({ id: v.id("admissionsProducts"), intakeId: v.id("admissionsIntakes"), slug: v.string(), name: v.string(), status: v.string() })), forms: v.array(v.object({ id: v.id("admissionsFormVersions"), intakeId: v.union(v.id("admissionsIntakes"), v.null()), version: v.number(), schemaVersion: v.string(), status: v.string() })) }),
+  handler: async (ctx, args) => {
+    await requireCatalogue(ctx, args.schoolId, "admissions.publish");
+    const programmes = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100);
+    const [intakes, forms] = await Promise.all([
+      ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
+      ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId)).take(200),
+    ]);
+    const productLists = await Promise.all(intakes.map((intake) => ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(20)));
+    const products = productLists.flat();
+    return { programmes: programmes.map((item) => ({ id: item._id, slug: item.slug, name: item.name, status: item.status })), intakes: intakes.map((item) => ({ id: item._id, programmeId: item.programmeId, slug: item.slug, name: item.name, status: item.status, opensAt: item.opensAt, closesAt: item.closesAt })), products: products.map((item) => ({ id: item._id, intakeId: item.intakeId, slug: item.slug, name: item.name, status: item.status })), forms: forms.map((item) => ({ id: item._id, intakeId: item.intakeId ?? null, version: item.version, schemaVersion: item.schemaVersion, status: item.status })) };
+  },
+});
+
 export const getFormConfiguration = query({
   args: { formVersionId: v.id("admissionsFormVersions") },
   returns: v.object({ form: v.object({ id: v.id("admissionsFormVersions"), version: v.number(), status: v.string() }), fields: v.array(v.object({ id: v.id("admissionsFormFields"), key: v.string(), label: v.string(), kind: v.string(), requiredMode: v.string(), dataClass: v.string(), purpose: v.union(v.string(), v.null()), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), validationJson: v.string(), conditionalRuleJson: v.union(v.string(), v.null()) })), requirements: v.array(v.object({ id: v.id("admissionsDocumentRequirements"), key: v.string(), label: v.string(), category: v.string(), requiredMode: v.string(), sensitivity: v.string(), acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), purpose: v.string(), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), conditionJson: v.union(v.string(), v.null()) })) }),

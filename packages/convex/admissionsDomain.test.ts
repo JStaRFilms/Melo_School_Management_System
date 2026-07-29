@@ -176,6 +176,37 @@ describe("B1 admissions domain", () => {
     expect(await t.run((ctx) => ctx.db.get(declaration))).toMatchObject({ status: "draft" });
   });
 
+  test("separates catalogue editing from publication review and controls", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const createStaff = async (name: string, capabilities: Array<"admissions.catalogue.manage" | "admissions.publish">) => {
+      const identity = { subject: name, tokenIdentifier: `issuer|${name}`, issuer: "issuer" };
+      const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name, email: `${name}@example.test`, role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+      await t.run(async (ctx) => { for (const capability of capabilities) await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability, scope: "school", grantedByUserId: user, reason: "settings access test", isBreakGlass: false, createdAt: Date.now() }); });
+      return identity;
+    };
+    const editor = await createStaff("editor", ["admissions.catalogue.manage"]);
+    const publisher = await createStaff("publisher-only", ["admissions.publish"]);
+    const combined = await createStaff("combined", ["admissions.catalogue.manage", "admissions.publish"]);
+    const denied = await createStaff("denied", []);
+    const getCatalogue = (api as any).functions.admissions.settings.getCatalogue;
+    const getPublicationReview = (api as any).functions.admissions.settings.getPublicationReview;
+    const setProgrammeStatus = (api as any).functions.admissions.settings.setProgrammeStatus;
+
+    await expect(t.withIdentity(editor).query(getCatalogue, { schoolId: ids.schoolA })).resolves.toMatchObject({ programmes: [expect.objectContaining({ id: ids.programme })] });
+    await expect(t.withIdentity(editor).query(getPublicationReview, { schoolId: ids.schoolA })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(editor).mutation(setProgrammeStatus, { programmeId: ids.programme, status: "closed" })).rejects.toThrow("Not found or access denied");
+
+    await expect(t.withIdentity(publisher).query(getCatalogue, { schoolId: ids.schoolA })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(publisher).query(getPublicationReview, { schoolId: ids.schoolA })).resolves.toMatchObject({ programmes: [expect.objectContaining({ id: ids.programme })] });
+    await expect(t.withIdentity(publisher).query(getPublicationReview, { schoolId: ids.schoolB })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(publisher).mutation(setProgrammeStatus, { programmeId: ids.programme, status: "closed" })).resolves.toBeNull();
+
+    await expect(t.withIdentity(combined).query(getCatalogue, { schoolId: ids.schoolA })).resolves.toBeTruthy();
+    await expect(t.withIdentity(combined).query(getPublicationReview, { schoolId: ids.schoolA })).resolves.toBeTruthy();
+    await expect(t.withIdentity(denied).query(getCatalogue, { schoolId: ids.schoolA })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(denied).query(getPublicationReview, { schoolId: ids.schoolA })).rejects.toThrow("Not found or access denied");
+  });
+
   test("sensitive form publication rechecks privacy evidence expiry", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const identity = { subject: "publisher", tokenIdentifier: "issuer|publisher", issuer: "issuer" };

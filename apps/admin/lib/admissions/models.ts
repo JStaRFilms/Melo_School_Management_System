@@ -101,6 +101,21 @@ export function canRecordDecision(args: { applicationState: string; readiness?: 
     && Boolean(args.guardianMessage.trim());
 }
 
+export type SettingsSurfaceAccess = {
+  allowed: boolean;
+  canEditDrafts: boolean;
+  canPublish: boolean;
+};
+
+/** UI workflow separation only; every query and mutation re-authorizes server-side. */
+export function settingsSurfaceAccess(args: { hasCatalogueCapability: boolean; hasPublishCapability: boolean }): SettingsSurfaceAccess {
+  return {
+    allowed: args.hasCatalogueCapability || args.hasPublishCapability,
+    canEditDrafts: args.hasCatalogueCapability,
+    canPublish: args.hasPublishCapability,
+  };
+}
+
 export function settingsPublicationGate(args: { validationErrors: readonly string[]; hasPublishCapability: boolean; containsSensitiveConfiguration: boolean; hasSensitiveCapability: boolean; privacyEvidenceCurrent: boolean; financeEvidenceCurrent: boolean; declarationPublished: boolean }) {
   const blockers = [...args.validationErrors];
   if (!args.hasPublishCapability) blockers.push("Admissions publish capability is required.");
