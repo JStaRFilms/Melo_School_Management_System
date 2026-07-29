@@ -314,6 +314,10 @@ export default defineSchema({
     requiredMode: v.union(v.literal("required"), v.literal("optional"), v.literal("conditional")),
     dataClass: admissionsDataClassValidator,
     purpose: v.optional(v.string()),
+    /** Additive privacy governance for sensitive collection; legacy low-risk fields omit these. */
+    retentionPolicyKey: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     validationJson: v.string(),
     conditionalRuleJson: v.optional(v.string()),
     order: v.number(),
@@ -337,6 +341,10 @@ export default defineSchema({
     maxFiles: v.number(),
     sensitivity: admissionsDataClassValidator,
     purpose: v.string(),
+    /** Additive privacy governance for high-risk requirements. */
+    retentionPolicyKey: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     conditionJson: v.optional(v.string()),
     order: v.number(),
     createdAt: v.number(),
@@ -478,6 +486,13 @@ export default defineSchema({
     currentDecisionId: v.optional(v.id("admissionsDecisions")),
     conversionId: v.optional(v.id("admissionsConversions")),
     requestedEntryLabel: v.optional(v.string()),
+    /** Additive operational pointer; historical applications remain valid. */
+    activeFinanceHoldId: v.optional(v.id("admissionsFinanceHolds")),
+    /** Named guardian-editable items from the active change request. */
+    changeRequestCoreKeys: v.optional(v.array(v.string())),
+    changeRequestFieldKeys: v.optional(v.array(v.string())),
+    changeRequestRequirementKeys: v.optional(v.array(v.string())),
+    financeBlockedReason: v.optional(v.string()),
     draftVersion: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -615,13 +630,37 @@ export default defineSchema({
     .index("by_school_and_state_and_decided_at", ["schoolId", "state", "decidedAt"])
     .index("by_school_and_decided_by_and_decided_at", ["schoolId", "decidedBy", "decidedAt"]),
 
+  admissionsConversionResolutions: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    parentMode: v.union(v.literal("create"), v.literal("existing")),
+    parentUserId: v.optional(v.id("users")),
+    familyMode: v.union(v.literal("create"), v.literal("existing")),
+    familyId: v.optional(v.id("families")),
+    studentMode: v.union(v.literal("create"), v.literal("existing")),
+    existingStudentId: v.optional(v.id("students")),
+    guardianAuthTokenIdentifier: v.string(),
+    resolvedByUserId: v.id("users"),
+    reason: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationId"])
+    .index("by_school_and_updated_at", ["schoolId", "updatedAt"]),
+
   admissionsConversions: defineTable({
     schoolId: v.id("schools"),
     applicationId: v.id("admissionsApplications"),
     acceptedDecisionId: v.id("admissionsDecisions"),
     snapshotId: v.id("admissionsSubmissionSnapshots"),
     idempotencyKey: v.string(),
-    state: v.union(v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    state: v.union(v.literal("requested"), v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    /** Lease and canonical-output fields are additive for interrupted conversion recovery. */
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    attemptCount: v.optional(v.number()),
+    parentUserId: v.optional(v.id("users")),
+    studentUserId: v.optional(v.id("users")),
     classId: v.optional(v.id("classes")),
     admissionNumber: v.optional(v.string()),
     familyId: v.optional(v.id("families")),
@@ -635,6 +674,22 @@ export default defineSchema({
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_student", ["studentId"]),
+
+  admissionsFinanceHolds: defineTable({
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    state: v.union(v.literal("active"), v.literal("released")),
+    reasonCode: v.string(),
+    note: v.optional(v.string()),
+    /** Optional only for verified provider reversals, which have no staff actor. */
+    createdByUserId: v.optional(v.id("users")),
+    releasedByUserId: v.optional(v.id("users")),
+    releasedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application_and_state", ["applicationId", "state"])
+    .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"]),
 
   admissionsApplicationContacts: defineTable({
     schoolId: v.id("schools"),

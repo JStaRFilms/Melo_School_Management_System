@@ -13,6 +13,7 @@ const schoolBrandingThemeValidator = v.object({
 
 export const schoolBrandingSummaryValidator = v.object({
   schoolId: v.id("schools"),
+  slug: v.string(),
   name: v.string(),
   logoUrl: v.union(v.string(), v.null()),
   theme: schoolBrandingThemeValidator,
@@ -37,6 +38,7 @@ export const getCurrentSchoolBranding = query({
 
     return {
       schoolId,
+      slug: school.slug,
       name: normalizeHumanName(school.name),
       logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
       theme: fallbackTheme(),
