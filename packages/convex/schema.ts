@@ -883,7 +883,13 @@ export default defineSchema({
     subjectType: v.string(),
     subjectKey: v.string(),
     evidenceReference: v.string(),
+    // SHA-256 of the exact approved public field/SEO/asset payload. Optional
+    // for legacy evidence; publication requires it for new revisions.
+    approvedValueDigest: v.optional(v.string()),
     approvedByUserId: v.optional(v.id("users")),
+    // New public approvals record an accountable in-school approver. Legacy
+    // evidence remains readable but cannot authorize a new publication.
+    approvalProvenance: v.optional(v.literal("accountable_school_approver")),
     approvedAt: v.number(),
     expiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
@@ -903,6 +909,9 @@ export default defineSchema({
     draftRevisionId: v.optional(v.id("schoolSiteRevisions")),
     publishedRevisionId: v.optional(v.id("schoolSiteRevisions")),
     canonicalDomainId: v.optional(v.id("schoolDomains")),
+    // Bounded active-host count makes canonical transitions transactionally
+    // safe without an unbounded domain scan. Existing rows are migrated lazily.
+    activePublicDomainCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -935,9 +944,22 @@ export default defineSchema({
     mediaType: v.string(),
     byteSize: v.number(),
     checksum: v.string(),
+    // Additive public-projection semantics. A renderer may only consume a
+    // matching kind/purpose/channel, never a generic storage object.
+    purpose: v.optional(v.union(v.literal("brand_logo"), v.literal("browser_icon"), v.literal("hero"), v.literal("gallery"), v.literal("staff"), v.literal("facility"), v.literal("policy_document"), v.literal("social_share"))),
+    channels: v.optional(v.array(v.union(v.literal("site"), v.literal("social_share")))),
+    caption: v.optional(v.string()),
+    credit: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
     altText: v.optional(v.string()),
     decorative: v.boolean(),
     rightsStatus: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"), v.literal("expired")),
+    // Rights scope is additive so legacy records remain valid at rest. New
+    // public references require these fields and fail closed when absent.
+    rightsSubject: v.optional(v.union(v.literal("no_identifiable_people"), v.literal("identifiable_people"), v.literal("child_identifiable_people"))),
+    consentScope: v.optional(v.literal("public_site")),
+    consentExpiresAt: v.optional(v.number()),
     approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     rightsExpiresAt: v.optional(v.number()),
     status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
@@ -961,16 +983,41 @@ export default defineSchema({
     expectedDraftVersion: v.number(),
     publishedAt: v.optional(v.number()),
     publishedByUserId: v.optional(v.id("users")),
+    // A server-computed manifest marker distinguishes lifecycle publications
+    // from arbitrary/synthetic rows in the public projection.
+    publicationManifestDigest: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_school_and_state_and_revision_number", ["schoolId", "state", "revisionNumber"])
     .index("by_school_and_revision_number", ["schoolId", "revisionNumber"]),
 
+  // Opaque, hashed preview capabilities. The raw token is never persisted and
+  // a capability is bound to one tenant, revision, and requested hostname.
+  schoolSitePreviewTokens: defineTable({
+    schoolId: v.id("schools"),
+    revisionId: v.id("schoolSiteRevisions"),
+    // Bound snapshot of the currently selected mutable draft. Any pointer,
+    // draft-version, digest, or profile-state change invalidates the token.
+    draftRevisionId: v.optional(v.id("schoolSiteRevisions")),
+    draftVersion: v.optional(v.number()),
+    contentDigest: v.optional(v.string()),
+    profileStatus: v.optional(v.union(v.literal("draft"), v.literal("review"), v.literal("published"))),
+    hostname: v.string(),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    createdByUserId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_school_and_revision", ["schoolId", "revisionId"])
+    .index("by_school_and_expires_at", ["schoolId", "expiresAt"]),
+
   schoolSiteAuditEvents: defineTable({
     schoolId: v.id("schools"),
     actorUserId: v.optional(v.id("users")),
-    eventType: v.union(v.literal("draft_saved"), v.literal("previewed"), v.literal("published"), v.literal("reverted"), v.literal("domain_changed"), v.literal("asset_approved"), v.literal("grant_changed")),
+    eventType: v.union(v.literal("draft_saved"), v.literal("previewed"), v.literal("preview_revoked"), v.literal("published"), v.literal("reverted"), v.literal("domain_changed"), v.literal("asset_approved"), v.literal("grant_changed")),
     revisionId: v.optional(v.id("schoolSiteRevisions")),
     outcome: v.union(v.literal("success"), v.literal("denied"), v.literal("blocked")),
     summary: v.string(),

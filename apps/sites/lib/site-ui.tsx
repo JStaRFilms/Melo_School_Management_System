@@ -1,5 +1,6 @@
+"use client";
+
 import {
-buildSchoolStructuredData,
 getSchoolNavigationPages,
 siteThemeStyle,
 type ContactItem,
@@ -9,13 +10,20 @@ type ResolvedPage,
 type SchoolConfig,
 type SchoolTemplateConfig,
 type SummaryCard
-} from "@/site";
+} from "@/renderers/legacy-template/legacy-data";
 import { ArrowRight,Clock3,Mail,MapPin,Phone } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
+}
+
+const PathPrefixContext = createContext("");
+function prefixedHref(prefix: string, href: string): string { return href.startsWith("/") ? `${prefix}${href}` : href; }
+function SiteLink({ href, children, ...props }: { href: string; children: ReactNode; className?: string; [key: string]: unknown }) {
+  const prefix = useContext(PathPrefixContext);
+  return <Link href={prefixedHref(prefix, href)} {...props}>{children}</Link>;
 }
 
 export function Container({ children, className }: { children: ReactNode; className?: string }) {
@@ -66,7 +74,7 @@ function ActionLink({
   } as const;
 
   return (
-    <Link
+    <SiteLink
       href={href}
       className={cn(
         "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition duration-200",
@@ -76,7 +84,7 @@ function ActionLink({
     >
       {children}
       {variant === "solid" ? <ArrowRight className="h-4 w-4" /> : null}
-    </Link>
+    </SiteLink>
   );
 }
 
@@ -87,7 +95,7 @@ function SiteHeader({ school }: { school: SchoolConfig }) {
     <header className="sticky top-0 z-40 border-b border-white/70 bg-white/90 backdrop-blur-xl">
       <Container className="py-4">
         <div className="flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3">
+          <SiteLink href="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--school-primary)] text-sm font-bold text-white shadow-soft">
               {school.brand.logoMark || school.brand.fallbackMark}
             </div>
@@ -95,19 +103,19 @@ function SiteHeader({ school }: { school: SchoolConfig }) {
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">School website</p>
               <p className="font-display text-lg font-semibold text-slate-950">{school.brand.name}</p>
             </div>
-          </Link>
+          </SiteLink>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
             {navigationPages.map((item) => {
               const href = item.key === "home" ? "/" : `/${item.slug}`;
               return (
-                <Link
+                <SiteLink
                   key={item.key}
                   href={href}
                   className="rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
                 >
                   {item.label}
-                </Link>
+                </SiteLink>
               );
             })}
             <ActionLink href="/contact" variant="solid" className="ml-2">
@@ -131,13 +139,13 @@ function SiteHeader({ school }: { school: SchoolConfig }) {
           {navigationPages.map((item) => {
             const href = item.key === "home" ? "/" : `/${item.slug}`;
             return (
-              <Link
+              <SiteLink
                 key={item.key}
                 href={href}
                 className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
               >
                 {item.label}
-              </Link>
+              </SiteLink>
             );
           })}
         </div>
@@ -177,9 +185,9 @@ function SiteFooter({ school }: { school: SchoolConfig }) {
               {navigationPages.map((item) => {
                 const href = item.key === "home" ? "/" : `/${item.slug}`;
                 return (
-                  <Link key={item.key} href={href} className="text-sm font-medium text-slate-700 transition hover:text-[color:var(--school-primary)]">
+                  <SiteLink key={item.key} href={href} className="text-sm font-medium text-slate-700 transition hover:text-[color:var(--school-primary)]">
                     {item.label}
-                  </Link>
+                  </SiteLink>
                 );
               })}
             </div>
@@ -409,9 +417,9 @@ function ContactsSection({ items }: { items: ContactItem[] }) {
             }
 
             return (
-              <Link key={item.label} href={item.href} className="block transition hover:-translate-y-0.5">
+              <SiteLink key={item.label} href={item.href} className="block transition hover:-translate-y-0.5">
                 {content}
-              </Link>
+              </SiteLink>
             );
           })}
         </div>
@@ -497,13 +505,15 @@ function renderSection(slot: string, page: PageContent): ReactNode {
   }
 }
 
-export function PublicSiteFrame({ school, children }: { school: SchoolConfig; children: ReactNode }) {
+export function PublicSiteFrame({ school, pathPrefix = "", children }: { school: SchoolConfig; pathPrefix?: string; children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[color:var(--school-background)] text-[color:var(--school-ink)]" style={siteThemeStyle(school.theme)}>
-      <SiteHeader school={school} />
-      <main>{children}</main>
-      <SiteFooter school={school} />
-    </div>
+    <PathPrefixContext.Provider value={pathPrefix}>
+      <div className="min-h-screen bg-[color:var(--school-background)] text-[color:var(--school-ink)]" style={siteThemeStyle(school.theme)}>
+        <SiteHeader school={school} />
+        <main>{children}</main>
+        <SiteFooter school={school} />
+      </div>
+    </PathPrefixContext.Provider>
   );
 }
 
@@ -511,22 +521,18 @@ export function PublicSchoolPage({
   school,
   template,
   page,
-  canonicalOrigin,
+  pathPrefix,
 }: {
   school: SchoolConfig;
   template: SchoolTemplateConfig;
   page: ResolvedPage;
-  canonicalOrigin: string;
+  pathPrefix?: string;
 }) {
   const content = school.pageContent[page.key];
   const layout = template.pageLayouts[page.key];
-  const canonicalUrl = new URL(page.canonicalPath, canonicalOrigin).toString();
-  const structuredData = buildSchoolStructuredData({ canonicalUrl, school, page });
 
   return (
-    <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
-      <PublicSiteFrame school={school}>
+    <PublicSiteFrame school={school} pathPrefix={pathPrefix}>
         {layout.slots.map((slot) => {
           if (slot === "hero") {
             return <HeroSection key="hero" school={school} page={content} />;
@@ -536,6 +542,5 @@ export function PublicSchoolPage({
           return <div key={slot}>{section}</div>;
         })}
       </PublicSiteFrame>
-    </>
   );
 }

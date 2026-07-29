@@ -139,6 +139,9 @@ export const siteFieldValueValidator = v.union(
   v.object({ kind: v.literal("boolean"), value: v.boolean() }),
   v.object({ kind: v.literal("link_intent"), value: siteLinkIntentValidator }),
   v.object({ kind: v.literal("asset_ref"), assetId: v.id("schoolSiteAssets") }),
+  // Semantic identifiers and public-media references are deliberately distinct.
+  // A renderer cannot reinterpret an editable list of strings as asset IDs.
+  v.object({ kind: v.literal("asset_list"), assetIds: v.array(v.id("schoolSiteAssets")) }),
   v.object({ kind: v.literal("string_list"), value: v.array(v.string()) })
 );
 
