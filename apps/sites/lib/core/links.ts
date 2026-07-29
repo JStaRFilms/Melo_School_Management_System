@@ -1,6 +1,6 @@
-import type { ApplicationLinkV1, SiteLinkIntentV1 } from "@school/shared";
+import type { ApplicationAvailabilityV1, ApplicationLinkV1, SiteLinkIntentV1 } from "@school/shared/admissions-foundation";
 
-export type { ApplicationLinkV1, SiteLinkIntentV1 };
+export type { ApplicationAvailabilityV1, ApplicationLinkV1, SiteLinkIntentV1 };
 
 export function unavailableApplicationLink(schoolSlug: string): ApplicationLinkV1 {
   return { version: "1", schoolSlug, href: "", availability: "unavailable", intakeSlug: null, opensAt: null, closesAt: null };

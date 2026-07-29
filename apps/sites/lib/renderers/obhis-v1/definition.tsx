@@ -2,7 +2,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ApprovedPublicAsset, SiteRenderContext } from "@/core/contracts";
-import { applicationCtaHref } from "@/core/links";
+import { applicationCtaHref, type ApplicationAvailabilityV1 } from "@/core/links";
 import type { SiteRenderer } from "@/core/renderers/contract";
 import { ObhisNavigation } from "./navigation";
 import { type ObhisRendererData, validateObhisRendererData } from "./schema";
@@ -14,7 +14,21 @@ const routes = [
   { key: "contact", path: "/contact" }, { key: "policy-index", path: "/policies" }, { key: "policy-detail", path: "/policies/[policySlug]" },
 ] as const;
 
-function isObhisRouteAvailable(data: ObhisRendererData, routeKey: string, params: Readonly<Record<string, string>>, applicationAvailability: string) {
+const applicationStatusLabels: Readonly<Record<ApplicationAvailabilityV1, string>> = {
+  open: "Applications are currently available.",
+  upcoming: "Applications open soon.",
+  paused: "Applications are currently paused.",
+  closed: "Applications are currently closed.",
+  unavailable: "Application availability is not currently available.",
+};
+
+function applicationStatusLabel(status: ApplicationAvailabilityV1): string {
+  return Object.prototype.hasOwnProperty.call(applicationStatusLabels, status)
+    ? applicationStatusLabels[status]
+    : applicationStatusLabels.unavailable;
+}
+
+function isObhisRouteAvailable(data: ObhisRendererData, routeKey: string, params: Readonly<Record<string, string>>, applicationAvailability: ApplicationAvailabilityV1) {
   // Retain the B0 availability argument in the renderer boundary; informational
   // admissions no longer hides content when it is not open.
   void applicationAvailability;
@@ -118,7 +132,7 @@ function Media({ item, className = "", priority = false }: { item: ApprovedPubli
 function ApplicationCta({ context, className = "" }: { context: SiteRenderContext<ObhisRendererData>; className?: string }) {
   const href = applicationCtaHref(context.links.application);
   if (href) return <a className={`${styles.applyButton} ${className}`} href={href}>Start an application<span className={styles.srOnly}> — opens the secure application</span></a>;
-  const message = { open: "Applications are currently available.", upcoming: "Applications open soon.", paused: "Applications are currently paused.", closed: "Applications are currently closed.", unavailable: "Application availability is not currently available." }[context.links.application.availability];
+  const message = applicationStatusLabel(context.links.application.availability);
   return <p className={styles.status} role="status">{message}</p>;
 }
 function Unavailable({ title, body = "This information is not available on the published site." }: { title: string; body?: string }) { return <section className={styles.unavailable}><Container><p className={styles.eyebrow}>Published information</p><h1>{title}</h1><p>{body}</p></Container></section>; }
