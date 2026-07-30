@@ -3,8 +3,10 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
+import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -20,9 +22,12 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   const createAttempt = useMutation(functionRef("functions/admissions/public:createAttemptForOffering"));
   const initializeAttempt = useAction(functionRef("functions/admissions/public:initializeAttemptByReference"));
   const [notice, setNotice] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const begin = async () => {
     if (!session?.user) { router.push(`/s/${encodeURIComponent(schoolSlug)}/account`); return; }
+    setStarting(true);
+    setNotice(null);
     try {
       const identity: any = await getIdentity({});
       if (identity.verificationRequired) { setNotice("Verify your contact to protect this private application, then return here."); return; }
@@ -36,24 +41,80 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
       }
       window.location.assign(checkout.checkoutUrl);
     } catch { setNotice("We could not start secure checkout. Verify your contact and try again."); }
+    finally { setStarting(false); }
   };
 
   if (!entry) return <Page><p className="muted">Loading the published application information…</p></Page>;
   if (entry.availability === "unavailable") return <Unavailable />;
   const unavailable = entry.availability !== "open";
   return <Page><section className="card"><span className="pill">{entry.availability}</span><h1>{entry.programme?.name ?? "Application information"}</h1><p className="muted">{entry.intake?.name} · {entry.intake?.cycleLabel}</p>
-    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong>Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p>Application fee: <strong>{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br />{entry.offering.feeDisclosure}</p> : null}</div><div className="actions"><button className="primary" onClick={() => void begin}>Start one child application</button><a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
+    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong>Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p>Application fee: <strong>{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br />{entry.offering.feeDisclosure}</p> : null}</div><div className="actions"><button className="primary" type="button" disabled={starting} onClick={() => void begin()}>{starting ? "Starting secure checkout…" : "Start one child application"}</button><a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
     {notice ? <p className="status" role="status">{notice}</p> : null}
   </section>{paymentReference ? <PaymentReturn schoolSlug={schoolSlug} reference={paymentReference} /> : null}</Page>;
 }
 
 export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSlug" | "intakeSlug">) {
-  const router = useRouter(); const { data: session } = authClient.useSession();
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
   const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), session?.user ? { schoolSlug, limit: 100 } : "skip") as any;
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [authState, setAuthState] = useState<string | null>(null);
-  const signIn = async (event: FormEvent) => { event.preventDefault(); setAuthState("Signing in…"); try { const result: any = await authClient.signIn.email({ email, password }); setAuthState(result?.error ? "We could not sign you in. Check your details and try again." : "Signed in. Your private workspace is loading."); } catch { setAuthState("We could not sign you in. Check your connection and try again."); } };
-  const create = async () => { setAuthState("Creating your account…"); try { const result: any = await authClient.signUp.email({ email, password, name: "Guardian" }); setAuthState(result?.error ? "We could not create your account. Check the details and try again." : "Account created. Verify your contact, then return here."); } catch { setAuthState("We could not create your account. Check your connection and try again."); } };
-  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={signIn}><div className="notice"><strong>Sign in or create an account</strong><p>Verification protects your child&apos;s application and lets you return to it.</p></div><Input id="email" label="Email" type="email" value={email} onChange={setEmail} required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} required /><div className="actions"><button className="primary" type="submit">Sign in</button><button className="secondary" type="button" onClick={() => void create()}>Create an account</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} />}</section></Page>;
+  const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [authState, setAuthState] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitAuth = async (event: FormEvent) => {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    if (mode === "create") {
+      const validationErrors = validateGuardianRegistration({ name, email, password, passwordConfirmation });
+      if (validationErrors.length) {
+        setAuthState(validationErrors.join(" "));
+        setSubmitting(false);
+        return;
+      }
+      setAuthState("Creating your account…");
+      try {
+        const result: any = await authClient.signUp.email({ email: email.trim(), password, name: name.trim() });
+        if (result?.error) setAuthState(guardianRegistrationErrorMessage(result.error));
+        else {
+          setAuthState("Account created. Your private workspace is loading.");
+          router.refresh();
+        }
+      } catch (error) {
+        setAuthState(guardianRegistrationErrorMessage(error));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    setAuthState("Signing in…");
+    try {
+      const result: any = await authClient.signIn.email({ email: email.trim(), password });
+      if (result?.error) setAuthState(getSignInErrorMessage(result.error));
+      else {
+        setAuthState("Signed in. Your private workspace is loading.");
+        router.refresh();
+      }
+    } catch (error) {
+      setAuthState(getSignInErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const switchMode = (nextMode: "sign-in" | "create") => {
+    setMode(nextMode);
+    setAuthState(null);
+    setPassword("");
+    setPasswordConfirmation("");
+  };
+
+  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} />}</section></Page>;
 }
 
 function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter> }) {
@@ -110,7 +171,7 @@ function DynamicField({ field, value, disabled, onChange, onSave }: { field: Fie
 function safeArray(value: string) { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } }
 function Documents({ requirements, documents, disabled, onOpen, onUpload }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; onOpen: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void> }) { const [selected, setSelected] = useState<Record<string, File | undefined>>({}); const [status, setStatus] = useState("Choose a file, then upload privately."); return <section><h2>Private documents</h2><p className="muted">Files are checked before binding and are not shown as public links.</p><p className="status" role="status">{status}</p>{documents.map(document => <div className="upload" key={document.documentKey}><strong>{document.fileName}</strong> · version {document.version} · {document.state}<button type="button" className="secondary" onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>View my document</button></div>)}{requirements.map(requirement => <div className="upload" key={requirement.key}><strong>{requirement.label} · {requirement.requiredMode === "required" ? "Required" : "Optional"}</strong><p className="muted">{requirement.purpose} · up to {(requirement.maxBytes / 1_000_000).toFixed(1)} MB · {requirement.maxFiles} file(s)</p><input aria-label={`Choose file for ${requirement.label}`} type="file" accept={requirement.acceptedMimeTypes.join(",")} disabled={disabled} onChange={e => setSelected({ ...selected, [requirement.key]: e.target.files?.[0] })}/><button type="button" className="secondary" disabled={disabled || !selected[requirement.key]} onClick={async () => { const file = selected[requirement.key]; if (!file) return; if (file.size > requirement.maxBytes || !requirement.acceptedMimeTypes.includes(file.type)) { setStatus("This file does not meet the listed type or size requirements."); return; } setStatus("Uploading privately…"); try { await onUpload(requirement.key, file); setStatus("Uploaded. This file is private and will be checked with your application."); setSelected({ ...selected, [requirement.key]: undefined }); } catch { setStatus("This file could not be added. Choose another file or retry upload."); } }}>Upload privately</button></div>)}</section>; }
 function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; reference: string }) { const router = useRouter(); const verify = useAction(functionRef("functions/admissions/public:verifyReturnByReference")); const reserve = useMutation(functionRef("functions/admissions/public:createOrResumeForReference")); const [state, setState] = useState("Payment pending"); const [ready, setReady] = useState(false); const check = async () => { try { const result: any = await verify({ reference }); const paid = result.state === "paid" && result.entitlementAvailable; setReady(paid); setState(paymentStatusCopy(paid ? "paid" : result.state)); } catch { setState(paymentStatusCopy("manual_attention")); } }; const continueToApplication = async () => { try { const application: any = await reserve({ schoolSlug, reference }); localStorage.removeItem(checkoutKey(schoolSlug)); localStorage.setItem(referenceKey(schoolSlug), application.publicReference); router.push(applicationPath(schoolSlug, application.publicReference)); } catch { setState("Payment is confirmed, but the application slot is not available yet. Check again shortly."); } }; return <section className="card"><h2>Confirming your payment</h2><p aria-live="polite">{state}</p><button type="button" className="secondary" onClick={() => void check()}>Check again</button>{ready ? <button type="button" className="primary" onClick={() => void continueToApplication()}>Start one child application</button> : null}</section>; }
-function Input({ id, label, value, onChange, type = "text", required = false, disabled = false }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; disabled?: boolean }) { return <div className="field"><label htmlFor={id}>{label} {required ? <small>Required</small> : null}</label><input id={id} type={type} autoComplete={type === "email" ? "email" : type === "password" ? "current-password" : undefined} required={required} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} /></div>; }
+function Input({ id, label, value, onChange, type = "text", required = false, disabled = false, autoComplete }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; disabled?: boolean; autoComplete?: string }) { return <div className="field"><label htmlFor={id}>{label} {required ? <small>Required</small> : null}</label><input id={id} type={type} autoComplete={autoComplete ?? (type === "email" ? "email" : undefined)} required={required} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} /></div>; }
 function Availability({ state, opensAt }: { state: string; opensAt?: number }) { return <div className="notice warn"><h2>This application link is not currently open</h2><p>{state === "upcoming" && opensAt ? `Applications open ${new Date(opensAt).toLocaleDateString()}.` : "Check the link or contact the school for current admissions information."}</p></div>; }
 function Unavailable() { return <Page><section className="card"><h1>This application link is not available.</h1><p className="muted">Please check the link or contact the school for current admissions information.</p></section></Page>; }
 function Page({ children }: { children: React.ReactNode }) { return <><a className="skip" href="#content">Skip to main content</a><header className="top"><span className="brand">Apply · School admissions</span><span className="muted">Private guardian journey</span></header><main id="content" className="shell">{children}</main></>; }

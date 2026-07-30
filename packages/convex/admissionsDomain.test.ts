@@ -318,6 +318,25 @@ describe("B1 admissions domain", () => {
     expect(await t.run((ctx) => ctx.db.get(result.guardianId))).toMatchObject({ normalizedEmail: "verified@example.test", status: "active" });
   });
 
+  test("the explicit localhost development flag unlocks an unverified test guardian", async () => {
+    const priorFlag = process.env.ADMISSIONS_DEV_AUTO_VERIFY_GUARDIANS;
+    const priorOrigin = process.env.APPLICATION_ORIGIN;
+    process.env.ADMISSIONS_DEV_AUTO_VERIFY_GUARDIANS = "true";
+    process.env.APPLICATION_ORIGIN = "http://localhost:3004";
+    try {
+      const t = convexTest(schema, modules);
+      const identity = { subject: "local", tokenIdentifier: "issuer|local", issuer: "issuer", email: "local@example.test", emailVerified: false };
+      const result = await t.withIdentity(identity).mutation((api as any).functions.admissions.guardian.getOrCreateIdentity, {});
+      expect(result.verificationRequired).toBe(false);
+      expect(await t.run((ctx) => ctx.db.get(result.guardianId))).toMatchObject({ normalizedEmail: "local@example.test", status: "active", emailVerifiedAt: expect.any(Number) });
+    } finally {
+      if (priorFlag === undefined) delete process.env.ADMISSIONS_DEV_AUTO_VERIFY_GUARDIANS;
+      else process.env.ADMISSIONS_DEV_AUTO_VERIFY_GUARDIANS = priorFlag;
+      if (priorOrigin === undefined) delete process.env.APPLICATION_ORIGIN;
+      else process.env.APPLICATION_ORIGIN = priorOrigin;
+    }
+  });
+
   test("scheduled recovery makes stale conversion and outbox leases retryable without duplicating records", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t); const old = Date.now() - 60 * 60 * 1000;
     const entitlement = await t.run((ctx) => ctx.db.insert("admissionsEntitlements", { schoolId: ids.schoolA, guardianId: ids.guardian, productId: ids.product, intakeId: ids.intake, sourcePurchaseAttemptId: ids.attempt, state: "consumed", createdAt: old, updatedAt: old }));

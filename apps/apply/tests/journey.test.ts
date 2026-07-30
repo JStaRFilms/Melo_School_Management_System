@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue } from "../lib/journey";
+import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 describe("guardian journey safety", () => {
   test("keeps opaque application references in a school-scoped route", () => {
@@ -31,5 +32,17 @@ describe("guardian journey safety", () => {
     expect(serializedValue("checkbox", true)).toEqual({ valueType: "boolean", serializedValue: "true" });
     expect(serializedValue("multi_select", ["a", "b"])).toEqual({ valueType: "multi_select", serializedValue: '["a","b"]' });
     expect(serializedValue("number", "4")).toEqual({ valueType: "number", serializedValue: "4" });
+  });
+  test("validates a complete guardian registration before calling auth", () => {
+    expect(validateGuardianRegistration({ name: "", email: "bad", password: "short", passwordConfirmation: "different" })).toEqual([
+      "Enter your full name.",
+      "Enter a valid email address.",
+      "Use a password with at least 8 characters.",
+      "The passwords do not match.",
+    ]);
+    expect(validateGuardianRegistration({ name: "Demo Guardian", email: "guardian@example.test", password: "StrongPass123!", passwordConfirmation: "StrongPass123!" })).toEqual([]);
+  });
+  test("turns duplicate-account auth errors into a useful next step", () => {
+    expect(guardianRegistrationErrorMessage({ code: "USER_ALREADY_EXISTS", message: "User already exists" })).toContain("Sign in instead");
   });
 });

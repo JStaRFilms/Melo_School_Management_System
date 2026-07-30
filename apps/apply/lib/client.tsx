@@ -2,13 +2,23 @@
 
 import { BetterAuthConvexProvider, createAppAuthClient } from "@school/auth";
 import { ConvexReactClient } from "convex/react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const authClient = createAppAuthClient(typeof window === "undefined" ? "http://localhost:3004" : window.location.origin);
 
 export function ApplyClientProvider({ children }: { children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Keep the server and the browser's first render identical. Next public
+  // environment values are compiled for the browser and may not be present in
+  // an already-running development server until it is restarted.
+  if (!mounted) {
+    return <main className="shell"><p className="muted">Loading the application service…</p></main>;
+  }
+
   if (!client) {
     return (
       <main className="shell">

@@ -8,6 +8,16 @@ function verifiedAtFromAuthIdentity(rawIdentity: unknown) {
   return identity?.emailVerified === true || identity?.email_verified === true ? Date.now() : undefined;
 }
 
+function developmentAutoVerificationAt() {
+  if (process.env.ADMISSIONS_DEV_AUTO_VERIFY_GUARDIANS !== "true") return undefined;
+  try {
+    const applicationOrigin = new URL(process.env.APPLICATION_ORIGIN ?? "");
+    return ["localhost", "127.0.0.1"].includes(applicationOrigin.hostname) ? Date.now() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const workspaceItemValidator = v.object({
   entitlementId: v.id("admissionsEntitlements"),
   state: v.string(),
@@ -25,7 +35,10 @@ export const getOrCreateIdentity = mutation({
     const rawIdentity = await ctx.auth.getUserIdentity();
     const existing = await ctx.db.query("admissionsGuardians")
       .withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", identity.tokenIdentifier)).unique();
-    const verifiedAt = verifiedAtFromAuthIdentity(rawIdentity);
+    // Production still requires verification evidence from the auth identity.
+    // The explicit localhost-only flag keeps development checkout testable until
+    // a transactional email provider is configured for the public application.
+    const verifiedAt = verifiedAtFromAuthIdentity(rawIdentity) ?? developmentAutoVerificationAt();
     if (existing) {
       if (verifiedAt && !existing.emailVerifiedAt) {
         await ctx.db.patch(existing._id, { emailVerifiedAt: verifiedAt, updatedAt: verifiedAt });
