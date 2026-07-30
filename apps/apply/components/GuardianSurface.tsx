@@ -13,6 +13,32 @@ type Field = PublishedField & { sectionKey: string; label: string; helpText: str
 type Requirement = { key: string; label: string; purpose: string; requiredMode: string; acceptedMimeTypes: string[]; maxBytes: number; maxFiles: number; sensitivity: string };
 const referenceKey = (school: string) => `apply:last-reference:${school}`;
 const checkoutKey = (school: string) => `${referenceKey(school)}:checkout`;
+type GuardianIdentityState = "idle" | "checking" | "ready" | "verification-required" | "error";
+
+function useGuardianReadiness() {
+  const sessionResult = authClient.useSession();
+  const session = sessionResult.data;
+  const sessionPending = sessionResult.isPending;
+  const signedInUserId = session?.user?.id;
+  const getIdentity = useMutation(functionRef("functions/admissions/guardian:getOrCreateIdentity"));
+  const [identityState, setIdentityState] = useState<GuardianIdentityState>("idle");
+  const [identityAttempt, setIdentityAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (!signedInUserId) {
+      setIdentityState("idle");
+      return () => { active = false; };
+    }
+    setIdentityState("checking");
+    void getIdentity({}).then((identity: any) => {
+      if (active) setIdentityState(identity.verificationRequired ? "verification-required" : "ready");
+    }).catch(() => {
+      if (active) setIdentityState("error");
+    });
+    return () => { active = false; };
+  }, [signedInUserId, getIdentity, identityAttempt]);
+  return { session, sessionPending, signedInUserId, identityState, retryIdentity: () => setIdentityAttempt((value) => value + 1) };
+}
 
 export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Props) {
   const router = useRouter();
@@ -59,25 +85,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
 
 export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false }: Pick<Props, "schoolSlug" | "intakeSlug" | "checkoutIntent">) {
   const router = useRouter();
-  const { data: session } = authClient.useSession();
-  const signedInUserId = session?.user?.id;
-  const getIdentity = useMutation(functionRef("functions/admissions/guardian:getOrCreateIdentity"));
-  const [identityState, setIdentityState] = useState<"idle" | "checking" | "ready" | "verification-required" | "error">("idle");
-  const [identityAttempt, setIdentityAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    if (!signedInUserId) {
-      setIdentityState("idle");
-      return () => { active = false; };
-    }
-    setIdentityState("checking");
-    void getIdentity({}).then((identity: any) => {
-      if (active) setIdentityState(identity.verificationRequired ? "verification-required" : "ready");
-    }).catch(() => {
-      if (active) setIdentityState("error");
-    });
-    return () => { active = false; };
-  }, [signedInUserId, getIdentity, identityAttempt]);
+  const { session, sessionPending, signedInUserId, identityState, retryIdentity } = useGuardianReadiness();
   const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), signedInUserId && identityState === "ready" ? { schoolSlug, limit: 100 } : "skip") as any;
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [name, setName] = useState("");
@@ -144,10 +152,10 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
     : identityState === "verification-required"
       ? <div className="notice warn" role="status"><strong>Verify your email to continue</strong><p>Your private application workspace will open after your email address is verified.</p></div>
       : identityState === "error"
-        ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={() => setIdentityAttempt((value) => value + 1)}>Retry account check</button></div>
+        ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></div>
         : <p className="muted" role="status">Preparing your private guardian workspace…</p>;
 
-  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
+  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
 function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
@@ -194,8 +202,10 @@ function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { 
 
 export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug: string; publicReference: string }) {
   const router = useRouter();
-  const app = useQuery(functionRef("functions/admissions/public:getGuardianApplication"), { schoolSlug, publicReference }) as any;
-  const config = useQuery(functionRef("functions/admissions/public:getApplicationConfiguration"), app ? { schoolSlug, publicReference } : "skip") as any;
+  const { session, sessionPending, identityState, retryIdentity } = useGuardianReadiness();
+  const privateQueryReady = Boolean(session?.user) && identityState === "ready";
+  const app = useQuery(functionRef("functions/admissions/public:getGuardianApplication"), privateQueryReady ? { schoolSlug, publicReference } : "skip") as any;
+  const config = useQuery(functionRef("functions/admissions/public:getApplicationConfiguration"), privateQueryReady && app ? { schoolSlug, publicReference } : "skip") as any;
   const saveCore = useMutation(functionRef("functions/admissions/public:saveCoreByPublicReference"));
   const saveAnswer = useMutation(functionRef("functions/admissions/public:saveAnswerByPublicReference"));
   const saveContact = useMutation(functionRef("functions/admissions/public:saveContactByPublicReference"));
@@ -213,7 +223,11 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const sectionKeys = useMemo<string[]>(() => Array.from(new Set<string>((config?.fields ?? []).map((field: Field) => field.sectionKey))).filter(Boolean), [config?.fields]);
   const formSteps = useMemo<string[]>(() => Array.from(new Set<string>(["child", "contacts", ...sectionKeys.filter((key) => key !== "child" && key !== "contacts"), "documents", "review"])), [sectionKeys]);
   const fields = useMemo(() => (config?.fields ?? []).filter((field: Field) => field.sectionKey === step && fieldIsVisible(field, answers)), [config?.fields, step, answers]);
-  if (!app || !config || version === null) return <Page><p className="muted">Loading your private application…</p></Page>;
+  if (sessionPending || identityState === "checking" || (session?.user && identityState === "idle")) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted" role="status">Checking your guardian account and application access…</p></section></Page>;
+  if (!session?.user) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Sign in to your workspace</a></section></Page>;
+  if (identityState === "verification-required") return <Page><section className="card auth-gate"><h1>Verify your email to continue</h1><p className="muted">Your application remains private until your guardian email is verified.</p></section></Page>;
+  if (identityState === "error") return <Page><section className="card auth-gate"><h1>We could not open your guardian workspace</h1><p className="muted">Retry the secure account check before loading this application.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></section></Page>;
+  if (!app || !config || version === null) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted">Loading your saved details and form requirements…</p></section></Page>;
   const editable = app.allowedActions.includes("save");
   const fieldEditable = (key: string) => editable && (app.state !== "changes_requested" || app.permittedEdits.fieldKeys.includes(key));
   const coreEditable = (key: string) => editable && (app.state !== "changes_requested" || app.permittedEdits.coreKeys.includes(key));
