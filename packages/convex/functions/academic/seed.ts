@@ -16,6 +16,8 @@ import {
 } from "./demoData";
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
+import { ADMISSIONS_PERMISSIONS_V1 } from "@school/shared";
+import { digest } from "../admissions/helpers";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -319,6 +321,103 @@ export const populateDemoKnowledgeAndFinalizeInternal = internalMutation({
       await populateJudgeLessonFixture(ctx, { schoolId: data.schoolId, teacherUserId: data.teacherIds[0], subjectId: data.subjectIds[3], topicId: fixture.topicId, materialId: fixture.materialId, now });
     }
     const studentCount = (await ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", data.schoolId)).take(50)).length; const invoiceCount = (await ctx.db.query("studentInvoices").withIndex("by_school", (q) => q.eq("schoolId", data.schoolId)).take(50)).length; const assessmentRecordCount = (await ctx.db.query("assessmentRecords").withIndex("by_school", (q) => q.eq("schoolId", data.schoolId)).take(800)).length; if (studentCount !== profile.students.length || invoiceCount !== profile.students.length || assessmentRecordCount !== profile.students.length * profile.subjects.length * 3) throw new ConvexError(`${profile.schoolName} seed final validation failed.`); await ctx.db.patch(runId, { status: "succeeded", phase: "complete", updatedAt: Date.now() }); return { schoolId: data.schoolId, studentCount, classCount: data.classIds.length, invoiceCount, assessmentRecordCount };
+  },
+});
+
+/**
+ * Operator-only development fixture for the existing Demo Academy tenant.
+ * It is idempotent, never creates or stores payment credentials, and is not
+ * reachable from a browser client because it is an internal mutation.
+ */
+export const provisionDemoAdmissionsFixtureInternal = internalMutation({
+  args: {},
+  returns: v.object({
+    schoolId: v.id("schools"),
+    adminUserId: v.id("users"),
+    intakeId: v.id("admissionsIntakes"),
+    productId: v.id("admissionsProducts"),
+    grantedCapabilityCount: v.number(),
+  }),
+  handler: async (ctx) => {
+    const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", DEMO_SCHOOL_SLUG)).unique();
+    if (!school || school.status !== "active") throw new ConvexError("Seed Demo Academy before provisioning admissions.");
+    const users = await ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(100);
+    const admin = users.find((user) => user.email === "admin@demo-academy.school" && !user.isArchived);
+    if (!admin) throw new ConvexError("Demo Academy admin is unavailable.");
+
+    const now = Date.now();
+    const existingGrants = await ctx.db.query("schoolCapabilityGrants").withIndex("by_school_and_user", (q) => q.eq("schoolId", school._id).eq("userId", admin._id)).take(100);
+    const granted = new Set(existingGrants.filter((grant) => !grant.revokedAt && grant.scope === "school").map((grant) => grant.capability));
+    let grantedCapabilityCount = 0;
+    for (const capability of ADMISSIONS_PERMISSIONS_V1) {
+      if (granted.has(capability)) continue;
+      await ctx.db.insert("schoolCapabilityGrants", {
+        schoolId: school._id,
+        userId: admin._id,
+        capability,
+        scope: "school",
+        grantedByUserId: admin._id,
+        reason: "Development-only Demo Academy admissions fixture",
+        isBreakGlass: false,
+        createdAt: now,
+      });
+      grantedCapabilityCount += 1;
+    }
+
+    let programme = await ctx.db.query("admissionsProgrammes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", "demo-admissions")).unique();
+    if (!programme) {
+      const id = await ctx.db.insert("admissionsProgrammes", { schoolId: school._id, slug: "demo-admissions", name: "Demo Academy admissions", description: "Development-only admissions workflow fixture.", status: "published", createdAt: now, updatedAt: now });
+      programme = await ctx.db.get("admissionsProgrammes", id);
+    } else if (programme.status !== "published") await ctx.db.patch(programme._id, { status: "published", updatedAt: now });
+    if (!programme) throw new ConvexError("Failed to provision the demo programme.");
+
+    let intake = await ctx.db.query("admissionsIntakes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", "development-intake")).unique();
+    const opensAt = now - DAY;
+    const closesAt = now + 180 * DAY;
+    if (!intake) {
+      const id = await ctx.db.insert("admissionsIntakes", { schoolId: school._id, programmeId: programme._id, slug: "development-intake", name: "Development admissions intake", cycleLabel: "Development fixture", opensAt, closesAt, status: "open", createdAt: now, updatedAt: now });
+      intake = await ctx.db.get("admissionsIntakes", id);
+    } else await ctx.db.patch(intake._id, { programmeId: programme._id, opensAt, closesAt, status: "open", updatedAt: now });
+    if (!intake) throw new ConvexError("Failed to provision the demo intake.");
+
+    let form = (await ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(1))[0];
+    if (!form) {
+      const id = await ctx.db.insert("admissionsFormVersions", { schoolId: school._id, programmeId: programme._id, intakeId: intake._id, version: 1, schemaVersion: "demo-v1", status: "published", publishedAt: now, publishedBy: admin._id, createdAt: now, updatedAt: now });
+      const createdForm = await ctx.db.get("admissionsFormVersions", id);
+      if (!createdForm) throw new ConvexError("Failed to provision the demo form.");
+      form = createdForm;
+    }
+    const preferredName = await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_field_key", (q) => q.eq("formVersionId", form._id).eq("fieldKey", "preferred-name")).unique();
+    if (!preferredName) await ctx.db.insert("admissionsFormFields", { schoolId: school._id, formVersionId: form._id, fieldKey: "preferred-name", sectionKey: "child", kind: "text", label: "Preferred name", helpText: "Optional development fixture field.", requiredMode: "optional", dataClass: "personal", purpose: "Address the applicant correctly during review.", validationJson: "{}", order: 10, status: "active", createdAt: now, updatedAt: now });
+    const birthCertificate = await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", form._id).eq("requirementKey", "birth-certificate")).unique();
+    if (!birthCertificate) await ctx.db.insert("admissionsDocumentRequirements", { schoolId: school._id, formVersionId: form._id, requirementKey: "birth-certificate", category: "identity", label: "Birth certificate (optional demo upload)", requiredMode: "optional", acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5_000_000, maxFiles: 1, sensitivity: "child_confidential", purpose: "Exercise the private admissions upload workflow in development.", order: 20, createdAt: now, updatedAt: now });
+
+    let declaration = await ctx.db.query("admissionsDeclarationVersions").withIndex("by_school_and_programme_and_version", (q) => q.eq("schoolId", school._id).eq("programmeId", programme._id).eq("version", 1)).unique();
+    if (!declaration) {
+      const body = "I confirm that the information in this development application is accurate for testing purposes.";
+      const id = await ctx.db.insert("admissionsDeclarationVersions", { schoolId: school._id, programmeId: programme._id, version: 1, title: "Development application declaration", body, bodyDigest: await digest(body), purpose: "Record the guardian's test submission declaration.", status: "published", publishedAt: now, publishedBy: admin._id, createdAt: now, updatedAt: now });
+      declaration = await ctx.db.get("admissionsDeclarationVersions", id);
+    } else if (declaration.status !== "published") await ctx.db.patch(declaration._id, { status: "published", publishedAt: now, publishedBy: admin._id, updatedAt: now });
+
+    let product = await ctx.db.query("admissionsProducts").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", "one-application-slot")).unique();
+    if (!product) {
+      const id = await ctx.db.insert("admissionsProducts", { schoolId: school._id, intakeId: intake._id, slug: "one-application-slot", name: "One child application", slotCount: 1, status: "active", createdAt: now, updatedAt: now });
+      product = await ctx.db.get("admissionsProducts", id);
+    } else await ctx.db.patch(product._id, { intakeId: intake._id, status: "active", updatedAt: now });
+    if (!product) throw new ConvexError("Failed to provision the demo product.");
+
+    let financeEvidence = (await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_approval_class", (q) => q.eq("schoolId", school._id).eq("approvalClass", "finance")).take(100)).find((evidence) => evidence.subjectType === "admissions_price" && evidence.subjectKey === `${String(product._id)}:1` && !evidence.revokedAt);
+    if (!financeEvidence) {
+      const approvedValueDigest = await digest(JSON.stringify({ amountMinor: 100_000, currency: "NGN", refundPolicyKey: "demo-non-refundable", feeDisclosure: "Development-only non-refundable test application fee." }));
+      const id = await ctx.db.insert("schoolApprovalEvidence", { schoolId: school._id, approvalClass: "finance", subjectType: "admissions_price", subjectKey: `${String(product._id)}:1`, evidenceReference: "demo-fixture:finance-v1", approvedValueDigest, approvedByUserId: admin._id, approvalProvenance: "accountable_school_approver", approvedAt: now, expiresAt: now + 365 * DAY, createdAt: now });
+      financeEvidence = await ctx.db.get("schoolApprovalEvidence", id) ?? undefined;
+    }
+    let price = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id).eq("version", 1)).unique();
+    if (!price) {
+      await ctx.db.insert("admissionsProductPrices", { schoolId: school._id, productId: product._id, version: 1, amountMinor: 100_000, currency: "NGN", refundPolicyKey: "demo-non-refundable", feeDisclosure: "Development-only non-refundable test application fee.", effectiveFrom: now - DAY, effectiveTo: now + 180 * DAY, status: "published", ...(financeEvidence ? { approvalEvidenceId: financeEvidence._id } : {}), createdAt: now, updatedAt: now });
+    } else await ctx.db.patch(price._id, { effectiveFrom: now - DAY, effectiveTo: now + 180 * DAY, status: "published", ...(financeEvidence ? { approvalEvidenceId: financeEvidence._id } : {}), updatedAt: now });
+
+    return { schoolId: school._id, adminUserId: admin._id, intakeId: intake._id, productId: product._id, grantedCapabilityCount };
   },
 });
 

@@ -1,4 +1,5 @@
 import { query } from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import { buildApplicationLinkV1 } from "@school/shared";
 import { applicationLinkV1Validator } from "./contracts";
@@ -97,11 +98,30 @@ export const getApplicationLink = query({
         .withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake!._id).eq("status", "active"))
         .take(1)
       : [];
+    const now = Date.now();
+    const prices = activeProducts[0]
+      ? await ctx.db
+        .query("admissionsProductPrices")
+        .withIndex("by_product_and_status_and_effective_from", (q) =>
+          q.eq("productId", activeProducts[0]._id).eq("status", "published")
+        )
+        .order("desc")
+        .take(50)
+      : [];
+    const hasCurrentPrice = prices.some((price) =>
+      price.schoolId === school?._id && price.effectiveFrom <= now && (!price.effectiveTo || price.effectiveTo > now)
+    );
+    const providerConfig: { provider: "paystack"; providerMode: "test" | "live" } | null = school
+      ? await ctx.runQuery(
+        (internal as any).functions.admissions.payments.getConfiguredAdmissionsPaymentProviderInternal,
+        { schoolId: school._id }
+      )
+      : null;
     const availability = resolveAvailability({
       schoolActive: school?.status === "active",
       intake,
-      hasActiveProduct: activeProducts.length > 0,
-      now: Date.now(),
+      hasActiveProduct: activeProducts.length > 0 && hasCurrentPrice && providerConfig !== null,
+      now,
     });
 
     return buildApplicationLinkV1({
