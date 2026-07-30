@@ -289,7 +289,7 @@ async function requireOwnedAttemptReference(ctx: any, reference: string) {
   return attempt;
 }
 
-const resolveOwnedAttemptReferenceInternal = internalQuery({
+export const resolveOwnedAttemptReferenceInternal = internalQuery({
   args: { reference: v.string() },
   returns: v.union(v.null(), v.object({ attemptId: v.id("admissionsPurchaseAttempts") })),
   handler: async (ctx, args) => {
