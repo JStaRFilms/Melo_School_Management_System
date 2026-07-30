@@ -364,6 +364,13 @@ export const provisionDemoAdmissionsFixtureInternal = internalMutation({
       grantedCapabilityCount += 1;
     }
 
+    const billingSettings = await ctx.db.query("schoolBillingSettings").withIndex("by_school", (q) => q.eq("schoolId", school._id)).unique();
+    if (billingSettings) {
+      await ctx.db.patch(billingSettings._id, { preferredProvider: "paystack", paymentProviderMode: "test", allowOnlinePayments: true, updatedAt: now, updatedBy: admin._id });
+    } else {
+      await ctx.db.insert("schoolBillingSettings", { schoolId: school._id, invoicePrefix: "DEMO", defaultCurrency: "NGN", defaultDueDays: 7, preferredProvider: "paystack", paymentProviderMode: "test", allowManualPayments: true, allowOnlinePayments: true, createdAt: now, updatedAt: now, updatedBy: admin._id });
+    }
+
     let programme = await ctx.db.query("admissionsProgrammes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", "demo-admissions")).unique();
     if (!programme) {
       const id = await ctx.db.insert("admissionsProgrammes", { schoolId: school._id, slug: "demo-admissions", name: "Demo Academy admissions", description: "Development-only admissions workflow fixture.", status: "published", createdAt: now, updatedAt: now });
