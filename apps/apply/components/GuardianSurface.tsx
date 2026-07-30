@@ -8,7 +8,7 @@ import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
-type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string };
+type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
 type Requirement = { key: string; label: string; purpose: string; requiredMode: string; acceptedMimeTypes: string[]; maxBytes: number; maxFiles: number; sensitivity: string };
 const referenceKey = (school: string) => `apply:last-reference:${school}`;
@@ -25,7 +25,11 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   const [starting, setStarting] = useState(false);
 
   const begin = async () => {
-    if (!session?.user) { router.push(`/s/${encodeURIComponent(schoolSlug)}/account`); return; }
+    if (!session?.user) {
+      const query = new URLSearchParams({ checkout: "1", ...(intakeSlug ? { intake: intakeSlug } : {}) });
+      router.push(`/s/${encodeURIComponent(schoolSlug)}/account?${query.toString()}`);
+      return;
+    }
     setStarting(true);
     setNotice(null);
     try {
@@ -53,7 +57,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   </section>{paymentReference ? <PaymentReturn schoolSlug={schoolSlug} reference={paymentReference} /> : null}</Page>;
 }
 
-export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSlug" | "intakeSlug">) {
+export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false }: Pick<Props, "schoolSlug" | "intakeSlug" | "checkoutIntent">) {
   const router = useRouter();
   const { data: session } = authClient.useSession();
   const signedInUserId = session?.user?.id;
@@ -82,6 +86,7 @@ export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSl
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [authState, setAuthState] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [checkoutRequested, setCheckoutRequested] = useState(checkoutIntent);
 
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault();
@@ -133,7 +138,9 @@ export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSl
   };
 
   const signedInContent = identityState === "ready"
-    ? <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} />
+    ? checkoutRequested
+      ? <CheckoutContinuation schoolSlug={schoolSlug} intakeSlug={intakeSlug} onCancel={() => setCheckoutRequested(false)} />
+      : <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} onBuy={() => setCheckoutRequested(true)} />
     : identityState === "verification-required"
       ? <div className="notice warn" role="status"><strong>Verify your email to continue</strong><p>Your private application workspace will open after your email address is verified.</p></div>
       : identityState === "error"
@@ -143,12 +150,46 @@ export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSl
   return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
-function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter> }) {
+function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
+  const createAttempt = useMutation(functionRef("functions/admissions/public:createAttemptForOffering"));
+  const initializeAttempt = useAction(functionRef("functions/admissions/public:initializeAttemptByReference"));
+  const [attemptNumber, setAttemptNumber] = useState(0);
+  const [status, setStatus] = useState("Preparing secure checkout…");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setFailed(false);
+    setStatus("Preparing secure checkout…");
+    void (async () => {
+      try {
+        const key = localStorage.getItem(checkoutKey(schoolSlug)) ?? crypto.randomUUID();
+        localStorage.setItem(checkoutKey(schoolSlug), key);
+        const attempt: any = await createAttempt({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}), idempotencyKey: key });
+        const checkout: any = await initializeAttempt({ reference: attempt.reference });
+        if (checkout.state === "paid") {
+          if (active) setStatus("Payment is already confirmed. Return to the workspace to start the available application slot.");
+          return;
+        }
+        if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
+        window.location.assign(checkout.checkoutUrl);
+      } catch {
+        if (active) {
+          setFailed(true);
+          setStatus("We could not start secure checkout. Retry without leaving your workspace.");
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [schoolSlug, intakeSlug, createAttempt, initializeAttempt, attemptNumber]);
+  return <div className={`notice ${failed ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong><p>{status}</p>{failed ? <div className="actions"><button className="primary" type="button" onClick={() => setAttemptNumber((value) => value + 1)}>Retry checkout</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
+}
+
+function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter>; onBuy: () => void }) {
   const reserve = useMutation(functionRef("functions/admissions/public:createOrResumeForOffering"));
   const [notice, setNotice] = useState("");
   const startAvailable = async () => { try { const application: any = await reserve({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}) }); localStorage.setItem(referenceKey(schoolSlug), application.publicReference); router.push(applicationPath(schoolSlug, application.publicReference)); } catch { setNotice("This slot is not available to start yet. Refresh your workspace and try again."); } };
   if (!workspace) return <p className="muted">Loading your saved slots and applications…</p>;
-  return <><div className="notice"><strong>Applications for {workspace.schoolName}</strong><p>Every card below is one separate slot. Start another checkout for another child.</p></div>{notice ? <p className="status" role="status">{notice}</p> : null}<div className="workspace">{workspace.slots.length ? workspace.slots.map((slot: any, index: number) => <article className="upload" key={`${slot.publicReference ?? slot.state}-${index}`}><strong>{slot.applicationState ? `Application · ${slot.applicationState}` : slot.state === "available" ? "Available application slot" : `Slot · ${slot.state}`}</strong><p className="muted">Updated {new Date(slot.updatedAt).toLocaleString()}</p>{slot.publicReference ? <button className="secondary" onClick={() => router.push(applicationPath(schoolSlug, slot.publicReference))}>{slot.applicationState === "draft" || slot.applicationState === "changes_requested" ? "Resume application" : "View application status"}</button> : slot.state === "available" ? <button className="primary" onClick={() => void startAvailable()}>Start this child&apos;s application</button> : <p className="muted">This slot is not available to start.</p>}</article>) : <p className="muted">No paid application slots are available yet.</p>}</div><div className="actions"><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}${intakeSlug ? `/i/${encodeURIComponent(intakeSlug)}` : ""}`}>Buy another application slot</a></div></>;
+  return <><div className="notice"><strong>Applications for {workspace.schoolName}</strong><p>Every card below is one separate slot. Start another checkout for another child.</p></div>{notice ? <p className="status" role="status">{notice}</p> : null}<div className="workspace">{workspace.slots.length ? workspace.slots.map((slot: any, index: number) => <article className="upload" key={`${slot.publicReference ?? slot.state}-${index}`}><strong>{slot.applicationState ? `Application · ${slot.applicationState}` : slot.state === "available" ? "Available application slot" : `Slot · ${slot.state}`}</strong><p className="muted">Updated {new Date(slot.updatedAt).toLocaleString()}</p>{slot.publicReference ? <button className="secondary" onClick={() => router.push(applicationPath(schoolSlug, slot.publicReference))}>{slot.applicationState === "draft" || slot.applicationState === "changes_requested" ? "Resume application" : "View application status"}</button> : slot.state === "available" ? <button className="primary" onClick={() => void startAvailable()}>Start this child&apos;s application</button> : <p className="muted">This slot is not available to start.</p>}</article>) : <p className="muted">No paid application slots are available yet. Complete secure checkout to create one.</p>}</div><div className="actions"><button className="primary" type="button" onClick={onBuy}>{workspace.slots.length ? "Buy another application slot" : "Proceed to secure checkout"}</button></div></>;
 }
 
 export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug: string; publicReference: string }) {
