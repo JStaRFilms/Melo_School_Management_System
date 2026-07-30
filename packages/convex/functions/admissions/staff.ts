@@ -1,6 +1,6 @@
 import { mutation, query } from "../../_generated/server";
 import type { Doc } from "../../_generated/dataModel";
-import { paginationOptsValidator } from "convex/server";
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { issueCheckedDocumentAccessV1 } from "../foundation/documentAccess";
 import { hasSchoolCapabilityV1 } from "../foundation/auth";
@@ -62,9 +62,11 @@ export const listQueue = query({
   },
 });
 
+const queuePageItemValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), updatedAt: v.number(), intakeId: v.id("admissionsIntakes") });
+
 export const listQueuePage = query({
   args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), state: v.optional(v.string()), paginationOpts: paginationOptsValidator },
-  returns: v.object({ page: v.array(v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), updatedAt: v.number(), intakeId: v.id("admissionsIntakes") })), isDone: v.boolean(), continueCursor: v.string() }),
+  returns: paginationResultValidator(queuePageItemValidator),
   handler: async (ctx, args) => {
     const intake = await ctx.db.get(args.intakeId);
     if (!intake || intake.schoolId !== args.schoolId) return { page: [], isDone: true, continueCursor: "" };

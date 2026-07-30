@@ -29,8 +29,20 @@ describe("B0 foundation contracts", () => {
       await ctx.db.insert("admissionsProducts", {
         schoolId, intakeId: staleIntakeId, slug: "stale-application", name: "Stale application", slotCount: 1, status: "active", createdAt: now, updatedAt: now,
       });
-      await ctx.db.insert("admissionsProducts", {
+      const productId = await ctx.db.insert("admissionsProducts", {
         schoolId, intakeId, slug: "application", name: "Application", slotCount: 1, status: "active", createdAt: now, updatedAt: now,
+      });
+      await ctx.db.insert("admissionsProductPrices", {
+        schoolId, productId, version: 1, amountMinor: 1000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "Approved disclosure", effectiveFrom: now - 1, status: "published", createdAt: now, updatedAt: now,
+      });
+      const secretId = await ctx.db.insert("schoolPaymentProviderSecrets", {
+        schoolId, provider: "paystack", mode: "test", encryptedSecret: "test-only", secretFingerprint: "test", createdAt: now, updatedAt: now, createdBy: null, updatedBy: null,
+      });
+      await ctx.db.insert("schoolPaymentProviders", {
+        schoolId, provider: "paystack", mode: "test", isEnabled: true, status: "ready", publicKey: null, publicKeyMasked: null, publicKeyFingerprint: null, activeSecretMasked: "****", pendingSecretMasked: null, activeSecretId: secretId, pendingSecretId: null, activeSecretFingerprint: "test", pendingSecretFingerprint: null, lastValidatedAt: now, lastValidationMessage: "ready", createdAt: now, updatedAt: now, createdBy: null, updatedBy: null,
+      });
+      await ctx.db.insert("schoolBillingSettings", {
+        schoolId, invoicePrefix: "NS", defaultCurrency: "NGN", defaultDueDays: 7, preferredProvider: "paystack", paymentProviderMode: "test", allowManualPayments: true, allowOnlinePayments: true, createdAt: now, updatedAt: now, updatedBy: null,
       });
     });
 
