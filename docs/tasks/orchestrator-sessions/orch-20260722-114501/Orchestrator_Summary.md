@@ -14,3 +14,12 @@ Takomi session validation: WARNINGS
 - [WARNING] json-prose-field (G1): Task JSON contains substantial prose in notes; prefer authored markdown for long-form content.
 - [WARNING] json-prose-field (G2): Task JSON contains substantial prose in notes; prefer authored markdown for long-form content.
 - [WARNING] json-prose-field (B0): Task JSON contains substantial prose in instructions; prefer authored markdown for long-form content.
+
+## Deferred Guardian Application Follow-up
+
+Manual-testing feedback about draft autosave, Save and continue behavior, legal-name fields, private document URLs, and document removal is preserved in:
+
+- `future/Admissions_Application_Future_UX_and_Data_Safety_Work.md`
+- `future/Admissions_Application_Future_UX_and_Data_Safety_Work.docx`
+
+Implementation is intentionally deferred. Begin with Batch 1 (reliable draft saving and clear progression) when the user requests the first future pass.
