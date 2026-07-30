@@ -173,17 +173,55 @@ The Documents section lists uploaded and superseded files but provides no visibl
 
 ---
 
-## 5. Screenshot evidence recorded from the testing report
+## 5. Archived screenshot evidence
 
-The supplied screenshots should remain attached to the originating conversation. This section preserves what each image demonstrates for implementation handoff:
+The five supplied screenshots are archived verbatim in the repository at:
 
-1. **Child and Form save failure** — legal first name, legal last name, date of birth, and preferred name were populated; **Save and continue** returned a generic core-details failure and a persistent error summary.
-2. **Guardian Contact initial view** — the previous core-details error remained visible after changing sections, while the contact form displayed Full name, Relationship, Email, and Phone.
-3. **Guardian Contact populated failure** — name, relationship, email, and phone were populated; **Save guardian contact** still returned a generic contact failure without identifying a field.
-4. **Raw document location** — selecting a document opened a direct development Convex `/api/storage/...` URL in the browser address bar.
-5. **Documents list limitations** — uploaded and superseded files were visible with **View my document**, but there was no remove/delete action and version presentation was unclear.
+`docs/tasks/orchestrator-sessions/orch-20260722-114501/future/evidence/admissions-application-manual-test-2026-07-30/`
 
-No production secrets or payment credentials are included in this document.
+The folder includes its own `README.md` evidence manifest. Future agents should inspect these files alongside the acceptance criteria above.
+
+### Evidence 01 — Child and Form save failure
+
+**File:** `evidence/admissions-application-manual-test-2026-07-30/01-child-form-save-failure.png`
+
+Legal first name, legal last name, date of birth, and preferred name were populated. **Save and continue** returned a generic core-details failure and persistent error summary.
+
+![Populated Child and Form section showing a generic save failure](evidence/admissions-application-manual-test-2026-07-30/01-child-form-save-failure.png)
+
+### Evidence 02 — Stale error on Guardian Contact
+
+**File:** `evidence/admissions-application-manual-test-2026-07-30/02-guardian-contact-stale-error.png`
+
+The previous core-details error remained visible after changing sections, while Guardian Contact displayed Full name, Relationship, Email, and Phone.
+
+![Guardian Contact section retaining an unrelated core-details error](evidence/admissions-application-manual-test-2026-07-30/02-guardian-contact-stale-error.png)
+
+### Evidence 03 — Populated guardian contact save failure
+
+**File:** `evidence/admissions-application-manual-test-2026-07-30/03-guardian-contact-save-failure.png`
+
+Name, relationship, email, and phone were populated. **Save guardian contact** still returned a generic failure without identifying the rejected field.
+
+![Populated Guardian Contact section showing a generic save failure](evidence/admissions-application-manual-test-2026-07-30/03-guardian-contact-save-failure.png)
+
+### Evidence 04 — Raw Convex document URL
+
+**File:** `evidence/admissions-application-manual-test-2026-07-30/04-raw-convex-storage-url.png`
+
+Selecting a document opened a direct development Convex `/api/storage/...` URL in the browser address bar.
+
+![Browser address bar exposing the raw Convex document storage URL](evidence/admissions-application-manual-test-2026-07-30/04-raw-convex-storage-url.png)
+
+### Evidence 05 — No document deletion action
+
+**File:** `evidence/admissions-application-manual-test-2026-07-30/05-documents-list-no-delete.png`
+
+Uploaded and superseded files were visible with **View my document**, but there was no remove/delete action and version presentation was unclear.
+
+![Documents section listing uploaded files without a remove action](evidence/admissions-application-manual-test-2026-07-30/05-documents-list-no-delete.png)
+
+The screenshots contain development test data and browser chrome. Treat them as internal engineering evidence. No production secrets or payment credentials are included.
 
 ---
 

@@ -21,5 +21,6 @@ Manual-testing feedback about draft autosave, Save and continue behavior, legal-
 
 - `future/Admissions_Application_Future_UX_and_Data_Safety_Work.md`
 - `future/Admissions_Application_Future_UX_and_Data_Safety_Work.docx`
+- `future/evidence/admissions-application-manual-test-2026-07-30/` (five archived screenshots plus evidence manifest)
 
 Implementation is intentionally deferred. Begin with Batch 1 (reliable draft saving and clear progression) when the user requests the first future pass.
