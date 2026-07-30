@@ -573,7 +573,10 @@ export const validateSchoolPaystackGatewayConfig = action({
 
     try {
       await gateway.createPaymentLink({
-        amount: 1,
+        // Paystack expects a processable amount. ₦1 leaves every transaction
+        // channel ineligible and produces a misleading "no active channel"
+        // credential failure even when the test keys are valid.
+        amount: 100,
         email: `billing-validation+${String(viewer.schoolId)}@example.com`,
         schoolId: String(viewer.schoolId),
         schoolSlug: "billing-validation",
