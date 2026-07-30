@@ -56,7 +56,25 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
 export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSlug" | "intakeSlug">) {
   const router = useRouter();
   const { data: session } = authClient.useSession();
-  const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), session?.user ? { schoolSlug, limit: 100 } : "skip") as any;
+  const signedInUserId = session?.user?.id;
+  const getIdentity = useMutation(functionRef("functions/admissions/guardian:getOrCreateIdentity"));
+  const [identityState, setIdentityState] = useState<"idle" | "checking" | "ready" | "verification-required" | "error">("idle");
+  const [identityAttempt, setIdentityAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (!signedInUserId) {
+      setIdentityState("idle");
+      return () => { active = false; };
+    }
+    setIdentityState("checking");
+    void getIdentity({}).then((identity: any) => {
+      if (active) setIdentityState(identity.verificationRequired ? "verification-required" : "ready");
+    }).catch(() => {
+      if (active) setIdentityState("error");
+    });
+    return () => { active = false; };
+  }, [signedInUserId, getIdentity, identityAttempt]);
+  const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), signedInUserId && identityState === "ready" ? { schoolSlug, limit: 100 } : "skip") as any;
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -114,7 +132,15 @@ export function AccountSurface({ schoolSlug, intakeSlug }: Pick<Props, "schoolSl
     setPasswordConfirmation("");
   };
 
-  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} />}</section></Page>;
+  const signedInContent = identityState === "ready"
+    ? <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} />
+    : identityState === "verification-required"
+      ? <div className="notice warn" role="status"><strong>Verify your email to continue</strong><p>Your private application workspace will open after your email address is verified.</p></div>
+      : identityState === "error"
+        ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={() => setIdentityAttempt((value) => value + 1)}>Retry account check</button></div>
+        : <p className="muted" role="status">Preparing your private guardian workspace…</p>;
+
+  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
 function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter> }) {
