@@ -237,7 +237,52 @@ function DynamicField({ field, value, disabled, onChange, onSave }: { field: Fie
 }
 function safeArray(value: string) { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } }
 function Documents({ requirements, documents, disabled, onOpen, onUpload }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; onOpen: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void> }) { const [selected, setSelected] = useState<Record<string, File | undefined>>({}); const [status, setStatus] = useState("Choose a file, then upload privately."); return <section><h2>Private documents</h2><p className="muted">Files are checked before binding and are not shown as public links.</p><p className="status" role="status">{status}</p>{documents.map(document => <div className="upload" key={document.documentKey}><strong>{document.fileName}</strong> · version {document.version} · {document.state}<button type="button" className="secondary" onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>View my document</button></div>)}{requirements.map(requirement => <div className="upload" key={requirement.key}><strong>{requirement.label} · {requirement.requiredMode === "required" ? "Required" : "Optional"}</strong><p className="muted">{requirement.purpose} · up to {(requirement.maxBytes / 1_000_000).toFixed(1)} MB · {requirement.maxFiles} file(s)</p><input aria-label={`Choose file for ${requirement.label}`} type="file" accept={requirement.acceptedMimeTypes.join(",")} disabled={disabled} onChange={e => setSelected({ ...selected, [requirement.key]: e.target.files?.[0] })}/><button type="button" className="secondary" disabled={disabled || !selected[requirement.key]} onClick={async () => { const file = selected[requirement.key]; if (!file) return; if (file.size > requirement.maxBytes || !requirement.acceptedMimeTypes.includes(file.type)) { setStatus("This file does not meet the listed type or size requirements."); return; } setStatus("Uploading privately…"); try { await onUpload(requirement.key, file); setStatus("Uploaded. This file is private and will be checked with your application."); setSelected({ ...selected, [requirement.key]: undefined }); } catch { setStatus("This file could not be added. Choose another file or retry upload."); } }}>Upload privately</button></div>)}</section>; }
-function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; reference: string }) { const router = useRouter(); const verify = useAction(functionRef("functions/admissions/public:verifyReturnByReference")); const reserve = useMutation(functionRef("functions/admissions/public:createOrResumeForReference")); const [state, setState] = useState("Payment pending"); const [ready, setReady] = useState(false); const check = async () => { try { const result: any = await verify({ reference }); const paid = result.state === "paid" && result.entitlementAvailable; setReady(paid); setState(paymentStatusCopy(paid ? "paid" : result.state)); } catch { setState(paymentStatusCopy("manual_attention")); } }; const continueToApplication = async () => { try { const application: any = await reserve({ schoolSlug, reference }); localStorage.removeItem(checkoutKey(schoolSlug)); localStorage.setItem(referenceKey(schoolSlug), application.publicReference); router.push(applicationPath(schoolSlug, application.publicReference)); } catch { setState("Payment is confirmed, but the application slot is not available yet. Check again shortly."); } }; return <section className="card"><h2>Confirming your payment</h2><p aria-live="polite">{state}</p><button type="button" className="secondary" onClick={() => void check()}>Check again</button>{ready ? <button type="button" className="primary" onClick={() => void continueToApplication()}>Start one child application</button> : null}</section>; }
+function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; reference: string }) {
+  const router = useRouter();
+  const verify = useAction(functionRef("functions/admissions/public:verifyReturnByReference"));
+  const reserve = useMutation(functionRef("functions/admissions/public:createOrResumeForReference"));
+  const [state, setState] = useState("Verifying your payment with Paystack…");
+  const [ready, setReady] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [checkAttempt, setCheckAttempt] = useState(0);
+
+  const continueToApplication = async () => {
+    setChecking(true);
+    try {
+      const application: any = await reserve({ schoolSlug, reference });
+      localStorage.removeItem(checkoutKey(schoolSlug));
+      localStorage.setItem(referenceKey(schoolSlug), application.publicReference);
+      router.replace(applicationPath(schoolSlug, application.publicReference));
+    } catch {
+      setReady(true);
+      setChecking(false);
+      setState("Payment is confirmed, but the application slot is not available yet. Retry continuing to the application.");
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    setChecking(true);
+    setState("Verifying your payment with Paystack…");
+    void verify({ reference }).then(async (result: any) => {
+      if (!active) return;
+      const paid = result.state === "paid" && result.entitlementAvailable;
+      setReady(paid);
+      setState(paymentStatusCopy(paid ? "paid" : result.state));
+      setChecking(false);
+      if (paid) await continueToApplication();
+    }).catch(() => {
+      if (!active) return;
+      setChecking(false);
+      setState("We could not verify this payment yet. Paystack may still be processing it; retry the verification check.");
+    });
+    return () => { active = false; };
+    // The attempt counter deliberately reruns the owned verification action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reference, verify, checkAttempt]);
+
+  return <section className="card"><h2>Confirming your payment</h2><p aria-live="polite">{state}</p><div className="actions"><button type="button" className="secondary" disabled={checking} onClick={() => setCheckAttempt((value) => value + 1)}>{checking ? "Checking payment…" : "Check again"}</button>{ready ? <button type="button" className="primary" disabled={checking} onClick={() => void continueToApplication()}>Continue to application</button> : null}</div></section>;
+}
 function Input({ id, label, value, onChange, type = "text", required = false, disabled = false, autoComplete }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; disabled?: boolean; autoComplete?: string }) { return <div className="field"><label htmlFor={id}>{label} {required ? <small>Required</small> : null}</label><input id={id} type={type} autoComplete={autoComplete ?? (type === "email" ? "email" : undefined)} required={required} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} /></div>; }
 function Availability({ state, opensAt }: { state: string; opensAt?: number }) { return <div className="notice warn"><h2>This application link is not currently open</h2><p>{state === "upcoming" && opensAt ? `Applications open ${new Date(opensAt).toLocaleDateString()}.` : "Check the link or contact the school for current admissions information."}</p></div>; }
 function Unavailable() { return <Page><section className="card"><h1>This application link is not available.</h1><p className="muted">Please check the link or contact the school for current admissions information.</p></section></Page>; }

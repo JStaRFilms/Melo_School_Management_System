@@ -2,6 +2,11 @@ export function applicationPath(schoolSlug: string, publicReference: string) {
   return `/s/${encodeURIComponent(schoolSlug)}/applications/${encodeURIComponent(publicReference)}`;
 }
 
+export function paymentReturnReference(params: { reference?: string | string[]; trxref?: string | string[] }) {
+  const first = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
+  return first(params.reference)?.trim() || first(params.trxref)?.trim() || undefined;
+}
+
 /** Amounts are server supplied integer minor units; never divide/display floats by hand. */
 export function formatMinorCurrency(amountMinor: number, currency: string, locale = "en"): string {
   return new Intl.NumberFormat(locale, {

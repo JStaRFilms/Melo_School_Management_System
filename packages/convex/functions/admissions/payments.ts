@@ -168,7 +168,7 @@ export const initializeAttempt = action({
     const applicationOrigin = process.env.APPLICATION_ORIGIN?.trim() ?? process.env.APPLY_APP_ORIGIN?.trim();
     if (!applicationOrigin) throw new ConvexError("Payment provider is unavailable");
     const result = await createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode }).createPaymentLink({
-      amount: attempt.amountMinor / 100, email: attempt.email, schoolId: String(attempt.schoolId), schoolSlug: attempt.schoolSlug, invoiceId: String(attempt.attemptId), invoiceNumber: "ADMISSIONS", description: "Admissions application slot", reference: attempt.reference, providerMode: attempt.providerMode, paymentDomain: "admissions", callbackUrl: `${applicationOrigin.replace(/\/$/, "")}/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return?reference=${encodeURIComponent(attempt.reference)}`,
+      amount: attempt.amountMinor / 100, email: attempt.email, schoolId: String(attempt.schoolId), schoolSlug: attempt.schoolSlug, invoiceId: String(attempt.attemptId), invoiceNumber: "ADMISSIONS", description: "Admissions application slot", reference: attempt.reference, providerMode: attempt.providerMode, paymentDomain: "admissions", callbackUrl: `${applicationOrigin.replace(/\/$/, "")}/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return`,
     });
     await ctx.runMutation((internal as any).functions.admissions.payments.recordInitialization, { attemptId: attempt.attemptId, authorizationReference: result.reference });
     return { state: "checkout_pending", checkoutUrl: result.authorizationUrl };

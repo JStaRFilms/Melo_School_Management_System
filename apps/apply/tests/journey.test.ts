@@ -1,10 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue } from "../lib/journey";
+import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 describe("guardian journey safety", () => {
   test("keeps opaque application references in a school-scoped route", () => {
     expect(applicationPath("north-star", "app_opaque value")).toBe("/s/north-star/applications/app_opaque%20value");
+  });
+  test("normalizes Paystack callback references even when the provider appends duplicates", () => {
+    expect(paymentReturnReference({ reference: ["adm_first", "adm_duplicate"], trxref: "adm_first" })).toBe("adm_first");
+    expect(paymentReturnReference({ trxref: "adm_fallback" })).toBe("adm_fallback");
   });
   test("formats server minor units without float-like fee copy", () => {
     expect(formatMinorCurrency(5050, "ngn")).toContain("50.50");
