@@ -1,6 +1,6 @@
 "use client";
 
-import { BetterAuthConvexProvider, createAppAuthClient, hasConvexAuthEnv } from "@school/auth";
+import { BetterAuthConvexProvider, createAppAuthClient } from "@school/auth";
 import { ConvexReactClient } from "convex/react";
 import type { ReactNode } from "react";
 
@@ -9,7 +9,7 @@ const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const authClient = createAppAuthClient(typeof window === "undefined" ? "http://localhost:3004" : window.location.origin);
 
 export function ApplyClientProvider({ children }: { children: ReactNode }) {
-  if (!client || !hasConvexAuthEnv()) {
+  if (!client) {
     return (
       <main className="shell">
         <section className="card">
