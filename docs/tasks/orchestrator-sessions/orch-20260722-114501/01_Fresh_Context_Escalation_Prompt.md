@@ -16,7 +16,7 @@ You are the new integration orchestrator continuing an existing successful Takom
 - Reuse and update the existing session artifacts under:
   - `docs/tasks/orchestrator-sessions/orch-20260722-114501/`
 - Current integration branch: `integration/obhis-admissions-release`
-- Expected starting commit: `e721943`
+- Minimum handoff baseline: `e721943`; the actual starting HEAD will be a later documentation commit containing this prompt.
 - Expected remote: `origin/integration/obhis-admissions-release`
 - `master` remains untouched unless the user explicitly approves a merge.
 
