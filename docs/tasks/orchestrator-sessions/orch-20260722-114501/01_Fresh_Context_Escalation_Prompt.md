@@ -15,9 +15,11 @@ You are the new integration orchestrator continuing an existing successful Takom
 - Do **not** restart Genesis, Design, B0–B6, or repeat completed milestone reviews.
 - Reuse and update the existing session artifacts under:
   - `docs/tasks/orchestrator-sessions/orch-20260722-114501/`
-- Current integration branch: `integration/obhis-admissions-release`
+- The primary checkout is the integration-owner worktree on `integration/obhis-admissions-release`.
 - Minimum handoff baseline: `e721943`; the actual starting HEAD will be a later documentation commit containing this prompt.
 - Expected remote: `origin/integration/obhis-admissions-release`
+- For Batch 1 implementation, create a new scoped feature branch/worktree from the current integration HEAD (for example `feature/admissions-draft-reliability`) rather than moving the primary checkout or reusing the old, behind `feature/admissions-platform` branch.
+- Subagents may use further isolated worktrees when parallel writes are genuinely needed; the integration-owner checkout remains the reviewed merge destination.
 - `master` remains untouched unless the user explicitly approves a merge.
 
 ### Instruction precedence and startup
@@ -91,7 +93,7 @@ Keep both documented and pending until the user asks to continue after Batch 1.
 - Never display Paystack secret values.
 - Preserve compatibility with existing first/last-name records until the versioned Batch 2 migration is intentionally implemented.
 - The user performs browser, visual, and accessibility testing; do not launch assistant-controlled browser automation.
-- Keep work on `integration/obhis-admissions-release`; do not merge to `master` without explicit user approval.
+- Keep `integration/obhis-admissions-release` as the integration target. Perform implementation on a fresh scoped feature worktree based on its current HEAD, then merge through the integration owner; do not merge to `master` without explicit user approval.
 - OBHIS public publication remains blocked on approved identity/content/assets/rights evidence.
 
 ### Orchestration expectations
