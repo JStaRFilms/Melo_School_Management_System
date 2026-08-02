@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { configuredFieldError, fieldRequiresValue, isTransientSaveFailure, nextFormStep, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, SerializedWriteQueue, startAutosaveCeiling } from "../lib/draftAutosave";
+import { configuredFieldError, draftConnectivityStatus, fieldRequiresValue, isTransientSaveFailure, nextFormStep, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, SerializedWriteQueue, startAutosaveCeiling } from "../lib/draftAutosave";
 
 describe("draft autosave queue", () => {
   afterEach(() => { vi.useRealTimers(); });
@@ -88,6 +88,12 @@ describe("draft autosave queue", () => {
     expect(configuredFieldError({ kind: "select", label: "Entry choice", validation: '{"choices":["day","board"]}' }, "invalid")).toContain("Entry choice");
     expect(configuredFieldError({ kind: "number", label: "Age", validation: '{"min":4,"max":18}' }, "3")).toContain("Age");
     expect(configuredFieldError({ kind: "text", label: "Reference", validation: '{"pattern":"^[A-Z]+$","minLength":3}' }, "ab")).toContain("Reference");
+  });
+
+  test("reports immediate offline and reconnect statuses only while draft work is pending", () => {
+    expect(draftConnectivityStatus(false, true)).toEqual({ saveState: "offline", status: "Offline — changes waiting to sync" });
+    expect(draftConnectivityStatus(true, true)).toEqual({ saveState: "retrying", status: "Syncing changes…" });
+    expect(draftConnectivityStatus(false, false)).toBeNull();
   });
 
   test("keeps progression within the configured section order and recognizes safe error codes", () => {

@@ -1,5 +1,14 @@
 export type DraftSaveState = "idle" | "saving" | "saved" | "offline" | "retrying" | "conflict";
 
+export type DraftConnectivityStatus = { saveState: "offline" | "retrying"; status: string };
+
+export function draftConnectivityStatus(isOnline: boolean, hasPendingDraftWork: boolean): DraftConnectivityStatus | null {
+  if (!hasPendingDraftWork) return null;
+  return isOnline
+    ? { saveState: "retrying", status: "Syncing changes…" }
+    : { saveState: "offline", status: "Offline — changes waiting to sync" };
+}
+
 type ValidationPolicy = {
   minLength?: number;
   maxLength?: number;

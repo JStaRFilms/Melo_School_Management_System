@@ -7,7 +7,7 @@ import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
-import { type DraftSaveState, type RecoveryRecord, configuredFieldError, fieldRequiresValue, isTransientSaveFailure, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
+import { type DraftSaveState, type RecoveryRecord, configuredFieldError, draftConnectivityStatus, fieldRequiresValue, isTransientSaveFailure, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -18,18 +18,34 @@ type CheckoutInitialization = { state: string; checkoutUrl: string | null };
 const checkoutFlights = new Map<string, Promise<CheckoutInitialization>>();
 type GuardianIdentityState = "idle" | "checking" | "ready" | "verification-required" | "error";
 
+function useBrowserOnline() {
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
+  return isOnline;
+}
+
 function useGuardianReadiness() {
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
   const sessionPending = sessionResult.isPending;
   const refetchSession = sessionResult.refetch;
-  const signedInUserId = session?.user?.id;
+  const currentUserId = session?.user?.id;
+  const isOnline = useBrowserOnline();
   const getIdentity = useMutation(functionRef("functions/admissions/guardian:getOrCreateIdentity"));
   const [identityState, setIdentityState] = useState<GuardianIdentityState>("idle");
   const [identityAttempt, setIdentityAttempt] = useState(0);
+  const [lastReadyUserId, setLastReadyUserId] = useState<string>();
   useEffect(() => {
     let active = true;
-    if (!signedInUserId) {
+    if (!currentUserId) {
       setIdentityState("idle");
       return () => { active = false; };
     }
@@ -40,8 +56,22 @@ function useGuardianReadiness() {
       if (active) setIdentityState("error");
     });
     return () => { active = false; };
-  }, [signedInUserId, getIdentity, identityAttempt]);
-  return { session, sessionPending, signedInUserId, identityState, refetchSession, retryIdentity: () => setIdentityAttempt((value) => value + 1) };
+  }, [currentUserId, getIdentity, identityAttempt]);
+  useEffect(() => {
+    if (currentUserId && identityState === "ready") setLastReadyUserId(currentUserId);
+  }, [currentUserId, identityState]);
+  const offlineReadyUserId = !isOnline && !currentUserId ? lastReadyUserId : undefined;
+  const signedInUserId = currentUserId ?? offlineReadyUserId;
+  const usingOfflineReadiness = Boolean(offlineReadyUserId);
+  return {
+    session,
+    sessionPending: sessionPending && !usingOfflineReadiness,
+    signedInUserId,
+    isAuthenticated: Boolean(currentUserId || offlineReadyUserId),
+    identityState: usingOfflineReadiness ? "ready" : identityState,
+    refetchSession,
+    retryIdentity: () => setIdentityAttempt((value) => value + 1),
+  };
 }
 
 export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Props) {
@@ -92,7 +122,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
 
 export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false }: Pick<Props, "schoolSlug" | "intakeSlug" | "checkoutIntent">) {
   const router = useRouter();
-  const { session, sessionPending, signedInUserId, identityState, refetchSession, retryIdentity } = useGuardianReadiness();
+  const { sessionPending, signedInUserId, isAuthenticated, identityState, refetchSession, retryIdentity } = useGuardianReadiness();
   const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), signedInUserId && identityState === "ready" ? { schoolSlug, limit: 100 } : "skip") as any;
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [name, setName] = useState("");
@@ -164,7 +194,7 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
         ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></div>
         : <p className="muted" role="status">Preparing your private guardian workspace…</p>;
 
-  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !session?.user ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
+  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !isAuthenticated ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
 function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
@@ -222,8 +252,8 @@ function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { 
 
 export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug: string; publicReference: string }) {
   const router = useRouter();
-  const { session, sessionPending, identityState, retryIdentity } = useGuardianReadiness();
-  const privateQueryReady = Boolean(session?.user) && identityState === "ready";
+  const { sessionPending, signedInUserId, isAuthenticated, identityState, retryIdentity } = useGuardianReadiness();
+  const privateQueryReady = Boolean(signedInUserId) && identityState === "ready";
   const app = useQuery(functionRef("functions/admissions/public:getGuardianApplication"), privateQueryReady ? { schoolSlug, publicReference } : "skip") as any;
   const config = useQuery(functionRef("functions/admissions/public:getApplicationConfiguration"), privateQueryReady && app ? { schoolSlug, publicReference } : "skip") as any;
   const saveCore = useMutation(functionRef("functions/admissions/public:saveCoreByPublicReference"));
@@ -253,6 +283,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const dirtyRef = useRef(new Map<string, { section: string; generation: number }>());
   const blockedWritesRef = useRef(new Map<string, number>());
   const pendingWritesRef = useRef(new Map<string, Promise<boolean>>());
+  const onlineRef = useRef(typeof navigator === "undefined" || navigator.onLine);
   const flushPendingRef = useRef<() => void>(() => {});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
@@ -271,7 +302,13 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     blockedWritesRef.current.delete(key);
     recoveryBaseVersionRef.current ??= version;
     debounceRef.current = resetAutosaveDebounce(debounceRef.current, () => flushPendingRef.current());
-    setSaveState("idle");
+    const connectivity = draftConnectivityStatus(onlineRef.current, true);
+    if (connectivity) {
+      setSaveState(connectivity.saveState);
+      setStatus(connectivity.status);
+    } else {
+      setSaveState("idle");
+    }
   };
   const setCoreValue = (key: "firstName" | "lastName" | "dateOfBirth" | "signerName" | "signerRelationship", value: string) => {
     const next = { ...coreRef.current, [key]: value };
@@ -313,7 +350,13 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
         generationRef.current = recovered.generation;
         for (const entry of recovered.dirtyEntries) dirtyRef.current.set(entry.key, { section: entry.section, generation: recovered.generation });
         recoveryBaseVersionRef.current = recovered.baseVersion;
-        setStatus("Recovered unsaved changes. They are waiting to sync.");
+        const connectivity = draftConnectivityStatus(onlineRef.current, true);
+        if (connectivity) {
+          setSaveState(connectivity.saveState);
+          setStatus(connectivity.status);
+        } else {
+          setStatus("Recovered unsaved changes. They are waiting to sync.");
+        }
       } else {
         coreRef.current = { ...coreRef.current, ...serverCore };
         contactRef.current = baselineRef.current.contact;
@@ -397,6 +440,12 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     const dirty = dirtyRef.current.get(key);
     if (!dirty || !queueRef.current) return Promise.resolve(true);
     if (blockedWritesRef.current.get(key) === dirty.generation) return Promise.resolve(false);
+    if (!onlineRef.current) {
+      const connectivity = draftConnectivityStatus(false, true)!;
+      setSaveState(connectivity.saveState);
+      setStatus(connectivity.status);
+      return Promise.resolve(false);
+    }
     const task = (async () => {
       setSaveState("saving");
       setStatus("Saving…");
@@ -416,9 +465,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
           setSaveState("conflict");
           setStatus("Newer saved changes need your review before retrying.");
           setErrorsFor(section, { section: "This section has a newer saved version. Retry only after reviewing it." });
-        } else if (typeof navigator !== "undefined" && !navigator.onLine) {
-          setSaveState("offline");
-          setStatus("Offline — changes waiting to sync");
+        } else if (!onlineRef.current) {
+          const connectivity = draftConnectivityStatus(false, true)!;
+          setSaveState(connectivity.saveState);
+          setStatus(connectivity.status);
         } else if (code) {
           blockedWritesRef.current.set(key, dirty.generation);
           setSaveState("idle");
@@ -475,6 +525,22 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
       for (const section of new Set(Array.from(dirtyRef.current.values(), item => item.section))) void flushSection(section);
     };
   });
+  useEffect(() => {
+    const updateConnectivity = () => {
+      onlineRef.current = navigator.onLine;
+      const connectivity = draftConnectivityStatus(onlineRef.current, Boolean(dirtyRef.current.size || pendingWritesRef.current.size));
+      if (!connectivity || saveState === "conflict") return;
+      setSaveState(connectivity.saveState);
+      setStatus(connectivity.status);
+      if (onlineRef.current) flushPendingRef.current();
+    };
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
+    return () => {
+      window.removeEventListener("online", updateConnectivity);
+      window.removeEventListener("offline", updateConnectivity);
+    };
+  }, [saveState]);
   useEffect(() => {
     const stop = startAutosaveCeiling(() => flushPendingRef.current());
     return () => { if (debounceRef.current !== null) clearTimeout(debounceRef.current); stop(); };
@@ -560,8 +626,8 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     } catch { setStatus("Complete the named items and retry."); setErrorsFor("review", { section: "The application is incomplete or has a newer saved version." }); }
   };
 
-  if (sessionPending || identityState === "checking" || (session?.user && identityState === "idle")) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted" role="status">Checking your guardian account and application access…</p></section></Page>;
-  if (!session?.user) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Sign in to your workspace</a></section></Page>;
+  if (sessionPending || identityState === "checking" || (isAuthenticated && identityState === "idle")) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted" role="status">Checking your guardian account and application access…</p></section></Page>;
+  if (!isAuthenticated) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Sign in to your workspace</a></section></Page>;
   if (identityState === "verification-required") return <Page><section className="card auth-gate"><h1>Verify your email to continue</h1><p className="muted">Your application remains private until your guardian email is verified.</p></section></Page>;
   if (identityState === "error") return <Page><section className="card auth-gate"><h1>We could not open your guardian workspace</h1><p className="muted">Retry the secure account check before loading this application.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></section></Page>;
   if (!app || !config || version === null) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted">Loading your saved details and form requirements…</p></section></Page>;
