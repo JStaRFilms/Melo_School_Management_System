@@ -46,6 +46,27 @@ describe("B1 admissions domain", () => {
     const snapshots = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", first.applicationId)).take(2)); expect(snapshots).toHaveLength(1);
   });
 
+  test("keeps partial drafts independent, makes exact saves no-ops, and rejects stale writers", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const field = await t.run((ctx) => ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey: "future-section", sectionKey: "future", kind: "text", label: "Future section", requiredMode: "required", dataClass: "personal", validationJson: "{}", order: 1, status: "active", createdAt: Date.now(), updatedAt: Date.now() }));
+    const saveCore = (expectedVersion: number) => t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion, firstName: "Partial", lastName: "Draft", dateOfBirth: 1 });
+    const saveContact = (expectedVersion: number) => t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveContact, { applicationId: application.applicationId, expectedVersion, contactKey: "primary-guardian", kind: "guardian", fullName: "Guardian Name", relationship: "Parent", isApplicantGuardian: true, isPrimary: true });
+    expect(await saveCore(1)).toBe(2);
+    expect(await saveContact(2)).toBe(3);
+    expect(await t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ state: "draft", draftVersion: 3 });
+    expect(await t.run((ctx) => ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application.applicationId)).unique())).toMatchObject({ firstName: "Partial" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application.applicationId).eq("contactKey", "primary-guardian")).unique())).toMatchObject({ fullName: "Guardian Name" });
+    expect(await saveCore(3)).toBe(3);
+    expect(await saveContact(3)).toBe(3);
+    expect(await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: field, expectedVersion: 3, valueType: "text", serializedValue: "saved" })).toBe(4);
+    expect(await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveAnswer, { applicationId: application.applicationId, formFieldId: field, expectedVersion: 4, valueType: "text", serializedValue: "saved" })).toBe(4);
+    expect(await t.run((ctx) => ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application.applicationId).eq("fieldKey", "future-section")).unique())).toMatchObject({ valueVersion: 1 });
+    await expect(saveContact(3)).rejects.toThrow("DRAFT_VERSION_CONFLICT");
+    expect(await t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ draftVersion: 4 });
+  });
+
   test("cross-tenant staff and document access are denied", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     await expect(t.withIdentity({ subject: "staff", tokenIdentifier: "issuer|staff", issuer: "issuer" }).query((api as any).functions.admissions.staff.listQueue, { schoolId: ids.schoolB, intakeId: ids.intake })).resolves.toEqual([]);
