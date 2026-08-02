@@ -14,6 +14,8 @@ type Field = PublishedField & { sectionKey: string; label: string; helpText: str
 type Requirement = { key: string; label: string; purpose: string; requiredMode: string; acceptedMimeTypes: string[]; maxBytes: number; maxFiles: number; sensitivity: string };
 const referenceKey = (school: string) => `apply:last-reference:${school}`;
 const checkoutKey = (school: string) => `${referenceKey(school)}:checkout`;
+type CheckoutInitialization = { state: string; checkoutUrl: string | null };
+const checkoutFlights = new Map<string, Promise<CheckoutInitialization>>();
 type GuardianIdentityState = "idle" | "checking" | "ready" | "verification-required" | "error";
 
 function useGuardianReadiness() {
@@ -175,26 +177,36 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
     let active = true;
     setFailed(false);
     setStatus("Preparing secure checkout…");
-    void (async () => {
-      try {
+    const flightKey = `${schoolSlug}:${intakeSlug ?? ""}:${attemptNumber}`;
+    let flight = checkoutFlights.get(flightKey);
+    if (!flight) {
+      flight = (async () => {
         const key = localStorage.getItem(checkoutKey(schoolSlug)) ?? crypto.randomUUID();
         localStorage.setItem(checkoutKey(schoolSlug), key);
         const attempt: any = await createAttempt({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}), idempotencyKey: key });
-        const checkout: any = await initializeAttempt({ reference: attempt.reference });
-        if (checkout.state === "paid") {
-          if (active) setStatus("Payment is already confirmed. Return to the workspace to start the available application slot.");
-          return;
-        }
-        if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
-        window.location.assign(checkout.checkoutUrl);
-      } catch {
-        localStorage.removeItem(checkoutKey(schoolSlug));
-        if (active) {
-          setFailed(true);
-          setStatus("We could not start secure checkout. Retry without leaving your workspace.");
-        }
+        return await initializeAttempt({ reference: attempt.reference }) as CheckoutInitialization;
+      })();
+      checkoutFlights.set(flightKey, flight);
+      void flight.then(
+        () => checkoutFlights.delete(flightKey),
+        () => checkoutFlights.delete(flightKey),
+      );
+    }
+    void flight.then((checkout) => {
+      if (!active) return;
+      if (checkout.state === "paid") {
+        setStatus("Payment is already confirmed. Return to the workspace to start the available application slot.");
+        return;
       }
-    })();
+      if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
+      window.location.assign(checkout.checkoutUrl);
+    }).catch(() => {
+      localStorage.removeItem(checkoutKey(schoolSlug));
+      if (active) {
+        setFailed(true);
+        setStatus("We could not start secure checkout. Retry without leaving your workspace.");
+      }
+    });
     return () => { active = false; };
   }, [schoolSlug, intakeSlug, createAttempt, initializeAttempt, attemptNumber]);
   return <div className={`notice ${failed ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong><p>{status}</p>{failed ? <div className="actions"><button className="primary" type="button" onClick={() => setAttemptNumber((value) => value + 1)}>Retry checkout</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
