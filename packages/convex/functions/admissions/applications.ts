@@ -80,7 +80,10 @@ export const saveCoreSection = mutation({
       const current: Record<string, unknown> = { firstName: existing?.firstName, lastName: existing?.lastName, dateOfBirth: existing?.dateOfBirth, middleName: existing?.middleName, preferredName: existing?.preferredName, gender: existing?.gender, nationality: existing?.nationality, countryOfBirth: existing?.countryOfBirth, address: existing?.address, requestedEntryLabel: application.requestedEntryLabel };
       if (Object.keys(proposed).some((key) => proposed[key] !== current[key] && !allowed.has(key))) throw new ConvexError("CORE_FIELD_LOCKED");
     }
-    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName: args.firstName.trim(), lastName: args.lastName.trim(), dateOfBirth: args.dateOfBirth, normalizedName: `${args.firstName} ${args.lastName}`.trim().toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(resolvedOptional.middleName ? { middleName: resolvedOptional.middleName } : {}), ...(resolvedOptional.preferredName ? { preferredName: resolvedOptional.preferredName } : {}), ...(resolvedOptional.gender ? { gender: resolvedOptional.gender } : {}), ...(resolvedOptional.nationality ? { nationality: resolvedOptional.nationality } : {}), ...(resolvedOptional.countryOfBirth ? { countryOfBirth: resolvedOptional.countryOfBirth } : {}), ...(resolvedOptional.address ? { address: resolvedOptional.address } : {}) };
+    const firstName = args.firstName.trim();
+    const lastName = args.lastName.trim();
+    if (existing && existing.firstName === firstName && existing.lastName === lastName && existing.dateOfBirth === args.dateOfBirth && existing.middleName === resolvedOptional.middleName && existing.preferredName === resolvedOptional.preferredName && existing.gender === resolvedOptional.gender && existing.nationality === resolvedOptional.nationality && existing.countryOfBirth === resolvedOptional.countryOfBirth && existing.address === resolvedOptional.address && application.requestedEntryLabel === resolvedOptional.requestedEntryLabel) return application.draftVersion;
+    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName, lastName, dateOfBirth: args.dateOfBirth, normalizedName: `${firstName} ${lastName}`.toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(resolvedOptional.middleName ? { middleName: resolvedOptional.middleName } : {}), ...(resolvedOptional.preferredName ? { preferredName: resolvedOptional.preferredName } : {}), ...(resolvedOptional.gender ? { gender: resolvedOptional.gender } : {}), ...(resolvedOptional.nationality ? { nationality: resolvedOptional.nationality } : {}), ...(resolvedOptional.countryOfBirth ? { countryOfBirth: resolvedOptional.countryOfBirth } : {}), ...(resolvedOptional.address ? { address: resolvedOptional.address } : {}) };
     if (existing) await ctx.db.replace(existing._id, profile); else await ctx.db.insert("admissionsApplicantProfiles", profile);
     const nextVersion = application.draftVersion + 1;
     await ctx.db.patch(application._id, { draftVersion: nextVersion, requestedEntryLabel: resolvedOptional.requestedEntryLabel, updatedAt: now });
@@ -108,6 +111,7 @@ export const saveAnswer = mutation({
     if (field.requiredMode === "conditional" && !conditionalRuleMatches(field.conditionalRuleJson, answerMap)) throw new ConvexError("ANSWER_NOT_APPLICABLE");
     validateTypedAnswer({ kind: field.kind, valueType: args.valueType, serializedValue: args.serializedValue, validationJson: field.validationJson });
     const existing = await ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id).eq("fieldKey", field.fieldKey)).unique();
+    if (existing && existing.valueType === args.valueType.trim() && existing.serializedValue === args.serializedValue) return application.draftVersion;
     const now = Date.now(); const valueVersion = (existing?.valueVersion ?? 0) + 1;
     const row = { schoolId: application.schoolId, applicationId: application._id, formFieldId: field._id, fieldKey: field.fieldKey, valueType: args.valueType.trim(), serializedValue: args.serializedValue, dataClass: field.dataClass, valueVersion, createdAt: existing?.createdAt ?? now, updatedAt: now };
     if (existing) await ctx.db.replace(existing._id, row); else await ctx.db.insert("admissionsApplicationAnswers", row);
@@ -128,8 +132,14 @@ export const saveContact = mutation({
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || !args.fullName.trim() || !args.relationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
     if (application.state === "changes_requested" && !(application.changeRequestCoreKeys ?? []).includes(`contact:${key}`)) throw new ConvexError("CORE_FIELD_LOCKED");
     const existing = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id).eq("contactKey", key)).unique();
+    const fullName = args.fullName.trim();
+    const relationship = args.relationship.trim();
+    const email = args.email?.trim().toLowerCase() || undefined;
+    const phone = args.phone?.trim() || undefined;
+    const address = args.address?.trim() || undefined;
+    if (existing && existing.kind === args.kind && existing.fullName === fullName && existing.relationship === relationship && existing.email === email && existing.phone === phone && existing.address === address && existing.isApplicantGuardian === args.isApplicantGuardian && existing.isPrimary === args.isPrimary) return application.draftVersion;
     const now = Date.now();
-    const row = { schoolId: application.schoolId, applicationId: application._id, contactKey: key, kind: args.kind, fullName: args.fullName.trim(), relationship: args.relationship.trim(), ...(args.email?.trim() ? { email: args.email.trim().toLowerCase() } : {}), ...(args.phone?.trim() ? { phone: args.phone.trim() } : {}), ...(args.address?.trim() ? { address: args.address.trim() } : {}), isApplicantGuardian: args.isApplicantGuardian, isPrimary: args.isPrimary, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    const row = { schoolId: application.schoolId, applicationId: application._id, contactKey: key, kind: args.kind, fullName, relationship, ...(email ? { email } : {}), ...(phone ? { phone } : {}), ...(address ? { address } : {}), isApplicantGuardian: args.isApplicantGuardian, isPrimary: args.isPrimary, createdAt: existing?.createdAt ?? now, updatedAt: now };
     if (existing) await ctx.db.replace(existing._id, row); else await ctx.db.insert("admissionsApplicationContacts", row);
     const nextVersion = application.draftVersion + 1;
     await ctx.db.patch(application._id, { draftVersion: nextVersion, updatedAt: now });
