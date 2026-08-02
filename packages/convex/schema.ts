@@ -418,6 +418,7 @@ export default defineSchema({
     feeDisclosureSnapshot: v.string(),
     state: admissionsPurchaseStateValidator,
     providerAuthorizationReference: v.optional(v.string()),
+    checkoutUrl: v.optional(v.string()),
     verifiedAt: v.optional(v.number()),
     failureCode: v.optional(v.string()),
     entitlementId: v.optional(v.id("admissionsEntitlements")),

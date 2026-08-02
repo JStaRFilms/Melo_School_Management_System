@@ -68,6 +68,18 @@ describe("B1 public admissions bootstrap", () => {
     await expect(t.withIdentity(owner).query((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, { reference: attempt.reference })).resolves.toEqual({ attemptId: storedAttempt!._id });
   });
 
+  test("replays an initialized checkout without creating a duplicate Paystack transaction", async () => {
+    const t = convexTest(schema, modules); await publicFixture(t);
+    const created = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "checkout-replay" });
+    const attempt = await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", created.reference)).unique());
+    await t.mutation((internal as any).functions.admissions.payments.recordInitialization, { attemptId: attempt!._id, authorizationReference: "test-access-code", checkoutUrl: "https://checkout.paystack.com/test-access-code" });
+
+    await expect(t.withIdentity(owner).action((api as any).functions.admissions.payments.initializeAttempt, { attemptId: attempt!._id })).resolves.toEqual({
+      state: "checkout_pending",
+      checkoutUrl: "https://checkout.paystack.com/test-access-code",
+    });
+  });
+
   test("isolates school slugs and requires guardian ownership for public references", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     await expect(t.withIdentity(owner).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-b", publicReference: "app_public_reference" })).rejects.toThrow("Not found or access denied");

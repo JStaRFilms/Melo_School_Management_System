@@ -82,14 +82,14 @@ export const createAttempt = mutation({
 
 export const getOwnedAttemptForInitialization = query({
   args: { attemptId: v.id("admissionsPurchaseAttempts") },
-  returns: v.union(v.null(), v.object({ schoolId: v.id("schools"), schoolSlug: v.string(), attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, amountMinor: v.number(), currency: v.string(), email: v.string(), state: v.string(), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()) })),
+  returns: v.union(v.null(), v.object({ schoolId: v.id("schools"), schoolSlug: v.string(), attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, amountMinor: v.number(), currency: v.string(), email: v.string(), state: v.string(), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()), checkoutUrl: v.union(v.string(), v.null()) })),
   handler: async (ctx, args) => {
     const { guardian } = await requireGuardian(ctx);
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || attempt.guardianId !== guardian._id) return null;
     const school = await ctx.db.get(attempt.schoolId);
     if (!school) return null;
-    return { schoolId: attempt.schoolId, schoolSlug: school.slug, attemptId: attempt._id, reference: attempt.reference, provider: attempt.provider, providerMode: attempt.providerMode, amountMinor: attempt.amountMinor, currency: attempt.currency, email: guardian.normalizedEmail, state: attempt.state, entitlementId: attempt.entitlementId ?? null };
+    return { schoolId: attempt.schoolId, schoolSlug: school.slug, attemptId: attempt._id, reference: attempt.reference, provider: attempt.provider, providerMode: attempt.providerMode, amountMinor: attempt.amountMinor, currency: attempt.currency, email: guardian.normalizedEmail, state: attempt.state, entitlementId: attempt.entitlementId ?? null, checkoutUrl: attempt.checkoutUrl ?? null };
   },
 });
 
@@ -143,12 +143,12 @@ export const recordManualAttention = internalMutation({
 });
 
 export const recordInitialization = internalMutation({
-  args: { attemptId: v.id("admissionsPurchaseAttempts"), authorizationReference: v.string() },
+  args: { attemptId: v.id("admissionsPurchaseAttempts"), authorizationReference: v.string(), checkoutUrl: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || (attempt.state !== "created" && attempt.state !== "checkout_pending")) return null;
-    await ctx.db.patch(attempt._id, { state: "checkout_pending", providerAuthorizationReference: args.authorizationReference, updatedAt: Date.now() });
+    await ctx.db.patch(attempt._id, { state: "checkout_pending", providerAuthorizationReference: args.authorizationReference, checkoutUrl: args.checkoutUrl, updatedAt: Date.now() });
     return null;
   },
 });
@@ -162,6 +162,7 @@ export const initializeAttempt = action({
     if (!attempt) throw new ConvexError("Not found or access denied");
     if (attempt.state === "paid") return { state: "paid", checkoutUrl: null };
     if (isTerminalFinanceState(attempt.state) || attempt.state === "manual_attention") return { state: attempt.state, checkoutUrl: null };
+    if (attempt.state === "checkout_pending" && attempt.checkoutUrl) return { state: "checkout_pending", checkoutUrl: attempt.checkoutUrl };
     if (attempt.provider !== "paystack") throw new ConvexError("Payment provider is unavailable");
     const gatewayContext: any = await ctx.runQuery((internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_initialization" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Payment provider is unavailable");
@@ -170,7 +171,8 @@ export const initializeAttempt = action({
     const result = await createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode }).createPaymentLink({
       amount: attempt.amountMinor / 100, email: attempt.email, schoolId: String(attempt.schoolId), schoolSlug: attempt.schoolSlug, invoiceId: String(attempt.attemptId), invoiceNumber: "ADMISSIONS", description: "Admissions application slot", reference: attempt.reference, providerMode: attempt.providerMode, paymentDomain: "admissions", callbackUrl: `${applicationOrigin.replace(/\/$/, "")}/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return`,
     });
-    await ctx.runMutation((internal as any).functions.admissions.payments.recordInitialization, { attemptId: attempt.attemptId, authorizationReference: result.reference });
+    if (!result.authorizationUrl) throw new ConvexError("Payment provider is unavailable");
+    await ctx.runMutation((internal as any).functions.admissions.payments.recordInitialization, { attemptId: attempt.attemptId, authorizationReference: result.accessCode ?? result.reference, checkoutUrl: result.authorizationUrl });
     return { state: "checkout_pending", checkoutUrl: result.authorizationUrl };
   },
 });

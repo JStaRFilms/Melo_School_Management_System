@@ -72,7 +72,10 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
         return;
       }
       window.location.assign(checkout.checkoutUrl);
-    } catch { setNotice("We could not start secure checkout. Verify your contact and try again."); }
+    } catch {
+      localStorage.removeItem(checkoutKey(schoolSlug));
+      setNotice("We could not start secure checkout. Verify your contact and try again.");
+    }
     finally { setStarting(false); }
   };
 
@@ -185,6 +188,7 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
         if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
         window.location.assign(checkout.checkoutUrl);
       } catch {
+        localStorage.removeItem(checkoutKey(schoolSlug));
         if (active) {
           setFailed(true);
           setStatus("We could not start secure checkout. Retry without leaving your workspace.");
