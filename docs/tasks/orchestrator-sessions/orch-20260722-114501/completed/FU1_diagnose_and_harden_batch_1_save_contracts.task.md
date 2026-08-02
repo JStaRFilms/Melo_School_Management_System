@@ -1,6 +1,6 @@
 # FU1 — Batch 1 save-contract diagnosis and draft semantics
 
-**Session:** `orch-20260722-114501`  
+**Session:** `orch-20260722-114501`
 **Stage:** Build follow-up | **Role:** Coder | **Historical baseline:** B6 complete | **Tracked dependency:** B0 | **Worktree:** `feature/admissions-draft-reliability`
 
 ## Objective

@@ -1,6 +1,6 @@
 # FU3 — Batch 1 integration checkpoint and manual-test handoff
 
-**Session:** `orch-20260722-114501`  
+**Session:** `orch-20260722-114501`
 **Stage:** Build follow-up | **Role:** Orchestrator | **Depends on:** FU1, FU2 | **Worktree:** integration owner checkout
 
 ## Objective

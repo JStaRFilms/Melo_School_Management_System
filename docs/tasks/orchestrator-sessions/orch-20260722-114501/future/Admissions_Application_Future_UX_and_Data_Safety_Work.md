@@ -4,9 +4,17 @@
 
 **Captured from:** Manual guardian application testing
 
-**Status:** Documented only — implementation intentionally deferred
+**Status:** Batch 1 implemented on `integration/obhis-admissions-release`; Batch 2 and Batch 3 remain deferred
 
-**Recommended next request:** “Implement Batch 1 from the admissions application follow-up document.”
+**Recommended next step:** Complete the user-owned Batch 1 browser checks below before requesting Batch 2.
+
+## Implementation status — 2026-08-02
+
+Batch 1 is integrated through merge commit `f75fc40`. The evidence-backed failure was a stale-version race between dynamic-field blur saving and section submission, compounded by unchanged answer replays. The implementation now provides idempotent exact draft replays, one serialized application write queue, 700ms per-edit debounce with a stable 7-second ceiling, deliberate application-scoped local recovery, bounded transient retries, explicit save states, field/section errors, and save-then-advance behavior.
+
+Automated Apply tests, Apply typecheck, targeted Apply ESLint, Apply production build, focused Convex admissions tests, and Convex typecheck pass. Browser, visual, accessibility, offline/reconnect, refresh/restart, and multi-tab verification remain user-owned. See `follow-up/FU1_save_contract_result.md`, `follow-up/FU2_autosave_progression_result.md`, and `follow-up/FU3_batch1_integration_report.md`.
+
+Batch 2 legal-name migration and Batch 3 document viewing/removal remain pending and were not combined into Batch 1.
 
 ## 1. Scope split
 
@@ -25,6 +33,8 @@ These batches should be implemented and verified separately to keep the current 
 ---
 
 ## 2. Batch 1 — Reliable draft saving and clear progression
+
+**Implementation:** Complete on the integration branch; pending user browser verification.
 
 ### Problem statement
 
@@ -253,9 +263,11 @@ Repeat the complete paid guardian journey:
 
 ---
 
-## 7. Explicit non-goals for the documentation pass
+## 7. Historical non-goals for the original documentation pass
 
-- No autosave implementation now.
+The following constraints described the original documentation-only pass. Batch 1 was subsequently authorized and implemented as recorded above; Batch 2 and Batch 3 remain deferred.
+
+- No autosave implementation during the original documentation pass.
 - No schema migration now.
 - No middle-name requirement now.
 - No document proxy or deletion now.

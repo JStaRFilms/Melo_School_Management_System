@@ -1,6 +1,6 @@
 # FU2 — Batch 1 reliable autosave, local recovery, and progression
 
-**Session:** `orch-20260722-114501`  
+**Session:** `orch-20260722-114501`
 **Stage:** Build follow-up | **Role:** Coder | **Depends on:** FU1 | **Worktree:** `feature/admissions-draft-reliability`
 
 ## Objective
