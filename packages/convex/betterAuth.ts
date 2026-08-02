@@ -52,7 +52,14 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
         jwks,
         jwt: {
           definePayload: ({ user, session }) => {
-            const createdAt = session.createdAt.getTime();
+            const sessionCreatedAt: unknown = session.createdAt;
+            const createdAt = sessionCreatedAt instanceof Date
+              ? sessionCreatedAt.getTime()
+              : typeof sessionCreatedAt === "number"
+                ? sessionCreatedAt
+                : typeof sessionCreatedAt === "string"
+                  ? Date.parse(sessionCreatedAt)
+                  : Number.NaN;
             const payload = Object.fromEntries(Object.entries(user).filter(([key]) => key !== "id" && key !== "image" && key !== "auth_time"));
             return {
               ...payload,
