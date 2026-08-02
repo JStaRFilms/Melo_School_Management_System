@@ -91,6 +91,10 @@ Post-follow-up automated checks pass: 20 focused Apply tests, Apply typecheck, A
 
 Manual status remains explicit: the new offline indicator/reconnect behavior still needs a browser retest; the user observed independent tab state and eventual last acknowledged/manual-save dominance but did not exercise the explicit conflict resolution screen; and secure checkout over Tailscale remains unresolved. These items must not be reported as browser-passed.
 
+A later Admin browser pass found that audit pagination leaked new Convex pagination metadata outside its declared validator (`e187212`), review/change-request/decision controls shared unrelated input state, impossible state actions remained visible, restricted document access could never satisfy fresh authentication because the JWT omitted session authentication time, and the guardian Documents step lacked an obvious progression action. Commits `93555cc` and `852f6b5` separate and state-guard Admin workflows, expose audited decision reopening before conversion, collapse raw capability diagnostics, add a session-derived `auth_time` claim, clarify restricted access/re-sign-in requirements, and add **Continue to review and declaration**. The development Convex deployment was updated. Focused verification passes: 12 Admin admissions tests, 30 Convex admissions tests, 20 Apply tests, affected package typechecks, targeted ESLint, and diff checks.
+
+Guardian-visible review events remain an immutable one-way status timeline, not a two-way chat. A communications channel with guardian replies is a separate product/security scope and was not introduced. The corrected Admin workflows and restricted-document access after a fresh sign-in still require browser retesting.
+
 ## Deferred work and release constraints
 
 Batch 2 legal-name migration and Batch 3 same-origin document viewing/removal remain pending. OBHIS public publication remains blocked on approved identity, content, assets, and rights evidence. No production data or deployment setting was changed, and no Paystack secret was displayed.
