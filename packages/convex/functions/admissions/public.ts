@@ -368,7 +368,23 @@ export const bindUploadByPublicReference = mutation({
 export const saveContactByPublicReference = mutation({
   args: { schoolSlug: v.string(), publicReference: v.string(), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
   returns: v.number(),
-  handler: async (ctx, args): Promise<number> => { const { application } = await requireOwnedPublicApplication(ctx, args); const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveContact, { ...args, applicationId: application._id }); return nextVersion; },
+  handler: async (ctx, args): Promise<number> => {
+    const { application } = await requireOwnedPublicApplication(ctx, args);
+    const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveContact, {
+      applicationId: application._id,
+      expectedVersion: args.expectedVersion,
+      contactKey: args.contactKey,
+      kind: args.kind,
+      fullName: args.fullName,
+      relationship: args.relationship,
+      email: args.email,
+      phone: args.phone,
+      address: args.address,
+      isApplicantGuardian: args.isApplicantGuardian,
+      isPrimary: args.isPrimary,
+    });
+    return nextVersion;
+  },
 });
 
 export const withdrawByPublicReference = mutation({
@@ -387,7 +403,20 @@ export const saveCoreByPublicReference = mutation({
   returns: v.number(),
   handler: async (ctx, args): Promise<number> => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
-    const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveCoreSection, { ...args, applicationId: application._id });
+    const nextVersion: number = await ctx.runMutation((api as any).functions.admissions.applications.saveCoreSection, {
+      applicationId: application._id,
+      expectedVersion: args.expectedVersion,
+      firstName: args.firstName,
+      lastName: args.lastName,
+      dateOfBirth: args.dateOfBirth,
+      middleName: args.middleName,
+      preferredName: args.preferredName,
+      gender: args.gender,
+      nationality: args.nationality,
+      countryOfBirth: args.countryOfBirth,
+      address: args.address,
+      requestedEntryLabel: args.requestedEntryLabel,
+    });
     return nextVersion;
   },
 });

@@ -7,7 +7,7 @@ import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
-import { type DraftSaveState, type RecoveryRecord, configuredFieldError, fieldRequiresValue, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
+import { type DraftSaveState, type RecoveryRecord, configuredFieldError, fieldRequiresValue, isTransientSaveFailure, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -232,6 +232,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const queueRef = useRef<SerializedWriteQueue | null>(null);
   const initializedRef = useRef(false);
   const dirtyRef = useRef(new Map<string, { section: string; generation: number }>());
+  const blockedWritesRef = useRef(new Map<string, number>());
   const pendingWritesRef = useRef(new Map<string, Promise<boolean>>());
   const flushPendingRef = useRef<() => void>(() => {});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -248,6 +249,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const markDirty = (key: string, section: string) => {
     generationRef.current += 1;
     dirtyRef.current.set(key, { section, generation: generationRef.current });
+    blockedWritesRef.current.delete(key);
     recoveryBaseVersionRef.current ??= version;
     debounceRef.current = resetAutosaveDebounce(debounceRef.current, () => flushPendingRef.current());
     setSaveState("idle");
@@ -375,6 +377,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     if (existing) return existing;
     const dirty = dirtyRef.current.get(key);
     if (!dirty || !queueRef.current) return Promise.resolve(true);
+    if (blockedWritesRef.current.get(key) === dirty.generation) return Promise.resolve(false);
     const task = (async () => {
       setSaveState("saving");
       setStatus("Saving…");
@@ -388,6 +391,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
         return true;
       } catch (error) {
         const code = saveErrorCode(error);
+        const transient = isTransientSaveFailure(error);
         if (code === "DRAFT_VERSION_CONFLICT") {
           setConflict(true);
           setSaveState("conflict");
@@ -397,13 +401,19 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
           setSaveState("offline");
           setStatus("Offline — changes waiting to sync");
         } else if (code) {
+          blockedWritesRef.current.set(key, dirty.generation);
           setSaveState("idle");
           const fieldErrors = field && (code === "ANSWER_INVALID" || code === "ANSWER_NOT_APPLICABLE") ? { [field.key]: `${field.label} could not be saved. Correct this field and try again.` } : { section: "Correct the highlighted values before saving again." };
           setErrorsFor(section, fieldErrors);
           if (field) focusError(fieldErrors);
-        } else {
+        } else if (transient) {
           setSaveState("retrying");
           setStatus("Could not save — retrying");
+        } else {
+          blockedWritesRef.current.set(key, dirty.generation);
+          setSaveState("idle");
+          setStatus("Could not save. Change this section before retrying.");
+          setErrorsFor(section, { section: "This section could not be saved. Review its values and try again." });
         }
         return false;
       }
@@ -498,6 +508,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     setContact(restored.contact);
     setAnswers(restored.answers);
     dirtyRef.current.clear();
+    blockedWritesRef.current.clear();
     pendingWritesRef.current.clear();
     recoveryBaseVersionRef.current = null;
     staleRecoveryRef.current = null;

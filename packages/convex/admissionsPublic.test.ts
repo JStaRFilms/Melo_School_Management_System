@@ -74,6 +74,14 @@ describe("B1 public admissions bootstrap", () => {
     await expect(t.withIdentity(other).query((api as any).functions.admissions.public.getGuardianApplication, { schoolSlug: "school-a", publicReference: "app_public_reference" })).rejects.toThrow("Not found or access denied");
   });
 
+  test("public save wrappers pass only their internal mutation contracts", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run((ctx) => ctx.db.patch(ids.application, { state: "draft", updatedAt: Date.now() }));
+    const coreVersion = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.saveCoreByPublicReference, { schoolSlug: "school-a", publicReference: "app_public_reference", expectedVersion: 2, firstName: "Updated", lastName: "Child", dateOfBirth: 2 });
+    const contactVersion = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.saveContactByPublicReference, { schoolSlug: "school-a", publicReference: "app_public_reference", expectedVersion: coreVersion, contactKey: "primary-guardian", kind: "guardian", fullName: "Guardian Name", relationship: "Parent", isApplicantGuardian: true, isPrimary: true });
+    expect(contactVersion).toBe(coreVersion + 1);
+  });
+
   test("recovers multiple workspace slots by school slug without entitlement or storage identifiers", async () => {
     const t = convexTest(schema, modules); const ids = await publicFixture(t);
     await t.run(async (ctx) => {

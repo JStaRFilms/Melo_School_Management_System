@@ -101,8 +101,9 @@ export function configuredFieldError(field: { kind: string; label: string; valid
 }
 
 export function isTransientSaveFailure(error: unknown): boolean {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
   const message = error instanceof Error ? error.message : String(error);
+  if (/ArgumentValidationError/.test(message) || saveErrorCode(error)) return false;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
   return /network|fetch|offline|temporar|timeout/i.test(message);
 }
 

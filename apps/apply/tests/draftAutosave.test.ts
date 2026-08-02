@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { configuredFieldError, fieldRequiresValue, nextFormStep, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, SerializedWriteQueue, startAutosaveCeiling } from "../lib/draftAutosave";
+import { configuredFieldError, fieldRequiresValue, isTransientSaveFailure, nextFormStep, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, SerializedWriteQueue, startAutosaveCeiling } from "../lib/draftAutosave";
 
 describe("draft autosave queue", () => {
   afterEach(() => { vi.useRealTimers(); });
@@ -95,5 +95,7 @@ describe("draft autosave queue", () => {
     expect(nextFormStep(["child", "contacts", "review"], "review")).toBeNull();
     expect(saveErrorCode(new Error("ANSWER_INVALID"))).toBe("ANSWER_INVALID");
     expect(saveErrorCode(new Error("database record details"))).toBeNull();
+    expect(isTransientSaveFailure(new Error("network request failed"))).toBe(true);
+    expect(isTransientSaveFailure(new Error("ArgumentValidationError"))).toBe(false);
   });
 });
