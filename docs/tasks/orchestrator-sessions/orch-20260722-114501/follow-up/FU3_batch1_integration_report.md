@@ -79,6 +79,18 @@ No assistant-controlled browser automation was run. In the configured developmen
 9. Upload a document and then save another section; confirm document version does not corrupt application draft concurrency.
 10. Complete review/submission and confirm the submitted snapshot remains locked and Admin sees the expected immutable values.
 
+## Browser follow-up findings
+
+The guardian-owned FU3 browser pass confirmed online autosave/manual save, refresh persistence, document upload, and successful submission. It also found three gaps that were not visible in automated checks:
+
+- Offline mutations could remain pending inside the Convex client, leaving the UI on `Saving…` before a rejected promise reached the existing offline branch. Commit `8b25b54` now reacts to browser connectivity immediately, keeps recovery local while offline, flushes on reconnect through the serialized queue, and preserves only a previously ready guardian identity during an explicit offline interval.
+- A submitted application remained on the disabled multi-step review form with withdrawal as the apparent next action. Commit `7ba9edc` now renders a read-only status destination, makes return to the application workspace primary, preserves guardian-visible school messages, and subordinates withdrawal as an exceptional action.
+- The attempted Admin command launched `@school/apply` a second time. Commit `8788b11` allows the current Tailscale host for Admin development; the correct package is `@school/admin` on port 3002.
+
+Post-follow-up automated checks pass: 20 focused Apply tests, Apply typecheck, Admin typecheck, targeted Apply ESLint, and `git diff --check`. Admin startup returned HTTP 200 from both `http://localhost:3002` and `http://100.84.230.66:3002` during a bounded verification run.
+
+Manual status remains explicit: the new offline indicator/reconnect behavior still needs a browser retest; the user observed independent tab state and eventual last acknowledged/manual-save dominance but did not exercise the explicit conflict resolution screen; and secure checkout over Tailscale remains unresolved. These items must not be reported as browser-passed.
+
 ## Deferred work and release constraints
 
 Batch 2 legal-name migration and Batch 3 same-origin document viewing/removal remain pending. OBHIS public publication remains blocked on approved identity, content, assets, and rights evidence. No production data or deployment setting was changed, and no Paystack secret was displayed.
