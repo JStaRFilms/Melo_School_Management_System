@@ -752,6 +752,7 @@ export default defineSchema({
   })
     .index("by_school_and_assignee_user_and_state", ["schoolId", "assigneeUserId", "state"])
     .index("by_application_and_state", ["applicationId", "state"])
+    .index("by_application_and_state_and_assignee_user_and_role", ["applicationId", "state", "assigneeUserId", "role"])
     .index("by_school_and_state_and_due_at", ["schoolId", "state", "dueAt"]),
 
   admissionsReviewEvents: defineTable({

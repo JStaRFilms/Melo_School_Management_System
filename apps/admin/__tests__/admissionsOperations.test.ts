@@ -9,6 +9,7 @@ import {
   decisionReadinessBlockers,
   conversionAction,
   copyCanonicalApplicationLink,
+  documentAccessDeniedMessage,
   hasScopedCapability,
   pageRows,
   redactQueueRows,
@@ -115,6 +116,12 @@ describe("admissions admin operations", () => {
       "Each admissions product must create exactly one application slot.",
       "Sensitive field “support-needs” needs purpose, retention, and privacy approval.",
     ]));
+  });
+
+  test("explains only post-authorization document access denials", () => {
+    expect(documentAccessDeniedMessage("fresh_auth_required")).toBe("Your sign-in is older than five minutes. Sign out and sign in again, then retry.");
+    expect(documentAccessDeniedMessage("reason_required")).toBe("Enter a checked access reason between 8 and 250 characters, then retry.");
+    expect(documentAccessDeniedMessage()).toBe("The file is unavailable. Confirm your access and retry.");
   });
 
   test("copies only the B0-supplied canonical application URL", async () => {

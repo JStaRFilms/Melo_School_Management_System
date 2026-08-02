@@ -155,6 +155,15 @@ export function canReviewDocument(state: string, result: "accepted" | "rejected"
   return state === "uploaded" && (result === "accepted" || Boolean(guardianMessage.trim()));
 }
 
+export type DocumentAccessDenialReason = "fresh_auth_required" | "reason_required";
+
+/** Denial reasons are returned only after Convex has authorized the document operation. */
+export function documentAccessDeniedMessage(reason?: DocumentAccessDenialReason): string {
+  if (reason === "fresh_auth_required") return "Your sign-in is older than five minutes. Sign out and sign in again, then retry.";
+  if (reason === "reason_required") return "Enter a checked access reason between 8 and 250 characters, then retry.";
+  return "The file is unavailable. Confirm your access and retry.";
+}
+
 export type ConversionState = "requested" | "running" | "succeeded" | "failed_retryable" | "failed_terminal" | "resolution_required";
 export type ConversionAction = "start" | "wait" | "retry_same_ledger" | "resolve" | "none";
 

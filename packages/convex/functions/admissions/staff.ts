@@ -180,7 +180,10 @@ export const recordDocumentReview = mutation({
 
 export const getDocumentAccess = mutation({
   args: { documentKey: v.string(), action: v.union(v.literal("view"), v.literal("download")), reason: v.optional(v.string()) },
-  returns: v.union(v.object({ status: v.literal("available"), documentKey: v.string(), url: v.string(), expiresAt: v.null() }), v.object({ status: v.literal("unavailable"), documentKey: v.string() })),
+  returns: v.union(
+    v.object({ status: v.literal("available"), documentKey: v.string(), url: v.string(), expiresAt: v.null() }),
+    v.object({ status: v.literal("unavailable"), documentKey: v.string(), denialReason: v.optional(v.union(v.literal("fresh_auth_required"), v.literal("reason_required"))) }),
+  ),
   handler: async (ctx, args) => {
     const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey)).unique();
     const application = document && await ctx.db.get(document.applicationId);
@@ -193,7 +196,11 @@ export const getDocumentAccess = mutation({
     const fresh = !restricted || await hasFreshAuth(ctx);
     const reason = args.reason?.trim();
     const reasonValid = Boolean(reason && reason.length >= 8 && reason.length <= 250);
-    return await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: fresh ? "fresh" : "standard" }, action: args.action, reason: reasonValid ? reason : "reason_required", requiresFreshAuth: restricted, authorize: async () => reasonValid });
+    const result = await issueCheckedDocumentAccessV1({ ctx, documentKey: args.documentKey, actor: { kind: "staff", userId: membership.userId, schoolId: application.schoolId, assurance: fresh ? "fresh" : "standard" }, action: args.action, reason: reasonValid ? reason : "reason_required", requiresFreshAuth: restricted, authorize: async () => reasonValid });
+    if (result.status === "available") return result;
+    if (!fresh) return { ...result, denialReason: "fresh_auth_required" as const };
+    if (!reasonValid) return { ...result, denialReason: "reason_required" as const };
+    return result;
   },
 });
 
@@ -269,6 +276,28 @@ export const listAssignableStaff = query({
   },
 });
 
+/** Active assignments coordinate review work only; capabilities remain independently enforced. */
+export const listActiveReviewAssignments = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: v.array(v.object({ assignmentId: v.id("admissionsReviewAssignments"), assigneeUserId: v.id("users"), name: v.string(), role: v.string() })),
+  handler: async (ctx, args) => {
+    const { application } = await applicationAndStaff(ctx, args.applicationId, "reviews.assign");
+    const assignments = await ctx.db.query("admissionsReviewAssignments").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "assigned")).take(100);
+    const result = [];
+    const seen = new Set<string>();
+    for (const assignment of assignments) {
+      const key = `${assignment.assigneeUserId}:${assignment.role}`;
+      if (seen.has(key)) continue;
+      const assignee = await ctx.db.get(assignment.assigneeUserId);
+      if (assignee && assignee.schoolId === application.schoolId) {
+        seen.add(key);
+        result.push({ assignmentId: assignment._id, assigneeUserId: assignee._id, name: assignee.name, role: assignment.role });
+      }
+    }
+    return result;
+  },
+});
+
 export const startReview = mutation({
   args: { applicationId: v.id("admissionsApplications") },
   returns: v.null(),
@@ -292,9 +321,12 @@ export const assignReview = mutation({
     if (!assignee || assignee.schoolId !== application.schoolId || assignee.isArchived || !args.role.trim()) throw new ConvexError("Not found or access denied");
     const assigneeCanReview = await hasSchoolCapabilityV1(ctx, { userId: assignee._id, schoolId: assignee.schoolId, role: assignee.role, isSchoolAdmin: assignee.role === "admin" || assignee.isSchoolAdmin === true }, "reviews.record", { programmeId: application.programmeId, intakeId: application.intakeId });
     if (!assigneeCanReview) throw new ConvexError("Not found or access denied");
+    const role = args.role.trim().slice(0, 128);
+    const existing = await ctx.db.query("admissionsReviewAssignments").withIndex("by_application_and_state_and_assignee_user_and_role", (q) => q.eq("applicationId", application._id).eq("state", "assigned").eq("assigneeUserId", assignee._id).eq("role", role)).take(1);
+    if (existing[0]) return existing[0]._id;
     const now = Date.now();
-    const assignmentId = await ctx.db.insert("admissionsReviewAssignments", { schoolId: application.schoolId, applicationId: application._id, assigneeUserId: assignee._id, role: args.role.trim().slice(0, 128), state: "assigned", ...(args.dueAt ? { dueAt: args.dueAt } : {}), assignedByUserId: membership.userId, createdAt: now, updatedAt: now });
-    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "assignment_created", visibility: "staff", metadataJson: JSON.stringify({ assignmentId: String(assignmentId), role: args.role.trim().slice(0, 128) }), createdAt: now });
+    const assignmentId = await ctx.db.insert("admissionsReviewAssignments", { schoolId: application.schoolId, applicationId: application._id, assigneeUserId: assignee._id, role, state: "assigned", ...(args.dueAt ? { dueAt: args.dueAt } : {}), assignedByUserId: membership.userId, createdAt: now, updatedAt: now });
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: application.schoolId, applicationId: application._id, actorUserId: membership.userId, eventType: "assignment_created", visibility: "staff", metadataJson: JSON.stringify({ assignmentId: String(assignmentId), role }), createdAt: now });
     await audit({ ctx, schoolId: application.schoolId, actor: { kind: "staff", userId: membership.userId }, action: "review.assigned", entityType: "assignment", entityId: String(assignmentId), applicationId: application._id, outcome: "success" });
     return assignmentId;
   },

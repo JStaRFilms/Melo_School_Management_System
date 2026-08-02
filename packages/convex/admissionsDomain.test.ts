@@ -84,11 +84,38 @@ describe("B1 admissions domain", () => {
     await expect(t.withIdentity(freshStaffIdentity).query((api as any).functions.admissions.staff.getApplicationDetail, { applicationId: application.applicationId })).rejects.toThrow("Not found or access denied");
     await t.run(async (ctx) => { await ctx.db.patch(staff, { schoolId: ids.schoolA, updatedAt: Date.now() }); await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: staff, capability: "documents.review", scope: "intake", intakeId: ids.intake, grantedByUserId: staff, reason: "document metadata only", isBreakGlass: false, createdAt: Date.now() }); });
     const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["identity"], { type: "image/jpeg" })));
-    await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, category: "identity", documentKey: "doc_sensitive", storageId, fileName: "identity.jpg", mimeType: "image/jpeg", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "highly_sensitive", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
+    const documentId = await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, category: "identity", documentKey: "doc_sensitive", storageId, fileName: "identity.jpg", mimeType: "image/jpeg", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "highly_sensitive", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
     await expect(t.withIdentity(freshStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).rejects.toThrow("Not found or access denied");
     await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: staff, capability: "applications.view_sensitive", scope: "intake", intakeId: ids.intake, grantedByUserId: staff, reason: "restricted document review", isBreakGlass: false, createdAt: Date.now() }));
-    await expect(t.withIdentity(staleStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).resolves.toEqual({ status: "unavailable", documentKey: "doc_sensitive" });
+    await expect(t.withIdentity(staleStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).resolves.toEqual({ status: "unavailable", documentKey: "doc_sensitive", denialReason: "fresh_auth_required" });
+    await expect(t.withIdentity(freshStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "short" })).resolves.toEqual({ status: "unavailable", documentKey: "doc_sensitive", denialReason: "reason_required" });
+    expect(await t.run((ctx) => ctx.db.query("admissionsDocumentAccessAudits").withIndex("by_document_and_created_at", (q) => q.eq("documentId", documentId)).take(10))).toEqual(expect.arrayContaining([expect.objectContaining({ outcome: "denied" })]));
     await expect(t.withIdentity(freshStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).resolves.toMatchObject({ status: "available", documentKey: "doc_sensitive" });
+  });
+
+  test("review assignments are visible and idempotent per active assignee and role", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const identity = { subject: "assignment-admin", tokenIdentifier: "issuer|assignment-admin", issuer: "issuer" };
+    const assigneeIdentity = { subject: "assignment-reviewer", tokenIdentifier: "issuer|assignment-reviewer", issuer: "issuer" };
+    const [actor, assignee] = await t.run(async (ctx) => [
+      await ctx.db.insert("users", { schoolId: ids.schoolA, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name: "Assignment Admin", email: "assignment-admin@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }),
+      await ctx.db.insert("users", { schoolId: ids.schoolA, authId: assigneeIdentity.subject, authTokenIdentifier: assigneeIdentity.tokenIdentifier, name: "Assigned Reviewer", email: "assignment-reviewer@example.test", role: "teacher", createdAt: Date.now(), updatedAt: Date.now() }),
+    ]);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: actor, capability: "reviews.assign", scope: "intake", intakeId: ids.intake, grantedByUserId: actor, reason: "assign", isBreakGlass: false, createdAt: Date.now() });
+      await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: assignee, capability: "reviews.record", scope: "intake", intakeId: ids.intake, grantedByUserId: actor, reason: "review", isBreakGlass: false, createdAt: Date.now() });
+    });
+    const assign = (api as any).functions.admissions.staff.assignReview;
+    const first = await t.withIdentity(identity).mutation(assign, { applicationId: application.applicationId, assigneeUserId: assignee, role: "reviewer" });
+    const second = await t.withIdentity(identity).mutation(assign, { applicationId: application.applicationId, assigneeUserId: assignee, role: "reviewer" });
+    expect(second).toBe(first);
+    await t.run((ctx) => ctx.db.insert("admissionsReviewAssignments", { schoolId: ids.schoolA, applicationId: application.applicationId, assigneeUserId: assignee, role: "reviewer", state: "assigned", assignedByUserId: actor, createdAt: Date.now(), updatedAt: Date.now() }));
+    const assignments = await t.withIdentity(identity).query((api as any).functions.admissions.staff.listActiveReviewAssignments, { applicationId: application.applicationId });
+    expect(assignments).toEqual([{ assignmentId: first, assigneeUserId: assignee, name: "Assigned Reviewer", role: "reviewer" }]);
+    const reviewEvents = await t.run((ctx) => ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application.applicationId)).take(10));
+    expect(reviewEvents.filter((event) => event.eventType === "assignment_created")).toHaveLength(1);
   });
 
   test("staff detail is snapshot-backed, redacted by default, and sensitive reveal is fresh-auth audited", async () => {
