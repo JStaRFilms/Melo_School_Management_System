@@ -203,9 +203,11 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
   const [attemptNumber, setAttemptNumber] = useState(0);
   const [status, setStatus] = useState("Preparing secure checkout…");
   const [failed, setFailed] = useState(false);
+  const [paidAttempt, setPaidAttempt] = useState(false);
   useEffect(() => {
     let active = true;
     setFailed(false);
+    setPaidAttempt(false);
     setStatus("Preparing secure checkout…");
     const flightKey = `${schoolSlug}:${intakeSlug ?? ""}:${attemptNumber}`;
     let flight = checkoutFlights.get(flightKey);
@@ -225,7 +227,9 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
     void flight.then((checkout) => {
       if (!active) return;
       if (checkout.state === "paid") {
-        setStatus("Payment is already confirmed. Return to the workspace to start the available application slot.");
+        localStorage.removeItem(checkoutKey(schoolSlug));
+        setPaidAttempt(true);
+        setStatus("That payment already belongs to an existing application slot. Start a new checkout to buy a separate slot for another child.");
         return;
       }
       if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
@@ -239,7 +243,7 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
     });
     return () => { active = false; };
   }, [schoolSlug, intakeSlug, createAttempt, initializeAttempt, attemptNumber]);
-  return <div className={`notice ${failed ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong><p>{status}</p>{failed ? <div className="actions"><button className="primary" type="button" onClick={() => setAttemptNumber((value) => value + 1)}>Retry checkout</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
+  return <div className={`notice ${failed ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong><p>{status}</p>{failed || paidAttempt ? <div className="actions"><button className="primary" type="button" onClick={() => setAttemptNumber((value) => value + 1)}>{paidAttempt ? "Start a new checkout" : "Retry checkout"}</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
 }
 
 function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter>; onBuy: () => void }) {
