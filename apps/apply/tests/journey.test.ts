@@ -26,6 +26,14 @@ describe("guardian journey safety", () => {
     expect(applicationStatusCopy("accepted", "running")).toContain("preparing its internal records");
     expect(applicationStatusCopy("accepted", "succeeded")).toContain("internal record setup");
   });
+  test("uses truthful guardian-facing copy for read-only application states", () => {
+    expect(applicationStatusCopy("submitted")).toContain("We received your application");
+    expect(applicationStatusCopy("submitted")).toContain("do not confirm admission");
+    expect(applicationStatusCopy("under_review")).toContain("reviewing your application");
+    expect(applicationStatusCopy("waitlisted")).toContain("waitlist decision");
+    expect(applicationStatusCopy("rejected")).toBe("The school recorded a decision.");
+    expect(applicationStatusCopy("withdrawn")).toContain("cannot be submitted again");
+  });
   test("shows a conditional field only when its published bounded rule is met", () => {
     const field = { key: "support-detail", kind: "textarea", requiredMode: "conditional", conditionalRule: '{"fieldKey":"support-needed","equals":"yes"}' };
     expect(fieldIsVisible(field, { "support-needed": "yes" })).toBe(true);

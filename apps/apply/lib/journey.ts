@@ -29,8 +29,13 @@ export function applicationStatusCopy(state: string, conversionState?: string | 
   if (conversionState === "succeeded") return "The school has completed its internal record setup.";
   if (conversionState) return "The school is preparing its internal records.";
   if (state === "accepted") return "The school recorded an acceptance decision.";
+  if (state === "rejected") return "The school recorded a decision.";
+  if (state === "waitlisted") return "The school recorded a waitlist decision.";
+  if (state === "withdrawn") return "This application was withdrawn and cannot be submitted again.";
+  if (state === "archived") return "This application is no longer available online under the school’s retention policy.";
+  if (state === "under_review") return "The school is reviewing your application. They may contact you if they need changes.";
   if (state === "changes_requested") return "The school asked you to update the items below.";
-  if (state === "submitted") return "Your application was submitted and is waiting for review.";
+  if (state === "submitted") return "We received your application. The school is reviewing it; payment and submission do not confirm admission.";
   return "Your application status is available here.";
 }
 
