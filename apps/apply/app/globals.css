@@ -91,6 +91,8 @@ a { color: inherit; }
 .field label { color: #17233d; font-weight: 760; }
 .field label small { margin-left: .35rem; color: var(--muted); font-size: .75rem; font-weight: 700; }
 .field > small { max-width: 68ch; color: var(--muted); line-height: 1.45; }
+.field > .field-error { color: #a32323; font-weight: 700; }
+.field input[aria-invalid="true"], .field select[aria-invalid="true"], .field textarea[aria-invalid="true"] { border-color: #a32323; }
 .field input, .field select, .field textarea {
   width: 100%;
   min-height: 46px;
