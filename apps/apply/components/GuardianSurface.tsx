@@ -7,7 +7,7 @@ import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
-import { type DraftSaveState, type RecoveryRecord, configuredFieldError, nextFormStep, readRecovery, recoveryKey, saveErrorCode, startAutosaveSchedule, SerializedWriteQueue } from "../lib/draftAutosave";
+import { type DraftSaveState, type RecoveryRecord, configuredFieldError, fieldRequiresValue, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -234,6 +234,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const dirtyRef = useRef(new Map<string, { section: string; generation: number }>());
   const pendingWritesRef = useRef(new Map<string, Promise<boolean>>());
   const flushPendingRef = useRef<() => void>(() => {});
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const recoveryBaseVersionRef = useRef<number | null>(null);
   const staleRecoveryRef = useRef<RecoveryRecord | null>(null);
@@ -248,6 +249,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     generationRef.current += 1;
     dirtyRef.current.set(key, { section, generation: generationRef.current });
     recoveryBaseVersionRef.current ??= version;
+    debounceRef.current = resetAutosaveDebounce(debounceRef.current, () => flushPendingRef.current());
     setSaveState("idle");
   };
   const setCoreValue = (key: "firstName" | "lastName" | "dateOfBirth" | "signerName" | "signerRelationship", value: string) => {
@@ -356,7 +358,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     for (const field of (config?.fields ?? []) as Field[]) {
       if (field.sectionKey !== section || !fieldIsVisible(field, answersRef.current)) continue;
       const value = answersRef.current[field.key] ?? "";
-      if (field.requiredMode === "required" && !value) errors[field.key] = `${field.label} is required.`;
+      if (fieldRequiresValue(field.requiredMode) && !value) errors[field.key] = `${field.label} is required.`;
       else if (value) {
         const error = configuredFieldError(field, value);
         if (error) errors[field.key] = error;
@@ -396,7 +398,9 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
           setStatus("Offline — changes waiting to sync");
         } else if (code) {
           setSaveState("idle");
-          setErrorsFor(section, field && (code === "ANSWER_INVALID" || code === "ANSWER_NOT_APPLICABLE") ? { [field.key]: `${field.label} could not be saved. Correct this field and try again.` } : { section: "Correct the highlighted values before saving again." });
+          const fieldErrors = field && (code === "ANSWER_INVALID" || code === "ANSWER_NOT_APPLICABLE") ? { [field.key]: `${field.label} could not be saved. Correct this field and try again.` } : { section: "Correct the highlighted values before saving again." };
+          setErrorsFor(section, fieldErrors);
+          if (field) focusError(fieldErrors);
         } else {
           setSaveState("retrying");
           setStatus("Could not save — retrying");
@@ -442,7 +446,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
       for (const section of new Set(Array.from(dirtyRef.current.values(), item => item.section))) void flushSection(section);
     };
   });
-  useEffect(() => startAutosaveSchedule(() => flushPendingRef.current()), []);
+  useEffect(() => {
+    const stop = startAutosaveCeiling(() => flushPendingRef.current());
+    return () => { if (debounceRef.current !== null) clearTimeout(debounceRef.current); stop(); };
+  }, []);
   const saveAndContinue = async (event: FormEvent) => {
     event.preventDefault();
     const errors = validateSection(step);
@@ -481,6 +488,28 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     setHasStaleRecovery(false);
     setStatus("Local edits restored. Review them, then explicitly retry or discard them.");
   };
+  const discardRecovery = () => {
+    if (!app || !queueRef.current) return;
+    const restored = restoreEditableDraft(baselineRef.current);
+    coreRef.current = { ...coreRef.current, ...restored.core };
+    contactRef.current = restored.contact;
+    answersRef.current = restored.answers;
+    setCore(current => ({ ...current, ...restored.core }));
+    setContact(restored.contact);
+    setAnswers(restored.answers);
+    dirtyRef.current.clear();
+    pendingWritesRef.current.clear();
+    recoveryBaseVersionRef.current = null;
+    staleRecoveryRef.current = null;
+    window.localStorage.removeItem(recoveryStorageKey);
+    queueRef.current.resume(app.draftVersion);
+    setVersion(app.draftVersion);
+    setSectionErrors({});
+    setHasStaleRecovery(false);
+    setConflict(false);
+    setSaveState("idle");
+    setStatus("Local recovery copy discarded. Latest saved details restored.");
+  };
   const withdrawApplication = async () => { const reason = window.prompt("Why are you withdrawing this application?"); if (!reason?.trim()) return; try { await withdraw({ schoolSlug, publicReference, reason }); setStatus("Application withdrawn. Its history remains available."); router.refresh(); } catch { setStatus("This application cannot be withdrawn from its current state."); } };
   const submitApplication = async () => {
     const reviewErrors: Record<string, string> = {};
@@ -510,7 +539,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const fieldEditable = (key: string) => editable && (app.state !== "changes_requested" || app.permittedEdits.fieldKeys.includes(key));
   const coreEditable = (key: string) => editable && (app.state !== "changes_requested" || app.permittedEdits.coreKeys.includes(key));
   const activeErrors = sectionErrors[step] ?? {};
-  return <Page><div className="grid"><aside className="card step-card" aria-label="Application steps"><p className="pill">{app.state}</p><p className="muted">{applicationStatusCopy(app.state, app.conversionState)}</p><ol className="stepper">{formSteps.map(item => <li key={item}><button type="button" aria-current={step === item ? "step" : undefined} onClick={() => navigate(item)}>{item === "child" ? "Child and form" : item === "contacts" ? "Guardian contact" : item === "documents" ? "Documents" : item === "review" ? "Review and declaration" : item.replace(/[-_]/g, " ")}</button></li>)}</ol></aside><main className="card app-card"><h1>{editable ? "Complete this application" : "Application status"}</h1><p className="status" aria-live="polite" data-save-state={saveState}>{status}</p>{Object.keys(activeErrors).length ? <div id="section-errors" tabIndex={-1} role="alert" className="notice danger"><strong>Complete the highlighted items</strong><ul>{Object.entries(activeErrors).map(([key, error]) => <li key={key}>{error}</li>)}</ul></div> : null}{conflict ? <div className="notice warn" role="alert"><strong>Saved changes need review</strong><p>Your pending edits were not applied over a newer application version.</p><div className="actions">{hasStaleRecovery ? <button type="button" className="secondary" onClick={restoreStaleRecovery}>Restore local edits to review and retry</button> : <button type="button" className="secondary" onClick={retryAfterConflict}>Retry my pending changes</button>}<button type="button" className="secondary" onClick={() => { window.localStorage.removeItem(recoveryStorageKey); dirtyRef.current.clear(); staleRecoveryRef.current = null; setHasStaleRecovery(false); setConflict(false); setStatus("Local recovery copy discarded."); }}>Discard local recovery copy</button></div></div> : null}{app.messages.map((message: any) => <div className="notice warn" key={message.createdAt}>{message.message ?? "The school updated your application status."}</div>)}
+  return <Page><div className="grid"><aside className="card step-card" aria-label="Application steps"><p className="pill">{app.state}</p><p className="muted">{applicationStatusCopy(app.state, app.conversionState)}</p><ol className="stepper">{formSteps.map(item => <li key={item}><button type="button" aria-current={step === item ? "step" : undefined} onClick={() => navigate(item)}>{item === "child" ? "Child and form" : item === "contacts" ? "Guardian contact" : item === "documents" ? "Documents" : item === "review" ? "Review and declaration" : item.replace(/[-_]/g, " ")}</button></li>)}</ol></aside><main className="card app-card"><h1>{editable ? "Complete this application" : "Application status"}</h1><p className="status" aria-live="polite" data-save-state={saveState}>{status}</p>{Object.keys(activeErrors).length ? <div id="section-errors" tabIndex={-1} role="alert" className="notice danger"><strong>Complete the highlighted items</strong><ul>{Object.entries(activeErrors).map(([key, error]) => <li key={key}>{error}</li>)}</ul></div> : null}{conflict ? <div className="notice warn" role="alert"><strong>Saved changes need review</strong><p>Your pending edits were not applied over a newer application version.</p><div className="actions">{hasStaleRecovery ? <button type="button" className="secondary" onClick={restoreStaleRecovery}>Restore local edits to review and retry</button> : <button type="button" className="secondary" onClick={retryAfterConflict}>Retry my pending changes</button>}<button type="button" className="secondary" onClick={discardRecovery}>Discard local recovery copy</button></div></div> : null}{app.messages.map((message: any) => <div className="notice warn" key={message.createdAt}>{message.message ?? "The school updated your application status."}</div>)}
   {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></form>}
   {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable || app.state === "changes_requested"}><h2>Guardian and emergency contact</h2><Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></form>}
   {step !== "child" && step !== "contacts" && step !== "documents" && step !== "review" && <form noValidate onSubmit={saveAndContinue}><section><h2>{step.replace(/[-_]/g, " ")}</h2><fieldset className="fieldset" disabled={!editable}>{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}{!fields.length ? <p className="muted">No currently applicable fields are configured in this section.</p> : null}<div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></section></form>}

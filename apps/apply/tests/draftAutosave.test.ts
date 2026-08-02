@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { configuredFieldError, nextFormStep, saveErrorCode, SerializedWriteQueue, startAutosaveSchedule } from "../lib/draftAutosave";
+import { configuredFieldError, fieldRequiresValue, nextFormStep, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, SerializedWriteQueue, startAutosaveCeiling } from "../lib/draftAutosave";
 
 describe("draft autosave queue", () => {
   afterEach(() => { vi.useRealTimers(); });
@@ -39,18 +39,24 @@ describe("draft autosave queue", () => {
     expect(nextWriteVersion).toBe(9);
   });
 
-  test("keeps its ceiling timer active independently of debounce timing", () => {
+  test("resets debounce for edits without postponing the stable ceiling", () => {
     vi.useFakeTimers();
     const flush = vi.fn();
-    const stop = startAutosaveSchedule(flush);
+    const stop = startAutosaveCeiling(flush);
+    let debounce = resetAutosaveDebounce(null, flush);
 
-    vi.advanceTimersByTime(700);
+    vi.advanceTimersByTime(500);
+    debounce = resetAutosaveDebounce(debounce, flush);
+    vi.advanceTimersByTime(699);
+    expect(flush).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(flush).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(6300);
+
+    vi.advanceTimersByTime(5300);
+    resetAutosaveDebounce(debounce, flush);
+    vi.advanceTimersByTime(500);
     expect(flush).toHaveBeenCalledTimes(2);
     stop();
-    vi.advanceTimersByTime(7000);
-    expect(flush).toHaveBeenCalledTimes(2);
   });
 
   test("pauses conflicts until an explicit retry, including restored local edits", async () => {
@@ -60,6 +66,22 @@ describe("draft autosave queue", () => {
     await expect(queue.enqueue(async () => 5, () => undefined)).rejects.toThrow("DRAFT_SAVE_PAUSED");
     queue.resume(4);
     await expect(queue.enqueue(async expectedVersion => expectedVersion + 1, () => undefined)).resolves.toBe(5);
+  });
+
+  test("restores a discarded recovery copy from the latest server baseline", () => {
+    const baseline = { core: { firstName: "Server", lastName: "Child", dateOfBirth: "2020-01-01" }, contact: { fullName: "Server Guardian", relationship: "Parent", email: "server@example.test", phone: "1" }, answers: { entry: "day" } };
+    const restored = restoreEditableDraft(baseline);
+    restored.core.firstName = "Local";
+    restored.answers.entry = "board";
+
+    expect(baseline).toMatchObject({ core: { firstName: "Server" }, answers: { entry: "day" } });
+    expect(restoreEditableDraft(baseline)).toEqual(baseline);
+  });
+
+  test("requires visible conditional fields while leaving optional fields unrequired", () => {
+    expect(fieldRequiresValue("required")).toBe(true);
+    expect(fieldRequiresValue("conditional")).toBe(true);
+    expect(fieldRequiresValue("optional")).toBe(false);
   });
 
   test("returns named errors for configured closed validation constraints", () => {

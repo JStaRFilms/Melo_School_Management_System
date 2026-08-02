@@ -39,10 +39,24 @@ export function nextFormStep(steps: string[], current: string): string | null {
   return steps[steps.indexOf(current) + 1] ?? null;
 }
 
-export function startAutosaveSchedule(flush: () => void, debounceMs = 700, ceilingMs = 7000): () => void {
-  const debounce = setTimeout(flush, debounceMs);
+export type EditableDraftValues = Pick<RecoveryRecord, "core" | "contact" | "answers">;
+
+export function restoreEditableDraft(baseline: EditableDraftValues): EditableDraftValues {
+  return { core: { ...baseline.core }, contact: { ...baseline.contact }, answers: { ...baseline.answers } };
+}
+
+export function resetAutosaveDebounce(current: ReturnType<typeof setTimeout> | null, flush: () => void, debounceMs = 700): ReturnType<typeof setTimeout> {
+  if (current !== null) clearTimeout(current);
+  return setTimeout(flush, debounceMs);
+}
+
+export function startAutosaveCeiling(flush: () => void, ceilingMs = 7000): () => void {
   const ceiling = setInterval(flush, ceilingMs);
-  return () => { clearTimeout(debounce); clearInterval(ceiling); };
+  return () => clearInterval(ceiling);
+}
+
+export function fieldRequiresValue(requiredMode: string): boolean {
+  return requiredMode !== "optional";
 }
 
 export function configuredFieldError(field: { kind: string; label: string; validation: string }, serialized: string): string | null {
