@@ -42,6 +42,9 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
       enabled: true,
       requireEmailVerification: false,
     },
+    advanced: {
+      useSecureCookies: process.env.BETTER_AUTH_ALLOW_INSECURE_COOKIES !== "true",
+    },
     trustedOrigins: getTrustedOrigins(),
     plugins: [
       convexPlugin({

@@ -20,6 +20,7 @@ function useGuardianReadiness() {
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
   const sessionPending = sessionResult.isPending;
+  const refetchSession = sessionResult.refetch;
   const signedInUserId = session?.user?.id;
   const getIdentity = useMutation(functionRef("functions/admissions/guardian:getOrCreateIdentity"));
   const [identityState, setIdentityState] = useState<GuardianIdentityState>("idle");
@@ -38,7 +39,7 @@ function useGuardianReadiness() {
     });
     return () => { active = false; };
   }, [signedInUserId, getIdentity, identityAttempt]);
-  return { session, sessionPending, signedInUserId, identityState, retryIdentity: () => setIdentityAttempt((value) => value + 1) };
+  return { session, sessionPending, signedInUserId, identityState, refetchSession, retryIdentity: () => setIdentityAttempt((value) => value + 1) };
 }
 
 export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Props) {
@@ -86,7 +87,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
 
 export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false }: Pick<Props, "schoolSlug" | "intakeSlug" | "checkoutIntent">) {
   const router = useRouter();
-  const { session, sessionPending, signedInUserId, identityState, retryIdentity } = useGuardianReadiness();
+  const { session, sessionPending, signedInUserId, identityState, refetchSession, retryIdentity } = useGuardianReadiness();
   const workspace = useQuery(functionRef("functions/admissions/public:getGuardianWorkspace"), signedInUserId && identityState === "ready" ? { schoolSlug, limit: 100 } : "skip") as any;
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [name, setName] = useState("");
@@ -114,6 +115,7 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
         if (result?.error) setAuthState(guardianRegistrationErrorMessage(result.error));
         else {
           setAuthState("Account created. Your private workspace is loading.");
+          await refetchSession({ query: { disableCookieCache: true } });
           router.refresh();
         }
       } catch (error) {
@@ -130,6 +132,7 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
       if (result?.error) setAuthState(getSignInErrorMessage(result.error));
       else {
         setAuthState("Signed in. Your private workspace is loading.");
+        await refetchSession({ query: { disableCookieCache: true } });
         router.refresh();
       }
     } catch (error) {
