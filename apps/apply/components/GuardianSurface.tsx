@@ -7,7 +7,7 @@ import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
 import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
-import { type DraftSaveState, type RecoveryRecord, nextFormStep, readRecovery, recoveryKey, saveErrorCode, SerializedWriteQueue } from "../lib/draftAutosave";
+import { type DraftSaveState, type RecoveryRecord, configuredFieldError, nextFormStep, readRecovery, recoveryKey, saveErrorCode, startAutosaveSchedule, SerializedWriteQueue } from "../lib/draftAutosave";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -233,6 +233,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const initializedRef = useRef(false);
   const dirtyRef = useRef(new Map<string, { section: string; generation: number }>());
   const pendingWritesRef = useRef(new Map<string, Promise<boolean>>());
+  const flushPendingRef = useRef<() => void>(() => {});
   const generationRef = useRef(0);
   const recoveryBaseVersionRef = useRef<number | null>(null);
   const staleRecoveryRef = useRef<RecoveryRecord | null>(null);
@@ -298,6 +299,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
         setContact(baselineRef.current.contact);
         setAnswers(serverAnswers);
         if (recovered) {
+          queueRef.current.pause();
           staleRecoveryRef.current = recovered;
           setHasStaleRecovery(true);
           setConflict(true);
@@ -353,7 +355,12 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     }
     for (const field of (config?.fields ?? []) as Field[]) {
       if (field.sectionKey !== section || !fieldIsVisible(field, answersRef.current)) continue;
-      if (field.requiredMode === "required" && !answersRef.current[field.key]) errors[field.key] = `${field.label} is required.`;
+      const value = answersRef.current[field.key] ?? "";
+      if (field.requiredMode === "required" && !value) errors[field.key] = `${field.label} is required.`;
+      else if (value) {
+        const error = configuredFieldError(field, value);
+        if (error) errors[field.key] = error;
+      }
     }
     return errors;
   };
@@ -361,7 +368,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     const first = Object.keys(errors)[0];
     window.setTimeout(() => document.getElementById(first ?? "section-errors")?.focus(), 0);
   };
-  const queueWrite = (key: string, section: string, write: (expectedVersion: number) => Promise<number>, onAcknowledged?: () => void) => {
+  const queueWrite = (key: string, section: string, write: (expectedVersion: number) => Promise<number>, onAcknowledged?: () => void, field?: Field) => {
     const existing = pendingWritesRef.current.get(key);
     if (existing) return existing;
     const dirty = dirtyRef.current.get(key);
@@ -389,7 +396,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
           setStatus("Offline — changes waiting to sync");
         } else if (code) {
           setSaveState("idle");
-          setErrorsFor(section, { section: "Correct the highlighted values before saving again." });
+          setErrorsFor(section, field && (code === "ANSWER_INVALID" || code === "ANSWER_NOT_APPLICABLE") ? { [field.key]: `${field.label} could not be saved. Correct this field and try again.` } : { section: "Correct the highlighted values before saving again." });
         } else {
           setSaveState("retrying");
           setStatus("Could not save — retrying");
@@ -426,18 +433,16 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
       if (!field || validationErrors[fieldKey]) return Promise.resolve(false);
       const value = answersRef.current[fieldKey] ?? "";
       if (value === baselineRef.current.answers[fieldKey]) { clearDirty(key, dirtyRef.current.get(key)?.generation ?? -1); return Promise.resolve(true); }
-      return queueWrite(key, section, expectedVersion => saveAnswer({ schoolSlug, publicReference, fieldKey, expectedVersion, ...serializedValue(field.kind, field.kind === "multi_select" ? safeArray(value) : value) }) as Promise<number>, () => { baselineRef.current.answers[fieldKey] = value; });
+      return queueWrite(key, section, expectedVersion => saveAnswer({ schoolSlug, publicReference, fieldKey, expectedVersion, ...serializedValue(field.kind, field.kind === "multi_select" ? safeArray(value) : value) }) as Promise<number>, () => { baselineRef.current.answers[fieldKey] = value; }, field);
     });
     return (await Promise.all(work)).every(Boolean);
   };
   useEffect(() => {
-    const flushPending = () => {
+    flushPendingRef.current = () => {
       for (const section of new Set(Array.from(dirtyRef.current.values(), item => item.section))) void flushSection(section);
     };
-    const debounce = window.setTimeout(flushPending, 700);
-    const ceiling = window.setInterval(flushPending, 7000);
-    return () => { window.clearTimeout(debounce); window.clearInterval(ceiling); };
   });
+  useEffect(() => startAutosaveSchedule(() => flushPendingRef.current()), []);
   const saveAndContinue = async (event: FormEvent) => {
     event.preventDefault();
     const errors = validateSection(step);
@@ -471,12 +476,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     for (const entry of recovered.dirtyEntries) dirtyRef.current.set(entry.key, { section: entry.section, generation: recovered.generation });
     generationRef.current = recovered.generation;
     recoveryBaseVersionRef.current = app.draftVersion;
-    queueRef.current.resume(app.draftVersion);
+    queueRef.current.rebaseWhilePaused(app.draftVersion);
     staleRecoveryRef.current = null;
     setHasStaleRecovery(false);
-    setConflict(false);
-    setSaveState("idle");
-    setStatus("Local edits restored for your review and deliberate retry.");
+    setStatus("Local edits restored. Review them, then explicitly retry or discard them.");
   };
   const withdrawApplication = async () => { const reason = window.prompt("Why are you withdrawing this application?"); if (!reason?.trim()) return; try { await withdraw({ schoolSlug, publicReference, reason }); setStatus("Application withdrawn. Its history remains available."); router.refresh(); } catch { setStatus("This application cannot be withdrawn from its current state."); } };
   const submitApplication = async () => {
@@ -511,7 +514,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></form>}
   {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable || app.state === "changes_requested"}><h2>Guardian and emergency contact</h2><Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></form>}
   {step !== "child" && step !== "contacts" && step !== "documents" && step !== "review" && <form noValidate onSubmit={saveAndContinue}><section><h2>{step.replace(/[-_]/g, " ")}</h2><fieldset className="fieldset" disabled={!editable}>{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}{!fields.length ? <p className="muted">No currently applicable fields are configured in this section.</p> : null}<div className="sticky"><button className="primary" type="submit">Save and continue</button></div></fieldset></section></form>}
-  {step === "documents" && <Documents requirements={(config.requirements as Requirement[]).filter(requirement => app.state !== "changes_requested" || app.permittedEdits.requirementKeys.includes(requirement.key))} documents={app.documents ?? []} disabled={!editable} onOpen={async documentKey => { const result: any = await accessOwnDocument({ schoolSlug, publicReference, documentKey, action: "view" }); if (result.status !== "available") throw new Error("Unavailable"); window.open(result.url, "_blank", "noopener,noreferrer"); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async () => (await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name })).version, () => setStatus("Could not save — retrying")); }} />}
+  {step === "documents" && <Documents requirements={(config.requirements as Requirement[]).filter(requirement => app.state !== "changes_requested" || app.permittedEdits.requirementKeys.includes(requirement.key))} documents={app.documents ?? []} disabled={!editable} onOpen={async documentKey => { const result: any = await accessOwnDocument({ schoolSlug, publicReference, documentKey, action: "view" }); if (result.status !== "available") throw new Error("Unavailable"); window.open(result.url, "_blank", "noopener,noreferrer"); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async expectedVersion => { await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name }); return expectedVersion; }, () => setStatus("Could not save — retrying")); }} />}
   {step === "review" && <section><h2>Review and declaration</h2><p className="muted">Review your saved details and private document requirements before submitting. Submitting does not create a student or confirm admission.</p>{config.declaration ? <><h3>{config.declaration.title} · Version {config.declaration.version}</h3><p className="notice">{config.declaration.body}</p></> : <p className="notice warn">The current declaration is unavailable. This application cannot be submitted.</p>}<Input id="signer" label="Signer name" value={core.signerName} onChange={value => setCoreValue("signerName", value)} required error={activeErrors.signer} /><Input id="relationship" label="Relationship" value={core.signerRelationship} onChange={value => setCoreValue("signerRelationship", value)} required error={activeErrors.relationship} /><label><input id="declaration" type="checkbox" checked={declarationAccepted} onChange={e => setDeclarationAccepted(e.target.checked)} disabled={!editable || !config.declaration} /> I have read and accept the published declaration shown above.</label>{activeErrors.declaration ? <small className="field-error">{activeErrors.declaration}</small> : null}<div className="actions"><button type="button" className="primary" disabled={!editable || !config.declaration || !declarationAccepted} onClick={() => void submitApplication()}>Submit application</button></div></section>}{["draft", "submitted", "under_review", "changes_requested", "waitlisted"].includes(app.state) ? <button type="button" className="secondary" onClick={() => void withdrawApplication()}>Withdraw application</button> : null}</main></div></Page>;
 }
 function DynamicField({ field, value, disabled, error, onChange, onSave }: { field: Field; value: string; disabled: boolean; error?: string; onChange: (value: string | boolean | string[]) => void; onSave: () => void }) {
