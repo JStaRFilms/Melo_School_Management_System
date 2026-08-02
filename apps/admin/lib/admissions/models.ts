@@ -80,8 +80,16 @@ export function hasScopedCapability(
   }));
 }
 
+export function canStartReview(state: string): boolean {
+  return state === "submitted";
+}
+
 export function canRequestChanges(state: string, message: string): boolean {
   return (state === "submitted" || state === "under_review") && Boolean(message.trim());
+}
+
+export function canRequestCorrections(args: { applicationState: string; guardianMessage: string; selectedItemCount: number }): boolean {
+  return canRequestChanges(args.applicationState, args.guardianMessage) && args.selectedItemCount > 0;
 }
 
 export type DecisionReadiness = {
@@ -93,10 +101,27 @@ export type DecisionReadiness = {
   ready: boolean;
 };
 
+export function decisionReadinessBlockers(readiness: DecisionReadiness): string[] {
+  const blockers: string[] = [];
+  if (!readiness.hasSnapshot) blockers.push("A submitted application snapshot is required.");
+  if (!readiness.requiredDocumentsAccepted) blockers.push("All required documents must be accepted.");
+  if (!readiness.legalEvidenceBound) blockers.push("The submitted declaration evidence is required.");
+  if (!readiness.financeClear) blockers.push("Resolve the finance hold before recording a decision.");
+  if (!readiness.evaluationsComplete) blockers.push("Complete or cancel scheduled evaluations first.");
+  return blockers;
+}
+
 export function canRecordDecision(args: { applicationState: string; readiness?: DecisionReadiness; hasSnapshot?: boolean; reasonCode: string; guardianMessage: string }) {
   const ready = args.readiness?.ready ?? Boolean(args.hasSnapshot);
   return ready
     && ["submitted", "under_review", "waitlisted"].includes(args.applicationState)
+    && Boolean(args.reasonCode.trim())
+    && Boolean(args.guardianMessage.trim());
+}
+
+export function canReopenDecision(args: { applicationState: string; conversionState: string | null; reasonCode: string; guardianMessage: string }): boolean {
+  return ["accepted", "rejected"].includes(args.applicationState)
+    && args.conversionState !== "succeeded"
     && Boolean(args.reasonCode.trim())
     && Boolean(args.guardianMessage.trim());
 }

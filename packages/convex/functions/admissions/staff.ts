@@ -25,8 +25,8 @@ function isRestrictedDocument(document: { category: string; sensitivity: string 
 }
 
 async function hasFreshAuth(ctx: any) {
-  const identity = await ctx.auth.getUserIdentity() as { auth_time?: unknown; authenticatedAt?: unknown } | null;
-  const timestamp = typeof identity?.auth_time === "number" ? identity.auth_time * 1000 : identity?.authenticatedAt;
+  const identity = await ctx.auth.getUserIdentity() as { auth_time?: unknown } | null;
+  const timestamp = typeof identity?.auth_time === "number" ? identity.auth_time * 1000 : undefined;
   return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp <= Date.now() && Date.now() - timestamp <= 5 * 60_000;
 }
 
@@ -82,7 +82,7 @@ export const listQueuePage = query({
 const snapshotAnswerValidator = v.object({ key: v.string(), label: v.string(), valueType: v.string(), value: v.union(v.string(), v.null()), dataClass: v.string(), redacted: v.boolean() });
 const applicantProfileValidator = v.object({ firstName: v.string(), lastName: v.string(), middleName: v.union(v.string(), v.null()), preferredName: v.union(v.string(), v.null()), dateOfBirth: v.number(), gender: v.union(v.string(), v.null()), nationality: v.union(v.string(), v.null()), countryOfBirth: v.union(v.string(), v.null()), address: v.union(v.string(), v.null()) });
 const decisionReadinessValidator = v.object({ hasSnapshot: v.boolean(), requiredDocumentsAccepted: v.boolean(), legalEvidenceBound: v.boolean(), financeClear: v.boolean(), evaluationsComplete: v.boolean(), ready: v.boolean() });
-const applicationDetailValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), revision: v.number(), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), decisionState: v.union(v.string(), v.null()), documentCount: v.number(), profile: v.union(applicantProfileValidator, v.null()), answers: v.array(snapshotAnswerValidator), sensitiveAnswerCount: v.number(), decisionReadiness: decisionReadinessValidator });
+const applicationDetailValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), revision: v.number(), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), decisionState: v.union(v.string(), v.null()), conversionState: v.union(v.string(), v.null()), documentCount: v.number(), profile: v.union(applicantProfileValidator, v.null()), answers: v.array(snapshotAnswerValidator), sensitiveAnswerCount: v.number(), decisionReadiness: decisionReadinessValidator });
 
 function restrictedDataClass(dataClass: string) { return dataClass === "highly_sensitive" || dataClass === "financial_security"; }
 async function snapshotProjection(ctx: any, application: any, revealSensitive: boolean) {
@@ -92,10 +92,13 @@ async function snapshotProjection(ctx: any, application: any, revealSensitive: b
     ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q: any) => q.eq("applicationId", application._id)).take(100),
     ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q: any) => q.eq("applicationId", application._id).eq("state", "active")).unique(),
   ]);
-  const decision: any = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+  const [decision, conversion] = await Promise.all([
+    application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : null,
+    application.conversionId ? ctx.db.get(application.conversionId) : null,
+  ]);
   const requiredDocumentsAccepted = requirements.every((requirement: any) => requirement.requiredMode !== "required" || documents.some((document: any) => document.requirementId === requirement._id && document.state === "accepted"));
   const readinessBase = { hasSnapshot: Boolean(application.latestSnapshotId), requiredDocumentsAccepted, legalEvidenceBound: false, financeClear: !hold && !application.financeBlockedReason, evaluationsComplete: !evaluations.some((evaluation: any) => evaluation.state === "scheduled") };
-  if (!application.latestSnapshotId) return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: null, decisionState: decision?.state ?? null, documentCount: documents.length, profile: null, answers: [], sensitiveAnswerCount: 0, decisionReadiness: { ...readinessBase, ready: false } };
+  if (!application.latestSnapshotId) return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: null, decisionState: decision?.state ?? null, conversionState: conversion?.state ?? null, documentCount: documents.length, profile: null, answers: [], sensitiveAnswerCount: 0, decisionReadiness: { ...readinessBase, ready: false } };
   const [items, fields] = await Promise.all([
     ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q: any) => q.eq("snapshotId", application.latestSnapshotId)).take(500),
     ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(200),
@@ -108,7 +111,7 @@ async function snapshotProjection(ctx: any, application: any, revealSensitive: b
   const answers = answerItems.map((item: any) => { const key = item.itemKey.replace(/^answer:/, ""); const redacted = restrictedDataClass(item.dataClass) && !revealSensitive; return { key, label: labels.get(key) ?? key, valueType: item.valueType, value: redacted ? null : item.serializedValue, dataClass: item.dataClass, redacted }; });
   const legalEvidenceBound = items.some((item: any) => item.kind === "declaration");
   const decisionReadiness = { ...readinessBase, legalEvidenceBound, ready: readinessBase.hasSnapshot && requiredDocumentsAccepted && legalEvidenceBound && readinessBase.financeClear && readinessBase.evaluationsComplete };
-  return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: application.latestSnapshotId, decisionState: decision?.state ?? null, documentCount: documents.length, profile, answers, sensitiveAnswerCount: answerItems.filter((item: any) => restrictedDataClass(item.dataClass)).length, decisionReadiness };
+  return { applicationId: application._id, publicId: application.publicId, state: application.state, revision: application.currentRevision, snapshotId: application.latestSnapshotId, decisionState: decision?.state ?? null, conversionState: conversion?.state ?? null, documentCount: documents.length, profile, answers, sensitiveAnswerCount: answerItems.filter((item: any) => restrictedDataClass(item.dataClass)).length, decisionReadiness };
 }
 
 /** Snapshot-backed review projection. High-risk answers are represented but redacted. */

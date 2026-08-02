@@ -77,14 +77,18 @@ describe("B1 admissions domain", () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
     const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
-    const staffIdentity = { subject: "scoped", tokenIdentifier: "issuer|scoped", issuer: "issuer", auth_time: Math.floor(Date.now() / 1000) };
-    const staff = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolB, authId: staffIdentity.subject, authTokenIdentifier: staffIdentity.tokenIdentifier, name: "Scoped", email: "scoped@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+    const staleStaffIdentity = { subject: "scoped", tokenIdentifier: "issuer|scoped", issuer: "issuer", auth_time: Math.floor((Date.now() - 10 * 60_000) / 1_000) };
+    const freshStaffIdentity = { ...staleStaffIdentity, auth_time: Math.floor(Date.now() / 1_000) };
+    const staff = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolB, authId: staleStaffIdentity.subject, authTokenIdentifier: staleStaffIdentity.tokenIdentifier, name: "Scoped", email: "scoped@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
     await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolB, userId: staff, capability: "applications.view_basic", scope: "school", grantedByUserId: staff, reason: "other tenant", isBreakGlass: false, createdAt: Date.now() }));
-    await expect(t.withIdentity(staffIdentity).query((api as any).functions.admissions.staff.getApplicationDetail, { applicationId: application.applicationId })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(freshStaffIdentity).query((api as any).functions.admissions.staff.getApplicationDetail, { applicationId: application.applicationId })).rejects.toThrow("Not found or access denied");
     await t.run(async (ctx) => { await ctx.db.patch(staff, { schoolId: ids.schoolA, updatedAt: Date.now() }); await ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: staff, capability: "documents.review", scope: "intake", intakeId: ids.intake, grantedByUserId: staff, reason: "document metadata only", isBreakGlass: false, createdAt: Date.now() }); });
     const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["identity"], { type: "image/jpeg" })));
     await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, category: "identity", documentKey: "doc_sensitive", storageId, fileName: "identity.jpg", mimeType: "image/jpeg", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "highly_sensitive", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
-    await expect(t.withIdentity(staffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).rejects.toThrow("Not found or access denied");
+    await expect(t.withIdentity(freshStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).rejects.toThrow("Not found or access denied");
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: staff, capability: "applications.view_sensitive", scope: "intake", intakeId: ids.intake, grantedByUserId: staff, reason: "restricted document review", isBreakGlass: false, createdAt: Date.now() }));
+    await expect(t.withIdentity(staleStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).resolves.toEqual({ status: "unavailable", documentKey: "doc_sensitive" });
+    await expect(t.withIdentity(freshStaffIdentity).mutation((api as any).functions.admissions.staff.getDocumentAccess, { documentKey: "doc_sensitive", action: "view", reason: "Review identity evidence" })).resolves.toMatchObject({ status: "available", documentKey: "doc_sensitive" });
   });
 
   test("staff detail is snapshot-backed, redacted by default, and sensitive reveal is fresh-auth audited", async () => {

@@ -50,6 +50,17 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
       convexPlugin({
         authConfig,
         jwks,
+        jwt: {
+          definePayload: ({ user, session }) => {
+            const createdAt = session.createdAt.getTime();
+            const payload = Object.fromEntries(Object.entries(user).filter(([key]) => key !== "id" && key !== "image" && key !== "auth_time"));
+            return {
+              ...payload,
+              // Session creation represents authentication; token iat only represents a refresh.
+              ...(Number.isFinite(createdAt) ? { auth_time: Math.floor(createdAt / 1_000) } : {}),
+            };
+          },
+        },
         jwksRotateOnTokenGenerationError: !jwks,
       }),
     ],

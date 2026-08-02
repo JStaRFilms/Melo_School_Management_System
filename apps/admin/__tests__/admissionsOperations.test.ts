@@ -2,7 +2,11 @@ import { describe, expect, test } from "vitest";
 import {
   boundedQueueLimit,
   canRecordDecision,
+  canReopenDecision,
   canRequestChanges,
+  canRequestCorrections,
+  canStartReview,
+  decisionReadinessBlockers,
   conversionAction,
   copyCanonicalApplicationLink,
   hasScopedCapability,
@@ -53,17 +57,28 @@ describe("admissions admin operations", () => {
   });
 
   test("permits only legal staff review transitions in the client guard", () => {
+    expect(canStartReview("submitted")).toBe(true);
+    expect(canStartReview("under_review")).toBe(false);
     expect(canRequestChanges("submitted", "Please replace the photo.")).toBe(true);
     expect(canRequestChanges("under_review", "Please complete the address.")).toBe(true);
     expect(canRequestChanges("accepted", "Please edit this.")).toBe(false);
+    expect(canRequestCorrections({ applicationState: "submitted", guardianMessage: "Please replace the photo.", selectedItemCount: 0 })).toBe(false);
+    expect(canRequestCorrections({ applicationState: "submitted", guardianMessage: "Please replace the photo.", selectedItemCount: 1 })).toBe(true);
     expect(canRecordDecision({ applicationState: "submitted", hasSnapshot: true, reasonCode: "approved", guardianMessage: "A decision was recorded." })).toBe(true);
     expect(canRecordDecision({ applicationState: "draft", hasSnapshot: true, reasonCode: "approved", guardianMessage: "A decision was recorded." })).toBe(false);
+    expect(canReopenDecision({ applicationState: "accepted", conversionState: null, reasonCode: "correction", guardianMessage: "The decision is being reviewed." })).toBe(true);
+    expect(canReopenDecision({ applicationState: "accepted", conversionState: "succeeded", reasonCode: "correction", guardianMessage: "The decision is being reviewed." })).toBe(false);
   });
 
   test("blocks metadata-only decisions until snapshot, document, legal, finance and evaluation preconditions are ready", () => {
-    const readiness = { hasSnapshot: true, requiredDocumentsAccepted: false, legalEvidenceBound: true, financeClear: true, evaluationsComplete: true, ready: false };
+    const readiness = { hasSnapshot: true, requiredDocumentsAccepted: false, legalEvidenceBound: true, financeClear: false, evaluationsComplete: false, ready: false };
     expect(canRecordDecision({ applicationState: "under_review", readiness, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(false);
-    expect(canRecordDecision({ applicationState: "under_review", readiness: { ...readiness, requiredDocumentsAccepted: true, ready: true }, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(true);
+    expect(decisionReadinessBlockers(readiness)).toEqual([
+      "All required documents must be accepted.",
+      "Resolve the finance hold before recording a decision.",
+      "Complete or cancel scheduled evaluations first.",
+    ]);
+    expect(canRecordDecision({ applicationState: "under_review", readiness: { ...readiness, requiredDocumentsAccepted: true, financeClear: true, evaluationsComplete: true, ready: true }, reasonCode: "approved", guardianMessage: "Accepted." })).toBe(true);
   });
 
   test.each([
