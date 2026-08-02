@@ -70,6 +70,21 @@ export function fieldIsVisible(field: PublishedField, answers: Record<string, st
   return false;
 }
 
+export function correctionStepHasEditableItems(args: {
+  state: string;
+  section: string;
+  coreKeys: string[];
+  fieldKeys: string[];
+  requirementKeys: string[];
+  fields: Array<{ key: string; sectionKey: string }>;
+}): boolean {
+  if (args.state !== "changes_requested" || args.section === "review") return true;
+  if (args.section === "contacts") return args.coreKeys.some(key => key.startsWith("contact:"));
+  if (args.section === "documents") return args.requirementKeys.length > 0;
+  if (args.section === "child" && args.coreKeys.some(key => !key.startsWith("contact:"))) return true;
+  return args.fields.some(field => field.sectionKey === args.section && args.fieldKeys.includes(field.key));
+}
+
 export function serializedValue(kind: string, value: string | boolean | string[]): { valueType: string; serializedValue: string } {
   if (kind === "checkbox" || kind === "boolean") return { valueType: "boolean", serializedValue: String(value === true || value === "true") };
   if (kind === "multi_select") return { valueType: "multi_select", serializedValue: JSON.stringify(Array.isArray(value) ? value : []) };

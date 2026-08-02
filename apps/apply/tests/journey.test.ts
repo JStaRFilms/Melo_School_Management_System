@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { applicationPath, applicationStatusCopy, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
+import { applicationPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 describe("guardian journey safety", () => {
@@ -39,6 +39,15 @@ describe("guardian journey safety", () => {
     expect(fieldIsVisible(field, { "support-needed": "yes" })).toBe(true);
     expect(fieldIsVisible(field, { "support-needed": "no" })).toBe(false);
     expect(fieldIsVisible({ ...field, conditionalRule: "not-json" }, { "support-needed": "yes" })).toBe(false);
+  });
+  test("marks only requested correction steps as editable while keeping review available", () => {
+    const base = { state: "changes_requested", coreKeys: ["firstName"], fieldKeys: ["support-needed"], requirementKeys: [], fields: [{ key: "support-needed", sectionKey: "support" }] };
+    expect(correctionStepHasEditableItems({ ...base, section: "child" })).toBe(true);
+    expect(correctionStepHasEditableItems({ ...base, section: "contacts" })).toBe(false);
+    expect(correctionStepHasEditableItems({ ...base, section: "documents" })).toBe(false);
+    expect(correctionStepHasEditableItems({ ...base, section: "support" })).toBe(true);
+    expect(correctionStepHasEditableItems({ ...base, section: "review" })).toBe(true);
+    expect(correctionStepHasEditableItems({ ...base, state: "draft", section: "contacts" })).toBe(true);
   });
   test("serializes typed form values for the server validator", () => {
     expect(serializedValue("checkbox", true)).toEqual({ valueType: "boolean", serializedValue: "true" });
