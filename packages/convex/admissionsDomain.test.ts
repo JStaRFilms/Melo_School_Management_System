@@ -108,6 +108,19 @@ describe("B1 admissions domain", () => {
     expect(await t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application.applicationId)).order("desc").take(10))).toEqual(expect.arrayContaining([expect.objectContaining({ action: "application.sensitive_detail_viewed" })]));
   });
 
+  test("returns only the declared audit pagination contract", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const identity = { subject: "auditor", tokenIdentifier: "issuer|auditor", issuer: "issuer" };
+    const user = await t.run((ctx) => ctx.db.insert("users", { schoolId: ids.schoolA, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name: "Auditor", email: "auditor@example.test", role: "admin", createdAt: Date.now(), updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: ids.schoolA, userId: user, capability: "audit.view", scope: "intake", intakeId: ids.intake, grantedByUserId: user, reason: "admissions audit", isBreakGlass: false, createdAt: Date.now() }));
+
+    const result = await t.withIdentity(identity).query((api as any).functions.admissions.staff.getAuditPage, { applicationId: application.applicationId, paginationOpts: { numItems: 20, cursor: null } });
+    expect(result.page.length).toBeGreaterThan(0);
+    expect(Object.keys(result).sort()).toEqual(["continueCursor", "isDone", "page"]);
+  });
+
   test("sensitive detail reveal is denied without the exact capability", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });

@@ -383,7 +383,7 @@ export const getAuditPage = query({
   handler: async (ctx, args) => {
     const { application } = await applicationAndStaff(ctx, args.applicationId, "audit.view");
     const result = await ctx.db.query("admissionsAuditEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").paginate(args.paginationOpts);
-    return { ...result, page: result.page.map((event) => ({ action: event.action, entityType: event.entityType, entityId: event.entityId, outcome: event.outcome, reasonCode: event.reasonCode ?? null, createdAt: event.createdAt })) };
+    return { page: result.page.map((event) => ({ action: event.action, entityType: event.entityType, entityId: event.entityId, outcome: event.outcome, reasonCode: event.reasonCode ?? null, createdAt: event.createdAt })), isDone: result.isDone, continueCursor: result.continueCursor };
   },
 });
 
