@@ -1,13 +1,63 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef } from "../lib/client";
-import { applicationPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentStatusCopy, serializedValue, type PublishedField } from "../lib/journey";
+import { 
+  applicationPath, 
+  applicationStatusCopy, 
+  correctionStepHasEditableItems, 
+  fieldIsVisible, 
+  formatMinorCurrency, 
+  paymentStatusCopy, 
+  serializedValue, 
+  type PublishedField 
+} from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
-import { type DraftSaveState, type RecoveryRecord, configuredFieldError, draftConnectivityStatus, fieldRequiresValue, isTransientSaveFailure, nextFormStep, readRecovery, recoveryKey, resetAutosaveDebounce, restoreEditableDraft, saveErrorCode, startAutosaveCeiling, SerializedWriteQueue } from "../lib/draftAutosave";
+import { 
+  type DraftSaveState, 
+  type RecoveryRecord, 
+  configuredFieldError, 
+  draftConnectivityStatus, 
+  fieldRequiresValue, 
+  isTransientSaveFailure, 
+  nextFormStep, 
+  readRecovery, 
+  recoveryKey, 
+  resetAutosaveDebounce, 
+  restoreEditableDraft, 
+  saveErrorCode, 
+  startAutosaveCeiling, 
+  SerializedWriteQueue 
+} from "../lib/draftAutosave";
+
+// Premium Icon additions
+import { 
+  Lock, 
+  User, 
+  FileText, 
+  PlusCircle, 
+  LogOut, 
+  RefreshCw, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Upload, 
+  ChevronRight, 
+  Clock, 
+  AlertCircle, 
+  HelpCircle,
+  CreditCard,
+  XCircle,
+  Wifi,
+  WifiOff,
+  Eye,
+  Trash2,
+  LockKeyhole,
+  LayoutDashboard
+} from "lucide-react";
 
 type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: string; checkoutIntent?: boolean };
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
@@ -114,8 +164,8 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   if (!entry) return <Page><p className="muted">Loading the published application information…</p></Page>;
   if (entry.availability === "unavailable") return <Unavailable />;
   const unavailable = entry.availability !== "open";
-  return <Page><section className="card"><span className="pill">{entry.availability}</span><h1>{entry.programme?.name ?? "Application information"}</h1><p className="muted">{entry.intake?.name} · {entry.intake?.cycleLabel}</p>
-    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong>Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p>Application fee: <strong>{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br />{entry.offering.feeDisclosure}</p> : null}</div><div className="actions"><button className="primary" type="button" disabled={starting} onClick={() => void begin()}>{starting ? "Starting secure checkout…" : "Start one child application"}</button><a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
+  return <Page><section className="card max-w-3xl mx-auto"><span className="pill">{entry.availability}</span><h1>{entry.programme?.name ?? "Application information"}</h1><p className="muted">{entry.intake?.name} · {entry.intake?.cycleLabel}</p>
+    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong><HelpCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p className="mt-2 pt-2 border-t border-indigo-100">Application fee: <strong className="text-indigo-950 font-bold">{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br /><span className="text-xs text-indigo-800">{entry.offering.feeDisclosure}</span></p> : null}</div><div className="actions"><button className="primary" type="button" disabled={starting} onClick={() => void begin()}>{starting ? "Starting secure checkout…" : <span className="flex items-center gap-2"><CreditCard size={18} /> Start one child application</span>}</button><a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
     {notice ? <p className="status" role="status">{notice}</p> : null}
   </section>{paymentReference ? <PaymentReturn schoolSlug={schoolSlug} reference={paymentReference} /> : null}</Page>;
 }
@@ -194,7 +244,9 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
         ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></div>
         : <p className="muted" role="status">Preparing your private guardian workspace…</p>;
 
-  return <Page><section className="card"><h1>Your application workspace</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !isAuthenticated ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
+  const cardClassName = `card mx-auto ${!isAuthenticated || sessionPending ? "max-w-2xl" : "w-full"}`;
+  const workspaceTitle = workspace?.schoolName ? `${workspace.schoolName} Workspace` : "Your application workspace";
+  return <Page><section className={cardClassName}><h1>{workspaceTitle}</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !isAuthenticated ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
 function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
@@ -251,7 +303,32 @@ function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { 
   const [notice, setNotice] = useState("");
   const startAvailable = async () => { try { const application: any = await reserve({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}) }); localStorage.setItem(referenceKey(schoolSlug), application.publicReference); router.push(applicationPath(schoolSlug, application.publicReference)); } catch { setNotice("This slot is not available to start yet. Refresh your workspace and try again."); } };
   if (!workspace) return <p className="muted">Loading your saved slots and applications…</p>;
-  return <><div className="notice"><strong>Applications for {workspace.schoolName}</strong><p>Every card below is one separate slot. Start another checkout for another child.</p></div>{notice ? <p className="status" role="status">{notice}</p> : null}<div className="workspace">{workspace.slots.length ? workspace.slots.map((slot: any, index: number) => <article className="upload" key={`${slot.publicReference ?? slot.state}-${index}`}><strong>{slot.applicationState ? `Application · ${slot.applicationState}` : slot.state === "available" ? "Available application slot" : `Slot · ${slot.state}`}</strong><p className="muted">Updated {new Date(slot.updatedAt).toLocaleString()}</p>{slot.publicReference ? <button className="secondary" onClick={() => router.push(applicationPath(schoolSlug, slot.publicReference))}>{slot.applicationState === "draft" || slot.applicationState === "changes_requested" ? "Resume application" : "View application status"}</button> : slot.state === "available" ? <button className="primary" onClick={() => void startAvailable()}>Start this child&apos;s application</button> : <p className="muted">This slot is not available to start.</p>}</article>) : <p className="muted">No paid application slots are available yet. Complete secure checkout to create one.</p>}</div><div className="actions"><button className="primary" type="button" onClick={onBuy}>{workspace.slots.length ? "Buy another application slot" : "Proceed to secure checkout"}</button></div></>;
+  return <>{notice ? <p className="status" role="status">{notice}</p> : null}<div className="workspace">{workspace.slots.length ? workspace.slots.map((slot: any, index: number) => {
+    const isDraft = slot.applicationState === "draft" || slot.applicationState === "changes_requested";
+    const isSubmitted = slot.applicationState && !isDraft;
+    return <article className="upload" key={`${slot.publicReference ?? slot.state}-${index}`}>
+      <div>
+        <div className="flex items-center gap-1.5 mb-2">
+          {isSubmitted ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : isDraft ? <FileText className="h-5 w-5 text-indigo-600" /> : <PlusCircle className="h-5 w-5 text-gray-400" />}
+          <strong className="text-sm font-black text-slate-800">
+            {slot.applicationState ? `Application · ${slot.applicationState}` : slot.state === "available" ? "Available slot" : `Slot · ${slot.state}`}
+          </strong>
+        </div>
+        <p className="muted text-xs">Updated {new Date(slot.updatedAt).toLocaleString()}</p>
+      </div>
+      <div className="mt-4">
+        {slot.publicReference ? (
+          <button className={isDraft ? "primary" : "secondary"} onClick={() => router.push(applicationPath(schoolSlug, slot.publicReference))}>
+            {isDraft ? "Resume application" : "View application status"}
+          </button>
+        ) : slot.state === "available" ? (
+          <button className="primary" onClick={() => void startAvailable()}>Start this child&apos;s application</button>
+        ) : (
+          <p className="muted text-xs italic">This slot is not available to start.</p>
+        )}
+      </div>
+    </article>;
+  }) : <p className="muted">No paid application slots are available yet. Complete secure checkout to create one.</p>}</div><div className="actions"><button className="primary" type="button" onClick={onBuy}>{workspace.slots.length ? "Buy another application slot" : "Proceed to secure checkout"}</button></div></>;
 }
 
 export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug: string; publicReference: string }) {
@@ -549,11 +626,42 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     const stop = startAutosaveCeiling(() => flushPendingRef.current());
     return () => { if (debounceRef.current !== null) clearTimeout(debounceRef.current); stop(); };
   }, []);
+  const scrollToFormTop = () => {
+    if (typeof window === "undefined") return;
+    setTimeout(() => {
+      // 1. Scroll active stepper button inline inside stepper container
+      const stepperContainer = document.querySelector('.stepper');
+      const activeBtn = document.querySelector('.stepper button[aria-current="step"]');
+      if (stepperContainer && activeBtn) {
+        const containerRect = stepperContainer.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        const offsetLeft = btnRect.left - containerRect.left + stepperContainer.scrollLeft;
+        const targetScroll = offsetLeft - containerRect.width / 2 + btnRect.width / 2;
+        stepperContainer.scrollTo({
+          left: targetScroll,
+          behavior: "smooth"
+        });
+      }
+
+      // 2. Scroll window to top of app card
+      const formCard = document.querySelector('.app-card');
+      if (formCard) {
+        const rect = formCard.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = rect.top + scrollTop - 80;
+        window.scrollTo({
+          top: Math.max(0, targetY),
+          behavior: "smooth"
+        });
+      }
+    }, 50);
+  };
+
   const saveAndContinue = async (event: FormEvent) => {
     event.preventDefault();
     if (!stepHasCorrection(step)) {
       const next = nextFormStep(formSteps, step);
-      if (next) { setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); }
+      if (next) { setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); scrollToFormTop(); }
       return;
     }
     const errors = validateSection(step);
@@ -561,10 +669,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     if (Object.keys(errors).length) { focusError(errors); return; }
     if (await flushSection(step)) {
       const next = nextFormStep(formSteps, step);
-      if (next) { setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); }
+      if (next) { setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); scrollToFormTop(); }
     }
   };
-  const navigate = (next: string) => { if (next !== step) { void flushSection(step); setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); } };
+  const navigate = (next: string) => { if (next !== step) { void flushSection(step); setStep(next); setSectionErrors(current => ({ ...current, [next]: {} })); scrollToFormTop(); } };
   const retryAfterConflict = () => {
     if (!app || !queueRef.current) return;
     queueRef.current.resume(app.draftVersion);
@@ -635,7 +743,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   };
 
   if (sessionPending || identityState === "checking" || (isAuthenticated && identityState === "idle")) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted" role="status">Checking your guardian account and application access…</p></section></Page>;
-  if (!isAuthenticated) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Sign in to your workspace</a></section></Page>;
+  if (!isAuthenticated) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}><span className="flex items-center gap-2"><Lock size={16} /> Sign in to your workspace</span></a></section></Page>;
   if (identityState === "verification-required") return <Page><section className="card auth-gate"><h1>Verify your email to continue</h1><p className="muted">Your application remains private until your guardian email is verified.</p></section></Page>;
   if (identityState === "error") return <Page><section className="card auth-gate"><h1>We could not open your guardian workspace</h1><p className="muted">Retry the secure account check before loading this application.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></section></Page>;
   if (!app) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted">Loading your saved details and form requirements…</p></section></Page>;
@@ -657,26 +765,161 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   });
   const stepIsViewOnly = changesRequested && !stepHasCorrection(step);
   const activeErrors = sectionErrors[step] ?? {};
-  return <Page><div className="grid"><aside className="card step-card" aria-label="Application steps"><p className="pill">{app.state}</p><p className="muted">{applicationStatusCopy(app.state, app.conversionState)}</p><ol className="stepper">{formSteps.map(item => { const viewOnly = changesRequested && !stepHasCorrection(item); const label = item === "child" ? "Child and form" : item === "contacts" ? "Guardian contact" : item === "documents" ? "Documents" : item === "review" ? "Review and declaration" : item.replace(/[-_]/g, " "); return <li key={item}><button type="button" className={viewOnly ? "view-only" : undefined} aria-current={step === item ? "step" : undefined} aria-label={viewOnly ? `${label} — view only; the school did not request changes` : label} onClick={() => navigate(item)}><span>{label}</span>{viewOnly ? <small>View only</small> : null}</button></li>; })}</ol></aside><main className="card app-card"><h1>{editable ? "Complete this application" : "Application status"}</h1><p className="status" aria-live="polite" data-save-state={saveState}>{status}</p>{Object.keys(activeErrors).length ? <div id="section-errors" tabIndex={-1} role="alert" className="notice danger"><strong>Complete the highlighted items</strong><ul>{Object.entries(activeErrors).map(([key, error]) => <li key={key}>{error}</li>)}</ul></div> : null}{conflict ? <div className="notice warn" role="alert"><strong>Saved changes need review</strong><p>Your pending edits were not applied over a newer application version.</p><div className="actions">{hasStaleRecovery ? <button type="button" className="secondary" onClick={restoreStaleRecovery}>Restore local edits to review and retry</button> : <button type="button" className="secondary" onClick={retryAfterConflict}>Retry my pending changes</button>}<button type="button" className="secondary" onClick={discardRecovery}>Discard local recovery copy</button></div></div> : null}{app.messages.map((message: any) => <div className="notice warn" key={message.createdAt}>{message.message ?? "The school updated your application status."}</div>)}
-  {stepIsViewOnly ? <div className="notice section-view-only" role="status">The school did not request changes in this section. You can review it, then continue to the next section.</div> : null}
-  {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky"><button className="primary" type="submit">{stepIsViewOnly ? "Continue to next section" : "Save and continue"}</button></div></fieldset></form>}
-  {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><h2>Guardian and emergency contact</h2><Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required disabled={!contactEditable} error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required disabled={!contactEditable} error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} disabled={!contactEditable} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} disabled={!contactEditable} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky"><button className="primary" type="submit">{stepIsViewOnly ? "Continue to next section" : "Save and continue"}</button></div></fieldset></form>}
-  {step !== "child" && step !== "contacts" && step !== "documents" && step !== "review" && <form noValidate onSubmit={saveAndContinue}><section><h2>{step.replace(/[-_]/g, " ")}</h2><fieldset className="fieldset" disabled={!editable}>{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}{!fields.length ? <p className="muted">No currently applicable fields are configured in this section.</p> : null}<div className="sticky"><button className="primary" type="submit">{stepIsViewOnly ? "Continue to next section" : "Save and continue"}</button></div></fieldset></section></form>}
-  {step === "documents" && <Documents requirements={config.requirements as Requirement[]} documents={app.documents ?? []} disabled={!editable} editableRequirementKeys={app.permittedEdits.requirementKeys} onContinue={() => navigate("review")} onOpen={async documentKey => { const result: any = await accessOwnDocument({ schoolSlug, publicReference, documentKey, action: "view" }); if (result.status !== "available") throw new Error("Unavailable"); window.open(result.url, "_blank", "noopener,noreferrer"); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async expectedVersion => { await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name }); return expectedVersion; }, () => setStatus("Could not save — retrying")); }} />}
-  {step === "review" && <section><h2>Review and declaration</h2><p className="muted">Review your saved details and private document requirements before submitting. Submitting does not create a student or confirm admission.</p>{config.declaration ? <><h3>{config.declaration.title} · Version {config.declaration.version}</h3><p className="notice">{config.declaration.body}</p></> : <p className="notice warn">The current declaration is unavailable. This application cannot be submitted.</p>}<Input id="signer" label="Signer name" value={core.signerName} onChange={value => setCoreValue("signerName", value)} required error={activeErrors.signer} /><Input id="relationship" label="Relationship" value={core.signerRelationship} onChange={value => setCoreValue("signerRelationship", value)} required error={activeErrors.relationship} /><label><input id="declaration" type="checkbox" checked={declarationAccepted} onChange={e => setDeclarationAccepted(e.target.checked)} disabled={!editable || !config.declaration} /> I have read and accept the published declaration shown above.</label>{activeErrors.declaration ? <small className="field-error">{activeErrors.declaration}</small> : null}<div className="actions"><button type="button" className="primary" disabled={!editable || !config.declaration || !declarationAccepted} onClick={() => void submitApplication()}>Submit application</button></div></section>}{["draft", "submitted", "under_review", "changes_requested", "waitlisted"].includes(app.state) ? <button type="button" className="secondary" onClick={() => void withdrawApplication()}>Withdraw application</button> : null}</main></div></Page>;
+  
+  // Custom connectivity indicators for user premium feel
+  const renderConnectivityIndicator = () => {
+    if (saveState === "saving") return <span className="text-indigo-600 animate-pulse" title={status}><RefreshCw className="h-4 w-4 animate-spin" /></span>;
+    if (saveState === "saved") return <span className="text-emerald-600" title="All changes saved"><Wifi className="h-4 w-4" /></span>;
+    if (saveState === "offline") return <span className="text-amber-600" title="Offline - changes saved locally"><WifiOff className="h-4 w-4" /></span>;
+    if (saveState === "conflict") return <span className="text-rose-600" title="Version conflict - click to resolve"><AlertTriangle className="h-4 w-4" /></span>;
+    return <span className="text-slate-400" title="Connected"><Wifi className="h-4 w-4" /></span>;
+  };
+
+  const showWithdraw = ["draft", "submitted", "under_review", "changes_requested", "waitlisted"].includes(app.state);
+
+  const headerExtra = (
+    <div className="flex items-center gap-2">
+      <span className="pill text-xs font-semibold uppercase" style={{ fontSize: '10px', padding: '0.15rem 0.4rem', border: '1px solid var(--line)', background: 'var(--brand-soft)', color: 'var(--brand)', borderRadius: '4px', margin: 0, marginBottom: 0 }}>{app.state}</span>
+      {renderConnectivityIndicator()}
+    </div>
+  );
+
+  const stepperElement = (
+    <ol className="stepper">
+      {formSteps.map(item => {
+        const viewOnly = changesRequested && !stepHasCorrection(item);
+        const label = item === "child" ? "Child and form" : item === "contacts" ? "Guardian contact" : item === "documents" ? "Documents" : item === "review" ? "Review and declaration" : item.replace(/[-_]/g, " ");
+        return (
+          <li key={item}>
+            <button
+              type="button"
+              className={viewOnly ? "view-only" : undefined}
+              aria-current={step === item ? "step" : undefined}
+              aria-label={viewOnly ? `${label} — view only; the school did not request changes` : label}
+              onClick={() => navigate(item)}
+            >
+              <span>{label}</span>
+              {viewOnly ? <small>View only</small> : null}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+
+  return <Page stepper={stepperElement} headerExtra={headerExtra}><div className="grid"><aside className="card step-card" aria-label="Application steps">{stepperElement}</aside><main className="card app-card">
+    <div className="mb-4 pb-3 border-b border-slate-100">
+      <h1 className="text-xl font-bold m-0">{editable ? "Complete this application" : "Application status"}</h1>
+    </div>
+    {Object.keys(activeErrors).length ? <div id="section-errors" tabIndex={-1} role="alert" className="notice danger"><strong><XCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> Complete the highlighted items</strong><ul>{Object.entries(activeErrors).map(([key, error]) => <li key={key}>{error}</li>)}</ul></div> : null}{conflict ? <div className="notice warn" role="alert"><strong>Saved changes need review</strong><p>Your pending edits were not applied over a newer application version.</p><div className="actions">{hasStaleRecovery ? <button type="button" className="secondary" onClick={restoreStaleRecovery}>Restore local edits to review and retry</button> : <button type="button" className="secondary" onClick={retryAfterConflict}>Retry my pending changes</button>}<button type="button" className="secondary" onClick={discardRecovery}>Discard local recovery copy</button></div></div> : null}{app.messages.map((message: any) => <div className="notice warn" key={message.createdAt}><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> {message.message ?? "The school updated your application status."}</div>)}
+  {stepIsViewOnly ? <div className="notice section-view-only" role="status"><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> The school did not request changes in this section. You can review it, then continue to the next section.</div> : null}
+  {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
+  {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><h2>Guardian and emergency contact</h2><Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required disabled={!contactEditable} error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required disabled={!contactEditable} error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} disabled={!contactEditable} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} disabled={!contactEditable} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
+  {step !== "child" && step !== "contacts" && step !== "documents" && step !== "review" && <form noValidate onSubmit={saveAndContinue}><section><h2>{step.replace(/[-_]/g, " ")}</h2><fieldset className="fieldset" disabled={!editable}>{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}{!fields.length ? <p className="muted">No currently applicable fields are configured in this section.</p> : null}<div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></section></form>}
+  {step === "documents" && <Documents requirements={config.requirements as Requirement[]} documents={app.documents ?? []} disabled={!editable} editableRequirementKeys={app.permittedEdits.requirementKeys} onContinue={() => navigate("review")} onOpen={async documentKey => { const result: any = await accessOwnDocument({ schoolSlug, publicReference, documentKey, action: "view" }); if (result.status !== "available") throw new Error("Unavailable"); window.open(result.url, "_blank", "noopener,noreferrer"); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async expectedVersion => { await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name }); return expectedVersion; }, () => setStatus("Could not save — retrying")); }} showWithdraw={showWithdraw} onWithdraw={() => void withdrawApplication()} />}
+  {step === "review" && <section><h2>Review and declaration</h2><p className="muted">Review your saved details and private document requirements before submitting. Submitting does not create a student or confirm admission.</p>{config.declaration ? <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg my-4"><h3>{config.declaration.title} · Version {config.declaration.version}</h3><p className="text-sm text-slate-700 leading-relaxed mt-2">{config.declaration.body}</p></div> : <p className="notice warn"><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> The current declaration is unavailable. This application cannot be submitted.</p>}<Input id="signer" label="Signer name" value={core.signerName} onChange={value => setCoreValue("signerName", value)} required error={activeErrors.signer} /><Input id="relationship" label="Relationship" value={core.signerRelationship} onChange={value => setCoreValue("signerRelationship", value)} required error={activeErrors.relationship} /><div className="my-4"><label className="flex gap-2 items-start text-sm font-semibold select-none cursor-pointer"><input id="declaration" type="checkbox" checked={declarationAccepted} onChange={e => setDeclarationAccepted(e.target.checked)} disabled={!editable || !config.declaration} className="mt-1" /> I have read and accept the published declaration shown above.</label>{activeErrors.declaration ? <small className="field-error block mt-1">{activeErrors.declaration}</small> : null}</div><div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button type="button" className="primary" disabled={!editable || !config.declaration || !declarationAccepted} onClick={() => void submitApplication()}>Submit</button></div></section>}</main></div></Page>;
 }
+
 function ReadOnlyApplicationStatus({ schoolSlug, app, status, onWithdraw }: { schoolSlug: string; app: { state: string; conversionState: string | null; messages: Array<{ createdAt: number; message: string | null }> }; status: string; onWithdraw: () => Promise<void> }) {
   const canWithdraw = ["submitted", "under_review", "waitlisted"].includes(app.state);
-  return <Page><section className="card app-card"><p className="pill">{app.state}</p><h1>{app.state === "submitted" ? "Application received" : "Application status"}</h1><p className="notice" role="status">{applicationStatusCopy(app.state, app.conversionState)}</p><p className="muted">This application is read-only while the school processes its current status.</p>{app.messages.length ? <section aria-labelledby="school-messages"><h2 id="school-messages">Messages from the school</h2>{app.messages.map(message => <div className="notice warn" key={message.createdAt}>{message.message ?? "The school updated your application status."}</div>)}</section> : null}<div className="actions"><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Back to application workspace</a></div>{canWithdraw ? <section className="notice danger" aria-labelledby="withdraw-heading"><h2 id="withdraw-heading">Withdraw this application</h2><p>Withdrawal ends this application and cannot be undone from your workspace. Payment and submitted history remain recorded.</p><button type="button" className="secondary" onClick={() => void onWithdraw()}>Withdraw application</button></section> : null}{status !== "Loading your private application…" ? <p className="status" aria-live="polite">{status}</p> : null}</section></Page>;
+  const getStatusIcon = () => {
+    switch (app.state) {
+      case "submitted": return <Clock className="text-indigo-500" />;
+      case "under_review": return <RefreshCw className="text-indigo-500 animate-spin" />;
+      case "accepted": return <CheckCircle2 className="text-emerald-500" />;
+      case "rejected": return <XCircle className="text-rose-500" />;
+      default: return <Clock className="text-indigo-500" />;
+    }
+  };
+  const formatTimestamp = (ms: number) => {
+    return new Date(ms).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+  };
+  return <Page><section className="card read-only-status">
+    <div className="status-icon">{getStatusIcon()}</div>
+    <span className="pill">{app.state}</span>
+    <h1>{app.state === "submitted" ? "Application received" : "Application status"}</h1>
+    <p className="notice warn">{applicationStatusCopy(app.state, app.conversionState)}</p>
+    <p className="muted status-note">This application is read-only while the school processes its current status.</p>
+    {app.messages.length ? <section aria-labelledby="school-messages" className="messages-section">
+      <h2 id="school-messages">Messages from the school</h2>
+      <div className="timeline">
+        {app.messages.map(message => (
+          <div className="timeline-item" key={message.createdAt}>
+            <div className="timeline-marker"></div>
+            <div className="timeline-content">
+              <time className="timeline-time">{formatTimestamp(message.createdAt)}</time>
+              <div className="timeline-body">{message.message ?? "The school updated your application status."}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section> : null}
+    <div className="actions"><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Back to workspace</a></div>
+    {canWithdraw ? <section className="notice danger withdraw-section" aria-labelledby="withdraw-heading">
+      <h2 id="withdraw-heading">Withdraw this application</h2>
+      <p>Withdrawal ends this application and cannot be undone from your workspace. Payment and submitted history remain recorded.</p>
+      <button type="button" className="secondary" onClick={() => void onWithdraw()}>Withdraw application</button>
+    </section> : null}
+    {status !== "Loading your private application…" ? <p className="status-caption" aria-live="polite">{status}</p> : null}
+  </section></Page>;
 }
 
 function DynamicField({ field, value, disabled, error, onChange, onSave }: { field: Field; value: string; disabled: boolean; error?: string; onChange: (value: string | boolean | string[]) => void; onSave: () => void }) {
   const policy = (() => { try { return JSON.parse(field.validation) as { choices?: string[] }; } catch { return {}; } })(); const sensitive = ["highly_sensitive", "financial_security", "child_confidential"].includes(field.dataClass);
   const commit = () => onSave();
-  return <div className={`field${disabled ? " is-disabled" : ""}`}><label htmlFor={field.key}>{field.label} <small>{field.requiredMode === "required" ? "Required" : "Optional"}{sensitive ? " • Sensitive" : ""}</small></label>{field.purpose ? <small>{field.purpose} Only staff with specific admissions permissions can access sensitive information.</small> : null}{field.kind === "textarea" ? <textarea id={field.key} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={commit} /> : field.kind === "select" ? <select id={field.key} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => { onChange(e.target.value); commit(); }}><option value="">Select an option</option>{policy.choices?.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select> : field.kind === "checkbox" || field.kind === "boolean" ? <label><input id={field.key} type="checkbox" aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} checked={value === "true"} onChange={e => { onChange(e.target.checked); commit(); }} /> Yes</label> : field.kind === "multi_select" ? <select id={field.key} multiple aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={safeArray(value)} onChange={e => { const selected = Array.from(e.currentTarget.selectedOptions, option => option.value); onChange(selected); commit(); }}>{policy.choices?.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select> : <input id={field.key} type={field.kind === "date" ? "date" : field.kind === "number" ? "number" : "text"} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={commit} />}{field.helpText ? <small>{field.helpText}</small> : null}{error ? <small id={`${field.key}-error`} className="field-error">{error}</small> : null}</div>;
+  return <div className={`field${disabled ? " is-disabled" : ""}`}><label htmlFor={field.key} className="flex items-center gap-1.5">{field.label} <small>{field.requiredMode === "required" ? "Required" : "Optional"}</small>{sensitive ? <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-800 font-bold px-1.5 py-0.5 rounded"><LockKeyhole size={10} /> Sensitive</span> : null}</label>{field.purpose ? <small>{field.purpose} Only staff with specific admissions permissions can access sensitive information.</small> : null}{field.kind === "textarea" ? <textarea id={field.key} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={commit} /> : field.kind === "select" ? <select id={field.key} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => { onChange(e.target.value); commit(); }}><option value="">Select an option</option>{policy.choices?.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select> : field.kind === "checkbox" || field.kind === "boolean" ? <label className="flex gap-2 items-center cursor-pointer select-none font-semibold text-sm mt-1"><input id={field.key} type="checkbox" aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} checked={value === "true"} onChange={e => { onChange(e.target.checked); commit(); }} /> Yes</label> : field.kind === "multi_select" ? <select id={field.key} multiple aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={safeArray(value)} onChange={e => { const selected = Array.from(e.currentTarget.selectedOptions, option => option.value); onChange(selected); commit(); }}>{policy.choices?.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select> : <input id={field.key} type={field.kind === "date" ? "date" : field.kind === "number" ? "number" : "text"} aria-invalid={Boolean(error)} aria-describedby={error ? `${field.key}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={commit} />}{field.helpText ? <small>{field.helpText}</small> : null}{error ? <small id={`${field.key}-error`} className="field-error block mt-1 flex items-center gap-1"><AlertTriangle size={14} /> {error}</small> : null}</div>;
 }
+
 function safeArray(value: string) { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } }
-function Documents({ requirements, documents, disabled, editableRequirementKeys, onContinue, onOpen, onUpload }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; editableRequirementKeys: string[]; onContinue: () => void; onOpen: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void> }) { const [selected, setSelected] = useState<Record<string, File | undefined>>({}); const [status, setStatus] = useState("Choose a file, then upload privately."); return <section><h2>Private documents</h2><p className="muted">Files are checked before binding and are not shown as public links.</p><p className="status" role="status">{status}</p>{documents.map(document => <div className="upload" key={document.documentKey}><strong>{document.fileName}</strong> · version {document.version} · {document.state}<button type="button" className="secondary" onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>View my document</button></div>)}{requirements.map(requirement => { const requirementDisabled = disabled || !editableRequirementKeys.includes(requirement.key); return <div className={`upload${requirementDisabled ? " is-disabled" : ""}`} key={requirement.key}><strong>{requirement.label} · {requirement.requiredMode === "required" ? "Required" : "Optional"}</strong><p className="muted">{requirement.purpose} · up to {(requirement.maxBytes / 1_000_000).toFixed(1)} MB · {requirement.maxFiles} file(s)</p><input aria-label={`Choose file for ${requirement.label}`} type="file" accept={requirement.acceptedMimeTypes.join(",")} disabled={requirementDisabled} onChange={e => setSelected({ ...selected, [requirement.key]: e.target.files?.[0] })}/><button type="button" className="secondary" disabled={requirementDisabled || !selected[requirement.key]} onClick={async () => { const file = selected[requirement.key]; if (!file) return; if (file.size > requirement.maxBytes || !requirement.acceptedMimeTypes.includes(file.type)) { setStatus("This file does not meet the listed type or size requirements."); return; } setStatus("Uploading privately…"); try { await onUpload(requirement.key, file); setStatus("Uploaded. This file is private and will be checked with your application."); setSelected({ ...selected, [requirement.key]: undefined }); } catch { setStatus("This file could not be added. Choose another file or retry upload."); } }}>Upload privately</button></div>; })}<div className="actions"><button type="button" className="primary" onClick={onContinue}>Continue to review and declaration</button></div></section>; }
+
+function Documents({ requirements, documents, disabled, editableRequirementKeys, onContinue, onOpen, onUpload, showWithdraw, onWithdraw }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; editableRequirementKeys: string[]; onContinue: () => void; onOpen: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void>; showWithdraw?: boolean; onWithdraw?: () => void }) { 
+  const [selected, setSelected] = useState<Record<string, File | undefined>>({}); 
+  const [status, setStatus] = useState("Choose a file, then upload privately."); 
+  return <section>
+    <h2>Private documents</h2>
+    <p className="muted">Files are checked before binding and are not shown as public links.</p>
+    <p className="status text-xs" role="status"><HelpCircle size={14} className="inline mr-1" /> {status}</p>
+    
+    <div className="upload-list">
+      {documents.map(document => (
+        <div className="upload flex items-center justify-between border-solid" key={document.documentKey}>
+          <div>
+            <strong className="text-sm">{document.fileName}</strong>
+            <p className="muted text-xs mb-0 mt-0.5">Version {document.version} · {document.state}</p>
+          </div>
+          <button type="button" className="secondary font-semibold" style={{minHeight: "36px", borderRadius: "8px"}} onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>
+            <span className="flex items-center gap-1"><Eye size={14} /> View file</span>
+          </button>
+        </div>
+      ))}
+      
+      {requirements.map(requirement => { 
+        const requirementDisabled = disabled || !editableRequirementKeys.includes(requirement.key); 
+        return <div className={`upload ${requirementDisabled ? "is-disabled" : ""}`} key={requirement.key}>
+          <strong>{requirement.label} · {requirement.requiredMode === "required" ? "Required" : "Optional"}</strong>
+          <p className="muted text-xs">{requirement.purpose} · Max {(requirement.maxBytes / 1_000_000).toFixed(1)} MB · {requirement.maxFiles} file(s)</p>
+          <div className="mt-3">
+            <input aria-label={`Choose file for ${requirement.label}`} type="file" accept={requirement.acceptedMimeTypes.join(",")} disabled={requirementDisabled} onChange={e => setSelected({ ...selected, [requirement.key]: e.target.files?.[0] })}/>
+            <button type="button" className="primary w-full mt-2" disabled={requirementDisabled || !selected[requirement.key]} onClick={async () => { const file = selected[requirement.key]; if (!file) return; if (file.size > requirement.maxBytes || !requirement.acceptedMimeTypes.includes(file.type)) { setStatus("This file does not meet the listed type or size requirements."); return; } setStatus("Uploading privately…"); try { await onUpload(requirement.key, file); setStatus("Uploaded. This file is private and will be checked with your application."); setSelected({ ...selected, [requirement.key]: undefined }); } catch { setStatus("This file could not be added. Choose another file or retry upload."); } }}>
+              <span className="flex items-center gap-1.5 justify-center"><Upload size={16} /> Upload privately</span>
+            </button>
+          </div>
+        </div>; 
+      })}
+    </div>
+    
+    <div className="sticky">
+      {showWithdraw && onWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={onWithdraw}>Withdraw</button> : null}
+      <button type="button" className="primary" onClick={onContinue}>
+        <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>
+      </button>
+    </div>
+  </section>; 
+}
+
 function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; reference: string }) {
   const router = useRouter();
   const verify = useAction(functionRef("functions/admissions/public:verifyReturnByReference"));
@@ -721,9 +964,120 @@ function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; referenc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reference, verify, checkAttempt]);
 
-  return <section className="card"><h2>Confirming your payment</h2><p aria-live="polite">{state}</p><div className="actions"><button type="button" className="secondary" disabled={checking} onClick={() => setCheckAttempt((value) => value + 1)}>{checking ? "Checking payment…" : "Check again"}</button>{ready ? <button type="button" className="primary" disabled={checking} onClick={() => void continueToApplication()}>Continue to application</button> : null}</div></section>;
+  return <section className="card max-w-md mx-auto text-center py-8 my-10">
+    <h2 className="text-lg font-bold mb-2">Confirming your payment</h2>
+    <p className="notice warn text-sm mb-4" aria-live="polite">{state}</p>
+    <div className="flex flex-col gap-2">
+      <button type="button" className="secondary w-full" disabled={checking} onClick={() => setCheckAttempt((value) => value + 1)}>
+        <span className="flex items-center gap-1.5 justify-center"><RefreshCw size={14} className={checking ? "animate-spin" : ""} /> {checking ? "Checking payment…" : "Check again"}</span>
+      </button>
+      {ready ? <button type="button" className="primary w-full" disabled={checking} onClick={() => void continueToApplication()}>Continue to application</button> : null}
+    </div>
+  </section>;
 }
-function Input({ id, label, value, onChange, type = "text", required = false, disabled = false, autoComplete, error, onBlur }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; disabled?: boolean; autoComplete?: string; error?: string; onBlur?: () => void }) { return <div className={`field${disabled ? " is-disabled" : ""}`}><label htmlFor={id}>{label} {required ? <small>Required</small> : null}</label><input id={id} type={type} autoComplete={autoComplete ?? (type === "email" ? "email" : undefined)} required={required} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur} />{error ? <small id={`${id}-error`} className="field-error">{error}</small> : null}</div>; }
-function Availability({ state, opensAt }: { state: string; opensAt?: number }) { return <div className="notice warn"><h2>This application link is not currently open</h2><p>{state === "upcoming" && opensAt ? `Applications open ${new Date(opensAt).toLocaleDateString()}.` : "Check the link or contact the school for current admissions information."}</p></div>; }
-function Unavailable() { return <Page><section className="card"><h1>This application link is not available.</h1><p className="muted">Please check the link or contact the school for current admissions information.</p></section></Page>; }
-function Page({ children }: { children: React.ReactNode }) { return <><a className="skip" href="#content">Skip to main content</a><header className="top"><span className="brand">Apply · School admissions</span><span className="muted">Private guardian journey</span></header><main id="content" className="shell">{children}</main></>; }
+
+function Input({ id, label, value, onChange, type = "text", required = false, disabled = false, autoComplete, error, onBlur }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; disabled?: boolean; autoComplete?: string; error?: string; onBlur?: () => void }) { 
+  return <div className={`field${disabled ? " is-disabled" : ""}`}>
+    <label htmlFor={id}>{label} {required ? <small>Required</small> : null}</label>
+    <input id={id} type={type} autoComplete={autoComplete ?? (type === "email" ? "email" : undefined)} required={required} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur} />
+    {error ? <small id={`${id}-error`} className="field-error block mt-1 flex items-center gap-1"><AlertTriangle size={14} /> {error}</small> : null}
+  </div>; 
+}
+
+function Availability({ state, opensAt }: { state: string; opensAt?: number }) { 
+  return <div className="notice warn">
+    <h2 className="text-base font-bold text-amber-950 flex items-center gap-1.5"><AlertCircle /> This application link is not currently open</h2>
+    <p className="text-sm mt-1">{state === "upcoming" && opensAt ? `Applications open ${new Date(opensAt).toLocaleDateString()}.` : "Check the link or contact the school for current admissions information."}</p>
+  </div>; 
+}
+
+function Unavailable() { 
+  return <Page><section className="card max-w-md mx-auto text-center py-10 my-10">
+    <XCircle className="h-12 w-12 text-rose-500 mx-auto mb-3" />
+    <h1 className="text-xl font-bold">This application link is not available.</h1>
+    <p className="muted text-sm mt-2">Please check the link or contact the school for current admissions information.</p>
+  </section></Page>; 
+}
+
+function Page({ children, stepper, headerExtra }: { children: React.ReactNode; stepper?: React.ReactNode; headerExtra?: React.ReactNode }) { 
+  const { isAuthenticated, session } = useGuardianReadiness();
+  const params = useParams();
+  const schoolSlug = params.schoolSlug as string;
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !stepper) {
+      setIsScrolled(false);
+      return;
+    }
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 40);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [stepper]);
+  
+  const handleSignOut = async () => {
+    try {
+      await authClient.signOut();
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const getAdminDashboardUrl = () => {
+    if (typeof window === "undefined") return "/";
+    const { protocol, hostname, port } = window.location;
+    if (port) {
+      return `${protocol}//${hostname}:3002/admin/dashboard`;
+    }
+    const parts = hostname.split(".");
+    if (parts.length >= 2) {
+      if (parts[0] === "apply" || parts[0] === "portal" || parts[0] === "sites") {
+        parts[0] = "admin";
+      } else {
+        parts.unshift("admin");
+      }
+      return `${protocol}//${parts.join(".")}/admin/dashboard`;
+    }
+    return "/";
+  };
+
+  return <>
+    <a className="skip" href="#content">Skip to main content</a>
+    <header className={`top ${isScrolled ? "scrolled" : ""}`}>
+      <div className="flex items-center gap-2 brand-container">
+        {schoolSlug ? (
+          <Link href={`/s/${encodeURIComponent(schoolSlug)}/account`} className="brand">
+            Melo Admissions
+          </Link>
+        ) : (
+          <span className="brand">Melo Admissions</span>
+        )}
+        {headerExtra}
+      </div>
+      <div className="user-nav flex items-center gap-4">
+        {isAuthenticated && (session?.user as any)?.role === "admin" && (
+          <a href={getAdminDashboardUrl()} className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-all" style={{minHeight: "auto"}}>
+            <LayoutDashboard size={13} /> Admin Portal
+          </a>
+        )}
+        <span className="muted">
+          {isAuthenticated && session?.user ? (session.user.name || session.user.email) : "Private guardian journey"}
+        </span>
+        {isAuthenticated && (
+          <button type="button" onClick={handleSignOut} className="flex items-center gap-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition-all" style={{minHeight: "auto"}}>
+            <LogOut size={13} /> Sign out
+          </button>
+        )}
+      </div>
+      {stepper && (
+        <div className="header-stepper">
+          {stepper}
+        </div>
+      )}
+    </header>
+    <main id="content" className="shell">{children}</main>
+  </>; 
+}
