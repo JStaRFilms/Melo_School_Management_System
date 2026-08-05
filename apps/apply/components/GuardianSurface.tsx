@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSignInErrorMessage } from "@school/auth";
-import { authClient, functionRef } from "../lib/client";
+import { authClient, functionRef, MeloLoader } from "../lib/client";
 import { 
   applicationPath, 
   applicationStatusCopy, 
@@ -161,7 +161,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
     finally { setStarting(false); }
   };
 
-  if (!entry) return <Page><p className="muted">Loading the published application information…</p></Page>;
+  if (!entry) return <Page><MeloLoader message="Loading the published application information…" /></Page>;
   if (entry.availability === "unavailable") return <Unavailable />;
   const unavailable = entry.availability !== "open";
   return <Page><section className="card max-w-3xl mx-auto"><span className="pill">{entry.availability}</span><h1>{entry.programme?.name ?? "Application information"}</h1><p className="muted">{entry.intake?.name} · {entry.intake?.cycleLabel}</p>
@@ -182,6 +182,16 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
   const [authState, setAuthState] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutRequested, setCheckoutRequested] = useState(checkoutIntent);
+
+  if (sessionPending) {
+    return <Page><MeloLoader message="Checking your guardian account…" /></Page>;
+  }
+  if (isAuthenticated && (identityState === "checking" || identityState === "idle")) {
+    return <Page><MeloLoader message="Preparing your private guardian workspace…" /></Page>;
+  }
+  if (isAuthenticated && identityState === "ready" && !workspace) {
+    return <Page><MeloLoader message="Loading your saved slots and applications…" /></Page>;
+  }
 
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault();
@@ -240,13 +250,11 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
       : <WorkspaceCards workspace={workspace} schoolSlug={schoolSlug} intakeSlug={intakeSlug} router={router} onBuy={() => setCheckoutRequested(true)} />
     : identityState === "verification-required"
       ? <div className="notice warn" role="status"><strong>Verify your email to continue</strong><p>Your private application workspace will open after your email address is verified.</p></div>
-      : identityState === "error"
-        ? <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></div>
-        : <p className="muted" role="status">Preparing your private guardian workspace…</p>;
+      : <div className="notice warn" role="alert"><strong>We could not prepare your guardian workspace</strong><p>Retry the secure account check before continuing.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></div>;
 
-  const cardClassName = `card mx-auto ${!isAuthenticated || sessionPending ? "max-w-2xl" : "w-full"}`;
+  const cardClassName = `card mx-auto ${!isAuthenticated ? "max-w-2xl" : "w-full"}`;
   const workspaceTitle = workspace?.schoolName ? `${workspace.schoolName} Workspace` : "Your application workspace";
-  return <Page><section className={cardClassName}><h1>{workspaceTitle}</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{sessionPending ? <p className="muted" role="status">Checking your guardian account…</p> : !isAuthenticated ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
+  return <Page><section className={cardClassName}><h1>{workspaceTitle}</h1><p className="muted">Each application slot is for one child. Payment confirmation does not confirm admission.</p>{!isAuthenticated ? <form onSubmit={submitAuth}><div className="notice"><strong>{mode === "create" ? "Create your guardian account" : "Sign in to your guardian account"}</strong><p>{mode === "create" ? "Use your real name and an email you can access. You will use these details to return to private applications." : "Enter the account details you used for your application."}</p></div>{mode === "create" ? <Input id="name" label="Full name" value={name} onChange={setName} autoComplete="name" required /> : null}<Input id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required /><Input id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "create" ? "new-password" : "current-password"} required />{mode === "create" ? <><Input id="password-confirmation" label="Repeat password" type="password" value={passwordConfirmation} onChange={setPasswordConfirmation} autoComplete="new-password" required /><p className="muted">Use at least 8 characters and enter the same password twice.</p></> : null}<div className="actions"><button className="primary" type="submit" disabled={submitting}>{submitting ? (mode === "create" ? "Creating account…" : "Signing in…") : (mode === "create" ? "Create account" : "Sign in")}</button><button className="secondary" type="button" disabled={submitting} onClick={() => switchMode(mode === "create" ? "sign-in" : "create")}>{mode === "create" ? "I already have an account" : "Create an account"}</button></div>{authState ? <p className="status" role="status">{authState}</p> : null}</form> : signedInContent}</section></Page>;
 }
 
 function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
@@ -302,7 +310,7 @@ function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { 
   const reserve = useMutation(functionRef("functions/admissions/public:createOrResumeForOffering"));
   const [notice, setNotice] = useState("");
   const startAvailable = async () => { try { const application: any = await reserve({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}) }); localStorage.setItem(referenceKey(schoolSlug), application.publicReference); router.push(applicationPath(schoolSlug, application.publicReference)); } catch { setNotice("This slot is not available to start yet. Refresh your workspace and try again."); } };
-  if (!workspace) return <p className="muted">Loading your saved slots and applications…</p>;
+  if (!workspace) return <MeloLoader message="Loading your saved slots and applications…" />;
   return <>{notice ? <p className="status" role="status">{notice}</p> : null}<div className="workspace">{workspace.slots.length ? workspace.slots.map((slot: any, index: number) => {
     const isDraft = slot.applicationState === "draft" || slot.applicationState === "changes_requested";
     const isSubmitted = slot.applicationState && !isDraft;
@@ -742,15 +750,15 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     } catch { setStatus("Complete the named items and retry."); setErrorsFor("review", { section: "The application is incomplete or has a newer saved version." }); }
   };
 
-  if (sessionPending || identityState === "checking" || (isAuthenticated && identityState === "idle")) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted" role="status">Checking your guardian account and application access…</p></section></Page>;
+  if (sessionPending || identityState === "checking" || (isAuthenticated && identityState === "idle")) return <Page><MeloLoader message="Checking your guardian account and application access…" /></Page>;
   if (!isAuthenticated) return <Page><section className="card auth-gate"><h1>Sign in to continue</h1><p className="muted">This application is private. Sign in with the guardian account that created it.</p><a className="primary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}><span className="flex items-center gap-2"><Lock size={16} /> Sign in to your workspace</span></a></section></Page>;
   if (identityState === "verification-required") return <Page><section className="card auth-gate"><h1>Verify your email to continue</h1><p className="muted">Your application remains private until your guardian email is verified.</p></section></Page>;
   if (identityState === "error") return <Page><section className="card auth-gate"><h1>We could not open your guardian workspace</h1><p className="muted">Retry the secure account check before loading this application.</p><button className="secondary" type="button" onClick={retryIdentity}>Retry account check</button></section></Page>;
-  if (!app) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted">Loading your saved details and form requirements…</p></section></Page>;
+  if (!app) return <Page><MeloLoader message="Opening your private application…" /></Page>;
   const editable = app.allowedActions.includes("save");
   const withdrawApplication = async () => { const reason = window.prompt("Why are you withdrawing this application?"); if (!reason?.trim()) return; try { await withdraw({ schoolSlug, publicReference, reason }); setStatus("Application withdrawn. Its history remains available."); router.refresh(); } catch { setStatus("This application cannot be withdrawn from its current state."); } };
   if (!editable) return <ReadOnlyApplicationStatus schoolSlug={schoolSlug} app={app} status={status} onWithdraw={withdrawApplication} />;
-  if (!config || version === null) return <Page><section className="card auth-gate"><h1>Opening your private application</h1><p className="muted">Loading your saved details and form requirements…</p></section></Page>;
+  if (!config || version === null) return <Page><MeloLoader message="Opening your private application…" /></Page>;
   const changesRequested = app.state === "changes_requested";
   const fieldEditable = (key: string) => editable && (!changesRequested || app.permittedEdits.fieldKeys.includes(key));
   const coreEditable = (key: string) => editable && (!changesRequested || app.permittedEdits.coreKeys.includes(key));
