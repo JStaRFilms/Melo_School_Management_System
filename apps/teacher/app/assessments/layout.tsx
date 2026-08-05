@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/AuthProvider";
@@ -45,8 +45,8 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
       (session?.user?.role !== "teacher" && session?.user?.role !== "admin"))
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fbfbfc]">
-        <div className="text-obsidian-500">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#fbfbfc] w-full">
+        <MeloLoader message="Preparing your assessments workbench..." />
       </div>
     );
   }

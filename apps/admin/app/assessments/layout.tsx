@@ -7,7 +7,7 @@ import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 
 export default function AssessmentsLayout({
   children,
@@ -45,8 +45,8 @@ export default function AssessmentsLayout({
 
   if (isConvexConfigured() && (isLoading || !isAuthenticated || session?.user?.role !== "admin")) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="text-slate-500">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 w-full">
+        <MeloLoader message="Preparing your assessments workbench..." />
       </div>
     );
   }

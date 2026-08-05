@@ -8,19 +8,8 @@ const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const authClient = createAppAuthClient(typeof window === "undefined" ? "http://localhost:3004" : window.location.origin);
 
-export function MeloLoader({ message }: { message: string }) {
-  return (
-    <div className="melo-loader-container">
-      <div className="melo-loader-spinner">
-        <div className="melo-loader-ring"></div>
-        <div className="melo-loader-ring"></div>
-        <div className="melo-loader-ring"></div>
-        <div className="melo-loader-inner">M</div>
-      </div>
-      <p className="melo-loader-text">{message}</p>
-    </div>
-  );
-}
+import { MeloLoader } from "@school/shared";
+export { MeloLoader };
 
 export function ApplyClientProvider({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);

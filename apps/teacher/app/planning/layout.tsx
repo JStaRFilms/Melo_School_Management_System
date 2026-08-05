@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 import { useAuth } from "@/lib/AuthProvider";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 
@@ -49,8 +49,8 @@ export default function PlanningLayout({
       (session?.user?.role !== "teacher" && session?.user?.role !== "admin"))
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-        <div className="text-[#64748b]">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] w-full">
+        <MeloLoader message="Preparing your planning workspace..." />
       </div>
     );
   }

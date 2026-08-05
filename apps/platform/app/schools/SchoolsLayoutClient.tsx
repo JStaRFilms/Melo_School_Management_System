@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
+import { MeloLoader } from "@school/shared";
 
 export function SchoolsLayoutClient({
   children,
@@ -37,8 +38,8 @@ export function SchoolsLayoutClient({
 
   if (isConvexConfigured() && (isLoading || !isAuthenticated || !isPlatformAdmin)) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
-        <div className="text-[#64748b]">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] w-full">
+        <MeloLoader message="Preparing your platform dashboard..." />
       </div>
     );
   }

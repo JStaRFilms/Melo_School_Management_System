@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 
@@ -49,8 +49,8 @@ export default function PortalLayout({
       (session?.user?.role !== "parent" && session?.user?.role !== "student"))
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-slate-500">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">
+        <MeloLoader message="Preparing your portal..." />
       </div>
     );
   }

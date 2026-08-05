@@ -7,7 +7,7 @@ import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 
 export default function BillingLayout({
   children,
@@ -47,8 +47,8 @@ export default function BillingLayout({
     (isLoading || !isAuthenticated || session?.user?.role !== "admin")
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-slate-500">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">
+        <MeloLoader message="Preparing your billing panel..." />
       </div>
     );
   }
