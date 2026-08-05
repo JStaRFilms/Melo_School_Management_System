@@ -7,7 +7,7 @@ import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader } from "@school/shared";
 
 export default function AdminLayout({
   children,
@@ -44,8 +44,8 @@ export default function AdminLayout({
 
   if (isConvexConfigured() && (isLoading || !isAuthenticated || session?.user?.role !== "admin")) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
-        <div className="text-[#64748b]">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] w-full">
+        <MeloLoader message="Preparing your admin workspace..." />
       </div>
     );
   }
