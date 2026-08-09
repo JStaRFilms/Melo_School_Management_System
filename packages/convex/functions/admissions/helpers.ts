@@ -75,6 +75,7 @@ export async function audit(args: {
   applicationId?: Id<"admissionsApplications">;
   outcome: "success" | "denied" | "blocked" | "failed";
   reasonCode?: string;
+  metadataJson?: string;
 }) {
   await args.ctx.db.insert("admissionsAuditEvents", {
     schoolId: args.schoolId,
@@ -87,6 +88,7 @@ export async function audit(args: {
     ...(args.applicationId ? { applicationId: args.applicationId } : {}),
     outcome: args.outcome,
     ...(args.reasonCode ? { reasonCode: args.reasonCode } : {}),
+    ...(args.metadataJson ? { metadataJson: args.metadataJson } : {}),
     createdAt: Date.now(),
   });
 }

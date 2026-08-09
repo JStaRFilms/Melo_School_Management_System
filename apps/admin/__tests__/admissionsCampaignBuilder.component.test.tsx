@@ -5,6 +5,7 @@ const createCampaignConfiguration = vi.fn();
 const replaceCampaignConfiguration = vi.fn();
 const query = vi.fn();
 const useQuery = vi.hoisted(() => vi.fn());
+const appToast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
 vi.mock("convex/react", () => ({
   useConvex: () => ({ query }),
@@ -12,7 +13,7 @@ vi.mock("convex/react", () => ({
   useQuery,
 }));
 vi.mock("@school/shared", () => ({ getUserFacingErrorMessage: () => "save failed" }));
-vi.mock("@school/shared/toast", () => ({ appToast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@school/shared/toast", () => ({ appToast }));
 
 import { AdmissionsFormBuilder } from "../app/admissions/AdmissionsFormBuilder";
 
@@ -33,6 +34,8 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     createCampaignConfiguration.mockReset().mockResolvedValue({});
     replaceCampaignConfiguration.mockReset().mockResolvedValue({});
     query.mockReset().mockResolvedValue({});
+    appToast.error.mockReset();
+    appToast.success.mockReset();
     useQuery.mockReset().mockReturnValue(undefined);
   });
 
@@ -185,6 +188,29 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     expect(replaceCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({
       configuration: expect.objectContaining({ intake: expect.objectContaining({ opensAt, closesAt }) }),
     }));
+  });
+
+  test("uses plain recovery guidance for a failed save and retry", async () => {
+    createCampaignConfiguration.mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS")).mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS"));
+    render(builder());
+    fillRequiredCreateFields();
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(appToast.error).toHaveBeenCalledWith("Campaign save failed", { description: "This older campaign needs review/recovery and no changes were applied." }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(appToast.error).toHaveBeenCalledWith("Campaign retry failed", { description: "This older campaign needs review/recovery and no changes were applied." }));
+  });
+
+  test("shows finance guidance next to a changed legacy price", async () => {
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("getCatalogue")) return { programmes: [{ id: "programme", name: "Primary", description: null }], intakes: [{ id: "intake", programmeId: "programme", slug: "entry", name: "Entry", cycleLabel: "Primary School", status: "open", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }], products: [{ id: "product", intakeId: "intake" }], forms: [{ id: "form", intakeId: "intake", version: 1, status: "published" }], declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored", body: "Stored wording.", status: "published" }] };
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [{ version: 1, amountMinor: 5000, currency: "NGN", refundPolicyKey: "non_refundable", feeDisclosure: "Fee" }];
+      return undefined;
+    });
+    render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={() => undefined} publishAllowed />);
+    await screen.findByDisplayValue("5000");
+    fireEvent.change(screen.getByDisplayValue("5000"), { target: { value: "6000" } });
+    expect(screen.getByText("Changing the amount requires current finance approval. Keep the existing amount or use the future finance approval workflow.")).toBeInTheDocument();
   });
 
   test("keeps a reuse error blocked across remount, then reconciles and discards it before a fresh command", async () => {

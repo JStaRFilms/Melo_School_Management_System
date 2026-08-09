@@ -340,6 +340,46 @@ No approval evidence is fabricated. The issue concerns missing starting copy onl
 - Status: Implementation and automated checks completed; browser retest pending and user-owned.
 - Evidence: focused builder tests verify suggested new-campaign wording and deterministic latest stored declaration selection; Admin tests/typecheck/build completed.
 
+## OBS-004 — Legacy live campaign is rejected as an ambiguous recovery graph
+
+- Severity: P1
+- Test case: Phase 1 published replacement
+- Starting commit: `0bb7183`
+- Reproducibility: Always for the legacy `Development admissions intake Edited` campaign
+
+### Expected
+A pre-AQ-1 live campaign with exactly one active product, one published form, and one published declaration can be adopted by the first atomic replacement while retaining older draft/retired form versions and its seven applications.
+
+### Actual
+`replaceCampaignConfiguration` throws `RECOVERY_GRAPH_AMBIGUOUS` because the intake predates the operation ledger and contains several historical draft form versions.
+
+### Data-integrity check
+Read-only development inspection found seven applications, one active product, one published form, one retired form, three draft forms, one published declaration, and no operation ledger. No records were mutated during diagnosis.
+
+### Resolution
+- Status: Implementation and automated checks completed; browser retest pending and user-owned.
+- Evidence: bounded legacy-live adoption regression coverage preserves the published, retired, and draft history plus seven applications; partial, duplicate-published, and cross-school graphs remain blocked; Convex tests/typecheck completed.
+
+## OBS-005 — Price-change restriction lacks an operator workflow
+
+- Severity: Known-Blocked
+- Test case: AQ-2 paid campaign approval
+- Starting commit: `0bb7183`
+- Reproducibility: Always when changing to an unapproved next price
+
+### Expected
+The UI either provides the accountable finance-approval workflow or clearly explains before Save that a new amount needs finance approval for the exact next product price version.
+
+### Actual
+The operator can edit the amount but discovers only on Save: `Current finance approval for the exact next price version is required.`
+
+### Data-integrity check
+The backend correctly rejected the unapproved financial change and wrote no price version. Full accountable pricing remains tracked as AQ-2.
+
+### Resolution
+- Status: Clarified known-blocked UX. The inline and Save guidance now explains that changing the amount requires current finance approval, and to keep the existing amount or use the future finance approval workflow. Full AQ-2 remains out of this defect batch.
+- Evidence: focused Admin builder tests cover the plain finance guidance; no finance evidence, price data, or approval workflow was created or changed.
+
 ## Test summary
 
 - Passed scenarios:

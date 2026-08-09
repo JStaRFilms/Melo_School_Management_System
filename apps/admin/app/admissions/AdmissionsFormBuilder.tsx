@@ -59,6 +59,14 @@ type ApprovalEvidence = { id: string; approvalClass: string; subjectType: string
 
 const SUGGESTED_DECLARATION_TITLE = "Guardian declaration";
 const SUGGESTED_DECLARATION_BODY = "I confirm that the information in this application is complete and accurate to the best of my knowledge.";
+const LEGACY_RECOVERY_MESSAGE = "This older campaign needs review/recovery and no changes were applied.";
+const FINANCE_APPROVAL_MESSAGE = "Changing the amount requires current finance approval. Keep the existing amount or use the future finance approval workflow.";
+
+function campaignErrorDescription(error: unknown, fallback: string) {
+  return String(error).includes("RECOVERY_GRAPH_AMBIGUOUS")
+    ? LEGACY_RECOVERY_MESSAGE
+    : getUserFacingErrorMessage(error, fallback);
+}
 
 function formatEpochToDateTimeLocal(epoch: number): string {
   const date = new Date(epoch);
@@ -589,6 +597,13 @@ export function AdmissionsFormBuilder({
 
   const findActiveEvidence = (approvalClass: string, subjectType: string, subjectKey: string) =>
     evidence?.find((item) => item.active && item.approvalClass === approvalClass && item.subjectType === subjectType && item.subjectKey === subjectKey)?.id as string | undefined;
+  const currentPrice = prices?.[0];
+  const priceChangedWithoutFinanceApproval = !!intakeId && (
+    Number(feeAmount) !== (currentPrice?.amountMinor ?? 0)
+    || feeCurrency !== (currentPrice?.currency ?? feeCurrency)
+    || feeRefundPolicy !== (currentPrice?.refundPolicyKey ?? feeRefundPolicy)
+    || feeDisclosure !== (currentPrice?.feeDisclosure ?? feeDisclosure)
+  ) && !findActiveEvidence("finance", "admissions_price", `${productDoc?.id ?? ""}:${(currentPrice?.version ?? 0) + 1}`);
 
   const newOperationKey = () => `campaign-${crypto.randomUUID()}`;
   const pendingOperationStorageKey = `admissions_campaign_operation_${schoolId}_${intakeId ?? "new"}`;
@@ -635,7 +650,7 @@ export function AdmissionsFormBuilder({
         pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess();
       } catch (err) {
         if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); }
-        else appToast.error("Campaign retry failed", { description: getUserFacingErrorMessage(err, "The submitted campaign snapshot is retained for retry.") });
+        else appToast.error("Campaign retry failed", { description: campaignErrorDescription(err, "The submitted campaign snapshot is retained for retry.") });
       } finally { setSaving(false); }
       return;
     }
@@ -656,7 +671,7 @@ export function AdmissionsFormBuilder({
     if (changedPrice && targetStatus !== "published") { appToast.error("Publish price changes with current finance approval."); return; }
     const nextPriceVersion = (existingPrice?.version ?? 0) + 1;
     const priceApprovalEvidenceId = productDoc && changedPrice ? findActiveEvidence("finance", "admissions_price", `${productDoc.id}:${nextPriceVersion}`) : undefined;
-    if (changedPrice && !priceApprovalEvidenceId) { appToast.error("Current finance approval for the exact next price version is required."); return; }
+    if (changedPrice && !priceApprovalEvidenceId) { appToast.error(FINANCE_APPROVAL_MESSAGE); return; }
     const keys = cards.filter((card) => card.type === "question" && !card.isDefault).map((card) => card.key);
     if (keys.some(isInvalidKeyFormat) || new Set(keys).size !== keys.length) { appToast.error("Resolve duplicate or invalid custom field keys before saving."); return; }
     if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) { appToast.error("Active privacy approval evidence is required before adding medical records."); return; }
@@ -671,7 +686,7 @@ export function AdmissionsFormBuilder({
     const command = intakeId ? "replace" as const : "create" as const;
     const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus, configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus, configuration: createConfiguration };
     operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload, reconciliationRequired: false }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
-    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
+    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: campaignErrorDescription(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
 
   const sensitiveCustomFields = cards.filter((card) =>
@@ -1473,6 +1488,9 @@ export function AdmissionsFormBuilder({
           <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1.5 font-sans">
             Application Pricing & Payments
           </h4>
+          {priceChangedWithoutFinanceApproval && (
+            <p className="text-[10px] leading-relaxed text-amber-700">{FINANCE_APPROVAL_MESSAGE}</p>
+          )}
           <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
             <label className="block text-slate-500 uppercase tracking-wider text-[9px] font-bold">Currency
               <select 

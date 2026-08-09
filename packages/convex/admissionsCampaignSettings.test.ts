@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import type { Id } from "./_generated/dataModel";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
@@ -32,6 +33,29 @@ function createConfiguration(now: number) {
 function replaceConfiguration(now: number) {
   const source = createConfiguration(now);
   return { intake: { name: source.intake.name, cycleLabel: source.intake.cycleLabel, opensAt: source.intake.opensAt, closesAt: source.intake.closesAt, description: source.programme.description }, declaration: source.declaration, fields: source.fields, requirements: source.requirements };
+}
+
+async function insertLegacyLiveGraph(t: ReturnType<typeof convexTest>, schoolId: Id<"schools">, options: { productStatus?: "draft" | "active"; publishedForms?: number; publishedDeclarations?: number; includeApplications?: boolean } = {}) {
+  const now = Date.now();
+  return t.run(async (ctx) => {
+    const programmeId = await ctx.db.insert("admissionsProgrammes", { schoolId, slug: `legacy-programme-${now}`, name: "Legacy programme", status: "published", createdAt: now, updatedAt: now });
+    const intakeId = await ctx.db.insert("admissionsIntakes", { schoolId, programmeId, slug: `legacy-intake-${now}`, name: "Legacy intake", cycleLabel: "2027", opensAt: now + 1_000, closesAt: now + 10_000, status: "open", createdAt: now, updatedAt: now });
+    const productId = await ctx.db.insert("admissionsProducts", { schoolId, intakeId, slug: `legacy-product-${now}`, name: "Legacy product", slotCount: 1, status: options.productStatus ?? "active", createdAt: now, updatedAt: now });
+    const formStatuses = [...Array(options.publishedForms ?? 1).fill("published" as const), "retired" as const, "draft" as const, "draft" as const, "draft" as const];
+    const declarationStatuses = [...Array(options.publishedDeclarations ?? 1).fill("published" as const), "retired" as const, "draft" as const, "draft" as const, "draft" as const];
+    const publisherId = (await ctx.db.query("users").take(1))[0]._id;
+    const formIds = await Promise.all(formStatuses.map((status, index) => ctx.db.insert("admissionsFormVersions", { schoolId, programmeId, intakeId, version: index + 1, schemaVersion: "1", legalNamePolicyVersion: 2, status, ...(status === "published" ? { publishedAt: now, publishedBy: publisherId } : {}), createdAt: now, updatedAt: now })));
+    const declarationIds = await Promise.all(declarationStatuses.map((status, index) => ctx.db.insert("admissionsDeclarationVersions", { schoolId, programmeId, version: index + 1, title: `Legacy declaration ${index + 1}`, body: `Legacy body ${index + 1}`, bodyDigest: `legacy-${index + 1}`, purpose: "service", status, ...(status === "published" ? { publishedAt: now, publishedBy: publisherId } : {}), createdAt: now, updatedAt: now })));
+    const applicationIds: Id<"admissionsApplications">[] = [];
+    if (options.includeApplications) {
+      const guardianId = await ctx.db.insert("admissionsGuardians", { authTokenIdentifier: `legacy-guardian-${now}`, normalizedEmail: `legacy-${now}@example.test`, status: "active", createdAt: now, updatedAt: now });
+      const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId, productId, version: 1, amountMinor: 0, currency: "NGN", refundPolicyKey: "free", feeDisclosure: "Free", effectiveFrom: now, status: "published", createdAt: now, updatedAt: now });
+      const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId, guardianId, productId, priceId, provider: "manual", providerMode: "test", reference: `legacy-attempt-${now}`, idempotencyKey: `legacy-attempt-${now}`, amountMinor: 0, currency: "NGN", feeDisclosureSnapshot: "Free", state: "paid", createdAt: now, updatedAt: now });
+      const entitlementId = await ctx.db.insert("admissionsEntitlements", { schoolId, guardianId, productId, intakeId, sourcePurchaseAttemptId: attemptId, state: "consumed", createdAt: now, updatedAt: now });
+      for (let index = 0; index < 7; index += 1) applicationIds.push(await ctx.db.insert("admissionsApplications", { schoolId, guardianId, entitlementId, programmeId, intakeId, productId, priceId, formVersionId: formIds[0], declarationVersionId: declarationIds[0], publicId: `legacy-application-${now}-${index}`, state: "submitted", currentRevision: 1, draftVersion: 1, createdAt: now, updatedAt: now }));
+    }
+    return { programmeId, intakeId, productId, formIds, declarationIds, applicationIds };
+  });
 }
 
 async function campaignCounts(t: ReturnType<typeof convexTest>, schoolId: string) {
@@ -168,6 +192,41 @@ describe("atomic admissions campaign commands", () => {
     expect(await t.run((ctx) => ctx.db.get(legacy.programmeId))).toMatchObject({ slug: "legacy-programme", name: "Legacy programme" });
     expect(await t.run((ctx) => ctx.db.get(legacy.intakeId))).toMatchObject({ slug: "legacy-intake" });
     expect(await t.run((ctx) => ctx.db.get(legacy.productId))).toMatchObject({ slug: "legacy-product" });
+  });
+
+  test("adopts the bounded live legacy graph without rewriting historical evidence or applications", async () => {
+    const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now();
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId, userId, capability: "admissions.publish", scope: "school", grantedByUserId: userId, reason: "test", isBreakGlass: false, createdAt: now }));
+    const legacy = await insertLegacyLiveGraph(t, schoolId, { includeApplications: true });
+    const replacement = await t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "adopt-live-legacy", targetStatus: "published", configuration: replaceConfiguration(now) });
+    const replay = await t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "adopt-live-legacy", targetStatus: "published", configuration: replaceConfiguration(now) });
+    expect(replacement).toMatchObject({ programmeId: legacy.programmeId, intakeId: legacy.intakeId, productId: legacy.productId, status: "published", replayed: false });
+    expect(replay).toMatchObject({ ...replacement, replayed: true });
+    const history = await t.run(async (ctx) => ({ forms: await ctx.db.query("admissionsFormVersions").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(10), declarations: await ctx.db.query("admissionsDeclarationVersions").withIndex("by_school_and_programme_and_version", (q) => q.eq("schoolId", schoolId).eq("programmeId", legacy.programmeId).gte("version", 0)).take(10), applications: await ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", schoolId).eq("intakeId", legacy.intakeId).eq("state", "submitted")).take(10), operations: await ctx.db.query("admissionsCampaignOperations").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(2), audits: await ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_action_and_created_at", (q) => q.eq("schoolId", schoolId).eq("action", "catalogue.campaign_legacy_adopted_atomically")).take(2) }));
+    expect(history.forms).toHaveLength(6); expect(history.declarations).toHaveLength(6); expect(history.applications.map((application) => application._id)).toEqual(legacy.applicationIds);
+    expect(history).toMatchObject({ forms: expect.arrayContaining([expect.objectContaining({ _id: legacy.formIds[0], status: "retired" }), expect.objectContaining({ _id: legacy.formIds[1], status: "retired" }), expect.objectContaining({ _id: legacy.formIds[2], status: "draft" }), expect.objectContaining({ _id: legacy.formIds[3], status: "draft" }), expect.objectContaining({ _id: legacy.formIds[4], status: "draft" }), expect.objectContaining({ _id: replacement.formVersionId, version: 6, status: "published" })]), declarations: expect.arrayContaining([expect.objectContaining({ _id: legacy.declarationIds[0], status: "retired" }), expect.objectContaining({ _id: legacy.declarationIds[1], status: "retired" }), expect.objectContaining({ _id: legacy.declarationIds[2], status: "draft" }), expect.objectContaining({ _id: legacy.declarationIds[3], status: "draft" }), expect.objectContaining({ _id: legacy.declarationIds[4], status: "draft" })]), operations: [expect.objectContaining({ actorUserId: userId, command: "replace", operationKey: "adopt-live-legacy" })], audits: [expect.objectContaining({ actorUserId: userId, reasonCode: "legacy_adoption", metadataJson: JSON.stringify({ legacyAdoption: true }) })] });
+  });
+
+  test("keeps incomplete and ambiguous live legacy graphs blocked", async () => {
+    const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now();
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId, userId, capability: "admissions.publish", scope: "school", grantedByUserId: userId, reason: "test", isBreakGlass: false, createdAt: now }));
+    const draftProduct = await insertLegacyLiveGraph(t, schoolId, { productStatus: "draft" });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: draftProduct.intakeId, operationKey: "reject-draft-product", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const missingPublished = await insertLegacyLiveGraph(t, schoolId, { publishedForms: 0 });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: missingPublished.intakeId, operationKey: "reject-missing-published", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const missingDeclaration = await insertLegacyLiveGraph(t, schoolId, { publishedDeclarations: 0 });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: missingDeclaration.intakeId, operationKey: "reject-missing-declaration", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const duplicateForm = await insertLegacyLiveGraph(t, schoolId, { publishedForms: 2 });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: duplicateForm.intakeId, operationKey: "reject-duplicate-form", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("Campaign publication evidence is inconsistent");
+    const duplicateDeclaration = await insertLegacyLiveGraph(t, schoolId, { publishedDeclarations: 2 });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: duplicateDeclaration.intakeId, operationKey: "reject-duplicate-declaration", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("Campaign publication evidence is inconsistent");
+    const crossSchool = await insertLegacyLiveGraph(t, schoolId);
+    await t.run(async (ctx) => { const foreignSchoolId = await ctx.db.insert("schools", { name: "Foreign", slug: `foreign-${now}`, status: "active", createdAt: now, updatedAt: now }); await ctx.db.insert("admissionsProducts", { schoolId: foreignSchoolId, intakeId: crossSchool.intakeId, slug: `foreign-product-${now}`, name: "Foreign product", slotCount: 1, status: "active", createdAt: now, updatedAt: now }); });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: crossSchool.intakeId, operationKey: "reject-cross-school", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const overflow = await insertLegacyLiveGraph(t, schoolId);
+    await t.run(async (ctx) => { for (let version = 6; version <= 101; version += 1) await ctx.db.insert("admissionsFormVersions", { schoolId, programmeId: overflow.programmeId, intakeId: overflow.intakeId, version, schemaVersion: "1", legalNamePolicyVersion: 2, status: "draft", createdAt: now, updatedAt: now }); });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: overflow.intakeId, operationKey: "reject-overflow", targetStatus: "published", configuration: replaceConfiguration(now) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    expect(await t.run(async (ctx) => (await ctx.db.query("admissionsCampaignOperations").take(10)).filter((operation) => [draftProduct.intakeId, missingPublished.intakeId, missingDeclaration.intakeId, duplicateForm.intakeId, duplicateDeclaration.intakeId, crossSchool.intakeId, overflow.intakeId].includes(operation.intakeId)))).toEqual([]);
   });
 
   test("requires exact next-version finance approval and writes a changed price once", async () => {
