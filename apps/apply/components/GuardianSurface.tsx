@@ -8,6 +8,9 @@ import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef, MeloLoader } from "../lib/client";
 import { 
   applicationPath,
+  checkoutAccountPath,
+  checkoutReferenceStorageKey,
+  checkoutStorageKey,
   documentViewPath,
   applicationStatusCopy, 
   correctionStepHasEditableItems, 
@@ -38,7 +41,6 @@ import {
 // Premium Icon additions
 import { 
   Lock, 
-  User, 
   FileText, 
   PlusCircle, 
   LogOut, 
@@ -64,8 +66,18 @@ type Props = { schoolSlug: string; intakeSlug?: string; paymentReference?: strin
 type Field = PublishedField & { sectionKey: string; label: string; helpText: string | null; dataClass: string; purpose: string | null; validation: string };
 type Requirement = { key: string; label: string; purpose: string; requiredMode: string; acceptedMimeTypes: string[]; maxBytes: number; maxFiles: number; sensitivity: string };
 const referenceKey = (school: string) => `apply:last-reference:${school}`;
-const checkoutKey = (school: string) => `${referenceKey(school)}:checkout`;
 type CheckoutInitialization = { state: string; checkoutUrl: string | null };
+type CheckoutEntry = {
+  schoolSlug: string;
+  availability: string;
+  intake: { slug: string; name: string; cycleLabel: string } | null;
+  programme: { name: string } | null;
+  offering: { slug: string; name: string; amountMinor: number; currency: string } | null;
+};
+
+function checkoutConflict(error: unknown) {
+  return String(error).includes("CHECKOUT_IDEMPOTENCY_CONFLICT");
+}
 const checkoutFlights = new Map<string, Promise<CheckoutInitialization>>();
 type GuardianIdentityState = "idle" | "checking" | "ready" | "verification-required" | "error";
 
@@ -134,30 +146,41 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   const initializeAttempt = useAction(functionRef("functions/admissions/public:initializeAttemptByReference"));
   const [notice, setNotice] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [requiresFreshCheckout, setRequiresFreshCheckout] = useState(false);
 
-  const begin = async () => {
+  const begin = async (fresh = false) => {
+    const checkoutEntry = entry as CheckoutEntry | undefined;
+    const identity = checkoutEntry?.intake && checkoutEntry.offering
+      ? { schoolSlug: checkoutEntry.schoolSlug, intakeSlug: checkoutEntry.intake.slug, offeringSlug: checkoutEntry.offering.slug }
+      : null;
+    if (!identity) return;
     if (!session?.user) {
-      const query = new URLSearchParams({ checkout: "1", ...(intakeSlug ? { intake: intakeSlug } : {}) });
-      router.push(`/s/${encodeURIComponent(schoolSlug)}/account?${query.toString()}`);
+      router.push(checkoutAccountPath(identity.schoolSlug, identity.intakeSlug));
       return;
     }
     setStarting(true);
     setNotice(null);
     try {
-      const identity: any = await getIdentity({});
-      if (identity.verificationRequired) { setNotice("Verify your contact to protect this private application, then return here."); return; }
-      const key = localStorage.getItem(checkoutKey(schoolSlug)) ?? crypto.randomUUID();
-      localStorage.setItem(checkoutKey(schoolSlug), key);
-      const attempt: any = await createAttempt({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}), idempotencyKey: key });
+      const guardian: any = await getIdentity({});
+      if (guardian.verificationRequired) { setNotice("Verify your contact to protect this private application, then return here."); return; }
+      const storageKey = checkoutStorageKey(identity);
+      const key = fresh ? crypto.randomUUID() : localStorage.getItem(storageKey) ?? crypto.randomUUID();
+      localStorage.setItem(storageKey, key);
+      const attempt: any = await createAttempt({ schoolSlug: identity.schoolSlug, intakeSlug: identity.intakeSlug, idempotencyKey: key });
+      localStorage.setItem(checkoutReferenceStorageKey(attempt.reference), storageKey);
       const checkout: any = await initializeAttempt({ reference: attempt.reference });
       if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) {
-        setNotice(checkout.state === "paid" ? "Payment is confirmed. Open your workspace to use the available application slot." : "We could not start secure checkout. Please try again.");
+        setNotice(checkout.state === "paid" ? "Payment is confirmed. Open your workspace to continue to this child’s application." : "We could not start secure checkout. Please try again.");
         return;
       }
       window.location.assign(checkout.checkoutUrl);
-    } catch {
-      localStorage.removeItem(checkoutKey(schoolSlug));
-      setNotice("We could not start secure checkout. Verify your contact and try again.");
+    } catch (error) {
+      if (checkoutConflict(error)) {
+        setRequiresFreshCheckout(true);
+        setNotice("This stale checkout belonged to another offering. Review this campaign, then explicitly start a fresh checkout.");
+      } else {
+        setNotice("We could not start secure checkout. Verify your contact and try again.");
+      }
     }
     finally { setStarting(false); }
   };
@@ -166,7 +189,7 @@ export function GuardianSurface({ schoolSlug, intakeSlug, paymentReference }: Pr
   if (entry.availability === "unavailable") return <Unavailable />;
   const unavailable = entry.availability !== "open";
   return <Page><section className="card max-w-3xl mx-auto"><span className="pill">{entry.availability}</span><h1>{entry.programme?.name ?? "Application information"}</h1><p className="muted">{entry.intake?.name} · {entry.intake?.cycleLabel}</p>
-    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong><HelpCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p className="mt-2 pt-2 border-t border-indigo-100">Application fee: <strong className="text-indigo-950 font-bold">{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br /><span className="text-xs text-indigo-800">{entry.offering.feeDisclosure}</span></p> : null}</div><div className="actions"><button className="primary" type="button" disabled={starting} onClick={() => void begin()}>{starting ? "Starting secure checkout…" : <span className="flex items-center gap-2"><CreditCard size={18} /> Start one child application</span>}</button><a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
+    {unavailable ? <Availability state={entry.availability} opensAt={entry.intake?.opensAt} /> : <><p>Start a private application for one child. You can save and return after contact verification.</p><div className="notice"><strong><HelpCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> Before you begin</strong><p>One payment creates one application slot for one child. A payment does not confirm a place.</p>{entry.offering ? <p className="mt-2 pt-2 border-t border-indigo-100">Application fee: <strong className="text-indigo-950 font-bold">{formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}</strong><br /><span className="text-xs text-indigo-800">{entry.offering.feeDisclosure}</span></p> : null}</div><div className="actions"><button className="primary" type="button" disabled={starting} onClick={() => void begin()}>{starting ? "Starting secure checkout…" : <span className="flex items-center gap-2"><CreditCard size={18} /> Start one child application</span>}</button>{requiresFreshCheckout ? <button className="secondary" type="button" disabled={starting} onClick={() => void begin(true)}>Start a fresh checkout</button> : null}<a className="secondary" href={`/s/${encodeURIComponent(schoolSlug)}/account`}>Application workspace</a></div></>}
     {notice ? <p className="status" role="status">{notice}</p> : null}
   </section>{paymentReference ? <PaymentReturn schoolSlug={schoolSlug} reference={paymentReference} /> : null}</Page>;
 }
@@ -261,22 +284,29 @@ export function AccountSurface({ schoolSlug, intakeSlug, checkoutIntent = false 
 function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug: string; intakeSlug?: string; onCancel: () => void }) {
   const createAttempt = useMutation(functionRef("functions/admissions/public:createAttemptForOffering"));
   const initializeAttempt = useAction(functionRef("functions/admissions/public:initializeAttemptByReference"));
+  const entry = useQuery(functionRef("functions/admissions/public:getEntry"), { schoolSlug, ...(intakeSlug ? { intakeSlug } : {}) }) as CheckoutEntry | undefined;
   const [attemptNumber, setAttemptNumber] = useState(0);
   const [status, setStatus] = useState("Preparing secure checkout…");
   const [failed, setFailed] = useState(false);
   const [paidAttempt, setPaidAttempt] = useState(false);
+  const [conflicted, setConflicted] = useState(false);
   useEffect(() => {
+    if (!entry?.intake || !entry.offering || entry.availability !== "open") return;
     let active = true;
     setFailed(false);
     setPaidAttempt(false);
+    setConflicted(false);
     setStatus("Preparing secure checkout…");
-    const flightKey = `${schoolSlug}:${intakeSlug ?? ""}:${attemptNumber}`;
+    const identity = { schoolSlug: entry.schoolSlug, intakeSlug: entry.intake.slug, offeringSlug: entry.offering.slug };
+    const flightKey = `${checkoutStorageKey(identity)}:${attemptNumber}`;
     let flight = checkoutFlights.get(flightKey);
     if (!flight) {
       flight = (async () => {
-        const key = localStorage.getItem(checkoutKey(schoolSlug)) ?? crypto.randomUUID();
-        localStorage.setItem(checkoutKey(schoolSlug), key);
-        const attempt: any = await createAttempt({ schoolSlug, ...(intakeSlug ? { intakeSlug } : {}), idempotencyKey: key });
+        const storageKey = checkoutStorageKey(identity);
+        const key = localStorage.getItem(storageKey) ?? crypto.randomUUID();
+        localStorage.setItem(storageKey, key);
+        const attempt: any = await createAttempt({ schoolSlug: identity.schoolSlug, intakeSlug: identity.intakeSlug, idempotencyKey: key });
+        localStorage.setItem(checkoutReferenceStorageKey(attempt.reference), storageKey);
         return await initializeAttempt({ reference: attempt.reference }) as CheckoutInitialization;
       })();
       checkoutFlights.set(flightKey, flight);
@@ -288,23 +318,31 @@ function CheckoutContinuation({ schoolSlug, intakeSlug, onCancel }: { schoolSlug
     void flight.then((checkout) => {
       if (!active) return;
       if (checkout.state === "paid") {
-        localStorage.removeItem(checkoutKey(schoolSlug));
         setPaidAttempt(true);
         setStatus("That payment already belongs to an existing application slot. Start a new checkout to buy a separate slot for another child.");
         return;
       }
       if (checkout.state !== "checkout_pending" || !checkout.checkoutUrl) throw new Error("Checkout unavailable");
       window.location.assign(checkout.checkoutUrl);
-    }).catch(() => {
-      localStorage.removeItem(checkoutKey(schoolSlug));
-      if (active) {
+    }).catch((error) => {
+      if (!active) return;
+      if (checkoutConflict(error)) {
+        setConflicted(true);
+        setStatus("This stale checkout belonged to another offering. Review this campaign, then explicitly start a fresh checkout.");
+      } else {
         setFailed(true);
         setStatus("We could not start secure checkout. Retry without leaving your workspace.");
       }
     });
     return () => { active = false; };
-  }, [schoolSlug, intakeSlug, createAttempt, initializeAttempt, attemptNumber]);
-  return <div className={`notice ${failed ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong><p>{status}</p>{failed || paidAttempt ? <div className="actions"><button className="primary" type="button" onClick={() => setAttemptNumber((value) => value + 1)}>{paidAttempt ? "Start a new checkout" : "Retry checkout"}</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
+  }, [entry, createAttempt, initializeAttempt, attemptNumber]);
+  const startFreshCheckout = () => {
+    if (!entry?.intake || !entry.offering) return;
+    localStorage.setItem(checkoutStorageKey({ schoolSlug: entry.schoolSlug, intakeSlug: entry.intake.slug, offeringSlug: entry.offering.slug }), crypto.randomUUID());
+    setAttemptNumber((value) => value + 1);
+  };
+  const offer = entry?.intake && entry.offering ? `${entry.programme?.name ?? "Application"} · ${entry.intake.name} (${entry.intake.cycleLabel}) · ${formatMinorCurrency(entry.offering.amountMinor, entry.offering.currency)}` : null;
+  return <div className={`notice ${failed || conflicted ? "warn" : ""}`} role="status"><strong>Secure application checkout</strong>{offer ? <p><strong>{offer}</strong></p> : null}<p>{status}</p>{failed || paidAttempt || conflicted ? <div className="actions"><button className="primary" type="button" onClick={() => paidAttempt || conflicted ? startFreshCheckout() : setAttemptNumber((value) => value + 1)}>{paidAttempt || conflicted ? "Start a fresh checkout" : "Retry checkout"}</button><button className="secondary" type="button" onClick={onCancel}>Back to workspace</button></div> : null}</div>;
 }
 
 function WorkspaceCards({ workspace, schoolSlug, intakeSlug, router, onBuy }: { workspace: any; schoolSlug: string; intakeSlug?: string; router: ReturnType<typeof useRouter>; onBuy: () => void }) {
@@ -951,7 +989,9 @@ function PaymentReturn({ schoolSlug, reference }: { schoolSlug: string; referenc
     setChecking(true);
     try {
       const application: any = await reserve({ schoolSlug, reference });
-      localStorage.removeItem(checkoutKey(schoolSlug));
+      const scopedCheckoutKey = localStorage.getItem(checkoutReferenceStorageKey(reference));
+      if (scopedCheckoutKey) localStorage.removeItem(scopedCheckoutKey);
+      localStorage.removeItem(checkoutReferenceStorageKey(reference));
       localStorage.setItem(referenceKey(schoolSlug), application.publicReference);
       router.replace(applicationPath(schoolSlug, application.publicReference));
     } catch {

@@ -77,6 +77,7 @@ import type * as functions_admissions_guardian from "../functions/admissions/gua
 import type * as functions_admissions_helpers from "../functions/admissions/helpers.js";
 import type * as functions_admissions_payments from "../functions/admissions/payments.js";
 import type * as functions_admissions_public from "../functions/admissions/public.js";
+import type * as functions_admissions_purchaseAttemptReplay from "../functions/admissions/purchaseAttemptReplay.js";
 import type * as functions_admissions_recovery from "../functions/admissions/recovery.js";
 import type * as functions_admissions_settings from "../functions/admissions/settings.js";
 import type * as functions_admissions_staff from "../functions/admissions/staff.js";
@@ -178,6 +179,7 @@ declare const fullApi: ApiFromModules<{
   "functions/admissions/helpers": typeof functions_admissions_helpers;
   "functions/admissions/payments": typeof functions_admissions_payments;
   "functions/admissions/public": typeof functions_admissions_public;
+  "functions/admissions/purchaseAttemptReplay": typeof functions_admissions_purchaseAttemptReplay;
   "functions/admissions/recovery": typeof functions_admissions_recovery;
   "functions/admissions/settings": typeof functions_admissions_settings;
   "functions/admissions/staff": typeof functions_admissions_staff;

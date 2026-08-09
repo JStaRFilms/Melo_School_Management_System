@@ -5,6 +5,7 @@ import type { Id } from "../../_generated/dataModel";
 import { createBillingGatewayAdapter } from "../billingGateway";
 import { admissionsProviderValidator, paymentProviderModeValidator } from "../foundation/contracts";
 import { audit, digest, opaqueKey, requireGuardian } from "./helpers";
+import { findExactPurchaseAttemptReplay } from "./purchaseAttemptReplay";
 
 const safeAttemptValidator = v.object({
   attemptId: v.id("admissionsPurchaseAttempts"), reference: v.string(), state: v.string(),
@@ -59,8 +60,16 @@ export const createAttempt = mutation({
     const idempotencyKey = args.idempotencyKey.trim();
     if (!idempotencyKey || idempotencyKey.length > 128) throw new ConvexError("Invalid idempotency key");
     const resolved = await resolvePurchase(ctx, guardian._id, args.productId);
-    const existing = await ctx.db.query("admissionsPurchaseAttempts")
-      .withIndex("by_school_and_guardian_and_idempotency_key", (q) => q.eq("schoolId", resolved.product.schoolId).eq("guardianId", guardian._id).eq("idempotencyKey", idempotencyKey)).unique();
+    const existing = await findExactPurchaseAttemptReplay(ctx, {
+      schoolId: resolved.product.schoolId,
+      guardianId: guardian._id,
+      productId: resolved.product._id,
+      intakeId: resolved.intake._id,
+      priceId: resolved.price._id,
+      amountMinor: resolved.price.amountMinor,
+      currency: resolved.price.currency,
+      disclosure: resolved.price.feeDisclosure,
+    }, idempotencyKey);
     if (existing) return { attemptId: existing._id, reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, disclosure: existing.feeDisclosureSnapshot };
     const providerConfig: { provider: "paystack"; providerMode: "test" | "live" } | null = await ctx.runQuery(
       (internal as any).functions.admissions.payments.getConfiguredAdmissionsPaymentProviderInternal,
@@ -70,7 +79,7 @@ export const createAttempt = mutation({
     const now = Date.now();
     const reference = opaqueKey("adm_");
     const attemptId: Id<"admissionsPurchaseAttempts"> = await ctx.db.insert("admissionsPurchaseAttempts", {
-      schoolId: resolved.product.schoolId, guardianId: guardian._id, productId: resolved.product._id, priceId: resolved.price._id,
+      schoolId: resolved.product.schoolId, guardianId: guardian._id, productId: resolved.product._id, intakeId: resolved.intake._id, priceId: resolved.price._id,
       provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference, idempotencyKey,
       amountMinor: resolved.price.amountMinor, currency: resolved.price.currency, feeDisclosureSnapshot: resolved.price.feeDisclosure,
       state: "created", createdAt: now, updatedAt: now,

@@ -380,6 +380,30 @@ The backend correctly rejected the unapproved financial change and wrote no pric
 - Status: Clarified known-blocked UX. The inline and Save guidance now explains that changing the amount requires current finance approval, and to keep the existing amount or use the future finance approval workflow. Full AQ-2 remains out of this defect batch.
 - Evidence: focused Admin builder tests cover the plain finance guidance; no finance evidence, price data, or approval workflow was created or changed.
 
+## OBS-006 — School-scoped checkout replay selected the Development offering
+
+- Severity: P1
+- Test case: Paid checkout diagnosis (outside AQ-2 approval UX)
+- Reproducibility: Confirmed from development QA records; no records were mutated during diagnosis.
+
+### Confirmed chain
+
+1. The **Analyze** entry price is `amountMinor: 10000` (₦100) with published form v3 and its user questions.
+2. The former browser key was scoped only to the school, so it replayed a **Development** purchase attempt with `amountMinor: 100000` (₦1000).
+3. Paystack conversion for that persisted Development attempt was internally consistent. Its verified entitlement, Development application, and form v1 therefore follow the persisted attempt; conversion was not the defect.
+
+### Integrity disposition
+
+- Existing Development payment/application `app_3d856...` is immutable QA incident evidence. Do **not** automatically transfer its entitlement, rewrite its attempt, create an Analyze application, or issue a refund.
+- Any financial review, transfer, or refund requires a separate accountable manual process. AQ-2 and section metadata remain out of scope.
+- The checkout fix resolves the current offering before replay, binds new browser keys to resolved school/intake/offering identity, and rejects a stale cross-offering key with `CHECKOUT_IDEMPOTENCY_CONFLICT` before writes or provider initialization.
+
+### Browser retest
+
+- [ ] Start Analyze checkout after visiting Development; confirm Analyze campaign/intake and ₦100 remain visible before Paystack.
+- [ ] Force/reuse a stale Development key; confirm no redirect/charge occurs and the UI explains that explicit fresh checkout is required.
+- [ ] Complete a paid Analyze continuation; confirm only its scoped browser key clears after its exact application opens.
+
 ## Test summary
 
 - Passed scenarios:

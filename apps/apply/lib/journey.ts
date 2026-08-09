@@ -11,12 +11,33 @@ export function paymentReturnReference(params: { reference?: string | string[]; 
   return first(params.reference)?.trim() || first(params.trxref)?.trim() || undefined;
 }
 
+export type CheckoutOfferingIdentity = {
+  schoolSlug: string;
+  intakeSlug: string;
+  offeringSlug: string;
+};
+
+/** Checkout replay belongs to the resolved offering, never the whole school. */
+export function checkoutStorageKey(identity: CheckoutOfferingIdentity) {
+  return `apply:checkout:${encodeURIComponent(identity.schoolSlug)}:${encodeURIComponent(identity.intakeSlug)}:${encodeURIComponent(identity.offeringSlug)}`;
+}
+
+/** Retained only until a successful paid continuation can clear its exact checkout key. */
+export function checkoutReferenceStorageKey(reference: string) {
+  return `apply:checkout-reference:${encodeURIComponent(reference)}`;
+}
+
+export function checkoutAccountPath(schoolSlug: string, intakeSlug: string) {
+  const query = new URLSearchParams({ checkout: "1", intake: intakeSlug });
+  return `/s/${encodeURIComponent(schoolSlug)}/account?${query.toString()}`;
+}
+
 /** Amounts are server supplied integer minor units; never divide/display floats by hand. */
-export function formatMinorCurrency(amountMinor: number, currency: string, locale = "en"): string {
+export function formatMinorCurrency(amountMinor: number, currency: string, locale = currency.toUpperCase() === "NGN" ? "en-NG" : "en"): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency.toUpperCase(),
-    currencyDisplay: "code",
+    currencyDisplay: "symbol",
   }).format(amountMinor / 100);
 }
 

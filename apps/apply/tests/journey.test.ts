@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { applicationPath, documentViewPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
+import { applicationPath, checkoutAccountPath, checkoutStorageKey, documentViewPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 describe("guardian journey safety", () => {
@@ -14,8 +14,17 @@ describe("guardian journey safety", () => {
     expect(paymentReturnReference({ trxref: "adm_fallback" })).toBe("adm_fallback");
   });
   test("formats server minor units without float-like fee copy", () => {
-    expect(formatMinorCurrency(5050, "ngn")).toContain("50.50");
+    expect(formatMinorCurrency(10_000, "ngn")).toBe("₦100.00");
     expect(formatMinorCurrency(0, "USD")).toContain("0.00");
+  });
+  test("isolates browser checkout keys by resolved intake and offering", () => {
+    const analyze = checkoutStorageKey({ schoolSlug: "school-a", intakeSlug: "analyze-2027", offeringSlug: "analyze" });
+    const development = checkoutStorageKey({ schoolSlug: "school-a", intakeSlug: "development-2027", offeringSlug: "development" });
+    expect(analyze).not.toBe(development);
+    expect(analyze).not.toContain("apply:last-reference");
+  });
+  test("preserves the canonical resolved intake through the auth checkout redirect", () => {
+    expect(checkoutAccountPath("school-a", "analyze-2027")).toBe("/s/school-a/account?checkout=1&intake=analyze-2027");
   });
   test("never treats checkout or acceptance as admission", () => {
     expect(paymentStatusCopy("checkout_pending")).toContain("does not reserve a school place");

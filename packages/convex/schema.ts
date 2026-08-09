@@ -430,6 +430,8 @@ export default defineSchema({
     schoolId: v.id("schools"),
     guardianId: v.id("admissionsGuardians"),
     productId: v.id("admissionsProducts"),
+    /** New attempts preserve the resolved intake; legacy attempts remain readable without it. */
+    intakeId: v.optional(v.id("admissionsIntakes")),
     priceId: v.id("admissionsProductPrices"),
     provider: admissionsProviderValidator,
     providerMode: paymentProviderModeValidator,
@@ -452,7 +454,8 @@ export default defineSchema({
     .index("by_guardian_and_created_at", ["guardianId", "createdAt"])
     .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
     .index("by_product_and_created_at", ["productId", "createdAt"])
-    .index("by_school_and_guardian_and_idempotency_key", ["schoolId", "guardianId", "idempotencyKey"]),
+    .index("by_school_and_guardian_and_idempotency_key", ["schoolId", "guardianId", "idempotencyKey"])
+    .index("by_school_and_guardian_and_product_and_idempotency_key", ["schoolId", "guardianId", "productId", "idempotencyKey"]),
 
   admissionsPaymentEvents: defineTable({
     schoolId: v.id("schools"),

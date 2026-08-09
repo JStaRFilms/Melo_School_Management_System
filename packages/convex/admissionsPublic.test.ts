@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import { createBillingGatewayAdapter } from "./functions/billingGateway";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -36,7 +37,7 @@ async function publicFixture(t: ReturnType<typeof convexTest>) {
     await ctx.db.insert("admissionsApplicationAnswers", { schoolId: schoolA, applicationId: application, formFieldId: field, fieldKey: "child_name", valueType: "text", serializedValue: "Child", dataClass: "child_confidential", valueVersion: 1, createdAt: now, updatedAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: schoolA, applicationId: application, eventType: "changes_requested", visibility: "guardian", message: "Please update this item", createdAt: now });
     await ctx.db.insert("admissionsReviewEvents", { schoolId: schoolA, applicationId: application, eventType: "internal_note", visibility: "staff", message: "Staff only", metadataJson: "private", createdAt: now });
-    return { schoolA, schoolB, programme, intake, product, form, requirement, application };
+    return { schoolA, schoolB, programme, intake, product, price, form, requirement, application };
   });
 }
 
@@ -67,6 +68,86 @@ describe("B1 public admissions bootstrap", () => {
     const storedAttempt = await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", attempt.reference)).unique());
     expect(storedAttempt).toMatchObject({ provider: "paystack", providerMode: "test" });
     await expect(t.withIdentity(owner).query((internal as any).functions.admissions.public.resolveOwnedAttemptReferenceInternal, { reference: attempt.reference })).resolves.toEqual({ attemptId: storedAttempt!._id });
+  });
+
+  test("replays only the exact resolved offering and rejects a stale key for another product without writes", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    const first = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "shared-key" });
+    const replay = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "shared-key" });
+    expect(replay.reference).toBe(first.reference);
+
+    const developmentProduct = await t.run(async (ctx) => {
+      const now = Date.now();
+      const intake = await ctx.db.insert("admissionsIntakes", { schoolId: ids.schoolA, programmeId: ids.programme, slug: "development", name: "Development", cycleLabel: "2028", opensAt: now - 1, closesAt: now + 100_000, status: "open", createdAt: now, updatedAt: now });
+      const product = await ctx.db.insert("admissionsProducts", { schoolId: ids.schoolA, intakeId: intake, slug: "development-application", name: "Development application", slotCount: 1, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsProductPrices", { schoolId: ids.schoolA, productId: product, version: 1, amountMinor: 100_000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "Development disclosure", effectiveFrom: now - 1, status: "published", createdAt: now, updatedAt: now });
+      return product;
+    });
+    await expect(t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "development", idempotencyKey: "shared-key" })).rejects.toThrow("CHECKOUT_IDEMPOTENCY_CONFLICT");
+    const attempts = await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", first.reference)).unique());
+    expect(attempts).toMatchObject({ reference: first.reference, productId: ids.product, amountMinor: 1000 });
+    expect(await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_product_and_created_at", (q) => q.eq("productId", ids.product)).take(10))).toHaveLength(2);
+    expect(await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_product_and_created_at", (q) => q.eq("productId", developmentProduct)).take(10))).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_action_and_created_at", (q) => q.eq("schoolId", ids.schoolA).eq("action", "payment.attempt_created")).take(10))).toHaveLength(1);
+  });
+
+  test("rejects a changed current price for the same key in both public and lower-level creation", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "price-key" });
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.patch(ids.price, { effectiveTo: now - 1, updatedAt: now });
+      await ctx.db.insert("admissionsProductPrices", { schoolId: ids.schoolA, productId: ids.product, version: 2, amountMinor: 2000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "Updated disclosure", effectiveFrom: now - 1, status: "published", createdAt: now, updatedAt: now });
+    });
+    await expect(t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "price-key" })).rejects.toThrow("CHECKOUT_IDEMPOTENCY_CONFLICT");
+    await expect(t.withIdentity(owner).mutation((api as any).functions.admissions.payments.createAttempt, { productId: ids.product, idempotencyKey: "price-key" })).rejects.toThrow("CHECKOUT_IDEMPOTENCY_CONFLICT");
+    expect(await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_product_and_created_at", (q) => q.eq("productId", ids.product)).take(10))).toHaveLength(2);
+  });
+
+  test("uses a fresh key to create a separate child slot", async () => {
+    const t = convexTest(schema, modules); await publicFixture(t);
+    const first = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "child-one" });
+    const second = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "child-two" });
+    expect(second.reference).not.toBe(first.reference);
+  });
+
+  test("keeps the 10,000-minor-unit display, attempt, Paystack payload, receipt, and Analyze entitlement aligned", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run((ctx) => ctx.db.patch(ids.product, { slug: "analyze", name: "Analyze", updatedAt: Date.now() }));
+    await t.run((ctx) => ctx.db.patch(ids.price, { amountMinor: 10_000, updatedAt: Date.now() }));
+    const created = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createAttemptForOffering, { schoolSlug: "school-a", intakeSlug: "entry", idempotencyKey: "analyze-100" });
+    expect(created).toMatchObject({ amountMinor: 10_000, currency: "NGN" });
+    const attempt = await t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", created.reference)).unique());
+    expect(attempt).toMatchObject({ productId: ids.product, intakeId: ids.intake, priceId: ids.price, amountMinor: 10_000 });
+    const now = Date.now();
+    const event = await t.run((ctx) => ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: attempt!._id, provider: "paystack", providerMode: "test", providerEventId: "receipt-analyze-100", eventType: "payment.receipt_verified", bodyDigest: "receipt-10000", signatureValid: true, processingStatus: "verified", receivedAt: now, createdAt: now, updatedAt: now }));
+    const fulfilled = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: event });
+    const application = await t.withIdentity(owner).mutation((api as any).functions.admissions.public.createOrResumeForReference, { schoolSlug: "school-a", reference: created.reference });
+    const storedApplication = await t.run((ctx) => ctx.db.query("admissionsApplications").withIndex("by_school_and_public_id", (q) => q.eq("schoolId", ids.schoolA).eq("publicId", application.publicReference)).unique());
+    expect(fulfilled.entitlementId).toBeTruthy();
+    expect(storedApplication).toMatchObject({ productId: ids.product, intakeId: ids.intake, priceId: ids.price });
+    await t.run(async (ctx) => {
+      const current = Date.now();
+      const developmentIntake = await ctx.db.insert("admissionsIntakes", { schoolId: ids.schoolA, programmeId: ids.programme, slug: "development", name: "Development", cycleLabel: "2028", opensAt: current - 1, closesAt: current + 100_000, status: "open", createdAt: current, updatedAt: current });
+      const developmentProduct = await ctx.db.insert("admissionsProducts", { schoolId: ids.schoolA, intakeId: developmentIntake, slug: "development", name: "Development", slotCount: 1, status: "active", createdAt: current, updatedAt: current });
+      await ctx.db.insert("admissionsProductPrices", { schoolId: ids.schoolA, productId: developmentProduct, version: 1, amountMinor: 100_000, currency: "NGN", refundPolicyKey: "approved", feeDisclosure: "Development disclosure", effectiveFrom: current - 1, status: "published", createdAt: current, updatedAt: current });
+    });
+    await expect(t.withIdentity(owner).mutation((api as any).functions.admissions.public.createOrResumeForOffering, { schoolSlug: "school-a", intakeSlug: "development" })).rejects.toThrow("No application slot is available");
+
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: true, data: { authorization_url: "https://paystack.test/checkout", access_code: "access" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: true, data: { status: "success", amount: 10_000, currency: "NGN" } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const gateway = createBillingGatewayAdapter({ provider: "paystack", secretKey: "test" });
+      await gateway.createPaymentLink({ amount: attempt!.amountMinor / 100, email: owner.email, schoolId: String(ids.schoolA), invoiceId: String(attempt!._id), description: "Analyze", reference: created.reference, paymentDomain: "admissions" });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ amount: 10_000, reference: created.reference });
+      const receipt = await gateway.verifyPayment(created.reference);
+      expect(Math.round(receipt.amount * 100)).toBe(10_000);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("replays an initialized checkout without creating a duplicate Paystack transaction", async () => {

@@ -3,6 +3,7 @@ import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { audit, opaqueKey, requireGuardian } from "./helpers";
+import { findExactPurchaseAttemptReplay } from "./purchaseAttemptReplay";
 
 type PublicEntry = {
   schoolSlug: string;
@@ -257,7 +258,16 @@ export const createAttemptForOffering = mutation({
     const entry = await resolveEntry(ctx, args.schoolSlug, args.intakeSlug);
     if (entry.availability !== "open" || !entry.school || !entry.intakeRecord || !entry.product || !entry.price) throw new ConvexError("OFFERING_UNAVAILABLE");
     const key = args.idempotencyKey.trim(); if (!key || key.length > 128) throw new ConvexError("Invalid idempotency key");
-    const existing = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_school_and_guardian_and_idempotency_key", (q: any) => q.eq("schoolId", entry.school._id).eq("guardianId", guardian._id).eq("idempotencyKey", key)).unique();
+    const existing = await findExactPurchaseAttemptReplay(ctx, {
+      schoolId: entry.school._id,
+      guardianId: guardian._id,
+      productId: entry.product._id,
+      intakeId: entry.intakeRecord._id,
+      priceId: entry.price._id,
+      amountMinor: entry.price.amountMinor,
+      currency: entry.price.currency,
+      disclosure: entry.price.feeDisclosure,
+    }, key);
     if (existing) return { reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, disclosure: existing.feeDisclosureSnapshot };
     const providerConfig: { provider: "paystack"; providerMode: "test" | "live" } | null = await ctx.runQuery(
       (internal as any).functions.admissions.payments.getConfiguredAdmissionsPaymentProviderInternal,
@@ -266,7 +276,7 @@ export const createAttemptForOffering = mutation({
     if (!providerConfig) throw new ConvexError("OFFERING_UNAVAILABLE");
     const now = Date.now();
     const reference = opaqueKey("adm_");
-    const attemptId: Id<"admissionsPurchaseAttempts"> = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, priceId: entry.price._id, provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference, idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
+    const attemptId: Id<"admissionsPurchaseAttempts"> = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: entry.school._id, guardianId: guardian._id, productId: entry.product._id, intakeId: entry.intakeRecord._id, priceId: entry.price._id, provider: providerConfig.provider, providerMode: providerConfig.providerMode, reference, idempotencyKey: key, amountMinor: entry.price.amountMinor, currency: entry.price.currency, feeDisclosureSnapshot: entry.price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
     await audit({ ctx, schoolId: entry.school._id, actor: { kind: "guardian", guardianId: guardian._id }, action: "payment.attempt_created", entityType: "purchase_attempt", entityId: String(attemptId), outcome: "success" });
     return { reference, state: "created", amountMinor: entry.price.amountMinor, currency: entry.price.currency, disclosure: entry.price.feeDisclosure };
   },
