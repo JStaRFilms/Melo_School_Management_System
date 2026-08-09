@@ -57,6 +57,19 @@ No browser automation was run for B6. After an approved tenant fixture, configur
 - staff redacted queue, tenant mismatch denial, private document fresh-auth/access audit, review/decision/waitlist/change-request flows, conversion replay, and onboarding retry;
 - publication/application availability changes, preview isolation/no-index, alias redirect, keyboard/focus, 320px reflow, contrast, metadata/robots/sitemap, and production CWV.
 
+## Post-merge UI quality backlog
+
+The admissions UI refinement has been integrated and its critical fabricated-data, authorization, projection, and deletion defects were repaired. It is not yet the final production-readiness state. Follow-up work is tracked in [Admissions UI Quality Backlog](../tasks/orchestrator-sessions/orch-20260722-114501/future/Admissions_UI_Quality_Backlog.md), including:
+
+- atomic campaign setup/update commands;
+- accountable paid-campaign approval UX;
+- complete browser, visual, responsive, and accessibility QA;
+- component decomposition and generated Convex typing;
+- privacy-safe queue search/pagination and draft recovery;
+- performance review and mockup-asset disposition.
+
+AQ-1 through AQ-3 are production-readiness gates for the redesigned campaign-builder workflow. Existing legal-name and private-document work remains separately tracked in `Admissions_Application_Future_UX_and_Data_Safety_Work.md`.
+
 ## Release evidence
 
 Source-controlled gates are the shared/Convex/Apply/Admin/Sites typechecks and tests, configured lint, Apply/Admin/Sites production builds, frozen-lockfile install, and `git diff --check`. Playwright and deployment are explicitly excluded from this integration run.

@@ -4,6 +4,8 @@
 **Scope:** Guardian public admissions surface (`B2`) and tenant-scoped staff operations (`B3`)  
 **Architecture source of truth:** [Admissions Application Platform Architecture](AdmissionsApplicationPlatformArchitecture.md) and [ADR: Admissions Application Surface and Lifecycle](../decisions/ADR-AdmissionsApplicationSurfaceAndLifecycle.md)
 
+**Post-merge implementation follow-up:** The redesigned admissions UI is integrated on `integration/obhis-admissions-release`. Remaining atomicity, finance-approval UX, browser QA, maintainability, typing, queue, accessibility, recovery, performance, and mockup-asset work is tracked in [Admissions UI Quality Backlog](../tasks/orchestrator-sessions/orch-20260722-114501/future/Admissions_UI_Quality_Backlog.md).
+
 ## 1. Design intent and guardrails
 
 ### Users and jobs

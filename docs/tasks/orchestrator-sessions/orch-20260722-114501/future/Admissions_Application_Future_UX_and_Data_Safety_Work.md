@@ -8,6 +8,8 @@
 
 **Recommended next step:** Complete the user-owned Batch 1 browser checks below before requesting Batch 2.
 
+**Related post-merge quality work:** Atomic campaign setup, finance approval UX, full browser QA, component decomposition, typing, queue pagination/search, accessibility, recovery, performance, and mockup cleanup are tracked in [`Admissions_UI_Quality_Backlog.md`](Admissions_UI_Quality_Backlog.md).
+
 ## Implementation status — 2026-08-02
 
 Batch 1 is integrated through merge commit `f75fc40`. The evidence-backed failure was a stale-version race between dynamic-field blur saving and section submission, compounded by unchanged answer replays. The implementation now provides idempotent exact draft replays, one serialized application write queue, 700ms per-edit debounce with a stable 7-second ceiling, deliberate application-scoped local recovery, bounded transient retries, explicit save states, field/section errors, and save-then-advance behavior.
