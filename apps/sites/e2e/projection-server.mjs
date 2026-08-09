@@ -49,8 +49,6 @@ function envelope(hostname, preview = false) {
 createServer(async (request, response) => {
   const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host}`);
   const isPreview = request.method === "POST" && requestUrl.pathname === "/preview";
-  const hostname = requestUrl.searchParams.get("hostname") ?? "";
-  console.log(`[Projection Server] Received ${request.method} request for: ${requestUrl.pathname} (Host: ${hostname || 'none'})`);
   if (isPreview) {
     let body;
     try { body = JSON.parse(await new Promise((resolve, reject) => { let text = ""; request.on("data", (chunk) => { text += chunk; }); request.on("end", () => resolve(text)); request.on("error", reject); })); } catch { response.writeHead(404).end(); return; }
@@ -61,9 +59,7 @@ createServer(async (request, response) => {
     response.end(JSON.stringify(envelope(previewHost, true)));
     return;
   }
+  const hostname = requestUrl.searchParams.get("hostname") ?? "";
   response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(envelope(hostname)));
-}).listen(port, "127.0.0.1", () => {
-  console.log(`[Projection Server] Running on http://127.0.0.1:${port}`);
-});
-
+}).listen(port, "127.0.0.1");
