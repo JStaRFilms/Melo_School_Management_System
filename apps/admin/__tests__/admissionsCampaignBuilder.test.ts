@@ -13,6 +13,15 @@ describe("admissions campaign command retry", () => {
     expect(createCalls).toEqual([]); expect(replaceCalls).toEqual([payload]); expect(loadPendingCampaignCommand(storage, "pending")).toEqual({ command: "replace", payload });
   });
 
+  test("retains the exact command snapshot when reconciliation is required", async () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) };
+    const pending = { command: "create" as const, payload: { schoolId: "school", operationKey: "reused-key", targetStatus: "published", configuration: { fields: [], requirements: [] } } };
+    savePendingCampaignCommand(storage, "pending", pending);
+    await expect(invokePendingCampaignCommand(pending, { create: async () => { throw new Error("OPERATION_KEY_REUSED"); }, replace: async () => undefined })).rejects.toThrow("OPERATION_KEY_REUSED");
+    expect(loadPendingCampaignCommand(storage, "pending")).toEqual(pending);
+  });
+
   test("drops malformed persisted data rather than retrying an unknown command", () => {
     const values = new Map([["pending", "{not-json"]]);
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) };

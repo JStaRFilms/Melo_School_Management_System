@@ -116,6 +116,7 @@ export function AdmissionsFormBuilder({
   const [focusedCardId, setFocusedCardId] = useState<string | null>("def-sec-2");
   const [expandedPrivacyCardId, setExpandedPrivacyCardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [reconciliationBlocked, setReconciliationBlocked] = useState(false);
   const operationKeyRef = useRef<string | null>(null);
   const pendingCommandRef = useRef<{ command: "create" | "replace"; payload: Record<string, unknown> } | null>(null);
   const defaultCampaignDatesRef = useRef({ opensAt: Date.now(), closesAt: Date.now() + 30 * 24 * 60 * 60 * 1000 });
@@ -536,6 +537,7 @@ export function AdmissionsFormBuilder({
   }, [pendingOperationStorageKey]);
 
   const handlePublish = async () => {
+    if (reconciliationBlocked) return;
     const pending = pendingCommandRef.current;
     if (pending) {
       setSaving(true);
@@ -543,7 +545,7 @@ export function AdmissionsFormBuilder({
         await invokePendingCampaignCommand(pending, { create: (payload) => createCampaignConfiguration(payload as never), replace: (payload) => replaceCampaignConfiguration(payload as never) });
         pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess();
       } catch (err) {
-        if (String(err).includes("OPERATION_KEY_REUSED")) { pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); appToast.error("Campaign retry needs reconciliation", { description: "The prior operation key was reused. Reload before submitting a new configuration." }); }
+        if (String(err).includes("OPERATION_KEY_REUSED")) { setReconciliationBlocked(true); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained. Reload before another command." }); }
         else appToast.error("Campaign retry failed", { description: getUserFacingErrorMessage(err, "The submitted campaign snapshot is retained for retry.") });
       } finally { setSaving(false); }
       return;
@@ -575,7 +577,7 @@ export function AdmissionsFormBuilder({
     const command = intakeId ? "replace" as const : "create" as const;
     const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus, configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus, configuration: createConfiguration };
     operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
-    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); appToast.error("Campaign retry needs reconciliation", { description: "The operation key was reused. Reload before submitting a new configuration." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
+    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { setReconciliationBlocked(true); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained. Reload before another command." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
 
   return (
@@ -600,6 +602,13 @@ export function AdmissionsFormBuilder({
           {recovery?.some((campaign) => campaign.recoveryState === "review_required") && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs font-semibold text-amber-900 shadow-sm">
               Existing pre-atomic draft campaigns need operator review before they are edited or deleted. No recovery action has been applied automatically.
+            </div>
+          )}
+
+          {reconciliationBlocked && (
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 text-xs font-semibold text-rose-900 shadow-sm">
+              This campaign command is blocked for reconciliation. Its submitted snapshot and operation key are retained; reload this editor before sending another command.
+              <button type="button" onClick={() => window.location.reload()} className="ml-3 underline font-bold">Reload editor</button>
             </div>
           )}
 
@@ -1372,17 +1381,17 @@ export function AdmissionsFormBuilder({
             {/* Main Action Button */}
             <button 
               onClick={() => void handlePublish()}
-              disabled={saving}
+              disabled={saving || reconciliationBlocked}
               className="flex-grow h-9 bg-slate-900 hover:bg-slate-850 disabled:opacity-50 text-white font-bold px-4 rounded-l-lg text-xs transition-all flex items-center justify-center gap-1.5 border-r border-slate-800"
             >
               {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
-              {targetStatus === "draft" ? "Save Campaign Draft" : "Publish Form Live"}
+              {targetStatus === "draft" ? "Save Campaign Draft" : intakeDoc?.status && intakeDoc.status !== "draft" ? "Publish Form Replacement" : "Publish Form Live"}
             </button>
 
             {/* Dropdown Toggle Trigger */}
             <button
               type="button"
-              disabled={saving || Boolean(intakeDoc?.status && intakeDoc.status !== "draft")}
+              disabled={saving || reconciliationBlocked}
               onClick={(e) => {
                 e.stopPropagation();
                 setDropdownOpen(!dropdownOpen);
@@ -1405,6 +1414,7 @@ export function AdmissionsFormBuilder({
                 <div className="absolute bottom-full right-0 mb-1.5 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-left">
                   <button
                     type="button"
+                    disabled={Boolean(intakeDoc?.status && intakeDoc.status !== "draft")}
                     onClick={() => {
                       setTargetStatus("draft");
                       setDropdownOpen(false);
@@ -1427,8 +1437,8 @@ export function AdmissionsFormBuilder({
                       targetStatus === "published" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
                     }`}
                   >
-                    <span>Publish Form Live (Open Campaign)</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Promote form and open the admissions intake</span>
+                    <span>Publish Form Replacement</span>
+                    <span className="text-[10px] text-slate-400 font-medium">Promote the replacement while preserving paused or closed availability</span>
                   </button>
                 </div>
               </>
@@ -1437,7 +1447,7 @@ export function AdmissionsFormBuilder({
 
           {intakeDoc?.status && intakeDoc.status !== "draft" && (
             <p className="text-[9px] text-slate-400 font-medium font-sans text-center mt-0.5">
-              * Campaign is already live and cannot be returned to draft state.
+              * Existing campaign availability is preserved. Publish a replacement without reopening a paused or closed intake.
             </p>
           )}
 

@@ -302,6 +302,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_programme", ["schoolId", "programmeId"])
+    .index("by_intake", ["intakeId"])
     .index("by_intake_and_status", ["intakeId", "status"])
     .index("by_school_and_programme_and_version", ["schoolId", "programmeId", "version"]),
 
