@@ -8,6 +8,9 @@ const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const authClient = createAppAuthClient(typeof window === "undefined" ? "http://localhost:3004" : window.location.origin);
 
+import { MeloLoader } from "@school/shared";
+export { MeloLoader };
+
 export function ApplyClientProvider({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -16,7 +19,7 @@ export function ApplyClientProvider({ children }: { children: ReactNode }) {
   // environment values are compiled for the browser and may not be present in
   // an already-running development server until it is restarted.
   if (!mounted) {
-    return <main className="shell"><p className="muted">Loading the application service…</p></main>;
+    return <main className="shell"><MeloLoader message="Loading the application service…" /></main>;
   }
 
   if (!client) {

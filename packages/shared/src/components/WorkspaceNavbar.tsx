@@ -145,6 +145,7 @@ export function WorkspaceNavbar({
                   "/billing",
                   "/assessments/results/entry",
                   "/assessments/report-card-extras",
+                  "/admissions",
                   "/academic/knowledge/library",
                   "/academic/knowledge/curriculum-import",
                   "/academic/knowledge/curriculum-readiness",
@@ -343,19 +344,16 @@ export function WorkspaceNavbar({
             </button>
           </div>
         </header>
-
         {/* ── MAIN SCROLL AREA ── */}
         <main
-          className={`flex-1 overflow-y-auto overflow-x-hidden w-full relative custom-scrollbar scrollbar-hide ${
-            fullBleed ? "" : "p-4 sm:p-6 lg:p-8"
+          className={`flex-1 w-full relative custom-scrollbar scrollbar-hide ${
+            fullBleed ? "h-full overflow-hidden" : "overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8"
           }`}
         >
-          <div className={fullBleed ? "w-full" : "mx-auto max-w-[1600px]"}>
+          <div className={fullBleed ? "w-full h-full flex flex-col min-h-0" : "mx-auto max-w-[1600px]"}>
             {children}
           </div>
-        </main>
-
-        {/* ═══ MOBILE DRAWER ═══════════════════════════════════ */}
+        </main>        {/* ═══ MOBILE DRAWER ═══════════════════════════════════ */}
         {open && (
           <div className="fixed inset-0 z-[100] flex flex-col bg-white xl:hidden transition-all duration-300 animate-in fade-in slide-in-from-right-5">
             <div className="flex h-16 shrink-0 items-center justify-between px-4 border-b border-slate-100">

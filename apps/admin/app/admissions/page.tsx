@@ -1,149 +1,149 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { ClipboardCopy, FileKey2, LockKeyhole, RefreshCw } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
-import { appToast } from "@school/shared/toast";
-import { AdminHeader } from "@/components/ui/AdminHeader";
-import { AdminSurface } from "@/components/ui/AdminSurface";
-import { canRecordDecision, canReopenDecision, canRequestCorrections, canStartReview, copyCanonicalApplicationLink, decisionReadinessBlockers, documentAccessDeniedMessage, hasScopedCapability, settingsSurfaceAccess, type CapabilityGrant, type ConversionState, type DecisionReadiness, type DocumentAccessDenialReason } from "@/admissions/models";
-import { AdmissionsSettingsWorkbench } from "./AdmissionsSettingsWorkbench";
+import { useQuery, useMutation } from "convex/react";
+import { MeloLoader, appToast, getUserFacingErrorMessage } from "@school/shared";
+import { AdmissionsHub } from "./AdmissionsHub";
+import { AdmissionsTriage } from "./AdmissionsTriage";
+import { AdmissionsFormBuilder } from "./AdmissionsFormBuilder";
 
 type Branding = { schoolId: string; slug: string; name: string };
+type CapabilityGrant = { 
+  capability: string; 
+  scope: string; 
+  programmeId?: string | null;
+  intakeId?: string | null;
+};
 type CapabilityProjection = { membership: { schoolId: string } | null; capabilities: CapabilityGrant[] };
-type Catalogue = { programmes: Array<{ id: string; slug: string; name: string; status: string }>; intakes: Array<{ id: string; programmeId: string; slug: string; name: string; status: string; opensAt: number; closesAt: number }>; products: Array<{ id: string; intakeId: string; slug: string; name: string; status: string }>; forms: Array<{ id: string; intakeId: string | null; version: number; schemaVersion: string; status: string }> };
-type Queue = { page: Array<{ applicationId: string; publicId: string; state: string; updatedAt: number; intakeId: string }>; isDone: boolean; continueCursor: string };
-type Detail = { applicationId: string; publicId: string; state: string; revision: number; snapshotId: string | null; decisionState: string | null; conversionState: ConversionState | null; documentCount: number; profile: { firstName: string; lastName: string; middleName: string | null; preferredName: string | null; dateOfBirth: number; gender: string | null; nationality: string | null; countryOfBirth: string | null; address: string | null } | null; answers: Array<{ key: string; label: string; valueType: string; value: string | null; dataClass: string; redacted: boolean }>; sensitiveAnswerCount: number; decisionReadiness: DecisionReadiness } | null;
-type DocumentRow = { documentId: string; documentKey: string; category: string; state: string; sensitivity: string; version: number; updatedAt: number };
-type DocumentAccessResult = { status: "available"; url: string } | { status: "unavailable"; denialReason?: DocumentAccessDenialReason };
-type ReviewAssignment = { assignmentId: string; assigneeUserId: string; name: string; role: string };
-
-function Denied({ capability }: { capability: string }) { return <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><span className="flex gap-2 font-bold"><LockKeyhole className="h-4 w-4" />You need {capability}</span><p className="mt-1 text-xs">This is an explicit school, programme, and intake-scoped capability. The server checks it again.</p></div>; }
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) { return <label className="block text-xs font-bold text-slate-700">{label}<input type={type} value={value} onChange={event => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm" /></label>; }
 
 export default function AdmissionsPage() {
   const branding = useQuery("functions/academic/schoolBranding:getCurrentSchoolBranding" as never, {} as never) as Branding | undefined;
-  const capabilities = useQuery("functions/foundation/auth:getViewerCapabilities" as never, branding ? { schoolId: branding.schoolId } as never : "skip" as never) as CapabilityProjection | undefined;
-  const catalogueAllowed = hasScopedCapability(capabilities?.capabilities, "admissions.catalogue.manage", {});
-  const publishAllowed = hasScopedCapability(capabilities?.capabilities, "admissions.publish", {});
-  const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, branding && catalogueAllowed ? { schoolId: branding.schoolId } as never : "skip" as never) as Catalogue | undefined;
-  const publicationReview = useQuery("functions/admissions/settings:getPublicationReview" as never, branding && publishAllowed ? { schoolId: branding.schoolId } as never : "skip" as never) as Catalogue | undefined;
-  const queueIntakes = useQuery("functions/admissions/staff:listAccessibleIntakes" as never, branding && capabilities ? { schoolId: branding.schoolId } as never : "skip" as never) as Array<{ intakeId: string; name: string; status: string }> | undefined;
-  const canonicalLink = useQuery("functions/foundation/applicationLinks:getApplicationLink" as never, branding ? { schoolSlug: branding.slug } as never : "skip" as never) as { href: string; availability: string } | undefined;
-  const [intakeId, setIntakeId] = useState(""); const [state, setState] = useState(""); const [cursor, setCursor] = useState<string | null>(null); const [previousCursors, setPreviousCursors] = useState<Array<string | null>>([]); const [selectedId, setSelectedId] = useState<string | null>(null);
-  const queue = useQuery("functions/admissions/staff:listQueuePage" as never, branding && intakeId ? { schoolId: branding.schoolId, intakeId, ...(state ? { state } : {}), paginationOpts: { numItems: 25, cursor } } as never : "skip" as never) as Queue | undefined;
-  const detail = useQuery("functions/admissions/staff:getApplicationDetail" as never, selectedId ? { applicationId: selectedId } as never : "skip" as never) as Detail | undefined;
-  const can = (capability: CapabilityGrant["capability"], scope: { intakeId?: string } = {}) => hasScopedCapability(capabilities?.capabilities, capability, scope);
-  const chooseIntake = (value: string) => { setIntakeId(value); setCursor(null); setPreviousCursors([]); setSelectedId(null); };
-  return <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8"><div className="mx-auto max-w-7xl space-y-6"><AdminHeader label="Admissions" title="Admissions operations and settings" description={branding ? `Tenant-scoped workspace for ${branding.name}.` : "Loading your school context…"} />
-    <section><CanonicalLink link={canonicalLink} /><AdminSurface intensity="medium" rounded="2xl" className="mt-4 p-5"><details><summary className="cursor-pointer text-xs font-black">Access details</summary><p className="mt-2 text-xs text-slate-600">Use this diagnostic only to confirm the capabilities currently effective for this school. The server authorizes every action again.</p>{capabilities?.membership ? <ul className="mt-3 flex flex-wrap gap-2">{capabilities.capabilities.map((grant, index) => <li key={`${grant.capability}-${index}`} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold">{grant.capability} · {grant.scope}</li>)}</ul> : <div className="mt-3"><Denied capability="a school membership" /></div>}</details></AdminSurface></section>
-    <section className="grid gap-6 xl:grid-cols-2"><SettingsPanel branding={branding} catalogue={catalogue} publicationReview={publicationReview} allowed={catalogueAllowed} publishAllowed={publishAllowed} sensitiveAllowed={can("admissions.sensitive.configure")} /><QueuePanel intakes={queueIntakes} allowed={can("applications.list", { intakeId })} intakeId={intakeId} onIntake={chooseIntake} state={state} onState={value => { setState(value); setCursor(null); setPreviousCursors([]); }} queue={queue} onPrevious={() => { const next = previousCursors.at(-1) ?? null; setPreviousCursors(items => items.slice(0, -1)); setCursor(next); }} onNext={() => { if (queue && !queue.isDone) { setPreviousCursors(items => [...items, cursor]); setCursor(queue.continueCursor); } }} onSelect={setSelectedId} /></section>
-    <DetailPanel detail={detail} canView={can("applications.view_basic", { intakeId })} canReview={can("documents.review", { intakeId })} canRecord={can("reviews.record", { intakeId })} canAssign={can("reviews.assign", { intakeId })} canDecide={can("decisions.record", { intakeId })} canConvert={can("conversions.execute", { intakeId })} />
-  </div></main>;
-}
+  const capabilities = useQuery(
+    "functions/foundation/auth:getViewerCapabilities" as never,
+    branding ? { schoolId: branding.schoolId } as never : "skip" as never
+  ) as CapabilityProjection | undefined;
 
-function CanonicalLink({ link }: { link: { href: string; availability: string } | undefined }) { const [copied, setCopied] = useState(false); const copy = async () => { try { if (!link || !await copyCanonicalApplicationLink(link)) throw new Error("Clipboard unavailable"); setCopied(true); appToast.success("Application link copied"); } catch (error) { appToast.error("Could not copy link", { description: getUserFacingErrorMessage(error, "Select and copy the URL manually.") }); } }; return <AdminSurface intensity="medium" rounded="2xl" className="space-y-3 p-5"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Canonical public link</p><h2 className="text-base font-black">External-site application URL</h2>{link ? <><p className="break-all text-sm font-semibold">{link.href}</p><p className="text-xs text-slate-600">Availability: <strong>{link.availability}</strong></p><button type="button" onClick={() => void copy()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white"><ClipboardCopy className="h-3.5 w-3.5" />{copied ? "Copied" : "Copy link"}</button></> : <p className="text-sm text-slate-500">Loading the configured canonical link…</p>}</AdminSurface>; }
+  const deleteIntake = useMutation("functions/admissions/settings:deleteIntake" as never);
+  const setIntakeStatus = useMutation("functions/admissions/settings:setIntakeStatus" as never);
 
-function SettingsPanel({ branding, catalogue, publicationReview, allowed, publishAllowed, sensitiveAllowed }: { branding: Branding | undefined; catalogue: Catalogue | undefined; publicationReview: Catalogue | undefined; allowed: boolean; publishAllowed: boolean; sensitiveAllowed: boolean }) {
-  const createProgramme = useMutation("functions/admissions/settings:createProgramme" as never); const createIntake = useMutation("functions/admissions/settings:createIntake" as never); const createProduct = useMutation("functions/admissions/settings:createProduct" as never); const createForm = useMutation("functions/admissions/settings:createDraftForm" as never); const addField = useMutation("functions/admissions/settings:addDraftField" as never); const publishForm = useMutation("functions/admissions/settings:publishForm" as never); const retireForm = useMutation("functions/admissions/settings:retireForm" as never); const setProgrammeStatus = useMutation("functions/admissions/settings:setProgrammeStatus" as never); const setIntakeStatus = useMutation("functions/admissions/settings:setIntakeStatus" as never); const setProductStatus = useMutation("functions/admissions/settings:setProductStatus" as never);
-  const [draft, setDraft] = useState({ programmeName: "", programmeSlug: "", intakeName: "", intakeSlug: "", cycle: "", opens: "", closes: "", productName: "Application slot", productSlug: "application", fieldKey: "", fieldLabel: "" }); const [notice, setNotice] = useState("");
-  const access = settingsSurfaceAccess({ hasCatalogueCapability: allowed, hasPublishCapability: publishAllowed });
-  const reviewCatalogue = access.canEditDrafts ? catalogue : publicationReview;
-  const saveCatalogue = async () => { if (!branding) return; try { const programmeId = await createProgramme({ schoolId: branding.schoolId, name: draft.programmeName, slug: draft.programmeSlug } as never); const intakeId = await createIntake({ schoolId: branding.schoolId, programmeId, name: draft.intakeName, slug: draft.intakeSlug, cycleLabel: draft.cycle, opensAt: new Date(draft.opens).getTime(), closesAt: new Date(draft.closes).getTime() } as never); await createProduct({ schoolId: branding.schoolId, intakeId, name: draft.productName, slug: draft.productSlug } as never); const formId = await createForm({ schoolId: branding.schoolId, programmeId, intakeId, schemaVersion: "1" } as never); if (draft.fieldKey && draft.fieldLabel) await addField({ formVersionId: formId, fieldKey: draft.fieldKey, sectionKey: "child", kind: "text", label: draft.fieldLabel, requiredMode: "optional", dataClass: "personal", validationJson: "{}", order: 0 } as never); setNotice("Draft catalogue saved on the server. Publish each item only after checking its disclosures and configuration."); } catch (error) { setNotice(getUserFacingErrorMessage(error, "Could not save this catalogue draft.")); } };
-  if (!access.allowed) return <AdminSurface intensity="medium" rounded="2xl" className="p-5"><h2 className="mb-4 text-base font-black">Admissions settings</h2><Denied capability="admissions.catalogue.manage or admissions.publish" /></AdminSurface>;
-  return <AdminSurface intensity="medium" rounded="2xl" className="space-y-4 p-5"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Persisted typed catalogue</p><h2 className="text-base font-black">Programme, intake, product and form</h2></div>{access.canEditDrafts ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="Programme name" value={draft.programmeName} onChange={value => setDraft({ ...draft, programmeName: value })} /><Field label="Programme slug" value={draft.programmeSlug} onChange={value => setDraft({ ...draft, programmeSlug: value })} /><Field label="Intake name" value={draft.intakeName} onChange={value => setDraft({ ...draft, intakeName: value })} /><Field label="Intake slug" value={draft.intakeSlug} onChange={value => setDraft({ ...draft, intakeSlug: value })} /><Field label="Cycle label" value={draft.cycle} onChange={value => setDraft({ ...draft, cycle: value })} /><Field label="Opens" type="datetime-local" value={draft.opens} onChange={value => setDraft({ ...draft, opens: value })} /><Field label="Closes" type="datetime-local" value={draft.closes} onChange={value => setDraft({ ...draft, closes: value })} /><Field label="Product name" value={draft.productName} onChange={value => setDraft({ ...draft, productName: value })} /><Field label="Product slug" value={draft.productSlug} onChange={value => setDraft({ ...draft, productSlug: value })} /><Field label="Optional first field key" value={draft.fieldKey} onChange={value => setDraft({ ...draft, fieldKey: value })} /><Field label="Optional first field label" value={draft.fieldLabel} onChange={value => setDraft({ ...draft, fieldLabel: value })} /></div><button type="button" onClick={() => void saveCatalogue()} className="h-10 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white">Save server draft</button>{notice ? <p className="status" role="status">{notice}</p> : null}</> : <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs">Publication review is read-only. Draft editing requires admissions.catalogue.manage.</p>}<CatalogueTable catalogue={reviewCatalogue} publishAllowed={access.canPublish} onProgramme={async (id, status) => { await setProgrammeStatus({ programmeId: id, status } as never); }} onIntake={async (id, status) => { await setIntakeStatus({ intakeId: id, status } as never); }} onProduct={async (id, status) => { await setProductStatus({ productId: id, status } as never); }} onForm={async (id, status) => { await (status === "published" ? publishForm : retireForm)({ formVersionId: id } as never); }} />{access.canEditDrafts ? <AdmissionsSettingsWorkbench schoolId={branding?.schoolId} catalogue={catalogue} publishAllowed={access.canPublish} sensitiveAllowed={sensitiveAllowed} /> : null}</AdminSurface>;
-}
+  const queueIntakes = useQuery(
+    "functions/admissions/staff:listAccessibleIntakes" as never,
+    branding && capabilities ? { schoolId: branding.schoolId } as never : "skip" as never
+  ) as Array<{ intakeId: string; name: string; status: string; slug?: string; opensAt?: number; closesAt?: number }> | undefined;
 
-function CatalogueTable({ catalogue, publishAllowed, onProgramme, onIntake, onProduct, onForm }: { catalogue: Catalogue | undefined; publishAllowed: boolean; onProgramme: (id: string, state: string) => Promise<void>; onIntake: (id: string, state: string) => Promise<void>; onProduct: (id: string, state: string) => Promise<void>; onForm: (id: string, state: string) => Promise<void> }) { if (!catalogue) return <p className="text-sm text-slate-500">Loading saved catalogue…</p>; return <div className="space-y-2 text-xs"><h3 className="font-black">Saved server catalogue</h3>{[...catalogue.programmes.map(item => ({ ...item, type: "Programme", action: item.status === "draft" ? "published" : "closed", invoke: onProgramme })), ...catalogue.intakes.map(item => ({ ...item, type: "Intake", action: item.status === "draft" || item.status === "paused" ? "open" : "closed", invoke: onIntake })), ...catalogue.products.map(item => ({ ...item, type: "Product", action: item.status === "draft" || item.status === "paused" ? "active" : "retired", invoke: onProduct })), ...catalogue.forms.map(item => ({ ...item, name: `Form v${item.version}`, type: "Form", action: item.status === "draft" ? "published" : "retired", invoke: onForm }))].map((item: any) => <div key={`${item.type}-${item.id}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 p-2"><span>{item.type} · <strong>{item.name}</strong> · {item.status}</span>{publishAllowed ? <button type="button" className="underline" onClick={() => void item.invoke(item.id, item.action)}>{item.action}</button> : null}</div>)}</div>; }
+  // View state management
+  const [activeView, setActiveView] = useState<"hub" | "drilldown" | "setup">("hub");
+  const [selectedIntakeId, setSelectedIntakeId] = useState("");
+  const [selectedIntakeName, setSelectedIntakeName] = useState("");
 
-function QueuePanel({ intakes, allowed, intakeId, onIntake, state, onState, queue, onPrevious, onNext, onSelect }: { intakes: Array<{ intakeId: string; name: string; status: string }> | undefined; allowed: boolean; intakeId: string; onIntake: (value: string) => void; state: string; onState: (value: string) => void; queue: Queue | undefined; onPrevious: () => void; onNext: () => void; onSelect: (id: string) => void }) { return <AdminSurface intensity="medium" rounded="2xl" className="space-y-4 p-5"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Staff queue</p><h2 className="text-base font-black">Redacted cursor-backed triage</h2></div><label className="block text-xs font-bold">Intake<select value={intakeId} onChange={event => onIntake(event.target.value)} className="mt-1 h-10 w-full rounded border px-2"><option value="">Choose a saved intake</option>{intakes?.map(intake => <option key={intake.intakeId} value={intake.intakeId}>{intake.name} · {intake.status}</option>)}</select></label><label className="block text-xs font-bold">State<select value={state} onChange={event => onState(event.target.value)} className="mt-1 h-10 w-full rounded border px-2"><option value="">All states</option>{["draft", "submitted", "under_review", "changes_requested", "accepted", "rejected", "waitlisted", "withdrawn"].map(value => <option key={value}>{value}</option>)}</select></label>{!intakeId ? <p className="text-sm text-slate-500">Choose an intake to load a bounded queue.</p> : !allowed ? <Denied capability="applications.list" /> : !queue ? <p className="text-sm text-slate-500">Loading safe queue rows…</p> : <><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-slate-500"><th>Reference</th><th>State</th><th>Updated</th><th /></tr></thead><tbody>{queue.page.map(row => <tr className="border-b" key={row.applicationId}><td className="py-2 font-mono text-xs">{row.publicId}</td><td>{row.state}</td><td className="text-xs">{new Date(row.updatedAt).toLocaleString()}</td><td><button type="button" className="underline" onClick={() => onSelect(row.applicationId)}>Open</button></td></tr>)}</tbody></table>{!queue.page.length ? <p className="text-sm text-slate-500">No applications match these filters.</p> : null}<div className="flex justify-end gap-2"><button type="button" disabled={!queue || queue.page.length === 0} onClick={onPrevious} className="h-9 rounded border px-3 text-xs disabled:opacity-50">Previous</button><button type="button" disabled={queue.isDone} onClick={onNext} className="h-9 rounded border px-3 text-xs disabled:opacity-50">Next</button></div></>}</AdminSurface>; }
+  const handleEnterWorkstation = (intakeId: string, name: string) => {
+    setSelectedIntakeId(intakeId);
+    setSelectedIntakeName(name);
+    setActiveView("drilldown");
+  };
 
-function DetailPanel({ detail, canView, canReview, canRecord, canAssign, canDecide, canConvert }: { detail: Detail | undefined; canView: boolean; canReview: boolean; canRecord: boolean; canAssign: boolean; canDecide: boolean; canConvert: boolean }) { const documents = useQuery("functions/admissions/staff:listApplicationDocuments" as never, detail && canReview ? { applicationId: detail.applicationId } as never : "skip" as never) as DocumentRow[] | undefined; const audit = useQuery("functions/admissions/staff:getAuditPage" as never, detail ? { applicationId: detail.applicationId, paginationOpts: { numItems: 20, cursor: null } } as never : "skip" as never) as any; const reveal = useMutation("functions/admissions/staff:revealSensitiveApplicationDetail" as never); const [revealed, setRevealed] = useState<NonNullable<Detail> | null>(null); const [reason, setReason] = useState("Admissions application review"); if (detail === undefined) return null; if (!canView) return <AdminSurface intensity="medium" rounded="2xl" className="p-5"><Denied capability="applications.view_basic" /></AdminSurface>; if (!detail) return <AdminSurface intensity="medium" rounded="2xl" className="p-5">This application is unavailable.</AdminSurface>; const projection = revealed?.applicationId === detail.applicationId ? revealed : detail; const revealSensitive = async () => { try { const result = await reveal({ applicationId: detail.applicationId, reason } as never) as NonNullable<Detail>; setRevealed(result); appToast.success("Sensitive answers disclosed and audited"); } catch (error) { appToast.error("Sensitive answers remain redacted", { description: getUserFacingErrorMessage(error, "The exact capability and fresh authentication are required.") }); } }; return <section className="grid gap-6 xl:grid-cols-2"><AdminSurface intensity="medium" rounded="2xl" className="space-y-4 p-5"><p className="font-mono text-xs">{detail.publicId}</p><h2 className="text-base font-black">Revision {detail.revision} · {detail.state}</h2>{projection.profile ? <div className="rounded border p-3 text-sm"><strong>{projection.profile.firstName} {projection.profile.middleName} {projection.profile.lastName}</strong><p>DOB: {new Date(projection.profile.dateOfBirth).toLocaleDateString()}</p></div> : <p className="rounded border border-amber-200 bg-amber-50 p-3 text-xs">No submitted snapshot is available. Review and decision controls remain blocked.</p>}<div className="space-y-2"><h3 className="text-sm font-black">Submitted typed answers</h3>{projection.answers.map(answer => <p className="rounded border p-2 text-xs" key={answer.key}><strong>{answer.label}</strong>: {answer.redacted ? <span className="text-amber-700">Sensitive value redacted</span> : answer.value}</p>)}{detail.sensitiveAnswerCount > 0 && !revealed ? <><Field label="Sensitive access reason" value={reason} onChange={setReason} /><button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void revealSensitive()}>Reveal with fresh authentication</button></> : null}</div><ReviewActions key={detail.applicationId} detail={detail} allowed={canRecord} assign={canAssign} decide={canDecide} /><AuditTimeline audit={audit} /></AdminSurface><AdminSurface intensity="medium" rounded="2xl" className="space-y-4 p-5"><h2 className="text-base font-black">Documents and conversion</h2>{canReview ? <DocumentList documents={documents} /> : <Denied capability="documents.review" />}<ConversionPanel key={detail.applicationId} detail={detail} allowed={canConvert} /></AdminSurface></section>; }
+  const handleCreateForm = () => {
+    setSelectedIntakeId("");
+    setActiveView("setup");
+  };
 
-function ReviewActions({ detail, allowed, assign, decide }: { detail: NonNullable<Detail>; allowed: boolean; assign: boolean; decide: boolean }) {
-  const assignees = useQuery("functions/admissions/staff:listAssignableStaff" as never, assign ? { applicationId: detail.applicationId } as never : "skip" as never) as Array<{ userId: string; name: string }> | undefined;
-  const assignments = useQuery("functions/admissions/staff:listActiveReviewAssignments" as never, assign ? { applicationId: detail.applicationId } as never : "skip" as never) as ReviewAssignment[] | undefined;
-  const changeItems = useQuery("functions/admissions/staff:listChangeRequestItems" as never, allowed ? { applicationId: detail.applicationId } as never : "skip" as never) as { core: Array<{ key: string; label: string }>; fields: Array<{ key: string; label: string }>; requirements: Array<{ key: string; label: string }> } | undefined;
-  const assignReview = useMutation("functions/admissions/staff:assignReview" as never);
-  const startReview = useMutation("functions/admissions/staff:startReview" as never);
-  const requestChanges = useMutation("functions/admissions/staff:requestChanges" as never);
-  const recordDecision = useMutation("functions/admissions/staff:recordDecision" as never);
-  const reopenDecision = useMutation("functions/admissions/staff:reopenDecision" as never);
-  const [assignee, setAssignee] = useState("");
-  const [correctionMessage, setCorrectionMessage] = useState("");
-  const [requestedCoreKeys, setRequestedCoreKeys] = useState<string[]>([]);
-  const [requestedFieldKeys, setRequestedFieldKeys] = useState<string[]>([]);
-  const [requestedRequirementKeys, setRequestedRequirementKeys] = useState<string[]>([]);
-  const [decisionReasonCode, setDecisionReasonCode] = useState("");
-  const [decisionGuardianMessage, setDecisionGuardianMessage] = useState("");
-  const [decisionOutcome, setDecisionOutcome] = useState("accepted");
-  const [decisionConfirmed, setDecisionConfirmed] = useState(false);
-  const [reopenReasonCode, setReopenReasonCode] = useState("");
-  const [reopenGuardianMessage, setReopenGuardianMessage] = useState("");
-  const [reopenConfirmed, setReopenConfirmed] = useState(false);
-  const selectedItemCount = requestedCoreKeys.length + requestedFieldKeys.length + requestedRequirementKeys.length;
-  const readinessBlockers = decisionReadinessBlockers(detail.decisionReadiness);
-  const canRequest = canRequestCorrections({ applicationState: detail.state, guardianMessage: correctionMessage, selectedItemCount });
-  const canDecideNow = canRecordDecision({ applicationState: detail.state, readiness: detail.decisionReadiness, reasonCode: decisionReasonCode, guardianMessage: decisionGuardianMessage });
-  const reopening = decide && ["accepted", "rejected"].includes(detail.state) && detail.conversionState !== "succeeded";
-  const canReopen = canReopenDecision({ applicationState: detail.state, conversionState: detail.conversionState, reasonCode: reopenReasonCode, guardianMessage: reopenGuardianMessage });
-  const toggle = (key: string, setter: (update: (keys: string[]) => string[]) => void) => setter(keys => keys.includes(key) ? keys.filter(item => item !== key) : [...keys, key]);
-  const showFailure = (title: string, error: unknown, fallback: string) => appToast.error(title, { description: getUserFacingErrorMessage(error, fallback) });
+  const handleEditForm = (intakeId: string) => {
+    setSelectedIntakeId(intakeId);
+    setActiveView("setup");
+  };
 
-  if (!allowed && !assign && !decide) return <Denied capability="reviews.record, reviews.assign or decisions.record" />;
-
-  return <div className="space-y-4 border-t pt-3">
-    <section className="space-y-2">
-      <h3 className="text-sm font-black">Review start and status</h3>
-      {assign ? <div><label className="block text-xs font-bold">Assign reviewer<select value={assignee} onChange={event => setAssignee(event.target.value)} className="mt-1 h-10 w-full rounded border px-2"><option value="">Choose eligible reviewer</option>{assignees?.map(item => <option key={item.userId} value={item.userId}>{item.name}</option>)}</select></label><p className="mt-1 text-xs text-slate-500">Assignment coordinates review only. It does not grant document access.</p><div className="mt-2 rounded border border-slate-200 p-2 text-xs"><strong>Current reviewer assignments</strong>{assignments === undefined ? <p className="mt-1 text-slate-500">Loading assignments…</p> : assignments.length ? <ul className="mt-1 space-y-1">{assignments.map(item => <li key={item.assignmentId}>{item.name} · {item.role}</li>)}</ul> : <p className="mt-1 text-slate-500">No active reviewer assignments.</p>}<p className="mt-1 text-slate-500">These assignments coordinate work only; they grant no document access.</p></div><button type="button" disabled={!assignee} className="mt-2 h-9 rounded border px-3 text-xs disabled:opacity-50" onClick={() => void (async () => { try { await assignReview({ applicationId: detail.applicationId, assigneeUserId: assignee, role: "reviewer" } as never); appToast.success("Reviewer assignment confirmed"); } catch (error) { showFailure("Could not assign reviewer", error, "Refresh the application and try again."); } })()}>Assign reviewer</button></div> : null}
-      {allowed && canStartReview(detail.state) ? <button type="button" className="h-9 rounded border px-3 text-xs" onClick={() => void (async () => { try { await startReview({ applicationId: detail.applicationId } as never); appToast.success("Review started"); } catch (error) { showFailure("Could not start review", error, "Refresh the application status and try again."); } })()}>Start review</button> : null}
-      {allowed && detail.state === "under_review" ? <p className="text-xs text-slate-600">Review is in progress. You can request named corrections or complete the decision workflow when ready.</p> : null}
-      {allowed && !canStartReview(detail.state) && detail.state !== "under_review" ? <p className="text-xs text-slate-600">Review actions are unavailable in this application state.</p> : null}
-    </section>
-
-    {allowed && (detail.state === "submitted" || detail.state === "under_review") ? <section className="space-y-2 border-t pt-3">
-      <h3 className="text-sm font-black">Request corrections</h3>
-      <p className="text-xs text-slate-600">Choose the only core fields, form fields, or documents the guardian may reopen. This records a new one-way status timeline event; it is not a conversation.</p>
-      <Field label="Message shown to guardian" value={correctionMessage} onChange={setCorrectionMessage} />
-      <fieldset className="space-y-2 text-xs"><legend className="font-bold">Items the guardian can edit</legend><p className="text-slate-500">Nothing is selected by default. The guardian can edit only the items selected here.</p><div className="flex flex-wrap gap-x-3 gap-y-2">{changeItems?.core.map(item => <label key={item.key}><input type="checkbox" checked={requestedCoreKeys.includes(item.key)} onChange={() => toggle(item.key, setRequestedCoreKeys)} /> {item.label}</label>)}{changeItems?.fields.map(item => <label key={item.key}><input type="checkbox" checked={requestedFieldKeys.includes(item.key)} onChange={() => toggle(item.key, setRequestedFieldKeys)} /> {item.label}</label>)}{changeItems?.requirements.map(item => <label key={item.key}><input type="checkbox" checked={requestedRequirementKeys.includes(item.key)} onChange={() => toggle(item.key, setRequestedRequirementKeys)} /> {item.label} document</label>)}</div></fieldset>
-      <button type="button" disabled={!canRequest} className="h-9 rounded border px-3 text-xs disabled:opacity-50" onClick={() => void (async () => { try { await requestChanges({ applicationId: detail.applicationId, message: correctionMessage, coreKeys: requestedCoreKeys, fieldKeys: requestedFieldKeys, requirementKeys: requestedRequirementKeys } as never); appToast.success("Corrections requested"); } catch (error) { showFailure("Could not request corrections", error, "Refresh the application status and try again."); } })()}>Request corrections</button>
-    </section> : null}
-
-    {decide ? <section className="space-y-2 border-t pt-3">
-      <h3 className="text-sm font-black">Decision</h3>
-      {["submitted", "under_review", "waitlisted"].includes(detail.state) ? <><p className="text-xs text-slate-600">A decision records an immutable decision version. It does not create a student.</p>{readinessBlockers.length > 0 ? <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950"><strong>Before a decision can be recorded:</strong><ul className="mt-1 list-disc pl-4">{readinessBlockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul></div> : <p className="text-xs text-teal-700">All decision readiness checks are complete.</p>}<Field label="Internal reason code" value={decisionReasonCode} onChange={setDecisionReasonCode} /><Field label="Message shown to guardian" value={decisionGuardianMessage} onChange={setDecisionGuardianMessage} /><label className="block text-xs font-bold">Decision<select value={decisionOutcome} onChange={event => { setDecisionOutcome(event.target.value); setDecisionConfirmed(false); }} className="mt-1 h-10 w-full rounded border px-2"><option value="accepted">Accept application</option><option value="waitlisted">Place on waitlist</option><option value="rejected">Reject application</option></select></label>{decisionOutcome !== "waitlisted" ? <label className="flex gap-2 text-xs"><input type="checkbox" checked={decisionConfirmed} onChange={event => setDecisionConfirmed(event.target.checked)} />I confirm this {decisionOutcome === "accepted" ? "acceptance" : "rejection"}. Reopening is a separate audited action and is unavailable after successful conversion.</label> : null}<button type="button" disabled={!canDecideNow || (decisionOutcome !== "waitlisted" && !decisionConfirmed)} className="h-9 rounded bg-slate-950 px-3 text-xs font-bold text-white disabled:opacity-50" onClick={() => void (async () => { try { await recordDecision({ applicationId: detail.applicationId, state: decisionOutcome, reasonCode: decisionReasonCode, guardianMessage: decisionGuardianMessage } as never); appToast.success("Decision recorded"); } catch (error) { showFailure("Could not record decision", error, "Complete the required review work and refresh before trying again."); } })()}>Record decision</button></> : reopening ? <><p className="text-xs text-amber-800">Reopening is an audited action that returns this application to review. It cannot be used after successful conversion.</p><Field label="Internal reopen reason code" value={reopenReasonCode} onChange={setReopenReasonCode} /><Field label="Reopen message shown to guardian" value={reopenGuardianMessage} onChange={setReopenGuardianMessage} /><label className="flex gap-2 text-xs"><input type="checkbox" checked={reopenConfirmed} onChange={event => setReopenConfirmed(event.target.checked)} />I understand reopening records a new guardian-visible status event and does not replace the prior decision.</label><button type="button" disabled={!canReopen || !reopenConfirmed} className="h-9 rounded border px-3 text-xs disabled:opacity-50" onClick={() => void (async () => { try { await reopenDecision({ applicationId: detail.applicationId, reasonCode: reopenReasonCode, guardianMessage: reopenGuardianMessage } as never); appToast.success("Decision reopened for review"); } catch (error) { showFailure("Could not reopen decision", error, "This decision may no longer be eligible for reopening."); } })()}>Reopen decision</button></> : <p className="text-xs text-slate-600">No decision action is available in this application state.</p>}
-    </section> : null}
-  </div>;
-}
-
-function DocumentList({ documents }: { documents: DocumentRow[] | undefined }) { const access = useMutation("functions/admissions/staff:getDocumentAccess" as never); const review = useMutation("functions/admissions/staff:recordDocumentReview" as never); const [reason, setReason] = useState("Admissions review"); const [url, setUrl] = useState<string | null>(null); const open = async (documentKey: string) => { try { const result = await access({ documentKey, action: "view", reason } as never) as DocumentAccessResult; if (result.status !== "available") { appToast.error("Sensitive file unavailable", { description: documentAccessDeniedMessage(result.denialReason) }); return; } setUrl(result.url); } catch (error) { appToast.error("Sensitive file unavailable", { description: getUserFacingErrorMessage(error, "The file is unavailable. Confirm your access and retry.") }); } }; const accept = async (documentId: string) => { try { await review({ documentId, result: "accepted" } as never); appToast.success("Document accepted"); } catch (error) { appToast.error("Could not review document", { description: getUserFacingErrorMessage(error, "Refresh the document status and try again.") }); } }; return <div className="space-y-3"><p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">“Sensitive file” is a classification, not an access or error status. A file requiring sensitive access also needs the applicable document capability, a recorded reason, and a sign-in from the last five minutes. Reviewer assignment is unrelated to document access.</p><Field label="Checked access reason (8–250 characters)" value={reason} onChange={setReason} />{documents?.map(document => <article className="rounded border border-slate-200 p-3 text-xs" key={document.documentId}><strong>{document.category}</strong> · version {document.version} · {document.state}{document.sensitivity !== "personal" ? <span className="ml-2 rounded bg-amber-50 px-1">Sensitive file</span> : null}<div className="mt-2 flex flex-wrap gap-2"><button type="button" className="underline" onClick={() => void open(document.documentKey)}>View file</button>{document.state === "uploaded" ? <button type="button" className="underline" onClick={() => void accept(document.documentId)}>Accept document</button> : null}</div></article>)}{url ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 underline"><FileKey2 className="mr-1 h-3.5 w-3.5" />Open temporary checked URL</a> : null}</div>; }
-function AuditTimeline({ audit }: { audit: any }) { return <div className="border-t pt-3"><h3 className="text-sm font-black">Redacted audit timeline</h3>{audit?.page?.map((event: any) => <p className="mt-2 text-xs" key={`${event.action}-${event.createdAt}`}>{new Date(event.createdAt).toLocaleString()} · {event.action} · {event.outcome}{event.reasonCode ? ` · ${event.reasonCode}` : ""}</p>) ?? <p className="text-xs text-slate-500">Loading audit events…</p>}</div>; }
-function ConversionPanel({ detail, allowed }: { detail: NonNullable<Detail>; allowed: boolean }) {
-  const classes = useQuery("functions/admissions/staff:listConversionClasses" as never, allowed && detail.decisionState === "accepted" && detail.conversionState === null ? { applicationId: detail.applicationId } as never : "skip" as never) as Array<{ classId: string; name: string }> | undefined;
-  const resolve = useMutation("functions/admissions/conversions:resolveConversion" as never);
-  const execute = useMutation("functions/admissions/conversions:executeAcceptedConversion" as never);
-  const [confirmed, setConfirmed] = useState(false);
-  const [classId, setClassId] = useState("");
-  const [admissionNumber, setAdmissionNumber] = useState("");
-  const [key] = useState(() => crypto.randomUUID());
-  const [state, setState] = useState<ConversionState | null>(detail.conversionState);
-  const needsRecovery = state === "failed_retryable" || state === "failed_terminal" || state === "resolution_required";
-  const running = state === "requested" || state === "running";
-  const run = async () => {
+  const handleDeleteForm = async (intakeId: string) => {
+    if (!branding) return;
     try {
-      await resolve({ applicationId: detail.applicationId, parentMode: "create", familyMode: "create", studentMode: "create", reason: "Staff confirmed creation of distinct canonical parent, family and student records." } as never);
-      const result = await execute({ applicationId: detail.applicationId, classId, admissionNumber, idempotencyKey: key } as never) as { state: ConversionState; replayed: boolean };
-      setState(result.state);
-      appToast.success(result.replayed ? "Existing student-record setup recovered" : "Student and enrollment records created");
-    } catch (error) {
-      setState("resolution_required");
-      appToast.error("Student record setup needs attention", { description: getUserFacingErrorMessage(error, "Check the class, admission number, and family match. Retry this same setup rather than creating another one.") });
+      await deleteIntake({ schoolId: branding.schoolId, intakeId } as never);
+      appToast.success("Campaign deleted successfully!");
+    } catch (err) {
+      appToast.error("Failed to delete campaign", { description: getUserFacingErrorMessage(err, "An error occurred while deleting the campaign.") });
     }
   };
-  if (!allowed) return <Denied capability="conversions.execute" />;
-  if (detail.decisionState !== "accepted") return <div className="border-t pt-3"><h3 className="text-sm font-black">Student enrollment setup</h3><p className="text-xs text-slate-600">This becomes available after the application is accepted.</p></div>;
-  if (state === "succeeded") return <div className="border-t pt-3"><h3 className="text-sm font-black">Student record created</h3><p className="text-xs text-slate-600">The accepted applicant has been linked to the school’s student, family, and enrollment records. Guardian onboarding messages are handled separately.</p></div>;
-  if (detail.conversionState !== null) return <div className="border-t pt-3"><h3 className="text-sm font-black">Student enrollment setup needs support</h3><p className="text-xs text-slate-600">A previous setup attempt is still recorded. Do not start another one. An administrator must inspect and resolve that attempt before enrollment can continue.</p></div>;
-  return <div className="border-t pt-3"><h3 className="text-sm font-black">{needsRecovery ? "Finish student enrollment setup" : "Create student and enrollment records"}</h3><p className="text-xs text-slate-600">Acceptance records the admissions decision only. This separate step creates or links the student and family records, assigns the approved class, and records the admission number. Existing people are never merged automatically.</p>{needsRecovery ? <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">The previous setup attempt needs attention. Correct the details below and retry this same setup.</p> : null}<label className="block text-xs font-bold">Approved class<select value={classId} onChange={event => setClassId(event.target.value)} className="mt-1 h-10 w-full rounded border px-2"><option value="">Choose a class</option>{classes?.map(item => <option key={item.classId} value={item.classId}>{item.name}</option>)}</select></label><Field label="Admission number" value={admissionNumber} onChange={setAdmissionNumber} /><label className="mt-2 flex gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I checked the class, admission number, and family details. This creates or links the school records once.</label><button type="button" disabled={!confirmed || !classId || !admissionNumber || running} className="mt-2 inline-flex h-9 items-center gap-2 rounded border px-3 text-xs disabled:opacity-50" onClick={() => void run()}><RefreshCw className="h-3.5 w-3.5" />{needsRecovery ? "Retry student record setup" : running ? "Creating records…" : "Create student record"}</button></div>;
+
+  const handleSetIntakeStatus = async (intakeId: string, status: "open" | "paused" | "closed" | "archived") => {
+    try {
+      await setIntakeStatus({ intakeId, status } as never);
+      appToast.success(`Campaign status updated to ${status.toUpperCase()}!`);
+    } catch (err) {
+      appToast.error("Failed to update status", { description: getUserFacingErrorMessage(err, "An error occurred while updating campaign status.") });
+    }
+  };
+
+  const handleBackToHub = () => {
+    setActiveView("hub");
+    setSelectedIntakeId("");
+    setSelectedIntakeName("");
+  };
+
+  if (!branding || !capabilities) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50/50">
+        <MeloLoader message="Loading admissions workspace..." />
+      </div>
+    );
+  }
+
+  // Capability mapping
+  const can = (capability: string, scope: { intakeId?: string } = {}) => {
+    return capabilities.capabilities.some((grant) => {
+      if (grant.capability !== capability) return false;
+      if (grant.scope === "school") return true;
+      if (grant.scope === "intake") {
+        return Boolean(scope.intakeId && grant.intakeId === scope.intakeId);
+      }
+      return false;
+    });
+  };
+
+  const canManageCatalogue = can("admissions.catalogue.manage");
+  const publishAllowed = can("admissions.publish");
+
+  return (
+    <main className="lg:h-screen lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      <div className="flex-1 flex lg:overflow-hidden">
+        {activeView === "hub" && (
+          <AdmissionsHub
+            intakes={queueIntakes}
+            schoolSlug={branding?.slug}
+            onEnterWorkstation={handleEnterWorkstation}
+            onCreateForm={canManageCatalogue ? handleCreateForm : undefined}
+            onEditForm={canManageCatalogue ? handleEditForm : undefined}
+            onDeleteForm={canManageCatalogue ? handleDeleteForm : undefined}
+            onSetIntakeStatus={publishAllowed ? handleSetIntakeStatus : undefined}
+          />
+        )}
+
+        {activeView === "drilldown" && (
+          <AdmissionsTriage
+            schoolId={branding.schoolId}
+            schoolSlug={branding?.slug}
+            intakeSlug={queueIntakes?.find((intake) => intake.intakeId === selectedIntakeId)?.slug}
+            intakeId={selectedIntakeId}
+            intakeName={selectedIntakeName}
+            onBack={handleBackToHub}
+            canView={can("applications.list", { intakeId: selectedIntakeId })}
+            canReview={can("documents.review", { intakeId: selectedIntakeId })}
+            canRecord={can("reviews.record", { intakeId: selectedIntakeId })}
+            canDecide={can("decisions.record", { intakeId: selectedIntakeId })}
+            canConvert={can("conversions.execute", { intakeId: selectedIntakeId })}
+          />
+        )}
+
+        {activeView === "setup" && (
+          <AdmissionsFormBuilder
+            schoolId={branding.schoolId}
+            schoolSlug={branding?.slug}
+            intakeId={selectedIntakeId || undefined}
+            onCancel={handleBackToHub}
+            onSuccess={handleBackToHub}
+            publishAllowed={publishAllowed}
+          />
+        )}
+      </div>
+    </main>
+  );
 }

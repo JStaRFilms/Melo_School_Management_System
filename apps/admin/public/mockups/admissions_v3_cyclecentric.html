@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admissions Control Center - Version 3 (Cycle-Centric Hub)</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              DEFAULT: '#4f46e5',
+              hover: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: "Plus Jakarta Sans", sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased min-h-screen flex">
+
+  <!-- ─── SIDEBAR NAVIGATION ─── -->
+  <aside class="w-64 border-r border-slate-200 bg-white min-h-screen flex flex-col flex-shrink-0 z-30">
+    <div class="h-16 px-6 border-b border-slate-200 flex items-center gap-3">
+      <div class="h-9 w-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shadow-indigo-200">M</div>
+      <div>
+        <h1 class="font-bold text-sm text-slate-900 leading-tight">Demo Academy</h1>
+        <p class="text-[10px] font-bold text-indigo-600 uppercase">Version 3: Cycle-Centric</p>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto px-4 py-6 space-y-7 custom-scrollbar">
+      <div>
+        <p class="px-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">Daily Operations</p>
+        <nav class="space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <i data-lucide="layout-dashboard" class="h-4 w-4"></i> Dashboard
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <i data-lucide="users" class="h-4 w-4"></i> Students
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border-l-2 border-indigo-600">
+            <i data-lucide="arrow-right-left" class="h-4 w-4"></i> Admissions
+          </a>
+        </nav>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── MAIN APP CONTENT ─── -->
+  <div class="flex-1 flex flex-col min-w-0">
+    
+    <!-- Top Header -->
+    <header class="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-20">
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-slate-400 font-medium">ADMIN</span>
+        <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-slate-300"></i>
+        <span class="text-slate-400 font-medium cursor-pointer hover:underline" onclick="backToHub()">Admissions</span>
+        <span id="header-cycle-part" class="hidden">
+          <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-slate-300 inline mx-1"></i>
+          <span class="text-slate-800 font-bold" id="header-cycle-name">Autumn Intake 2026</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Content pages -->
+    <main class="flex-1 p-8 space-y-6 overflow-y-auto">
+      
+      <!-- ─── SUB-PAGE A: ADMISSIONS HUB (Intake Selector) ─── -->
+      <div id="subpage-hub" class="space-y-6">
+        <div>
+          <h2 class="font-outfit font-black text-2xl text-slate-900 tracking-tight">Select Admissions Campaign</h2>
+          <p class="text-xs text-slate-500 mt-1">Select an active admissions drive below to enter its workspace, configure requirements, or process applications.</p>
+        </div>
+
+        <!-- Add Cycle Trigger -->
+        <div class="flex justify-end">
+          <button onclick="createNewIntakeDrive()" class="h-10 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 text-xs font-bold text-white shadow-sm flex items-center gap-2 transition-colors">
+            <i data-lucide="plus-circle" class="h-4 w-4"></i> Start New Admissions drive
+          </button>
+        </div>
+
+        <!-- Campaigns List Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Card 1 -->
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col justify-between">
+            <div class="p-6 space-y-4">
+              <div class="flex items-start justify-between">
+                <div>
+                  <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Secondary School</span>
+                  <h4 class="font-outfit font-black text-lg text-slate-900 mt-1">Autumn Intake 2026</h4>
+                  <p class="text-[10px] text-slate-500 font-medium mt-1">Target slots: 50 · Application Fee: ₦ 15,000 NGN</p>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-bold text-emerald-700">Live & Open</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs border-t border-slate-100 pt-3">
+                <span class="bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded">12 pending review</span>
+                <span class="text-slate-400 font-semibold">45 admitted</span>
+              </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span class="text-[10px] text-slate-400 font-bold">Ends: 15 Dec 2026</span>
+              <button onclick="enterCycleWorkspace('autumn-2026', 'Autumn Intake 2026')" class="h-8 rounded-lg bg-slate-950 hover:bg-slate-800 text-white px-4 text-xs font-bold transition-all flex items-center gap-1">
+                Enter Workspace <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Card 2 -->
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col justify-between">
+            <div class="p-6 space-y-4">
+              <div class="flex items-start justify-between">
+                <div>
+                  <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lower Primary</span>
+                  <h4 class="font-outfit font-black text-lg text-slate-900 mt-1">Summer Fast-track 2026</h4>
+                  <p class="text-[10px] text-slate-500 font-medium mt-1">Target slots: 25 · Application Fee: ₦ 10,000 NGN</p>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-bold text-emerald-700">Live & Open</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs border-t border-slate-100 pt-3">
+                <span class="bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded">0 pending review</span>
+                <span class="text-slate-400 font-semibold">8 admitted</span>
+              </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span class="text-[10px] text-slate-400 font-bold">Ends: 31 Aug 2026</span>
+              <button onclick="enterCycleWorkspace('summer-2026', 'Summer Fast-track 2026')" class="h-8 rounded-lg bg-slate-950 hover:bg-slate-800 text-white px-4 text-xs font-bold transition-all flex items-center gap-1">
+                Enter Workspace <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── SUB-PAGE B: CYCLE WORKSPACE (Drilldown View) ─── -->
+      <div id="subpage-workspace" class="space-y-6 hidden">
+        
+        <!-- Workspace Header Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-center gap-6 justify-between">
+          <div class="space-y-1">
+            <h3 class="font-outfit font-black text-xl text-slate-900" id="ws-title-name">Autumn Intake 2026</h3>
+            <p class="text-xs text-slate-500">Configure forms, view applicants queue, and check compliance metrics for this specific drive.</p>
+          </div>
+          <button onclick="backToHub()" class="h-9 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 px-3.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors">
+            <i data-lucide="arrow-left" class="h-4 w-4"></i> Back to Campaigns Hub
+          </button>
+        </div>
+
+        <!-- Cycle Sub-tabs -->
+        <div class="flex border-b border-slate-200 text-xs font-bold text-slate-500">
+          <button id="ws-tab-queue-btn" onclick="switchWorkspaceTab('queue')" class="py-2.5 px-4 border-b-2 border-indigo-600 text-indigo-700 transition-all flex items-center gap-1.5"><i data-lucide="list-todo" class="h-4 w-4"></i> Candidate Files Queue</button>
+          <button id="ws-tab-config-btn" onclick="switchWorkspaceTab('config')" class="py-2.5 px-4 border-b-2 border-transparent hover:text-slate-800 transition-all flex items-center gap-1.5"><i data-lucide="sliders" class="h-4 w-4"></i> Form & Fee Customizer</button>
+          <button id="ws-tab-compliance-btn" onclick="switchWorkspaceTab('compliance')" class="py-2.5 px-4 border-b-2 border-transparent hover:text-slate-800 transition-all flex items-center gap-1.5"><i data-lucide="shield-check" class="h-4 w-4"></i> Compliance Gates</button>
+        </div>
+
+        <!-- Workspace Tab 1: Queue -->
+        <div id="ws-tab-queue" class="space-y-4">
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <th class="px-6 py-4">Reference</th>
+                  <th class="px-6 py-4">Applicant Name</th>
+                  <th class="px-6 py-4">Status</th>
+                  <th class="px-6 py-4">Documents</th>
+                  <th class="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs text-slate-700 font-semibold" id="ws-queue-tbody">
+                <!-- Rows loaded dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Workspace Tab 2: Config -->
+        <div id="ws-tab-config" class="grid gap-6 md:grid-cols-2 hidden">
+          <!-- Form fields editor -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <h4 class="font-outfit font-black text-sm text-slate-900 border-b border-slate-100 pb-2">Custom Questions Configurator</h4>
+            <div class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <label class="block text-xs font-bold text-slate-700">Question Title Label
+                <input type="text" placeholder="e.g. Guardian Occupation" class="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 focus:outline-none text-xs">
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="block text-xs font-bold text-slate-700">System Key id
+                  <input type="text" placeholder="e.g. occupation" class="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 focus:outline-none text-xs">
+                </label>
+                <label class="block text-xs font-bold text-slate-700">Field Type
+                  <select class="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 focus:outline-none text-xs">
+                    <option>Text Line</option>
+                    <option>Paragraph text</option>
+                    <option>Yes/No</option>
+                  </select>
+                </label>
+              </div>
+              <button onclick="alert('Form version draft updated on server.')" class="h-9 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-all">Add field to active schema</button>
+            </div>
+          </div>
+
+          <!-- Fee Configuration -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <h4 class="font-outfit font-black text-sm text-slate-900 border-b border-slate-100 pb-2">Pricing Ledger Options</h4>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="block text-xs font-bold text-slate-700">Fee Amount
+                <input type="number" value="15000" class="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 focus:outline-none text-xs">
+              </label>
+              <label class="block text-xs font-bold text-slate-700">Currency
+                <select class="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 focus:outline-none text-xs">
+                  <option>NGN (₦)</option>
+                  <option>USD ($)</option>
+                </select>
+              </label>
+            </div>
+            <button onclick="alert('Pricing details updated. Immutable locks will trigger on first public applicant link hit.')" class="h-9 w-full bg-slate-950 hover:bg-slate-900 text-white font-bold rounded-lg transition-all">Save pricing settings</button>
+          </div>
+        </div>
+
+        <!-- Workspace Tab 3: Compliance -->
+        <div id="ws-tab-compliance" class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 hidden">
+          <h4 class="font-outfit font-black text-sm text-slate-900 border-b border-slate-100 pb-2">Central Compliance Gate List</h4>
+          <div class="space-y-3 max-w-xl">
+            <div class="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs">
+              <i data-lucide="check-circle" class="h-5 w-5 text-emerald-600 flex-shrink-0"></i>
+              <div>
+                <p class="font-bold text-slate-900">Privacy Policy Linked</p>
+                <p class="text-slate-500 font-medium mt-0.5">Approved privacy disclosure page exists for standard Year 1 registration forms.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs">
+              <i data-lucide="check-circle" class="h-5 w-5 text-emerald-600 flex-shrink-0"></i>
+              <div>
+                <p class="font-bold text-slate-900">Paystack Hook Configured</p>
+                <p class="text-slate-500 font-medium mt-0.5">Payment gateway API handles transaction callbacks for application fee conversion validation.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    lucide.createIcons();
+
+    let currentWorkspaceId = '';
+    let currentWorkspaceName = '';
+    let activeWorkspaceTab = 'queue';
+
+    const mockIntakeApplicants = {
+      'autumn-2026': [
+        { ref: 'APP-9482', name: 'John Adebayo', status: 'submitted', docs: '3 files' },
+        { ref: 'APP-3829', name: 'Zara Obi', status: 'under_review', docs: '2 files' },
+        { ref: 'APP-4491', name: 'Kofi Mensah', status: 'changes_requested', docs: 'Missing birth cert' }
+      ],
+      'summer-2026': [
+        { ref: 'APP-1029', name: 'Amina Bello', status: 'accepted', docs: 'All verified' }
+      ]
+    };
+
+    function createNewIntakeDrive() {
+      const name = prompt("Enter Name of the new admissions cycle drive:", "Winter 2026 Fast-track");
+      if (!name) return;
+      alert("New Admissions drive created! Enter its workspace below to set up requirements.");
+    }
+
+    function enterCycleWorkspace(cycleId, cycleName) {
+      currentWorkspaceId = cycleId;
+      currentWorkspaceName = cycleName;
+
+      document.getElementById('subpage-hub').classList.add('hidden');
+      document.getElementById('subpage-workspace').classList.remove('hidden');
+
+      document.getElementById('header-cycle-name').innerText = cycleName;
+      document.getElementById('header-cycle-part').classList.remove('hidden');
+
+      document.getElementById('ws-title-name').innerText = cycleName;
+
+      loadWorkspaceQueue(cycleId);
+      switchWorkspaceTab('queue');
+    }
+
+    function backToHub() {
+      document.getElementById('subpage-hub').classList.remove('hidden');
+      document.getElementById('subpage-workspace').classList.add('hidden');
+      document.getElementById('header-cycle-part').classList.add('hidden');
+    }
+
+    function switchWorkspaceTab(tabId) {
+      document.getElementById(`ws-tab-${activeWorkspaceTab}`).classList.add('hidden');
+      document.getElementById(`ws-tab-${activeWorkspaceTab}-btn`).classList.remove('border-indigo-600', 'text-indigo-700');
+      document.getElementById(`ws-tab-${activeWorkspaceTab}-btn`).classList.add('border-transparent');
+
+      document.getElementById(`ws-tab-${tabId}`).classList.remove('hidden');
+      document.getElementById(`ws-tab-${tabId}-btn`).classList.add('border-indigo-600', 'text-indigo-700');
+      document.getElementById(`ws-tab-${tabId}-btn`).classList.remove('border-transparent');
+
+      activeWorkspaceTab = tabId;
+    }
+
+    function loadWorkspaceQueue(cycleId) {
+      const applicants = mockIntakeApplicants[cycleId] || [];
+      const tbody = document.getElementById('ws-queue-tbody');
+      tbody.innerHTML = '';
+
+      if (applicants.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400 italic">No applications found in this cycle workspace queue.</td></tr>`;
+        return;
+      }
+
+      applicants.forEach(app => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b hover:bg-slate-50/40 transition-colors';
+        
+        let statusBadge = '';
+        if (app.status === 'submitted') {
+          statusBadge = `<span class="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 text-[10px] font-bold text-blue-700 px-2 py-0.5">Inbox</span>`;
+        } else if (app.status === 'under_review') {
+          statusBadge = `<span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-700 px-2 py-0.5">Under Review</span>`;
+        } else if (app.status === 'accepted') {
+          statusBadge = `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-bold text-emerald-700 px-2 py-0.5">Admitted</span>`;
+        } else {
+          statusBadge = `<span class="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700 px-2 py-0.5">Correction Needed</span>`;
+        }
+
+        tr.innerHTML = `
+          <td class="px-6 py-4 font-mono font-bold text-slate-900">${app.ref}</td>
+          <td class="px-6 py-4">${app.name}</td>
+          <td class="px-6 py-4">${statusBadge}</td>
+          <td class="px-6 py-4"><span class="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">${app.docs}</span></td>
+          <td class="px-6 py-4 text-right">
+            <button onclick="alert('Simulate loading student review drawer: ${app.name}')" class="text-indigo-600 font-bold hover:text-indigo-800 hover:underline">Review File</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>

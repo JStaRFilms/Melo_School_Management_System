@@ -19,6 +19,7 @@ export { ReportCardBatchNavigator } from "./components/ReportCardBatchNavigator"
 export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigator";
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
+export { MeloLoader } from "./components/MeloLoader";
 
 // Exam Recording Domain
 export * from "./exam-recording";

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admissions & Enrollment Forms Manager - Mockup</title>
+  <!-- Plus Jakarta Sans & Outfit Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              DEFAULT: '#0f172a', // Slate-900 (matches sidebar/headers)
+              accent: '#4f46e5',  // Indigo accent
+              soft: '#f8fafc',    // Page bg
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: "Plus Jakarta Sans", sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    /* Left accent border highlight for active Google Forms cards */
+    .g-form-card-active {
+      border-left: 5px solid #4f46e5 !important;
+    }
+    .draggable-card.dragging {
+      opacity: 0.4;
+      border: 2px dashed #4f46e5;
+    }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased h-screen overflow-hidden flex">
+
+  <!-- ─── SIDEBAR NAVIGATION ─── -->
+  <aside class="w-64 border-r border-slate-200 bg-white h-screen flex flex-col flex-shrink-0 z-30">
+    <!-- Brand Header -->
+    <div class="h-16 px-6 border-b border-slate-200 flex items-center gap-3">
+      <div class="h-9 w-9 bg-[#0f172a] rounded-lg flex items-center justify-center text-white font-outfit font-black text-xl">M</div>
+      <div>
+        <h1 class="font-outfit font-bold text-sm text-slate-900 leading-tight">Demo Academy - Admin</h1>
+        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Active school workspace</p>
+      </div>
+    </div>
+
+    <!-- Sidebar Links -->
+    <div class="flex-1 overflow-y-auto px-4 py-6 space-y-7 custom-scrollbar">
+      <div>
+        <p class="px-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">Daily Operations</p>
+        <nav class="space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="layout-dashboard" class="h-4 w-4"></i> Dashboard
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="users" class="h-4 w-4"></i> Students
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="graduation-cap" class="h-4 w-4"></i> Teachers
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="landmark" class="h-4 w-4"></i> Billing
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="clipboard-check" class="h-4 w-4"></i> Score Entry
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="file-text" class="h-4 w-4"></i> Report Cards
+          </a>
+          <!-- Active Nav Link -->
+          <a href="#" class="flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-bold bg-[#0f172a] text-white transition-colors">
+            <span class="flex items-center gap-3"><i data-lucide="arrow-right-left" class="h-4 w-4 text-white"></i> Admissions</span>
+            <i data-lucide="chevron-right" class="h-3 w-3 text-white"></i>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <i data-lucide="book-open-text" class="h-4 w-4"></i> Knowledge Library
+          </a>
+        </nav>
+      </div>
+    </div>
+
+    <!-- User profile -->
+    <div class="p-4 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 bg-slate-900 rounded-full flex items-center justify-center font-bold text-xs text-white">A</div>
+        <div>
+          <p class="text-xs font-bold text-slate-900">Amina</p>
+          <p class="text-[9px] font-medium text-slate-400">SESSION</p>
+        </div>
+      </div>
+      <i data-lucide="chevron-down" class="h-4 w-4 text-slate-400"></i>
+    </div>
+  </aside>
+
+  <!-- ─── WORKSPACE CONTENT ─── -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen">
+    
+    <!-- Top Breadcrumb header -->
+    <header class="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between flex-shrink-0 z-20">
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-slate-400 font-semibold uppercase tracking-wider">ADMIN</span>
+        <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-slate-300"></i>
+        <span class="text-slate-400 font-semibold cursor-pointer hover:underline" onclick="switchView('hub')">Admissions Portal</span>
+        <span id="breadcrumb-sub" class="hidden">
+          <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-slate-300 inline mx-1"></i>
+          <span class="text-slate-800 font-bold" id="breadcrumb-sub-text">Autumn Form 2026</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Split Workspace -->
+    <div class="flex-1 flex min-h-0 overflow-hidden" id="workspace-frame">
+      
+      <!-- ─── WORKSPACE VIEW A: ADMISSION CAMPAIGNS HUB ─── -->
+      <div id="view-hub" class="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+          <div>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Campaigns</span>
+            <h2 class="font-outfit font-black text-2xl text-slate-900 mt-1">Admission & Enrollment Forms</h2>
+            <p class="text-xs text-slate-500 mt-1">Create enrollment forms, configure verification uploads, and process applicant entries.</p>
+          </div>
+          <!-- Pinned Create Button -->
+          <button onclick="switchView('setup')" class="h-10 rounded-lg bg-[#0f172a] hover:bg-[#1e293b] text-white px-5 text-xs font-bold transition-all flex items-center gap-2 shadow-sm">
+            <i data-lucide="plus" class="h-4 w-4"></i> Create Enrollment Form
+          </button>
+        </div>
+
+        <div class="space-y-4" id="forms-catalog-list">
+          <!-- Form 1 -->
+          <div class="bg-white border border-slate-200 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-slate-300 transition-all">
+            <div class="space-y-2">
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-slate-900 text-sm">Primary Intake Form 2026</h3>
+                <span class="inline-flex rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-bold text-emerald-700 px-2 py-0.5 uppercase tracking-wider">Live & Open</span>
+              </div>
+              <div class="text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
+                <span>Category: <strong class="text-slate-700">Primary Level (Year 1-6)</strong></span>
+                <span>Form Slug: <strong class="text-slate-700 font-mono">autumn-2026</strong></span>
+                <span>Applications: <strong class="text-indigo-650">3 submitted</strong></span>
+              </div>
+              <p class="text-[11px] font-semibold text-slate-400 font-mono">Availability Link: http://localhost:3004/s/demo-school/i/autumn-2026</p>
+            </div>
+
+            <div class="flex items-center gap-3 flex-shrink-0">
+              <button onclick="enterCycle('autumn-2026', 'Primary Intake Form 2026')" class="h-9 rounded-lg bg-[#0f172a] hover:bg-[#1e293b] text-white px-4 text-xs font-bold transition-all flex items-center gap-1">
+                Enter Workstation <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── WORKSPACE VIEW B: ACTIVE WORKSPACE DRILLDOWN (Triage / Config) ─── -->
+      <div id="view-drilldown" class="flex-1 flex min-h-0 overflow-hidden hidden">
+        <div class="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar flex flex-col min-h-0">
+          <div class="flex-shrink-0 space-y-4">
+            <div>
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Workspace</span>
+              <h2 class="font-outfit font-black text-xl text-slate-900 mt-0.5" id="active-ws-title">Primary Intake Form 2026</h2>
+            </div>
+            <div class="flex border-b border-slate-200 text-xs font-bold gap-6">
+              <button id="tab-dr-triage-btn" onclick="switchDrilldownTab('triage')" class="py-2.5 border-b-2 border-slate-900 text-slate-900 transition-all uppercase tracking-wider">Triage Queue</button>
+              <button id="tab-dr-config-btn" onclick="switchDrilldownTab('config')" class="py-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-800 transition-all uppercase tracking-wider">Form Config & Fees</button>
+            </div>
+          </div>
+
+          <div id="dr-tab-triage" class="flex-1 min-h-0 flex flex-col space-y-4">
+            <div class="flex flex-wrap gap-2 text-xs font-semibold">
+              <div class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 flex items-center gap-2">
+                <span class="text-slate-400 uppercase tracking-widest text-[9px] font-extrabold">Total Candidates:</span>
+                <strong class="text-slate-900 text-sm font-black" id="stat-total">3</strong>
+              </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex-1 flex flex-col justify-between min-h-[300px]">
+              <div class="overflow-y-auto flex-1 custom-scrollbar">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="border-b border-slate-100 bg-slate-50/70 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                      <th class="px-6 py-3.5">Reference</th>
+                      <th class="px-6 py-3.5">Applicant Name</th>
+                      <th class="px-6 py-3.5">Intake State</th>
+                      <th class="px-6 py-3.5">Last Updated</th>
+                      <th class="px-6 py-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="drilldown-table-body" class="divide-y divide-slate-100 text-xs font-medium text-slate-700"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="applicant-folder-box" class="hidden space-y-6">
+              <button onclick="backToQueueList()" class="h-8 border border-slate-200 bg-white hover:bg-slate-50 px-3.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all text-slate-600">
+                <i data-lucide="arrow-left" class="h-4 w-4"></i> Back to candidates list
+              </button>
+              <div class="grid gap-6 md:grid-cols-2">
+                <div class="space-y-4">
+                  <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-sm">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest"><i data-lucide="user" class="h-4 w-4 inline mr-1"></i> Candidate Details</h3>
+                    <div class="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
+                      <div><p class="text-slate-400 font-extrabold uppercase text-[9px]">Gender</p><p class="text-slate-900 mt-1" id="f-gender">Male</p></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dr-tab-config" class="space-y-6 hidden"></div>
+        </div>
+
+        <aside class="w-80 border-l border-slate-200 bg-white h-full flex flex-col justify-between flex-shrink-0 p-6" id="drilldown-sidebar">
+          <div id="side-queue-filters" class="space-y-6">
+            <p class="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Queue Filters</p>
+            <select id="side-state-filter" onchange="applySideStateFilter()" class="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs focus:outline-none">
+              <option value="all">All Applicant States</option>
+            </select>
+          </div>
+          <div id="side-folder-actions" class="hidden space-y-6"></div>
+        </aside>
+      </div>
+
+      <!-- ─── WORKSPACE VIEW C: GOOGLE FORMS STYLE DYNAMIC BUILDER (With Drag & Drop and Floating Toolbar!) ─── -->
+      <div id="view-setup" class="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-indigo-50/10 hidden relative">
+        <div class="max-w-2xl mx-auto space-y-6 pb-24" id="builder-scroll-container">
+          
+          <!-- Google Form Header Card -->
+          <div class="bg-white border-t-[8px] border-indigo-600 border-x border-b border-slate-250 rounded-lg p-6 shadow-sm space-y-4">
+            <div>
+              <input type="text" id="setup-name" oninput="handleWizardSlugify()" placeholder="Admission Form Name (e.g. Primary School Intake 2026)" class="w-full text-xl font-bold font-outfit text-slate-900 border-b border-transparent focus:border-slate-200 py-1 focus:outline-none transition-all">
+              <input type="text" id="setup-title" placeholder="Form Public Display Description (e.g. Please cast your application details...)" class="w-full text-xs text-slate-500 border-b border-transparent focus:border-slate-200 py-1 focus:outline-none transition-all mt-2">
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2 pt-3 border-t border-slate-100 text-xs">
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Category Academic Level
+                <select id="setup-category" class="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 focus:outline-none">
+                  <option value="Primary School">Primary School (Year 1-6)</option>
+                  <option value="Junior Secondary">Junior Secondary School (JSS 1-3)</option>
+                  <option value="Senior Secondary">Senior Secondary School (SSS 1-3)</option>
+                </select>
+              </label>
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Form URL Slug
+                <input type="text" id="setup-slug" placeholder="e.g. autumn-2026" class="mt-1 h-9 w-full rounded-md border border-slate-200 px-3 focus:outline-none font-mono">
+              </label>
+            </div>
+          </div>
+
+          <!-- Defaults Attestation -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-3">
+            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Default Core Parameters & Attestations</h4>
+            <div class="text-xs text-slate-500 space-y-2 leading-relaxed font-semibold">
+              <p class="flex items-start gap-1.5"><i data-lucide="check" class="h-4 w-4 text-emerald-500 mt-0.5"></i> <span><strong>Profile collection:</strong> Candidate details (names, gender, DOB) and guardian contact info are collected by default.</span></p>
+              <p class="flex items-start gap-1.5"><i data-lucide="check" class="h-4 w-4 text-emerald-500 mt-0.5"></i> <span><strong>Guardian Declaration (T&C):</strong> The default legal declaration is automatically included.</span></p>
+            </div>
+          </div>
+
+          <!-- Required Document Uploads -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-4">
+            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Verification Document Requirements</h4>
+            <div class="space-y-3 text-xs font-bold text-slate-700">
+              <label class="flex items-center gap-2.5"><input type="checkbox" checked disabled class="rounded border-slate-350 text-indigo-650"> Birth Certificate (Mandatory)</label>
+              <label class="flex items-center gap-2.5"><input type="checkbox" id="setup-doc-medical" checked class="rounded border-slate-350 text-indigo-650"> Recent Medical Reports (within past 6 months)</label>
+              <label class="flex items-center gap-2.5"><input type="checkbox" id="setup-doc-transcripts" checked class="rounded border-slate-350 text-indigo-650"> Previous School Transcripts (optional)</label>
+            </div>
+          </div>
+
+          <!-- Flat list of cards (Sections & Questions flat canvas to make cross-section drag reordering work!) -->
+          <div id="flat-builder-canvas" class="space-y-4">
+            <!-- Appended elements dynamically -->
+          </div>
+
+          <!-- Pricing Card -->
+          <div class="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
+            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Application Pricing & Paystack Ledger</h4>
+            <div class="grid gap-4 sm:grid-cols-2 text-xs">
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Currency
+                <select id="setup-currency" class="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 focus:outline-none">
+                  <option value="NGN">NGN (₦) - Naira</option>
+                  <option value="USD">USD ($) - US Dollars</option>
+                </select>
+              </label>
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Fee Amount
+                <input type="number" id="setup-fee" placeholder="e.g. 15000" class="mt-1.5 h-9 w-full rounded-md border border-slate-200 px-3 focus:outline-none">
+              </label>
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Refund Policy
+                <select id="setup-refund" class="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 focus:outline-none">
+                  <option value="non_refundable">Strictly Non-Refundable</option>
+                  <option value="conditional">Refundable on rejection</option>
+                  <option value="free">No Fee / Free Enrollment</option>
+                </select>
+              </label>
+              <label class="block font-bold text-slate-500 uppercase tracking-wider">Payment Statement (feeDisclosure)
+                <input type="text" id="setup-disclosure" placeholder="e.g. JSS 1 Admissions Processing Fee" class="mt-1.5 h-9 w-full rounded-md border border-slate-200 px-3 focus:outline-none font-semibold">
+              </label>
+            </div>
+          </div>
+
+          <!-- Bottom Publish options bar -->
+          <div class="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+            <button onclick="switchView('hub')" class="h-10 border border-slate-250 hover:bg-slate-50 text-slate-700 font-bold px-6 rounded-lg text-xs transition-all">
+              Cancel & Exit
+            </button>
+            <button onclick="publishWizardForm()" class="h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 rounded-lg text-xs transition-all shadow-sm">
+              Publish Form Live
+            </button>
+          </div>
+
+        </div>
+
+        <!-- ─── FLOATING CONTROL TOOLBAR (Google Forms Style Toolbar, Pinned next to focused card!) ─── -->
+        <div id="g-forms-floating-toolbar" class="absolute left-1/2 ml-[345px] w-12 bg-white border border-slate-200 rounded-lg shadow-md p-1.5 flex flex-col items-center gap-2.5 transition-all duration-300 z-10" style="display: none;">
+          <button onclick="toolbarInsertQuestion()" class="h-8 w-8 rounded-md hover:bg-slate-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center transition-all" title="Add Question">
+            <i data-lucide="plus" class="h-5 w-5"></i>
+          </button>
+          <button onclick="toolbarInsertSection()" class="h-8 w-8 rounded-md hover:bg-slate-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center transition-all" title="Add Section divider">
+            <i data-lucide="folder-plus" class="h-5 w-5"></i>
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    lucide.createIcons();
+
+    let activeView = 'hub';
+    let activeDrilldownTab = 'triage';
+    let currentCycleId = '';
+    let currentCycleName = '';
+    let selectedApplicantId = null;
+
+    const mockIntakeData = {
+      'autumn-2026': [
+        { ref: 'APP-9482', name: 'John Adebayo', status: 'submitted', updated: '2 hours ago', dob: '12 Nov 2019', gender: 'Male', guardian: 'Deji Adebayo (Father) · +234 803 123 4567', nickname: 'Johnny', school: 'Gbagada Nursery School' }
+      ]
+    };
+
+    function handleWizardSlugify() {
+      const name = document.getElementById('setup-name').value;
+      document.getElementById('setup-slug').value = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+
+    function switchView(viewId) {
+      document.getElementById(`view-${activeView}`).classList.add('hidden');
+      document.getElementById(`view-${viewId}`).classList.remove('hidden');
+      activeView = viewId;
+
+      if (viewId === 'hub') {
+        document.getElementById('breadcrumb-sub').classList.add('hidden');
+        document.getElementById('g-forms-floating-toolbar').style.display = 'none';
+      } else if (viewId === 'setup') {
+        document.getElementById('breadcrumb-sub-text').innerText = 'New Form Setup';
+        document.getElementById('breadcrumb-sub').classList.remove('hidden');
+        resetGoogleFormsBuilder();
+      }
+    }
+
+    function enterCycle(cycleId, cycleName) {
+      currentCycleId = cycleId;
+      currentCycleName = cycleName;
+      switchView('drilldown');
+      document.getElementById('breadcrumb-sub-text').innerText = cycleName;
+      document.getElementById('breadcrumb-sub').classList.remove('hidden');
+      document.getElementById('active-ws-title').innerText = cycleName;
+      loadQueueTable(cycleId);
+    }
+
+    function switchDrilldownTab(tabId) {
+      document.getElementById(`dr-tab-${activeDrilldownTab}`).classList.add('hidden');
+      document.getElementById(`tab-dr-${activeDrilldownTab}-btn`).className = 'py-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-800 transition-all uppercase tracking-wider';
+      document.getElementById(`dr-tab-${tabId}`).classList.remove('hidden');
+      document.getElementById(`tab-dr-${tabId}-btn`).className = 'py-2.5 border-b-2 border-slate-900 text-slate-900 transition-all uppercase tracking-wider';
+      activeDrilldownTab = tabId;
+    }
+
+    function loadQueueTable(cycleId) {
+      const list = mockIntakeData[cycleId] || [];
+      const tbody = document.getElementById('drilldown-table-body');
+      tbody.innerHTML = '';
+      list.forEach(app => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/40 cursor-pointer';
+        tr.innerHTML = `
+          <td class="px-6 py-4 font-mono font-bold">${app.ref}</td>
+          <td class="px-6 py-4 font-bold">${app.name}</td>
+          <td class="px-6 py-4">${app.status}</td>
+          <td class="px-6 py-4 text-slate-500 font-semibold">${app.updated}</td>
+          <td class="px-6 py-4 text-right"><button class="text-indigo-650 font-bold hover:underline">Review</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ─── GOOGLE FORMS DYNAMIC BUILDER (REORDERING & FLOATING TOOLBAR) ───
+    let cardIdCounter = 0;
+    let focusedCardId = null;
+
+    function resetGoogleFormsBuilder() {
+      const canvas = document.getElementById('flat-builder-canvas');
+      canvas.innerHTML = '';
+      cardIdCounter = 0;
+      focusedCardId = null;
+
+      // Seed 2 default sections with nested questions
+      appendSectionCard("Personal & Siblings Data", "child");
+      appendQuestionCard("Names of Siblings in School", "text");
+      
+      appendSectionCard("Support & Medical History", "support");
+      appendQuestionCard("Any special medical conditions?", "textarea");
+
+      // Auto-focus first element
+      const firstCard = canvas.children[0];
+      if (firstCard) {
+        focusFormCard(firstCard.id);
+      }
+    }
+
+    // Dynamic Card Focus (Positions Toolbar next to card!)
+    function focusFormCard(cardId) {
+      focusedCardId = cardId;
+      
+      // Update visual border highlights
+      document.querySelectorAll('#flat-builder-canvas > div').forEach(el => {
+        el.classList.remove('g-form-card-active', 'shadow-md');
+        el.classList.add('shadow-sm');
+      });
+      
+      const target = document.getElementById(cardId);
+      if (!target) return;
+      target.classList.add('g-form-card-active', 'shadow-md');
+      
+      // Re-position floating toolbar next to card
+      const toolbar = document.getElementById('g-forms-floating-toolbar');
+      toolbar.style.display = 'flex';
+      
+      // Calculate top position relative to workspace scroll container
+      const cardRectTop = target.offsetTop;
+      toolbar.style.top = `${cardRectTop}px`;
+    }
+
+    // HTML5 Drag & Drop Reordering Event Handlers
+    function setupDragAndDropHandlers(card) {
+      card.addEventListener('dragstart', (e) => {
+        card.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', card.id);
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        // Reposition toolbar next to focused card
+        if (focusedCardId) focusFormCard(focusedCardId);
+      });
+
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const canvas = document.getElementById('flat-builder-canvas');
+        const draggingCard = document.querySelector('.draggable-card.dragging');
+        if (!draggingCard || draggingCard === card) return;
+
+        const children = Array.from(canvas.children);
+        const currIndex = children.indexOf(card);
+        const dragIndex = children.indexOf(draggingCard);
+
+        if (dragIndex < currIndex) {
+          canvas.insertBefore(draggingCard, card.nextSibling);
+        } else {
+          canvas.insertBefore(draggingCard, card);
+        }
+      });
+    }
+
+    // Append Section Card
+    function appendSectionCard(initialTitle = "", customKey = "", insertAfterId = null) {
+      cardIdCounter++;
+      const idNum = cardIdCounter;
+      const canvas = document.getElementById('flat-builder-canvas');
+
+      const card = document.createElement('div');
+      card.id = `builder-card-${idNum}`;
+      card.dataset.type = 'section';
+      card.draggable = true;
+      card.className = 'draggable-card bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-3 cursor-pointer transition-all duration-200 relative';
+      card.setAttribute('onclick', `focusFormCard('${card.id}')`);
+
+      card.innerHTML = `
+        <!-- Drag Handle -->
+        <div class="cursor-move flex justify-center text-slate-300 hover:text-slate-500 py-0.5 absolute top-1 left-0 right-0">
+          <i data-lucide="grip-horizontal" class="h-4 w-4"></i>
+        </div>
+
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2 pt-2">
+          <div class="flex items-center gap-2 flex-1">
+            <span class="bg-[#0f172a] text-white text-[9px] font-black uppercase px-2 py-0.5 rounded">Section Module</span>
+            <input type="text" id="sec-title-${idNum}" oninput="slugifySectionCard(${idNum})" value="${initialTitle}" placeholder="Section Title (e.g. Guardian Contacts)" class="bg-transparent font-bold text-slate-800 text-sm border-b border-transparent focus:border-indigo-500 focus:outline-none w-full py-0.5 font-outfit">
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+            <span>System ID:</span>
+            <input type="text" id="sec-key-${idNum}" value="${customKey}" readonly class="bg-transparent font-bold text-slate-500 focus:outline-none w-24">
+            <button type="button" onclick="deleteCard('${card.id}')" class="text-slate-400 hover:text-rose-600 transition-colors ml-2"><i data-lucide="trash" class="h-4 w-4"></i></button>
+          </div>
+        </div>
+      `;
+
+      if (insertAfterId) {
+        const afterEl = document.getElementById(insertAfterId);
+        canvas.insertBefore(card, afterEl.nextSibling);
+      } else {
+        canvas.appendChild(card);
+      }
+
+      if (!customKey) slugifySectionCard(idNum);
+      setupDragAndDropHandlers(card);
+      lucide.createIcons();
+      focusFormCard(card.id);
+    }
+
+    function slugifySectionCard(idNum) {
+      const title = document.getElementById(`sec-title-${idNum}`).value;
+      const keyInput = document.getElementById(`sec-key-${idNum}`);
+      keyInput.value = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_+|_+$)/g, '');
+    }
+
+    // Append Question Card
+    function appendQuestionCard(initialLabel = "", initialType = "text", insertAfterId = null) {
+      cardIdCounter++;
+      const idNum = cardIdCounter;
+      const canvas = document.getElementById('flat-builder-canvas');
+
+      const card = document.createElement('div');
+      card.id = `builder-card-${idNum}`;
+      card.dataset.type = 'question';
+      card.draggable = true;
+      card.className = 'draggable-card bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-4 cursor-pointer transition-all duration-200 relative';
+      card.setAttribute('onclick', `focusFormCard('${card.id}')`);
+
+      card.innerHTML = `
+        <!-- Drag Handle -->
+        <div class="cursor-move flex justify-center text-slate-300 hover:text-slate-500 py-0.5 absolute top-1 left-0 right-0">
+          <i data-lucide="grip-horizontal" class="h-4 w-4"></i>
+        </div>
+
+        <div class="flex items-start justify-between gap-4 pt-2">
+          <div class="flex-1">
+            <input type="text" id="q-label-${idNum}" oninput="slugifyFieldCard(${idNum})" value="${initialLabel}" placeholder="Question Label Text" class="w-full font-bold text-slate-800 border-b border-slate-100 hover:border-slate-200 focus:border-indigo-500 py-1.5 focus:outline-none transition-all text-sm font-outfit">
+          </div>
+
+          <div class="w-48 flex-shrink-0">
+            <select id="q-type-${idNum}" onchange="handleTypeChange(${idNum})" class="h-9 w-full rounded-md border border-slate-200 bg-white px-2 focus:outline-none text-xs font-semibold">
+              <option value="text" ${initialType === 'text' ? 'selected' : ''}>Single Line Text</option>
+              <option value="textarea" ${initialType === 'textarea' ? 'selected' : ''}>Paragraph Text</option>
+              <option value="select">Multiple Choice Dropdown</option>
+              <option value="boolean">Yes / No Option</option>
+              <option value="document">File / Document Upload</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="q-opts-${idNum}" class="hidden pl-4 space-y-2">
+          <div id="q-opts-list-${idNum}" class="space-y-1.5">
+            <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-slate-300"></span><input type="text" placeholder="Option 1" class="text-xs font-semibold border-b border-transparent focus:border-slate-200 focus:outline-none py-0.5"></div>
+          </div>
+          <button type="button" onclick="addOptionItem(${idNum})" class="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold flex items-center gap-1"><i data-lucide="plus" class="h-3 w-3"></i> Add option</button>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+            <span>fieldKey:</span>
+            <input type="text" id="q-key-${idNum}" value="" class="bg-transparent border-b border-transparent focus:border-slate-250 focus:outline-none font-bold text-slate-500 py-0.5 w-32" placeholder="auto_key">
+          </div>
+
+          <div class="flex items-center gap-4 text-slate-500 font-semibold">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="q-req-${idNum}" class="rounded border-slate-350 text-indigo-650 focus:ring-0">
+              Required
+            </label>
+            <button type="button" onclick="deleteCard('${card.id}')" class="text-slate-400 hover:text-rose-600 transition-colors" title="Delete Question">
+              <i data-lucide="trash-2" class="h-4.5 w-4.5"></i>
+            </button>
+          </div>
+        </div>
+      `;
+
+      if (insertAfterId) {
+        const afterEl = document.getElementById(insertAfterId);
+        canvas.insertBefore(card, afterEl.nextSibling);
+      } else {
+        canvas.appendChild(card);
+      }
+
+      slugifyFieldCard(idNum);
+      setupDragAndDropHandlers(card);
+      lucide.createIcons();
+      focusFormCard(card.id);
+    }
+
+    function slugifyFieldCard(idNum) {
+      const label = document.getElementById(`q-label-${idNum}`).value;
+      const keyInput = document.getElementById(`q-key-${idNum}`);
+      keyInput.value = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_+|_+$)/g, '');
+    }
+
+    function handleTypeChange(idNum) {
+      const type = document.getElementById(`q-type-${idNum}`).value;
+      const box = document.getElementById(`q-opts-${idNum}`);
+      if (type === 'select') box.classList.remove('hidden');
+      else box.classList.add('hidden');
+    }
+
+    function addOptionItem(idNum) {
+      const list = document.getElementById(`q-opts-list-${idNum}`);
+      const div = document.createElement('div');
+      div.className = 'flex items-center gap-2';
+      div.innerHTML = `<span class="h-2 w-2 rounded-full bg-slate-300"></span><input type="text" placeholder="Option" class="text-xs font-semibold border-b border-transparent focus:border-slate-200 focus:outline-none py-0.5">`;
+      list.appendChild(div);
+      event.stopPropagation();
+    }
+
+    function deleteCard(cardId) {
+      const el = document.getElementById(cardId);
+      if (el) el.remove();
+      if (focusedCardId === cardId) {
+        document.getElementById('g-forms-floating-toolbar').style.display = 'none';
+        focusedCardId = null;
+      }
+      event.stopPropagation();
+    }
+
+    // ─── FLOATING TOOLBAR TRIGGERS (Inserts right next to active cursor focused card!) ───
+    function toolbarInsertQuestion() {
+      if (!focusedCardId) return;
+      appendQuestionCard("", "text", focusedCardId);
+    }
+
+    function toolbarInsertSection() {
+      if (!focusedCardId) return;
+      appendSectionCard("", "", focusedCardId);
+    }
+
+    function publishWizardForm() {
+      alert("Form Published successfully!");
+      switchView('hub');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admissions Control Center - Version 2 (Split-Pane Workstation)</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              DEFAULT: '#4f46e5',
+              hover: '#4338ca',
+              soft: '#eeebff',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: "Plus Jakarta Sans", sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased h-screen overflow-hidden flex">
+
+  <!-- ─── SIDEBAR NAVIGATION ─── -->
+  <aside class="w-64 border-r border-slate-200 bg-white h-screen flex flex-col flex-shrink-0 z-30">
+    <div class="h-16 px-6 border-b border-slate-200 flex items-center gap-3">
+      <div class="h-9 w-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shadow-indigo-200">M</div>
+      <div>
+        <h1 class="font-bold text-sm text-slate-900 leading-tight">Demo Academy</h1>
+        <p class="text-[10px] font-bold text-indigo-600 uppercase">Version 2: Split-Pane</p>
+      </div>
+    </div>
+
+    <!-- Nav list -->
+    <div class="flex-1 overflow-y-auto px-4 py-6 space-y-7 custom-scrollbar">
+      <div>
+        <p class="px-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">Daily Operations</p>
+        <nav class="space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <i data-lucide="layout-dashboard" class="h-4 w-4"></i> Dashboard
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <i data-lucide="users" class="h-4 w-4"></i> Students
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border-l-2 border-indigo-600">
+            <i data-lucide="arrow-right-left" class="h-4 w-4"></i> Admissions
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <i data-lucide="landmark" class="h-4 w-4"></i> Billing
+          </a>
+        </nav>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── WORKSTATION WRAPPER ─── -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen">
+    
+    <!-- Top Header -->
+    <header class="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between flex-shrink-0 z-20">
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-slate-400 font-medium">ADMIN</span>
+        <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-slate-300"></i>
+        <span class="text-slate-800 font-bold">Admissions Workstation</span>
+      </div>
+
+      <!-- Quick access settings -->
+      <button onclick="toggleSettingsModal(true)" class="h-9 border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 px-4 rounded-lg text-xs font-bold flex items-center gap-2 transition-all">
+        <i data-lucide="sliders" class="h-3.5 w-3.5"></i> Manage Cycles & Forms
+      </button>
+    </header>
+
+    <!-- Split-Pane Workspace -->
+    <div class="flex-1 flex min-h-0 overflow-hidden">
+      
+      <!-- LEFT PANE: Candidates Pipeline Queue (350px width) -->
+      <section class="w-[360px] border-r border-slate-200 bg-white flex flex-col flex-shrink-0 min-h-0">
+        <!-- Search & Quick Filters -->
+        <div class="p-4 border-b border-slate-200 space-y-3 flex-shrink-0 bg-slate-50/50">
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+              <i data-lucide="search" class="h-3.5 w-3.5"></i>
+            </span>
+            <input type="text" id="left-search" oninput="filterLeftQueue()" placeholder="Quick filter by name..." class="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-xs focus:border-indigo-600 focus:outline-none transition-all">
+          </div>
+          <div class="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+            <button onclick="setStatusFilter('all')" class="left-status-btn px-2.5 py-1 rounded-md text-[10px] font-bold bg-slate-900 text-white shadow-sm transition-all">All</button>
+            <button onclick="setStatusFilter('submitted')" class="left-status-btn px-2.5 py-1 rounded-md text-[10px] font-semibold text-slate-500 hover:text-slate-800 transition-all">Inbox</button>
+            <button onclick="setStatusFilter('under_review')" class="left-status-btn px-2.5 py-1 rounded-md text-[10px] font-semibold text-slate-500 hover:text-slate-800 transition-all">Review</button>
+            <button onclick="setStatusFilter('accepted')" class="left-status-btn px-2.5 py-1 rounded-md text-[10px] font-semibold text-slate-500 hover:text-slate-800 transition-all">Admitted</button>
+          </div>
+        </div>
+
+        <!-- Scrollable Candidate Queue List -->
+        <div class="flex-1 overflow-y-auto divide-y divide-slate-100 custom-scrollbar" id="left-queue-container">
+          <!-- Item 1 -->
+          <div onclick="selectApplicant('APP-9482')" id="item-APP-9482" class="queue-item p-4 hover:bg-slate-50/50 cursor-pointer transition-all border-l-4 border-indigo-600 bg-indigo-50/30" data-name="John Adebayo" data-status="submitted">
+            <div class="flex justify-between items-start">
+              <span class="font-mono text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100/50 px-1.5 py-0.5 rounded">APP-9482</span>
+              <span class="text-[9px] font-bold text-slate-400">10m ago</span>
+            </div>
+            <h4 class="font-bold text-xs text-slate-900 mt-2">John Adebayo</h4>
+            <p class="text-[10px] text-slate-500">Year 1 Primary · Autumn Intake 2026</p>
+            <div class="mt-2.5 flex items-center justify-between">
+              <span class="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 text-[9px] font-bold text-blue-700 px-2 py-0.5">Inbox</span>
+              <span class="text-[9px] font-semibold text-slate-400"><i data-lucide="paperclip" class="h-3 w-3 inline mr-0.5"></i> 3 files</span>
+            </div>
+          </div>
+          <!-- Item 2 -->
+          <div onclick="selectApplicant('APP-3829')" id="item-APP-3829" class="queue-item p-4 hover:bg-slate-50/50 cursor-pointer transition-all border-l-4 border-transparent" data-name="Zara Obi" data-status="under_review">
+            <div class="flex justify-between items-start">
+              <span class="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">APP-3829</span>
+              <span class="text-[9px] font-bold text-slate-400">2h ago</span>
+            </div>
+            <h4 class="font-bold text-xs text-slate-900 mt-2">Zara Obi</h4>
+            <p class="text-[10px] text-slate-500">Year 3 Primary · Autumn Intake 2026</p>
+            <div class="mt-2.5 flex items-center justify-between">
+              <span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 text-[9px] font-bold text-indigo-700 px-2 py-0.5">Under Review</span>
+              <span class="text-[9px] font-semibold text-slate-400"><i data-lucide="paperclip" class="h-3 w-3 inline mr-0.5"></i> 2 files</span>
+            </div>
+          </div>
+          <!-- Item 3 -->
+          <div onclick="selectApplicant('APP-4491')" id="item-APP-4491" class="queue-item p-4 hover:bg-slate-50/50 cursor-pointer transition-all border-l-4 border-transparent" data-name="Kofi Mensah" data-status="changes_requested">
+            <div class="flex justify-between items-start">
+              <span class="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">APP-4491</span>
+              <span class="text-[9px] font-bold text-slate-400">1d ago</span>
+            </div>
+            <h4 class="font-bold text-xs text-slate-900 mt-2">Kofi Mensah</h4>
+            <p class="text-[10px] text-slate-500">JSS 1 Secondary · Autumn Intake 2026</p>
+            <div class="mt-2.5 flex items-center justify-between">
+              <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 text-[9px] font-bold text-amber-700 px-2 py-0.5">Correction Needed</span>
+              <span class="text-[9px] font-semibold text-rose-500"><i data-lucide="alert-circle" class="h-3 w-3 inline mr-0.5"></i> Missing birth cert</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT PANE: Detailed Claims Review Panel (Flex-1) -->
+      <main class="flex-1 bg-slate-50/50 flex flex-col min-h-0 overflow-hidden" id="detail-panel">
+        
+        <!-- Applicant Header details -->
+        <div class="bg-white border-b border-slate-200 p-6 flex-shrink-0 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="h-11 w-11 bg-indigo-50 text-indigo-700 rounded-xl flex items-center justify-center font-bold text-base" id="detail-avatar">JA</div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-slate-900 text-base" id="detail-name">John Adebayo</h3>
+                <span class="font-mono text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded" id="detail-ref">APP-9482</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">Applying for: <strong class="text-slate-800" id="detail-class">Year 1 Primary</strong> · Cycle: Autumn Intake 2026</p>
+            </div>
+          </div>
+
+          <!-- Current status badge -->
+          <div id="detail-status-badge">
+            <span class="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 text-xs font-bold text-blue-700 px-3 py-1 uppercase tracking-wide">Inbox</span>
+          </div>
+        </div>
+
+        <!-- Scrollable panel sections split side-by-side -->
+        <div class="flex-1 flex overflow-hidden min-h-0">
+          
+          <!-- Column A: Profile and Answers (Scrollable) -->
+          <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar border-r border-slate-200/60 bg-white">
+            
+            <div class="space-y-3">
+              <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><i data-lucide="user" class="h-4 w-4"></i> Candidate Profile</h4>
+              <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 border border-slate-200/60 rounded-xl text-xs font-semibold text-slate-700">
+                <div><p class="text-slate-400 font-bold uppercase text-[9px]">Gender</p><p class="text-slate-900 mt-1" id="detail-gender">Male</p></div>
+                <div><p class="text-slate-400 font-bold uppercase text-[9px]">Date of Birth</p><p class="text-slate-900 mt-1" id="detail-dob">12 Nov 2019</p></div>
+                <div class="col-span-2 pt-2 border-t border-slate-200/50"><p class="text-slate-400 font-bold uppercase text-[9px]">Primary Guardian Contact</p><p class="text-slate-900 mt-1">Deji Adebayo (Father) · +234 803 123 4567</p></div>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><i data-lucide="file-question" class="h-4 w-4"></i> Registration Questionnaire</h4>
+              <div class="space-y-2.5">
+                <div class="border border-slate-200 rounded-xl p-3 bg-white text-xs font-semibold text-slate-700">
+                  <p class="text-slate-400 font-bold text-[9px]">Previous School attended</p>
+                  <p class="text-slate-900 mt-1">Gbagada Nursery School</p>
+                </div>
+                <div class="border border-slate-200 rounded-xl p-3 bg-white text-xs font-semibold text-slate-700">
+                  <p class="text-slate-400 font-bold text-[9px]">Preferred Nickname</p>
+                  <p class="text-slate-900 mt-1">Johnny</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Column B: Documents and Decision panel (Scrollable) -->
+          <div class="w-[380px] flex-shrink-0 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
+            
+            <!-- Verification Documents -->
+            <div class="space-y-3">
+              <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><i data-lucide="file-check" class="h-4 w-4"></i> Document Verification</h4>
+              <div class="space-y-2" id="detail-docs-list">
+                <div class="border border-slate-200 rounded-xl p-3 bg-white flex items-center justify-between gap-3 shadow-sm text-xs">
+                  <span class="font-bold text-slate-800">Birth_Certificate.pdf</span>
+                  <div class="flex gap-1.5">
+                    <button class="h-7 w-7 rounded-md hover:bg-slate-100 text-slate-400 flex items-center justify-center border border-slate-200"><i data-lucide="eye" class="h-3.5 w-3.5"></i></button>
+                    <button onclick="approveDetailDoc(this)" class="h-7 w-7 rounded-md hover:bg-emerald-50 text-slate-400 flex items-center justify-center border border-slate-200"><i data-lucide="check" class="h-3.5 w-3.5"></i></button>
+                  </div>
+                </div>
+                <div class="border border-slate-200 rounded-xl p-3 bg-white flex items-center justify-between gap-3 shadow-sm text-xs">
+                  <span class="font-bold text-slate-800">Immunization_Card.jpg</span>
+                  <div class="flex gap-1.5">
+                    <button class="h-7 w-7 rounded-md hover:bg-slate-100 text-slate-400 flex items-center justify-center border border-slate-200"><i data-lucide="eye" class="h-3.5 w-3.5"></i></button>
+                    <button onclick="approveDetailDoc(this)" class="h-7 w-7 rounded-md hover:bg-emerald-50 text-slate-400 flex items-center justify-center border border-slate-200"><i data-lucide="check" class="h-3.5 w-3.5"></i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Review Actions & Decisions -->
+            <div class="space-y-3">
+              <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><i data-lucide="check-square" class="h-4 w-4"></i> Decision Actions</h4>
+              <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm text-xs">
+                <div class="grid grid-cols-2 gap-2" id="workstation-decision-btns">
+                  <button onclick="recordSplitDecision('accepted')" class="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center justify-center gap-1"><i data-lucide="check" class="h-3.5 w-3.5"></i> Admit</button>
+                  <button onclick="recordSplitDecision('rejected')" class="h-9 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold transition-all shadow-sm flex items-center justify-center gap-1"><i data-lucide="x" class="h-3.5 w-3.5"></i> Decline</button>
+                  <button onclick="recordSplitDecision('waitlisted')" class="h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold transition-all shadow-sm col-span-2 flex items-center justify-center gap-1"><i data-lucide="clock" class="h-3.5 w-3.5"></i> Waitlist candidate</button>
+                </div>
+
+                <div id="split-conversion-panel" class="hidden pt-3 border-t border-slate-100 space-y-2">
+                  <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg text-[10px] font-bold">Approved for Admission. Convert file now:</div>
+                  <select id="split-class-select" class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:border-indigo-600 focus:outline-none">
+                    <option value="">Select target class section</option>
+                    <option value="class-1a">Primary Year 1A</option>
+                    <option value="class-1b">Primary Year 1B</option>
+                  </select>
+                  <button onclick="convertSplitStudent()" class="h-9 w-full bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-1">
+                    <i data-lucide="users-round" class="h-3.5 w-3.5 text-emerald-400"></i> Register Student
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+
+  </div>
+
+  <!-- ─── SETTINGS MODAL OVERLAY ─── -->
+  <div id="settings-modal" class="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-white border border-slate-200 rounded-2xl w-[700px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-indigo-50 text-indigo-700 rounded-xl"><i data-lucide="sliders" class="h-5 w-5"></i></div>
+          <div>
+            <h3 class="font-bold text-sm text-slate-900">Cycles & Form Configuration</h3>
+            <p class="text-[10px] text-slate-400 font-bold mt-0.5">Manage active intakes, pricing models, and form schemas.</p>
+          </div>
+        </div>
+        <button onclick="toggleSettingsModal(false)" class="text-slate-400 hover:text-slate-600 transition-all"><i data-lucide="x" class="h-5 w-5"></i></button>
+      </div>
+
+      <!-- Content (Scrollable) -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar text-xs">
+        
+        <!-- Live Cycles List -->
+        <div class="space-y-3">
+          <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider">Configured Admission Intakes</h4>
+          <div class="space-y-2" id="modal-cycles-list">
+            <div class="border border-slate-200 rounded-xl p-4 bg-white hover:bg-slate-50/50 flex items-center justify-between gap-4 font-semibold">
+              <div>
+                <p class="font-bold text-slate-900">Autumn Intake 2026</p>
+                <p class="text-[10px] text-slate-500">₦ 15,000 NGN · Sep 2026 - Dec 2026</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-bold text-emerald-700">Active & Open</span>
+            </div>
+            <div class="border border-slate-200 rounded-xl p-4 bg-white hover:bg-slate-50/50 flex items-center justify-between gap-4 font-semibold">
+              <div>
+                <p class="font-bold text-slate-900">Summer Fast-track 2026</p>
+                <p class="text-[10px] text-slate-500">₦ 10,000 NGN · Jun 2026 - Aug 2026</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-bold text-emerald-700">Active & Open</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add New Cycle Section -->
+        <div class="border-t border-slate-100 pt-5 space-y-4">
+          <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-wider">Fast Setup New Intake</h4>
+          <div class="grid gap-3 sm:grid-cols-2 bg-slate-50 p-4 border border-slate-200/60 rounded-xl">
+            <label class="block text-xs font-bold text-slate-700">Intake / Offering Name
+              <input type="text" id="m-intake-name" placeholder="e.g. Winter 2026 Intake" class="mt-1.5 h-9 w-full rounded-lg border border-slate-200 px-3 bg-white focus:outline-none">
+            </label>
+            <label class="block text-xs font-bold text-slate-700">Application Fee Amount
+              <input type="number" id="m-fee" placeholder="e.g. 15000" class="mt-1.5 h-9 w-full rounded-lg border border-slate-200 px-3 bg-white focus:outline-none">
+            </label>
+          </div>
+          <button onclick="createFastCycle()" class="h-9 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-all">Save and Publish Live</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    lucide.createIcons();
+
+    let currentSelectedId = 'APP-9482';
+    let currentStatusFilter = 'all';
+
+    const mockApplicants = {
+      'APP-9482': { name: 'John Adebayo', ref: 'APP-9482', class: 'Year 1 Primary', gender: 'Male', dob: '12 Nov 2019', status: 'submitted', avatar: 'JA' },
+      'APP-3829': { name: 'Zara Obi', ref: 'APP-3829', class: 'Year 3 Primary', gender: 'Female', dob: '05 May 2017', status: 'under_review', avatar: 'ZO' },
+      'APP-4491': { name: 'Kofi Mensah', ref: 'APP-4491', class: 'JSS 1 Secondary', gender: 'Male', dob: '14 Oct 2013', status: 'changes_requested', avatar: 'KM' }
+    };
+
+    function setStatusFilter(status) {
+      currentStatusFilter = status;
+      const btns = document.querySelectorAll('.left-status-btn');
+      btns.forEach(btn => {
+        btn.className = 'left-status-btn px-2.5 py-1 rounded-md text-[10px] font-semibold text-slate-500 hover:text-slate-800 transition-all';
+      });
+      event.target.className = 'left-status-btn px-2.5 py-1 rounded-md text-[10px] font-bold bg-slate-900 text-white shadow-sm transition-all';
+      filterLeftQueue();
+    }
+
+    function filterLeftQueue() {
+      const search = document.getElementById('left-search').value.toLowerCase();
+      const items = document.querySelectorAll('.queue-item');
+
+      items.forEach(item => {
+        const name = item.getAttribute('data-name').toLowerCase();
+        const status = item.getAttribute('data-status');
+
+        const matchesSearch = name.includes(search);
+        const matchesStatus = currentStatusFilter === 'all' || status === currentStatusFilter;
+
+        if (matchesSearch && matchesStatus) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
+    function selectApplicant(applicantId) {
+      currentSelectedId = applicantId;
+      const app = mockApplicants[applicantId];
+      if (!app) return;
+
+      // Update selection class active highlighting
+      document.querySelectorAll('.queue-item').forEach(item => {
+        item.classList.remove('border-indigo-600', 'bg-indigo-50/30');
+        item.classList.add('border-transparent');
+      });
+      document.getElementById(`item-${applicantId}`).classList.add('border-indigo-600', 'bg-indigo-50/30');
+      document.getElementById(`item-${applicantId}`).classList.remove('border-transparent');
+
+      // Populate details view
+      document.getElementById('detail-avatar').innerText = app.avatar;
+      document.getElementById('detail-name').innerText = app.name;
+      document.getElementById('detail-ref').innerText = app.ref;
+      document.getElementById('detail-class').innerText = app.class;
+      document.getElementById('detail-gender').innerText = app.gender;
+      document.getElementById('detail-dob').innerText = app.dob;
+
+      // Status indicator reset
+      let badgeHtml = '';
+      if (app.status === 'submitted') {
+        badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 text-xs font-bold text-blue-700 px-3 py-1 uppercase tracking-wide">Inbox</span>`;
+        document.getElementById('split-conversion-panel').classList.add('hidden');
+        document.getElementById('workstation-decision-btns').classList.remove('hidden');
+      } else if (app.status === 'under_review') {
+        badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-bold text-indigo-700 px-3 py-1 uppercase tracking-wide">Under Review</span>`;
+        document.getElementById('split-conversion-panel').classList.add('hidden');
+        document.getElementById('workstation-decision-btns').classList.remove('hidden');
+      } else if (app.status === 'accepted') {
+        badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-bold text-emerald-700 px-3 py-1 uppercase tracking-wide">Admitted</span>`;
+        document.getElementById('split-conversion-panel').classList.remove('hidden');
+        document.getElementById('workstation-decision-btns').classList.add('hidden');
+      } else {
+        badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 text-xs font-bold text-amber-700 px-3 py-1 uppercase tracking-wide">Changes Requested</span>`;
+        document.getElementById('split-conversion-panel').classList.add('hidden');
+        document.getElementById('workstation-decision-btns').classList.remove('hidden');
+      }
+      document.getElementById('detail-status-badge').innerHTML = badgeHtml;
+    }
+
+    function recordSplitDecision(decision) {
+      alert(`Decision set: ${decision}. Notifications updated.`);
+      const app = mockApplicants[currentSelectedId];
+      if (!app) return;
+
+      app.status = decision;
+      
+      // Update item row status dataset
+      const itemEl = document.getElementById(`item-${currentSelectedId}`);
+      if (itemEl) {
+        itemEl.setAttribute('data-status', decision);
+        let badgeHtml = '';
+        if (decision === 'accepted') {
+          badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-bold text-emerald-700 px-2 py-0.5">Admitted</span>`;
+        } else if (decision === 'rejected') {
+          badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-100 text-[9px] font-bold text-rose-700 px-2 py-0.5">Declined</span>`;
+        } else {
+          badgeHtml = `<span class="inline-flex items-center gap-1 rounded-full bg-slate-50 border border-slate-100 text-[9px] font-bold text-slate-700 px-2 py-0.5">Waitlisted</span>`;
+        }
+        itemEl.querySelector('span.inline-flex').outerHTML = badgeHtml;
+      }
+
+      selectApplicant(currentSelectedId);
+      filterLeftQueue();
+    }
+
+    function convertSplitStudent() {
+      const cls = document.getElementById('split-class-select').value;
+      if (!cls) {
+        alert("Please select a target class section.");
+        return;
+      }
+      alert("Student profile registered in database under " + cls);
+    }
+
+    function approveDetailDoc(btn) {
+      btn.innerHTML = `<i data-lucide="check-circle2" class="h-3.5 w-3.5 text-emerald-500"></i>`;
+      btn.classList.add('bg-emerald-50');
+      lucide.createIcons();
+    }
+
+    // Modal actions
+    function toggleSettingsModal(show) {
+      const modal = document.getElementById('settings-modal');
+      if (show) {
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+      } else {
+        modal.classList.add('opacity-0');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+      }
+    }
+
+    function createFastCycle() {
+      const name = document.getElementById('m-intake-name').value;
+      const fee = document.getElementById('m-fee').value;
+
+      if (!name) return;
+
+      const list = document.getElementById('modal-cycles-list');
+      const item = document.createElement('div');
+      item.className = 'border border-slate-200 rounded-xl p-4 bg-white hover:bg-slate-50/50 flex items-center justify-between gap-4 font-semibold';
+      item.innerHTML = `
+        <div>
+          <p class="font-bold text-slate-900">${name}</p>
+          <p class="text-[10px] text-slate-500">₦ ${parseInt(fee).toLocaleString()} NGN · Immediate Start</p>
+        </div>
+        <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-bold text-emerald-700">Active & Open</span>
+      `;
+      list.appendChild(item);
+
+      document.getElementById('m-intake-name').value = '';
+      document.getElementById('m-fee').value = '';
+      toggleSettingsModal(false);
+    }
+  </script>
+</body>
+</html>
