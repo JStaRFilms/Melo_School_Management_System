@@ -47,6 +47,8 @@ function normalizeConfigurationMimes<T extends { fields: Field[]; requirements: 
 const resultValidator = v.object({ programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), productId: v.id("admissionsProducts"), formVersionId: v.id("admissionsFormVersions"), declarationVersionId: v.id("admissionsDeclarationVersions"), priceId: v.union(v.id("admissionsProductPrices"), v.null()), status: v.union(v.literal("draft"), v.literal("published")), replayed: v.boolean() });
 
 const RECOVERY_HISTORY_LIMIT = 100;
+const MAX_FORM_FIELDS = 200;
+const MAX_DOCUMENT_REQUIREMENTS = 100;
 type RecoveryState = "recoverable_to_draft" | "review_required";
 type RecoveryInspection = {
   programme: Doc<"admissionsProgrammes"> | null;
@@ -72,18 +74,21 @@ async function inspectLegacyRecovery(ctx: QueryCtx | MutationCtx, schoolId: Id<"
   const products = productLists.flat();
   const declarations = declarationLists.flat();
   const product = products.length === 1 ? products[0] : null;
-  const prices = product ? await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(RECOVERY_HISTORY_LIMIT + 1) : [];
+  const form = forms.length === 1 ? forms[0] : null;
+  const [prices, fields, requirements] = await Promise.all([
+    product ? ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(RECOVERY_HISTORY_LIMIT + 1) : [],
+    form ? ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(MAX_FORM_FIELDS + 1) : [],
+    form ? ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(MAX_DOCUMENT_REQUIREMENTS + 1) : [],
+  ]);
   const [applications, entitlements, attempts] = product ? await Promise.all([
     ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_created_at", (q) => q.eq("schoolId", schoolId).eq("intakeId", intake._id)).take(1),
     ctx.db.query("admissionsEntitlements").withIndex("by_intake_and_created_at", (q) => q.eq("intakeId", intake._id)).take(1),
     ctx.db.query("admissionsPurchaseAttempts").withIndex("by_product_and_created_at", (q) => q.eq("productId", product._id)).take(1),
   ]) : [[], [], []] as [Doc<"admissionsApplications">[], Doc<"admissionsEntitlements">[], Doc<"admissionsPurchaseAttempts">[]];
-  const publishedForms = forms.filter((item) => item.status === "published");
-  const publishedDeclarations = declarations.filter((item) => item.status === "published");
-  const publishedPrices = prices.filter((item) => item.status === "published");
-  const bounded = forms.length <= RECOVERY_HISTORY_LIMIT && declarations.length <= RECOVERY_HISTORY_LIMIT && prices.length <= RECOVERY_HISTORY_LIMIT;
-  const sameTenant = !!programme && programme.schoolId === schoolId && programmeIntakes.length === 1 && programmeIntakes[0]._id === intake._id && programmeIntakes.every((item) => item.schoolId === schoolId && item.programmeId === programme._id) && products.every((item) => item.schoolId === schoolId && item.intakeId === intake._id) && forms.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId && item.intakeId === intake._id) && declarations.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId) && prices.every((item) => item.schoolId === schoolId && item.productId === product?._id) && entitlements.every((item) => item.schoolId === schoolId && item.productId === product?._id) && attempts.every((item) => item.schoolId === schoolId && item.productId === product?._id) && applications.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId && item.productId === product?._id);
-  const recoverable = sameTenant && bounded && operations.length === 0 && programme?.status === "draft" && intake.status === "open" && product?.status === "draft" && product.slotCount === 1 && publishedForms.length === 1 && publishedDeclarations.length === 1 && publishedPrices.length === 1 && publishedPrices[0].version === 1 && applications.length === 0 && entitlements.length === 0 && attempts.length === 0;
+  const bounded = forms.length <= RECOVERY_HISTORY_LIMIT && declarations.length <= RECOVERY_HISTORY_LIMIT && prices.length <= RECOVERY_HISTORY_LIMIT && fields.length <= MAX_FORM_FIELDS && requirements.length <= MAX_DOCUMENT_REQUIREMENTS;
+  const sameTenant = !!programme && programme.schoolId === schoolId && programmeIntakes.length === 1 && programmeIntakes[0]._id === intake._id && programmeIntakes.every((item) => item.schoolId === schoolId && item.programmeId === programme._id) && products.every((item) => item.schoolId === schoolId && item.intakeId === intake._id) && forms.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId && item.intakeId === intake._id) && declarations.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId) && prices.every((item) => item.schoolId === schoolId && item.productId === product?._id) && fields.every((item) => item.schoolId === schoolId && item.formVersionId === form?._id) && requirements.every((item) => item.schoolId === schoolId && item.formVersionId === form?._id) && entitlements.every((item) => item.schoolId === schoolId && item.productId === product?._id) && attempts.every((item) => item.schoolId === schoolId && item.productId === product?._id) && applications.every((item) => item.schoolId === schoolId && item.programmeId === intake.programmeId && item.productId === product?._id);
+  const exactVersionGraph = forms.length === 1 && forms[0].version === 1 && forms[0].status === "published" && declarations.length === 1 && declarations[0].version === 1 && declarations[0].status === "published" && prices.length === 1 && prices[0].version === 1 && prices[0].status === "published";
+  const recoverable = sameTenant && bounded && exactVersionGraph && operations.length === 0 && programme?.status === "draft" && intake.status === "open" && product?.status === "draft" && product.slotCount === 1 && applications.length === 0 && entitlements.length === 0 && attempts.length === 0;
   return { programme, products, forms, declarations, prices, operations, state: recoverable ? "recoverable_to_draft" : "review_required" };
 }
 
