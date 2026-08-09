@@ -7,21 +7,20 @@ import {
   FolderPlus, 
   Trash2, 
   GripHorizontal, 
-  Check, 
-  CheckCircle2, 
+  Check,
   AlertTriangle,
-  ArrowRight,
   ArrowLeft,
   Info,
   RefreshCw,
   Lock,
-  Settings,
   ShieldAlert,
   ShieldCheck,
   ChevronDown
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+
+type DataClass = "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security";
 
 type BuilderCard = {
   id: string;
@@ -33,13 +32,29 @@ type BuilderCard = {
   isDefault?: boolean;
   isMandatory?: boolean;
   enabled?: boolean;
-  dataClass?: "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security";
+  dataClass?: DataClass;
   purpose?: string;
   retentionPolicyKey?: string;
   audience?: string;
   approvalEvidenceId?: string;
   choices?: string[];
 };
+
+type Catalogue = {
+  programmes: Array<{ id: string; name: string; description: string | null }>;
+  intakes: Array<{ id: string; programmeId: string; slug: string; name: string; cycleLabel: string; status: string; opensAt: number; closesAt: number }>;
+  products: Array<{ id: string; intakeId: string }>;
+  forms: Array<{ id: string; intakeId: string | null; version: number; status: string }>;
+  declarations: Array<{ id: string; programmeId: string; version: number; title: string; body: string; status: string }>;
+};
+
+type FormConfiguration = {
+  fields: Array<{ id: string; key: string; sectionKey: string; label: string; kind: string; requiredMode: string; dataClass: DataClass; purpose: string | null; retentionPolicyKey: string | null; audience: string | null; approvalEvidenceId: string | null; validationJson: string; order: number }>;
+  requirements: Array<{ key: string }>;
+};
+
+type ProductPrice = { version: number; amountMinor: number; currency: string; refundPolicyKey: string; feeDisclosure: string };
+type ApprovalEvidence = { id: string; approvalClass: string; subjectType: string; subjectKey: string; evidenceReference: string; active: boolean };
 
 interface AdmissionsFormBuilderProps {
   schoolId: string;
@@ -60,7 +75,6 @@ export function AdmissionsFormBuilder({
 }: AdmissionsFormBuilderProps) {
   // Convex mutations
   const updateIntakeDetails = useMutation("functions/admissions/settings:updateIntakeDetails" as never);
-  const createMockApprovalEvidence = useMutation("functions/admissions/settings:createMockApprovalEvidence" as never);
   const retireForm = useMutation("functions/admissions/settings:retireForm" as never);
   const publishForm = useMutation("functions/admissions/settings:publishForm" as never);
   const setIntakeStatus = useMutation("functions/admissions/settings:setIntakeStatus" as never);
@@ -87,15 +101,11 @@ export function AdmissionsFormBuilder({
 
   // Document checkboxes
   const [reqPassport, setReqPassport] = useState(true);
-  const [reqMedical, setReqMedical] = useState(true);
+  const [reqMedical, setReqMedical] = useState(false);
   const [reqTranscripts, setReqTranscripts] = useState(true);
 
-  // Flat canvas of Google Form cards
-  // AGENT PROMPT: SYSTEM FIELD CONTRACT FOR MUTATION LIFE CYCLES
-  // These initial core parameters are backed by hardcoded layouts in apps/apply components.
-  // Their keys/slugs are immutable and should never be saved to dynamic custom database queries
-  // to avoid profile conversion mapping failures. Optional items are enabled by default
-  // but can be toggled off to collapse in the UI and remain unsaved.
+  // Core profile fields are part of the application contract rather than dynamic form rows.
+  // Their stable keys preserve submission and conversion mappings.
   const [cards, setCards] = useState<BuilderCard[]>([
     { id: "def-sec-1", type: "section", label: "Default Child Profile (Auto-Collected)", key: "child", isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-1", type: "question", label: "First Name", key: "first_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
@@ -111,44 +121,51 @@ export function AdmissionsFormBuilder({
     { id: "def-q-guardian-name", type: "question", label: "Guardian Full Name", key: "guardian_full_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-guardian-email", type: "question", label: "Guardian Email", key: "guardian_email", kind: "email", required: true, isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-guardian-phone", type: "question", label: "Guardian Phone Number", key: "guardian_phone", kind: "phone", required: true, isDefault: true, isMandatory: true, enabled: true },
-    { id: "def-q-guardian-relationship", type: "question", label: "Guardian Relationship", key: "guardian_relationship", kind: "text", required: false, isDefault: true, enabled: true },
-    // Custom cards editable by user:
-    { id: "seed-sec-1", type: "section", label: "Personal & Siblings Data", key: "child_custom" },
-    { id: "seed-q-1", type: "question", label: "Names of Siblings in School", key: "names_of_siblings_in_school", kind: "text", required: false },
-    { id: "seed-sec-2", type: "section", label: "Support & Medical History", key: "support_custom" },
-    { id: "seed-q-2", type: "question", label: "Any special medical conditions?", key: "any_special_medical_conditions", kind: "textarea", required: false }
+    { id: "def-q-guardian-relationship", type: "question", label: "Guardian Relationship", key: "guardian_relationship", kind: "text", required: false, isDefault: true, enabled: true }
   ]);
 
-  const [focusedCardId, setFocusedCardId] = useState<string | null>("seed-sec-1");
+  const [focusedCardId, setFocusedCardId] = useState<string | null>("def-sec-2");
   const [expandedPrivacyCardId, setExpandedPrivacyCardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Catalogue loaders for editing existing intake
-  const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as any;
-  const evidence = useQuery("functions/admissions/settings:listApprovalEvidence" as never, schoolId ? { schoolId } as never : "skip" as never) as any[] | undefined;
-  const intakeDoc = catalogue?.intakes?.find((i: any) => i.id === intakeId);
-  const formVersionDoc = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "draft") || 
-                        catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published") || 
-                        catalogue?.forms?.find((f: any) => f.intakeId === intakeId);
-  const productDoc = catalogue?.products?.find((p: any) => p.intakeId === intakeId);
+  const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as Catalogue | undefined;
+  const evidence = useQuery("functions/admissions/settings:listApprovalEvidence" as never, schoolId ? { schoolId } as never : "skip" as never) as ApprovalEvidence[] | undefined;
+  const intakeDoc = catalogue?.intakes.find((item) => item.id === intakeId);
+  const intakeForms = catalogue?.forms.filter((form) => form.intakeId === intakeId).sort((a, b) => b.version - a.version);
+  const formVersionDoc = intakeForms?.find((form) => form.status === "draft") ||
+                        intakeForms?.find((form) => form.status === "published") ||
+                        intakeForms?.[0];
+  const productDoc = catalogue?.products.find((product) => product.intakeId === intakeId);
 
   const formConfig = useQuery(
     "functions/admissions/settings:getFormConfiguration" as never,
     formVersionDoc?.id ? { formVersionId: formVersionDoc.id } as never : "skip" as never
-  ) as any;
+  ) as FormConfiguration | undefined;
 
   const prices = useQuery(
     "functions/admissions/settings:listProductPrices" as never,
     productDoc?.id ? { productId: productDoc.id } as never : "skip" as never
-  ) as any;
+  ) as ProductPrice[] | undefined;
 
+  const [feeAmount, setFeeAmount] = useState("0");
+  const [feeCurrency, setFeeCurrency] = useState("NGN");
+  const [feeRefundPolicy, setFeeRefundPolicy] = useState("non_refundable");
+  const [feeDisclosure, setFeeDisclosure] = useState("");
+  const [declarationTitle, setDeclarationTitle] = useState("");
+  const [declarationBody, setDeclarationBody] = useState("");
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [draftExists, setDraftExists] = useState(false);
+  const [isDraftDecisionMade, setIsDraftDecisionMade] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const mountRef = useRef(false);
   const [hasInitializedEditMode, setHasInitializedEditMode] = useState(false);
 
   useEffect(() => {
     if (!intakeId || !catalogue || hasInitializedEditMode) return;
     if (!intakeDoc || !formConfig || !prices) return; // Wait for queries to resolve
 
-    const programme = catalogue.programmes.find((p: any) => p.id === intakeDoc.programmeId);
+    const programme = catalogue.programmes.find((item) => item.id === intakeDoc.programmeId);
 
     if (intakeDoc.name) setFormName(intakeDoc.name);
     if (intakeDoc.slug) setFormSlug(intakeDoc.slug);
@@ -171,8 +188,8 @@ export function AdmissionsFormBuilder({
       setFeeDisclosure(prices[0].feeDisclosure);
     }
 
-    const declarationDoc = catalogue?.declarations?.find((d: any) => d.programmeId === intakeDoc.programmeId && d.status === "published") ||
-                           catalogue?.declarations?.find((d: any) => d.programmeId === intakeDoc.programmeId);
+    const declarationDoc = catalogue.declarations.find((declaration) => declaration.programmeId === intakeDoc.programmeId && declaration.status === "published") ||
+                           catalogue.declarations.find((declaration) => declaration.programmeId === intakeDoc.programmeId);
 
     if (declarationDoc) {
       if (declarationDoc.title) setDeclarationTitle(declarationDoc.title);
@@ -180,7 +197,7 @@ export function AdmissionsFormBuilder({
     }
 
     // Default templates to update or construct
-    const defaultTemplates = [
+    const defaultTemplates: BuilderCard[] = [
       { id: "def-q-1", type: "question", label: "First Name", key: "first_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
       { id: "def-q-middle-name", type: "question", label: "Middle Name", key: "middle_name", kind: "text", required: false, isDefault: true, enabled: true },
       { id: "def-q-2", type: "question", label: "Last Name", key: "last_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
@@ -196,77 +213,66 @@ export function AdmissionsFormBuilder({
       { id: "def-q-guardian-relationship", type: "question", label: "Guardian Relationship", key: "guardian_relationship", kind: "text", required: false, isDefault: true, enabled: true }
     ];
 
-    const resolvedCards: any[] = [];
-    const sortedFields = [...formConfig.fields].sort((a: any, b: any) => a.order - b.order);
+    const resolvedCards: BuilderCard[] = [];
+    const sortedFields = [...formConfig.fields].sort((a, b) => a.order - b.order);
 
     // 1. Add Default Section 1 & its default questions (always enabled by default)
     resolvedCards.push({ id: "def-sec-1", type: "section", label: "Default Child Profile (Auto-Collected)", key: "child", isDefault: true, isMandatory: true, enabled: true });
-    defaultTemplates.slice(0, 9).forEach((t: any) => {
-      const fieldMatch = sortedFields.find((f: any) => f.key === t.key);
-      let choicesList = t.choices || [];
+    defaultTemplates.slice(0, 9).forEach((template) => {
+      const fieldMatch = sortedFields.find((field) => field.key === template.key);
+      let choicesList = template.choices || [];
       if (fieldMatch?.validationJson) {
         try {
           const parsedVal = JSON.parse(fieldMatch.validationJson);
-          if (Array.isArray(parsedVal?.choices)) {
-            choicesList = parsedVal.choices;
-          }
-        } catch (err) {
-          console.error("Error parsing validationJson for default template", t.key, err);
+          if (Array.isArray(parsedVal?.choices)) choicesList = parsedVal.choices;
+        } catch (error) {
+          console.error("Error parsing validationJson for default template", template.key, error);
         }
       }
       resolvedCards.push({
-        ...t,
-        label: fieldMatch?.label || t.label,
-        required: fieldMatch ? fieldMatch.requiredMode === "required" : t.required,
+        ...template,
+        label: fieldMatch?.label || template.label,
+        required: fieldMatch ? fieldMatch.requiredMode === "required" : template.required,
         enabled: true,
-        choices: choicesList
+        choices: choicesList,
       });
     });
 
     // 2. Add Default Section 2 & its default questions (always enabled by default)
     resolvedCards.push({ id: "def-sec-2", type: "section", label: "Default Guardian Contact (Auto-Collected)", key: "guardian", isDefault: true, isMandatory: true, enabled: true });
-    defaultTemplates.slice(9).forEach((t: any) => {
-      const fieldMatch = sortedFields.find((f: any) => f.key === t.key);
-      let choicesList = t.choices || [];
+    defaultTemplates.slice(9).forEach((template) => {
+      const fieldMatch = sortedFields.find((field) => field.key === template.key);
+      let choicesList = template.choices || [];
       if (fieldMatch?.validationJson) {
         try {
           const parsedVal = JSON.parse(fieldMatch.validationJson);
-          if (Array.isArray(parsedVal?.choices)) {
-            choicesList = parsedVal.choices;
-          }
-        } catch (err) {
-          console.error("Error parsing validationJson for default template", t.key, err);
+          if (Array.isArray(parsedVal?.choices)) choicesList = parsedVal.choices;
+        } catch (error) {
+          console.error("Error parsing validationJson for default template", template.key, error);
         }
       }
       resolvedCards.push({
-        ...t,
-        label: fieldMatch?.label || t.label,
-        required: fieldMatch ? fieldMatch.requiredMode === "required" : t.required,
+        ...template,
+        label: fieldMatch?.label || template.label,
+        required: fieldMatch ? fieldMatch.requiredMode === "required" : template.required,
         enabled: true,
-        choices: choicesList
+        choices: choicesList,
       });
     });
 
     // 3. Filter custom fields only (those not belonging to default keys)
-    const customFields = sortedFields.filter((f: any) => !defaultTemplates.some((t: any) => t.key === f.key));
+    const customFields = sortedFields.filter((field) => !defaultTemplates.some((template) => template.key === field.key));
 
     let currentSectionKey = "";
-    customFields.forEach((field: any, idx: number) => {
+    customFields.forEach((field, idx) => {
       const sKey = field.sectionKey || "child_custom";
       if (sKey !== currentSectionKey) {
-        if (sKey === "child_custom") {
-          resolvedCards.push({ id: "seed-sec-1", type: "section", label: "Personal & Siblings Data", key: "child_custom" });
-        } else if (sKey === "support_custom") {
-          resolvedCards.push({ id: "seed-sec-2", type: "section", label: "Support & Medical History", key: "support_custom" });
-        } else {
-          // Custom section
-          resolvedCards.push({
-            id: `card-sec-${idx}-${Date.now()}`,
-            type: "section",
-            label: sKey.replace(/_+/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-            key: sKey
-          });
-        }
+        resolvedCards.push({
+          id: `card-sec-${idx}-${Date.now()}`,
+          type: "section",
+          label: sKey.replace(/_+/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+          key: sKey,
+        });
         currentSectionKey = sKey;
       }
 
@@ -301,9 +307,9 @@ export function AdmissionsFormBuilder({
 
     // Requirements documents mapping
     const reqs = formConfig.requirements;
-    setReqPassport(reqs.some((r: any) => r.key === "passport"));
-    setReqMedical(reqs.some((r: any) => r.key === "medical_records"));
-    setReqTranscripts(reqs.some((r: any) => r.key === "transcripts"));
+    setReqPassport(reqs.some((requirement) => requirement.key === "passport"));
+    setReqMedical(reqs.some((requirement) => requirement.key === "medical_records"));
+    setReqTranscripts(reqs.some((requirement) => requirement.key === "transcripts"));
 
     if (intakeDoc.status) {
       setTargetStatus(intakeDoc.status === "draft" ? "draft" : "published");
@@ -313,25 +319,6 @@ export function AdmissionsFormBuilder({
     setHasInitializedEditMode(true);
     setIsDraftDecisionMade(true); // Don't trigger draft recovery modal since we are editing a live campaign
   }, [intakeId, catalogue, formConfig, prices, hasInitializedEditMode, intakeDoc]);
-
-  // Fees states
-  const [feeAmount, setFeeAmount] = useState("15000");
-  const [feeCurrency, setFeeCurrency] = useState("NGN");
-  const [feeRefundPolicy, setFeeRefundPolicy] = useState("non_refundable");
-  const [feeDisclosure, setFeeDisclosure] = useState("Application processing fee");
-
-  // Legal Declaration states
-  const [declarationTitle, setDeclarationTitle] = useState("Declaration of Guardians");
-  const [declarationBody, setDeclarationBody] = useState("I hereby attest to the accuracy of the records provided and bind responsibility to school code frameworks.");
-
-  // Removed scroll position trackers to optimize rendering performance and prevent scroll lag
-  const canvasRef = useRef<HTMLDivElement>(null);
-
-  // Autosave and duplicate keys verification states
-  const [draftExists, setDraftExists] = useState(false);
-  const [isDraftDecisionMade, setIsDraftDecisionMade] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const mountRef = useRef(false);
 
   useEffect(() => {
     if (schoolId && !intakeId) { // Skip local draft checks when editing a live database campaign
@@ -343,7 +330,7 @@ export function AdmissionsFormBuilder({
             setDraftExists(true);
             return;
           }
-        } catch (e) {}
+        } catch {}
       }
     }
     setIsDraftDecisionMade(true);
@@ -390,7 +377,7 @@ export function AdmissionsFormBuilder({
         if (parsed.closesAt) setClosesAt(parsed.closesAt);
         if (parsed.cards) setCards(parsed.cards);
         appToast.success("Draft loaded successfully!");
-      } catch (e) {
+      } catch {
         appToast.error("Failed to load draft.");
       }
     }
@@ -542,11 +529,60 @@ export function AdmissionsFormBuilder({
     });
   };
 
+  const findActiveEvidence = (approvalClass: string, subjectType: string, subjectKey: string) =>
+    evidence?.find((item) => item.active && item.approvalClass === approvalClass && item.subjectType === subjectType && item.subjectKey === subjectKey)?.id as string | undefined;
+
   // Convex setup submit sequence
   const handlePublish = async () => {
     if (!formName || !formSlug) {
       appToast.error("Form name and slug are required parameters.");
       return;
+    }
+    if (targetStatus === "published" && !publishAllowed) {
+      appToast.error("You do not have permission to publish admissions forms.");
+      return;
+    }
+    if (!declarationTitle.trim() || !declarationBody.trim()) {
+      appToast.error("The school must provide declaration title and text.");
+      return;
+    }
+    const opens = opensAt ? new Date(opensAt).getTime() : Date.now();
+    const closes = closesAt ? new Date(closesAt).getTime() : Date.now() + 30 * 24 * 60 * 60 * 1000;
+    if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) {
+      appToast.error("The intake closing date must be after its opening date.");
+      return;
+    }
+    const amountMinor = Number(feeAmount) || 0;
+    if (!intakeId && amountMinor !== 0) {
+      appToast.error("Create the draft campaign with no fee first, then attach approved finance evidence before publishing a price.");
+      return;
+    }
+    if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) {
+      appToast.error("Active privacy approval evidence is required before adding medical records.");
+      return;
+    }
+    const invalidSensitiveField = cards.find((card) => {
+      if (card.type !== "question" || (card.dataClass !== "highly_sensitive" && card.dataClass !== "financial_security")) return false;
+      return !evidence?.some((item) => item.id === card.approvalEvidenceId && item.active && item.approvalClass === "privacy" && item.subjectType === "admissions_field" && item.subjectKey === card.key);
+    });
+    if (invalidSensitiveField) {
+      appToast.error(`Select matching active privacy evidence for ${invalidSensitiveField.label || invalidSensitiveField.key}.`);
+      return;
+    }
+    if (intakeId) {
+      const product = catalogue?.products.find((item) => item.intakeId === intakeId);
+      const existingPrice = prices?.[0];
+      if (product && (!existingPrice || existingPrice.amountMinor !== amountMinor)) {
+        const nextVersion = (existingPrice?.version || 0) + 1;
+        if (targetStatus !== "published") {
+          appToast.error("Price changes require publishing with approved finance evidence.");
+          return;
+        }
+        if (!findActiveEvidence("finance", "admissions_price", `${product.id}:${nextVersion}`)) {
+          appToast.error(`Active finance approval evidence is required for price version ${nextVersion}.`);
+          return;
+        }
+      }
     }
 
     // Validate duplicate keys
@@ -569,10 +605,10 @@ export function AdmissionsFormBuilder({
     try {
       if (intakeId) {
         // --- EDITING AN EXISTING INTAKE FORM ---
-        const intake = catalogue?.intakes?.find((i: any) => i.id === intakeId);
+        const intake = catalogue?.intakes.find((item) => item.id === intakeId);
         if (!intake) throw new Error("Intake not found in catalogue");
         const progId = intake.programmeId;
-        const product = catalogue?.products?.find((p: any) => p.intakeId === intakeId);
+        const product = catalogue?.products.find((item) => item.intakeId === intakeId);
 
         // 1. Update Intake and Programme details
         const opens = opensAt ? new Date(opensAt).getTime() : Date.now();
@@ -580,7 +616,7 @@ export function AdmissionsFormBuilder({
         
         await updateIntakeDetails({
           schoolId,
-          intakeId: intakeId as any,
+          intakeId,
           name: formName,
           opensAt: opens,
           closesAt: closes,
@@ -595,15 +631,10 @@ export function AdmissionsFormBuilder({
         
         if (prodId && (!existingPrice || existingPrice.amountMinor !== amt)) {
           const nextVersion = (existingPrice?.version || 0) + 1;
-          const evidenceId = await createMockApprovalEvidence({
-            schoolId,
-            approvalClass: "finance",
-            subjectType: "admissions_price",
-            subjectKey: `${String(prodId)}:${nextVersion}`
-          } as never);
-
+          const evidenceId = findActiveEvidence("finance", "admissions_price", `${String(prodId)}:${nextVersion}`);
+          if (!evidenceId) throw new Error(`Active finance approval evidence is required for price version ${nextVersion}.`);
           await publishPrice({
-            productId: prodId as any,
+            productId: prodId,
             version: nextVersion,
             amountMinor: amt,
             currency: feeCurrency,
@@ -615,22 +646,22 @@ export function AdmissionsFormBuilder({
         }
 
         // 2.5 Update/create legal declaration attestation
-        const existingDeclaration = catalogue?.declarations?.find((d: any) => d.programmeId === intakeDoc.programmeId);
+        const declarationVersion = Math.max(0, ...(catalogue?.declarations.filter((declaration) => declaration.programmeId === intake.programmeId).map((declaration) => declaration.version) ?? [])) + 1;
         const declId = await createDeclaration({
           schoolId,
-          programmeId: intakeDoc.programmeId,
-          version: existingDeclaration ? (existingDeclaration.version + 1) : 1,
+          programmeId: intake.programmeId,
+          version: declarationVersion,
           title: declarationTitle,
           body: declarationBody,
           purpose: "service"
         } as never) as string;
-        await publishDeclaration({ declarationVersionId: declId } as never);
+        if (targetStatus === "published") await publishDeclaration({ declarationVersionId: declId } as never);
 
         // 3. Create Draft form version
         const fVersionId = await createForm({
           schoolId,
           programmeId: progId,
-          intakeId: intakeId as any,
+          intakeId,
           schemaVersion: "1"
         } as never) as string;
 
@@ -642,15 +673,7 @@ export function AdmissionsFormBuilder({
           if (card.type === "section") {
             currentSectionKey = card.key || "custom_section";
           } else {
-            let fieldApprovalId = card.approvalEvidenceId || undefined;
-            if ((card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") && !fieldApprovalId) {
-              fieldApprovalId = await createMockApprovalEvidence({
-                schoolId,
-                approvalClass: "privacy",
-                subjectType: "admissions_field",
-                subjectKey: card.key
-              } as never);
-            }
+            const fieldApprovalId = card.approvalEvidenceId || undefined;
 
             let validationJsonVal = "{}";
             if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
@@ -707,13 +730,8 @@ export function AdmissionsFormBuilder({
         }
 
         if (reqMedical) {
-          const medicalApprovalId = await createMockApprovalEvidence({
-            schoolId,
-            approvalClass: "privacy",
-            subjectType: "admissions_document_requirement",
-            subjectKey: "medical_records"
-          } as never);
-
+          const medicalApprovalId = findActiveEvidence("privacy", "admissions_document_requirement", "medical_records");
+          if (!medicalApprovalId) throw new Error("Active privacy approval evidence is required for medical records.");
           await addRequirement({
             formVersionId: fVersionId,
             requirementKey: "medical_records",
@@ -750,14 +768,14 @@ export function AdmissionsFormBuilder({
 
         // 6. Conditional publication logic based on targetStatus selection
         if (targetStatus === "published") {
-          const previousPublished = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published");
+          const previousPublished = catalogue?.forms.find((form) => form.intakeId === intakeId && form.status === "published");
           if (previousPublished) {
             await retireForm({ formVersionId: previousPublished.id } as never);
           }
           await publishForm({ formVersionId: fVersionId } as never);
           
           if (intakeDoc?.status === "draft") {
-            await setIntakeStatus({ intakeId: intakeId as any, status: "open" } as never);
+            await setIntakeStatus({ intakeId, status: "open" } as never);
           }
           appToast.success("Admissions form and intake cycle updated live!");
         } else {
@@ -787,7 +805,7 @@ export function AdmissionsFormBuilder({
         } as never) as string;
 
         // 3. Create Fee product
-        const prodId = await createProduct({
+        await createProduct({
           schoolId,
           intakeId: intId,
           name: "Intake registration fee slot",
@@ -802,27 +820,11 @@ export function AdmissionsFormBuilder({
           schemaVersion: "1"
         } as never) as string;
 
-        // 5. Publish Application fee
+        // Pricing is published only after accountable finance approval is recorded.
         const amt = Number(feeAmount) || 0;
-        const evidenceId = await createMockApprovalEvidence({
-          schoolId,
-          approvalClass: "finance",
-          subjectType: "admissions_price",
-          subjectKey: `${String(prodId)}:1`
-        } as never);
+        if (amt !== 0) throw new Error("Finance approval evidence is required before publishing a price.");
 
-        await publishPrice({
-          productId: prodId as any,
-          version: 1,
-          amountMinor: amt,
-          currency: feeCurrency,
-          refundPolicyKey: feeRefundPolicy,
-          feeDisclosure: feeDisclosure || "Standard admissions process fee",
-          effectiveFrom: Date.now(),
-          approvalEvidenceId: evidenceId
-        } as never);
-
-        // 6. Create declaration Attestation default
+        // 6. Create the school-authored declaration.
         const declId = await createDeclaration({
           schoolId,
           programmeId: progId,
@@ -831,7 +833,7 @@ export function AdmissionsFormBuilder({
           body: declarationBody,
           purpose: "service"
         } as never) as string;
-        await publishDeclaration({ declarationVersionId: declId } as never);
+        if (targetStatus === "published") await publishDeclaration({ declarationVersionId: declId } as never);
 
         // 7. Loop over cards and append fields
         let currentSectionKey = "applicant";
@@ -841,15 +843,7 @@ export function AdmissionsFormBuilder({
           if (card.type === "section") {
             currentSectionKey = card.key || "custom_section";
           } else {
-            let fieldApprovalId = card.approvalEvidenceId || undefined;
-            if ((card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") && !fieldApprovalId) {
-              fieldApprovalId = await createMockApprovalEvidence({
-                schoolId,
-                approvalClass: "privacy",
-                subjectType: "admissions_field",
-                subjectKey: card.key
-              } as never);
-            }
+            const fieldApprovalId = card.approvalEvidenceId || undefined;
 
             let validationJsonVal = "{}";
             if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
@@ -906,13 +900,8 @@ export function AdmissionsFormBuilder({
         }
 
         if (reqMedical) {
-          const medicalApprovalId = await createMockApprovalEvidence({
-            schoolId,
-            approvalClass: "privacy",
-            subjectType: "admissions_document_requirement",
-            subjectKey: "medical_records"
-          } as never);
-
+          const medicalApprovalId = findActiveEvidence("privacy", "admissions_document_requirement", "medical_records");
+          if (!medicalApprovalId) throw new Error("Active privacy approval evidence is required for medical records.");
           await addRequirement({
             formVersionId: fVersionId,
             requirementKey: "medical_records",
@@ -950,7 +939,7 @@ export function AdmissionsFormBuilder({
         // 9. Conditional publication logic based on targetStatus selection
         if (targetStatus === "published") {
           await publishForm({ formVersionId: fVersionId } as never);
-          await setIntakeStatus({ intakeId: intId as any, status: "open" } as never);
+          await setIntakeStatus({ intakeId: intId, status: "open" } as never);
           appToast.success("Admissions form and intake cycle published live!");
         } else {
           appToast.success("Admissions form created and saved as draft!");
@@ -1243,7 +1232,7 @@ export function AdmissionsFormBuilder({
                             />
                             {isDuplicateKey(card.id, card.key) && (
                               <span className="text-[9px] text-rose-600 font-bold ml-1">
-                                ⚠️ Duplicate (used by "{getConflictingCardLabel(card.id, card.key)}")!
+                                ⚠️ Duplicate (used by &quot;{getConflictingCardLabel(card.id, card.key)}&quot;)!
                               </span>
                             )}
                             {!isDuplicateKey(card.id, card.key) && isInvalidKeyFormat(card.key) && (
@@ -1390,7 +1379,7 @@ export function AdmissionsFormBuilder({
                               />
                               {isDuplicateKey(card.id, card.key) && (
                                 <span className="text-[9px] text-rose-600 font-bold ml-1">
-                                  ⚠️ Duplicate (used by "{getConflictingCardLabel(card.id, card.key)}")!
+                                  ⚠️ Duplicate (used by &quot;{getConflictingCardLabel(card.id, card.key)}&quot;)!
                                 </span>
                               )}
                               {!isDuplicateKey(card.id, card.key) && isInvalidKeyFormat(card.key) && (
@@ -1471,7 +1460,7 @@ export function AdmissionsFormBuilder({
                               <select
                                 value={card.dataClass || "personal"}
                                 onChange={e => {
-                                  const val = e.target.value as any;
+                                  const val = e.target.value as DataClass;
                                   setCards(prev => prev.map(c => c.id === card.id ? { ...c, dataClass: val } : c));
                                 }}
                                 className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs focus:outline-none focus:border-indigo-500 font-semibold text-slate-900"
@@ -1495,9 +1484,9 @@ export function AdmissionsFormBuilder({
                                 }}
                                 className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs focus:outline-none focus:border-indigo-500 font-semibold text-slate-900"
                               >
-                                <option value="">Auto-Generate Mock Approval (Recommended)</option>
-                                {evidence?.filter(ev => ev.active).map(ev => (
-                                  <option key={ev.id} value={ev.id}>{ev.approvalClass} · {ev.subjectKey}</option>
+                                <option value="">No approval evidence selected</option>
+                                {evidence?.filter((item) => item.active && item.approvalClass === "privacy" && item.subjectType === "admissions_field" && item.subjectKey === card.key).map((item) => (
+                                  <option key={item.id} value={item.id}>{item.evidenceReference}</option>
                                 ))}
                               </select>
                             </div>
@@ -1766,7 +1755,7 @@ export function AdmissionsFormBuilder({
             {/* Dropdown Toggle Trigger */}
             <button
               type="button"
-              disabled={saving || (intakeDoc?.status && intakeDoc.status !== "draft")}
+              disabled={saving || Boolean(intakeDoc?.status && intakeDoc.status !== "draft")}
               onClick={(e) => {
                 e.stopPropagation();
                 setDropdownOpen(!dropdownOpen);
@@ -1802,11 +1791,12 @@ export function AdmissionsFormBuilder({
                   </button>
                   <button
                     type="button"
+                    disabled={!publishAllowed}
                     onClick={() => {
                       setTargetStatus("published");
                       setDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 transition-colors mt-0.5 ${
+                    className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition-colors mt-0.5 ${
                       targetStatus === "published" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
                     }`}
                   >

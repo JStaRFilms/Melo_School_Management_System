@@ -33,14 +33,28 @@ async function hasFreshAuth(ctx: any) {
 /** Safe intake labels for queue filters; configuration and applicant data remain separate. */
 export const listAccessibleIntakes = query({
   args: { schoolId: v.id("schools") },
-  returns: v.array(v.object({ intakeId: v.id("admissionsIntakes"), name: v.string(), status: v.string() })),
+  returns: v.array(v.object({
+    intakeId: v.id("admissionsIntakes"),
+    name: v.string(),
+    status: v.string(),
+    slug: v.string(),
+    opensAt: v.number(),
+    closesAt: v.number(),
+  })),
   handler: async (ctx, args) => {
     const rows = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200);
     const result = [];
     for (const intake of rows) {
       try {
         await requireStaffScope(ctx, { schoolId: args.schoolId, programmeId: intake.programmeId, intakeId: intake._id, capability: "applications.list" });
-        result.push({ intakeId: intake._id, name: intake.name, status: intake.status });
+        result.push({
+          intakeId: intake._id,
+          name: intake.name,
+          status: intake.status,
+          slug: intake.slug,
+          opensAt: intake.opensAt,
+          closesAt: intake.closesAt,
+        });
       } catch { /* Non-enumerating omission for an out-of-scope intake. */ }
     }
     return result;
@@ -62,14 +76,12 @@ export const listQueue = query({
   },
 });
 
-const queuePageItemValidator = v.object({ 
-  applicationId: v.id("admissionsApplications"), 
-  publicId: v.string(), 
-  state: v.string(), 
-  updatedAt: v.number(), 
+const queuePageItemValidator = v.object({
+  applicationId: v.id("admissionsApplications"),
+  publicId: v.string(),
+  state: v.string(),
+  updatedAt: v.number(),
   intakeId: v.id("admissionsIntakes"),
-  firstName: v.optional(v.string()),
-  lastName: v.optional(v.string())
 });
 
 export const listQueuePage = query({
@@ -84,41 +96,16 @@ export const listQueuePage = query({
       : ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).order("desc");
     
     const result = await source.paginate(args.paginationOpts);
-    
-    const page = await Promise.all(
-      result.page.map(async (application) => {
-        let firstName = "";
-        let lastName = "";
-        if (application.latestSnapshotId) {
-          const profileItem = await ctx.db
-            .query("admissionsSubmissionSnapshotItems")
-            .withIndex("by_snapshot_and_item_key", (q: any) =>
-              q.eq("snapshotId", application.latestSnapshotId).eq("itemKey", "profile")
-            )
-            .unique();
-          if (profileItem) {
-            try {
-              const profile = JSON.parse(profileItem.serializedValue);
-              if (profile) {
-                firstName = profile.firstName || "";
-                lastName = profile.lastName || "";
-              }
-            } catch {}
-          }
-        }
-        return {
-          applicationId: application._id,
-          publicId: application.publicId,
-          state: application.state,
-          updatedAt: application.updatedAt,
-          intakeId: application.intakeId,
-          firstName,
-          lastName,
-        };
-      })
-    );
-
-    return { ...result, page };
+    return {
+      ...result,
+      page: result.page.map((application) => ({
+        applicationId: application._id,
+        publicId: application.publicId,
+        state: application.state,
+        updatedAt: application.updatedAt,
+        intakeId: application.intakeId,
+      })),
+    };
   },
 });
 

@@ -4,10 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { ChevronRight } from "lucide-react";
 import { MeloLoader, appToast, getUserFacingErrorMessage } from "@school/shared";
-import { AdminHeader } from "@/components/ui/AdminHeader";
-import { hasScopedCapability } from "@/admissions/models";
 import { AdmissionsHub } from "./AdmissionsHub";
 import { AdmissionsTriage } from "./AdmissionsTriage";
 import { AdmissionsFormBuilder } from "./AdmissionsFormBuilder";
@@ -60,7 +57,7 @@ export default function AdmissionsPage() {
   const handleDeleteForm = async (intakeId: string) => {
     if (!branding) return;
     try {
-      await deleteIntake({ schoolId: branding.schoolId as any, intakeId: intakeId as any } as never);
+      await deleteIntake({ schoolId: branding.schoolId, intakeId } as never);
       appToast.success("Campaign deleted successfully!");
     } catch (err) {
       appToast.error("Failed to delete campaign", { description: getUserFacingErrorMessage(err, "An error occurred while deleting the campaign.") });
@@ -69,7 +66,7 @@ export default function AdmissionsPage() {
 
   const handleSetIntakeStatus = async (intakeId: string, status: "open" | "paused" | "closed" | "archived") => {
     try {
-      await setIntakeStatus({ intakeId: intakeId as any, status } as never);
+      await setIntakeStatus({ intakeId, status } as never);
       appToast.success(`Campaign status updated to ${status.toUpperCase()}!`);
     } catch (err) {
       appToast.error("Failed to update status", { description: getUserFacingErrorMessage(err, "An error occurred while updating campaign status.") });
@@ -102,6 +99,7 @@ export default function AdmissionsPage() {
     });
   };
 
+  const canManageCatalogue = can("admissions.catalogue.manage");
   const publishAllowed = can("admissions.publish");
 
   return (
@@ -112,10 +110,10 @@ export default function AdmissionsPage() {
             intakes={queueIntakes}
             schoolSlug={branding?.slug}
             onEnterWorkstation={handleEnterWorkstation}
-            onCreateForm={handleCreateForm}
-            onEditForm={handleEditForm}
-            onDeleteForm={handleDeleteForm}
-            onSetIntakeStatus={handleSetIntakeStatus}
+            onCreateForm={canManageCatalogue ? handleCreateForm : undefined}
+            onEditForm={canManageCatalogue ? handleEditForm : undefined}
+            onDeleteForm={canManageCatalogue ? handleDeleteForm : undefined}
+            onSetIntakeStatus={publishAllowed ? handleSetIntakeStatus : undefined}
           />
         )}
 
@@ -123,14 +121,13 @@ export default function AdmissionsPage() {
           <AdmissionsTriage
             schoolId={branding.schoolId}
             schoolSlug={branding?.slug}
-            intakeSlug={queueIntakes?.find((i: any) => i.intakeId === selectedIntakeId)?.slug}
+            intakeSlug={queueIntakes?.find((intake) => intake.intakeId === selectedIntakeId)?.slug}
             intakeId={selectedIntakeId}
             intakeName={selectedIntakeName}
             onBack={handleBackToHub}
             canView={can("applications.list", { intakeId: selectedIntakeId })}
             canReview={can("documents.review", { intakeId: selectedIntakeId })}
             canRecord={can("reviews.record", { intakeId: selectedIntakeId })}
-            canAssign={can("reviews.assign", { intakeId: selectedIntakeId })}
             canDecide={can("decisions.record", { intakeId: selectedIntakeId })}
             canConvert={can("conversions.execute", { intakeId: selectedIntakeId })}
           />

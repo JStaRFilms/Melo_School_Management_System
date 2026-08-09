@@ -2,20 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { 
-  User, 
-  FileQuestion, 
-  FileCheck, 
-  AlertTriangle, 
+import {
+  AlertTriangle,
   Eye, 
-  Check, 
-  X, 
-  Clock, 
+  Check,
+  X,
   UserCheck, 
   RefreshCw,
   Search,
   Lock,
-  CheckCircle2,
   ArrowLeft,
   FileText,
   CheckSquare,
@@ -75,8 +70,6 @@ type QueueRow = {
   state: string;
   updatedAt: number;
   intakeId: string;
-  firstName?: string;
-  lastName?: string;
 };
 
 interface AdmissionsTriageProps {
@@ -89,7 +82,6 @@ interface AdmissionsTriageProps {
   canView: boolean;
   canReview: boolean;
   canRecord: boolean;
-  canAssign: boolean;
   canDecide: boolean;
   canConvert: boolean;
 }
@@ -104,7 +96,6 @@ export function AdmissionsTriage({
   canView,
   canReview,
   canRecord,
-  canAssign,
   canDecide,
   canConvert
 }: AdmissionsTriageProps) {
@@ -147,7 +138,6 @@ export function AdmissionsTriage({
 
   // Mutations
   const startReview = useMutation("functions/admissions/staff:startReview" as never);
-  const requestChanges = useMutation("functions/admissions/staff:requestChanges" as never);
   const recordDecision = useMutation("functions/admissions/staff:recordDecision" as never);
   const docAccess = useMutation("functions/admissions/staff:getDocumentAccess" as never);
   const reviewDoc = useMutation("functions/admissions/staff:recordDocumentReview" as never);
@@ -155,12 +145,10 @@ export function AdmissionsTriage({
   const execute = useMutation("functions/admissions/conversions:executeAcceptedConversion" as never);
 
   // Component local states
-  const [decisionOutcome, setDecisionOutcome] = useState("accepted");
   const [classId, setClassId] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [converting, setConverting] = useState(false);
-  const [docUrl, setDocUrl] = useState<string | null>(null);
 
   // Auto-select first applicant when queue page loads and selection is null
   useEffect(() => {
@@ -176,15 +164,9 @@ export function AdmissionsTriage({
     }
   }, [classes, classId]);
 
-  // Pre-populate default admission number based on candidate reference ID
   useEffect(() => {
-    if (detail) {
-      const refCode = detail.publicId.replace("app_", "").slice(0, 6).toUpperCase();
-      setAdmissionNumber(`ADM-2026-${refCode}`);
-    } else {
-      setAdmissionNumber("");
-    }
-  }, [detail]);
+    setAdmissionNumber("");
+  }, [detail?.applicationId]);
 
   const handleStartReview = async () => {
     if (!selectedAppId) return;
@@ -217,10 +199,9 @@ export function AdmissionsTriage({
         await reviewDoc({ documentId: docId, result: "accepted" } as never);
         appToast.success("Document accepted");
       } else {
-        const res = await docAccess({ documentKey: docKey, action: "view", reason: "Triage File Review" } as never) as any;
+        const res = await docAccess({ documentKey: docKey, action: "view", reason: "Triage File Review" } as never) as { status: "available"; url: string } | { status: "unavailable" };
         if (res.status === "available" && res.url) {
-          setDocUrl(res.url);
-          window.open(res.url, "_blank");
+          window.open(res.url, "_blank", "noopener,noreferrer");
         } else {
           appToast.error("Access denied to document");
         }
@@ -269,14 +250,8 @@ export function AdmissionsTriage({
     );
   }
 
-  // Filter list rows based on client-side search query matching name or ID
-  const filteredQueue = queue?.page.filter(row => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    const idMatch = row.publicId.toLowerCase().includes(q);
-    const nameMatch = `${row.firstName ?? ""} ${row.lastName ?? ""}`.toLowerCase().includes(q);
-    return idMatch || nameMatch;
-  }) ?? [];
+  // Queue-list access exposes metadata only; applicant names load through the detail projection.
+  const filteredQueue = queue?.page.filter((row) => !searchQuery || row.publicId.toLowerCase().includes(searchQuery.toLowerCase())) ?? [];
 
   // Sort list rows client-side
   const sortedQueue = [...filteredQueue].sort((a, b) => {
@@ -288,9 +263,7 @@ export function AdmissionsTriage({
     } else if (sortField === "state") {
       comparison = a.state.localeCompare(b.state);
     } else if (sortField === "name") {
-      const nameA = `${a.firstName ?? ""} ${a.lastName ?? ""}`;
-      const nameB = `${b.firstName ?? ""} ${b.lastName ?? ""}`;
-      comparison = nameA.localeCompare(nameB);
+      comparison = a.publicId.localeCompare(b.publicId);
     }
     return sortDirection === "asc" ? comparison : -comparison;
   });
@@ -487,9 +460,7 @@ export function AdmissionsTriage({
                       </tr>
                     ) : (
                       sortedQueue.map((row) => {
-                        const candidateName = row.firstName && row.lastName 
-                          ? `${row.firstName} ${row.lastName}`
-                          : `Applicant ${row.publicId.replace("app_", "").slice(0, 6).toUpperCase()}`;
+                        const candidateName = `Applicant ${row.publicId.replace("app_", "").slice(0, 6).toUpperCase()}`;
 
                         return (
                           <tr 
@@ -700,31 +671,6 @@ export function AdmissionsTriage({
                         )}
                       </div>
 
-                      <div>
-                        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">Primary Guardian Contact</p>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-xs font-semibold text-slate-755">
-                          <div>
-                            <p className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Guardian Name</p>
-                            <p className="text-slate-900 mt-1 font-bold text-sm">{detail.profile.firstName ? `${detail.profile.firstName} Parent` : "Guardian File"}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Relationship</p>
-                            <p className="text-slate-900 mt-1 font-bold text-sm">Parent / Legal Sponsor</p>
-                          </div>
-                          {detail.profile.address && (
-                            <>
-                              <div>
-                                <p className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Contact Email</p>
-                                <p className="text-slate-900 mt-1 font-bold text-sm">guardian@demo-academy.school</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-400 font-extrabold uppercase text-[9px] tracking-wider">Contact Phone</p>
-                                <p className="text-slate-900 mt-1 font-bold text-sm">+234 803 123 4567</p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
                     </div>
                   ) : (
                     <p className="text-xs text-slate-500 italic">Core profile details are unseeded.</p>
@@ -827,7 +773,7 @@ export function AdmissionsTriage({
                   <div className="space-y-3">
                     
                     {/* File Review workflow initializer */}
-                    {detail.state === "submitted" && (
+                    {canRecord && detail.state === "submitted" && (
                       <button
                         onClick={handleStartReview}
                         className="h-9 w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
@@ -837,7 +783,7 @@ export function AdmissionsTriage({
                     )}
 
                     {/* Standard review decision buttons */}
-                    {["submitted", "under_review", "waitlisted"].includes(detail.state) && (
+                    {canDecide && ["submitted", "under_review", "waitlisted"].includes(detail.state) && (
                       <div className="space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                           <button 
@@ -864,7 +810,7 @@ export function AdmissionsTriage({
                     )}
 
                     {/* Accept class allocation form */}
-                    {detail.decisionState === "accepted" && detail.conversionState === null && (
+                    {canConvert && detail.decisionState === "accepted" && detail.conversionState === null && (
                       <div className="bg-emerald-50/50 border border-emerald-200 rounded-lg p-3.5 space-y-3.5 shadow-sm">
                         <p className="text-[10px] text-emerald-800 font-bold leading-normal flex items-start gap-1.5">
                           <CheckSquare className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-emerald-655" />
@@ -951,11 +897,9 @@ function CandidateCard({
     { applicationId: row.applicationId } as never
   ) as Detail | undefined;
 
-  const candidateName = row.firstName && row.lastName
-    ? `${row.firstName} ${row.lastName}`
-    : detail?.profile 
-      ? `${detail.profile.firstName} ${detail.profile.lastName}`
-      : `Applicant ${row.publicId.replace("app_", "").slice(0, 6).toUpperCase()}`;
+  const candidateName = detail?.profile
+    ? `${detail.profile.firstName} ${detail.profile.lastName}`
+    : `Applicant ${row.publicId.replace("app_", "").slice(0, 6).toUpperCase()}`;
 
   const timeAgo = formatTimeAgo(row.updatedAt);
   const fileCount = detail?.documentCount ?? 0;

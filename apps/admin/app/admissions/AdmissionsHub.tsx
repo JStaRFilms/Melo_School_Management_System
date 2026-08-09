@@ -18,9 +18,9 @@ interface AdmissionsHubProps {
   intakes: Intake[] | undefined;
   schoolSlug?: string;
   onEnterWorkstation: (intakeId: string, name: string) => void;
-  onCreateForm: () => void;
-  onEditForm: (intakeId: string) => void;
-  onDeleteForm: (intakeId: string) => void;
+  onCreateForm?: () => void;
+  onEditForm?: (intakeId: string) => void;
+  onDeleteForm?: (intakeId: string) => void;
   onSetIntakeStatus?: (intakeId: string, status: "open" | "paused" | "closed" | "archived") => void;
 }
 
@@ -47,12 +47,14 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
             <h2 className="font-outfit font-black text-2xl text-slate-900 mt-1">Admission & Enrollment Forms</h2>
             <p className="text-xs text-slate-500 mt-1">Create enrollment forms, configure verification uploads, and process applicant entries.</p>
           </div>
-          <button
-            onClick={onCreateForm}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white px-5 text-xs font-bold shadow-sm transition-all flex-shrink-0"
-          >
-            <Plus className="h-4 w-4" /> Create Enrollment Form
-          </button>
+          {onCreateForm && (
+            <button
+              onClick={onCreateForm}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white px-5 text-xs font-bold shadow-sm transition-all flex-shrink-0"
+            >
+              <Plus className="h-4 w-4" /> Create Enrollment Form
+            </button>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -61,12 +63,14 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
           ) : intakes.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
               <p className="text-sm text-slate-500 italic">No admission forms have been created yet.</p>
-              <button
-                onClick={onCreateForm}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 px-4 text-xs font-bold transition-all"
-              >
-                Create your first form
-              </button>
+              {onCreateForm && (
+                <button
+                  onClick={onCreateForm}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 px-4 text-xs font-bold transition-all"
+                >
+                  Create your first form
+                </button>
+              )}
             </div>
           ) : (
             intakes.map((intake) => (
@@ -80,7 +84,7 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
                     <select
                       value={intake.status}
                       disabled={intake.status === "draft" && !onSetIntakeStatus}
-                      onChange={(e) => onSetIntakeStatus?.(intake.intakeId, e.target.value as any)}
+                      onChange={(event) => onSetIntakeStatus?.(intake.intakeId, event.target.value as "open" | "paused" | "closed" | "archived")}
                       className={`h-6 rounded border px-2 py-0 focus:outline-none text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
                         intake.status === "open"
                           ? "bg-emerald-50 border-emerald-350 text-emerald-800"
@@ -124,26 +128,30 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
                       <Link className="h-3.5 w-3.5" /> Copy Link
                     </button>
                   )}
-                  <button
-                    onClick={() => onEditForm(intake.intakeId)}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 text-xs font-bold shadow-sm transition-all"
-                  >
-                    <Settings className="h-3.5 w-3.5" /> Edit Form
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIntakeToDelete({
-                        id: intake.intakeId,
-                        name: intake.name,
-                        status: intake.status
-                      });
-                      setDeleteDialogOpen(true);
-                    }}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 shadow-sm transition-all"
-                    title="Delete Campaign"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {onEditForm && (
+                    <button
+                      onClick={() => onEditForm(intake.intakeId)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 text-xs font-bold shadow-sm transition-all"
+                    >
+                      <Settings className="h-3.5 w-3.5" /> Edit Form
+                    </button>
+                  )}
+                  {onDeleteForm && intake.status === "draft" && (
+                    <button
+                      onClick={() => {
+                        setIntakeToDelete({
+                          id: intake.intakeId,
+                          name: intake.name,
+                          status: intake.status,
+                        });
+                        setDeleteDialogOpen(true);
+                      }}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 shadow-sm transition-all"
+                      title="Delete draft campaign"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => onEnterWorkstation(intake.intakeId, intake.name)}
                     className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-white px-4 text-xs font-bold shadow-sm transition-all"
@@ -169,7 +177,7 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
         cancelLabel="Cancel"
         onConfirm={() => {
           if (intakeToDelete) {
-            onDeleteForm(intakeToDelete.id);
+            onDeleteForm?.(intakeToDelete.id);
           }
           setDeleteDialogOpen(false);
           setIntakeToDelete(null);

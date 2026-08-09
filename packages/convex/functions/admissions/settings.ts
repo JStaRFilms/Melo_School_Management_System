@@ -23,17 +23,31 @@ async function assertSensitiveConfiguration(ctx: MutationCtx, schoolId: Id<"scho
 /** Tenant-scoped persisted catalogue projection for B3; no private application data. */
 export const getCatalogue = query({
   args: { schoolId: v.id("schools") },
-  returns: v.object({ programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string() })), intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })), products: v.array(v.object({ id: v.id("admissionsProducts"), intakeId: v.id("admissionsIntakes"), slug: v.string(), name: v.string(), status: v.string() })), forms: v.array(v.object({ id: v.id("admissionsFormVersions"), intakeId: v.union(v.id("admissionsIntakes"), v.null()), version: v.number(), schemaVersion: v.string(), status: v.string() })) }),
+  returns: v.object({
+    programmes: v.array(v.object({ id: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), description: v.union(v.string(), v.null()), status: v.string() })),
+    intakes: v.array(v.object({ id: v.id("admissionsIntakes"), programmeId: v.id("admissionsProgrammes"), slug: v.string(), name: v.string(), cycleLabel: v.string(), status: v.string(), opensAt: v.number(), closesAt: v.number() })),
+    products: v.array(v.object({ id: v.id("admissionsProducts"), intakeId: v.id("admissionsIntakes"), slug: v.string(), name: v.string(), status: v.string() })),
+    forms: v.array(v.object({ id: v.id("admissionsFormVersions"), intakeId: v.union(v.id("admissionsIntakes"), v.null()), version: v.number(), schemaVersion: v.string(), status: v.string() })),
+    declarations: v.array(v.object({ id: v.id("admissionsDeclarationVersions"), programmeId: v.id("admissionsProgrammes"), version: v.number(), title: v.string(), body: v.string(), status: v.string() })),
+  }),
   handler: async (ctx, args) => {
     await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
     const programmes: Doc<"admissionsProgrammes">[] = await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(100);
-    const [intakes, forms]: [Doc<"admissionsIntakes">[], Doc<"admissionsFormVersions">[]] = await Promise.all([
+    const [intakes, forms, declarationLists]: [Doc<"admissionsIntakes">[], Doc<"admissionsFormVersions">[], Doc<"admissionsDeclarationVersions">[][]] = await Promise.all([
       ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
       ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId)).take(200),
+      Promise.all(programmes.map((programme) => ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(100))),
     ]);
     const productLists = await Promise.all(intakes.map((intake) => ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(20)));
     const products = productLists.flat();
-    return { programmes: programmes.map((item) => ({ id: item._id, slug: item.slug, name: item.name, status: item.status })), intakes: intakes.map((item) => ({ id: item._id, programmeId: item.programmeId, slug: item.slug, name: item.name, status: item.status, opensAt: item.opensAt, closesAt: item.closesAt })), products: products.map((item) => ({ id: item._id, intakeId: item.intakeId, slug: item.slug, name: item.name, status: item.status })), forms: forms.map((item) => ({ id: item._id, intakeId: item.intakeId ?? null, version: item.version, schemaVersion: item.schemaVersion, status: item.status })) };
+    const declarations = declarationLists.flat();
+    return {
+      programmes: programmes.map((item) => ({ id: item._id, slug: item.slug, name: item.name, description: item.description ?? null, status: item.status })),
+      intakes: intakes.map((item) => ({ id: item._id, programmeId: item.programmeId, slug: item.slug, name: item.name, cycleLabel: item.cycleLabel, status: item.status, opensAt: item.opensAt, closesAt: item.closesAt })),
+      products: products.map((item) => ({ id: item._id, intakeId: item.intakeId, slug: item.slug, name: item.name, status: item.status })),
+      forms: forms.map((item) => ({ id: item._id, intakeId: item.intakeId ?? null, version: item.version, schemaVersion: item.schemaVersion, status: item.status })),
+      declarations: declarations.map((item) => ({ id: item._id, programmeId: item.programmeId, version: item.version, title: item.title, body: item.body, status: item.status })),
+    };
   },
 });
 
@@ -56,12 +70,12 @@ export const getPublicationReview = query({
 
 export const getFormConfiguration = query({
   args: { formVersionId: v.id("admissionsFormVersions") },
-  returns: v.object({ form: v.object({ id: v.id("admissionsFormVersions"), version: v.number(), status: v.string() }), fields: v.array(v.object({ id: v.id("admissionsFormFields"), key: v.string(), sectionKey: v.string(), label: v.string(), kind: v.string(), requiredMode: v.string(), dataClass: v.string(), purpose: v.union(v.string(), v.null()), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), validationJson: v.string(), conditionalRuleJson: v.union(v.string(), v.null()) })), requirements: v.array(v.object({ id: v.id("admissionsDocumentRequirements"), key: v.string(), label: v.string(), category: v.string(), requiredMode: v.string(), sensitivity: v.string(), acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), purpose: v.string(), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), conditionJson: v.union(v.string(), v.null()) })) }),
+  returns: v.object({ form: v.object({ id: v.id("admissionsFormVersions"), version: v.number(), status: v.string() }), fields: v.array(v.object({ id: v.id("admissionsFormFields"), key: v.string(), sectionKey: v.string(), label: v.string(), kind: v.string(), requiredMode: v.string(), dataClass: v.string(), purpose: v.union(v.string(), v.null()), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), validationJson: v.string(), conditionalRuleJson: v.union(v.string(), v.null()), order: v.number() })), requirements: v.array(v.object({ id: v.id("admissionsDocumentRequirements"), key: v.string(), label: v.string(), category: v.string(), requiredMode: v.string(), sensitivity: v.string(), acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), purpose: v.string(), retentionPolicyKey: v.union(v.string(), v.null()), audience: v.union(v.string(), v.null()), approvalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), conditionJson: v.union(v.string(), v.null()), order: v.number() })) }),
   handler: async (ctx, args) => {
     const form = await ctx.db.get(args.formVersionId); if (!form) throw new ConvexError("Not found or access denied");
     await requireCatalogue(ctx, form.schoolId, "admissions.catalogue.manage");
     const [fields, requirements] = await Promise.all([ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(200), ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(100)]);
-    return { form: { id: form._id, version: form.version, status: form.status }, fields: fields.map((field) => ({ id: field._id, key: field.fieldKey, sectionKey: field.sectionKey, label: field.label, kind: field.kind, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, retentionPolicyKey: field.retentionPolicyKey ?? null, audience: field.audience ?? null, approvalEvidenceId: field.approvalEvidenceId ?? null, validationJson: field.validationJson, conditionalRuleJson: field.conditionalRuleJson ?? null })), requirements: requirements.map((requirement) => ({ id: requirement._id, key: requirement.requirementKey, label: requirement.label, category: requirement.category, requiredMode: requirement.requiredMode, sensitivity: requirement.sensitivity, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, purpose: requirement.purpose, retentionPolicyKey: requirement.retentionPolicyKey ?? null, audience: requirement.audience ?? null, approvalEvidenceId: requirement.approvalEvidenceId ?? null, conditionJson: requirement.conditionJson ?? null })) };
+    return { form: { id: form._id, version: form.version, status: form.status }, fields: fields.map((field) => ({ id: field._id, key: field.fieldKey, sectionKey: field.sectionKey, label: field.label, kind: field.kind, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, retentionPolicyKey: field.retentionPolicyKey ?? null, audience: field.audience ?? null, approvalEvidenceId: field.approvalEvidenceId ?? null, validationJson: field.validationJson, conditionalRuleJson: field.conditionalRuleJson ?? null, order: field.order })), requirements: requirements.map((requirement) => ({ id: requirement._id, key: requirement.requirementKey, label: requirement.label, category: requirement.category, requiredMode: requirement.requiredMode, sensitivity: requirement.sensitivity, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, purpose: requirement.purpose, retentionPolicyKey: requirement.retentionPolicyKey ?? null, audience: requirement.audience ?? null, approvalEvidenceId: requirement.approvalEvidenceId ?? null, conditionJson: requirement.conditionJson ?? null, order: requirement.order })) };
   },
 });
 
@@ -192,153 +206,77 @@ export const updateIntakeDetails = mutation({
     opensAt: v.number(),
     closesAt: v.number(),
     cycleLabel: v.string(),
-    description: v.optional(v.string())
+    description: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
     const intake = await ctx.db.get(args.intakeId);
-    if (!intake || intake.schoolId !== args.schoolId) throw new ConvexError("Intake not found");
-    
+    if (!intake || intake.schoolId !== args.schoolId || !Number.isFinite(args.opensAt) || args.opensAt >= args.closesAt) throw new ConvexError("Invalid intake");
+    const now = Date.now();
+    const name = text(args.name, "Intake name", 256);
     await ctx.db.patch(intake._id, {
-      name: text(args.name, "Intake name", 256),
+      name,
       opensAt: args.opensAt,
       closesAt: args.closesAt,
       cycleLabel: text(args.cycleLabel, "Cycle label", 128),
-      updatedAt: Date.now()
+      updatedAt: now,
     });
-    
-    const programme = await ctx.db.get(intake.programmeId);
-    if (programme) {
-      await ctx.db.patch(programme._id, {
-        name: text(args.name, "Programme name", 256),
+    const programmeIntakes = await ctx.db.query("admissionsIntakes").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId)).take(2);
+    if (programmeIntakes.length === 1) {
+      await ctx.db.patch(intake.programmeId, {
+        name,
         ...(args.description !== undefined ? { description: args.description.trim().slice(0, 4_000) } : {}),
-        updatedAt: Date.now()
+        updatedAt: now,
       });
     }
-    
-    await audit({
-      ctx,
-      schoolId: args.schoolId,
-      actor: { kind: "staff", userId: member.userId },
-      action: "catalogue.intake_updated",
-      entityType: "intake",
-      entityId: String(intake._id),
-      outcome: "success"
-    });
-    
+    await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.intake_updated", entityType: "intake", entityId: String(intake._id), outcome: "success" });
     return null;
-  }
-});
-
-export const createMockApprovalEvidence = mutation({
-  args: {
-    schoolId: v.id("schools"),
-    approvalClass: v.string(),
-    subjectType: v.string(),
-    subjectKey: v.string()
   },
-  returns: v.id("schoolApprovalEvidence"),
-  handler: async (ctx, args) => {
-    const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
-    const now = Date.now();
-    const id = await ctx.db.insert("schoolApprovalEvidence", {
-      schoolId: args.schoolId,
-      approvalClass: args.approvalClass as any,
-      subjectType: args.subjectType,
-      subjectKey: args.subjectKey,
-      evidenceReference: `manual-builder-override:${now}`,
-      approvedByUserId: member.userId,
-      approvalProvenance: "accountable_school_approver",
-      approvedAt: now,
-      createdAt: now
-    });
-    return id;
-  }
 });
 
+/** Only unused draft campaigns can be deleted; all related rows are bounded and loaded before mutation. */
 export const deleteIntake = mutation({
   args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes") },
   returns: v.null(),
   handler: async (ctx, args) => {
     const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage");
     const intake = await ctx.db.get(args.intakeId);
-    if (!intake || intake.schoolId !== args.schoolId) throw new ConvexError("Intake not found");
-
-    // Check if there are any submitted or active applications for this intake to prevent dangling references
-    const activeApps = await ctx.db.query("admissionsApplications")
-      .withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id))
-      .take(1);
-    if (activeApps.length > 0) {
-      throw new ConvexError("Cannot delete intake cycle because it has existing applications.");
-    }
-
-    const progId = intake.programmeId;
-
-    // 1. Delete associated form versions and their fields/document requirements
-    const formVersions = await ctx.db.query("admissionsFormVersions")
-      .withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id))
-      .collect();
-
-    for (const fv of formVersions) {
+    if (!intake || intake.schoolId !== args.schoolId || intake.status !== "draft") throw new ConvexError("Only unused draft campaigns can be deleted");
+    const [applications, programmeIntakes, formVersions, declarations, products] = await Promise.all([
+      ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(1),
+      ctx.db.query("admissionsIntakes").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId)).take(2),
+      ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id)).take(101),
+      ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId)).take(101),
+      ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(21),
+    ]);
+    if (applications.length || programmeIntakes.length !== 1 || formVersions.length > 100 || declarations.length > 100 || products.length > 20) throw new ConvexError("Draft campaign cannot be deleted safely");
+    const formChildren = await Promise.all(formVersions.map(async (form) => {
       const [fields, requirements] = await Promise.all([
-        ctx.db.query("admissionsFormFields")
-          .withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", fv._id))
-          .collect(),
-        ctx.db.query("admissionsDocumentRequirements")
-          .withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", fv._id))
-          .collect()
+        ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(201),
+        ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
       ]);
-
-      for (const f of fields) {
-        await ctx.db.delete(f._id);
-      }
-      for (const r of requirements) {
-        await ctx.db.delete(r._id);
-      }
-      await ctx.db.delete(fv._id);
+      if (fields.length > 200 || requirements.length > 100) throw new ConvexError("Draft campaign cannot be deleted safely");
+      return { form, fields, requirements };
+    }));
+    const productPrices = await Promise.all(products.map(async (product) => {
+      const prices = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(101);
+      if (prices.length > 100) throw new ConvexError("Draft campaign cannot be deleted safely");
+      return { product, prices };
+    }));
+    for (const { form, fields, requirements } of formChildren) {
+      for (const field of fields) await ctx.db.delete(field._id);
+      for (const requirement of requirements) await ctx.db.delete(requirement._id);
+      await ctx.db.delete(form._id);
     }
-
-    // 2. Delete declarations for the programme
-    const declarations = await ctx.db.query("admissionsDeclarationVersions")
-      .withIndex("by_programme_and_status", (q) => q.eq("programmeId", progId))
-      .collect();
-    for (const d of declarations) {
-      await ctx.db.delete(d._id);
+    for (const declaration of declarations) await ctx.db.delete(declaration._id);
+    for (const { product, prices } of productPrices) {
+      for (const price of prices) await ctx.db.delete(price._id);
+      await ctx.db.delete(product._id);
     }
-
-    // 3. Delete products and prices
-    const products = await ctx.db.query("admissionsProducts")
-      .withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", intake.slug))
-      .collect();
-
-    for (const p of products) {
-      const prices = await ctx.db.query("admissionsProductPrices")
-        .withIndex("by_product_and_version", (q) => q.eq("productId", p._id))
-        .collect();
-      for (const pr of prices) {
-        await ctx.db.delete(pr._id);
-      }
-      await ctx.db.delete(p._id);
-    }
-
-    // 4. Delete the programme offering
-    await ctx.db.delete(progId);
-
-    // 5. Delete the intake itself
     await ctx.db.delete(intake._id);
-
-    // Audit trace
-    await audit({
-      ctx,
-      schoolId: args.schoolId,
-      actor: { kind: "staff", userId: member.userId },
-      action: "catalogue.intake_deleted",
-      entityType: "intake",
-      entityId: String(intake._id),
-      outcome: "success"
-    });
-
+    await ctx.db.delete(intake.programmeId);
+    await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: "catalogue.intake_deleted", entityType: "intake", entityId: String(intake._id), outcome: "success" });
     return null;
-  }
+  },
 });
