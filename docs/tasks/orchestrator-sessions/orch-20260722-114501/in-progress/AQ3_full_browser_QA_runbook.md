@@ -345,7 +345,7 @@ No approval evidence is fabricated. The issue concerns missing starting copy onl
 - Severity: P1
 - Test case: Phase 1 published replacement
 - Starting commit: `0bb7183`
-- Reproducibility: Always for the legacy `Development admissions intake Edited` campaign
+- Reproducibility: Observed for the legacy `Analyze my friend, live by a lawyer.` campaign. The Development campaign was not the reported failure.
 
 ### Expected
 A pre-AQ-1 live campaign with exactly one active product, one published form, and one published declaration can be adopted by the first atomic replacement while retaining older draft/retired form versions and its seven applications.
@@ -354,11 +354,11 @@ A pre-AQ-1 live campaign with exactly one active product, one published form, an
 `replaceCampaignConfiguration` throws `RECOVERY_GRAPH_AMBIGUOUS` because the intake predates the operation ledger and contains several historical draft form versions.
 
 ### Data-integrity check
-Read-only development inspection found seven applications, one active product, one published form, one retired form, three draft forms, one published declaration, and no operation ledger. No records were mutated during diagnosis.
+Read-only development inspection found the reported `Analyze my friend, live by a lawyer.` partial campaign with a draft programme, open intake, one draft product, one published price v1 (NGN 10000), one published four-field/four-requirement form, one published declaration, zero purchase/payment/entitlement/application/operation rows, and four audit events. The Development campaign was not the reported failure. No records were mutated during diagnosis.
 
 ### Resolution
 - Status: Implementation and automated checks completed; browser retest pending and user-owned.
-- Evidence: bounded legacy-live adoption regression coverage preserves the published, retired, and draft history plus seven applications; partial, duplicate-published, and cross-school graphs remain blocked; Convex tests/typecheck completed.
+- Evidence: complete-live adoption remains covered separately. The exact unused partial is projected as recoverable only with bounded indexed zero-use checks; operator-confirmed draft recovery preserves its published price/form/declaration and audit history while adding a draft snapshot, operation ledger, and dedicated audit event. Referenced and differently partial graphs remain blocked; Convex/Admin checks completed.
 
 ## OBS-005 — Price-change restriction lacks an operator workflow
 

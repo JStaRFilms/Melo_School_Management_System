@@ -133,7 +133,7 @@ export function AdmissionsFormBuilder({
   const convex = useConvex();
   const createCampaignConfiguration = useMutation("functions/admissions/settings:createCampaignConfiguration" as never);
   const replaceCampaignConfiguration = useMutation("functions/admissions/settings:replaceCampaignConfiguration" as never);
-  const recovery = useQuery("functions/admissions/settings:listLegacyCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "review_required" }> | undefined;
+  const recovery = useQuery("functions/admissions/settings:listLegacyCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "recoverable_to_draft" | "review_required" }> | undefined;
 
   // Form setup states
   const [defaultCampaignDates] = useState(createDefaultCampaignDates);
@@ -144,6 +144,7 @@ export function AdmissionsFormBuilder({
   const [opensAt, setOpensAt] = useState(() => intakeId ? "" : formatEpochToDateTimeLocal(defaultCampaignDates.opensAt));
   const [closesAt, setClosesAt] = useState(() => intakeId ? "" : formatEpochToDateTimeLocal(defaultCampaignDates.closesAt));
   const [targetStatus, setTargetStatus] = useState<"draft" | "published">("draft");
+  const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Document checkboxes
@@ -190,6 +191,9 @@ export function AdmissionsFormBuilder({
                         intakeForms?.[0];
   const declarationDoc = intakeDoc ? selectLatestDeclaration(catalogue?.declarations ?? [], intakeDoc.programmeId) : undefined;
   const productDoc = catalogue?.products.find((product) => product.intakeId === intakeId);
+  const selectedRecovery = recovery?.find((campaign) => campaign.intakeId === intakeId);
+  const isRecoverableToDraft = selectedRecovery?.recoveryState === "recoverable_to_draft";
+  const effectiveTargetStatus = isRecoverableToDraft ? "draft" : targetStatus;
 
   const formConfig = useQuery(
     "functions/admissions/settings:getFormConfiguration" as never,
@@ -655,7 +659,8 @@ export function AdmissionsFormBuilder({
       return;
     }
     if (!formName || !formSlug || !declarationTitle.trim() || !declarationBody.trim()) { appToast.error("Form name, slug, and declaration text are required."); return; }
-    if (targetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
+    if (isRecoverableToDraft && !recoveryConfirmed) { appToast.error("Confirm recovery to take this campaign offline and save the current edits as a draft."); return; }
+    if (effectiveTargetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
     const opens = loadedScheduleRef.current?.opensAt.input === opensAt
       ? loadedScheduleRef.current.opensAt.epoch
       : opensAt ? new Date(opensAt).getTime() : defaultCampaignDates.opensAt;
@@ -668,7 +673,7 @@ export function AdmissionsFormBuilder({
     if (!Number.isInteger(requestedAmount) || requestedAmount < 0) { appToast.error("Enter a whole non-negative fee amount."); return; }
     if (!intakeId && requestedAmount !== 0) { appToast.error("A new paid campaign requires the separate approved finance workflow."); return; }
     const changedPrice = !!intakeId && (requestedAmount !== (existingPrice?.amountMinor ?? 0) || feeCurrency !== (existingPrice?.currency ?? feeCurrency) || feeRefundPolicy !== (existingPrice?.refundPolicyKey ?? feeRefundPolicy) || feeDisclosure !== (existingPrice?.feeDisclosure ?? feeDisclosure));
-    if (changedPrice && targetStatus !== "published") { appToast.error("Publish price changes with current finance approval."); return; }
+    if (changedPrice && effectiveTargetStatus !== "published") { appToast.error("Publish price changes with current finance approval."); return; }
     const nextPriceVersion = (existingPrice?.version ?? 0) + 1;
     const priceApprovalEvidenceId = productDoc && changedPrice ? findActiveEvidence("finance", "admissions_price", `${productDoc.id}:${nextPriceVersion}`) : undefined;
     if (changedPrice && !priceApprovalEvidenceId) { appToast.error(FINANCE_APPROVAL_MESSAGE); return; }
@@ -684,9 +689,9 @@ export function AdmissionsFormBuilder({
     const replaceConfiguration = { intake: { name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes, description: formDescription || undefined }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements, ...(intakeId && (existingPrice || requestedAmount !== 0 || feeDisclosure.trim()) ? { price: { amountMinor: requestedAmount, currency: feeCurrency, refundPolicyKey: feeRefundPolicy, feeDisclosure, ...(priceApprovalEvidenceId ? { approvalEvidenceId: priceApprovalEvidenceId } : {}) } } : {}) };
     const saveOperationKey = operationKeyRef.current ?? newOperationKey();
     const command = intakeId ? "replace" as const : "create" as const;
-    const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus, configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus, configuration: createConfiguration };
+    const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus: effectiveTargetStatus, ...(isRecoverableToDraft ? { recoverLegacyToDraft: true } : {}), configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus: effectiveTargetStatus, configuration: createConfiguration };
     operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload, reconciliationRequired: false }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
-    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: campaignErrorDescription(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
+    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(isRecoverableToDraft ? "Campaign recovered offline and saved as a draft." : effectiveTargetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: campaignErrorDescription(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
 
   const sensitiveCustomFields = cards.filter((card) =>
@@ -721,9 +726,19 @@ export function AdmissionsFormBuilder({
             <ArrowLeft className="h-4 w-4" /> Return to Admissions Panel
           </button>
 
-          {recovery?.some((campaign) => campaign.recoveryState === "review_required") && (
+          {isRecoverableToDraft && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-xs text-amber-950 shadow-sm space-y-3">
+              <p className="font-bold">Recovery available: this will take the campaign offline, preserve published history and pricing, and save the current edits as a new draft.</p>
+              <label className="flex items-start gap-2 font-semibold cursor-pointer">
+                <input aria-label="Confirm recover this campaign as a draft" type="checkbox" checked={recoveryConfirmed} onChange={(event) => { setRecoveryConfirmed(event.target.checked); setTargetStatus("draft"); }} className="mt-0.5" />
+                <span>I understand this recovery is deliberate and must be saved as a draft.</span>
+              </label>
+            </div>
+          )}
+
+          {selectedRecovery?.recoveryState === "review_required" && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs font-semibold text-amber-900 shadow-sm">
-              Existing pre-atomic draft campaigns need operator review before they are edited or deleted. No recovery action has been applied automatically.
+              This older campaign needs operator review before it can be edited. No recovery action has been applied automatically.
             </div>
           )}
 
@@ -1540,11 +1555,11 @@ export function AdmissionsFormBuilder({
             {/* Main Action Button */}
             <button 
               onClick={() => void handlePublish()}
-              disabled={saving || reconciliationBlocked}
+              disabled={saving || reconciliationBlocked || (isRecoverableToDraft && !recoveryConfirmed)}
               className="flex-grow h-9 bg-slate-900 hover:bg-slate-850 disabled:opacity-50 text-white font-bold px-4 rounded-l-lg text-xs transition-all flex items-center justify-center gap-1.5 border-r border-slate-800"
             >
               {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
-              {targetStatus === "draft" ? "Save Campaign Draft" : intakeDoc?.status && intakeDoc.status !== "draft" ? "Publish Form Replacement" : "Publish Form Live"}
+              {effectiveTargetStatus === "draft" ? "Save Campaign Draft" : intakeDoc?.status && intakeDoc.status !== "draft" ? "Publish Form Replacement" : "Publish Form Live"}
             </button>
 
             {/* Dropdown Toggle Trigger */}
@@ -1573,13 +1588,13 @@ export function AdmissionsFormBuilder({
                 <div className="absolute bottom-full right-0 mb-1.5 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-left">
                   <button
                     type="button"
-                    disabled={Boolean(intakeDoc?.status && intakeDoc.status !== "draft")}
+                    disabled={Boolean(intakeDoc?.status && intakeDoc.status !== "draft" && !isRecoverableToDraft)}
                     onClick={() => {
                       setTargetStatus("draft");
                       setDropdownOpen(false);
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 transition-colors ${
-                      targetStatus === "draft" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
+                      effectiveTargetStatus === "draft" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
                     }`}
                   >
                     <span>Save as Draft (Offline)</span>
@@ -1587,13 +1602,13 @@ export function AdmissionsFormBuilder({
                   </button>
                   <button
                     type="button"
-                    disabled={!publishAllowed}
+                    disabled={!publishAllowed || isRecoverableToDraft}
                     onClick={() => {
                       setTargetStatus("published");
                       setDropdownOpen(false);
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition-colors mt-0.5 ${
-                      targetStatus === "published" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
+                      effectiveTargetStatus === "published" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
                     }`}
                   >
                     <span>Publish Form Replacement</span>
@@ -1604,7 +1619,7 @@ export function AdmissionsFormBuilder({
             )}
           </div>
 
-          {intakeDoc?.status && intakeDoc.status !== "draft" && (
+          {intakeDoc?.status && intakeDoc.status !== "draft" && !isRecoverableToDraft && (
             <p className="text-[9px] text-slate-400 font-medium font-sans text-center mt-0.5">
               * Existing campaign availability is preserved. Publish a replacement without reopening a paused or closed intake.
             </p>

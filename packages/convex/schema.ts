@@ -451,6 +451,7 @@ export default defineSchema({
     .index("by_school_and_reference", ["schoolId", "reference"])
     .index("by_guardian_and_created_at", ["guardianId", "createdAt"])
     .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
+    .index("by_product_and_created_at", ["productId", "createdAt"])
     .index("by_school_and_guardian_and_idempotency_key", ["schoolId", "guardianId", "idempotencyKey"]),
 
   admissionsPaymentEvents: defineTable({
@@ -490,6 +491,7 @@ export default defineSchema({
     .index("by_source_purchase_attempt", ["sourcePurchaseAttemptId"])
     .index("by_guardian_and_state_and_created_at", ["guardianId", "state", "createdAt"])
     .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
+    .index("by_intake_and_created_at", ["intakeId", "createdAt"])
     .index("by_application", ["applicationId"]),
 
   admissionsApplications: defineTable({
@@ -524,7 +526,8 @@ export default defineSchema({
     .index("by_school_and_public_id", ["schoolId", "publicId"])
     .index("by_guardian_and_updated_at", ["guardianId", "updatedAt"])
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
-    .index("by_school_and_intake_and_state", ["schoolId", "intakeId", "state"]),
+    .index("by_school_and_intake_and_state", ["schoolId", "intakeId", "state"])
+    .index("by_school_and_intake_and_created_at", ["schoolId", "intakeId", "createdAt"]),
 
   admissionsApplicantProfiles: defineTable({
     schoolId: v.id("schools"),

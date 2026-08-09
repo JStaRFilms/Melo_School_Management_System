@@ -58,6 +58,31 @@ async function insertLegacyLiveGraph(t: ReturnType<typeof convexTest>, schoolId:
   });
 }
 
+async function insertRecoverableLegacyPartial(t: ReturnType<typeof convexTest>, schoolId: Id<"schools">, referenced = false) {
+  const now = Date.now();
+  return t.run(async (ctx) => {
+    const userId = (await ctx.db.query("users").take(1))[0]._id;
+    const programmeId = await ctx.db.insert("admissionsProgrammes", { schoolId, slug: `recover-programme-${now}`, name: "Recoverable legacy", status: "draft", createdAt: now, updatedAt: now });
+    const intakeId = await ctx.db.insert("admissionsIntakes", { schoolId, programmeId, slug: `recover-intake-${now}`, name: "Recoverable legacy", cycleLabel: "2027", opensAt: now + 1_000, closesAt: now + 10_000, status: "open", createdAt: now, updatedAt: now });
+    const productId = await ctx.db.insert("admissionsProducts", { schoolId, intakeId, slug: `recover-product-${now}`, name: "Application slot", slotCount: 1, status: "draft", createdAt: now, updatedAt: now });
+    const declarationId = await ctx.db.insert("admissionsDeclarationVersions", { schoolId, programmeId, version: 1, title: "Published declaration", body: "Published wording", bodyDigest: "published-declaration", purpose: "service", status: "published", publishedAt: now, publishedBy: userId, createdAt: now, updatedAt: now });
+    const formId = await ctx.db.insert("admissionsFormVersions", { schoolId, programmeId, intakeId, version: 1, schemaVersion: "1", legalNamePolicyVersion: 2, status: "published", publishedAt: now, publishedBy: userId, createdAt: now, updatedAt: now });
+    for (let index = 0; index < 4; index += 1) {
+      await ctx.db.insert("admissionsFormFields", { schoolId, formVersionId: formId, fieldKey: `field-${index}`, sectionKey: "applicant", kind: "text", label: `Field ${index}`, requiredMode: "optional", dataClass: "personal", validationJson: "{}", order: index, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsDocumentRequirements", { schoolId, formVersionId: formId, requirementKey: `requirement-${index}`, category: "identity", label: `Requirement ${index}`, requiredMode: "required", acceptedMimeTypes: ["application/pdf"], maxBytes: 1_000, maxFiles: 1, sensitivity: "child_confidential", purpose: "Identity", order: index, createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsAuditEvents", { schoolId, actorKind: "staff", actorUserId: userId, action: `legacy.audit.${index}`, entityType: "intake", entityId: String(intakeId), outcome: "success", createdAt: now });
+    }
+    const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId, productId, version: 1, amountMinor: 10_000, currency: "NGN", refundPolicyKey: "non_refundable", feeDisclosure: "Fee", effectiveFrom: now, status: "published", createdAt: now, updatedAt: now });
+    if (referenced) {
+      const guardianId = await ctx.db.insert("admissionsGuardians", { authTokenIdentifier: `recover-guardian-${now}`, normalizedEmail: `recover-${now}@example.test`, status: "active", createdAt: now, updatedAt: now });
+      const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId, guardianId, productId, priceId, provider: "manual", providerMode: "test", reference: `recover-attempt-${now}`, idempotencyKey: `recover-attempt-${now}`, amountMinor: 10_000, currency: "NGN", feeDisclosureSnapshot: "Fee", state: "paid", createdAt: now, updatedAt: now });
+      const entitlementId = await ctx.db.insert("admissionsEntitlements", { schoolId, guardianId, productId, intakeId, sourcePurchaseAttemptId: attemptId, state: "consumed", createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsApplications", { schoolId, guardianId, entitlementId, programmeId, intakeId, productId, priceId, formVersionId: formId, declarationVersionId: declarationId, publicId: `recover-application-${now}`, state: "submitted", currentRevision: 1, draftVersion: 1, createdAt: now, updatedAt: now });
+    }
+    return { programmeId, intakeId, productId, formId, declarationId, priceId };
+  });
+}
+
 async function campaignCounts(t: ReturnType<typeof convexTest>, schoolId: string) {
   return t.run(async (ctx) => ({
     programmes: (await ctx.db.query("admissionsProgrammes").withIndex("by_school", (q) => q.eq("schoolId", schoolId as never)).take(10)).length,
@@ -192,6 +217,30 @@ describe("atomic admissions campaign commands", () => {
     expect(await t.run((ctx) => ctx.db.get(legacy.programmeId))).toMatchObject({ slug: "legacy-programme", name: "Legacy programme" });
     expect(await t.run((ctx) => ctx.db.get(legacy.intakeId))).toMatchObject({ slug: "legacy-intake" });
     expect(await t.run((ctx) => ctx.db.get(legacy.productId))).toMatchObject({ slug: "legacy-product" });
+  });
+
+  test("requires explicit intent to recover the exact unused open partial as a draft and preserves its evidence", async () => {
+    const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now(); const legacy = await insertRecoverableLegacyPartial(t, schoolId); const configuration = replaceConfiguration(now);
+    const projection = await t.withIdentity(editor).query(api.functions.admissions.settings.listLegacyCampaignRecovery, { schoolId });
+    expect(projection).toEqual(expect.arrayContaining([expect.objectContaining({ intakeId: legacy.intakeId, recoveryState: "recoverable_to_draft" })]));
+    const before = await t.run(async (ctx) => ({ intake: await ctx.db.get(legacy.intakeId), form: await ctx.db.get(legacy.formId), declaration: await ctx.db.get(legacy.declarationId), price: await ctx.db.get(legacy.priceId), forms: await ctx.db.query("admissionsFormVersions").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(10), declarations: await ctx.db.query("admissionsDeclarationVersions").withIndex("by_school_and_programme_and_version", (q) => q.eq("schoolId", schoolId).eq("programmeId", legacy.programmeId).gte("version", 0)).take(10), prices: await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", legacy.productId)).take(10), operations: await ctx.db.query("admissionsCampaignOperations").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(10), audits: await ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_created_at", (q) => q.eq("schoolId", schoolId)).take(20) }));
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "recover-no-intent", targetStatus: "draft", configuration })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    expect(await t.run((ctx) => ctx.db.get(legacy.intakeId))).toEqual(before.intake);
+    await t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId, userId, capability: "admissions.publish", scope: "school", grantedByUserId: userId, reason: "test", isBreakGlass: false, createdAt: now }));
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "recover-wrong-target", targetStatus: "published", recoverLegacyToDraft: true, configuration })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const recovered = await t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "recover-draft", targetStatus: "draft", recoverLegacyToDraft: true, configuration });
+    const replay = await t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "recover-draft", targetStatus: "draft", recoverLegacyToDraft: true, configuration });
+    expect(recovered).toMatchObject({ programmeId: legacy.programmeId, intakeId: legacy.intakeId, productId: legacy.productId, status: "draft", replayed: false, priceId: null }); expect(replay).toMatchObject({ ...recovered, replayed: true }); await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "recover-draft", targetStatus: "draft", configuration })).rejects.toThrow("OPERATION_KEY_REUSED");
+    const after = await t.run(async (ctx) => ({ intake: await ctx.db.get(legacy.intakeId), product: await ctx.db.get(legacy.productId), form: await ctx.db.get(legacy.formId), declaration: await ctx.db.get(legacy.declarationId), price: await ctx.db.get(legacy.priceId), forms: await ctx.db.query("admissionsFormVersions").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(10), declarations: await ctx.db.query("admissionsDeclarationVersions").withIndex("by_school_and_programme_and_version", (q) => q.eq("schoolId", schoolId).eq("programmeId", legacy.programmeId).gte("version", 0)).take(10), prices: await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", legacy.productId)).take(10), operations: await ctx.db.query("admissionsCampaignOperations").withIndex("by_intake", (q) => q.eq("intakeId", legacy.intakeId)).take(10), audits: await ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_created_at", (q) => q.eq("schoolId", schoolId)).take(20) }));
+    expect(after.intake).toEqual({ ...before.intake, status: "draft" }); expect(after.product).toMatchObject({ status: "draft" }); expect(after.form).toEqual(before.form); expect(after.declaration).toEqual(before.declaration); expect(after.price).toEqual(before.price); expect(after.forms).toHaveLength(before.forms.length + 1); expect(after.declarations).toHaveLength(before.declarations.length + 1); expect(after.prices).toEqual(before.prices); expect(after.operations).toHaveLength(before.operations.length + 1); expect(after.audits).toHaveLength(before.audits.length + 1); expect(after.audits).toEqual(expect.arrayContaining([expect.objectContaining({ action: "catalogue.campaign_legacy_recovered_to_draft", actorUserId: userId, reasonCode: "legacy_recovery_to_draft" })])); expect(await t.run((ctx) => ctx.db.get(recovered.formVersionId))).toMatchObject({ status: "draft", version: 2 }); expect(await t.run((ctx) => ctx.db.get(recovered.declarationVersionId))).toMatchObject({ status: "draft", version: 2 });
+  });
+
+  test("keeps a referenced exact partial and an Analyze-like partial graph blocked", async () => {
+    const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const referenced = await insertRecoverableLegacyPartial(t, schoolId, true);
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: referenced.intakeId, operationKey: "recover-referenced", targetStatus: "draft", recoverLegacyToDraft: true, configuration: replaceConfiguration(Date.now()) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    const analyze = await insertLegacyLiveGraph(t, schoolId, { productStatus: "draft" });
+    await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: analyze.intakeId, operationKey: "analyze-partial", targetStatus: "draft", recoverLegacyToDraft: true, configuration: replaceConfiguration(Date.now()) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
+    expect(await t.run(async (ctx) => (await ctx.db.query("admissionsCampaignOperations").take(10)).filter((row) => [referenced.intakeId, analyze.intakeId].includes(row.intakeId)))).toEqual([]);
   });
 
   test("adopts the bounded live legacy graph without rewriting historical evidence or applications", async () => {

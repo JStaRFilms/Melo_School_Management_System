@@ -190,6 +190,25 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     }));
   });
 
+  test("requires confirmation and sends the forced draft recovery payload for an exact recoverable campaign", async () => {
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("listLegacyCampaignRecovery")) return [{ intakeId: "intake", recoveryState: "recoverable_to_draft" }];
+      if (name.includes("getCatalogue")) return { programmes: [{ id: "programme", name: "Primary", description: null }], intakes: [{ id: "intake", programmeId: "programme", slug: "entry", name: "Entry", cycleLabel: "Primary School", status: "open", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }], products: [{ id: "product", intakeId: "intake" }], forms: [{ id: "form", intakeId: "intake", version: 1, status: "published" }], declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored", body: "Stored wording.", status: "published" }] };
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [{ version: 1, amountMinor: 10000, currency: "NGN", refundPolicyKey: "non_refundable", feeDisclosure: "Fee" }];
+      return undefined;
+    });
+    const onSuccess = vi.fn();
+    render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={onSuccess} publishAllowed />);
+    await screen.findByText(/Recovery available/i);
+    expect(screen.getByRole("button", { name: "Save Campaign Draft" })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Confirm recover this campaign as a draft"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(replaceCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({ schoolId: "school", intakeId: "intake", targetStatus: "draft", recoverLegacyToDraft: true })));
+    expect(appToast.success).toHaveBeenCalledWith("Campaign recovered offline and saved as a draft.");
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+  });
+
   test("uses plain recovery guidance for a failed save and retry", async () => {
     createCampaignConfiguration.mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS")).mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS"));
     render(builder());
