@@ -73,21 +73,9 @@ export function AdmissionsFormBuilder({
   onSuccess,
   publishAllowed
 }: AdmissionsFormBuilderProps) {
-  // Convex mutations
-  const updateIntakeDetails = useMutation("functions/admissions/settings:updateIntakeDetails" as never);
-  const retireForm = useMutation("functions/admissions/settings:retireForm" as never);
-  const publishForm = useMutation("functions/admissions/settings:publishForm" as never);
-  const setIntakeStatus = useMutation("functions/admissions/settings:setIntakeStatus" as never);
-  // Convex mutations
-  const createProgramme = useMutation("functions/admissions/settings:createProgramme" as never);
-  const createIntake = useMutation("functions/admissions/settings:createIntake" as never);
-  const createProduct = useMutation("functions/admissions/settings:createProduct" as never);
-  const createForm = useMutation("functions/admissions/settings:createDraftForm" as never);
-  const addField = useMutation("functions/admissions/settings:addDraftField" as never);
-  const addRequirement = useMutation("functions/admissions/settings:addDraftDocumentRequirement" as never);
-  const publishPrice = useMutation("functions/admissions/settings:publishPrice" as never);
-  const createDeclaration = useMutation("functions/admissions/settings:createDeclaration" as never);
-  const publishDeclaration = useMutation("functions/admissions/settings:publishDeclaration" as never);
+  const createDraftCampaign = useMutation("functions/admissions/settings:createDraftCampaign" as never);
+  const replaceDraftCampaignConfiguration = useMutation("functions/admissions/settings:replaceDraftCampaignConfiguration" as never);
+  const recovery = useQuery("functions/admissions/settings:listCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "legacy_partial" | "legacy_complete" | "atomic_draft" }> | undefined;
 
   // Form setup states
   const [formName, setFormName] = useState("");
@@ -127,6 +115,8 @@ export function AdmissionsFormBuilder({
   const [focusedCardId, setFocusedCardId] = useState<string | null>("def-sec-2");
   const [expandedPrivacyCardId, setExpandedPrivacyCardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const operationKeyRef = useRef<string | null>(null);
+  const defaultCampaignDatesRef = useRef({ opensAt: Date.now(), closesAt: Date.now() + 30 * 24 * 60 * 60 * 1000 });
 
   // Catalogue loaders for editing existing intake
   const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as Catalogue | undefined;
@@ -532,427 +522,27 @@ export function AdmissionsFormBuilder({
   const findActiveEvidence = (approvalClass: string, subjectType: string, subjectKey: string) =>
     evidence?.find((item) => item.active && item.approvalClass === approvalClass && item.subjectType === subjectType && item.subjectKey === subjectKey)?.id as string | undefined;
 
-  // Convex setup submit sequence
+  const newOperationKey = () => `campaign-${crypto.randomUUID()}`;
+
   const handlePublish = async () => {
-    if (!formName || !formSlug) {
-      appToast.error("Form name and slug are required parameters.");
-      return;
-    }
-    if (targetStatus === "published" && !publishAllowed) {
-      appToast.error("You do not have permission to publish admissions forms.");
-      return;
-    }
-    if (!declarationTitle.trim() || !declarationBody.trim()) {
-      appToast.error("The school must provide declaration title and text.");
-      return;
-    }
-    const opens = opensAt ? new Date(opensAt).getTime() : Date.now();
-    const closes = closesAt ? new Date(closesAt).getTime() : Date.now() + 30 * 24 * 60 * 60 * 1000;
-    if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) {
-      appToast.error("The intake closing date must be after its opening date.");
-      return;
-    }
-    const amountMinor = Number(feeAmount) || 0;
-    if (!intakeId && amountMinor !== 0) {
-      appToast.error("Create the draft campaign with no fee first, then attach approved finance evidence before publishing a price.");
-      return;
-    }
-    if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) {
-      appToast.error("Active privacy approval evidence is required before adding medical records.");
-      return;
-    }
-    const invalidSensitiveField = cards.find((card) => {
-      if (card.type !== "question" || (card.dataClass !== "highly_sensitive" && card.dataClass !== "financial_security")) return false;
-      return !evidence?.some((item) => item.id === card.approvalEvidenceId && item.active && item.approvalClass === "privacy" && item.subjectType === "admissions_field" && item.subjectKey === card.key);
-    });
-    if (invalidSensitiveField) {
-      appToast.error(`Select matching active privacy evidence for ${invalidSensitiveField.label || invalidSensitiveField.key}.`);
-      return;
-    }
-    if (intakeId) {
-      const product = catalogue?.products.find((item) => item.intakeId === intakeId);
-      const existingPrice = prices?.[0];
-      if (product && (!existingPrice || existingPrice.amountMinor !== amountMinor)) {
-        const nextVersion = (existingPrice?.version || 0) + 1;
-        if (targetStatus !== "published") {
-          appToast.error("Price changes require publishing with approved finance evidence.");
-          return;
-        }
-        if (!findActiveEvidence("finance", "admissions_price", `${product.id}:${nextVersion}`)) {
-          appToast.error(`Active finance approval evidence is required for price version ${nextVersion}.`);
-          return;
-        }
-      }
-    }
-
-    // Validate duplicate keys
-    const keys = cards.map(c => c.key).filter(Boolean);
-    const uniqueKeys = new Set(keys);
-    if (uniqueKeys.size !== keys.length) {
-      const duplicates = keys.filter((item, index) => keys.indexOf(item) !== index);
-      appToast.error(`Form contains duplicate field keys: ${[...new Set(duplicates)].join(", ")}. Please resolve them before publishing.`);
-      return;
-    }
-
-    // Validate invalid key formats
-    const invalidKeys = cards.filter(c => !c.isDefault && isInvalidKeyFormat(c.key));
-    if (invalidKeys.length > 0) {
-      appToast.error(`Form contains invalid slugs/keys: ${invalidKeys.map(c => c.label || "Untitled").join(", ")}. Keys must only contain lowercase letters, numbers, hyphens, and underscores.`);
-      return;
-    }
-
+    if (!formName || !formSlug || !declarationTitle.trim() || !declarationBody.trim()) { appToast.error("Form name, slug, and declaration text are required."); return; }
+    if (targetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
+    const opens = opensAt ? new Date(opensAt).getTime() : defaultCampaignDatesRef.current.opensAt; const closes = closesAt ? new Date(closesAt).getTime() : defaultCampaignDatesRef.current.closesAt;
+    if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) { appToast.error("The intake closing date must be after its opening date."); return; }
+    const existingPrice = prices?.[0]; if ((Number(feeAmount) || 0) !== (existingPrice?.amountMinor ?? 0)) { appToast.error("Price changes require the separate approved finance workflow and are not included in campaign setup."); return; }
+    const keys = cards.filter((card) => card.type === "question" && !card.isDefault).map((card) => card.key);
+    if (keys.some(isInvalidKeyFormat) || new Set(keys).size !== keys.length) { appToast.error("Resolve duplicate or invalid custom field keys before saving."); return; }
+    if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) { appToast.error("Active privacy approval evidence is required before adding medical records."); return; }
+    const invalidSensitiveField = cards.find((card) => card.type === "question" && !card.isDefault && (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") && !evidence?.some((item) => item.id === card.approvalEvidenceId && item.active && item.approvalClass === "privacy" && item.subjectType === "admissions_field" && item.subjectKey === card.key));
+    if (invalidSensitiveField) { appToast.error(`Select matching active privacy evidence for ${invalidSensitiveField.label || invalidSensitiveField.key}.`); return; }
+    let sectionKey = "applicant";
+    const fields = cards.flatMap((card, order) => { if (card.isDefault) return []; if (card.type === "section") { sectionKey = card.key; return []; } return [{ fieldKey: card.key, sectionKey, kind: card.kind || "text", label: card.label || "Untitled Field", requiredMode: card.required ? "required" as const : "optional" as const, dataClass: card.dataClass || "personal", purpose: card.purpose || undefined, retentionPolicyKey: card.retentionPolicyKey || undefined, audience: card.audience || undefined, approvalEvidenceId: card.approvalEvidenceId || undefined, validationJson: card.kind === "select" && card.choices?.length ? JSON.stringify({ choices: card.choices }) : "{}", order }]; });
+    const requirements = [{ requirementKey: "birth_cert", category: "identity", label: "Birth Certificate", requiredMode: "required" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Age and identity confirmation", order: 0 }, ...(reqPassport ? [{ requirementKey: "passport", category: "passport", label: "Passport Photograph (Clear headshot)", requiredMode: "required" as const, acceptedMimeTypes: ["image/jpeg", "image/png"], maxBytes: 2 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Student profile photograph setup", order: 1 }] : []), ...(reqMedical ? [{ requirementKey: "medical_records", category: "medical", label: "Recent Medical Reports (within past 6 months)", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "highly_sensitive" as DataClass, purpose: "Health planning support", retentionPolicyKey: "duration_of_enrollment", audience: "school_medical_officers_and_management", approvalEvidenceId: findActiveEvidence("privacy", "admissions_document_requirement", "medical_records"), order: 2 }] : []), ...(reqTranscripts ? [{ requirementKey: "transcripts", category: "academic", label: "Previous School Transcripts", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 2, sensitivity: "child_confidential" as DataClass, purpose: "Academic history verification", order: 3 }] : [])];
+    const configuration = { programme: { slug: formSlug, name: formName, description: formDescription || undefined }, intake: { slug: formSlug, name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes }, product: { slug: formSlug, name: "Intake registration fee slot" }, form: { schemaVersion: "1" }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements };
     setSaving(true);
-    try {
-      if (intakeId) {
-        // --- EDITING AN EXISTING INTAKE FORM ---
-        const intake = catalogue?.intakes.find((item) => item.id === intakeId);
-        if (!intake) throw new Error("Intake not found in catalogue");
-        const progId = intake.programmeId;
-        const product = catalogue?.products.find((item) => item.intakeId === intakeId);
-
-        // 1. Update Intake and Programme details
-        const opens = opensAt ? new Date(opensAt).getTime() : Date.now();
-        const closes = closesAt ? new Date(closesAt).getTime() : Date.now() + 30 * 24 * 60 * 60 * 1000;
-        
-        await updateIntakeDetails({
-          schoolId,
-          intakeId,
-          name: formName,
-          opensAt: opens,
-          closesAt: closes,
-          cycleLabel: academicCategory,
-          description: formDescription || undefined
-        } as never);
-
-        // 2. Update Price if changed
-        const amt = Number(feeAmount) || 0;
-        const existingPrice = prices?.[0];
-        const prodId = product?.id;
-        
-        if (prodId && (!existingPrice || existingPrice.amountMinor !== amt)) {
-          const nextVersion = (existingPrice?.version || 0) + 1;
-          const evidenceId = findActiveEvidence("finance", "admissions_price", `${String(prodId)}:${nextVersion}`);
-          if (!evidenceId) throw new Error(`Active finance approval evidence is required for price version ${nextVersion}.`);
-          await publishPrice({
-            productId: prodId,
-            version: nextVersion,
-            amountMinor: amt,
-            currency: feeCurrency,
-            refundPolicyKey: feeRefundPolicy,
-            feeDisclosure: feeDisclosure || "Standard admissions process fee",
-            effectiveFrom: Date.now(),
-            approvalEvidenceId: evidenceId
-          } as never);
-        }
-
-        // 2.5 Update/create legal declaration attestation
-        const declarationVersion = Math.max(0, ...(catalogue?.declarations.filter((declaration) => declaration.programmeId === intake.programmeId).map((declaration) => declaration.version) ?? [])) + 1;
-        const declId = await createDeclaration({
-          schoolId,
-          programmeId: intake.programmeId,
-          version: declarationVersion,
-          title: declarationTitle,
-          body: declarationBody,
-          purpose: "service"
-        } as never) as string;
-        if (targetStatus === "published") await publishDeclaration({ declarationVersionId: declId } as never);
-
-        // 3. Create Draft form version
-        const fVersionId = await createForm({
-          schoolId,
-          programmeId: progId,
-          intakeId,
-          schemaVersion: "1"
-        } as never) as string;
-
-        // 4. Loop over cards and append fields
-        let currentSectionKey = "applicant";
-        for (let i = 0; i < cards.length; i++) {
-          const card = cards[i];
-          if (card.isDefault) continue;
-          if (card.type === "section") {
-            currentSectionKey = card.key || "custom_section";
-          } else {
-            const fieldApprovalId = card.approvalEvidenceId || undefined;
-
-            let validationJsonVal = "{}";
-            if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
-              validationJsonVal = JSON.stringify({ choices: card.choices });
-            }
-
-            await addField({
-              formVersionId: fVersionId,
-              fieldKey: card.key || `field_${i}`,
-              sectionKey: currentSectionKey,
-              kind: card.kind || "text",
-              label: card.label || "Untitled Field",
-              requiredMode: card.required ? "required" : "optional",
-              dataClass: card.dataClass || "personal",
-              purpose: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.purpose || "Required for admissions evaluation") : undefined,
-              retentionPolicyKey: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.retentionPolicyKey || "duration_of_enrollment") : undefined,
-              audience: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.audience || "school_admissions_staff") : undefined,
-              approvalEvidenceId: fieldApprovalId,
-              validationJson: validationJsonVal,
-              order: i
-            } as never);
-          }
-        }
-
-        // 5. Add document checklist items
-        await addRequirement({
-          formVersionId: fVersionId,
-          requirementKey: "birth_cert",
-          category: "identity",
-          label: "Birth Certificate",
-          requiredMode: "required",
-          acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-          maxBytes: 5 * 1024 * 1024,
-          maxFiles: 1,
-          sensitivity: "child_confidential",
-          purpose: "Age and identity confirmation",
-          order: 0
-        } as never);
-
-        if (reqPassport) {
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "passport",
-            category: "passport",
-            label: "Passport Photograph (Clear headshot)",
-            requiredMode: "required",
-            acceptedMimeTypes: ["image/jpeg", "image/png"],
-            maxBytes: 2 * 1024 * 1024,
-            maxFiles: 1,
-            sensitivity: "child_confidential",
-            purpose: "Student profile photograph setup",
-            order: 1
-          } as never);
-        }
-
-        if (reqMedical) {
-          const medicalApprovalId = findActiveEvidence("privacy", "admissions_document_requirement", "medical_records");
-          if (!medicalApprovalId) throw new Error("Active privacy approval evidence is required for medical records.");
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "medical_records",
-            category: "medical",
-            label: "Recent Medical Reports (within past 6 months)",
-            requiredMode: "optional",
-            acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-            maxBytes: 5 * 1024 * 1024,
-            maxFiles: 1,
-            sensitivity: "highly_sensitive",
-            purpose: "Health planning support",
-            retentionPolicyKey: "duration_of_enrollment",
-            audience: "school_medical_officers_and_management",
-            approvalEvidenceId: medicalApprovalId,
-            order: 2
-          } as never);
-        }
-
-        if (reqTranscripts) {
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "transcripts",
-            category: "academic",
-            label: "Previous School Transcripts",
-            requiredMode: "optional",
-            acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-            maxBytes: 5 * 1024 * 1024,
-            maxFiles: 2,
-            sensitivity: "child_confidential",
-            purpose: "Academic history verification",
-            order: 3
-          } as never);
-        }
-
-        // 6. Conditional publication logic based on targetStatus selection
-        if (targetStatus === "published") {
-          const previousPublished = catalogue?.forms.find((form) => form.intakeId === intakeId && form.status === "published");
-          if (previousPublished) {
-            await retireForm({ formVersionId: previousPublished.id } as never);
-          }
-          await publishForm({ formVersionId: fVersionId } as never);
-          
-          if (intakeDoc?.status === "draft") {
-            await setIntakeStatus({ intakeId, status: "open" } as never);
-          }
-          appToast.success("Admissions form and intake cycle updated live!");
-        } else {
-          appToast.success("Admissions form changes saved as draft!");
-        }
-      } else {
-        // --- CREATING A NEW INTAKE FORM ---
-        // 1. Create Programme offering
-        const progId = await createProgramme({
-          schoolId,
-          name: formName,
-          slug: formSlug,
-          description: formDescription || undefined
-        } as never) as string;
-
-        // 2. Create Intake Cycle
-        const opens = opensAt ? new Date(opensAt).getTime() : Date.now();
-        const closes = closesAt ? new Date(closesAt).getTime() : Date.now() + 30 * 24 * 60 * 60 * 1000;
-        const intId = await createIntake({
-          schoolId,
-          programmeId: progId,
-          name: formName,
-          slug: formSlug,
-          cycleLabel: academicCategory,
-          opensAt: opens,
-          closesAt: closes
-        } as never) as string;
-
-        // 3. Create Fee product
-        await createProduct({
-          schoolId,
-          intakeId: intId,
-          name: "Intake registration fee slot",
-          slug: formSlug
-        } as never) as string;
-
-        // 4. Create Draft form version
-        const fVersionId = await createForm({
-          schoolId,
-          programmeId: progId,
-          intakeId: intId,
-          schemaVersion: "1"
-        } as never) as string;
-
-        // Pricing is published only after accountable finance approval is recorded.
-        const amt = Number(feeAmount) || 0;
-        if (amt !== 0) throw new Error("Finance approval evidence is required before publishing a price.");
-
-        // 6. Create the school-authored declaration.
-        const declId = await createDeclaration({
-          schoolId,
-          programmeId: progId,
-          version: 1,
-          title: declarationTitle,
-          body: declarationBody,
-          purpose: "service"
-        } as never) as string;
-        if (targetStatus === "published") await publishDeclaration({ declarationVersionId: declId } as never);
-
-        // 7. Loop over cards and append fields
-        let currentSectionKey = "applicant";
-        for (let i = 0; i < cards.length; i++) {
-          const card = cards[i];
-          if (card.isDefault) continue;
-          if (card.type === "section") {
-            currentSectionKey = card.key || "custom_section";
-          } else {
-            const fieldApprovalId = card.approvalEvidenceId || undefined;
-
-            let validationJsonVal = "{}";
-            if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
-              validationJsonVal = JSON.stringify({ choices: card.choices });
-            }
-
-            await addField({
-              formVersionId: fVersionId,
-              fieldKey: card.key || `field_${i}`,
-              sectionKey: currentSectionKey,
-              kind: card.kind || "text",
-              label: card.label || "Untitled Field",
-              requiredMode: card.required ? "required" : "optional",
-              dataClass: card.dataClass || "personal",
-              purpose: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.purpose || "Required for admissions evaluation") : undefined,
-              retentionPolicyKey: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.retentionPolicyKey || "duration_of_enrollment") : undefined,
-              audience: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.audience || "school_admissions_staff") : undefined,
-              approvalEvidenceId: fieldApprovalId,
-              validationJson: validationJsonVal,
-              order: i
-            } as never);
-          }
-        }
-
-        // 8. Add document checklist items
-        await addRequirement({
-          formVersionId: fVersionId,
-          requirementKey: "birth_cert",
-          category: "identity",
-          label: "Birth Certificate",
-          requiredMode: "required",
-          acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-          maxBytes: 5 * 1024 * 1024,
-          maxFiles: 1,
-          sensitivity: "child_confidential",
-          purpose: "Age and identity confirmation",
-          order: 0
-        } as never);
-
-        if (reqPassport) {
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "passport",
-            category: "passport",
-            label: "Passport Photograph (Clear headshot)",
-            requiredMode: "required",
-            acceptedMimeTypes: ["image/jpeg", "image/png"],
-            maxBytes: 2 * 1024 * 1024,
-            maxFiles: 1,
-            sensitivity: "child_confidential",
-            purpose: "Student profile photograph setup",
-            order: 1
-          } as never);
-        }
-
-        if (reqMedical) {
-          const medicalApprovalId = findActiveEvidence("privacy", "admissions_document_requirement", "medical_records");
-          if (!medicalApprovalId) throw new Error("Active privacy approval evidence is required for medical records.");
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "medical_records",
-            category: "medical",
-            label: "Recent Medical Reports (within past 6 months)",
-            requiredMode: "optional",
-            acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-            maxBytes: 5 * 1024 * 1024,
-            maxFiles: 1,
-            sensitivity: "highly_sensitive",
-            purpose: "Health planning support",
-            retentionPolicyKey: "duration_of_enrollment",
-            audience: "school_medical_officers_and_management",
-            approvalEvidenceId: medicalApprovalId,
-            order: 2
-          } as never);
-        }
-
-        if (reqTranscripts) {
-          await addRequirement({
-            formVersionId: fVersionId,
-            requirementKey: "transcripts",
-            category: "academic",
-            label: "Previous School Transcripts",
-            requiredMode: "optional",
-            acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"],
-            maxBytes: 5 * 1024 * 1024,
-            maxFiles: 2,
-            sensitivity: "child_confidential",
-            purpose: "Academic history verification",
-            order: 3
-          } as never);
-        }
-
-        // 9. Conditional publication logic based on targetStatus selection
-        if (targetStatus === "published") {
-          await publishForm({ formVersionId: fVersionId } as never);
-          await setIntakeStatus({ intakeId: intId, status: "open" } as never);
-          appToast.success("Admissions form and intake cycle published live!");
-        } else {
-          appToast.success("Admissions form created and saved as draft!");
-        }
-      }
-
-      localStorage.removeItem(`admissions_form_draft_${schoolId}`);
-      onSuccess();
-    } catch (err) {
-      appToast.error("Form publication failed", { description: getUserFacingErrorMessage(err, "An error occurred while publishing the form.") });
-    } finally {
-      setSaving(false);
-    }
+    const saveOperationKey = operationKeyRef.current ?? newOperationKey();
+    operationKeyRef.current = saveOperationKey;
+    try { const publish = targetStatus === "published"; if (intakeId) { await replaceDraftCampaignConfiguration({ schoolId, intakeId, operationKey: saveOperationKey, configuration, publish } as never); appToast.success(publish ? "Admissions campaign replaced and published." : "Admissions campaign configuration saved as a draft."); } else { await createDraftCampaign({ schoolId, operationKey: saveOperationKey, configuration, publish } as never); appToast.success(publish ? "Admissions campaign created and published." : "Admissions campaign created as a draft."); } operationKeyRef.current = null; localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess(); } catch (err) { appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The campaign was not changed.") }); } finally { setSaving(false); }
   };
 
   return (
@@ -973,6 +563,12 @@ export function AdmissionsFormBuilder({
           >
             <ArrowLeft className="h-4 w-4" /> Return to Admissions Panel
           </button>
+
+          {recovery?.some((campaign) => campaign.recoveryState !== "atomic_draft") && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs font-semibold text-amber-900 shadow-sm">
+              Existing pre-atomic draft campaigns need operator review before they are edited or deleted. No recovery action has been applied automatically.
+            </div>
+          )}
 
           {draftExists && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 flex items-center justify-between text-xs font-bold text-indigo-900 shadow-sm animate-in slide-in-from-top-4 duration-200">

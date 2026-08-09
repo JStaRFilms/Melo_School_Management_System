@@ -387,6 +387,23 @@ export default defineSchema({
     .index("by_school_and_slug", ["schoolId", "slug"])
     .index("by_intake_and_status", ["intakeId", "status"]),
 
+  /** Durable replay ledger for bounded Admin campaign setup commands. */
+  admissionsCampaignOperations: defineTable({
+    schoolId: v.id("schools"),
+    command: v.union(v.literal("create"), v.literal("replace")),
+    operationKey: v.string(),
+    configurationDigest: v.string(),
+    programmeId: v.id("admissionsProgrammes"),
+    intakeId: v.id("admissionsIntakes"),
+    productId: v.id("admissionsProducts"),
+    formVersionId: v.id("admissionsFormVersions"),
+    declarationVersionId: v.id("admissionsDeclarationVersions"),
+    published: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_command_and_operation_key", ["schoolId", "command", "operationKey"])
+    .index("by_school_and_intake", ["schoolId", "intakeId"]),
+
   admissionsProductPrices: defineTable({
     schoolId: v.id("schools"),
     productId: v.id("admissionsProducts"),

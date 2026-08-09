@@ -20,6 +20,139 @@ async function assertSensitiveConfiguration(ctx: MutationCtx, schoolId: Id<"scho
   if (!evidence || evidence.schoolId !== schoolId || evidence.approvalClass !== "privacy" || !approver || approver.schoolId !== schoolId || approver.isArchived || evidence.revokedAt || evidence.approvedAt > Date.now() || (evidence.expiresAt && evidence.expiresAt <= Date.now()) || (subject && (evidence.subjectType !== subject.type || evidence.subjectKey !== subject.key))) throw new ConvexError("Sensitive configuration approval is unavailable");
 }
 
+const dataClassValidator = v.union(v.literal("public"), v.literal("internal"), v.literal("personal"), v.literal("child_confidential"), v.literal("highly_sensitive"), v.literal("financial_security"));
+const requiredModeValidator = v.union(v.literal("required"), v.literal("optional"), v.literal("conditional"));
+const campaignConfigurationValidator = v.object({
+  programme: v.object({ slug: v.string(), name: v.string(), description: v.optional(v.string()) }),
+  intake: v.object({ slug: v.string(), name: v.string(), cycleLabel: v.string(), opensAt: v.number(), closesAt: v.number(), targetClassId: v.optional(v.id("classes")) }),
+  product: v.object({ slug: v.string(), name: v.string() }),
+  form: v.object({ schemaVersion: v.string() }),
+  declaration: v.object({ title: v.string(), body: v.string(), purpose: v.string() }),
+  fields: v.array(v.object({ fieldKey: v.string(), sectionKey: v.string(), kind: v.string(), label: v.string(), requiredMode: requiredModeValidator, dataClass: dataClassValidator, purpose: v.optional(v.string()), retentionPolicyKey: v.optional(v.string()), audience: v.optional(v.string()), approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")), validationJson: v.string(), conditionalRuleJson: v.optional(v.string()), order: v.number() })),
+  requirements: v.array(v.object({ requirementKey: v.string(), category: v.string(), label: v.string(), requiredMode: requiredModeValidator, acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), sensitivity: dataClassValidator, purpose: v.string(), retentionPolicyKey: v.optional(v.string()), audience: v.optional(v.string()), approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")), conditionJson: v.optional(v.string()), order: v.number() })),
+});
+
+type CampaignConfiguration = {
+  programme: { slug: string; name: string; description?: string };
+  intake: { slug: string; name: string; cycleLabel: string; opensAt: number; closesAt: number; targetClassId?: Id<"classes"> };
+  product: { slug: string; name: string };
+  form: { schemaVersion: string };
+  declaration: { title: string; body: string; purpose: string };
+  fields: Array<{ fieldKey: string; sectionKey: string; kind: string; label: string; requiredMode: "required" | "optional" | "conditional"; dataClass: "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security"; purpose?: string; retentionPolicyKey?: string; audience?: string; approvalEvidenceId?: Id<"schoolApprovalEvidence">; validationJson: string; conditionalRuleJson?: string; order: number }>;
+  requirements: Array<{ requirementKey: string; category: string; label: string; requiredMode: "required" | "optional" | "conditional"; acceptedMimeTypes: string[]; maxBytes: number; maxFiles: number; sensitivity: "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security"; purpose: string; retentionPolicyKey?: string; audience?: string; approvalEvidenceId?: Id<"schoolApprovalEvidence">; conditionJson?: string; order: number }>;
+};
+
+const campaignResultValidator = v.object({ programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), productId: v.id("admissionsProducts"), formVersionId: v.id("admissionsFormVersions"), declarationVersionId: v.id("admissionsDeclarationVersions"), published: v.boolean(), replayed: v.boolean() });
+type CampaignResult = { programmeId: Id<"admissionsProgrammes">; intakeId: Id<"admissionsIntakes">; productId: Id<"admissionsProducts">; formVersionId: Id<"admissionsFormVersions">; declarationVersionId: Id<"admissionsDeclarationVersions">; published: boolean; replayed: boolean };
+
+function operationKey(value: string) {
+  const key = value.trim();
+  if (!key || key.length > 128) throw new ConvexError("Invalid operation key");
+  return key;
+}
+
+async function assertCampaignConfiguration(ctx: MutationCtx, schoolId: Id<"schools">, configuration: CampaignConfiguration) {
+  if (!Number.isFinite(configuration.intake.opensAt) || !Number.isFinite(configuration.intake.closesAt) || configuration.intake.opensAt >= configuration.intake.closesAt) throw new ConvexError("Invalid intake");
+  slug(configuration.programme.slug); slug(configuration.intake.slug); slug(configuration.product.slug);
+  text(configuration.programme.name, "Programme name", 256); text(configuration.intake.name, "Intake name", 256); text(configuration.intake.cycleLabel, "Cycle label", 128); text(configuration.product.name, "Product name", 256); text(configuration.form.schemaVersion, "Schema version", 128); text(configuration.declaration.title, "Declaration title", 256); text(configuration.declaration.body, "Declaration body", 20_000); text(configuration.declaration.purpose, "Declaration purpose", 1_000);
+  if (configuration.fields.length > 100 || configuration.requirements.length > 50) throw new ConvexError("Campaign configuration is too large");
+  if (configuration.intake.targetClassId) {
+    const classDoc = await ctx.db.get(configuration.intake.targetClassId);
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Invalid intake");
+  }
+  const fieldKeys = new Set<string>(); const fieldOrders = new Set<number>();
+  for (const field of configuration.fields) {
+    const key = slug(field.fieldKey);
+    if (fieldKeys.has(key) || fieldOrders.has(field.order) || !Number.isInteger(field.order) || field.order < 0 || field.order > 199 || !(admissionFieldKinds as readonly string[]).includes(field.kind)) throw new ConvexError("Invalid field");
+    fieldKeys.add(key); fieldOrders.add(field.order); text(field.sectionKey, "Section", 128); text(field.label, "Field label", 256); assertClosedValidationGrammar(field.validationJson);
+    if (field.requiredMode === "conditional" && !field.conditionalRuleJson) throw new ConvexError("Conditional rule is required");
+    if (field.conditionalRuleJson) assertClosedConditionalGrammar(field.conditionalRuleJson);
+    await assertSensitiveConfiguration(ctx, schoolId, field.dataClass, field.approvalEvidenceId, field.purpose, field.retentionPolicyKey, field.audience, { type: "admissions_field", key });
+  }
+  const requirementKeys = new Set<string>(); const requirementOrders = new Set<number>();
+  for (const requirement of configuration.requirements) {
+    const key = slug(requirement.requirementKey);
+    if (requirementKeys.has(key) || requirementOrders.has(requirement.order) || !Number.isInteger(requirement.order) || requirement.order < 0 || requirement.order > 99 || !Number.isInteger(requirement.maxBytes) || requirement.maxBytes < 1 || requirement.maxBytes > 50_000_000 || !Number.isInteger(requirement.maxFiles) || requirement.maxFiles < 1 || requirement.maxFiles > 10 || requirement.acceptedMimeTypes.length < 1 || requirement.acceptedMimeTypes.length > 20 || requirement.acceptedMimeTypes.some((mime) => !/^[\w.+-]+\/[\w.+-]+$/.test(mime)) || (requirement.requiredMode === "conditional" && !requirement.conditionJson)) throw new ConvexError("Invalid document requirement");
+    requirementKeys.add(key); requirementOrders.add(requirement.order); text(requirement.category, "Document category", 128); text(requirement.label, "Document label", 256); text(requirement.purpose, "Document purpose", 1_000);
+    if (requirement.conditionJson) assertClosedConditionalGrammar(requirement.conditionJson);
+    await assertSensitiveConfiguration(ctx, schoolId, requirement.sensitivity, requirement.approvalEvidenceId, requirement.purpose, requirement.retentionPolicyKey, requirement.audience, { type: "admissions_document_requirement", key });
+  }
+}
+
+async function existingCampaignResult(ctx: MutationCtx, schoolId: Id<"schools">, command: "create" | "replace", key: string, configurationDigest: string): Promise<CampaignResult | null> {
+  const existing = await ctx.db.query("admissionsCampaignOperations").withIndex("by_school_and_command_and_operation_key", (q) => q.eq("schoolId", schoolId).eq("command", command).eq("operationKey", key)).unique();
+  if (!existing) return null;
+  if (existing.configurationDigest !== configurationDigest) throw new ConvexError("Operation key was already used for a different campaign configuration");
+  return { programmeId: existing.programmeId, intakeId: existing.intakeId, productId: existing.productId, formVersionId: existing.formVersionId, declarationVersionId: existing.declarationVersionId, published: existing.published, replayed: true };
+}
+
+async function insertCampaignConfiguration(ctx: MutationCtx, args: { schoolId: Id<"schools">; memberUserId: Id<"users">; configuration: CampaignConfiguration; programmeId: Id<"admissionsProgrammes">; intakeId: Id<"admissionsIntakes">; productId: Id<"admissionsProducts">; declarationVersion: number; formVersion: number; publish: boolean }) {
+  const now = Date.now(); const { configuration } = args;
+  const declarationBody = text(configuration.declaration.body, "Declaration body", 20_000);
+  const declarationVersionId = await ctx.db.insert("admissionsDeclarationVersions", { schoolId: args.schoolId, programmeId: args.programmeId, version: args.declarationVersion, title: text(configuration.declaration.title, "Declaration title", 256), body: declarationBody, bodyDigest: await digest(declarationBody), purpose: text(configuration.declaration.purpose, "Declaration purpose", 1_000), status: args.publish ? "published" : "draft", ...(args.publish ? { publishedAt: now, publishedBy: args.memberUserId } : {}), createdAt: now, updatedAt: now });
+  const formVersionId = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: args.programmeId, intakeId: args.intakeId, version: args.formVersion, schemaVersion: text(configuration.form.schemaVersion, "Schema version", 128), legalNamePolicyVersion: 2, status: args.publish ? "published" : "draft", ...(args.publish ? { publishedAt: now, publishedBy: args.memberUserId } : {}), createdAt: now, updatedAt: now });
+  for (const field of configuration.fields) await ctx.db.insert("admissionsFormFields", { schoolId: args.schoolId, formVersionId, fieldKey: slug(field.fieldKey), sectionKey: text(field.sectionKey, "Section", 128), kind: field.kind, label: text(field.label, "Field label", 256), requiredMode: field.requiredMode, dataClass: field.dataClass, ...(field.purpose?.trim() ? { purpose: field.purpose.trim().slice(0, 1_000) } : {}), ...(field.retentionPolicyKey?.trim() ? { retentionPolicyKey: field.retentionPolicyKey.trim().slice(0, 128) } : {}), ...(field.audience?.trim() ? { audience: field.audience.trim().slice(0, 128) } : {}), ...(field.approvalEvidenceId ? { approvalEvidenceId: field.approvalEvidenceId } : {}), validationJson: field.validationJson, ...(field.conditionalRuleJson ? { conditionalRuleJson: field.conditionalRuleJson } : {}), order: field.order, status: "active", createdAt: now, updatedAt: now });
+  for (const requirement of configuration.requirements) await ctx.db.insert("admissionsDocumentRequirements", { schoolId: args.schoolId, formVersionId, requirementKey: slug(requirement.requirementKey), category: text(requirement.category, "Document category", 128), label: text(requirement.label, "Document label", 256), requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: text(requirement.purpose, "Document purpose", 1_000), ...(requirement.retentionPolicyKey?.trim() ? { retentionPolicyKey: requirement.retentionPolicyKey.trim().slice(0, 128) } : {}), ...(requirement.audience?.trim() ? { audience: requirement.audience.trim().slice(0, 128) } : {}), ...(requirement.approvalEvidenceId ? { approvalEvidenceId: requirement.approvalEvidenceId } : {}), ...(requirement.conditionJson ? { conditionJson: requirement.conditionJson } : {}), order: requirement.order, createdAt: now, updatedAt: now });
+  return { declarationVersionId, formVersionId, now };
+}
+
+/** Creates a complete campaign graph in one transaction. `publish` is optional so a first live campaign is never browser-orchestrated. */
+export const createDraftCampaign = mutation({
+  args: { schoolId: v.id("schools"), operationKey: v.string(), configuration: campaignConfigurationValidator, publish: v.optional(v.boolean()) }, returns: campaignResultValidator,
+  handler: async (ctx, args): Promise<CampaignResult> => {
+    const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const key = operationKey(args.operationKey); const publish = args.publish ?? false;
+    if (publish) await requireCatalogue(ctx, args.schoolId, "admissions.publish");
+    const configuration = args.configuration; const configurationDigest = await digest(JSON.stringify({ configuration, publish })); const replay = await existingCampaignResult(ctx, args.schoolId, "create", key, configurationDigest); if (replay) return replay;
+    await assertCampaignConfiguration(ctx, args.schoolId, configuration);
+    const [programmeDuplicate, intakeDuplicate, productDuplicate] = await Promise.all([
+      ctx.db.query("admissionsProgrammes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", slug(configuration.programme.slug))).unique(),
+      ctx.db.query("admissionsIntakes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", slug(configuration.intake.slug))).unique(),
+      ctx.db.query("admissionsProducts").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", slug(configuration.product.slug))).unique(),
+    ]);
+    if (programmeDuplicate || intakeDuplicate || productDuplicate) throw new ConvexError("Campaign slug already exists");
+    const now = Date.now(); const programmeId = await ctx.db.insert("admissionsProgrammes", { schoolId: args.schoolId, slug: slug(configuration.programme.slug), name: text(configuration.programme.name, "Programme name", 256), ...(configuration.programme.description?.trim() ? { description: configuration.programme.description.trim().slice(0, 4_000) } : {}), status: publish ? "published" : "draft", createdAt: now, updatedAt: now });
+    const intakeId = await ctx.db.insert("admissionsIntakes", { schoolId: args.schoolId, programmeId, slug: slug(configuration.intake.slug), name: text(configuration.intake.name, "Intake name", 256), cycleLabel: text(configuration.intake.cycleLabel, "Cycle label", 128), ...(configuration.intake.targetClassId ? { targetClassId: configuration.intake.targetClassId } : {}), opensAt: configuration.intake.opensAt, closesAt: configuration.intake.closesAt, status: publish ? "open" : "draft", createdAt: now, updatedAt: now });
+    const productId = await ctx.db.insert("admissionsProducts", { schoolId: args.schoolId, intakeId, slug: slug(configuration.product.slug), name: text(configuration.product.name, "Product name", 256), slotCount: 1, status: publish ? "active" : "draft", createdAt: now, updatedAt: now });
+    const inserted = await insertCampaignConfiguration(ctx, { schoolId: args.schoolId, memberUserId: member.userId, configuration, programmeId, intakeId, productId, declarationVersion: 1, formVersion: 1, publish });
+    await ctx.db.insert("admissionsCampaignOperations", { schoolId: args.schoolId, command: "create", operationKey: key, configurationDigest, programmeId, intakeId, productId, formVersionId: inserted.formVersionId, declarationVersionId: inserted.declarationVersionId, published: publish, createdAt: now });
+    await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: publish ? "catalogue.campaign_created_and_published" : "catalogue.campaign_drafted_atomically", entityType: "intake", entityId: String(intakeId), outcome: "success" });
+    return { programmeId, intakeId, productId, formVersionId: inserted.formVersionId, declarationVersionId: inserted.declarationVersionId, published: publish, replayed: false };
+  },
+});
+
+/** Replaces an intake configuration by creating new version evidence; published form/declaration content is never rewritten. */
+export const replaceDraftCampaignConfiguration = mutation({
+  args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), operationKey: v.string(), configuration: campaignConfigurationValidator, publish: v.boolean() }, returns: campaignResultValidator,
+  handler: async (ctx, args): Promise<CampaignResult> => {
+    const member = await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const key = operationKey(args.operationKey); if (args.publish) await requireCatalogue(ctx, args.schoolId, "admissions.publish");
+    const configuration = args.configuration; const configurationDigest = await digest(JSON.stringify({ intakeId: args.intakeId, configuration, publish: args.publish })); const replay = await existingCampaignResult(ctx, args.schoolId, "replace", key, configurationDigest); if (replay) return replay;
+    const intake = await ctx.db.get(args.intakeId); if (!intake || intake.schoolId !== args.schoolId || intake.status === "archived") throw new ConvexError("Invalid intake"); const programme = await ctx.db.get(intake.programmeId); if (!programme || programme.schoolId !== args.schoolId || slug(configuration.programme.slug) !== programme.slug || slug(configuration.intake.slug) !== intake.slug) throw new ConvexError("Campaign slugs cannot be changed during replacement");
+    const products = await ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(2); if (products.length !== 1 || slug(configuration.product.slug) !== products[0].slug) throw new ConvexError("Campaign product cannot be replaced safely");
+    await assertCampaignConfiguration(ctx, args.schoolId, configuration);
+    const [forms, declarations] = await Promise.all([
+      ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", programme._id)).take(101),
+      ctx.db.query("admissionsDeclarationVersions").withIndex("by_school_and_programme_and_version", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", programme._id).gte("version", 0)).take(101),
+    ]);
+    if (forms.length > 100 || declarations.length > 100) throw new ConvexError("Campaign has too many historical versions");
+    const publishedForms = forms.filter((form) => form.intakeId === intake._id && form.status === "published"); const publishedDeclarations = declarations.filter((declaration) => declaration.status === "published"); if (publishedForms.length > 1 || publishedDeclarations.length > 1) throw new ConvexError("Campaign publication evidence is inconsistent");
+    const now = Date.now(); await ctx.db.patch(programme._id, { name: text(configuration.programme.name, "Programme name", 256), ...(configuration.programme.description !== undefined ? { description: configuration.programme.description.trim().slice(0, 4_000) } : {}), ...(args.publish ? { status: "published" } : {}), updatedAt: now }); await ctx.db.patch(intake._id, { name: text(configuration.intake.name, "Intake name", 256), cycleLabel: text(configuration.intake.cycleLabel, "Cycle label", 128), ...(configuration.intake.targetClassId ? { targetClassId: configuration.intake.targetClassId } : {}), opensAt: configuration.intake.opensAt, closesAt: configuration.intake.closesAt, ...(args.publish ? { status: "open" } : {}), updatedAt: now }); await ctx.db.patch(products[0]._id, { name: text(configuration.product.name, "Product name", 256), ...(args.publish ? { status: "active" } : {}), updatedAt: now });
+    if (args.publish) { for (const form of publishedForms) await ctx.db.patch(form._id, { status: "retired", updatedAt: now }); for (const declaration of publishedDeclarations) await ctx.db.patch(declaration._id, { status: "retired", updatedAt: now }); }
+    const inserted = await insertCampaignConfiguration(ctx, { schoolId: args.schoolId, memberUserId: member.userId, configuration, programmeId: programme._id, intakeId: intake._id, productId: products[0]._id, declarationVersion: Math.max(0, ...declarations.map((item) => item.version)) + 1, formVersion: Math.max(0, ...forms.filter((item) => item.intakeId === intake._id).map((item) => item.version)) + 1, publish: args.publish });
+    await ctx.db.insert("admissionsCampaignOperations", { schoolId: args.schoolId, command: "replace", operationKey: key, configurationDigest, programmeId: programme._id, intakeId: intake._id, productId: products[0]._id, formVersionId: inserted.formVersionId, declarationVersionId: inserted.declarationVersionId, published: args.publish, createdAt: now }); await audit({ ctx, schoolId: args.schoolId, actor: { kind: "staff", userId: member.userId }, action: args.publish ? "catalogue.campaign_replaced_and_published" : "catalogue.campaign_replaced_as_draft", entityType: "intake", entityId: String(intake._id), outcome: "success" });
+    return { programmeId: programme._id, intakeId: intake._id, productId: products[0]._id, formVersionId: inserted.formVersionId, declarationVersionId: inserted.declarationVersionId, published: args.publish, replayed: false };
+  },
+});
+
+/** Legacy drafts have no atomic operation ledger. They are review-only so operators can decide whether to edit or delete them safely. */
+export const listCampaignRecovery = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(v.object({ intakeId: v.id("admissionsIntakes"), name: v.string(), recoveryState: v.union(v.literal("legacy_partial"), v.literal("legacy_complete"), v.literal("atomic_draft")), hasForm: v.boolean(), hasProduct: v.boolean(), hasDeclaration: v.boolean() })),
+  handler: async (ctx, args) => {
+    await requireCatalogue(ctx, args.schoolId, "admissions.catalogue.manage"); const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_school_and_status_and_opens_at", (q) => q.eq("schoolId", args.schoolId).eq("status", "draft")).take(50);
+    return await Promise.all(intakes.map(async (intake) => { const [forms, products, declarations, operations] = await Promise.all([ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "draft")).take(1), ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(1), ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", intake.programmeId).eq("status", "draft")).take(1), ctx.db.query("admissionsCampaignOperations").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(1)]); const hasForm = forms.length > 0; const hasProduct = products.length > 0; const hasDeclaration = declarations.length > 0; return { intakeId: intake._id, name: intake.name, hasForm, hasProduct, hasDeclaration, recoveryState: operations.length ? "atomic_draft" as const : hasForm && hasProduct && hasDeclaration ? "legacy_complete" as const : "legacy_partial" as const }; }));
+  },
+});
+
 /** Tenant-scoped persisted catalogue projection for B3; no private application data. */
 export const getCatalogue = query({
   args: { schoolId: v.id("schools") },
