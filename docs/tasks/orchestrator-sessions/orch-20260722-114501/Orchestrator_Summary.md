@@ -32,7 +32,13 @@ Manual-test evidence established the save failure: the evidence application save
 
 All three authored FU task packets reached `completed/` with their wording intact. Board updates only moved them between status folders; the sole packet normalization removed Markdown trailing spaces from each Session line so `git diff --check` passes. Hand-authored baseline and continuity sections removed by summary regeneration were restored after the final board update. Detailed results are in `follow-up/FU1_save_contract_result.md`, `follow-up/FU2_autosave_progression_result.md`, and `follow-up/FU3_batch1_integration_report.md`.
 
-Batch 2 legal-name migration and Batch 3 private document viewing/deletion remain pending. `master` remains untouched without explicit user approval. No assistant-controlled browser automation was run.
+## Remaining admissions work completed
+
+After the admissions UI refinement merge, the user authorized FU4, Batch 2, Batch 3, and final integration. FU4 now supports explicit reuse of an existing parent and family for sibling conversion. Batch 2 uses a form-bound legal-name policy to require student middle name and guardian first/last names only for new forms while preserving legacy applications. Batch 3 provides same-origin guardian document viewing plus audited editable-upload removal/replacement with immutable-snapshot-aware storage retention.
+
+The combined checkpoint passed 43 Convex admissions tests, 40 Admin admissions tests, 22 Apply tests, affected typechecks, targeted ESLint, Apply/Admin production builds, and `git diff --check`. Development Convex was synchronized. Details and the remaining user-owned browser cases are in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`.
+
+`master` remains untouched without explicit user approval. Paystack checkout through the Tailscale IP remains unresolved; localhost is the accepted development path. No assistant-controlled browser automation was run.
 
 ## Fresh-context continuation
 

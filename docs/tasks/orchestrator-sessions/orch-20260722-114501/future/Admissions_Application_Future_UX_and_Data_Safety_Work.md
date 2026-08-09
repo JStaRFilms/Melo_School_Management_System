@@ -4,9 +4,9 @@
 
 **Captured from:** Manual guardian application testing
 
-**Status:** Batch 1 implemented on `integration/obhis-admissions-release`; Batch 2 and Batch 3 remain deferred
+**Status:** Batches 1–3 implemented on `integration/obhis-admissions-release`; final browser/UI confirmation remains user-owned
 
-**Recommended next step:** Complete the user-owned Batch 1 browser checks below before requesting Batch 2.
+**Recommended next step:** Complete the focused FU4/Batch 2/Batch 3 browser handoff before merging the integration branch to `main`.
 
 **Related post-merge quality work:** Atomic campaign setup, finance approval UX, full browser QA, component decomposition, typing, queue pagination/search, accessibility, recovery, performance, and mockup cleanup are tracked in [`Admissions_UI_Quality_Backlog.md`](Admissions_UI_Quality_Backlog.md).
 
@@ -16,7 +16,7 @@ Batch 1 is integrated through merge commit `f75fc40`. The evidence-backed failur
 
 Automated Apply tests, Apply typecheck, targeted Apply ESLint, Apply production build, focused Convex admissions tests, and Convex typecheck pass. Browser, visual, accessibility, offline/reconnect, refresh/restart, and multi-tab verification remain user-owned. See `follow-up/FU1_save_contract_result.md`, `follow-up/FU2_autosave_progression_result.md`, and `follow-up/FU3_batch1_integration_report.md`.
 
-Batch 2 legal-name migration and Batch 3 document viewing/removal remain pending and were not combined into Batch 1.
+Batch 2 legal-name compatibility and Batch 3 document viewing/removal were subsequently implemented as separate slices. See `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md` for the implementation and verification record.
 
 ## 1. Scope split
 
@@ -101,6 +101,8 @@ The current **Save and continue** label implies that completed work will be save
 
 ## 3. Batch 2 — Legal-name standard and backward compatibility
 
+**Implementation:** Complete on the integration branch; pending final browser/UI confirmation.
+
 ### Final naming decision captured
 
 The applicant/student should follow birth-certificate-style legal naming:
@@ -138,6 +140,8 @@ The earlier idea of requiring a parent middle name is superseded by the final di
 ---
 
 ## 4. Batch 3 — Private document viewing and upload management
+
+**Implementation:** Complete on the integration branch; pending final browser/UI confirmation.
 
 ### Problem A: Raw Convex storage URL is visible
 
@@ -267,7 +271,7 @@ Repeat the complete paid guardian journey:
 
 ## 7. Historical non-goals for the original documentation pass
 
-The following constraints described the original documentation-only pass. Batch 1 was subsequently authorized and implemented as recorded above; Batch 2 and Batch 3 remain deferred.
+The following constraints described the original documentation-only pass. Batches 1–3 were subsequently authorized and implemented as recorded above.
 
 - No autosave implementation during the original documentation pass.
 - No schema migration now.

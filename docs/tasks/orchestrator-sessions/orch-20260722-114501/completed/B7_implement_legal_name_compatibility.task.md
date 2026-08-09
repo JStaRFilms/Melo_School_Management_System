@@ -39,3 +39,6 @@ Introduce required student legal middle names for new applications while keeping
 
 ## Verification
 Run focused Apply/Convex/Admin tests and affected typechecks/ESLint.
+
+## Result
+Completed on the integration branch with form-bound legal-name policy version 2 and legacy policy version 1 compatibility. Student middle name and guardian first/last names are authoritative only for new policy-version-2 forms. Combined verification is recorded in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`.

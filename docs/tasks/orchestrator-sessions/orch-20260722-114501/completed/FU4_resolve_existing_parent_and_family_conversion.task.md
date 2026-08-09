@@ -48,3 +48,6 @@ The live Goodness123 application belongs to a guardian whose earlier child conve
 
 ## Verification
 Run focused Convex admissions tests, Admin admissions tests, affected typechecks, targeted ESLint, and `git diff --check`. Browser confirmation remains user-owned.
+
+## Result
+Completed on the integration branch. Explicit same-school parent/family candidates, UI selection, resolver relationship validation, and sibling conversion coverage are implemented. Combined verification is recorded in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`.

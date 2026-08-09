@@ -97,6 +97,12 @@ Guardian-visible review events remain an immutable one-way status timeline, not 
 
 A subsequent live-development audit confirmed that reviewer assignment had persisted repeatedly—eight duplicate active rows existed for the same reviewer/application—but the Admin UI neither displayed assignments nor made repeated assignment idempotent. The same audit confirmed that the Demo School admin already had both required document capabilities; the remaining denial was the intentional five-minute fresh-auth check, while the active Admin session was over two hours old. Commit `ebdf31d` now displays and deduplicates active assignments, prevents new duplicate assignment events, labels sensitive files without implying an error, and returns authorized denial guidance that distinguishes an expired fresh-auth window from an invalid reason. Commit `99ad13c` visibly grays guardian fields and steps outside the requested correction scope while keeping review/resubmission available. Commit `183776a` replaces “conversion recovery” jargon with plain student/enrollment setup and shows recovery/support wording only when an earlier setup attempt exists. These changes still require browser confirmation.
 
-## Deferred work and release constraints
+## Remaining-work integration — 2026-08-03
 
-Batch 2 legal-name migration and Batch 3 same-origin document viewing/removal remain pending. OBHIS public publication remains blocked on approved identity, content, assets, and rights evidence. No production data or deployment setting was changed, and no Paystack secret was displayed.
+The user subsequently confirmed localhost sensitive-document viewing and acceptance/readiness, requested-correction locking, reviewer persistence, and offline recovery. Paystack checkout through the Tailscale IP remains unresolved; localhost is the accepted development path.
+
+FU4, Batch 2, and Batch 3 are now implemented on the integration branch. FU4 adds explicit existing-parent/family selection for sibling conversion. Batch 2 introduces a form-bound legal-name policy that requires student middle name and guardian first/last names only for new policy-version-2 forms while preserving legacy applications. Batch 3 adds a same-origin authenticated guardian document route plus audited editable-upload removal/replacement. Combined automated verification and the final browser handoff are recorded in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`.
+
+## Release constraints
+
+OBHIS public publication remains blocked on approved identity, content, assets, and rights evidence. No production data or deployment setting was changed, no Paystack secret was displayed, and `main` remains untouched pending the user's final UI pass.

@@ -38,3 +38,6 @@ Integrate and review all remaining admissions work on `integration/obhis-admissi
 
 ## Verification
 Run changed-package tests/typechecks/lint/builds, Convex focused suites, and `git diff --check`.
+
+## Result
+Completed on the integration branch. Convex admissions suites (43), Admin admissions suites (40), Apply suites (22), affected typechecks, targeted ESLint, Apply/Admin production builds, and diff checks pass. Development Convex was synchronized. The final user-owned UI cases and localhost-only payment limitation are recorded in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`. `main` remains untouched.

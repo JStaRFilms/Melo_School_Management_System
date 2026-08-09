@@ -41,3 +41,6 @@ Provide same-origin guardian document viewing plus controlled removal/replacemen
 
 ## Verification
 Run focused Apply and Convex tests, affected typechecks/ESLint, and route-level checks. Browser confirmation remains user-owned.
+
+## Result
+Completed on the integration branch with a same-origin authenticated proxy route, confirmed editable-upload removal, immutable-snapshot-aware storage retention, and explicit replacement presentation. Combined verification is recorded in `follow-up/FU4_B7_B8_B9_remaining_admissions_result.md`.
