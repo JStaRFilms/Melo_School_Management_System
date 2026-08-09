@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useConvex } from "convex/react";
 import { Plus, ArrowRight, Settings, Trash2, Link } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { appToast } from "@school/shared";
+import { appToast, type ApplicationLinkV1 } from "@school/shared";
+import { copyCanonicalApplicationLink } from "@/admissions/models";
 
 type Intake = {
   intakeId: string;
@@ -25,16 +27,33 @@ interface AdmissionsHubProps {
 }
 
 export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreateForm, onEditForm, onDeleteForm, onSetIntakeStatus }: AdmissionsHubProps) {
+  const convex = useConvex();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [intakeToDelete, setIntakeToDelete] = useState<{ id: string; name: string; status: string } | null>(null);
 
-  const getPublicLink = (intakeSlug: string) => {
-    if (typeof window === "undefined" || !schoolSlug) return "";
-    const origin = window.location.origin;
-    if (origin.includes("localhost:3002")) {
-      return `http://localhost:3006/s/${schoolSlug}/i/${intakeSlug}`;
+  const handleCopyApplicationLink = async (intakeSlug: string | undefined) => {
+    if (!schoolSlug || !intakeSlug) {
+      appToast.error("Application link unavailable", { description: "This campaign does not have a public Apply route yet." });
+      return;
     }
-    return origin.replace("admin.", "apply.") + `/s/${schoolSlug}/i/${intakeSlug}`;
+
+    try {
+      const link = await convex.query(
+        "functions/foundation/applicationLinks:getApplicationLink" as never,
+        { schoolSlug, intakeSlug } as never,
+      ) as ApplicationLinkV1;
+      if (link.availability === "unavailable") {
+        appToast.error("Application link unavailable", { description: "The canonical Apply link is not currently available for this campaign." });
+        return;
+      }
+      if (!await copyCanonicalApplicationLink(link)) {
+        appToast.error("Could not copy application link", { description: "Clipboard access is unavailable. Copy the canonical link from the Apply surface instead." });
+        return;
+      }
+      appToast.success("Admissions link copied to clipboard!");
+    } catch {
+      appToast.error("Could not copy application link", { description: "The canonical Apply link could not be resolved. Please retry." });
+    }
   };
 
   return (
@@ -117,11 +136,7 @@ export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreat
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {intake.status !== "draft" && schoolSlug && (
                     <button
-                      onClick={() => {
-                        const link = getPublicLink(intake.slug || "");
-                        navigator.clipboard.writeText(link);
-                        appToast.success("Admissions link copied to clipboard!");
-                      }}
+                      onClick={() => void handleCopyApplicationLink(intake.slug)}
                       className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 text-xs font-bold shadow-sm transition-all"
                       title="Copy public candidate application link"
                     >

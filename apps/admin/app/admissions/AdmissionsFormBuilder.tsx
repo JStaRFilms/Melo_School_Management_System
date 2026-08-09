@@ -57,6 +57,41 @@ type FormConfiguration = {
 type ProductPrice = { version: number; amountMinor: number; currency: string; refundPolicyKey: string; feeDisclosure: string };
 type ApprovalEvidence = { id: string; approvalClass: string; subjectType: string; subjectKey: string; evidenceReference: string; active: boolean };
 
+const SUGGESTED_DECLARATION_TITLE = "Guardian declaration";
+const SUGGESTED_DECLARATION_BODY = "I confirm that the information in this application is complete and accurate to the best of my knowledge.";
+
+function formatEpochToDateTimeLocal(epoch: number): string {
+  const date = new Date(epoch);
+  const padZero = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${padZero(date.getMonth() + 1)}-${padZero(date.getDate())}T${padZero(date.getHours())}:${padZero(date.getMinutes())}`;
+}
+
+function createDefaultCampaignDates() {
+  const opensAt = Date.now();
+  return { opensAt, closesAt: opensAt + 30 * 24 * 60 * 60 * 1000 };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readDraftString(draft: Record<string, unknown>, key: string): string | undefined {
+  const value = draft[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function isBuilderCard(value: unknown): value is BuilderCard {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && (value.type === "section" || value.type === "question")
+    && typeof value.label === "string"
+    && typeof value.key === "string";
+}
+
+function readDraftCards(draft: Record<string, unknown>): BuilderCard[] | undefined {
+  return Array.isArray(draft.cards) && draft.cards.every(isBuilderCard) ? draft.cards : undefined;
+}
+
 interface AdmissionsFormBuilderProps {
   schoolId: string;
   schoolSlug?: string;
@@ -80,12 +115,13 @@ export function AdmissionsFormBuilder({
   const recovery = useQuery("functions/admissions/settings:listLegacyCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "review_required" }> | undefined;
 
   // Form setup states
+  const [defaultCampaignDates] = useState(createDefaultCampaignDates);
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [academicCategory, setAcademicCategory] = useState("Primary School");
   const [formSlug, setFormSlug] = useState("");
-  const [opensAt, setOpensAt] = useState("");
-  const [closesAt, setClosesAt] = useState("");
+  const [opensAt, setOpensAt] = useState(() => intakeId ? "" : formatEpochToDateTimeLocal(defaultCampaignDates.opensAt));
+  const [closesAt, setClosesAt] = useState(() => intakeId ? "" : formatEpochToDateTimeLocal(defaultCampaignDates.closesAt));
   const [targetStatus, setTargetStatus] = useState<"draft" | "published">("draft");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -121,7 +157,6 @@ export function AdmissionsFormBuilder({
   const [reconciling, setReconciling] = useState(false);
   const operationKeyRef = useRef<string | null>(null);
   const pendingCommandRef = useRef<PendingCampaignCommand | null>(null);
-  const defaultCampaignDatesRef = useRef({ opensAt: Date.now(), closesAt: Date.now() + 30 * 24 * 60 * 60 * 1000 });
 
   // Catalogue loaders for editing existing intake
   const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as Catalogue | undefined;
@@ -147,8 +182,8 @@ export function AdmissionsFormBuilder({
   const [feeCurrency, setFeeCurrency] = useState("NGN");
   const [feeRefundPolicy, setFeeRefundPolicy] = useState("non_refundable");
   const [feeDisclosure, setFeeDisclosure] = useState("");
-  const [declarationTitle, setDeclarationTitle] = useState("");
-  const [declarationBody, setDeclarationBody] = useState("");
+  const [declarationTitle, setDeclarationTitle] = useState(() => intakeId ? "" : SUGGESTED_DECLARATION_TITLE);
+  const [declarationBody, setDeclarationBody] = useState(() => intakeId ? "" : SUGGESTED_DECLARATION_BODY);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [draftExists, setDraftExists] = useState(false);
   const [isDraftDecisionMade, setIsDraftDecisionMade] = useState(false);
@@ -167,14 +202,8 @@ export function AdmissionsFormBuilder({
     if (intakeDoc.cycleLabel) setAcademicCategory(intakeDoc.cycleLabel);
     if (programme?.description) setFormDescription(programme.description);
 
-    const padZero = (n: number) => n.toString().padStart(2, '0');
-    const formatEpochToDateTimeLocal = (epoch: number) => {
-      const d = new Date(epoch);
-      return `${d.getFullYear()}-${padZero(d.getMonth() + 1)}-${padZero(d.getDate())}T${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
-    };
-
-    if (intakeDoc.opensAt) setOpensAt(formatEpochToDateTimeLocal(intakeDoc.opensAt));
-    if (intakeDoc.closesAt) setClosesAt(formatEpochToDateTimeLocal(intakeDoc.closesAt));
+    setOpensAt(formatEpochToDateTimeLocal(intakeDoc.opensAt));
+    setClosesAt(formatEpochToDateTimeLocal(intakeDoc.closesAt));
 
     if (prices && prices.length > 0) {
       setFeeAmount(prices[0].amountMinor.toString());
@@ -187,8 +216,8 @@ export function AdmissionsFormBuilder({
                            catalogue.declarations.find((declaration) => declaration.programmeId === intakeDoc.programmeId);
 
     if (declarationDoc) {
-      if (declarationDoc.title) setDeclarationTitle(declarationDoc.title);
-      if (declarationDoc.body) setDeclarationBody(declarationDoc.body);
+      setDeclarationTitle(declarationDoc.title);
+      setDeclarationBody(declarationDoc.body);
     }
 
     // Default templates to update or construct
@@ -320,8 +349,8 @@ export function AdmissionsFormBuilder({
       const saved = localStorage.getItem(`admissions_form_draft_${schoolId}`);
       if (saved) {
         try {
-          const parsed = JSON.parse(saved);
-          if (parsed.formName || (parsed.cards && parsed.cards.length > 14)) {
+          const parsed: unknown = JSON.parse(saved);
+          if (isRecord(parsed) && (typeof parsed.formName === "string" || (Array.isArray(parsed.cards) && parsed.cards.length > 14))) {
             setDraftExists(true);
             return;
           }
@@ -342,7 +371,7 @@ export function AdmissionsFormBuilder({
     }
 
     setIsDirty(true);
-  }, [formName, formDescription, academicCategory, feeAmount, opensAt, closesAt, cards, isDraftDecisionMade, hasInitializedEditMode, intakeId]);
+  }, [formName, formDescription, academicCategory, feeAmount, opensAt, closesAt, declarationTitle, declarationBody, cards, isDraftDecisionMade, hasInitializedEditMode, intakeId]);
 
   // Autosave draft to localStorage
   useEffect(() => {
@@ -354,23 +383,39 @@ export function AdmissionsFormBuilder({
       feeAmount,
       opensAt,
       closesAt,
+      declarationTitle,
+      declarationBody,
       cards
     };
     localStorage.setItem(`admissions_form_draft_${schoolId}`, JSON.stringify(draftData));
-  }, [formName, formDescription, academicCategory, feeAmount, opensAt, closesAt, cards, schoolId, isDraftDecisionMade, isDirty]);
+  }, [formName, formDescription, academicCategory, feeAmount, opensAt, closesAt, declarationTitle, declarationBody, cards, schoolId, isDraftDecisionMade, isDirty]);
 
   const handleLoadDraft = () => {
     const saved = localStorage.getItem(`admissions_form_draft_${schoolId}`);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.formName) setFormName(parsed.formName);
-        if (parsed.formDescription) setFormDescription(parsed.formDescription || "");
-        if (parsed.academicCategory) setAcademicCategory(parsed.academicCategory);
-        if (parsed.feeAmount) setFeeAmount(parsed.feeAmount);
-        if (parsed.opensAt) setOpensAt(parsed.opensAt);
-        if (parsed.closesAt) setClosesAt(parsed.closesAt);
-        if (parsed.cards) setCards(parsed.cards);
+        const parsed: unknown = JSON.parse(saved);
+        if (!isRecord(parsed)) throw new Error("Invalid draft");
+
+        const formName = readDraftString(parsed, "formName");
+        const formDescription = readDraftString(parsed, "formDescription");
+        const academicCategory = readDraftString(parsed, "academicCategory");
+        const feeAmount = readDraftString(parsed, "feeAmount");
+        const opensAt = readDraftString(parsed, "opensAt");
+        const closesAt = readDraftString(parsed, "closesAt");
+        const declarationTitle = readDraftString(parsed, "declarationTitle");
+        const declarationBody = readDraftString(parsed, "declarationBody");
+        const cards = readDraftCards(parsed);
+
+        if (formName !== undefined) setFormName(formName);
+        if (formDescription !== undefined) setFormDescription(formDescription);
+        if (academicCategory !== undefined) setAcademicCategory(academicCategory);
+        if (feeAmount !== undefined) setFeeAmount(feeAmount);
+        if (opensAt !== undefined) setOpensAt(opensAt);
+        if (closesAt !== undefined) setClosesAt(closesAt);
+        if (declarationTitle !== undefined) setDeclarationTitle(declarationTitle);
+        if (declarationBody !== undefined) setDeclarationBody(declarationBody);
+        if (cards) setCards(cards);
         appToast.success("Draft loaded successfully!");
       } catch {
         appToast.error("Failed to load draft.");
@@ -578,7 +623,7 @@ export function AdmissionsFormBuilder({
     }
     if (!formName || !formSlug || !declarationTitle.trim() || !declarationBody.trim()) { appToast.error("Form name, slug, and declaration text are required."); return; }
     if (targetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
-    const opens = opensAt ? new Date(opensAt).getTime() : defaultCampaignDatesRef.current.opensAt; const closes = closesAt ? new Date(closesAt).getTime() : defaultCampaignDatesRef.current.closesAt;
+    const opens = opensAt ? new Date(opensAt).getTime() : defaultCampaignDates.opensAt; const closes = closesAt ? new Date(closesAt).getTime() : defaultCampaignDates.closesAt;
     if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) { appToast.error("The intake closing date must be after its opening date."); return; }
     const existingPrice = prices?.[0];
     const requestedAmount = Number(feeAmount);
@@ -706,12 +751,9 @@ export function AdmissionsFormBuilder({
                 />
                 {schoolSlug && (
                   <p className="mt-1.5 text-[10px] text-slate-500 font-medium font-sans">
-                    Apply Link Preview:{" "}
+                    Apply path preview:{" "}
                     <span className="font-mono text-indigo-650 font-bold bg-indigo-50/50 px-1 py-0.5 rounded border border-indigo-100/50 break-all">
-                      {typeof window !== "undefined" && window.location.origin.includes("localhost:3002")
-                        ? `http://localhost:3006/s/${schoolSlug}/i/${formSlug || "[slug]"}`
-                        : `${window.location.origin.replace("admin.", "apply.")}/s/${schoolSlug}/i/${formSlug || "[slug]"}`
-                      }
+                      {`/s/${schoolSlug}/i/${formSlug || "[slug]"}`}
                     </span>
                   </p>
                 )}
@@ -1331,6 +1373,7 @@ export function AdmissionsFormBuilder({
           <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1.5 font-sans">
             Guardian Legal Declaration
           </h4>
+          <p className="text-[10px] leading-relaxed text-slate-500">Review and edit this suggested school-authored wording before publication.</p>
           <div className="space-y-2.5 text-xs font-semibold">
             <label className="block text-slate-500 uppercase tracking-wider text-[9px] font-bold">Attestation Title
               <input 
@@ -1353,7 +1396,33 @@ export function AdmissionsFormBuilder({
           </div>
         </div>
 
-        {/* 3. Pricing & Fee details Card */}
+        {/* 3. Application availability window */}
+        <div className="space-y-3 pb-5 border-b border-slate-150">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1.5 font-sans">
+            Application window
+          </h4>
+          <p className="text-[10px] leading-relaxed text-slate-500">These dates control when guardians can apply. They are separate from publishing this campaign.</p>
+          <div className="space-y-2.5 text-xs font-semibold">
+            <label className="block text-slate-500 uppercase tracking-wider text-[9px] font-bold">Opening date and time
+              <input
+                type="datetime-local"
+                value={opensAt}
+                onChange={event => setOpensAt(event.target.value)}
+                className="mt-1 h-8 w-full rounded border border-slate-300 px-2.5 focus:outline-none text-slate-900 text-xs"
+              />
+            </label>
+            <label className="block text-slate-500 uppercase tracking-wider text-[9px] font-bold">Closing date and time
+              <input
+                type="datetime-local"
+                value={closesAt}
+                onChange={event => setClosesAt(event.target.value)}
+                className="mt-1 h-8 w-full rounded border border-slate-300 px-2.5 focus:outline-none text-slate-900 text-xs"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* 4. Pricing & Fee details Card */}
         <div className="space-y-3 pb-5 border-b border-slate-150">
           <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1.5 font-sans">
             Application Pricing & Payments
@@ -1401,7 +1470,7 @@ export function AdmissionsFormBuilder({
           </div>
         </div>
 
-        {/* 4. Actions bar with Split Button Dropdown */}
+        {/* 5. Actions bar with Split Button Dropdown */}
         <div className="pt-2 flex flex-col gap-2 relative">
           <div className="relative flex items-stretch rounded-lg shadow-sm">
             {/* Main Action Button */}

@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 const createCampaignConfiguration = vi.fn();
 const replaceCampaignConfiguration = vi.fn();
 const query = vi.fn();
+const useQuery = vi.hoisted(() => vi.fn());
 
 vi.mock("convex/react", () => ({
   useConvex: () => ({ query }),
   useMutation: (name: string) => name.includes("createCampaignConfiguration") ? createCampaignConfiguration : replaceCampaignConfiguration,
-  useQuery: () => undefined,
+  useQuery,
 }));
 vi.mock("@school/shared", () => ({ getUserFacingErrorMessage: () => "save failed" }));
 vi.mock("@school/shared/toast", () => ({ appToast: { error: vi.fn(), success: vi.fn() } }));
@@ -32,6 +33,7 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     createCampaignConfiguration.mockReset().mockResolvedValue({});
     replaceCampaignConfiguration.mockReset().mockResolvedValue({});
     query.mockReset().mockResolvedValue({});
+    useQuery.mockReset().mockReturnValue(undefined);
   });
 
   test("maps a draft save to one complete create command without default cards", async () => {
@@ -50,6 +52,62 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
         requirements: expect.arrayContaining([expect.objectContaining({ requirementKey: "birth_cert" }), expect.objectContaining({ requirementKey: "passport" }), expect.objectContaining({ requirementKey: "transcripts" })]),
       }),
     }));
+  });
+
+  test("uses visible schedule and suggested declaration defaults in a new campaign payload and local draft", async () => {
+    render(builder());
+
+    expect(screen.getByDisplayValue("Guardian declaration")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("I confirm that the information in this application is complete and accurate to the best of my knowledge.")).toBeInTheDocument();
+    expect((screen.getByLabelText("Opening date and time") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect((screen.getByLabelText("Closing date and time") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+    fireEvent.change(screen.getByPlaceholderText(/Admission Form Name/), { target: { value: "Primary Intake" } });
+    fireEvent.change(screen.getByLabelText("Opening date and time"), { target: { value: "2030-01-01T09:00" } });
+    fireEvent.change(screen.getByLabelText("Closing date and time"), { target: { value: "2030-02-01T17:00" } });
+    fireEvent.change(screen.getByPlaceholderText(/Provide legal terms/), { target: { value: "Reviewed declaration." } });
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("admissions_form_draft_school") ?? "{}")).toMatchObject({
+      opensAt: "2030-01-01T09:00",
+      closesAt: "2030-02-01T17:00",
+      declarationTitle: "Guardian declaration",
+      declarationBody: "Reviewed declaration.",
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(createCampaignConfiguration).toHaveBeenCalledTimes(1));
+    expect(createCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({
+        intake: expect.objectContaining({
+          opensAt: new Date("2030-01-01T09:00").getTime(),
+          closesAt: new Date("2030-02-01T17:00").getTime(),
+        }),
+        declaration: { title: "Guardian declaration", body: "Reviewed declaration.", purpose: "service" },
+      }),
+    }));
+  });
+
+  test("uses an existing campaign declaration instead of the new campaign suggestion", async () => {
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("getCatalogue")) {
+        return {
+          programmes: [{ id: "programme", name: "Primary", description: null }],
+          intakes: [{ id: "intake", programmeId: "programme", slug: "2030-entry", name: "2030 Entry", cycleLabel: "Primary School", status: "draft", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }],
+          products: [{ id: "product", intakeId: "intake" }],
+          forms: [{ id: "form", intakeId: "intake", version: 1, status: "draft" }],
+          declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored declaration", body: "Stored campaign wording.", status: "published" }],
+        };
+      }
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [];
+      return undefined;
+    });
+
+    render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={() => undefined} publishAllowed={false} />);
+
+    expect(await screen.findByDisplayValue("Stored declaration")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Stored campaign wording.")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Guardian declaration")).not.toBeInTheDocument();
   });
 
   test("keeps a reuse error blocked across remount, then reconciles and discards it before a fresh command", async () => {

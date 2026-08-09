@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useConvex, useQuery, useMutation } from "convex/react";
 import {
   AlertTriangle,
   Eye, 
@@ -20,8 +20,9 @@ import {
   ArrowUpDown,
   Link
 } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { getUserFacingErrorMessage, type ApplicationLinkV1 } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { copyCanonicalApplicationLink } from "@/admissions/models";
 
 type Detail = {
   applicationId: string;
@@ -105,6 +106,7 @@ export function AdmissionsTriage({
   canDecide,
   canConvert
 }: AdmissionsTriageProps) {
+  const convex = useConvex();
   const [filterState, setFilterState] = useState("");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -112,13 +114,29 @@ export function AdmissionsTriage({
   const [sortField, setSortField] = useState<"updatedAt" | "name" | "publicId" | "state">("updatedAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  const getPublicLink = () => {
-    if (typeof window === "undefined" || !schoolSlug || !intakeSlug) return "";
-    const origin = window.location.origin;
-    if (origin.includes("localhost:3002")) {
-      return `http://localhost:3006/s/${schoolSlug}/i/${intakeSlug}`;
+  const handleCopyApplicationLink = async () => {
+    if (!schoolSlug || !intakeSlug) {
+      appToast.error("Application link unavailable", { description: "This campaign does not have a public Apply route yet." });
+      return;
     }
-    return origin.replace("admin.", "apply.") + `/s/${schoolSlug}/i/${intakeSlug}`;
+
+    try {
+      const link = await convex.query(
+        "functions/foundation/applicationLinks:getApplicationLink" as never,
+        { schoolSlug, intakeSlug } as never,
+      ) as ApplicationLinkV1;
+      if (link.availability === "unavailable") {
+        appToast.error("Application link unavailable", { description: "The canonical Apply link is not currently available for this campaign." });
+        return;
+      }
+      if (!await copyCanonicalApplicationLink(link)) {
+        appToast.error("Could not copy application link", { description: "Clipboard access is unavailable. Copy the canonical link from the Apply surface instead." });
+        return;
+      }
+      appToast.success("Admissions link copied to clipboard!");
+    } catch {
+      appToast.error("Could not copy application link", { description: "The canonical Apply link could not be resolved. Please retry." });
+    }
   };
 
   // Convex hooks
@@ -342,11 +360,7 @@ export function AdmissionsTriage({
               <div className="flex items-center gap-3">
                 {schoolSlug && intakeSlug && (
                   <button 
-                    onClick={() => {
-                      const link = getPublicLink();
-                      navigator.clipboard.writeText(link);
-                      appToast.success("Admissions link copied to clipboard!");
-                    }}
+                    onClick={() => void handleCopyApplicationLink()}
                     className="h-9 px-4 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
                     title="Copy public candidate application link"
                   >
