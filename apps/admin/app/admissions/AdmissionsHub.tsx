@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ArrowRight, Settings, Trash2 } from "lucide-react";
+import { Plus, ArrowRight, Settings, Trash2, Link } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { appToast } from "@school/shared";
 
 type Intake = {
   intakeId: string;
@@ -15,6 +16,7 @@ type Intake = {
 
 interface AdmissionsHubProps {
   intakes: Intake[] | undefined;
+  schoolSlug?: string;
   onEnterWorkstation: (intakeId: string, name: string) => void;
   onCreateForm: () => void;
   onEditForm: (intakeId: string) => void;
@@ -22,9 +24,18 @@ interface AdmissionsHubProps {
   onSetIntakeStatus?: (intakeId: string, status: "open" | "paused" | "closed" | "archived") => void;
 }
 
-export function AdmissionsHub({ intakes, onEnterWorkstation, onCreateForm, onEditForm, onDeleteForm, onSetIntakeStatus }: AdmissionsHubProps) {
+export function AdmissionsHub({ intakes, schoolSlug, onEnterWorkstation, onCreateForm, onEditForm, onDeleteForm, onSetIntakeStatus }: AdmissionsHubProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [intakeToDelete, setIntakeToDelete] = useState<{ id: string; name: string; status: string } | null>(null);
+
+  const getPublicLink = (intakeSlug: string) => {
+    if (typeof window === "undefined" || !schoolSlug) return "";
+    const origin = window.location.origin;
+    if (origin.includes("localhost:3002")) {
+      return `http://localhost:3006/s/${schoolSlug}/i/${intakeSlug}`;
+    }
+    return origin.replace("admin.", "apply.") + `/s/${schoolSlug}/i/${intakeSlug}`;
+  };
 
   return (
     <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
@@ -100,6 +111,19 @@ export function AdmissionsHub({ intakes, onEnterWorkstation, onCreateForm, onEdi
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {intake.status !== "draft" && schoolSlug && (
+                    <button
+                      onClick={() => {
+                        const link = getPublicLink(intake.slug || "");
+                        navigator.clipboard.writeText(link);
+                        appToast.success("Admissions link copied to clipboard!");
+                      }}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 text-xs font-bold shadow-sm transition-all"
+                      title="Copy public candidate application link"
+                    >
+                      <Link className="h-3.5 w-3.5" /> Copy Link
+                    </button>
+                  )}
                   <button
                     onClick={() => onEditForm(intake.intakeId)}
                     className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 text-xs font-bold shadow-sm transition-all"

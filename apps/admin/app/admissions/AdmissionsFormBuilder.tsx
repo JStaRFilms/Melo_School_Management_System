@@ -17,7 +17,8 @@ import {
   Lock,
   Settings,
   ShieldAlert,
-  ShieldCheck
+  ShieldCheck,
+  ChevronDown
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -37,10 +38,12 @@ type BuilderCard = {
   retentionPolicyKey?: string;
   audience?: string;
   approvalEvidenceId?: string;
+  choices?: string[];
 };
 
 interface AdmissionsFormBuilderProps {
   schoolId: string;
+  schoolSlug?: string;
   intakeId?: string;
   onCancel: () => void;
   onSuccess: () => void;
@@ -49,6 +52,7 @@ interface AdmissionsFormBuilderProps {
 
 export function AdmissionsFormBuilder({
   schoolId,
+  schoolSlug,
   intakeId,
   onCancel,
   onSuccess,
@@ -59,6 +63,7 @@ export function AdmissionsFormBuilder({
   const createMockApprovalEvidence = useMutation("functions/admissions/settings:createMockApprovalEvidence" as never);
   const retireForm = useMutation("functions/admissions/settings:retireForm" as never);
   const publishForm = useMutation("functions/admissions/settings:publishForm" as never);
+  const setIntakeStatus = useMutation("functions/admissions/settings:setIntakeStatus" as never);
   // Convex mutations
   const createProgramme = useMutation("functions/admissions/settings:createProgramme" as never);
   const createIntake = useMutation("functions/admissions/settings:createIntake" as never);
@@ -77,6 +82,8 @@ export function AdmissionsFormBuilder({
   const [formSlug, setFormSlug] = useState("");
   const [opensAt, setOpensAt] = useState("");
   const [closesAt, setClosesAt] = useState("");
+  const [targetStatus, setTargetStatus] = useState<"draft" | "published">("draft");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Document checkboxes
   const [reqPassport, setReqPassport] = useState(true);
@@ -96,7 +103,7 @@ export function AdmissionsFormBuilder({
     { id: "def-q-2", type: "question", label: "Last Name", key: "last_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-preferred-name", type: "question", label: "Preferred Name", key: "preferred_name", kind: "text", required: false, isDefault: true, enabled: true },
     { id: "def-q-3", type: "question", label: "Date of Birth", key: "date_of_birth", kind: "date", required: true, isDefault: true, isMandatory: true, enabled: true },
-    { id: "def-q-4", type: "question", label: "Gender", key: "gender", kind: "select", required: true, isDefault: true, enabled: true },
+    { id: "def-q-4", type: "question", label: "Gender", key: "gender", kind: "select", required: true, isDefault: true, enabled: true, choices: ["Male", "Female"] },
     { id: "def-q-nationality", type: "question", label: "Nationality", key: "nationality", kind: "text", required: false, isDefault: true, enabled: true },
     { id: "def-q-country-of-birth", type: "question", label: "Country of Birth", key: "country_of_birth", kind: "text", required: false, isDefault: true, enabled: true },
     { id: "def-q-address", type: "question", label: "Residential Address", key: "address", kind: "textarea", required: false, isDefault: true, enabled: true },
@@ -120,7 +127,8 @@ export function AdmissionsFormBuilder({
   const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as any;
   const evidence = useQuery("functions/admissions/settings:listApprovalEvidence" as never, schoolId ? { schoolId } as never : "skip" as never) as any[] | undefined;
   const intakeDoc = catalogue?.intakes?.find((i: any) => i.id === intakeId);
-  const formVersionDoc = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published") || 
+  const formVersionDoc = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "draft") || 
+                        catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published") || 
                         catalogue?.forms?.find((f: any) => f.intakeId === intakeId);
   const productDoc = catalogue?.products?.find((p: any) => p.intakeId === intakeId);
 
@@ -178,7 +186,7 @@ export function AdmissionsFormBuilder({
       { id: "def-q-2", type: "question", label: "Last Name", key: "last_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
       { id: "def-q-preferred-name", type: "question", label: "Preferred Name", key: "preferred_name", kind: "text", required: false, isDefault: true, enabled: true },
       { id: "def-q-3", type: "question", label: "Date of Birth", key: "date_of_birth", kind: "date", required: true, isDefault: true, isMandatory: true, enabled: true },
-      { id: "def-q-4", type: "question", label: "Gender", key: "gender", kind: "select", required: true, isDefault: true, enabled: true },
+      { id: "def-q-4", type: "question", label: "Gender", key: "gender", kind: "select", required: true, isDefault: true, enabled: true, choices: ["Male", "Female"] },
       { id: "def-q-nationality", type: "question", label: "Nationality", key: "nationality", kind: "text", required: false, isDefault: true, enabled: true },
       { id: "def-q-country-of-birth", type: "question", label: "Country of Birth", key: "country_of_birth", kind: "text", required: false, isDefault: true, enabled: true },
       { id: "def-q-address", type: "question", label: "Residential Address", key: "address", kind: "textarea", required: false, isDefault: true, enabled: true },
@@ -195,11 +203,23 @@ export function AdmissionsFormBuilder({
     resolvedCards.push({ id: "def-sec-1", type: "section", label: "Default Child Profile (Auto-Collected)", key: "child", isDefault: true, isMandatory: true, enabled: true });
     defaultTemplates.slice(0, 9).forEach((t: any) => {
       const fieldMatch = sortedFields.find((f: any) => f.key === t.key);
+      let choicesList = t.choices || [];
+      if (fieldMatch?.validationJson) {
+        try {
+          const parsedVal = JSON.parse(fieldMatch.validationJson);
+          if (Array.isArray(parsedVal?.choices)) {
+            choicesList = parsedVal.choices;
+          }
+        } catch (err) {
+          console.error("Error parsing validationJson for default template", t.key, err);
+        }
+      }
       resolvedCards.push({
         ...t,
         label: fieldMatch?.label || t.label,
         required: fieldMatch ? fieldMatch.requiredMode === "required" : t.required,
-        enabled: true
+        enabled: true,
+        choices: choicesList
       });
     });
 
@@ -207,11 +227,23 @@ export function AdmissionsFormBuilder({
     resolvedCards.push({ id: "def-sec-2", type: "section", label: "Default Guardian Contact (Auto-Collected)", key: "guardian", isDefault: true, isMandatory: true, enabled: true });
     defaultTemplates.slice(9).forEach((t: any) => {
       const fieldMatch = sortedFields.find((f: any) => f.key === t.key);
+      let choicesList = t.choices || [];
+      if (fieldMatch?.validationJson) {
+        try {
+          const parsedVal = JSON.parse(fieldMatch.validationJson);
+          if (Array.isArray(parsedVal?.choices)) {
+            choicesList = parsedVal.choices;
+          }
+        } catch (err) {
+          console.error("Error parsing validationJson for default template", t.key, err);
+        }
+      }
       resolvedCards.push({
         ...t,
         label: fieldMatch?.label || t.label,
         required: fieldMatch ? fieldMatch.requiredMode === "required" : t.required,
-        enabled: true
+        enabled: true,
+        choices: choicesList
       });
     });
 
@@ -239,6 +271,18 @@ export function AdmissionsFormBuilder({
       }
 
       // Dynamic custom question card
+      let choicesList: string[] = [];
+      try {
+        if (field.validationJson) {
+          const parsedVal = JSON.parse(field.validationJson);
+          if (Array.isArray(parsedVal?.choices)) {
+            choicesList = parsedVal.choices;
+          }
+        }
+      } catch (err) {
+        console.error("Error parsing validationJson for field", field.key, err);
+      }
+
       resolvedCards.push({
         id: `card-q-${idx}-${Date.now()}`,
         type: "question",
@@ -250,7 +294,8 @@ export function AdmissionsFormBuilder({
         purpose: field.purpose || "",
         retentionPolicyKey: field.retentionPolicyKey || "",
         audience: field.audience || "",
-        approvalEvidenceId: field.approvalEvidenceId || ""
+        approvalEvidenceId: field.approvalEvidenceId || "",
+        choices: choicesList
       });
     });
 
@@ -259,6 +304,10 @@ export function AdmissionsFormBuilder({
     setReqPassport(reqs.some((r: any) => r.key === "passport"));
     setReqMedical(reqs.some((r: any) => r.key === "medical_records"));
     setReqTranscripts(reqs.some((r: any) => r.key === "transcripts"));
+
+    if (intakeDoc.status) {
+      setTargetStatus(intakeDoc.status === "draft" ? "draft" : "published");
+    }
 
     setCards(resolvedCards);
     setHasInitializedEditMode(true);
@@ -438,7 +487,8 @@ export function AdmissionsFormBuilder({
       purpose: "",
       retentionPolicyKey: "",
       audience: "",
-      approvalEvidenceId: ""
+      approvalEvidenceId: "",
+      choices: []
     };
 
     setCards(prev => {
@@ -602,6 +652,11 @@ export function AdmissionsFormBuilder({
               } as never);
             }
 
+            let validationJsonVal = "{}";
+            if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
+              validationJsonVal = JSON.stringify({ choices: card.choices });
+            }
+
             await addField({
               formVersionId: fVersionId,
               fieldKey: card.key || `field_${i}`,
@@ -614,7 +669,7 @@ export function AdmissionsFormBuilder({
               retentionPolicyKey: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.retentionPolicyKey || "duration_of_enrollment") : undefined,
               audience: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.audience || "school_admissions_staff") : undefined,
               approvalEvidenceId: fieldApprovalId,
-              validationJson: "{}",
+              validationJson: validationJsonVal,
               order: i
             } as never);
           }
@@ -693,14 +748,21 @@ export function AdmissionsFormBuilder({
           } as never);
         }
 
-        // 6. Retire previous published form version and publish the new one!
-        const previousPublished = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published");
-        if (previousPublished) {
-          await retireForm({ formVersionId: previousPublished.id } as never);
+        // 6. Conditional publication logic based on targetStatus selection
+        if (targetStatus === "published") {
+          const previousPublished = catalogue?.forms?.find((f: any) => f.intakeId === intakeId && f.status === "published");
+          if (previousPublished) {
+            await retireForm({ formVersionId: previousPublished.id } as never);
+          }
+          await publishForm({ formVersionId: fVersionId } as never);
+          
+          if (intakeDoc?.status === "draft") {
+            await setIntakeStatus({ intakeId: intakeId as any, status: "open" } as never);
+          }
+          appToast.success("Admissions form and intake cycle updated live!");
+        } else {
+          appToast.success("Admissions form changes saved as draft!");
         }
-        await publishForm({ formVersionId: fVersionId } as never);
-
-        appToast.success("Admissions form and intake cycle updated live!");
       } else {
         // --- CREATING A NEW INTAKE FORM ---
         // 1. Create Programme offering
@@ -789,6 +851,11 @@ export function AdmissionsFormBuilder({
               } as never);
             }
 
+            let validationJsonVal = "{}";
+            if (card.kind === "select" && Array.isArray(card.choices) && card.choices.length > 0) {
+              validationJsonVal = JSON.stringify({ choices: card.choices });
+            }
+
             await addField({
               formVersionId: fVersionId,
               fieldKey: card.key || `field_${i}`,
@@ -801,7 +868,7 @@ export function AdmissionsFormBuilder({
               retentionPolicyKey: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.retentionPolicyKey || "duration_of_enrollment") : undefined,
               audience: (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") ? (card.audience || "school_admissions_staff") : undefined,
               approvalEvidenceId: fieldApprovalId,
-              validationJson: "{}",
+              validationJson: validationJsonVal,
               order: i
             } as never);
           }
@@ -880,10 +947,14 @@ export function AdmissionsFormBuilder({
           } as never);
         }
 
-        // Publish the form
-        await publishForm({ formVersionId: fVersionId } as never);
-
-        appToast.success("Admissions form and intake cycle published live!");
+        // 9. Conditional publication logic based on targetStatus selection
+        if (targetStatus === "published") {
+          await publishForm({ formVersionId: fVersionId } as never);
+          await setIntakeStatus({ intakeId: intId as any, status: "open" } as never);
+          appToast.success("Admissions form and intake cycle published live!");
+        } else {
+          appToast.success("Admissions form created and saved as draft!");
+        }
       }
 
       localStorage.removeItem(`admissions_form_draft_${schoolId}`);
@@ -972,10 +1043,25 @@ export function AdmissionsFormBuilder({
                 <input 
                   type="text" 
                   value={formSlug}
-                  onChange={e => setFormSlug(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const slugified = val.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+                    setFormSlug(slugified);
+                  }}
                   placeholder="e.g. autumn-2026" 
                   className="mt-1.5 h-9 w-full rounded-md border border-slate-300 px-3 focus:outline-none font-mono text-slate-900"
                 />
+                {schoolSlug && (
+                  <p className="mt-1.5 text-[10px] text-slate-500 font-medium font-sans">
+                    Apply Link Preview:{" "}
+                    <span className="font-mono text-indigo-650 font-bold bg-indigo-50/50 px-1 py-0.5 rounded border border-indigo-100/50 break-all">
+                      {typeof window !== "undefined" && window.location.origin.includes("localhost:3002")
+                        ? `http://localhost:3006/s/${schoolSlug}/i/${formSlug || "[slug]"}`
+                        : `${window.location.origin.replace("admin.", "apply.")}/s/${schoolSlug}/i/${formSlug || "[slug]"}`
+                      }
+                    </span>
+                  </p>
+                )}
               </label>
             </div>
           </div>
@@ -1207,6 +1293,84 @@ export function AdmissionsFormBuilder({
                           </select>
                         </div>
                       </div>
+
+                      {card.kind === "select" && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-2.5">
+                          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">
+                            Dropdown Choices / Options
+                          </span>
+                          
+                          {/* Option tags */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {(!card.choices || card.choices.length === 0) ? (
+                              <span className="text-xs text-slate-400 italic font-medium font-sans">No options added yet. Add at least one option below.</span>
+                            ) : (
+                              card.choices.map((choice, oIdx) => (
+                                <span 
+                                  key={oIdx} 
+                                  className="inline-flex items-center gap-1.5 bg-white border border-slate-250 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm"
+                                >
+                                  {choice}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updatedChoices = card.choices?.filter((_, ci) => ci !== oIdx) || [];
+                                      setCards(prev => prev.map(c => c.id === card.id ? { ...c, choices: updatedChoices } : c));
+                                    }}
+                                    className="text-slate-400 hover:text-rose-650 transition-colors ml-0.5 text-xs font-black"
+                                    title="Remove option"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+
+                          {/* Add option control */}
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="text" 
+                              placeholder="e.g. Option text (press Enter)"
+                              id={`new-opt-input-${card.id}`}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  const target = e.currentTarget;
+                                  const val = target.value.trim();
+                                  if (val) {
+                                    const currentChoices = card.choices || [];
+                                    if (!currentChoices.includes(val)) {
+                                      setCards(prev => prev.map(c => c.id === card.id ? { ...c, choices: [...currentChoices, val] } : c));
+                                    }
+                                    target.value = "";
+                                  }
+                                }
+                              }}
+                              className="h-8 flex-1 rounded border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 font-sans"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const inputEl = document.getElementById(`new-opt-input-${card.id}`) as HTMLInputElement | null;
+                                if (inputEl) {
+                                  const val = inputEl.value.trim();
+                                  if (val) {
+                                    const currentChoices = card.choices || [];
+                                    if (!currentChoices.includes(val)) {
+                                      setCards(prev => prev.map(c => c.id === card.id ? { ...c, choices: [...currentChoices, val] } : c));
+                                    }
+                                    inputEl.value = "";
+                                  }
+                                }
+                              }}
+                              className="h-8 rounded bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3 shadow-sm transition-all"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs font-semibold">
                         <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-655 font-bold">
@@ -1586,19 +1750,83 @@ export function AdmissionsFormBuilder({
           </div>
         </div>
 
-        {/* 4. Actions bar */}
-        <div className="pt-2 flex flex-col gap-2">
-          <button 
-            onClick={() => void handlePublish()}
-            disabled={saving}
-            className="h-9 w-full bg-slate-900 hover:bg-slate-850 disabled:opacity-50 text-white font-bold px-4 rounded-lg text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
-          >
-            {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
-            Publish Form Live
-          </button>
+        {/* 4. Actions bar with Split Button Dropdown */}
+        <div className="pt-2 flex flex-col gap-2 relative">
+          <div className="relative flex items-stretch rounded-lg shadow-sm">
+            {/* Main Action Button */}
+            <button 
+              onClick={() => void handlePublish()}
+              disabled={saving}
+              className="flex-grow h-9 bg-slate-900 hover:bg-slate-850 disabled:opacity-50 text-white font-bold px-4 rounded-l-lg text-xs transition-all flex items-center justify-center gap-1.5 border-r border-slate-800"
+            >
+              {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
+              {targetStatus === "draft" ? "Save Campaign Draft" : "Publish Form Live"}
+            </button>
+
+            {/* Dropdown Toggle Trigger */}
+            <button
+              type="button"
+              disabled={saving || (intakeDoc?.status && intakeDoc.status !== "draft")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen(!dropdownOpen);
+              }}
+              className="h-9 w-9 bg-slate-900 hover:bg-slate-850 disabled:opacity-50 text-white flex items-center justify-center rounded-r-lg border-l border-slate-750 transition-all focus:outline-none"
+              title="Change save target status"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Dropdown Menu (pops up above the button) */}
+            {dropdownOpen && (
+              <>
+                {/* Backdrop overlay to close when clicking outside */}
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setDropdownOpen(false)}
+                />
+                
+                <div className="absolute bottom-full right-0 mb-1.5 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-left">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetStatus("draft");
+                      setDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 transition-colors ${
+                      targetStatus === "draft" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
+                    }`}
+                  >
+                    <span>Save as Draft (Offline)</span>
+                    <span className="text-[10px] text-slate-400 font-medium">Keep intake offline while editing form</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetStatus("published");
+                      setDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-md text-xs font-semibold flex flex-col gap-0.5 hover:bg-slate-50 transition-colors mt-0.5 ${
+                      targetStatus === "published" ? "text-indigo-650 bg-indigo-50/50" : "text-slate-700"
+                    }`}
+                  >
+                    <span>Publish Form Live (Open Campaign)</span>
+                    <span className="text-[10px] text-slate-400 font-medium">Promote form and open the admissions intake</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {intakeDoc?.status && intakeDoc.status !== "draft" && (
+            <p className="text-[9px] text-slate-400 font-medium font-sans text-center mt-0.5">
+              * Campaign is already live and cannot be returned to draft state.
+            </p>
+          )}
+
           <button 
             onClick={onCancel}
-            className="h-9 w-full border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold px-4 rounded-lg text-xs transition-all shadow-sm bg-white"
+            className="h-9 w-full border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold px-4 rounded-lg text-xs transition-all shadow-sm bg-white mt-1"
           >
             Cancel & Exit
           </button>

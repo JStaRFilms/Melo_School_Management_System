@@ -22,7 +22,8 @@ import {
   AlertCircle,
   List,
   Columns,
-  ArrowUpDown
+  ArrowUpDown,
+  Link
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -80,6 +81,8 @@ type QueueRow = {
 
 interface AdmissionsTriageProps {
   schoolId: string;
+  schoolSlug?: string;
+  intakeSlug?: string;
   intakeId: string;
   intakeName: string;
   onBack: () => void;
@@ -93,6 +96,8 @@ interface AdmissionsTriageProps {
 
 export function AdmissionsTriage({
   schoolId,
+  schoolSlug,
+  intakeSlug,
   intakeId,
   intakeName,
   onBack,
@@ -109,6 +114,15 @@ export function AdmissionsTriage({
   const [viewMode, setViewMode] = useState<"list" | "inbox">("list");
   const [sortField, setSortField] = useState<"updatedAt" | "name" | "publicId" | "state">("updatedAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const getPublicLink = () => {
+    if (typeof window === "undefined" || !schoolSlug || !intakeSlug) return "";
+    const origin = window.location.origin;
+    if (origin.includes("localhost:3002")) {
+      return `http://localhost:3006/s/${schoolSlug}/i/${intakeSlug}`;
+    }
+    return origin.replace("admin.", "apply.") + `/s/${schoolSlug}/i/${intakeSlug}`;
+  };
 
   // Convex hooks
   const queue = useQuery(
@@ -318,6 +332,19 @@ export function AdmissionsTriage({
               </div>
 
               <div className="flex items-center gap-3">
+                {schoolSlug && intakeSlug && (
+                  <button 
+                    onClick={() => {
+                      const link = getPublicLink();
+                      navigator.clipboard.writeText(link);
+                      appToast.success("Admissions link copied to clipboard!");
+                    }}
+                    className="h-9 px-4 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Copy public candidate application link"
+                  >
+                    <Link className="h-4 w-4" /> Copy Apply Link
+                  </button>
+                )}
                 <button 
                   onClick={onBack}
                   className="h-9 px-4 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"

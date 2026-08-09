@@ -34,7 +34,7 @@ export default function AdmissionsPage() {
   const queueIntakes = useQuery(
     "functions/admissions/staff:listAccessibleIntakes" as never,
     branding && capabilities ? { schoolId: branding.schoolId } as never : "skip" as never
-  ) as Array<{ intakeId: string; name: string; status: string }> | undefined;
+  ) as Array<{ intakeId: string; name: string; status: string; slug?: string; opensAt?: number; closesAt?: number }> | undefined;
 
   // View state management
   const [activeView, setActiveView] = useState<"hub" | "drilldown" | "setup">("hub");
@@ -110,6 +110,7 @@ export default function AdmissionsPage() {
         {activeView === "hub" && (
           <AdmissionsHub
             intakes={queueIntakes}
+            schoolSlug={branding?.slug}
             onEnterWorkstation={handleEnterWorkstation}
             onCreateForm={handleCreateForm}
             onEditForm={handleEditForm}
@@ -121,6 +122,8 @@ export default function AdmissionsPage() {
         {activeView === "drilldown" && (
           <AdmissionsTriage
             schoolId={branding.schoolId}
+            schoolSlug={branding?.slug}
+            intakeSlug={queueIntakes?.find((i: any) => i.intakeId === selectedIntakeId)?.slug}
             intakeId={selectedIntakeId}
             intakeName={selectedIntakeName}
             onBack={handleBackToHub}
@@ -136,6 +139,7 @@ export default function AdmissionsPage() {
         {activeView === "setup" && (
           <AdmissionsFormBuilder
             schoolId={branding.schoolId}
+            schoolSlug={branding?.slug}
             intakeId={selectedIntakeId || undefined}
             onCancel={handleBackToHub}
             onSuccess={handleBackToHub}
