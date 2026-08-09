@@ -56,6 +56,16 @@ describe("ApplicationLinkV1", () => {
         availability: "open",
       })
     ).toThrow("URL-safe slug");
+    for (const intakeSlug of ["2027_entry", "2027.entry"]) {
+      expect(() =>
+        buildApplicationLinkV1({
+          applicationOrigin: "https://apply.example.test",
+          schoolSlug: "north-star-school",
+          intakeSlug,
+          availability: "open",
+        })
+      ).toThrow("URL-safe slug");
+    }
   });
 });
 

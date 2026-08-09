@@ -71,6 +71,19 @@ function createDefaultCampaignDates() {
   return { opensAt, closesAt: opensAt + 30 * 24 * 60 * 60 * 1000 };
 }
 
+function normalizeCampaignSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function selectLatestDeclaration(
+  declarations: Catalogue["declarations"],
+  programmeId: string,
+) {
+  const matching = declarations.filter((declaration) => declaration.programmeId === programmeId);
+  const published = matching.filter((declaration) => declaration.status === "published");
+  return (published.length ? published : matching).sort((a, b) => b.version - a.version)[0];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -157,6 +170,7 @@ export function AdmissionsFormBuilder({
   const [reconciling, setReconciling] = useState(false);
   const operationKeyRef = useRef<string | null>(null);
   const pendingCommandRef = useRef<PendingCampaignCommand | null>(null);
+  const loadedScheduleRef = useRef<{ opensAt: { input: string; epoch: number }; closesAt: { input: string; epoch: number } } | null>(null);
 
   // Catalogue loaders for editing existing intake
   const catalogue = useQuery("functions/admissions/settings:getCatalogue" as never, { schoolId } as never) as Catalogue | undefined;
@@ -166,6 +180,7 @@ export function AdmissionsFormBuilder({
   const formVersionDoc = intakeForms?.find((form) => form.status === "draft") ||
                         intakeForms?.find((form) => form.status === "published") ||
                         intakeForms?.[0];
+  const declarationDoc = intakeDoc ? selectLatestDeclaration(catalogue?.declarations ?? [], intakeDoc.programmeId) : undefined;
   const productDoc = catalogue?.products.find((product) => product.intakeId === intakeId);
 
   const formConfig = useQuery(
@@ -202,8 +217,14 @@ export function AdmissionsFormBuilder({
     if (intakeDoc.cycleLabel) setAcademicCategory(intakeDoc.cycleLabel);
     if (programme?.description) setFormDescription(programme.description);
 
-    setOpensAt(formatEpochToDateTimeLocal(intakeDoc.opensAt));
-    setClosesAt(formatEpochToDateTimeLocal(intakeDoc.closesAt));
+    const loadedOpensAt = formatEpochToDateTimeLocal(intakeDoc.opensAt);
+    const loadedClosesAt = formatEpochToDateTimeLocal(intakeDoc.closesAt);
+    loadedScheduleRef.current = {
+      opensAt: { input: loadedOpensAt, epoch: intakeDoc.opensAt },
+      closesAt: { input: loadedClosesAt, epoch: intakeDoc.closesAt },
+    };
+    setOpensAt(loadedOpensAt);
+    setClosesAt(loadedClosesAt);
 
     if (prices && prices.length > 0) {
       setFeeAmount(prices[0].amountMinor.toString());
@@ -211,9 +232,6 @@ export function AdmissionsFormBuilder({
       setFeeRefundPolicy(prices[0].refundPolicyKey);
       setFeeDisclosure(prices[0].feeDisclosure);
     }
-
-    const declarationDoc = catalogue.declarations.find((declaration) => declaration.programmeId === intakeDoc.programmeId && declaration.status === "published") ||
-                           catalogue.declarations.find((declaration) => declaration.programmeId === intakeDoc.programmeId);
 
     if (declarationDoc) {
       setDeclarationTitle(declarationDoc.title);
@@ -342,7 +360,7 @@ export function AdmissionsFormBuilder({
     setCards(resolvedCards);
     setHasInitializedEditMode(true);
     setIsDraftDecisionMade(true); // Don't trigger draft recovery modal since we are editing a live campaign
-  }, [intakeId, catalogue, formConfig, prices, hasInitializedEditMode, intakeDoc]);
+  }, [intakeId, catalogue, formConfig, prices, hasInitializedEditMode, intakeDoc, declarationDoc]);
 
   useEffect(() => {
     if (schoolId && !intakeId) { // Skip local draft checks when editing a live database campaign
@@ -456,7 +474,7 @@ export function AdmissionsFormBuilder({
   // Auto-slugify slug when name changes
   const handleNameChange = (val: string) => {
     setFormName(val);
-    setFormSlug(val.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+    setFormSlug(normalizeCampaignSlug(val));
   };
 
   // Drag-and-drop state trackers
@@ -623,7 +641,12 @@ export function AdmissionsFormBuilder({
     }
     if (!formName || !formSlug || !declarationTitle.trim() || !declarationBody.trim()) { appToast.error("Form name, slug, and declaration text are required."); return; }
     if (targetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
-    const opens = opensAt ? new Date(opensAt).getTime() : defaultCampaignDates.opensAt; const closes = closesAt ? new Date(closesAt).getTime() : defaultCampaignDates.closesAt;
+    const opens = loadedScheduleRef.current?.opensAt.input === opensAt
+      ? loadedScheduleRef.current.opensAt.epoch
+      : opensAt ? new Date(opensAt).getTime() : defaultCampaignDates.opensAt;
+    const closes = loadedScheduleRef.current?.closesAt.input === closesAt
+      ? loadedScheduleRef.current.closesAt.epoch
+      : closesAt ? new Date(closesAt).getTime() : defaultCampaignDates.closesAt;
     if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) { appToast.error("The intake closing date must be after its opening date."); return; }
     const existingPrice = prices?.[0];
     const requestedAmount = Number(feeAmount);
@@ -650,6 +673,19 @@ export function AdmissionsFormBuilder({
     operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload, reconciliationRequired: false }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
     try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
+
+  const sensitiveCustomFields = cards.filter((card) =>
+    card.type === "question"
+    && !card.isDefault
+    && (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security"),
+  );
+  const hasMissingSensitiveEvidence = sensitiveCustomFields.some((card) => !evidence?.some((item) =>
+    item.id === card.approvalEvidenceId
+    && item.active
+    && item.approvalClass === "privacy"
+    && item.subjectType === "admissions_field"
+    && item.subjectKey === card.key,
+  ));
 
   return (
     <div 
@@ -741,11 +777,7 @@ export function AdmissionsFormBuilder({
                 <input 
                   type="text" 
                   value={formSlug}
-                  onChange={e => {
-                    const val = e.target.value;
-                    const slugified = val.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
-                    setFormSlug(slugified);
-                  }}
+                  onChange={e => setFormSlug(normalizeCampaignSlug(e.target.value))}
                   placeholder="e.g. autumn-2026" 
                   className="mt-1.5 h-9 w-full rounded-md border border-slate-300 px-3 focus:outline-none font-mono text-slate-900"
                 />
@@ -1362,8 +1394,22 @@ export function AdmissionsFormBuilder({
 
             {/* Sensitive privacy check */}
             <div className="flex items-start gap-2">
-              <Check className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <span className="text-slate-700 font-sans">Sensitive privacy rules auto-approved.</span>
+              {sensitiveCustomFields.length === 0 ? (
+                <>
+                  <Info className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-slate-555 font-sans">No sensitive custom fields configured.</span>
+                </>
+              ) : hasMissingSensitiveEvidence ? (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-slate-500 font-sans">Select current privacy evidence for each sensitive custom field.</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <span className="text-slate-700 font-sans">Current privacy evidence is selected for each sensitive custom field.</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1373,7 +1419,7 @@ export function AdmissionsFormBuilder({
           <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1.5 font-sans">
             Guardian Legal Declaration
           </h4>
-          <p className="text-[10px] leading-relaxed text-slate-500">Review and edit this suggested school-authored wording before publication.</p>
+          <p className="text-[10px] leading-relaxed text-slate-500">{!intakeId ? "Review and edit this suggested school-authored wording before publication." : declarationDoc ? "This is the latest stored declaration wording for this programme." : "No stored declaration wording is available for this programme."}</p>
           <div className="space-y-2.5 text-xs font-semibold">
             <label className="block text-slate-500 uppercase tracking-wider text-[9px] font-bold">Attestation Title
               <input 

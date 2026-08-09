@@ -285,8 +285,8 @@ Admin constructs and copies `http://localhost:3006/...` from a hardcoded browser
 No data corruption observed; the generated navigation target is incorrect.
 
 ### Resolution
-- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
-- Evidence: canonical `getApplicationLink` query/copy boundary test, Admin tests/typecheck/build, and affected Convex tests/typecheck passed.
+- Status: Implementation and automated checks completed; browser retest pending and user-owned.
+- Evidence: canonical `getApplicationLink` query/copy behavioral tests, Admin tests/typecheck/build, and affected Convex tests/typecheck completed.
 
 ## OBS-002 — Campaign opening and closing dates are not editable
 
@@ -310,8 +310,8 @@ The builder retains date state and submits it, but renders no controls for editi
 Existing dates are loaded internally; the operator cannot inspect or deliberately change them.
 
 ### Resolution
-- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
-- Evidence: focused builder test verifies visible opening/closing controls, local-draft persistence, and submitted payload; Admin tests/typecheck/build passed.
+- Status: Implementation and automated checks completed; browser retest pending and user-owned.
+- Evidence: focused builder tests verify visible opening/closing controls, local-draft persistence, submitted payload, and unchanged-epoch preservation; Admin tests/typecheck/build completed.
 
 ## OBS-003 — New campaign declaration no longer starts with editable suggested wording
 
@@ -337,8 +337,8 @@ Both declaration fields start blank. The readiness audit immediately reports tha
 No approval evidence is fabricated. The issue concerns missing starting copy only.
 
 ### Resolution
-- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
-- Evidence: focused builder test verifies the suggested new-campaign declaration and existing stored declaration override; Admin tests/typecheck/build passed.
+- Status: Implementation and automated checks completed; browser retest pending and user-owned.
+- Evidence: focused builder tests verify suggested new-campaign wording and deterministic latest stored declaration selection; Admin tests/typecheck/build completed.
 
 ## Test summary
 

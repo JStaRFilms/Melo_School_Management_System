@@ -59,6 +59,8 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
 
     expect(screen.getByDisplayValue("Guardian declaration")).toBeInTheDocument();
     expect(screen.getByDisplayValue("I confirm that the information in this application is complete and accurate to the best of my knowledge.")).toBeInTheDocument();
+    expect(screen.getByText("No sensitive custom fields configured.")).toBeInTheDocument();
+    expect(screen.queryByText("Sensitive privacy rules auto-approved.")).not.toBeInTheDocument();
     expect((screen.getByLabelText("Opening date and time") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     expect((screen.getByLabelText("Closing date and time") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 
@@ -87,7 +89,24 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     }));
   });
 
-  test("uses an existing campaign declaration instead of the new campaign suggestion", async () => {
+  test("normalizes new campaign slugs to the canonical hyphen-only format", async () => {
+    render(builder());
+    fireEvent.change(screen.getByPlaceholderText(/Admission Form Name/), { target: { value: "Primary Intake" } });
+    fireEvent.change(screen.getByLabelText("Form URL Slug"), { target: { value: "Primary_Entry.2027" } });
+
+    expect(screen.getByLabelText("Form URL Slug")).toHaveValue("primary-entry-2027");
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(createCampaignConfiguration).toHaveBeenCalledTimes(1));
+    expect(createCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({
+        programme: expect.objectContaining({ slug: "primary-entry-2027" }),
+        intake: expect.objectContaining({ slug: "primary-entry-2027" }),
+        product: expect.objectContaining({ slug: "primary-entry-2027" }),
+      }),
+    }));
+  });
+
+  test("uses the latest published declaration and describes stored wording accurately", async () => {
     useQuery.mockImplementation((name: string) => {
       if (name.includes("getCatalogue")) {
         return {
@@ -95,7 +114,11 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
           intakes: [{ id: "intake", programmeId: "programme", slug: "2030-entry", name: "2030 Entry", cycleLabel: "Primary School", status: "draft", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }],
           products: [{ id: "product", intakeId: "intake" }],
           forms: [{ id: "form", intakeId: "intake", version: 1, status: "draft" }],
-          declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored declaration", body: "Stored campaign wording.", status: "published" }],
+          declarations: [
+            { id: "draft-newest", programmeId: "programme", version: 99, title: "Stale draft", body: "Do not use.", status: "draft" },
+            { id: "published-old", programmeId: "programme", version: 1, title: "Published v1", body: "Old published wording.", status: "published" },
+            { id: "published-latest", programmeId: "programme", version: 2, title: "Published v2", body: "Current published wording.", status: "published" },
+          ],
         };
       }
       if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
@@ -105,9 +128,63 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
 
     render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={() => undefined} publishAllowed={false} />);
 
-    expect(await screen.findByDisplayValue("Stored declaration")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Stored campaign wording.")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Guardian declaration")).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Published v2")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Current published wording.")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Stale draft")).not.toBeInTheDocument();
+    expect(screen.getByText("This is the latest stored declaration wording for this programme.")).toBeInTheDocument();
+    expect(screen.queryByText(/suggested school-authored wording/i)).not.toBeInTheDocument();
+  });
+
+  test("uses the greatest declaration version when no published wording exists", async () => {
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("getCatalogue")) {
+        return {
+          programmes: [{ id: "programme", name: "Primary", description: null }],
+          intakes: [{ id: "intake", programmeId: "programme", slug: "2030-entry", name: "2030 Entry", cycleLabel: "Primary School", status: "draft", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }],
+          products: [{ id: "product", intakeId: "intake" }],
+          forms: [{ id: "form", intakeId: "intake", version: 1, status: "draft" }],
+          declarations: [
+            { id: "draft-old", programmeId: "programme", version: 1, title: "Draft v1", body: "Old draft wording.", status: "draft" },
+            { id: "draft-latest", programmeId: "programme", version: 4, title: "Draft v4", body: "Latest stored draft wording.", status: "draft" },
+          ],
+        };
+      }
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [];
+      return undefined;
+    });
+
+    render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={() => undefined} publishAllowed={false} />);
+    expect(await screen.findByDisplayValue("Draft v4")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Latest stored draft wording.")).toBeInTheDocument();
+  });
+
+  test("preserves exact loaded schedule epochs when date inputs are unchanged", async () => {
+    const opensAt = new Date("2030-01-01T09:00:41.123").getTime();
+    const closesAt = new Date("2030-02-01T17:00:59.987").getTime();
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("getCatalogue")) {
+        return {
+          programmes: [{ id: "programme", name: "Primary", description: null }],
+          intakes: [{ id: "intake", programmeId: "programme", slug: "2030-entry", name: "2030 Entry", cycleLabel: "Primary School", status: "draft", opensAt, closesAt }],
+          products: [{ id: "product", intakeId: "intake" }],
+          forms: [{ id: "form", intakeId: "intake", version: 1, status: "draft" }],
+          declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored declaration", body: "Stored wording.", status: "draft" }],
+        };
+      }
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [];
+      return undefined;
+    });
+
+    render(<AdmissionsFormBuilder schoolId="school" intakeId="intake" onCancel={() => undefined} onSuccess={() => undefined} publishAllowed={false} />);
+    await screen.findByDisplayValue("Stored declaration");
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+
+    await waitFor(() => expect(replaceCampaignConfiguration).toHaveBeenCalledTimes(1));
+    expect(replaceCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({ intake: expect.objectContaining({ opensAt, closesAt }) }),
+    }));
   });
 
   test("keeps a reuse error blocked across remount, then reconciles and discards it before a fresh command", async () => {

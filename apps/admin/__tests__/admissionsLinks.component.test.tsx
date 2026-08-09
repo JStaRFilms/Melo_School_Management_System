@@ -1,21 +1,72 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import {
+  applicationLinkCopyFeedback,
+  resolveAndCopyApplicationLink,
+} from "../lib/admissions/models";
 
-describe("admissions application link component boundary", () => {
-  test("uses the canonical resolver and never constructs a local Apply origin", () => {
-    const componentFiles = [
-      "../app/admissions/AdmissionsHub.tsx",
-      "../app/admissions/AdmissionsTriage.tsx",
-      "../app/admissions/AdmissionsFormBuilder.tsx",
-    ];
-    const source = componentFiles
-      .map((file) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"))
-      .join("\n");
+const link = {
+  version: "1" as const,
+  schoolSlug: "north-star-school",
+  href: "https://apply.example.test/s/north-star-school/i/2027-entry",
+  availability: "open" as const,
+  intakeSlug: "2027-entry",
+  opensAt: null,
+  closesAt: null,
+};
 
-    expect(source).not.toContain("localhost:3006");
-    expect(source).not.toContain("window.location.origin");
-    expect(source.match(/functions\/foundation\/applicationLinks:getApplicationLink/g)).toHaveLength(2);
-    expect(source.match(/copyCanonicalApplicationLink/g)).toHaveLength(4);
+describe("admissions application link behavior", () => {
+  test("queries canonical arguments and copies only the returned canonical href", async () => {
+    const resolve = vi.fn().mockResolvedValue(link);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    await expect(resolveAndCopyApplicationLink({
+      schoolSlug: "north-star-school",
+      intakeSlug: "2027-entry",
+      resolve,
+      clipboard: { writeText },
+    })).resolves.toBe("copied");
+
+    expect(resolve).toHaveBeenCalledWith({ schoolSlug: "north-star-school", intakeSlug: "2027-entry" });
+    expect(writeText).toHaveBeenCalledWith(link.href);
+    expect(applicationLinkCopyFeedback("copied")).toEqual({ title: "Admissions link copied to clipboard!" });
+  });
+
+  test("reports canonical-link unavailability and query failures distinctly", async () => {
+    const unavailable = await resolveAndCopyApplicationLink({
+      schoolSlug: "north-star-school",
+      intakeSlug: "2027-entry",
+      resolve: async () => ({ ...link, availability: "unavailable" }),
+    });
+    const queryFailure = await resolveAndCopyApplicationLink({
+      schoolSlug: "north-star-school",
+      intakeSlug: "2027-entry",
+      resolve: async () => { throw new Error("network failed"); },
+    });
+
+    expect(unavailable).toBe("unavailable");
+    expect(queryFailure).toBe("resolution_failed");
+    expect(applicationLinkCopyFeedback(unavailable)).toMatchObject({ title: "Application link unavailable" });
+    expect(applicationLinkCopyFeedback(queryFailure)).toMatchObject({ title: "Could not resolve application link" });
+  });
+
+  test("reports missing and rejected clipboard writes without claiming link resolution failed", async () => {
+    const resolve = vi.fn().mockResolvedValue(link);
+    const missingClipboard = await resolveAndCopyApplicationLink({
+      schoolSlug: "north-star-school",
+      intakeSlug: "2027-entry",
+      resolve,
+      clipboard: undefined,
+    });
+    const rejectedClipboard = await resolveAndCopyApplicationLink({
+      schoolSlug: "north-star-school",
+      intakeSlug: "2027-entry",
+      resolve,
+      clipboard: { writeText: async () => { throw new Error("denied"); } },
+    });
+
+    expect(missingClipboard).toBe("clipboard_unavailable");
+    expect(rejectedClipboard).toBe("clipboard_unavailable");
+    expect(applicationLinkCopyFeedback(rejectedClipboard)).toMatchObject({ title: "Could not copy application link" });
+    expect(applicationLinkCopyFeedback(rejectedClipboard)).not.toEqual(applicationLinkCopyFeedback("resolution_failed"));
   });
 });

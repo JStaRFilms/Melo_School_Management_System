@@ -69,6 +69,16 @@ describe("atomic admissions campaign commands", () => {
     expect(await campaignCounts(t, schoolId)).toEqual({ programmes: 1, intakes: 1, operations: 1 });
   });
 
+  test("rejects underscore and dot campaign slugs before creating a graph", async () => {
+    const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const now = Date.now();
+    for (const malformedSlug of ["primary_2027", "primary.2027"]) {
+      const configuration = createConfiguration(now);
+      configuration.programme.slug = malformedSlug;
+      await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: `invalid-${malformedSlug}`, targetStatus: "draft", configuration })).rejects.toThrow("Invalid slug");
+    }
+    expect(await campaignCounts(t, schoolId)).toEqual({ programmes: 0, intakes: 0, operations: 0 });
+  });
+
   test("requires catalogue capability for all command targets and sensitive configuration", async () => {
     const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now();
     const publisher = { subject: "publisher-only", tokenIdentifier: "issuer|publisher-only", issuer: "issuer" };

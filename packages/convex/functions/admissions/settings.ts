@@ -11,7 +11,7 @@ async function requireCatalogue(ctx: QueryCtx | MutationCtx, schoolId: Id<"schoo
   if (!membership || !await hasSchoolCapabilityV1(ctx, membership, capability)) throw new ConvexError("Not found or access denied");
   return membership;
 }
-function slug(value: string) { const result = value.trim().toLowerCase(); if (!/^[a-z0-9]+(?:[_-][a-z0-9]+)*$/.test(result)) throw new ConvexError("Invalid slug"); return result; }
+function slug(value: string) { const result = value.trim().toLowerCase(); if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(result)) throw new ConvexError("Invalid slug"); return result; }
 function text(value: string, label: string, max = 4_000) { const result = value.trim(); if (!result || result.length > max) throw new ConvexError(`${label} is required`); return result; }
 function commandKey(value: string) { const key = value.trim(); if (!key || key.length > 128) throw new ConvexError("Invalid operation key"); return key; }
 function canonical(value: unknown): string { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(",")}}`; return JSON.stringify(value); }

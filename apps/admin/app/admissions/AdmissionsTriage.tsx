@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { getUserFacingErrorMessage, type ApplicationLinkV1 } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { copyCanonicalApplicationLink } from "@/admissions/models";
+import { applicationLinkCopyFeedback, resolveAndCopyApplicationLink } from "@/admissions/models";
 
 type Detail = {
   applicationId: string;
@@ -115,28 +115,17 @@ export function AdmissionsTriage({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const handleCopyApplicationLink = async () => {
-    if (!schoolSlug || !intakeSlug) {
-      appToast.error("Application link unavailable", { description: "This campaign does not have a public Apply route yet." });
-      return;
-    }
-
-    try {
-      const link = await convex.query(
+    const status = await resolveAndCopyApplicationLink({
+      schoolSlug,
+      intakeSlug,
+      resolve: (args) => convex.query(
         "functions/foundation/applicationLinks:getApplicationLink" as never,
-        { schoolSlug, intakeSlug } as never,
-      ) as ApplicationLinkV1;
-      if (link.availability === "unavailable") {
-        appToast.error("Application link unavailable", { description: "The canonical Apply link is not currently available for this campaign." });
-        return;
-      }
-      if (!await copyCanonicalApplicationLink(link)) {
-        appToast.error("Could not copy application link", { description: "Clipboard access is unavailable. Copy the canonical link from the Apply surface instead." });
-        return;
-      }
-      appToast.success("Admissions link copied to clipboard!");
-    } catch {
-      appToast.error("Could not copy application link", { description: "The canonical Apply link could not be resolved. Please retry." });
-    }
+        args as never,
+      ) as Promise<ApplicationLinkV1>,
+    });
+    const feedback = applicationLinkCopyFeedback(status);
+    if (status === "copied") appToast.success(feedback.title);
+    else appToast.error(feedback.title, { description: feedback.description });
   };
 
   // Convex hooks

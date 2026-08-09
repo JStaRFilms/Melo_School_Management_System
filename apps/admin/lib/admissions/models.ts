@@ -226,3 +226,37 @@ export async function copyCanonicalApplicationLink(
   await clipboard.writeText(link.href);
   return true;
 }
+
+export type ApplicationLinkCopyStatus = "copied" | "unavailable" | "resolution_failed" | "clipboard_unavailable";
+
+type ApplicationLinkResolver = (args: { schoolSlug: string; intakeSlug: string }) => Promise<ApplicationLinkV1>;
+
+export async function resolveAndCopyApplicationLink(args: {
+  schoolSlug?: string;
+  intakeSlug?: string;
+  resolve: ApplicationLinkResolver;
+  clipboard?: Pick<Clipboard, "writeText">;
+}): Promise<ApplicationLinkCopyStatus> {
+  if (!args.schoolSlug || !args.intakeSlug) return "unavailable";
+
+  let link: ApplicationLinkV1;
+  try {
+    link = await args.resolve({ schoolSlug: args.schoolSlug, intakeSlug: args.intakeSlug });
+  } catch {
+    return "resolution_failed";
+  }
+  if (link.availability === "unavailable") return "unavailable";
+
+  try {
+    return await copyCanonicalApplicationLink(link, args.clipboard) ? "copied" : "clipboard_unavailable";
+  } catch {
+    return "clipboard_unavailable";
+  }
+}
+
+export function applicationLinkCopyFeedback(status: ApplicationLinkCopyStatus): { title: string; description?: string } {
+  if (status === "copied") return { title: "Admissions link copied to clipboard!" };
+  if (status === "unavailable") return { title: "Application link unavailable", description: "The canonical Apply link is not currently available for this campaign." };
+  if (status === "resolution_failed") return { title: "Could not resolve application link", description: "The canonical Apply link could not be resolved. Please retry." };
+  return { title: "Could not copy application link", description: "Clipboard access is unavailable. Copy the canonical link from the Apply surface instead." };
+}
