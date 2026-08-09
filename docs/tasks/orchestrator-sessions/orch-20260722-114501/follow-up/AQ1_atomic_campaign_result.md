@@ -2,21 +2,22 @@
 
 ## Delivered
 
-- Added `createDraftCampaign`, a bounded transaction that validates the complete campaign graph before it writes a programme, intake, product, declaration, form, fields, and document requirements. It may publish the validated initial graph in that same transaction when the caller has `admissions.publish`.
-- Added `replaceDraftCampaignConfiguration`, which validates before writes, creates new form/declaration versions, and only retires prior published versions when publishing. Published evidence content is not rewritten.
-- Added `admissionsCampaignOperations`, a durable tenant-scoped operation-key ledger. Replays return the stored IDs and status; reusing a key for a different payload is rejected.
-- Added `listCampaignRecovery`, which identifies pre-atomic draft campaigns without an atomic ledger as review-only legacy draft/partial states. The Admin builder shows a non-destructive recovery notice.
-- Replaced the builder’s browser mutation chain with the two atomic commands and a stable retry operation key. Price changes remain in the separate accountable finance workflow; AQ-1 does not create finance evidence or define a free/paid publication policy.
+- Replaced the prior campaign commands with `createCampaignConfiguration` and `replaceCampaignConfiguration`. Both validate their complete graph before their first write and return server-resolved IDs, `priceId`, planned status, and replay state.
+- Persisted replay records are actor-scoped and use canonical semantic request digests. Reusing an actor's command key with a changed request returns `OPERATION_KEY_REUSED`; a different actor can use the same key independently.
+- Draft replacement only creates draft form/declaration evidence. Published replacement leaves paused/closed intake and paused product states unchanged, promotes only draft lifecycle rows, and rejects changed programme declarations when another non-archived intake shares the programme.
+- Price replacement computes the next version server-side, compares amount/currency/refund/disclosure exactly, and requires a current same-school finance approval for that exact product/version. No campaign command fabricates approval evidence.
+- Conditional fields and requirements require a submitted lower-order field controller. Every supplied approval-evidence ID is checked for current same-school accountable approval and exact subject, including lower-risk rows.
+- Added bounded `listLegacyCampaignRecovery` output for untracked drafts. It reports only review-required graph counts, timestamps, and missing/ambiguous flags. Replacement rejects incomplete/ambiguous untracked graphs.
+- The Admin builder now sends one command payload, removes unsupported email/phone custom choices, preserves resolved replacement identities server-side, and saves the complete pending command/payload in session storage. Reload/save retries the identical snapshot; operation-key reuse stops the retry.
 
 ## Verification
 
-- `pnpm --filter @school/convex test -- admissionsCampaignSettings.test.ts` passed (the package script ran the Convex suite: 19 files, 134 tests; the new three focused tests passed).
+- `pnpm --filter @school/convex test -- admissionsCampaignSettings.test.ts` passed: 19 files, 138 tests.
 - `pnpm --filter @school/convex typecheck` passed.
 - `pnpm --filter @school/admin typecheck` passed.
-- `pnpm --filter @school/admin test -- admissionsCampaignBuilder.test.ts admissionsOperations.test.ts` passed (7 files, 41 tests; including the focused Admin builder contract test).
-- Targeted ESLint passed for the changed Convex and Admin files.
-- `pnpm --filter @school/admin build` compiled and typechecked the changed Admin code, but failed while prerendering unrelated existing routes because `NEXT_PUBLIC_CONVEX_URL` is unset and those routes call `useQuery` outside a `ConvexProvider`. No browser validation was performed.
+- `pnpm --filter @school/admin test -- admissionsCampaignBuilder.test.ts` passed: 7 files, 42 tests.
 
-## Constraints and residual risk
+## Residual risk
 
-The requested `follow-up/AQ1_atomic_campaign_architecture_brief.md` was absent from this worktree, so implementation followed the AQ-1 packet and existing repository contracts. Browser workflow QA and the accountable price-approval UX remain out of scope.
+- Admin browser interaction was not manually exercised. The pending-command helper has focused behavior tests, and the builder still uses the normal Convex transport in the browser.
+- The current UI can discover exact finance evidence only after an existing product and expected next version are known; no new paid-campaign policy was invented.

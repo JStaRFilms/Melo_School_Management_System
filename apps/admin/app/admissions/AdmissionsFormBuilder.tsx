@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { invokePendingCampaignCommand, loadPendingCampaignCommand, savePendingCampaignCommand } from "../../lib/admissions/campaignOperation";
 
 type DataClass = "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security";
 
@@ -73,9 +74,9 @@ export function AdmissionsFormBuilder({
   onSuccess,
   publishAllowed
 }: AdmissionsFormBuilderProps) {
-  const createDraftCampaign = useMutation("functions/admissions/settings:createDraftCampaign" as never);
-  const replaceDraftCampaignConfiguration = useMutation("functions/admissions/settings:replaceDraftCampaignConfiguration" as never);
-  const recovery = useQuery("functions/admissions/settings:listCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "legacy_partial" | "legacy_complete" | "atomic_draft" }> | undefined;
+  const createCampaignConfiguration = useMutation("functions/admissions/settings:createCampaignConfiguration" as never);
+  const replaceCampaignConfiguration = useMutation("functions/admissions/settings:replaceCampaignConfiguration" as never);
+  const recovery = useQuery("functions/admissions/settings:listLegacyCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "review_required" }> | undefined;
 
   // Form setup states
   const [formName, setFormName] = useState("");
@@ -107,8 +108,8 @@ export function AdmissionsFormBuilder({
     { id: "def-q-address", type: "question", label: "Residential Address", key: "address", kind: "textarea", required: false, isDefault: true, enabled: true },
     { id: "def-sec-2", type: "section", label: "Default Guardian Contact (Auto-Collected)", key: "guardian", isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-guardian-name", type: "question", label: "Guardian Full Name", key: "guardian_full_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
-    { id: "def-q-guardian-email", type: "question", label: "Guardian Email", key: "guardian_email", kind: "email", required: true, isDefault: true, isMandatory: true, enabled: true },
-    { id: "def-q-guardian-phone", type: "question", label: "Guardian Phone Number", key: "guardian_phone", kind: "phone", required: true, isDefault: true, isMandatory: true, enabled: true },
+    { id: "def-q-guardian-email", type: "question", label: "Guardian Email", key: "guardian_email", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
+    { id: "def-q-guardian-phone", type: "question", label: "Guardian Phone Number", key: "guardian_phone", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
     { id: "def-q-guardian-relationship", type: "question", label: "Guardian Relationship", key: "guardian_relationship", kind: "text", required: false, isDefault: true, enabled: true }
   ]);
 
@@ -116,6 +117,7 @@ export function AdmissionsFormBuilder({
   const [expandedPrivacyCardId, setExpandedPrivacyCardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const operationKeyRef = useRef<string | null>(null);
+  const pendingCommandRef = useRef<{ command: "create" | "replace"; payload: Record<string, unknown> } | null>(null);
   const defaultCampaignDatesRef = useRef({ opensAt: Date.now(), closesAt: Date.now() + 30 * 24 * 60 * 60 * 1000 });
 
   // Catalogue loaders for editing existing intake
@@ -198,8 +200,8 @@ export function AdmissionsFormBuilder({
       { id: "def-q-country-of-birth", type: "question", label: "Country of Birth", key: "country_of_birth", kind: "text", required: false, isDefault: true, enabled: true },
       { id: "def-q-address", type: "question", label: "Residential Address", key: "address", kind: "textarea", required: false, isDefault: true, enabled: true },
       { id: "def-q-guardian-name", type: "question", label: "Guardian Full Name", key: "guardian_full_name", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
-      { id: "def-q-guardian-email", type: "question", label: "Guardian Email", key: "guardian_email", kind: "email", required: true, isDefault: true, isMandatory: true, enabled: true },
-      { id: "def-q-guardian-phone", type: "question", label: "Guardian Phone Number", key: "guardian_phone", kind: "phone", required: true, isDefault: true, isMandatory: true, enabled: true },
+      { id: "def-q-guardian-email", type: "question", label: "Guardian Email", key: "guardian_email", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
+      { id: "def-q-guardian-phone", type: "question", label: "Guardian Phone Number", key: "guardian_phone", kind: "text", required: true, isDefault: true, isMandatory: true, enabled: true },
       { id: "def-q-guardian-relationship", type: "question", label: "Guardian Relationship", key: "guardian_relationship", kind: "text", required: false, isDefault: true, enabled: true }
     ];
 
@@ -523,13 +525,42 @@ export function AdmissionsFormBuilder({
     evidence?.find((item) => item.active && item.approvalClass === approvalClass && item.subjectType === subjectType && item.subjectKey === subjectKey)?.id as string | undefined;
 
   const newOperationKey = () => `campaign-${crypto.randomUUID()}`;
+  const pendingOperationStorageKey = `admissions_campaign_operation_${schoolId}_${intakeId ?? "new"}`;
+
+  useEffect(() => {
+    const pending = loadPendingCampaignCommand(sessionStorage, pendingOperationStorageKey);
+    if (pending) {
+      pendingCommandRef.current = pending;
+      operationKeyRef.current = typeof pending.payload.operationKey === "string" ? pending.payload.operationKey : null;
+    }
+  }, [pendingOperationStorageKey]);
 
   const handlePublish = async () => {
+    const pending = pendingCommandRef.current;
+    if (pending) {
+      setSaving(true);
+      try {
+        await invokePendingCampaignCommand(pending, { create: (payload) => createCampaignConfiguration(payload as never), replace: (payload) => replaceCampaignConfiguration(payload as never) });
+        pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess();
+      } catch (err) {
+        if (String(err).includes("OPERATION_KEY_REUSED")) { pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); appToast.error("Campaign retry needs reconciliation", { description: "The prior operation key was reused. Reload before submitting a new configuration." }); }
+        else appToast.error("Campaign retry failed", { description: getUserFacingErrorMessage(err, "The submitted campaign snapshot is retained for retry.") });
+      } finally { setSaving(false); }
+      return;
+    }
     if (!formName || !formSlug || !declarationTitle.trim() || !declarationBody.trim()) { appToast.error("Form name, slug, and declaration text are required."); return; }
     if (targetStatus === "published" && !publishAllowed) { appToast.error("You do not have permission to publish admissions forms."); return; }
     const opens = opensAt ? new Date(opensAt).getTime() : defaultCampaignDatesRef.current.opensAt; const closes = closesAt ? new Date(closesAt).getTime() : defaultCampaignDatesRef.current.closesAt;
     if (!Number.isFinite(opens) || !Number.isFinite(closes) || opens >= closes) { appToast.error("The intake closing date must be after its opening date."); return; }
-    const existingPrice = prices?.[0]; if ((Number(feeAmount) || 0) !== (existingPrice?.amountMinor ?? 0)) { appToast.error("Price changes require the separate approved finance workflow and are not included in campaign setup."); return; }
+    const existingPrice = prices?.[0];
+    const requestedAmount = Number(feeAmount);
+    if (!Number.isInteger(requestedAmount) || requestedAmount < 0) { appToast.error("Enter a whole non-negative fee amount."); return; }
+    if (!intakeId && requestedAmount !== 0) { appToast.error("A new paid campaign requires the separate approved finance workflow."); return; }
+    const changedPrice = !!intakeId && (requestedAmount !== (existingPrice?.amountMinor ?? 0) || feeCurrency !== (existingPrice?.currency ?? feeCurrency) || feeRefundPolicy !== (existingPrice?.refundPolicyKey ?? feeRefundPolicy) || feeDisclosure !== (existingPrice?.feeDisclosure ?? feeDisclosure));
+    if (changedPrice && targetStatus !== "published") { appToast.error("Publish price changes with current finance approval."); return; }
+    const nextPriceVersion = (existingPrice?.version ?? 0) + 1;
+    const priceApprovalEvidenceId = productDoc && changedPrice ? findActiveEvidence("finance", "admissions_price", `${productDoc.id}:${nextPriceVersion}`) : undefined;
+    if (changedPrice && !priceApprovalEvidenceId) { appToast.error("Current finance approval for the exact next price version is required."); return; }
     const keys = cards.filter((card) => card.type === "question" && !card.isDefault).map((card) => card.key);
     if (keys.some(isInvalidKeyFormat) || new Set(keys).size !== keys.length) { appToast.error("Resolve duplicate or invalid custom field keys before saving."); return; }
     if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) { appToast.error("Active privacy approval evidence is required before adding medical records."); return; }
@@ -538,11 +569,13 @@ export function AdmissionsFormBuilder({
     let sectionKey = "applicant";
     const fields = cards.flatMap((card, order) => { if (card.isDefault) return []; if (card.type === "section") { sectionKey = card.key; return []; } return [{ fieldKey: card.key, sectionKey, kind: card.kind || "text", label: card.label || "Untitled Field", requiredMode: card.required ? "required" as const : "optional" as const, dataClass: card.dataClass || "personal", purpose: card.purpose || undefined, retentionPolicyKey: card.retentionPolicyKey || undefined, audience: card.audience || undefined, approvalEvidenceId: card.approvalEvidenceId || undefined, validationJson: card.kind === "select" && card.choices?.length ? JSON.stringify({ choices: card.choices }) : "{}", order }]; });
     const requirements = [{ requirementKey: "birth_cert", category: "identity", label: "Birth Certificate", requiredMode: "required" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Age and identity confirmation", order: 0 }, ...(reqPassport ? [{ requirementKey: "passport", category: "passport", label: "Passport Photograph (Clear headshot)", requiredMode: "required" as const, acceptedMimeTypes: ["image/jpeg", "image/png"], maxBytes: 2 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Student profile photograph setup", order: 1 }] : []), ...(reqMedical ? [{ requirementKey: "medical_records", category: "medical", label: "Recent Medical Reports (within past 6 months)", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "highly_sensitive" as DataClass, purpose: "Health planning support", retentionPolicyKey: "duration_of_enrollment", audience: "school_medical_officers_and_management", approvalEvidenceId: findActiveEvidence("privacy", "admissions_document_requirement", "medical_records"), order: 2 }] : []), ...(reqTranscripts ? [{ requirementKey: "transcripts", category: "academic", label: "Previous School Transcripts", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 2, sensitivity: "child_confidential" as DataClass, purpose: "Academic history verification", order: 3 }] : [])];
-    const configuration = { programme: { slug: formSlug, name: formName, description: formDescription || undefined }, intake: { slug: formSlug, name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes }, product: { slug: formSlug, name: "Intake registration fee slot" }, form: { schemaVersion: "1" }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements };
-    setSaving(true);
+    const createConfiguration = { programme: { slug: formSlug, name: formName, description: formDescription || undefined }, intake: { slug: formSlug, name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes }, product: { slug: formSlug, name: "Intake registration fee slot" }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements };
+    const replaceConfiguration = { intake: { name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes, description: formDescription || undefined }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements, ...(intakeId && (existingPrice || requestedAmount !== 0 || feeDisclosure.trim()) ? { price: { amountMinor: requestedAmount, currency: feeCurrency, refundPolicyKey: feeRefundPolicy, feeDisclosure, ...(priceApprovalEvidenceId ? { approvalEvidenceId: priceApprovalEvidenceId } : {}) } } : {}) };
     const saveOperationKey = operationKeyRef.current ?? newOperationKey();
-    operationKeyRef.current = saveOperationKey;
-    try { const publish = targetStatus === "published"; if (intakeId) { await replaceDraftCampaignConfiguration({ schoolId, intakeId, operationKey: saveOperationKey, configuration, publish } as never); appToast.success(publish ? "Admissions campaign replaced and published." : "Admissions campaign configuration saved as a draft."); } else { await createDraftCampaign({ schoolId, operationKey: saveOperationKey, configuration, publish } as never); appToast.success(publish ? "Admissions campaign created and published." : "Admissions campaign created as a draft."); } operationKeyRef.current = null; localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess(); } catch (err) { appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The campaign was not changed.") }); } finally { setSaving(false); }
+    const command = intakeId ? "replace" as const : "create" as const;
+    const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus, configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus, configuration: createConfiguration };
+    operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
+    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); appToast.error("Campaign retry needs reconciliation", { description: "The operation key was reused. Reload before submitting a new configuration." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
 
   return (
@@ -564,7 +597,7 @@ export function AdmissionsFormBuilder({
             <ArrowLeft className="h-4 w-4" /> Return to Admissions Panel
           </button>
 
-          {recovery?.some((campaign) => campaign.recoveryState !== "atomic_draft") && (
+          {recovery?.some((campaign) => campaign.recoveryState === "review_required") && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs font-semibold text-amber-900 shadow-sm">
               Existing pre-atomic draft campaigns need operator review before they are edited or deleted. No recovery action has been applied automatically.
             </div>
@@ -873,8 +906,6 @@ export function AdmissionsFormBuilder({
                             <option value="select">Multiple Choice Dropdown</option>
                             <option value="boolean">Yes / No Option</option>
                             <option value="date">Date picker</option>
-                            <option value="email">Email input</option>
-                            <option value="phone">Phone number</option>
                           </select>
                         </div>
                       </div>
