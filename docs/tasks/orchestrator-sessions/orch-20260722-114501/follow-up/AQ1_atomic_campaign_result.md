@@ -19,8 +19,20 @@
 - Unchanged price payloads with finance evidence validate that evidence against the currently published exact price version.
 - Added behavioral checks for normalized replay, duplicate-field no-write rejection, capability combinations, immutable children, closed/paused preservation, wrong-subject unchanged-price evidence, and actual Admin create-command payload mapping (default omission, selected requirements, one command invocation).
 
+## AQ-1 final blocker closure
+
+- Campaign commands now canonicalize accepted MIME arrays once at their boundary (trimmed, lowercased, deduplicated, sorted), then use that snapshot for validation, replay digesting, and requirement persistence. Document binding normalizes the uploaded storage MIME to the same lower-case form before its exact configured-membership check.
+- The focused campaign test asserts persisted `acceptedMimeTypes` are canonical and contain the exact document-binding MIME (`image/png`).
+- Pending Admin commands persist `reconciliationRequired`. A remount remains blocked after `OPERATION_KEY_REUSED`; the only unblock action performs an authoritative `getCatalogue` query and only then discards the stale snapshot/key. It does not reload-loop or retry the ambiguous command.
+- The builder component test covers reuse error, remount blocking, reconciliation/discard, and a subsequent fresh-key command.
+
 ## Verification
 
+- `pnpm --filter @school/convex exec vitest run admissionsCampaignSettings.test.ts` passed: 1 file, 8 tests.
+- `pnpm --filter @school/admin exec vitest run __tests__/admissionsCampaignBuilder.component.test.tsx __tests__/admissionsCampaignBuilder.test.ts` passed: 2 files, 5 tests.
+- `pnpm --filter @school/convex typecheck` passed.
+- `pnpm --filter @school/admin typecheck` passed.
+- Targeted `pnpm exec eslint` for changed Convex/Admin files passed.
 - `pnpm --filter @school/convex test -- admissionsCampaignSettings.test.ts` passed: 19 files, 139 tests.
 - `pnpm --filter @school/admin test -- admissionsCampaignBuilder.component.test.tsx` passed: 8 files, 44 tests.
 - `pnpm --filter @school/convex typecheck` passed.

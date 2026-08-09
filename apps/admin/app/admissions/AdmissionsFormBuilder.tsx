@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { 
   Plus, 
   FolderPlus, 
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { invokePendingCampaignCommand, loadPendingCampaignCommand, savePendingCampaignCommand } from "../../lib/admissions/campaignOperation";
+import { invokePendingCampaignCommand, loadPendingCampaignCommand, savePendingCampaignCommand, type PendingCampaignCommand } from "../../lib/admissions/campaignOperation";
 
 type DataClass = "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security";
 
@@ -74,6 +74,7 @@ export function AdmissionsFormBuilder({
   onSuccess,
   publishAllowed
 }: AdmissionsFormBuilderProps) {
+  const convex = useConvex();
   const createCampaignConfiguration = useMutation("functions/admissions/settings:createCampaignConfiguration" as never);
   const replaceCampaignConfiguration = useMutation("functions/admissions/settings:replaceCampaignConfiguration" as never);
   const recovery = useQuery("functions/admissions/settings:listLegacyCampaignRecovery" as never, schoolId ? { schoolId } as never : "skip" as never) as Array<{ intakeId: string; recoveryState: "review_required" }> | undefined;
@@ -117,8 +118,9 @@ export function AdmissionsFormBuilder({
   const [expandedPrivacyCardId, setExpandedPrivacyCardId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [reconciliationBlocked, setReconciliationBlocked] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   const operationKeyRef = useRef<string | null>(null);
-  const pendingCommandRef = useRef<{ command: "create" | "replace"; payload: Record<string, unknown> } | null>(null);
+  const pendingCommandRef = useRef<PendingCampaignCommand | null>(null);
   const defaultCampaignDatesRef = useRef({ opensAt: Date.now(), closesAt: Date.now() + 30 * 24 * 60 * 60 * 1000 });
 
   // Catalogue loaders for editing existing intake
@@ -530,11 +532,35 @@ export function AdmissionsFormBuilder({
 
   useEffect(() => {
     const pending = loadPendingCampaignCommand(sessionStorage, pendingOperationStorageKey);
-    if (pending) {
-      pendingCommandRef.current = pending;
-      operationKeyRef.current = typeof pending.payload.operationKey === "string" ? pending.payload.operationKey : null;
-    }
+    pendingCommandRef.current = pending;
+    operationKeyRef.current = pending && typeof pending.payload.operationKey === "string" ? pending.payload.operationKey : null;
+    setReconciliationBlocked(pending?.reconciliationRequired === true);
   }, [pendingOperationStorageKey]);
+
+  const requireReconciliation = () => {
+    const pending = pendingCommandRef.current;
+    if (!pending) return;
+    const blockedPending = { ...pending, reconciliationRequired: true };
+    pendingCommandRef.current = blockedPending;
+    savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, blockedPending);
+    setReconciliationBlocked(true);
+  };
+
+  const handleReconcileAndDiscard = async () => {
+    setReconciling(true);
+    try {
+      await convex.query("functions/admissions/settings:getCatalogue" as never, { schoolId } as never);
+      pendingCommandRef.current = null;
+      operationKeyRef.current = null;
+      sessionStorage.removeItem(pendingOperationStorageKey);
+      setReconciliationBlocked(false);
+      appToast.success("Campaign state reconciled", { description: "The stale command was discarded. You can now submit a new campaign command." });
+    } catch (err) {
+      appToast.error("Campaign reconciliation failed", { description: getUserFacingErrorMessage(err, "The stale command remains blocked. Try again before discarding it.") });
+    } finally {
+      setReconciling(false);
+    }
+  };
 
   const handlePublish = async () => {
     if (reconciliationBlocked) return;
@@ -545,7 +571,7 @@ export function AdmissionsFormBuilder({
         await invokePendingCampaignCommand(pending, { create: (payload) => createCampaignConfiguration(payload as never), replace: (payload) => replaceCampaignConfiguration(payload as never) });
         pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); onSuccess();
       } catch (err) {
-        if (String(err).includes("OPERATION_KEY_REUSED")) { setReconciliationBlocked(true); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained. Reload before another command." }); }
+        if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); }
         else appToast.error("Campaign retry failed", { description: getUserFacingErrorMessage(err, "The submitted campaign snapshot is retained for retry.") });
       } finally { setSaving(false); }
       return;
@@ -576,8 +602,8 @@ export function AdmissionsFormBuilder({
     const saveOperationKey = operationKeyRef.current ?? newOperationKey();
     const command = intakeId ? "replace" as const : "create" as const;
     const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus, configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus, configuration: createConfiguration };
-    operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
-    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { setReconciliationBlocked(true); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained. Reload before another command." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
+    operationKeyRef.current = saveOperationKey; pendingCommandRef.current = { command, payload, reconciliationRequired: false }; savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, pendingCommandRef.current); setSaving(true);
+    try { if (command === "replace") await replaceCampaignConfiguration(payload as never); else await createCampaignConfiguration(payload as never); pendingCommandRef.current = null; operationKeyRef.current = null; sessionStorage.removeItem(pendingOperationStorageKey); localStorage.removeItem(`admissions_form_draft_${schoolId}`); appToast.success(targetStatus === "published" ? "Admissions campaign saved and published." : "Admissions campaign saved as a draft."); onSuccess(); } catch (err) { if (String(err).includes("OPERATION_KEY_REUSED")) { requireReconciliation(); appToast.error("Campaign retry needs reconciliation", { description: "The submitted snapshot and operation key are retained until you reconcile and discard them." }); } else appToast.error("Campaign save failed", { description: getUserFacingErrorMessage(err, "The exact submitted campaign snapshot is retained for retry.") }); } finally { setSaving(false); }
   };
 
   return (
@@ -607,8 +633,8 @@ export function AdmissionsFormBuilder({
 
           {reconciliationBlocked && (
             <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 text-xs font-semibold text-rose-900 shadow-sm">
-              This campaign command is blocked for reconciliation. Its submitted snapshot and operation key are retained; reload this editor before sending another command.
-              <button type="button" onClick={() => window.location.reload()} className="ml-3 underline font-bold">Reload editor</button>
+              This campaign command is blocked for reconciliation. Reload the authoritative campaign state, then deliberately discard this stale command before sending another one.
+              <button type="button" onClick={() => void handleReconcileAndDiscard()} disabled={reconciling} className="ml-3 underline font-bold disabled:opacity-50">{reconciling ? "Reconciling campaign…" : "Reconcile and discard stale command"}</button>
             </div>
           )}
 

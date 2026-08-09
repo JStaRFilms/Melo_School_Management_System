@@ -32,7 +32,7 @@ export const bindUpload = mutation({
     if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId || bound) throw new ConvexError("DOCUMENT_UNAVAILABLE");
     if (application.state === "changes_requested" && !(application.changeRequestRequirementKeys ?? []).includes(requirement.requirementKey)) throw new ConvexError("DOCUMENT_REQUIREMENT_LOCKED");
     const metadata = await ctx.db.system.get(args.storageId);
-    const contentType = metadata?.contentType?.trim();
+    const contentType = metadata?.contentType?.trim().toLowerCase();
     if (!metadata || !contentType || !requirement.acceptedMimeTypes.includes(contentType) || typeof metadata.size !== "number" || metadata.size > requirement.maxBytes) throw new ConvexError("DOCUMENT_UNAVAILABLE");
     const prior = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id).eq("requirementId", requirement._id)).take(100);
     const activeCount = prior.filter((document) => document.state === "uploaded" || document.state === "accepted").length;

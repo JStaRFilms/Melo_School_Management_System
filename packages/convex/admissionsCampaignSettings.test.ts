@@ -45,12 +45,16 @@ async function campaignCounts(t: ReturnType<typeof convexTest>, schoolId: string
 describe("atomic admissions campaign commands", () => {
   test("creates exactly one complete graph and replays a canonical request for its actor", async () => {
     const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const configuration = createConfiguration(Date.now());
-    configuration.programme.description = undefined; configuration.requirements[0].acceptedMimeTypes = ["image/PNG", "application/pdf"];
+    configuration.programme.description = undefined; configuration.requirements[0].acceptedMimeTypes = ["image/PNG", " application/pdf ", "image/png"];
     const first = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: "create-1", targetStatus: "draft", configuration });
     const replay = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: " create-1 ", targetStatus: "draft", configuration: { ...configuration, programme: { ...configuration.programme, slug: " PRIMARY-2027 ", name: " Primary 2027 ", description: " " }, intake: { ...configuration.intake, slug: " PRIMARY-2027 ", name: " Primary 2027 ", cycleLabel: " 2027 " }, product: { ...configuration.product, slug: " PRIMARY-2027 ", name: " Application slot " }, declaration: { title: " Guardian declaration ", body: " I confirm this application is accurate. ", purpose: " service " }, fields: configuration.fields.map((field) => ({ ...field, fieldKey: " HAS-SUPPORT-NEEDS ", sectionKey: " support ", label: " Support needs ", validationJson: " { } " })), requirements: configuration.requirements.map((requirement) => ({ ...requirement, requirementKey: " BIRTH-CERT ", category: " identity ", label: " Birth certificate ", purpose: " Identity confirmation ", acceptedMimeTypes: [" application/pdf ", " image/png "] })) } });
     expect(first).toMatchObject({ status: "draft", replayed: false, priceId: null }); expect(replay).toMatchObject({ ...first, replayed: true });
     expect(await campaignCounts(t, schoolId)).toEqual({ programmes: 1, intakes: 1, operations: 1 });
     expect(await t.run((ctx) => ctx.db.get(first.formVersionId))).toMatchObject({ status: "draft" });
+    const requirement = await t.run(async (ctx) => (await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", first.formVersionId)).unique())!);
+    expect(requirement.acceptedMimeTypes).toEqual(["application/pdf", "image/png"]);
+    // bindUpload normalizes storage content types and checks this persisted array by exact membership.
+    expect(requirement.acceptedMimeTypes.includes("image/png")).toBe(true);
   });
 
   test("rejects malformed conditions and a changed digest without writing a partial graph", async () => {

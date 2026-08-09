@@ -1,6 +1,7 @@
 export type PendingCampaignCommand = {
   command: "create" | "replace";
   payload: Record<string, unknown>;
+  reconciliationRequired: boolean;
 };
 
 type SessionStorage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
@@ -13,7 +14,7 @@ export function loadPendingCampaignCommand(storage: SessionStorage, key: string)
     if (!value || typeof value !== "object") throw new Error("invalid");
     const pending = value as Partial<PendingCampaignCommand>;
     if ((pending.command !== "create" && pending.command !== "replace") || !pending.payload || typeof pending.payload !== "object") throw new Error("invalid");
-    return { command: pending.command, payload: pending.payload };
+    return { command: pending.command, payload: pending.payload, reconciliationRequired: pending.reconciliationRequired === true };
   } catch {
     storage.removeItem(key);
     return null;
