@@ -306,6 +306,18 @@ export default defineSchema({
     .index("by_intake_and_status", ["intakeId", "status"])
     .index("by_school_and_programme_and_version", ["schoolId", "programmeId", "version"]),
 
+  admissionsFormSections: defineTable({
+    schoolId: v.id("schools"),
+    formVersionId: v.id("admissionsFormVersions"),
+    sectionKey: v.string(),
+    label: v.string(),
+    order: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_form_version_and_order", ["formVersionId", "order"])
+    .index("by_form_version_and_section_key", ["formVersionId", "sectionKey"]),
+
   admissionsFormFields: defineTable({
     schoolId: v.id("schools"),
     formVersionId: v.id("admissionsFormVersions"),

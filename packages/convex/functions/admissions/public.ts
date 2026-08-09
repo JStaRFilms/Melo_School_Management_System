@@ -44,12 +44,21 @@ const publicEntryValidator = v.object({
   offering: v.union(v.null(), v.object({ slug: v.string(), name: v.string(), amountMinor: v.number(), currency: v.string(), feeDisclosure: v.string() })),
 });
 
+const publicSectionValidator = v.object({ key: v.string(), label: v.string(), order: v.number() });
 const publicFieldValidator = v.object({
   key: v.string(), sectionKey: v.string(), kind: v.string(), label: v.string(), helpText: v.union(v.string(), v.null()), requiredMode: v.string(), dataClass: v.string(), purpose: v.union(v.string(), v.null()), validation: v.string(), conditionalRule: v.union(v.string(), v.null()), order: v.number(),
 });
 const publicRequirementValidator = v.object({
   key: v.string(), category: v.string(), label: v.string(), requiredMode: v.string(), acceptedMimeTypes: v.array(v.string()), maxBytes: v.number(), maxFiles: v.number(), sensitivity: v.string(), purpose: v.string(), condition: v.union(v.string(), v.null()), order: v.number(),
 });
+
+const SYSTEM_SECTION_KEYS = new Set(["child", "guardian", "contacts", "documents", "review", "applicant", "child_profile", "guardian_contact"]);
+const LEGACY_CUSTOM_SECTION_ALIASES = new Set(["applicant"]);
+function titleizeSectionKey(key: string) { return key.split(/[-_]+/).map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : "").join(" "); }
+function projectSections(rows: Array<{ sectionKey: string; label: string; order: number }>, fields: Array<{ sectionKey: string; order: number }>) {
+  if (rows.length) return rows.map((section) => ({ key: section.sectionKey, label: section.label, order: section.order }));
+  return [...new Map(fields.filter((field) => !SYSTEM_SECTION_KEYS.has(field.sectionKey) || LEGACY_CUSTOM_SECTION_ALIASES.has(field.sectionKey)).map((field) => [field.sectionKey, { key: field.sectionKey, label: titleizeSectionKey(field.sectionKey), order: field.order }])).values()];
+}
 
 function safeSlug(value: string) {
   const slug = value.trim();
@@ -120,31 +129,20 @@ export const getEntry = query({
 /** Published configuration is keyed by a public school/intake route, never a form ID. */
 export const getPublishedConfiguration = query({
   args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()) },
-  returns: v.object({
-    availability: publicEntryValidator.fields.availability,
-    legalNamePolicyVersion: v.number(),
-    fields: v.array(publicFieldValidator), requirements: v.array(publicRequirementValidator),
-    declaration: v.union(v.null(), v.object({ version: v.number(), title: v.string(), body: v.string(), purpose: v.string() })),
-  }),
+  returns: v.object({ availability: publicEntryValidator.fields.availability, legalNamePolicyVersion: v.number(), sections: v.array(publicSectionValidator), fields: v.array(publicFieldValidator), requirements: v.array(publicRequirementValidator), declaration: v.union(v.null(), v.object({ version: v.number(), title: v.string(), body: v.string(), purpose: v.string() })) }),
   handler: async (ctx, args) => {
     const entry = await resolveEntry(ctx, args.schoolSlug, args.intakeSlug);
-    if (entry.availability !== "open" || !entry.intakeRecord || !entry.programme) return { availability: entry.availability, legalNamePolicyVersion: 1, fields: [], requirements: [], declaration: null };
+    if (entry.availability !== "open" || !entry.intakeRecord || !entry.programme) return { availability: entry.availability, legalNamePolicyVersion: 1, sections: [], fields: [], requirements: [], declaration: null };
     const forms = await ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q: any) => q.eq("intakeId", entry.intakeRecord._id).eq("status", "published")).take(2);
     const declarations = await ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q: any) => q.eq("programmeId", entry.intakeRecord.programmeId).eq("status", "published")).order("desc").take(100);
-    if (forms.length !== 1 || declarations.length === 0) return { availability: "unavailable" as const, legalNamePolicyVersion: 1, fields: [], requirements: [], declaration: null };
-    const form = forms[0];
-    const declaration = declarations.sort((left: any, right: any) => right.version - left.version)[0];
-    const [fieldRows, requirementRows] = await Promise.all([
+    if (forms.length !== 1 || declarations.length === 0) return { availability: "unavailable" as const, legalNamePolicyVersion: 1, sections: [], fields: [], requirements: [], declaration: null };
+    const form = forms[0]; const declaration = declarations.sort((left: any, right: any) => right.version - left.version)[0];
+    const [sectionRows, fieldRows, requirementRows] = await Promise.all([
+      ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", form._id)).take(50),
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", form._id)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", form._id)).take(100),
     ]);
-    return {
-      availability: entry.availability,
-      legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1,
-      fields: fieldRows.filter((field: any) => field.status === "active").map((field: any) => ({ key: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, helpText: field.helpText ?? null, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, validation: field.validationJson, conditionalRule: field.conditionalRuleJson ?? null, order: field.order })),
-      requirements: requirementRows.map((requirement: any) => ({ key: requirement.requirementKey, category: requirement.category, label: requirement.label, requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: requirement.purpose, condition: requirement.conditionJson ?? null, order: requirement.order })),
-      declaration: { version: declaration.version, title: declaration.title, body: declaration.body, purpose: declaration.purpose },
-    };
+    return { availability: entry.availability, legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1, sections: projectSections(sectionRows, fieldRows), fields: fieldRows.filter((field: any) => field.status === "active").map((field: any) => ({ key: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, helpText: field.helpText ?? null, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, validation: field.validationJson, conditionalRule: field.conditionalRuleJson ?? null, order: field.order })), requirements: requirementRows.map((requirement: any) => ({ key: requirement.requirementKey, category: requirement.category, label: requirement.label, requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: requirement.purpose, condition: requirement.conditionJson ?? null, order: requirement.order })), declaration: { version: declaration.version, title: declaration.title, body: declaration.body, purpose: declaration.purpose } };
   },
 });
 
@@ -189,21 +187,17 @@ export const getGuardianWorkspace = query({
 /** Owner-authorized projection of the exact immutable versions bound at reservation. */
 export const getApplicationConfiguration = query({
   args: { schoolSlug: v.string(), publicReference: v.string() },
-  returns: v.object({ legalNamePolicyVersion: v.number(), fields: v.array(publicFieldValidator), requirements: v.array(publicRequirementValidator), declaration: v.object({ version: v.number(), title: v.string(), body: v.string(), purpose: v.string() }) }),
+  returns: v.object({ legalNamePolicyVersion: v.number(), sections: v.array(publicSectionValidator), fields: v.array(publicFieldValidator), requirements: v.array(publicRequirementValidator), declaration: v.object({ version: v.number(), title: v.string(), body: v.string(), purpose: v.string() }) }),
   handler: async (ctx, args) => {
     const { application } = await requireOwnedPublicApplication(ctx, args);
-    const [form, declaration, fieldRows, requirementRows]: [any, any, any[], any[]] = await Promise.all([
+    const [form, declaration, sectionRows, fieldRows, requirementRows]: [any, any, any[], any[], any[]] = await Promise.all([
       ctx.db.get(application.formVersionId), ctx.db.get(application.declarationVersionId),
+      ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(50),
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q: any) => q.eq("formVersionId", application.formVersionId)).take(100),
     ]);
     if (!form || !declaration || form.schoolId !== application.schoolId || declaration.schoolId !== application.schoolId) throw new ConvexError("APPLICATION_INCOMPLETE");
-    return {
-      legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1,
-      fields: fieldRows.filter((field: any) => field.status === "active").map((field: any) => ({ key: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, helpText: field.helpText ?? null, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, validation: field.validationJson, conditionalRule: field.conditionalRuleJson ?? null, order: field.order })),
-      requirements: requirementRows.map((requirement: any) => ({ key: requirement.requirementKey, category: requirement.category, label: requirement.label, requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: requirement.purpose, condition: requirement.conditionJson ?? null, order: requirement.order })),
-      declaration: { version: declaration.version, title: declaration.title, body: declaration.body, purpose: declaration.purpose },
-    };
+    return { legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1, sections: projectSections(sectionRows, fieldRows), fields: fieldRows.filter((field: any) => field.status === "active").map((field: any) => ({ key: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, helpText: field.helpText ?? null, requiredMode: field.requiredMode, dataClass: field.dataClass, purpose: field.purpose ?? null, validation: field.validationJson, conditionalRule: field.conditionalRuleJson ?? null, order: field.order })), requirements: requirementRows.map((requirement: any) => ({ key: requirement.requirementKey, category: requirement.category, label: requirement.label, requiredMode: requirement.requiredMode, acceptedMimeTypes: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles, sensitivity: requirement.sensitivity, purpose: requirement.purpose, condition: requirement.conditionJson ?? null, order: requirement.order })), declaration: { version: declaration.version, title: declaration.title, body: declaration.body, purpose: declaration.purpose } };
   },
 });
 

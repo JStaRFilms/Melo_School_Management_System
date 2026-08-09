@@ -51,6 +51,7 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
       targetStatus: "draft",
       configuration: expect.objectContaining({
         programme: expect.objectContaining({ slug: "primary-intake" }),
+        sections: [],
         fields: [],
         requirements: expect.arrayContaining([expect.objectContaining({ requirementKey: "birth_cert" }), expect.objectContaining({ requirementKey: "passport" }), expect.objectContaining({ requirementKey: "transcripts" })]),
       }),

@@ -50,6 +50,7 @@ type Catalogue = {
 };
 
 type FormConfiguration = {
+  sections: Array<{ id: string | null; key: string; label: string; order: number }>;
   fields: Array<{ id: string; key: string; sectionKey: string; label: string; kind: string; requiredMode: string; dataClass: DataClass; purpose: string | null; retentionPolicyKey: string | null; audience: string | null; approvalEvidenceId: string | null; validationJson: string; order: number }>;
   requirements: Array<{ key: string }>;
 };
@@ -317,47 +318,21 @@ export function AdmissionsFormBuilder({
     // 3. Filter custom fields only (those not belonging to default keys)
     const customFields = sortedFields.filter((field) => !defaultTemplates.some((template) => template.key === field.key));
 
-    let currentSectionKey = "";
-    customFields.forEach((field, idx) => {
-      const sKey = field.sectionKey || "child_custom";
-      if (sKey !== currentSectionKey) {
-        resolvedCards.push({
-          id: `card-sec-${idx}-${Date.now()}`,
-          type: "section",
-          label: sKey.replace(/_+/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          key: sKey,
-        });
-        currentSectionKey = sKey;
-      }
-
-      // Dynamic custom question card
-      let choicesList: string[] = [];
-      try {
-        if (field.validationJson) {
-          const parsedVal = JSON.parse(field.validationJson);
-          if (Array.isArray(parsedVal?.choices)) {
-            choicesList = parsedVal.choices;
+    for (const section of [...(formConfig.sections ?? [])].sort((left, right) => left.order - right.order)) {
+      resolvedCards.push({ id: `card-sec-${section.key}-${Date.now()}`, type: "section", label: section.label, key: section.key });
+      for (const [idx, field] of customFields.filter((item) => item.sectionKey === section.key).entries()) {
+        let choicesList: string[] = [];
+        try {
+          if (field.validationJson) {
+            const parsedVal = JSON.parse(field.validationJson);
+            if (Array.isArray(parsedVal?.choices)) choicesList = parsedVal.choices;
           }
+        } catch (err) {
+          console.error("Error parsing validationJson for field", field.key, err);
         }
-      } catch (err) {
-        console.error("Error parsing validationJson for field", field.key, err);
+        resolvedCards.push({ id: `card-q-${section.key}-${idx}-${Date.now()}`, type: "question", label: field.label, key: field.key, kind: field.kind, required: field.requiredMode === "required", dataClass: field.dataClass || "personal", purpose: field.purpose || "", retentionPolicyKey: field.retentionPolicyKey || "", audience: field.audience || "", approvalEvidenceId: field.approvalEvidenceId || "", choices: choicesList });
       }
-
-      resolvedCards.push({
-        id: `card-q-${idx}-${Date.now()}`,
-        type: "question",
-        label: field.label,
-        key: field.key,
-        kind: field.kind,
-        required: field.requiredMode === "required",
-        dataClass: field.dataClass || "personal",
-        purpose: field.purpose || "",
-        retentionPolicyKey: field.retentionPolicyKey || "",
-        audience: field.audience || "",
-        approvalEvidenceId: field.approvalEvidenceId || "",
-        choices: choicesList
-      });
-    });
+    }
 
     // Requirements documents mapping
     const reqs = formConfig.requirements;
@@ -691,11 +666,12 @@ export function AdmissionsFormBuilder({
     if (reqMedical && !findActiveEvidence("privacy", "admissions_document_requirement", "medical_records")) { appToast.error("Active privacy approval evidence is required before adding medical records."); return; }
     const invalidSensitiveField = cards.find((card) => card.type === "question" && !card.isDefault && (card.dataClass === "highly_sensitive" || card.dataClass === "financial_security") && !evidence?.some((item) => item.id === card.approvalEvidenceId && item.active && item.approvalClass === "privacy" && item.subjectType === "admissions_field" && item.subjectKey === card.key));
     if (invalidSensitiveField) { appToast.error(`Select matching active privacy evidence for ${invalidSensitiveField.label || invalidSensitiveField.key}.`); return; }
-    let sectionKey = "applicant";
+    let sectionKey = "";
+    const sections = cards.filter((card) => card.type === "section" && !card.isDefault).map((card, order) => ({ sectionKey: card.key, label: card.label || "Untitled section", order }));
     const fields = cards.flatMap((card, order) => { if (card.isDefault) return []; if (card.type === "section") { sectionKey = card.key; return []; } return [{ fieldKey: card.key, sectionKey, kind: card.kind || "text", label: card.label || "Untitled Field", requiredMode: card.required ? "required" as const : "optional" as const, dataClass: card.dataClass || "personal", purpose: card.purpose || undefined, retentionPolicyKey: card.retentionPolicyKey || undefined, audience: card.audience || undefined, approvalEvidenceId: card.approvalEvidenceId || undefined, validationJson: card.kind === "select" && card.choices?.length ? JSON.stringify({ choices: card.choices }) : "{}", order }]; });
     const requirements = [{ requirementKey: "birth_cert", category: "identity", label: "Birth Certificate", requiredMode: "required" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Age and identity confirmation", order: 0 }, ...(reqPassport ? [{ requirementKey: "passport", category: "passport", label: "Passport Photograph (Clear headshot)", requiredMode: "required" as const, acceptedMimeTypes: ["image/jpeg", "image/png"], maxBytes: 2 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential" as DataClass, purpose: "Student profile photograph setup", order: 1 }] : []), ...(reqMedical ? [{ requirementKey: "medical_records", category: "medical", label: "Recent Medical Reports (within past 6 months)", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "highly_sensitive" as DataClass, purpose: "Health planning support", retentionPolicyKey: "duration_of_enrollment", audience: "school_medical_officers_and_management", approvalEvidenceId: findActiveEvidence("privacy", "admissions_document_requirement", "medical_records"), order: 2 }] : []), ...(reqTranscripts ? [{ requirementKey: "transcripts", category: "academic", label: "Previous School Transcripts", requiredMode: "optional" as const, acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 2, sensitivity: "child_confidential" as DataClass, purpose: "Academic history verification", order: 3 }] : [])];
-    const createConfiguration = { programme: { slug: formSlug, name: formName, description: formDescription || undefined }, intake: { slug: formSlug, name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes }, product: { slug: formSlug, name: "Intake registration fee slot" }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements };
-    const replaceConfiguration = { intake: { name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes, description: formDescription || undefined }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, fields, requirements, ...(intakeId && (existingPrice || requestedAmount !== 0 || feeDisclosure.trim()) ? { price: { amountMinor: requestedAmount, currency: feeCurrency, refundPolicyKey: feeRefundPolicy, feeDisclosure, ...(priceApprovalEvidenceId ? { approvalEvidenceId: priceApprovalEvidenceId } : {}) } } : {}) };
+    const createConfiguration = { programme: { slug: formSlug, name: formName, description: formDescription || undefined }, intake: { slug: formSlug, name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes }, product: { slug: formSlug, name: "Intake registration fee slot" }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, sections, fields, requirements };
+    const replaceConfiguration = { intake: { name: formName, cycleLabel: academicCategory, opensAt: opens, closesAt: closes, description: formDescription || undefined }, declaration: { title: declarationTitle, body: declarationBody, purpose: "service" }, sections, fields, requirements, ...(intakeId && (existingPrice || requestedAmount !== 0 || feeDisclosure.trim()) ? { price: { amountMinor: requestedAmount, currency: feeCurrency, refundPolicyKey: feeRefundPolicy, feeDisclosure, ...(priceApprovalEvidenceId ? { approvalEvidenceId: priceApprovalEvidenceId } : {}) } } : {}) };
     const saveOperationKey = operationKeyRef.current ?? newOperationKey();
     const command = intakeId ? "replace" as const : "create" as const;
     const payload = intakeId ? { schoolId, intakeId, operationKey: saveOperationKey, targetStatus: effectiveTargetStatus, ...(isRecoverableToDraft ? { recoverLegacyToDraft: true } : {}), configuration: replaceConfiguration } : { schoolId, operationKey: saveOperationKey, targetStatus: effectiveTargetStatus, configuration: createConfiguration };

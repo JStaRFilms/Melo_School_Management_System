@@ -404,6 +404,13 @@ The backend correctly rejected the unapproved financial change and wrote no pric
 - [ ] Force/reuse a stale Development key; confirm no redirect/charge occurs and the UI explains that explicit fresh checkout is required.
 - [ ] Complete a paid Analyze continuation; confirm only its scoped browser key clears after its exact application opens.
 
+## OBS-007 — Published custom section labels were not preserved
+
+- Severity: P1
+- Resolution: Form schema v2 adds immutable ordered `admissionsFormSections` rows. Atomic campaign commands validate and persist authored custom section keys, labels, and order with fields and requirements; replay digests include supplied section metadata. Legacy forms derive a deterministic titleized section only from their first non-system field key.
+- Evidence: Admin reloads persisted cards; application-bound and public projections return the exact form’s safe sections; Apply renders authored custom sections between guardian contact and documents. New submission provenance includes resolved section metadata without rewriting prior snapshots.
+- Browser retest: publish Analyze vNext with the four questions under `child_custom`; confirm **Getting to know your child** appears after guardian contact, in authored order, with all four labels. Confirm an existing Development application remains bound to its older form.
+
 ## Test summary
 
 - Passed scenarios:

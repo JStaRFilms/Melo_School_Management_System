@@ -46,7 +46,7 @@ describe("B1 public admissions bootstrap", () => {
     const t = convexTest(schema, modules); const ids = await publicFixture(t);
     await t.run((ctx) => ctx.db.patch(ids.intake, { status: "closed", updatedAt: Date.now() }));
     await expect(t.query((api as any).functions.admissions.public.getEntry, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toMatchObject({ availability: "closed", offering: null });
-    await expect(t.query((api as any).functions.admissions.public.getPublishedConfiguration, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toEqual({ availability: "closed", legalNamePolicyVersion: 1, fields: [], requirements: [], declaration: null });
+    await expect(t.query((api as any).functions.admissions.public.getPublishedConfiguration, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toEqual({ availability: "closed", legalNamePolicyVersion: 1, sections: [], fields: [], requirements: [], declaration: null });
     await t.run(async (ctx) => { await ctx.db.patch(ids.intake, { status: "open", updatedAt: Date.now() }); await ctx.db.patch(ids.product, { status: "paused", updatedAt: Date.now() }); });
     await expect(t.query((api as any).functions.admissions.public.getEntry, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toMatchObject({ availability: "unavailable", offering: null });
   });
@@ -59,6 +59,22 @@ describe("B1 public admissions bootstrap", () => {
     expect(config.requirements.map((requirement: any) => requirement.key)).toEqual(["photo"]);
     expect(config.declaration).toMatchObject({ title: "Declaration", body: "Published declaration" });
     expect(JSON.stringify(config)).not.toMatch(/_id|formVersionId|requirementId|storageId|Private draft|Retired/);
+  });
+
+  test("projects authored custom sections in order for an exact application form and keeps legacy fallback deterministic", async () => {
+    const t = convexTest(schema, modules); const ids = await publicFixture(t);
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("admissionsFormSections", { schoolId: ids.schoolA, formVersionId: ids.form, sectionKey: "child_custom", label: "Getting to know your child", order: 3, createdAt: now, updatedAt: now });
+      for (const [order, [fieldKey, label]] of [[3, ["learning_style", "How does your child learn best?"]], [4, ["favourite_subject", "What is your child’s favourite subject?" ]], [5, ["support_interest", "What support interests your child?" ]], [6, ["family_goal", "What is your family’s goal?"]]] as const) await ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: ids.form, fieldKey, sectionKey: "child_custom", kind: "text", label, requiredMode: "optional", dataClass: "personal", validationJson: "{}", order, status: "active", createdAt: now, updatedAt: now });
+    });
+    const applicationConfig = await t.withIdentity(owner).query((api as any).functions.admissions.public.getApplicationConfiguration, { schoolSlug: "school-a", publicReference: "app_public_reference" });
+    expect(applicationConfig.sections).toEqual([{ key: "child_custom", label: "Getting to know your child", order: 3 }]);
+    expect(applicationConfig.fields.filter((field: any) => field.sectionKey === "child_custom").map((field: any) => field.label)).toEqual(["How does your child learn best?", "What is your child’s favourite subject?", "What support interests your child?", "What is your family’s goal?"]);
+    const legacy = await t.run(async (ctx) => { const form = await ctx.db.insert("admissionsFormVersions", { schoolId: ids.schoolA, programmeId: ids.programme, intakeId: ids.intake, version: 3, schemaVersion: "1", status: "draft", createdAt: Date.now(), updatedAt: Date.now() }); await ctx.db.insert("admissionsFormFields", { schoolId: ids.schoolA, formVersionId: form, fieldKey: "legacy_question", sectionKey: "family_background", kind: "text", label: "Legacy question", requiredMode: "optional", dataClass: "personal", validationJson: "{}", order: 0, status: "active", createdAt: Date.now(), updatedAt: Date.now() }); return form; });
+    const legacyConfig = await t.run(async (ctx) => { const form = await ctx.db.get(legacy); const fields = await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", legacy)).take(10); return { form, fields }; });
+    expect(legacyConfig.fields[0].sectionKey).toBe("family_background");
+    expect(applicationConfig.fields.map((field: any) => field.key)).toContain("child_name");
   });
 
   test("creates public payment attempts with the school-configured merchant mode", async () => {

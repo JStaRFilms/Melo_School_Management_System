@@ -36,6 +36,7 @@ describe("B1 admissions domain", () => {
 
   test("one entitlement produces at most one application and snapshot remains immutable", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
+    await t.run((ctx) => ctx.db.insert("admissionsFormSections", { schoolId: ids.schoolA, formVersionId: ids.form, sectionKey: "child_custom", label: "Child questions", order: 0, createdAt: Date.now(), updatedAt: Date.now() }));
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
     const create = (api as any).functions.admissions.applications.createOrResume;
     const first = await t.withIdentity(guardianIdentity).mutation(create, { entitlementId });
@@ -43,7 +44,7 @@ describe("B1 admissions domain", () => {
     const version = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: first.applicationId, expectedVersion: 1, firstName: "Child", lastName: "One", dateOfBirth: 1 });
     await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: first.applicationId, expectedVersion: version, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
     await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: first.applicationId, expectedVersion: version + 1, firstName: "Changed", lastName: "One", dateOfBirth: 1 })).rejects.toThrow("APPLICATION_LOCKED");
-    const snapshots = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", first.applicationId)).take(2)); expect(snapshots).toHaveLength(1);
+    const snapshots = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", first.applicationId)).take(2)); expect(snapshots).toHaveLength(1); const provenance = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", snapshots[0]._id).eq("itemKey", "provenance:form")).unique()); expect(JSON.parse(provenance!.serializedValue)).toMatchObject({ sections: [{ key: "child_custom", label: "Child questions", order: 0 }] });
   });
 
   test("requires structured legal names only for applications bound to the new policy", async () => {

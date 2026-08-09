@@ -179,9 +179,10 @@ export const submit = mutation({
     const activeHold = await ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique();
     if (!intake || intake.schoolId !== application.schoolId || (application.currentRevision === 0 && (intake.status !== "open" || intake.opensAt > Date.now() || intake.closesAt < Date.now()))) throw new ConvexError("INTAKE_UNAVAILABLE");
     if (activeHold) throw new ConvexError("FINANCE_HOLD");
-    const [{ form, declaration }, profile, fields, requirements, answers, documents, contacts, previousSchools] = await Promise.all([
+    const [{ form, declaration }, profile, sections, fields, requirements, answers, documents, contacts, previousSchools] = await Promise.all([
       resolvedForm(ctx, application),
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(),
+      ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(50),
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(100),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(200),
@@ -214,7 +215,7 @@ export const submit = mutation({
     const profileSnapshot = { firstName: profile.firstName, lastName: profile.lastName, middleName: profile.middleName ?? null, dateOfBirth: profile.dateOfBirth, gender: profile.gender ?? null, preferredName: profile.preferredName ?? null, nationality: profile.nationality ?? null, countryOfBirth: profile.countryOfBirth ?? null, address: profile.address ?? null };
     const items = [
       { itemKey: "profile", kind: "profile", valueType: "json", serializedValue: JSON.stringify(profileSnapshot), dataClass: "child_confidential", sourceRowId: String(profile._id), sourceVersion: application.draftVersion },
-      { itemKey: "provenance:form", kind: "provenance", valueType: "json", serializedValue: JSON.stringify({ formVersionId: String(application.formVersionId), schemaVersion: form.schemaVersion, legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1, intakeId: String(application.intakeId), priceId: String(application.priceId) }), dataClass: "internal", sourceVersion: application.draftVersion },
+      { itemKey: "provenance:form", kind: "provenance", valueType: "json", serializedValue: JSON.stringify({ formVersionId: String(application.formVersionId), schemaVersion: form.schemaVersion, legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1, intakeId: String(application.intakeId), priceId: String(application.priceId), sections: sections.map((section) => ({ key: section.sectionKey, label: section.label, order: section.order })) }), dataClass: "internal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:declaration", kind: "declaration", valueType: "json", serializedValue: JSON.stringify({ declarationVersion: declaration.version, bodyDigest: declaration.bodyDigest, signerName: args.signerName.trim(), signerRelationship: args.signerRelationship.trim(), acceptedAt: submittedAt }), dataClass: "personal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:requirements", kind: "requirements", valueType: "json", serializedValue: JSON.stringify(requirements.map((requirement) => ({ key: requirement.requirementKey, requiredMode: requirement.requiredMode, condition: requirement.conditionJson ?? null, mime: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles }))), dataClass: "internal", sourceVersion: application.draftVersion },
       ...answers.filter((answer) => {

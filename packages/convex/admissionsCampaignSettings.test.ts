@@ -26,6 +26,7 @@ function createConfiguration(now: number) {
     intake: { slug: "primary-2027", name: "Primary 2027", cycleLabel: "2027", opensAt: now + 1_000, closesAt: now + 10_000 },
     product: { slug: "primary-2027", name: "Application slot" },
     declaration: { title: "Guardian declaration", body: "I confirm this application is accurate.", purpose: "service" },
+    sections: [{ sectionKey: "support", label: "Learning support", order: 0 }],
     fields: [{ fieldKey: "has-support-needs", sectionKey: "support", kind: "boolean" as const, label: "Support needs", requiredMode: "optional" as const, dataClass: "personal" as const, validationJson: "{}", order: 0 }],
     requirements: [{ requirementKey: "birth-cert", category: "identity", label: "Birth certificate", requiredMode: "required" as const, acceptedMimeTypes: ["application/pdf"], maxBytes: 1_000_000, maxFiles: 1, sensitivity: "child_confidential" as const, purpose: "Identity confirmation", order: 0 }],
   };
@@ -118,6 +119,35 @@ describe("atomic admissions campaign commands", () => {
     expect(await campaignCounts(t, schoolId)).toEqual({ programmes: 1, intakes: 1, operations: 1 });
   });
 
+  test("writes immutable sections atomically and rejects invalid section graphs", async () => {
+    const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const configuration = createConfiguration(Date.now());
+    configuration.sections = [{ sectionKey: "child_custom", label: "Child questions", order: 2 }, { sectionKey: "family_context", label: "Family context", order: 4 }];
+    configuration.fields = [
+      { ...configuration.fields[0], fieldKey: "preferred_activity", sectionKey: "child_custom", label: "Preferred activity", order: 0 },
+      { ...configuration.fields[0], fieldKey: "family_language", sectionKey: "family_context", label: "Family language", order: 1 },
+    ];
+    const created = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: "sections", targetStatus: "draft", configuration });
+    const sections = await t.run((ctx) => ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", created.formVersionId)).take(10));
+    expect(sections.map((section) => ({ key: section.sectionKey, label: section.label, order: section.order }))).toEqual([{ key: "child_custom", label: "Child questions", order: 2 }, { key: "family_context", label: "Family context", order: 4 }]);
+    for (const [operationKey, sections] of [["duplicate-section", [{ sectionKey: "custom", label: "One", order: 0 }, { sectionKey: "CUSTOM", label: "Two", order: 1 }]], ["reserved-section", [{ sectionKey: "child", label: "Child", order: 0 }]], ["missing-section", [{ sectionKey: "other", label: "Other", order: 0 }]]] as const) {
+      const invalid = createConfiguration(Date.now()); invalid.sections = sections as typeof invalid.sections;
+      await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey, targetStatus: "draft", configuration: invalid })).rejects.toThrow(/Invalid form section|Invalid field/);
+    }
+    expect(await t.run(async (ctx) => ctx.db.query("admissionsFormSections").take(10))).toHaveLength(2);
+  });
+
+  test("derives stable section metadata for a retained pre-upgrade command", async () => {
+    const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const configuration = createConfiguration(Date.now());
+    const { sections: _sections, ...legacyConfiguration } = configuration;
+    const created = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: "legacy-sections", targetStatus: "draft", configuration: legacyConfiguration });
+    const replay = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: "legacy-sections", targetStatus: "draft", configuration: legacyConfiguration });
+    expect(replay).toMatchObject({ ...created, replayed: true });
+    expect(await t.run((ctx) => ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", created.formVersionId)).take(10))).toEqual([expect.objectContaining({ sectionKey: "support", label: "Support" })]);
+    await t.run(async (ctx) => { for (const section of await ctx.db.query("admissionsFormSections").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", created.formVersionId)).take(10)) await ctx.db.delete(section._id); });
+    const legacyProjection = await t.withIdentity(editor).query(api.functions.admissions.settings.getFormConfiguration, { formVersionId: created.formVersionId });
+    expect(legacyProjection.sections).toEqual([expect.objectContaining({ id: null, key: "support", label: "Support", order: 0 })]);
+  });
+
   test("rejects underscore and dot campaign slugs before creating a graph", async () => {
     const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const now = Date.now();
     for (const malformedSlug of ["primary_2027", "primary.2027"]) {
@@ -135,6 +165,7 @@ describe("atomic admissions campaign commands", () => {
       await ctx.db.insert("schoolApprovalEvidence", { schoolId, approvalClass: "privacy", subjectType: "admissions_document_requirement", subjectKey: "medical_records", evidenceReference: "medical-records", approvedByUserId: userId, approvedAt: now, createdAt: now });
     });
     const configuration = createConfiguration(now);
+    configuration.sections = [{ sectionKey: "application_details", label: "Application details", order: 0 }];
     configuration.fields = [
       { fieldKey: "support_status", sectionKey: "application_details", kind: "boolean", label: "Support needs", requiredMode: "optional", dataClass: "personal", validationJson: "{}", order: 0 },
       { fieldKey: "custom_generated_abc123", sectionKey: "application_details", kind: "textarea", label: "Support details", requiredMode: "conditional", dataClass: "personal", validationJson: "{}", conditionalRuleJson: JSON.stringify({ exists: true, fieldKey: "SUPPORT_STATUS" }), order: 1 },
@@ -147,6 +178,7 @@ describe("atomic admissions campaign commands", () => {
     const saved = await t.withIdentity(editor).query(api.functions.admissions.settings.getFormConfiguration, { formVersionId: created.formVersionId });
     expect(saved.fields.map((field) => field.key)).toEqual(["support_status", "custom_generated_abc123"]);
     expect(saved.fields.map((field) => field.sectionKey)).toEqual(["application_details", "application_details"]);
+    expect(saved.sections).toEqual([expect.objectContaining({ key: "application_details", label: "Application details", order: 0 })]);
     expect(saved.requirements.map((requirement) => requirement.key)).toEqual(["birth_cert", "medical_records"]);
     expect(saved.fields[1].conditionalRuleJson).toBe('{"exists":true,"fieldKey":"support_status"}');
     expect(saved.requirements[1].conditionJson).toBe('{"equals":true,"fieldKey":"support_status"}');
