@@ -43,6 +43,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         label: "Report Cards",
         matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
       },
+      { href: "/admissions", label: "Admissions", matchers: ["/admissions"] },
       {
         href: "/academic/knowledge/library",
         label: "Knowledge Library",

@@ -62,7 +62,15 @@ export const listQueue = query({
   },
 });
 
-const queuePageItemValidator = v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), updatedAt: v.number(), intakeId: v.id("admissionsIntakes") });
+const queuePageItemValidator = v.object({ 
+  applicationId: v.id("admissionsApplications"), 
+  publicId: v.string(), 
+  state: v.string(), 
+  updatedAt: v.number(), 
+  intakeId: v.id("admissionsIntakes"),
+  firstName: v.optional(v.string()),
+  lastName: v.optional(v.string())
+});
 
 export const listQueuePage = query({
   args: { schoolId: v.id("schools"), intakeId: v.id("admissionsIntakes"), state: v.optional(v.string()), paginationOpts: paginationOptsValidator },
@@ -74,8 +82,43 @@ export const listQueuePage = query({
     const source = args.state
       ? ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id).eq("state", args.state as any)).order("desc")
       : ctx.db.query("admissionsApplications").withIndex("by_school_and_intake_and_state", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).order("desc");
+    
     const result = await source.paginate(args.paginationOpts);
-    return { ...result, page: result.page.map((application) => ({ applicationId: application._id, publicId: application.publicId, state: application.state, updatedAt: application.updatedAt, intakeId: application.intakeId })) };
+    
+    const page = await Promise.all(
+      result.page.map(async (application) => {
+        let firstName = "";
+        let lastName = "";
+        if (application.latestSnapshotId) {
+          const profileItem = await ctx.db
+            .query("admissionsSubmissionSnapshotItems")
+            .withIndex("by_snapshot_and_item_key", (q: any) =>
+              q.eq("snapshotId", application.latestSnapshotId).eq("itemKey", "profile")
+            )
+            .unique();
+          if (profileItem) {
+            try {
+              const profile = JSON.parse(profileItem.serializedValue);
+              if (profile) {
+                firstName = profile.firstName || "";
+                lastName = profile.lastName || "";
+              }
+            } catch {}
+          }
+        }
+        return {
+          applicationId: application._id,
+          publicId: application.publicId,
+          state: application.state,
+          updatedAt: application.updatedAt,
+          intakeId: application.intakeId,
+          firstName,
+          lastName,
+        };
+      })
+    );
+
+    return { ...result, page };
   },
 });
 
