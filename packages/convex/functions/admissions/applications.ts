@@ -83,7 +83,7 @@ export const saveCoreSection = mutation({
     const firstName = args.firstName.trim();
     const lastName = args.lastName.trim();
     if (existing && existing.firstName === firstName && existing.lastName === lastName && existing.dateOfBirth === args.dateOfBirth && existing.middleName === resolvedOptional.middleName && existing.preferredName === resolvedOptional.preferredName && existing.gender === resolvedOptional.gender && existing.nationality === resolvedOptional.nationality && existing.countryOfBirth === resolvedOptional.countryOfBirth && existing.address === resolvedOptional.address && application.requestedEntryLabel === resolvedOptional.requestedEntryLabel) return application.draftVersion;
-    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName, lastName, dateOfBirth: args.dateOfBirth, normalizedName: `${firstName} ${lastName}`.toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(resolvedOptional.middleName ? { middleName: resolvedOptional.middleName } : {}), ...(resolvedOptional.preferredName ? { preferredName: resolvedOptional.preferredName } : {}), ...(resolvedOptional.gender ? { gender: resolvedOptional.gender } : {}), ...(resolvedOptional.nationality ? { nationality: resolvedOptional.nationality } : {}), ...(resolvedOptional.countryOfBirth ? { countryOfBirth: resolvedOptional.countryOfBirth } : {}), ...(resolvedOptional.address ? { address: resolvedOptional.address } : {}) };
+    const profile = { schoolId: application.schoolId, applicationId: application._id, firstName, lastName, dateOfBirth: args.dateOfBirth, normalizedName: [firstName, resolvedOptional.middleName, lastName].filter(Boolean).join(" ").toLowerCase(), createdAt: existing?.createdAt ?? now, updatedAt: now, ...(resolvedOptional.middleName ? { middleName: resolvedOptional.middleName } : {}), ...(resolvedOptional.preferredName ? { preferredName: resolvedOptional.preferredName } : {}), ...(resolvedOptional.gender ? { gender: resolvedOptional.gender } : {}), ...(resolvedOptional.nationality ? { nationality: resolvedOptional.nationality } : {}), ...(resolvedOptional.countryOfBirth ? { countryOfBirth: resolvedOptional.countryOfBirth } : {}), ...(resolvedOptional.address ? { address: resolvedOptional.address } : {}) };
     if (existing) await ctx.db.replace(existing._id, profile); else await ctx.db.insert("admissionsApplicantProfiles", profile);
     const nextVersion = application.draftVersion + 1;
     await ctx.db.patch(application._id, { draftVersion: nextVersion, requestedEntryLabel: resolvedOptional.requestedEntryLabel, updatedAt: now });
@@ -122,24 +122,28 @@ export const saveAnswer = mutation({
 });
 
 export const saveContact = mutation({
-  args: { applicationId: v.id("admissionsApplications"), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
+  args: { applicationId: v.id("admissionsApplications"), expectedVersion: v.number(), contactKey: v.string(), kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")), fullName: v.string(), firstName: v.optional(v.string()), lastName: v.optional(v.string()), relationship: v.string(), email: v.optional(v.string()), phone: v.optional(v.string()), address: v.optional(v.string()), isApplicantGuardian: v.boolean(), isPrimary: v.boolean() },
   returns: v.number(),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
     assertEditable(application.state);
     if (application.draftVersion !== args.expectedVersion) throw new ConvexError("DRAFT_VERSION_CONFLICT");
     const key = args.contactKey.trim().toLowerCase();
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || !args.fullName.trim() || !args.relationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
+    const form = await ctx.db.get("admissionsFormVersions", application.formVersionId);
+    if (!form || form.schoolId !== application.schoolId) throw new ConvexError("APPLICATION_INCOMPLETE");
+    const firstName = args.firstName?.trim() || undefined;
+    const lastName = args.lastName?.trim() || undefined;
+    const fullName = form.legalNamePolicyVersion === 2 ? `${firstName ?? ""} ${lastName ?? ""}`.trim() : args.fullName.trim();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || !fullName || !args.relationship.trim() || (form.legalNamePolicyVersion === 2 && (!firstName || !lastName))) throw new ConvexError("APPLICATION_INCOMPLETE");
     if (application.state === "changes_requested" && !(application.changeRequestCoreKeys ?? []).includes(`contact:${key}`)) throw new ConvexError("CORE_FIELD_LOCKED");
     const existing = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id).eq("contactKey", key)).unique();
-    const fullName = args.fullName.trim();
     const relationship = args.relationship.trim();
     const email = args.email?.trim().toLowerCase() || undefined;
     const phone = args.phone?.trim() || undefined;
     const address = args.address?.trim() || undefined;
-    if (existing && existing.kind === args.kind && existing.fullName === fullName && existing.relationship === relationship && existing.email === email && existing.phone === phone && existing.address === address && existing.isApplicantGuardian === args.isApplicantGuardian && existing.isPrimary === args.isPrimary) return application.draftVersion;
+    if (existing && existing.kind === args.kind && existing.fullName === fullName && existing.firstName === firstName && existing.lastName === lastName && existing.relationship === relationship && existing.email === email && existing.phone === phone && existing.address === address && existing.isApplicantGuardian === args.isApplicantGuardian && existing.isPrimary === args.isPrimary) return application.draftVersion;
     const now = Date.now();
-    const row = { schoolId: application.schoolId, applicationId: application._id, contactKey: key, kind: args.kind, fullName, relationship, ...(email ? { email } : {}), ...(phone ? { phone } : {}), ...(address ? { address } : {}), isApplicantGuardian: args.isApplicantGuardian, isPrimary: args.isPrimary, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    const row = { schoolId: application.schoolId, applicationId: application._id, contactKey: key, kind: args.kind, fullName, ...(firstName ? { firstName } : {}), ...(lastName ? { lastName } : {}), relationship, ...(email ? { email } : {}), ...(phone ? { phone } : {}), ...(address ? { address } : {}), isApplicantGuardian: args.isApplicantGuardian, isPrimary: args.isPrimary, createdAt: existing?.createdAt ?? now, updatedAt: now };
     if (existing) await ctx.db.replace(existing._id, row); else await ctx.db.insert("admissionsApplicationContacts", row);
     const nextVersion = application.draftVersion + 1;
     await ctx.db.patch(application._id, { draftVersion: nextVersion, updatedAt: now });
@@ -175,7 +179,7 @@ export const submit = mutation({
     const activeHold = await ctx.db.query("admissionsFinanceHolds").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "active")).unique();
     if (!intake || intake.schoolId !== application.schoolId || (application.currentRevision === 0 && (intake.status !== "open" || intake.opensAt > Date.now() || intake.closesAt < Date.now()))) throw new ConvexError("INTAKE_UNAVAILABLE");
     if (activeHold) throw new ConvexError("FINANCE_HOLD");
-    const [{ declaration }, profile, fields, requirements, answers, documents, contacts, previousSchools] = await Promise.all([
+    const [{ form, declaration }, profile, fields, requirements, answers, documents, contacts, previousSchools] = await Promise.all([
       resolvedForm(ctx, application),
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(),
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(200),
@@ -185,7 +189,8 @@ export const submit = mutation({
       ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id)).take(100),
       ctx.db.query("admissionsPreviousSchools").withIndex("by_school_and_application", (q) => q.eq("schoolId", application.schoolId).eq("applicationId", application._id)).take(100),
     ]);
-    if (!profile || !profile.firstName.trim() || !profile.lastName.trim() || !Number.isFinite(profile.dateOfBirth) || profile.dateOfBirth <= 0 || !args.signerName.trim() || !args.signerRelationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
+    if (!profile || !profile.firstName.trim() || !profile.lastName.trim() || (form.legalNamePolicyVersion === 2 && !profile.middleName?.trim()) || !Number.isFinite(profile.dateOfBirth) || profile.dateOfBirth <= 0 || !args.signerName.trim() || !args.signerRelationship.trim()) throw new ConvexError("APPLICATION_INCOMPLETE");
+    if (form.legalNamePolicyVersion === 2 && !contacts.some((contact) => contact.isPrimary && contact.firstName?.trim() && contact.lastName?.trim())) throw new ConvexError("APPLICATION_INCOMPLETE");
     if (!args.declarationAccepted || args.declarationVersion !== declaration.version) throw new ConvexError("DECLARATION_ACCEPTANCE_REQUIRED");
     const answerMap = new Map<string, unknown>();
     for (const answer of answers) {
@@ -209,14 +214,14 @@ export const submit = mutation({
     const profileSnapshot = { firstName: profile.firstName, lastName: profile.lastName, middleName: profile.middleName ?? null, dateOfBirth: profile.dateOfBirth, gender: profile.gender ?? null, preferredName: profile.preferredName ?? null, nationality: profile.nationality ?? null, countryOfBirth: profile.countryOfBirth ?? null, address: profile.address ?? null };
     const items = [
       { itemKey: "profile", kind: "profile", valueType: "json", serializedValue: JSON.stringify(profileSnapshot), dataClass: "child_confidential", sourceRowId: String(profile._id), sourceVersion: application.draftVersion },
-      { itemKey: "provenance:form", kind: "provenance", valueType: "json", serializedValue: JSON.stringify({ formVersionId: String(application.formVersionId), schemaVersion: (await resolvedForm(ctx, application)).form.schemaVersion, intakeId: String(application.intakeId), priceId: String(application.priceId) }), dataClass: "internal", sourceVersion: application.draftVersion },
+      { itemKey: "provenance:form", kind: "provenance", valueType: "json", serializedValue: JSON.stringify({ formVersionId: String(application.formVersionId), schemaVersion: form.schemaVersion, legalNamePolicyVersion: form.legalNamePolicyVersion ?? 1, intakeId: String(application.intakeId), priceId: String(application.priceId) }), dataClass: "internal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:declaration", kind: "declaration", valueType: "json", serializedValue: JSON.stringify({ declarationVersion: declaration.version, bodyDigest: declaration.bodyDigest, signerName: args.signerName.trim(), signerRelationship: args.signerRelationship.trim(), acceptedAt: submittedAt }), dataClass: "personal", sourceVersion: application.draftVersion },
       { itemKey: "provenance:requirements", kind: "requirements", valueType: "json", serializedValue: JSON.stringify(requirements.map((requirement) => ({ key: requirement.requirementKey, requiredMode: requirement.requiredMode, condition: requirement.conditionJson ?? null, mime: requirement.acceptedMimeTypes, maxBytes: requirement.maxBytes, maxFiles: requirement.maxFiles }))), dataClass: "internal", sourceVersion: application.draftVersion },
       ...answers.filter((answer) => {
         const field = fields.find((candidate) => candidate._id === answer.formFieldId);
         return field && (field.requiredMode !== "conditional" || conditionalRuleMatches(field.conditionalRuleJson, answerMap));
       }).map((answer) => ({ itemKey: `answer:${answer.fieldKey}`, kind: "answer", valueType: answer.valueType, serializedValue: answer.serializedValue, dataClass: answer.dataClass, sourceRowId: String(answer._id), sourceVersion: answer.valueVersion })),
-      ...contacts.map((contact) => ({ itemKey: `contact:${contact.contactKey}`, kind: "contact", valueType: "json", serializedValue: JSON.stringify({ kind: contact.kind, fullName: contact.fullName, relationship: contact.relationship, email: contact.email ?? null, phone: contact.phone ?? null, address: contact.address ?? null, isApplicantGuardian: contact.isApplicantGuardian, isPrimary: contact.isPrimary }), dataClass: "personal", sourceRowId: String(contact._id), sourceVersion: application.draftVersion })),
+      ...contacts.map((contact) => ({ itemKey: `contact:${contact.contactKey}`, kind: "contact", valueType: "json", serializedValue: JSON.stringify({ kind: contact.kind, fullName: contact.fullName, firstName: contact.firstName ?? null, lastName: contact.lastName ?? null, relationship: contact.relationship, email: contact.email ?? null, phone: contact.phone ?? null, address: contact.address ?? null, isApplicantGuardian: contact.isApplicantGuardian, isPrimary: contact.isPrimary }), dataClass: "personal", sourceRowId: String(contact._id), sourceVersion: application.draftVersion })),
       ...previousSchools.map((school) => ({ itemKey: `previous_school:${String(school._id)}`, kind: "previous_school", valueType: "json", serializedValue: JSON.stringify({ name: school.name, startDate: school.startDate ?? null, endDate: school.endDate ?? null, classLabel: school.classLabel ?? null }), dataClass: "personal", sourceRowId: String(school._id), sourceVersion: application.draftVersion })),
       ...documents.filter((document) => document.state === "uploaded" || document.state === "accepted").map((document) => ({ itemKey: `document:${document.documentKey}`, kind: "document", valueType: "manifest", serializedValue: JSON.stringify({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, state: document.state, sha256: document.sha256, mimeType: document.mimeType, byteSize: document.byteSize, version: document.version }), dataClass: document.sensitivity, sourceRowId: String(document._id), sourceVersion: document.version })),
     ].sort((left, right) => left.itemKey.localeCompare(right.itemKey));

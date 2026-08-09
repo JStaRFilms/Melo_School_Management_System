@@ -7,7 +7,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSignInErrorMessage } from "@school/auth";
 import { authClient, functionRef, MeloLoader } from "../lib/client";
 import { 
-  applicationPath, 
+  applicationPath,
+  documentViewPath,
   applicationStatusCopy, 
   correctionStepHasEditableItems, 
   fieldIsVisible, 
@@ -352,7 +353,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const submit = useMutation(functionRef("functions/admissions/public:submitByPublicReference"));
   const createUploadUrl = useMutation(functionRef("functions/admissions/public:createUploadUrlByPublicReference"));
   const bindUpload = useMutation(functionRef("functions/admissions/public:bindUploadByPublicReference"));
-  const accessOwnDocument = useMutation(functionRef("functions/admissions/public:getOwnDocumentAccessByPublicReference"));
+  const removeOwnDocument = useMutation(functionRef("functions/admissions/public:removeOwnDocumentByPublicReference"));
   const [step, setStep] = useState("child");
   const [status, setStatus] = useState("Loading your private application…");
   const [saveState, setSaveState] = useState<DraftSaveState>("idle");
@@ -361,8 +362,8 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const [sectionErrors, setSectionErrors] = useState<Record<string, Record<string, string>>>({});
   const [conflict, setConflict] = useState(false);
   const [hasStaleRecovery, setHasStaleRecovery] = useState(false);
-  const [core, setCore] = useState({ firstName: "", lastName: "", dateOfBirth: "", signerName: "", signerRelationship: "" });
-  const [contact, setContact] = useState({ fullName: "", relationship: "Parent", email: "", phone: "" });
+  const [core, setCore] = useState({ firstName: "", middleName: "", lastName: "", dateOfBirth: "", signerName: "", signerRelationship: "" });
+  const [contact, setContact] = useState({ fullName: "", firstName: "", lastName: "", relationship: "Parent", email: "", phone: "" });
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const coreRef = useRef(core);
   const contactRef = useRef(contact);
@@ -378,7 +379,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const generationRef = useRef(0);
   const recoveryBaseVersionRef = useRef<number | null>(null);
   const staleRecoveryRef = useRef<RecoveryRecord | null>(null);
-  const baselineRef = useRef({ core: { firstName: "", lastName: "", dateOfBirth: "" }, contact: { fullName: "", relationship: "", email: "", phone: "" }, answers: {} as Record<string, string> });
+  const baselineRef = useRef({ core: { firstName: "", middleName: "", lastName: "", dateOfBirth: "" }, contact: { fullName: "", firstName: "", lastName: "", relationship: "", email: "", phone: "" }, answers: {} as Record<string, string> });
   const recoveryStorageKey = recoveryKey(schoolSlug, publicReference);
 
   const sectionKeys = Array.from(new Set<string>((config?.fields ?? []).map((field: Field) => field.sectionKey))).filter(Boolean);
@@ -399,13 +400,13 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
       setSaveState("idle");
     }
   };
-  const setCoreValue = (key: "firstName" | "lastName" | "dateOfBirth" | "signerName" | "signerRelationship", value: string) => {
+  const setCoreValue = (key: "firstName" | "middleName" | "lastName" | "dateOfBirth" | "signerName" | "signerRelationship", value: string) => {
     const next = { ...coreRef.current, [key]: value };
     coreRef.current = next;
     setCore(next);
     if (key !== "signerName" && key !== "signerRelationship") markDirty("core", "child");
   };
-  const setContactValue = (key: "fullName" | "relationship" | "email" | "phone", value: string) => {
+  const setContactValue = (key: "fullName" | "firstName" | "lastName" | "relationship" | "email" | "phone", value: string) => {
     const next = { ...contactRef.current, [key]: value };
     contactRef.current = next;
     setContact(next);
@@ -421,20 +422,20 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
 
   useEffect(() => {
     if (!app) return;
-    const serverCore = { firstName: app.profile?.firstName ?? "", lastName: app.profile?.lastName ?? "", dateOfBirth: app.profile?.dateOfBirth ? new Date(app.profile.dateOfBirth).toISOString().slice(0, 10) : "" };
+    const serverCore = { firstName: app.profile?.firstName ?? "", middleName: app.profile?.middleName ?? "", lastName: app.profile?.lastName ?? "", dateOfBirth: app.profile?.dateOfBirth ? new Date(app.profile.dateOfBirth).toISOString().slice(0, 10) : "" };
     const serverContact = app.contacts?.find((item: any) => item.isPrimary);
     const serverAnswers = Object.fromEntries((app.answers ?? []).map((answer: any) => [answer.fieldKey, answer.serializedValue]));
-    baselineRef.current = { core: serverCore, contact: { fullName: serverContact?.fullName ?? "", relationship: serverContact?.relationship ?? "Parent", email: serverContact?.email ?? "", phone: serverContact?.phone ?? "" }, answers: serverAnswers };
+    baselineRef.current = { core: serverCore, contact: { fullName: serverContact?.fullName ?? "", firstName: serverContact?.firstName ?? "", lastName: serverContact?.lastName ?? "", relationship: serverContact?.relationship ?? "Parent", email: serverContact?.email ?? "", phone: serverContact?.phone ?? "" }, answers: serverAnswers };
     if (!queueRef.current) queueRef.current = new SerializedWriteQueue(app.draftVersion);
     if (!initializedRef.current) {
       initializedRef.current = true;
       const recovered = readRecovery(recoveryStorageKey);
       if (recovered && recovered.baseVersion === app.draftVersion) {
         coreRef.current = { ...coreRef.current, ...recovered.core };
-        contactRef.current = recovered.contact;
+        contactRef.current = { ...baselineRef.current.contact, ...recovered.contact };
         answersRef.current = recovered.answers;
         setCore(current => ({ ...current, ...recovered.core }));
-        setContact(recovered.contact);
+        setContact({ ...baselineRef.current.contact, ...recovered.contact });
         setAnswers(recovered.answers);
         generationRef.current = recovered.generation;
         for (const entry of recovered.dirtyEntries) dirtyRef.current.set(entry.key, { section: entry.section, generation: recovered.generation });
@@ -478,7 +479,7 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
       generation: generationRef.current,
       dirtySections: Array.from(new Set(Array.from(dirtyRef.current.values(), item => item.section))),
       dirtyEntries: Array.from(dirtyRef.current.entries(), ([key, item]) => ({ key, section: item.section })),
-      core: { firstName: coreRef.current.firstName, lastName: coreRef.current.lastName, dateOfBirth: coreRef.current.dateOfBirth },
+      core: { firstName: coreRef.current.firstName, middleName: coreRef.current.middleName, lastName: coreRef.current.lastName, dateOfBirth: coreRef.current.dateOfBirth },
       contact: contactRef.current,
       answers: answersRef.current,
     };
@@ -499,11 +500,15 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     const errors: Record<string, string> = {};
     if (section === "child") {
       if (!coreRef.current.firstName.trim()) errors.first = "Enter the child’s legal first name.";
+      if (config?.legalNamePolicyVersion === 2 && !coreRef.current.middleName.trim()) errors.middle = "Enter the child’s legal middle name.";
       if (!coreRef.current.lastName.trim()) errors.last = "Enter the child’s legal last name.";
       if (!coreRef.current.dateOfBirth || Number.isNaN(new Date(coreRef.current.dateOfBirth).getTime())) errors.dob = "Enter the child’s date of birth.";
     }
     if (section === "contacts") {
-      if (!contactRef.current.fullName.trim()) errors["contact-name"] = "Enter the guardian’s full name.";
+      if (config?.legalNamePolicyVersion === 2) {
+        if (!contactRef.current.firstName.trim()) errors["contact-first"] = "Enter the guardian’s first name.";
+        if (!contactRef.current.lastName.trim()) errors["contact-last"] = "Enter the guardian’s last name.";
+      } else if (!contactRef.current.fullName.trim()) errors["contact-name"] = "Enter the guardian’s full name.";
       if (!contactRef.current.relationship.trim()) errors["contact-relationship"] = "Enter the relationship to the child.";
       if (contactRef.current.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactRef.current.email)) errors["contact-email"] = "Enter a valid email address.";
       if (contactRef.current.phone && !contactRef.current.phone.trim()) errors["contact-phone"] = "Enter a phone number or leave this optional field blank.";
@@ -590,15 +595,15 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
         if (Object.keys(validationErrors).length) return Promise.resolve(false);
         const value = coreRef.current;
         const baseline = baselineRef.current.core;
-        if (value.firstName === baseline.firstName && value.lastName === baseline.lastName && value.dateOfBirth === baseline.dateOfBirth) { clearDirty(key, dirtyRef.current.get(key)?.generation ?? -1); return Promise.resolve(true); }
-        return queueWrite(key, section, expectedVersion => saveCore({ schoolSlug, publicReference, expectedVersion, firstName: value.firstName, lastName: value.lastName, dateOfBirth: new Date(value.dateOfBirth).getTime() }) as Promise<number>, () => { baselineRef.current.core = { firstName: value.firstName, lastName: value.lastName, dateOfBirth: value.dateOfBirth }; });
+        if (value.firstName === baseline.firstName && value.middleName === baseline.middleName && value.lastName === baseline.lastName && value.dateOfBirth === baseline.dateOfBirth) { clearDirty(key, dirtyRef.current.get(key)?.generation ?? -1); return Promise.resolve(true); }
+        return queueWrite(key, section, expectedVersion => saveCore({ schoolSlug, publicReference, expectedVersion, firstName: value.firstName, middleName: value.middleName || undefined, lastName: value.lastName, dateOfBirth: new Date(value.dateOfBirth).getTime() }) as Promise<number>, () => { baselineRef.current.core = { firstName: value.firstName, middleName: value.middleName, lastName: value.lastName, dateOfBirth: value.dateOfBirth }; });
       }
       if (key === "contact") {
         if (Object.keys(validationErrors).length) return Promise.resolve(false);
         const value = contactRef.current;
         const baseline = baselineRef.current.contact;
         if (JSON.stringify(value) === JSON.stringify(baseline)) { clearDirty(key, dirtyRef.current.get(key)?.generation ?? -1); return Promise.resolve(true); }
-        return queueWrite(key, section, expectedVersion => saveContact({ schoolSlug, publicReference, expectedVersion, contactKey: "primary-guardian", kind: "guardian", fullName: value.fullName, relationship: value.relationship, email: value.email || undefined, phone: value.phone || undefined, isApplicantGuardian: true, isPrimary: true }) as Promise<number>, () => { baselineRef.current.contact = value; });
+        return queueWrite(key, section, expectedVersion => saveContact({ schoolSlug, publicReference, expectedVersion, contactKey: "primary-guardian", kind: "guardian", fullName: config?.legalNamePolicyVersion === 2 ? `${value.firstName} ${value.lastName}`.trim() : value.fullName, firstName: value.firstName || undefined, lastName: value.lastName || undefined, relationship: value.relationship, email: value.email || undefined, phone: value.phone || undefined, isApplicantGuardian: true, isPrimary: true }) as Promise<number>, () => { baselineRef.current.contact = value; });
       }
       const fieldKey = key.slice("answer:".length);
       const field = (config?.fields ?? []).find((item: Field) => item.key === fieldKey) as Field | undefined;
@@ -694,10 +699,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     const recovered = staleRecoveryRef.current;
     if (!recovered || !app || !queueRef.current) return;
     coreRef.current = { ...coreRef.current, ...recovered.core };
-    contactRef.current = recovered.contact;
+    contactRef.current = { ...baselineRef.current.contact, ...recovered.contact };
     answersRef.current = recovered.answers;
     setCore(current => ({ ...current, ...recovered.core }));
-    setContact(recovered.contact);
+    setContact({ ...baselineRef.current.contact, ...recovered.contact });
     setAnswers(recovered.answers);
     dirtyRef.current.clear();
     for (const entry of recovered.dirtyEntries) dirtyRef.current.set(entry.key, { section: entry.section, generation: recovered.generation });
@@ -711,11 +716,12 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
   const discardRecovery = () => {
     if (!app || !queueRef.current) return;
     const restored = restoreEditableDraft(baselineRef.current);
+    const restoredContact = { ...restored.contact, firstName: restored.contact.firstName ?? "", lastName: restored.contact.lastName ?? "" };
     coreRef.current = { ...coreRef.current, ...restored.core };
-    contactRef.current = restored.contact;
+    contactRef.current = restoredContact;
     answersRef.current = restored.answers;
     setCore(current => ({ ...current, ...restored.core }));
-    setContact(restored.contact);
+    setContact(restoredContact);
     setAnswers(restored.answers);
     dirtyRef.current.clear();
     blockedWritesRef.current.clear();
@@ -821,10 +827,10 @@ export function ApplicationSurface({ schoolSlug, publicReference }: { schoolSlug
     </div>
     {Object.keys(activeErrors).length ? <div id="section-errors" tabIndex={-1} role="alert" className="notice danger"><strong><XCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> Complete the highlighted items</strong><ul>{Object.entries(activeErrors).map(([key, error]) => <li key={key}>{error}</li>)}</ul></div> : null}{conflict ? <div className="notice warn" role="alert"><strong>Saved changes need review</strong><p>Your pending edits were not applied over a newer application version.</p><div className="actions">{hasStaleRecovery ? <button type="button" className="secondary" onClick={restoreStaleRecovery}>Restore local edits to review and retry</button> : <button type="button" className="secondary" onClick={retryAfterConflict}>Retry my pending changes</button>}<button type="button" className="secondary" onClick={discardRecovery}>Discard local recovery copy</button></div></div> : null}{app.messages.map((message: any) => <div className="notice warn" key={message.createdAt}><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> {message.message ?? "The school updated your application status."}</div>)}
   {stepIsViewOnly ? <div className="notice section-view-only" role="status"><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> The school did not request changes in this section. You can review it, then continue to the next section.</div> : null}
-  {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
-  {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><h2>Guardian and emergency contact</h2><Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required disabled={!contactEditable} error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required disabled={!contactEditable} error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} disabled={!contactEditable} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} disabled={!contactEditable} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
+  {step === "child" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><Input id="first" label="Legal first name" value={core.firstName} onChange={value => setCoreValue("firstName", value)} required disabled={!coreEditable("firstName")} error={activeErrors.first} onBlur={() => void flushSection("child")} /><Input id="middle" label="Legal middle name" value={core.middleName} onChange={value => setCoreValue("middleName", value)} required={config.legalNamePolicyVersion === 2} disabled={!coreEditable("middleName")} error={activeErrors.middle} onBlur={() => void flushSection("child")} /><Input id="last" label="Legal last name" value={core.lastName} onChange={value => setCoreValue("lastName", value)} required disabled={!coreEditable("lastName")} error={activeErrors.last} onBlur={() => void flushSection("child")} /><Input id="dob" label="Date of birth" type="date" value={core.dateOfBirth} onChange={value => setCoreValue("dateOfBirth", value)} required disabled={!coreEditable("dateOfBirth")} error={activeErrors.dob} onBlur={() => void flushSection("child")} />{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}<div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
+  {step === "contacts" && <form noValidate onSubmit={saveAndContinue}><fieldset className="fieldset" disabled={!editable}><h2>Guardian and emergency contact</h2>{config.legalNamePolicyVersion === 2 ? <><Input id="contact-first" label="First name" value={contact.firstName} onChange={value => setContactValue("firstName", value)} required disabled={!contactEditable} error={activeErrors["contact-first"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-last" label="Last name" value={contact.lastName} onChange={value => setContactValue("lastName", value)} required disabled={!contactEditable} error={activeErrors["contact-last"]} onBlur={() => void flushSection("contacts")} /></> : <Input id="contact-name" label="Full name" value={contact.fullName} onChange={value => setContactValue("fullName", value)} required disabled={!contactEditable} error={activeErrors["contact-name"]} onBlur={() => void flushSection("contacts")} />}<Input id="contact-relationship" label="Relationship" value={contact.relationship} onChange={value => setContactValue("relationship", value)} required disabled={!contactEditable} error={activeErrors["contact-relationship"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-email" label="Email" type="email" value={contact.email} onChange={value => setContactValue("email", value)} disabled={!contactEditable} error={activeErrors["contact-email"]} onBlur={() => void flushSection("contacts")} /><Input id="contact-phone" label="Phone" value={contact.phone} onChange={value => setContactValue("phone", value)} disabled={!contactEditable} error={activeErrors["contact-phone"]} onBlur={() => void flushSection("contacts")} /><div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></form>}
   {step !== "child" && step !== "contacts" && step !== "documents" && step !== "review" && <form noValidate onSubmit={saveAndContinue}><section><h2>{step.replace(/[-_]/g, " ")}</h2><fieldset className="fieldset" disabled={!editable}>{fields.map((field: Field) => <DynamicField key={field.key} field={field} value={answers[field.key] ?? ""} disabled={!fieldEditable(field.key)} error={activeErrors[field.key]} onChange={value => setAnswerValue(field, value)} onSave={() => void flushSection(field.sectionKey)} />)}{!fields.length ? <p className="muted">No currently applicable fields are configured in this section.</p> : null}<div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button className="primary" type="submit">{stepIsViewOnly ? "Continue" : <span className="flex items-center gap-1.5">Continue <ChevronRight size={16} /></span>}</button></div></fieldset></section></form>}
-  {step === "documents" && <Documents requirements={config.requirements as Requirement[]} documents={app.documents ?? []} disabled={!editable} editableRequirementKeys={app.permittedEdits.requirementKeys} onContinue={() => navigate("review")} onOpen={async documentKey => { const result: any = await accessOwnDocument({ schoolSlug, publicReference, documentKey, action: "view" }); if (result.status !== "available") throw new Error("Unavailable"); window.open(result.url, "_blank", "noopener,noreferrer"); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async expectedVersion => { await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name }); return expectedVersion; }, () => setStatus("Could not save — retrying")); }} showWithdraw={showWithdraw} onWithdraw={() => void withdrawApplication()} />}
+  {step === "documents" && <Documents requirements={config.requirements as Requirement[]} documents={app.documents ?? []} disabled={!editable} editableRequirementKeys={app.permittedEdits.requirementKeys} onContinue={() => navigate("review")} onOpen={async documentKey => { window.open(documentViewPath(schoolSlug, publicReference, documentKey), "_blank", "noopener,noreferrer"); }} onRemove={async documentKey => { await removeOwnDocument({ schoolSlug, publicReference, documentKey }); }} onUpload={async (requirementKey, file) => { const uploadUrl = await createUploadUrl({ schoolSlug, publicReference, requirementKey }); const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file }); if (!response.ok) throw new Error("Upload failed"); const { storageId } = await response.json(); if (!queueRef.current) throw new Error("Application is still loading"); await queueRef.current.enqueue(async expectedVersion => { await bindUpload({ schoolSlug, publicReference, requirementKey, storageId, fileName: file.name }); return expectedVersion; }, () => setStatus("Could not save — retrying")); }} showWithdraw={showWithdraw} onWithdraw={() => void withdrawApplication()} />}
   {step === "review" && <section><h2>Review and declaration</h2><p className="muted">Review your saved details and private document requirements before submitting. Submitting does not create a student or confirm admission.</p>{config.declaration ? <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg my-4"><h3>{config.declaration.title} · Version {config.declaration.version}</h3><p className="text-sm text-slate-700 leading-relaxed mt-2">{config.declaration.body}</p></div> : <p className="notice warn"><AlertCircle className="inline h-4 w-4 mr-1 -mt-0.5" /> The current declaration is unavailable. This application cannot be submitted.</p>}<Input id="signer" label="Signer name" value={core.signerName} onChange={value => setCoreValue("signerName", value)} required error={activeErrors.signer} /><Input id="relationship" label="Relationship" value={core.signerRelationship} onChange={value => setCoreValue("signerRelationship", value)} required error={activeErrors.relationship} /><div className="my-4"><label className="flex gap-2 items-start text-sm font-semibold select-none cursor-pointer"><input id="declaration" type="checkbox" checked={declarationAccepted} onChange={e => setDeclarationAccepted(e.target.checked)} disabled={!editable || !config.declaration} className="mt-1" /> I have read and accept the published declaration shown above.</label>{activeErrors.declaration ? <small className="field-error block mt-1">{activeErrors.declaration}</small> : null}</div><div className="sticky">{showWithdraw ? <button type="button" className="secondary text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300" style={{ minHeight: "auto", padding: "0.5rem 1rem", marginRight: "auto" }} onClick={() => void withdrawApplication()}>Withdraw</button> : null}<button type="button" className="primary" disabled={!editable || !config.declaration || !declarationAccepted} onClick={() => void submitApplication()}>Submit</button></div></section>}</main></div></Page>;
 }
 
@@ -883,7 +889,7 @@ function DynamicField({ field, value, disabled, error, onChange, onSave }: { fie
 
 function safeArray(value: string) { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } }
 
-function Documents({ requirements, documents, disabled, editableRequirementKeys, onContinue, onOpen, onUpload, showWithdraw, onWithdraw }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; editableRequirementKeys: string[]; onContinue: () => void; onOpen: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void>; showWithdraw?: boolean; onWithdraw?: () => void }) { 
+function Documents({ requirements, documents, disabled, editableRequirementKeys, onContinue, onOpen, onRemove, onUpload, showWithdraw, onWithdraw }: { requirements: Requirement[]; documents: Array<{ documentKey: string; requirementKey: string | null; fileName: string; state: string; version: number }>; disabled: boolean; editableRequirementKeys: string[]; onContinue: () => void; onOpen: (documentKey: string) => Promise<void>; onRemove: (documentKey: string) => Promise<void>; onUpload: (key: string, file: File) => Promise<void>; showWithdraw?: boolean; onWithdraw?: () => void }) {
   const [selected, setSelected] = useState<Record<string, File | undefined>>({}); 
   const [status, setStatus] = useState("Choose a file, then upload privately."); 
   return <section>
@@ -898,21 +904,25 @@ function Documents({ requirements, documents, disabled, editableRequirementKeys,
             <strong className="text-sm">{document.fileName}</strong>
             <p className="muted text-xs mb-0 mt-0.5">Version {document.version} · {document.state}</p>
           </div>
-          <button type="button" className="secondary font-semibold" style={{minHeight: "36px", borderRadius: "8px"}} onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>
-            <span className="flex items-center gap-1"><Eye size={14} /> View file</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" className="secondary font-semibold" style={{minHeight: "36px", borderRadius: "8px"}} onClick={async () => { try { await onOpen(document.documentKey); } catch { setStatus("This document is not available for checked access."); } }}>
+              <span className="flex items-center gap-1"><Eye size={14} /> View file</span>
+            </button>
+            {!disabled && document.requirementKey && editableRequirementKeys.includes(document.requirementKey) ? <button type="button" className="secondary font-semibold text-rose-700" style={{minHeight: "36px", borderRadius: "8px"}} onClick={async () => { if (!window.confirm(`Remove ${document.fileName}? This file will no longer be part of the active application evidence.`)) return; setStatus("Removing the private file…"); try { await onRemove(document.documentKey); setStatus("File removed. You can upload a replacement if needed."); } catch { setStatus("This file could not be removed. Refresh and try again."); } }}><span className="flex items-center gap-1"><Trash2 size={14} /> Remove</span></button> : null}
+          </div>
         </div>
       ))}
       
       {requirements.map(requirement => { 
-        const requirementDisabled = disabled || !editableRequirementKeys.includes(requirement.key); 
+        const requirementDisabled = disabled || !editableRequirementKeys.includes(requirement.key);
+        const replacing = requirement.maxFiles === 1 && documents.some((document) => document.requirementKey === requirement.key);
         return <div className={`upload ${requirementDisabled ? "is-disabled" : ""}`} key={requirement.key}>
           <strong>{requirement.label} · {requirement.requiredMode === "required" ? "Required" : "Optional"}</strong>
           <p className="muted text-xs">{requirement.purpose} · Max {(requirement.maxBytes / 1_000_000).toFixed(1)} MB · {requirement.maxFiles} file(s)</p>
           <div className="mt-3">
             <input aria-label={`Choose file for ${requirement.label}`} type="file" accept={requirement.acceptedMimeTypes.join(",")} disabled={requirementDisabled} onChange={e => setSelected({ ...selected, [requirement.key]: e.target.files?.[0] })}/>
             <button type="button" className="primary w-full mt-2" disabled={requirementDisabled || !selected[requirement.key]} onClick={async () => { const file = selected[requirement.key]; if (!file) return; if (file.size > requirement.maxBytes || !requirement.acceptedMimeTypes.includes(file.type)) { setStatus("This file does not meet the listed type or size requirements."); return; } setStatus("Uploading privately…"); try { await onUpload(requirement.key, file); setStatus("Uploaded. This file is private and will be checked with your application."); setSelected({ ...selected, [requirement.key]: undefined }); } catch { setStatus("This file could not be added. Choose another file or retry upload."); } }}>
-              <span className="flex items-center gap-1.5 justify-center"><Upload size={16} /> Upload privately</span>
+              <span className="flex items-center gap-1.5 justify-center"><Upload size={16} /> {replacing ? "Replace current file" : "Upload privately"}</span>
             </button>
           </div>
         </div>; 

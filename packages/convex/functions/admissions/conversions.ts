@@ -1,4 +1,4 @@
-import { internalMutation, mutation } from "../../_generated/server";
+import { internalMutation, mutation, query } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { audit, requireStaffScope } from "./helpers";
@@ -6,6 +6,38 @@ import { audit, requireStaffScope } from "./helpers";
 const conversionResult = v.object({ conversionId: v.id("admissionsConversions"), studentId: v.union(v.id("students"), v.null()), state: v.string(), replayed: v.boolean() });
 
 type ConversionResult = { conversionId: Id<"admissionsConversions">; studentId: Id<"students"> | null; state: string; replayed: boolean };
+
+const conversionCandidatesValidator = v.object({
+  parentCandidates: v.array(v.object({ userId: v.id("users"), name: v.string(), email: v.string() })),
+  familyCandidates: v.array(v.object({ familyId: v.id("families"), parentUserId: v.id("users"), name: v.string() })),
+  blockedReason: v.union(v.string(), v.null()),
+});
+
+/** Returns only same-school canonical records already tied to this guardian identity. */
+export const getConversionCandidates = query({
+  args: { applicationId: v.id("admissionsApplications") },
+  returns: conversionCandidatesValidator,
+  handler: async (ctx, args) => {
+    const application = await ctx.db.get("admissionsApplications", args.applicationId);
+    if (!application) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    await requireStaffScope(ctx, { schoolId: application.schoolId, programmeId: application.programmeId, intakeId: application.intakeId, capability: "conversions.execute" });
+    const guardian = await ctx.db.get("admissionsGuardians", application.guardianId);
+    if (!guardian) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    const identityMatches = (await ctx.db.query("users").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(100)).filter((user) => user.schoolId === application.schoolId && !user.isArchived);
+    if (identityMatches.length > 1 || identityMatches.some((user) => user.role !== "parent")) return { parentCandidates: [], familyCandidates: [], blockedReason: "This guardian identity matches multiple or incompatible school accounts. Resolve the account records before conversion." };
+    const parentCandidates = identityMatches.map((parent) => ({ userId: parent._id, name: parent.name, email: parent.email }));
+    const familyCandidates: Array<{ familyId: Id<"families">; parentUserId: Id<"users">; name: string }> = [];
+    const seenFamilies = new Set<string>();
+    for (const parent of identityMatches) {
+      const links = await ctx.db.query("familyMembers").withIndex("by_parent_user", (q) => q.eq("parentUserId", parent._id)).take(100);
+      for (const link of links) {
+        const family = await ctx.db.get("families", link.familyId);
+        if (family && family.schoolId === application.schoolId && link.schoolId === application.schoolId && !seenFamilies.has(String(family._id))) { seenFamilies.add(String(family._id)); familyCandidates.push({ familyId: family._id, parentUserId: parent._id, name: family.name }); }
+      }
+    }
+    return { parentCandidates, familyCandidates, blockedReason: null };
+  },
+});
 
 /** Persists the human identity/family/student decision before any canonical write. */
 export const resolveConversion = mutation({
@@ -16,7 +48,8 @@ export const resolveConversion = mutation({
     const membership = await requireStaffScope(ctx, { schoolId: application.schoolId, programmeId: application.programmeId, intakeId: application.intakeId, capability: "conversions.execute" });
     const guardian = await ctx.db.get("admissionsGuardians", application.guardianId); if (!guardian || !args.reason.trim()) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
     const parent = args.parentUserId ? await ctx.db.get("users", args.parentUserId) : null; const family = args.familyId ? await ctx.db.get("families", args.familyId) : null; const student = args.existingStudentId ? await ctx.db.get("students", args.existingStudentId) : null;
-    if ((args.parentMode === "existing") !== Boolean(parent) || (parent && (parent.schoolId !== application.schoolId || parent.role !== "parent" || parent.isArchived || parent.authTokenIdentifier !== guardian.authTokenIdentifier)) || (args.familyMode === "existing") !== Boolean(family) || (family && family.schoolId !== application.schoolId) || (args.studentMode === "existing") !== Boolean(student) || (student && (student.schoolId !== application.schoolId || student.isArchived || (student.sourceApplicationId && student.sourceApplicationId !== application._id)))) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
+    const familyLink = parent && family ? await ctx.db.query("familyMembers").withIndex("by_family_and_parent", (q) => q.eq("familyId", family._id).eq("parentUserId", parent._id)).unique() : null;
+    if ((args.parentMode === "existing") !== Boolean(parent) || (parent && (parent.schoolId !== application.schoolId || parent.role !== "parent" || parent.isArchived || parent.authTokenIdentifier !== guardian.authTokenIdentifier)) || (args.familyMode === "existing") !== Boolean(family) || (family && (family.schoolId !== application.schoolId || !familyLink || familyLink.schoolId !== application.schoolId)) || (args.familyMode === "existing" && args.parentMode !== "existing") || (args.studentMode === "existing") !== Boolean(student) || (student && (student.schoolId !== application.schoolId || student.isArchived || (student.sourceApplicationId && student.sourceApplicationId !== application._id)))) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
     const existing = await ctx.db.query("admissionsConversionResolutions").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(); const now = Date.now();
     const row = { schoolId: application.schoolId, applicationId: application._id, parentMode: args.parentMode, ...(args.parentUserId ? { parentUserId: args.parentUserId } : {}), familyMode: args.familyMode, ...(args.familyId ? { familyId: args.familyId } : {}), studentMode: args.studentMode, ...(args.existingStudentId ? { existingStudentId: args.existingStudentId } : {}), guardianAuthTokenIdentifier: guardian.authTokenIdentifier, resolvedByUserId: membership.userId, reason: args.reason.trim().slice(0, 1_000), createdAt: existing?.createdAt ?? now, updatedAt: now };
     if (existing) { await ctx.db.replace(existing._id, row); return existing._id; } return await ctx.db.insert("admissionsConversionResolutions", row);
@@ -59,7 +92,7 @@ export const executeAcceptedConversion = mutation({
     if (!guardian || !snapshot) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
     const profileItem = await ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", snapshot._id).eq("itemKey", "profile")).unique();
     if (!profileItem) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
-    let profile: { firstName: string; lastName: string; dateOfBirth: number; gender?: string };
+    let profile: { firstName: string; middleName?: string | null; lastName: string; dateOfBirth: number; gender?: string };
     try { profile = JSON.parse(profileItem.serializedValue); } catch { throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED"); }
     if (!profile.firstName || !profile.lastName || !profile.dateOfBirth) throw new ConvexError("CONVERSION_RESOLUTION_REQUIRED");
     const now = Date.now();
@@ -97,7 +130,7 @@ export const executeAcceptedConversion = mutation({
       studentUserId = student.userId;
       await ctx.db.patch(studentId, { classId: classDoc._id, familyId, admissionNumber, ...photoFields, sourceApplicationId: application._id, updatedAt: now });
     } else {
-      studentUserId = await ctx.db.insert("users", { schoolId: application.schoolId, authId: `student:${String(application.schoolId)}:${admissionNumber.toLowerCase()}`, name: `${profile.firstName.trim()} ${profile.lastName.trim()}`, firstName: profile.firstName.trim(), lastName: profile.lastName.trim(), email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`, role: "student", createdAt: now, updatedAt: now });
+      studentUserId = await ctx.db.insert("users", { schoolId: application.schoolId, authId: `student:${String(application.schoolId)}:${admissionNumber.toLowerCase()}`, name: [profile.firstName.trim(), profile.middleName?.trim(), profile.lastName.trim()].filter(Boolean).join(" "), firstName: profile.firstName.trim(), ...(profile.middleName?.trim() ? { middleName: profile.middleName.trim() } : {}), lastName: profile.lastName.trim(), email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`, role: "student", createdAt: now, updatedAt: now });
       studentId = await ctx.db.insert("students", { schoolId: application.schoolId, classId: classDoc._id, userId: studentUserId, familyId, admissionNumber, ...(profile.gender ? { gender: profile.gender } : {}), dateOfBirth: profile.dateOfBirth, ...photoFields, sourceApplicationId: application._id, createdAt: now, updatedAt: now });
     }
     if (photo) await ctx.db.patch(photo._id, { retentionHold: true, updatedAt: now });

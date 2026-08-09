@@ -72,6 +72,12 @@ type QueueRow = {
   intakeId: string;
 };
 
+type ConversionCandidates = {
+  parentCandidates: Array<{ userId: string; name: string; email: string }>;
+  familyCandidates: Array<{ familyId: string; parentUserId: string; name: string }>;
+  blockedReason: string | null;
+};
+
 interface AdmissionsTriageProps {
   schoolId: string;
   schoolSlug?: string;
@@ -136,6 +142,11 @@ export function AdmissionsTriage({
     canConvert && detail?.decisionState === "accepted" && detail?.conversionState === null ? { applicationId: selectedAppId } as never : "skip" as never
   ) as Array<{ classId: string; name: string }> | undefined;
 
+  const conversionCandidates = useQuery(
+    "functions/admissions/conversions:getConversionCandidates" as never,
+    canConvert && detail?.decisionState === "accepted" && detail?.conversionState === null ? { applicationId: selectedAppId } as never : "skip" as never
+  ) as ConversionCandidates | undefined;
+
   // Mutations
   const startReview = useMutation("functions/admissions/staff:startReview" as never);
   const recordDecision = useMutation("functions/admissions/staff:recordDecision" as never);
@@ -147,7 +158,9 @@ export function AdmissionsTriage({
   // Component local states
   const [classId, setClassId] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [parentUserId, setParentUserId] = useState("");
+  const [familyId, setFamilyId] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [converting, setConverting] = useState(false);
 
   // Auto-select first applicant when queue page loads and selection is null
@@ -166,7 +179,22 @@ export function AdmissionsTriage({
 
   useEffect(() => {
     setAdmissionNumber("");
+    setParentUserId("");
+    setFamilyId("");
+    setIdempotencyKey(crypto.randomUUID());
   }, [detail?.applicationId]);
+
+  useEffect(() => {
+    if (!conversionCandidates || conversionCandidates.blockedReason) return;
+    if (conversionCandidates.parentCandidates.length === 1 && !parentUserId) {
+      const parentId = conversionCandidates.parentCandidates[0].userId;
+      setParentUserId(parentId);
+      const families = conversionCandidates.familyCandidates.filter((family) => family.parentUserId === parentId);
+      if (families.length === 1) setFamilyId(families[0].familyId);
+    }
+  }, [conversionCandidates, parentUserId]);
+
+  const matchingFamilies = conversionCandidates?.familyCandidates.filter((family) => family.parentUserId === parentUserId) ?? [];
 
   const handleStartReview = async () => {
     if (!selectedAppId) return;
@@ -215,17 +243,24 @@ export function AdmissionsTriage({
     if (!selectedAppId || !classId || !admissionNumber) return;
     setConverting(true);
     try {
+      const usesExistingParent = Boolean(parentUserId);
+      const usesExistingFamily = Boolean(familyId);
       await resolve({
         applicationId: selectedAppId,
-        parentMode: "create",
-        familyMode: "create",
+        parentMode: usesExistingParent ? "existing" : "create",
+        ...(usesExistingParent ? { parentUserId } : {}),
+        familyMode: usesExistingFamily ? "existing" : "create",
+        ...(usesExistingFamily ? { familyId } : {}),
         studentMode: "create",
-        reason: "Triage approved student conversion"
+        reason: usesExistingParent
+          ? `Staff confirmed reuse of the selected parent${usesExistingFamily ? " and family" : ""} for a new student record.`
+          : "Staff confirmed creation of distinct parent, family, and student records."
       } as never);
       await execute({
         applicationId: selectedAppId,
         classId,
         admissionNumber,
+        ...(usesExistingFamily ? { familyId } : {}),
         idempotencyKey
       } as never);
       appToast.success("Student conversion succeeded");
@@ -817,6 +852,30 @@ export function AdmissionsTriage({
                           Approved! Set details to register classroom profile.
                         </p>
                         
+                        {conversionCandidates?.blockedReason ? (
+                          <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-900">{conversionCandidates.blockedReason}</p>
+                        ) : conversionCandidates?.parentCandidates.length ? (
+                          <>
+                            <label className="block text-[10px] font-extrabold text-slate-550 uppercase tracking-wider">
+                              Existing parent account
+                              <select value={parentUserId} onChange={(event) => { setParentUserId(event.target.value); setFamilyId(""); }} className="mt-1 h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900">
+                                <option value="">Choose the guardian account</option>
+                                {conversionCandidates.parentCandidates.map((parent) => <option key={parent.userId} value={parent.userId}>{parent.name} · {parent.email}</option>)}
+                              </select>
+                            </label>
+                            <label className="block text-[10px] font-extrabold text-slate-550 uppercase tracking-wider">
+                              Family record
+                              <select value={familyId} onChange={(event) => setFamilyId(event.target.value)} disabled={!parentUserId} className="mt-1 h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 disabled:opacity-50">
+                                <option value="">Create a new family for this parent</option>
+                                {matchingFamilies.map((family) => <option key={family.familyId} value={family.familyId}>Use {family.name}</option>)}
+                              </select>
+                            </label>
+                            <p className="text-[10px] text-slate-600">The selected parent and family are reused explicitly. Only this applicant&apos;s student record will be created.</p>
+                          </>
+                        ) : conversionCandidates ? (
+                          <p className="rounded-md border border-slate-200 bg-white p-2 text-[10px] text-slate-600">No school parent account exists for this guardian. Conversion will create the parent, family, and student records.</p>
+                        ) : null}
+
                         <label className="block text-[10px] font-extrabold text-slate-505 uppercase tracking-wider">
                           Select Classroom Section
                           <select 
@@ -844,7 +903,7 @@ export function AdmissionsTriage({
 
                         <button 
                           onClick={handleConvertStudent}
-                          disabled={!classId || !admissionNumber || converting}
+                          disabled={!classId || !admissionNumber || converting || !conversionCandidates || Boolean(conversionCandidates.blockedReason) || (conversionCandidates.parentCandidates.length > 0 && !parentUserId)}
                           className="h-8.5 w-full bg-slate-900 hover:bg-slate-850 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
                           {converting ? (
@@ -858,7 +917,7 @@ export function AdmissionsTriage({
                     )}
 
                     {/* Already converted student register indicator */}
-                    {detail.conversionState === "completed" && (
+                    {detail.conversionState === "succeeded" && (
                       <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-[10px] text-emerald-800 font-bold flex items-center gap-2">
                         <CheckSquare className="h-4 w-4 text-emerald-600 flex-shrink-0" />
                         Converted to Student Register

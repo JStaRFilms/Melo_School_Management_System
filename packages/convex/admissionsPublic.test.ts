@@ -45,7 +45,7 @@ describe("B1 public admissions bootstrap", () => {
     const t = convexTest(schema, modules); const ids = await publicFixture(t);
     await t.run((ctx) => ctx.db.patch(ids.intake, { status: "closed", updatedAt: Date.now() }));
     await expect(t.query((api as any).functions.admissions.public.getEntry, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toMatchObject({ availability: "closed", offering: null });
-    await expect(t.query((api as any).functions.admissions.public.getPublishedConfiguration, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toEqual({ availability: "closed", fields: [], requirements: [], declaration: null });
+    await expect(t.query((api as any).functions.admissions.public.getPublishedConfiguration, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toEqual({ availability: "closed", legalNamePolicyVersion: 1, fields: [], requirements: [], declaration: null });
     await t.run(async (ctx) => { await ctx.db.patch(ids.intake, { status: "open", updatedAt: Date.now() }); await ctx.db.patch(ids.product, { status: "paused", updatedAt: Date.now() }); });
     await expect(t.query((api as any).functions.admissions.public.getEntry, { schoolSlug: "school-a", intakeSlug: "entry" })).resolves.toMatchObject({ availability: "unavailable", offering: null });
   });
@@ -53,6 +53,7 @@ describe("B1 public admissions bootstrap", () => {
   test("projects only published active configuration with no private identifiers", async () => {
     const t = convexTest(schema, modules); await publicFixture(t);
     const config = await t.query((api as any).functions.admissions.public.getPublishedConfiguration, { schoolSlug: "school-a", intakeSlug: "entry" });
+    expect(config.legalNamePolicyVersion).toBe(1);
     expect(config.fields.map((field: any) => field.key)).toEqual(["child_name"]);
     expect(config.requirements.map((requirement: any) => requirement.key)).toEqual(["photo"]);
     expect(config.declaration).toMatchObject({ title: "Declaration", body: "Published declaration" });

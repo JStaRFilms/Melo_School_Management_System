@@ -2,6 +2,10 @@ export function applicationPath(schoolSlug: string, publicReference: string) {
   return `/s/${encodeURIComponent(schoolSlug)}/applications/${encodeURIComponent(publicReference)}`;
 }
 
+export function documentViewPath(schoolSlug: string, publicReference: string, documentKey: string) {
+  return `${applicationPath(schoolSlug, publicReference)}/documents/${encodeURIComponent(documentKey)}/view`;
+}
+
 export function paymentReturnReference(params: { reference?: string | string[]; trxref?: string | string[] }) {
   const first = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
   return first(params.reference)?.trim() || first(params.trxref)?.trim() || undefined;

@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { applicationPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
+import { applicationPath, documentViewPath, applicationStatusCopy, correctionStepHasEditableItems, fieldIsVisible, formatMinorCurrency, paymentReturnReference, paymentStatusCopy, serializedValue } from "../lib/journey";
 import { guardianRegistrationErrorMessage, validateGuardianRegistration } from "../lib/registration";
 
 describe("guardian journey safety", () => {
   test("keeps opaque application references in a school-scoped route", () => {
     expect(applicationPath("north-star", "app_opaque value")).toBe("/s/north-star/applications/app_opaque%20value");
+  });
+  test("keeps private document navigation on an encoded application-owned route", () => {
+    expect(documentViewPath("north star", "app/ref", "doc value")).toBe("/s/north%20star/applications/app%2Fref/documents/doc%20value/view");
   });
   test("normalizes Paystack callback references even when the provider appends duplicates", () => {
     expect(paymentReturnReference({ reference: ["adm_first", "adm_duplicate"], trxref: "adm_first" })).toBe("adm_first");

@@ -46,6 +46,20 @@ describe("B1 admissions domain", () => {
     const snapshots = await t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", first.applicationId)).take(2)); expect(snapshots).toHaveLength(1);
   });
 
+  test("requires structured legal names only for applications bound to the new policy", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    await t.run((ctx) => ctx.db.patch(ids.form, { legalNamePolicyVersion: 2 }));
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const saveCore = (expectedVersion: number, middleName?: string) => t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: application.applicationId, expectedVersion, firstName: "Legal", ...(middleName ? { middleName } : {}), lastName: "Student", dateOfBirth: 1 });
+    expect(await saveCore(1)).toBe(2);
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveContact, { applicationId: application.applicationId, expectedVersion: 2, contactKey: "primary-guardian", kind: "guardian", fullName: "Guardian Name", relationship: "Parent", isApplicantGuardian: true, isPrimary: true })).rejects.toThrow("APPLICATION_INCOMPLETE");
+    expect(await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveContact, { applicationId: application.applicationId, expectedVersion: 2, contactKey: "primary-guardian", kind: "guardian", fullName: "Guardian Name", firstName: "Guardian", lastName: "Name", relationship: "Parent", isApplicantGuardian: true, isPrimary: true })).toBe(3);
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: 3, signerName: "Guardian Name", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true })).rejects.toThrow("APPLICATION_INCOMPLETE");
+    expect(await saveCore(3, "Middle")).toBe(4);
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: application.applicationId, expectedVersion: 4, signerName: "Guardian Name", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true })).resolves.toMatchObject({ state: "submitted" });
+  });
+
   test("keeps partial drafts independent, makes exact saves no-ops, and rejects stale writers", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
@@ -174,6 +188,20 @@ describe("B1 admissions domain", () => {
     await expect(t.withIdentity(other).mutation((api as any).functions.admissions.documents.getOwnAccess, { documentKey: "doc_private", action: "view" })).resolves.toEqual({ status: "unavailable", documentKey: "doc_private" });
   });
 
+  test("guardian removal tombstones and deletes only an editable owned upload", async () => {
+    const t = convexTest(schema, modules); const ids = await fixture(t);
+    const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
+    const application = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId });
+    const requirementId = await t.run((ctx) => ctx.db.insert("admissionsDocumentRequirements", { schoolId: ids.schoolA, formVersionId: ids.form, requirementKey: "photo", category: "photo", label: "Photo", requiredMode: "optional", acceptedMimeTypes: ["image/jpeg"], maxBytes: 1000, maxFiles: 1, sensitivity: "child_confidential", purpose: "identification", order: 1, createdAt: Date.now(), updatedAt: Date.now() }));
+    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["photo"], { type: "image/jpeg" })));
+    const documentKey = "doc_removable";
+    await t.run((ctx) => ctx.db.insert("admissionsDocuments", { schoolId: ids.schoolA, applicationId: application.applicationId, requirementId, category: "photo", documentKey, storageId, fileName: "child.jpg", mimeType: "image/jpeg", byteSize: 5, sha256: "photo-digest", version: 1, state: "uploaded", sensitivity: "child_confidential", uploadedByGuardianId: ids.guardian, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() }));
+    await expect(t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.documents.removeOwnDocument, { documentKey })).resolves.toBeNull();
+    expect(await t.run((ctx) => ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", documentKey)).unique())).toMatchObject({ state: "deleted", fileName: "child.jpg" });
+    expect(await t.run((ctx) => ctx.db.system.get(storageId))).toBeNull();
+    expect(await t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application.applicationId)).take(20))).toEqual(expect.arrayContaining([expect.objectContaining({ action: "document.removed" })]));
+  });
+
   test("accepted conversion is replay-safe and creates one canonical student", async () => {
     const t = convexTest(schema, modules); const ids = await fixture(t);
     const { entitlementId } = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: ids.event });
@@ -193,6 +221,27 @@ describe("B1 admissions domain", () => {
     expect(replay.replayed).toBe(true); expect(replay.studentId).toBe(first.studentId);
     expect(await t.run((ctx) => ctx.db.query("students").withIndex("by_school_and_admission_number", (q) => q.eq("schoolId", ids.schoolA).eq("admissionNumber", "ADM-1")).take(2))).toHaveLength(1);
     expect(await t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", first.conversionId).eq("eventKey", "portal_onboarding")).take(2))).toHaveLength(1);
+
+    const secondEvent = await t.run(async (ctx) => {
+      const now = Date.now();
+      const attempt = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: ids.schoolA, guardianId: ids.guardian, productId: ids.product, priceId: ids.price, provider: "paystack", providerMode: "test", reference: "adm_sibling", idempotencyKey: "fixture-sibling", amountMinor: 1000, currency: "NGN", feeDisclosureSnapshot: "approved", state: "verification_pending", createdAt: now, updatedAt: now });
+      return await ctx.db.insert("admissionsPaymentEvents", { schoolId: ids.schoolA, purchaseAttemptId: attempt, provider: "paystack", providerMode: "test", providerEventId: "evt-sibling", eventType: "charge.success", bodyDigest: "digest-sibling", signatureValid: true, processingStatus: "verified", receivedAt: now, createdAt: now, updatedAt: now });
+    });
+    const secondPaid = await t.mutation((internal as any).functions.admissions.payments.fulfilVerifiedEvent, { paymentEventId: secondEvent });
+    const sibling = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.createOrResume, { entitlementId: secondPaid.entitlementId });
+    const siblingVersion = await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.saveCoreSection, { applicationId: sibling.applicationId, expectedVersion: 1, firstName: "Child", lastName: "Two", dateOfBirth: 2 });
+    await t.withIdentity(guardianIdentity).mutation((api as any).functions.admissions.applications.submit, { applicationId: sibling.applicationId, expectedVersion: siblingVersion, signerName: "Guardian", signerRelationship: "Parent", declarationVersion: 1, declarationAccepted: true });
+    await t.withIdentity(staff).mutation((api as any).functions.admissions.staff.recordDecision, { applicationId: sibling.applicationId, state: "accepted", reasonCode: "approved", guardianMessage: "accepted" });
+
+    const candidates = await t.withIdentity(staff).query((api as any).functions.admissions.conversions.getConversionCandidates, { applicationId: sibling.applicationId });
+    expect(candidates).toMatchObject({ blockedReason: null, parentCandidates: [expect.objectContaining({ email: guardianIdentity.email })], familyCandidates: [expect.objectContaining({ name: "One Family" })] });
+    const parentUserId = candidates.parentCandidates[0].userId;
+    const familyId = candidates.familyCandidates[0].familyId;
+    await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.resolveConversion, { applicationId: sibling.applicationId, parentMode: "existing", parentUserId, familyMode: "existing", familyId, studentMode: "create", reason: "Reuse the guardian family for this sibling" });
+    await t.withIdentity(staff).mutation((api as any).functions.admissions.conversions.executeAcceptedConversion, { applicationId: sibling.applicationId, classId, admissionNumber: "ADM-2", familyId, idempotencyKey: "convert-2" });
+    expect(await t.run((ctx) => ctx.db.query("users").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", guardianIdentity.tokenIdentifier)).take(10))).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolA)).take(10))).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", sibling.applicationId)).take(2))).toHaveLength(1);
   });
 
   test("submission requires the displayed declaration to be affirmatively accepted", async () => {

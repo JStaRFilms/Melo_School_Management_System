@@ -50,6 +50,30 @@ export const bindUpload = mutation({
   },
 });
 
+export const removeOwnDocument = mutation({
+  args: { documentKey: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { guardian } = await requireGuardian(ctx);
+    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey)).unique();
+    const application = document ? await ctx.db.get(document.applicationId) : null;
+    if (!document || !application || application.guardianId !== guardian._id || document.uploadedByGuardianId !== guardian._id || document.retentionHold || document.state === "deleted" || document.state === "superseded") throw new ConvexError("Not found or access denied");
+    assertEditable(application.state);
+    const requirement = document.requirementId ? await ctx.db.get(document.requirementId) : null;
+    if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId) throw new ConvexError("Not found or access denied");
+    if (application.state === "changes_requested" && !(application.changeRequestRequirementKeys ?? []).includes(requirement.requirementKey)) throw new ConvexError("DOCUMENT_REQUIREMENT_LOCKED");
+    const bound = await ctx.db.query("admissionsDocuments").withIndex("by_storage", (q) => q.eq("storageId", document.storageId)).unique();
+    if (!bound || bound._id !== document._id) throw new ConvexError("DOCUMENT_UNAVAILABLE");
+    const now = Date.now();
+    await ctx.db.patch(document._id, { state: "deleted", updatedAt: now });
+    // A prior immutable submission snapshot still references the original evidence.
+    // Draft-only uploads have no such historical reference and can be deleted now.
+    if (application.currentRevision === 0) await ctx.storage.delete(document.storageId);
+    await audit({ ctx, schoolId: application.schoolId, actor: { kind: "guardian", guardianId: guardian._id }, action: "document.removed", entityType: "document", entityId: String(document._id), applicationId: application._id, outcome: "success" });
+    return null;
+  },
+});
+
 export const getOwnAccess = mutation({
   args: { documentKey: v.string(), action: v.union(v.literal("view"), v.literal("download")) },
   returns: accessResultValidator,

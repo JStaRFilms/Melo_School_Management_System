@@ -24,8 +24,8 @@ export type RecoveryRecord = {
   generation: number;
   dirtySections: string[];
   dirtyEntries: Array<{ key: string; section: string }>;
-  core: { firstName: string; lastName: string; dateOfBirth: string };
-  contact: { fullName: string; relationship: string; email: string; phone: string };
+  core: { firstName: string; middleName?: string; lastName: string; dateOfBirth: string };
+  contact: { fullName: string; firstName?: string; lastName?: string; relationship: string; email: string; phone: string };
   answers: Record<string, string>;
 };
 
