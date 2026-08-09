@@ -17,6 +17,13 @@ export function normalizeText(value: string, label: string) {
   return normalized;
 }
 
+/** Stable internal identifiers used by the form builder and conditional rules. */
+export function stableKey(value: string) {
+  const key = value.trim().toLowerCase();
+  if (!/^[a-z0-9]+(?:[_-][a-z0-9]+)*$/.test(key) || key.length > 128) throw new ConvexError("Invalid key");
+  return key;
+}
+
 export function opaqueKey(prefix: string) {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return `${prefix}${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
@@ -154,7 +161,8 @@ export function assertClosedValidationGrammar(value: string) {
 
 export function assertClosedConditionalGrammar(value: string) {
   const rule = parseDeclarativeJson<ConditionalRule>(value, "Conditional rule");
-  if (!rule || Object.keys(rule).some((key) => !conditionKeys.has(key)) || !rule.fieldKey || typeof rule.fieldKey !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rule.fieldKey) || rule.fieldKey.length > 128) throw new ConvexError("Conditional rule is invalid");
+  if (!rule || Object.keys(rule).some((key) => !conditionKeys.has(key)) || !rule.fieldKey || typeof rule.fieldKey !== "string") throw new ConvexError("Conditional rule is invalid");
+  try { stableKey(rule.fieldKey); } catch { throw new ConvexError("Conditional rule is invalid"); }
   const operators = [rule.equals, rule.notEquals, rule.includes, rule.exists].filter((value) => value !== undefined);
   if (operators.length !== 1 || (rule.exists !== undefined && typeof rule.exists !== "boolean") || (rule.exists === undefined && scalar(operators[0]) === null)) throw new ConvexError("Conditional rule is invalid");
   return rule;

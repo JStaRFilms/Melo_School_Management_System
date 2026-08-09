@@ -79,6 +79,30 @@ describe("atomic admissions campaign commands", () => {
     expect(await campaignCounts(t, schoolId)).toEqual({ programmes: 0, intakes: 0, operations: 0 });
   });
 
+  test("accepts and normalizes an actual FormBuilder-style payload with stable underscore keys", async () => {
+    const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("schoolCapabilityGrants", { schoolId, userId, capability: "admissions.sensitive.configure", scope: "school", grantedByUserId: userId, reason: "test", isBreakGlass: false, createdAt: now });
+      await ctx.db.insert("schoolApprovalEvidence", { schoolId, approvalClass: "privacy", subjectType: "admissions_document_requirement", subjectKey: "medical_records", evidenceReference: "medical-records", approvedByUserId: userId, approvedAt: now, createdAt: now });
+    });
+    const configuration = createConfiguration(now);
+    configuration.fields = [
+      { fieldKey: "support_status", sectionKey: "application_details", kind: "boolean", label: "Support needs", requiredMode: "optional", dataClass: "personal", validationJson: "{}", order: 0 },
+      { fieldKey: "custom_generated_abc123", sectionKey: "application_details", kind: "textarea", label: "Support details", requiredMode: "conditional", dataClass: "personal", validationJson: "{}", conditionalRuleJson: JSON.stringify({ exists: true, fieldKey: "SUPPORT_STATUS" }), order: 1 },
+    ];
+    configuration.requirements = [
+      { requirementKey: "birth_cert", category: "identity", label: "Birth Certificate", requiredMode: "required", acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "child_confidential", purpose: "Age and identity confirmation", order: 0 },
+      { requirementKey: "medical_records", category: "medical", label: "Recent Medical Reports", requiredMode: "conditional", acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5 * 1024 * 1024, maxFiles: 1, sensitivity: "highly_sensitive", purpose: "Health planning support", retentionPolicyKey: "duration_of_enrollment", audience: "school_medical_officers_and_management", approvalEvidenceId: await t.run(async (ctx) => (await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_approval_class", (q) => q.eq("schoolId", schoolId).eq("approvalClass", "privacy")).unique())!._id), conditionJson: JSON.stringify({ equals: true, fieldKey: "support_status" }), order: 1 },
+    ];
+    const created = await t.withIdentity(editor).mutation(api.functions.admissions.settings.createCampaignConfiguration, { schoolId, operationKey: "builder-underscores", targetStatus: "draft", configuration });
+    const saved = await t.withIdentity(editor).query(api.functions.admissions.settings.getFormConfiguration, { formVersionId: created.formVersionId });
+    expect(saved.fields.map((field) => field.key)).toEqual(["support_status", "custom_generated_abc123"]);
+    expect(saved.fields.map((field) => field.sectionKey)).toEqual(["application_details", "application_details"]);
+    expect(saved.requirements.map((requirement) => requirement.key)).toEqual(["birth_cert", "medical_records"]);
+    expect(saved.fields[1].conditionalRuleJson).toBe('{"exists":true,"fieldKey":"support_status"}');
+    expect(saved.requirements[1].conditionJson).toBe('{"equals":true,"fieldKey":"support_status"}');
+  });
+
   test("requires catalogue capability for all command targets and sensitive configuration", async () => {
     const t = convexTest(schema, modules); const { schoolId, userId } = await fixture(t); const now = Date.now();
     const publisher = { subject: "publisher-only", tokenIdentifier: "issuer|publisher-only", issuer: "issuer" };
@@ -127,6 +151,23 @@ describe("atomic admissions campaign commands", () => {
     expect(recovery).toEqual([expect.objectContaining({ intakeId: legacy, recoveryState: "review_required", missingProduct: true, missingForm: true, missingDeclaration: true })]);
     await expect(t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy, operationKey: "legacy", targetStatus: "draft", configuration: replaceConfiguration(Date.now()) })).rejects.toThrow("RECOVERY_GRAPH_AMBIGUOUS");
     expect(await t.run((ctx) => ctx.db.get(legacy))).toMatchObject({ status: "draft" });
+  });
+
+  test("replaces a complete legacy campaign graph without rewriting its identity", async () => {
+    const t = convexTest(schema, modules); const { schoolId } = await fixture(t); const now = Date.now();
+    const legacy = await t.run(async (ctx) => {
+      const programmeId = await ctx.db.insert("admissionsProgrammes", { schoolId, slug: "legacy-programme", name: "Legacy programme", status: "draft", createdAt: now, updatedAt: now });
+      const intakeId = await ctx.db.insert("admissionsIntakes", { schoolId, programmeId, slug: "legacy-intake", name: "Legacy intake", cycleLabel: "2027", opensAt: now + 1_000, closesAt: now + 10_000, status: "draft", createdAt: now, updatedAt: now });
+      const productId = await ctx.db.insert("admissionsProducts", { schoolId, intakeId, slug: "legacy-product", name: "Legacy product", slotCount: 1, status: "draft", createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsDeclarationVersions", { schoolId, programmeId, version: 1, title: "Legacy declaration", body: "Legacy body", bodyDigest: "legacy", purpose: "service", status: "draft", createdAt: now, updatedAt: now });
+      await ctx.db.insert("admissionsFormVersions", { schoolId, programmeId, intakeId, version: 1, schemaVersion: "1", legalNamePolicyVersion: 2, status: "draft", createdAt: now, updatedAt: now });
+      return { programmeId, intakeId, productId };
+    });
+    const replacement = await t.withIdentity(editor).mutation(api.functions.admissions.settings.replaceCampaignConfiguration, { schoolId, intakeId: legacy.intakeId, operationKey: "replace-legacy", targetStatus: "draft", configuration: replaceConfiguration(now) });
+    expect(replacement).toMatchObject({ ...legacy, replayed: false, status: "draft" });
+    expect(await t.run((ctx) => ctx.db.get(legacy.programmeId))).toMatchObject({ slug: "legacy-programme", name: "Legacy programme" });
+    expect(await t.run((ctx) => ctx.db.get(legacy.intakeId))).toMatchObject({ slug: "legacy-intake" });
+    expect(await t.run((ctx) => ctx.db.get(legacy.productId))).toMatchObject({ slug: "legacy-product" });
   });
 
   test("requires exact next-version finance approval and writes a changed price once", async () => {
