@@ -262,7 +262,83 @@ Copy this block for every observation:
 
 ## Observations
 
-_No observations recorded yet._
+## OBS-001 — Admin copies the wrong local Apply port
+
+- Severity: P1
+- Test case: Phase 1 campaign link
+- URL mode: localhost
+- Starting commit: `3906714`
+- Reproducibility: Always
+
+### Steps
+1. Open the Admin admissions dashboard on port 3002.
+2. Copy an intake’s public Apply link.
+3. Compare it with the running Apply app on port 3004.
+
+### Expected
+The copied link uses the configured canonical Apply origin, currently `http://100.84.230.66:3004` for Tailscale testing or the matching active local QA origin.
+
+### Actual
+Admin constructs and copies `http://localhost:3006/...` from a hardcoded browser fallback.
+
+### Data-integrity check
+No data corruption observed; the generated navigation target is incorrect.
+
+### Resolution
+- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
+- Evidence: canonical `getApplicationLink` query/copy boundary test, Admin tests/typecheck/build, and affected Convex tests/typecheck passed.
+
+## OBS-002 — Campaign opening and closing dates are not editable
+
+- Severity: P1
+- Test case: AQ1-01 campaign setup
+- Starting commit: `3906714`
+- Reproducibility: Always
+
+### Steps
+1. Create or edit an admissions campaign.
+2. Observe the campaign card’s **Opens** date.
+3. Search the form builder and side panel for availability controls.
+
+### Expected
+The campaign builder provides discoverable opening and closing date/time controls near the final campaign settings and publish action.
+
+### Actual
+The builder retains date state and submits it, but renders no controls for editing it. New campaigns silently receive a default window.
+
+### Data-integrity check
+Existing dates are loaded internally; the operator cannot inspect or deliberately change them.
+
+### Resolution
+- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
+- Evidence: focused builder test verifies visible opening/closing controls, local-draft persistence, and submitted payload; Admin tests/typecheck/build passed.
+
+## OBS-003 — New campaign declaration no longer starts with editable suggested wording
+
+- Severity: P2
+- Test case: AQ1-01 guardian legal declaration
+- Starting commit: `3906714`
+- Reproducibility: Always for a new campaign
+
+### Steps
+1. Create a new admissions campaign.
+2. Inspect **Guardian Legal Declaration** in the side panel.
+
+### Expected
+A new campaign starts with concise, editable suggested declaration wording, clearly requiring school review before publication. Existing campaigns retain their stored declaration.
+
+### Actual
+Both declaration fields start blank. The readiness audit immediately reports that legal attestation terms are required.
+
+### Evidence
+- User-provided inline screenshots show the blank declaration fields and the lower side-panel placement.
+
+### Data-integrity check
+No approval evidence is fabricated. The issue concerns missing starting copy only.
+
+### Resolution
+- Status: Resolved in implementation commit `a8d490e`; browser revalidation remains user-owned.
+- Evidence: focused builder test verifies the suggested new-campaign declaration and existing stored declaration override; Admin tests/typecheck/build passed.
 
 ## Test summary
 
