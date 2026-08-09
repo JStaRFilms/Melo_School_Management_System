@@ -209,6 +209,40 @@ describe("AdmissionsFormBuilder atomic command mapping", () => {
     expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 
+  test("blocks a pre-recovery replace command across remount until reconciliation, then sends a fresh confirmed recovery", async () => {
+    const storageKey = "admissions_campaign_operation_school_intake";
+    const stalePayload = { schoolId: "school", intakeId: "intake", operationKey: "before-recovery", targetStatus: "published", configuration: { fields: [], requirements: [] } };
+    sessionStorage.setItem(storageKey, JSON.stringify({ command: "replace", payload: stalePayload, reconciliationRequired: false }));
+    useQuery.mockImplementation((name: string) => {
+      if (name.includes("listLegacyCampaignRecovery")) return [{ intakeId: "intake", recoveryState: "recoverable_to_draft" }];
+      if (name.includes("getCatalogue")) return { programmes: [{ id: "programme", name: "Primary", description: null }], intakes: [{ id: "intake", programmeId: "programme", slug: "entry", name: "Entry", cycleLabel: "Primary School", status: "open", opensAt: new Date("2030-01-01T09:00").getTime(), closesAt: new Date("2030-02-01T17:00").getTime() }], products: [{ id: "product", intakeId: "intake" }], forms: [{ id: "form", intakeId: "intake", version: 1, status: "published" }], declarations: [{ id: "declaration", programmeId: "programme", version: 1, title: "Stored", body: "Stored wording.", status: "published" }] };
+      if (name.includes("getFormConfiguration")) return { fields: [], requirements: [] };
+      if (name.includes("listProductPrices")) return [{ version: 1, amountMinor: 10000, currency: "NGN", refundPolicyKey: "non_refundable", feeDisclosure: "Fee" }];
+      return undefined;
+    });
+    const props = { schoolId: "school", intakeId: "intake", onCancel: () => undefined, onSuccess: () => undefined, publishAllowed: true };
+    const first = render(<AdmissionsFormBuilder {...props} />);
+
+    await screen.findByText(/saved replacement command was created before this campaign became recoverable/i);
+    expect(JSON.parse(sessionStorage.getItem(storageKey) ?? "{}")).toMatchObject({ reconciliationRequired: true });
+    expect(replaceCampaignConfiguration).not.toHaveBeenCalled();
+
+    first.unmount();
+    render(<AdmissionsFormBuilder {...props} />);
+    await screen.findByText(/saved replacement command was created before this campaign became recoverable/i);
+    expect(screen.getByRole("button", { name: "Save Campaign Draft" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Reconcile and discard stale command/i }));
+    await waitFor(() => expect(query).toHaveBeenCalledWith("functions/admissions/settings:getCatalogue", { schoolId: "school" }));
+    await waitFor(() => expect(screen.queryByText(/saved replacement command was created before this campaign became recoverable/i)).not.toBeInTheDocument());
+
+    await screen.findByDisplayValue("Stored");
+    fireEvent.click(screen.getByLabelText("Confirm recover this campaign as a draft"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Campaign Draft" }));
+    await waitFor(() => expect(replaceCampaignConfiguration).toHaveBeenCalledWith(expect.objectContaining({ intakeId: "intake", targetStatus: "draft", recoverLegacyToDraft: true })));
+    expect(replaceCampaignConfiguration.mock.calls[0][0].operationKey).not.toBe(stalePayload.operationKey);
+  });
+
   test("uses plain recovery guidance for a failed save and retry", async () => {
     createCampaignConfiguration.mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS")).mockRejectedValueOnce(new Error("RECOVERY_GRAPH_AMBIGUOUS"));
     render(builder());

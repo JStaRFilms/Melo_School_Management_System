@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { invokePendingCampaignCommand, loadPendingCampaignCommand, savePendingCampaignCommand } from "../lib/admissions/campaignOperation";
+import { invokePendingCampaignCommand, isStaleRecoveryReplaceCommand, loadPendingCampaignCommand, savePendingCampaignCommand } from "../lib/admissions/campaignOperation";
 
 describe("admissions campaign command retry", () => {
   test("persists and retries the exact replace snapshot once after a transport failure", async () => {
@@ -11,6 +11,18 @@ describe("admissions campaign command retry", () => {
     const createCalls: Record<string, unknown>[] = []; const replaceCalls: Record<string, unknown>[] = [];
     await invokePendingCampaignCommand(loaded!, { create: async (command) => { createCalls.push(command); }, replace: async (command) => { replaceCalls.push(command); } });
     expect(createCalls).toEqual([]); expect(replaceCalls).toEqual([payload]); expect(loadPendingCampaignCommand(storage, "pending")).toEqual({ command: "replace", payload, reconciliationRequired: false });
+  });
+
+  test("identifies only a same-intake replace command missing explicit recovery intent as stale", async () => {
+    const stale = { command: "replace" as const, payload: { intakeId: "intake", operationKey: "before-recovery" }, reconciliationRequired: false };
+    const validRecoveryRetry = { command: "replace" as const, payload: { intakeId: "intake", operationKey: "recovery-retry", recoverLegacyToDraft: true }, reconciliationRequired: false };
+
+    expect(isStaleRecoveryReplaceCommand(stale, "intake")).toBe(true);
+    expect(isStaleRecoveryReplaceCommand(validRecoveryRetry, "intake")).toBe(false);
+    expect(isStaleRecoveryReplaceCommand(stale, "other-intake")).toBe(false);
+
+    const replace = async (payload: Record<string, unknown>) => payload;
+    await expect(invokePendingCampaignCommand(validRecoveryRetry, { create: async () => undefined, replace })).resolves.toEqual(validRecoveryRetry.payload);
   });
 
   test("retains the exact command snapshot when reconciliation is required", async () => {

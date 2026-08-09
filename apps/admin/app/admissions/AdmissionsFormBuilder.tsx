@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { invokePendingCampaignCommand, loadPendingCampaignCommand, savePendingCampaignCommand, type PendingCampaignCommand } from "../../lib/admissions/campaignOperation";
+import { invokePendingCampaignCommand, isStaleRecoveryReplaceCommand, loadPendingCampaignCommand, savePendingCampaignCommand, type PendingCampaignCommand } from "../../lib/admissions/campaignOperation";
 
 type DataClass = "public" | "internal" | "personal" | "child_confidential" | "highly_sensitive" | "financial_security";
 
@@ -619,6 +619,15 @@ export function AdmissionsFormBuilder({
     setReconciliationBlocked(pending?.reconciliationRequired === true);
   }, [pendingOperationStorageKey]);
 
+  useEffect(() => {
+    const pending = pendingCommandRef.current;
+    if (!isRecoverableToDraft || !intakeId || !pending || !isStaleRecoveryReplaceCommand(pending, intakeId)) return;
+    const blockedPending = { ...pending, reconciliationRequired: true };
+    pendingCommandRef.current = blockedPending;
+    savePendingCampaignCommand(sessionStorage, pendingOperationStorageKey, blockedPending);
+    setReconciliationBlocked(true);
+  }, [intakeId, isRecoverableToDraft, pendingOperationStorageKey]);
+
   const requireReconciliation = () => {
     const pending = pendingCommandRef.current;
     if (!pending) return;
@@ -744,7 +753,7 @@ export function AdmissionsFormBuilder({
 
           {reconciliationBlocked && (
             <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 text-xs font-semibold text-rose-900 shadow-sm">
-              This campaign command is blocked for reconciliation. Reload the authoritative campaign state, then deliberately discard this stale command before sending another one.
+              A saved replacement command was created before this campaign became recoverable and is blocked for reconciliation. Reload the authoritative campaign state, then deliberately discard the stale command before confirming recovery and sending a new draft command.
               <button type="button" onClick={() => void handleReconcileAndDiscard()} disabled={reconciling} className="ml-3 underline font-bold disabled:opacity-50">{reconciling ? "Reconciling campaign…" : "Reconcile and discard stale command"}</button>
             </div>
           )}

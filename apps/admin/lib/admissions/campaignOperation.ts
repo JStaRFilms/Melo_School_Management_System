@@ -25,6 +25,12 @@ export function savePendingCampaignCommand(storage: SessionStorage, key: string,
   storage.setItem(key, JSON.stringify(pending));
 }
 
+export function isStaleRecoveryReplaceCommand(pending: PendingCampaignCommand, intakeId: string): boolean {
+  return pending.command === "replace"
+    && pending.payload.intakeId === intakeId
+    && pending.payload.recoverLegacyToDraft !== true;
+}
+
 export async function invokePendingCampaignCommand(pending: PendingCampaignCommand, commands: { create: (payload: Record<string, unknown>) => Promise<unknown>; replace: (payload: Record<string, unknown>) => Promise<unknown> }) {
   return pending.command === "create" ? commands.create(pending.payload) : commands.replace(pending.payload);
 }
