@@ -32,7 +32,7 @@ Completed during the UI branch review:
 
 | ID | Priority | Work item | Production impact |
 |---|---|---|---|
-| AQ-1 | P0 | Make form setup/update atomic | Prevent partial catalogue records after a failed multi-step save. |
+| AQ-1 | P0 · Complete | Make form setup/update atomic | Implemented and independently approved on `feature/admissions-atomic-campaigns`; prevents partial catalogue records and provides durable replay/recovery. |
 | AQ-2 | P0 | Complete accountable pricing approval UX | Required before a school can safely configure a paid campaign end-to-end. |
 | AQ-3 | P0 | Run full browser workflow and visual QA | Required before claiming the redesigned admissions workflow works for users. |
 | AQ-4 | P1 | Decompose oversized admissions components | Reduces regression risk and makes future changes reviewable. |
@@ -44,6 +44,8 @@ Completed during the UI branch review:
 | AQ-10 | P2 | Remove or relocate design-only mockup assets | Keeps production Admin assets free of obsolete design artifacts. |
 
 ## AQ-1 — Atomic admissions form setup and update
+
+**Implementation:** Complete on `feature/admissions-atomic-campaigns`; integration merge remains pending.
 
 ### Problem
 
