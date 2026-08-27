@@ -271,12 +271,12 @@ export default function AdminDashboardPage() {
           title="Admin Dashboard"
           description="Operational pulse, institution setup progress, and real-time academic workflows."
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {isSetupFullyComplete && (
                 <button
                   type="button"
                   onClick={() => setIsReviewModalOpen(true)}
-                  className="flex items-center gap-1.5 rounded-2xl bg-white px-3.5 py-2 border border-slate-200/80 shadow-xs hover:border-indigo-200 hover:bg-indigo-50/40 text-slate-700 hover:text-indigo-700 transition cursor-pointer text-[11px] font-bold"
+                  className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 border border-slate-200 shadow-xs hover:border-slate-300 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-xs font-bold shrink-0"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                   <span>Review Setup</span>
@@ -284,19 +284,19 @@ export default function AdminDashboardPage() {
               )}
 
               {activeSession ? (
-                <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 border border-slate-200/80 shadow-xs">
+                <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 border border-slate-200 shadow-xs shrink-0">
                   <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[11px] font-bold text-slate-900">
-                    Active: <span className="font-extrabold text-indigo-600">{activeSession.name}</span>
+                  <span className="text-xs font-bold text-slate-900">
+                    Active: <span className="font-extrabold text-brand-primary">{activeSession.name}</span>
                   </span>
                 </div>
               ) : (
                 <Link
                   href="/academic/sessions"
-                  className="flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2 border border-amber-200/80 shadow-xs hover:bg-amber-100/60 transition"
+                  className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2 border border-amber-200 shadow-xs hover:bg-amber-100/70 transition shrink-0"
                 >
                   <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
                     Action Req: Set Active Session
                   </span>
                 </Link>
@@ -305,13 +305,13 @@ export default function AdminDashboardPage() {
           }
         />
 
-        {/* ═══ SECTION 1: SETUP STEPPER (Unfinished) OR DISMISSIBLE BANNER (Finished) ═══ */}
+        {/* ═══ SECTION 1: SETUP CHECKLIST (Flat, Breathable, Unboxed) ═══ */}
         {!isSetupFullyComplete ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 md:p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 text-xs font-black">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-primary text-white text-[10px] font-black">
                     {completedMilestones}
                   </span>
                   <h3 className="font-display text-sm font-bold text-slate-950">
@@ -323,10 +323,10 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="w-32 bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/60">
+              <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+                <div className="w-28 sm:w-36 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
                   <div
-                    className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
+                    className="bg-brand-primary h-2 rounded-full transition-all duration-500"
                     style={{ width: `${setupPercentage}%` }}
                   />
                 </div>
@@ -334,7 +334,8 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+            {/* Desktop: 5-Column Grid */}
+            <div className="hidden lg:grid lg:grid-cols-5 gap-3 pt-1">
               {setupMilestones.map((m) => (
                 <div
                   key={m.id}
@@ -363,9 +364,60 @@ export default function AdminDashboardPage() {
                   {!m.status && (
                     <Link
                       href={m.href}
-                      className="mt-3 flex items-center justify-between rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-xs hover:bg-indigo-600 transition-colors"
+                      className="mt-3 flex items-center justify-between rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-xs hover:bg-brand-primary transition-colors"
                     >
                       <span>{m.actionLabel}</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Mobile / Tablet View: Flat, Space-Efficient List */}
+            <div className="divide-y divide-slate-100 lg:hidden">
+              {setupMilestones.map((m) => (
+                <div
+                  key={m.id}
+                  className="py-3 flex items-center justify-between gap-3 hover:bg-slate-50/50 rounded-lg px-1 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
+                        m.status
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {m.status ? (
+                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-slate-950 truncate">{m.title}</h4>
+                      <p className="text-[11px] text-slate-500 truncate">{m.description}</p>
+                    </div>
+                  </div>
+
+                  {m.status ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0">
+                      Done
+                    </span>
+                  ) : (
+                    <Link
+                      href={m.href}
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand-primary active:scale-95 transition shrink-0 shadow-2xs"
+                    >
+                      <span>
+                        {m.actionLabel
+                          .replace("Configure ", "")
+                          .replace("Create ", "")
+                          .replace("Add ", "")
+                          .replace("Enroll ", "")}
+                      </span>
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                   )}
@@ -398,7 +450,7 @@ export default function AdminDashboardPage() {
               <button
                 type="button"
                 onClick={handleDismissBanner}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-650 hover:bg-emerald-100/60 hover:text-emerald-900 transition-colors cursor-pointer"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-100/60 hover:text-emerald-900 transition-colors cursor-pointer"
                 title="Dismiss banner"
               >
                 <X className="h-3.5 w-3.5" />
@@ -459,7 +511,7 @@ export default function AdminDashboardPage() {
                     <Link
                       href={m.href}
                       onClick={() => setIsReviewModalOpen(false)}
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                      className="text-xs font-bold text-brand-primary hover:opacity-80 flex items-center gap-1"
                     >
                       <span>Manage</span>
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -531,7 +583,7 @@ export default function AdminDashboardPage() {
               href="/academic/students"
               className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
                 <Plus className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800 truncate">Enroll Student</span>
@@ -541,7 +593,7 @@ export default function AdminDashboardPage() {
               href="/academic/teachers"
               className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
                 <Plus className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800 truncate">Add Teacher</span>
@@ -551,7 +603,7 @@ export default function AdminDashboardPage() {
               href="/assessments/results/entry"
               className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
                 <ClipboardCheck className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800 truncate">Enter Scores</span>
@@ -561,7 +613,7 @@ export default function AdminDashboardPage() {
               href="/billing"
               className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
                 <Banknote className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800 truncate">Billing Hub</span>
@@ -571,7 +623,7 @@ export default function AdminDashboardPage() {
               href="/academic/events"
               className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group sm:col-span-2 md:col-span-1"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
                 <CalendarDays className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800 truncate">School Events</span>
@@ -583,7 +635,7 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-6">
           
           {/* Left Panel: Classroom Roll & Capacity Breakdown */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 md:p-6 shadow-2xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-display text-sm font-bold text-slate-950">Classroom Roll & Faculty</h3>
@@ -591,7 +643,7 @@ export default function AdminDashboardPage() {
               </div>
               <Link
                 href="/academic/classes"
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                className="text-xs font-bold text-brand-primary hover:opacity-80 flex items-center gap-1"
               >
                 <span>View All</span>
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -599,7 +651,7 @@ export default function AdminDashboardPage() {
             </div>
 
             {activeClasses.length === 0 ? (
-              <div className="py-10 text-center space-y-3">
+              <div className="py-8 text-center space-y-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-400 mx-auto">
                   <School className="h-5 w-5" />
                 </div>
@@ -609,7 +661,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <Link
                   href="/academic/classes"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 shadow-xs"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand-primary px-3.5 py-2 text-xs font-bold text-white hover:opacity-90 shadow-xs"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Create First Class
@@ -620,7 +672,7 @@ export default function AdminDashboardPage() {
                 {activeClasses.slice(0, 6).map((c) => (
                   <div key={c._id} className="py-3 flex items-center justify-between hover:bg-slate-50/50 rounded-lg px-1 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs shrink-0">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 font-bold text-xs shrink-0">
                         {c.name.slice(0, 3)}
                       </div>
                       <div className="min-w-0">
@@ -658,7 +710,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Right Panel: Recent Activity & Calendar Timeline */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 md:p-6 shadow-2xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-display text-sm font-bold text-slate-950">Recent Audit & Events</h3>
@@ -666,7 +718,7 @@ export default function AdminDashboardPage() {
               </div>
               <Link
                 href="/academic/events"
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                className="text-xs font-bold text-brand-primary hover:opacity-80 flex items-center gap-1"
               >
                 <span>Calendar</span>
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -684,12 +736,12 @@ export default function AdminDashboardPage() {
                   {events.slice(0, 2).map((ev) => (
                     <div
                       key={ev._id}
-                      className="flex items-start gap-3 p-2.5 rounded-xl border border-indigo-100 bg-indigo-50/40"
+                      className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60"
                     >
-                      <CalendarDays className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                      <CalendarDays className="h-4 w-4 text-brand-primary shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-indigo-950 truncate">{ev.title}</p>
-                        <p className="text-[10px] text-indigo-700 mt-0.5">{formatEventDate(ev.startDate)}</p>
+                        <p className="text-xs font-bold text-slate-950 truncate">{ev.title}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate)}</p>
                       </div>
                     </div>
                   ))}
