@@ -259,6 +259,9 @@ export function WorkspaceNavbar({
             },
           };
 
+  const desktopNavRef = useRef<HTMLElement>(null);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+
   const activeSection =
     sections
       .filter((section) => isWorkspaceSectionActive(section, currentPath))
@@ -268,36 +271,33 @@ export function WorkspaceNavbar({
         return bLength - aLength;
       })[0] ?? null;
 
-  // Identify the currently active domain
-  const activeDomainKey = useMemo(() => {
-    if (!activeSection) return Object.keys(groups)[0] ?? "";
-    for (const [key, group] of Object.entries(groups)) {
-      if (group.links.some((s: WorkspaceSection) => s.href === activeSection.href)) {
-        return key;
-      }
-    }
-    return Object.keys(groups)[0] ?? "";
-  }, [activeSection?.href, groups]);
-
-  const activeGroup =
-    (groups as unknown as Record<string, { label: string; icon: ReactNode; links: WorkspaceSection[] }>)[activeDomainKey] ??
-    Object.values(groups)[0] ?? {
-      label: def.label,
-      icon: <LayoutDashboard className="h-4 w-4" />,
-      links: sections,
-    };
-
-  // Auto-scroll to active item on route change
+  // Robust auto-scroll into view when active item changes
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof window === "undefined") return;
     const timer = setTimeout(() => {
-      const activeEl = document.querySelector('[data-sidebar-active="true"]');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // 1. Desktop sidebar scroll
+      if (desktopNavRef.current) {
+        const activeEl = desktopNavRef.current.querySelector<HTMLElement>('[data-sidebar-active="true"]');
+        if (activeEl) {
+          const nav = desktopNavRef.current;
+          const navRect = nav.getBoundingClientRect();
+          const elRect = activeEl.getBoundingClientRect();
+          if (elRect.top < navRect.top + 20 || elRect.bottom > navRect.bottom - 20) {
+            activeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }
       }
-    }, 100);
+
+      // 2. Mobile drawer scroll
+      if (mobileNavRef.current) {
+        const activeEl = mobileNavRef.current.querySelector<HTMLElement>('[data-sidebar-active="true"]');
+        if (activeEl) {
+          activeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+    }, 80);
     return () => clearTimeout(timer);
-  }, [activeSection?.href]);
+  }, [activeSection?.href, open]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -350,33 +350,26 @@ export function WorkspaceNavbar({
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3.5 py-4 custom-scrollbar">
-          {/* Active Domain Header Card */}
-          <div className="mb-4 px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-between">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100/80 shrink-0">
-                {activeGroup.icon}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xs font-black text-slate-950 truncate uppercase tracking-wider">
-                  {activeGroup.label}
+        <nav ref={desktopNavRef} className="flex-1 overflow-y-auto px-3.5 py-2.5 custom-scrollbar scroll-smooth">
+          <div className="space-y-5 py-2">
+            {Object.entries(groups)
+              .filter(([, group]) => group.links.length > 0)
+              .map(([key, group]) => (
+              <div key={key} className="space-y-1">
+                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                  {group.label}
                 </h3>
-                <p className="text-[10px] font-bold text-slate-400">
-                  {activeGroup.links.length} {activeGroup.links.length === 1 ? "section" : "sections"}
-                </p>
+                <div className="grid gap-0.5">
+                  {group.links.map((s: WorkspaceSection) => (
+                    <SidebarLink 
+                      key={s.href} 
+                      section={s} 
+                      active={activeSection?.href === s.href} 
+                      renderLink={renderLink} 
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-
-          {/* Focused Sub-Links */}
-          <div className="space-y-1">
-            {activeGroup.links.map((s: WorkspaceSection) => (
-              <SidebarLink
-                key={s.href}
-                section={s}
-                active={activeSection?.href === s.href}
-                renderLink={renderLink}
-              />
             ))}
           </div>
         </nav>
@@ -406,34 +399,12 @@ export function WorkspaceNavbar({
               <h2 className="truncate font-display text-sm font-bold tracking-tight text-slate-950 xl:text-base">
                 {activeSection?.label ?? "Dashboard"}
               </h2>
+              {schoolName && (
+                <span className="hidden truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 md:block">
+                  {schoolName}
+                </span>
+              )}
             </div>
-          </div>
-
-          {/* ── TOP DOMAIN SWITCHER TABS (Desktop / Tablet) ── */}
-          <div className="hidden md:flex items-center gap-1 p-1 bg-slate-100/90 rounded-xl border border-slate-200/60 shadow-2xs">
-            {Object.entries(groups)
-              .filter(([, group]) => group.links.length > 0)
-              .map(([key, group]) => {
-                const isDomainActive = key === activeDomainKey;
-                const targetHref = group.links[0]?.href ?? "#";
-                return renderLink({
-                  href: targetHref,
-                  children: (
-                    <span
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                        isDomainActive
-                          ? "bg-white text-slate-950 shadow-xs border border-slate-200/80 font-extrabold"
-                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50"
-                      }`}
-                    >
-                      <span className={isDomainActive ? "text-indigo-600" : "text-slate-400"}>
-                        {group.icon}
-                      </span>
-                      {group.label}
-                    </span>
-                  ),
-                });
-              })}
           </div>
 
           <div className="flex items-center gap-3">
@@ -530,8 +501,8 @@ export function WorkspaceNavbar({
                </button>
             </div>
 
-            <div ref={menuRef} className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide pb-32">
-              <div className="mb-6 flex items-center gap-4 px-2">
+            <div ref={mobileNavRef} className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide pb-32 scroll-smooth">
+              <div className="mb-8 flex items-center gap-4 px-2">
                 <div
                   className="flex h-12 w-12 items-center justify-center rounded-2xl text-base font-bold text-white shadow-xl shadow-slate-950/20"
                   style={{ backgroundColor: accentColor }}
@@ -544,40 +515,23 @@ export function WorkspaceNavbar({
                 </div>
               </div>
 
-              {/* Mobile Domain Selector Tabs */}
-              <div className="mb-5 flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
+              <div className="space-y-8">
                 {Object.entries(groups)
                   .filter(([, group]) => group.links.length > 0)
-                  .map(([key, group]) => {
-                    const isDomainActive = key === activeDomainKey;
-                    const targetHref = group.links[0]?.href ?? "#";
-                    return renderLink({
-                      href: targetHref,
-                      children: (
-                        <span
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
-                            isDomainActive
-                              ? "bg-slate-950 text-white shadow-xs"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {group.icon}
-                          {group.label}
-                        </span>
-                      ),
-                    });
-                  })}
-              </div>
-
-              {/* Mobile Focused Sub-Links */}
-              <div className="space-y-1.5">
-                {activeGroup.links.map((s: WorkspaceSection) => (
-                  <MobileLink
-                    key={s.href}
-                    section={s}
-                    active={activeSection?.href === s.href}
-                    renderLink={renderLink}
-                  />
+                  .map(([key, group]) => (
+                  <div key={key} className="space-y-3">
+                    <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
+                    <div className="grid gap-1">
+                      {group.links.map((s: WorkspaceSection) => (
+                         <MobileLink 
+                            key={s.href} 
+                            section={s} 
+                            active={activeSection?.href === s.href} 
+                            renderLink={renderLink} 
+                          />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
