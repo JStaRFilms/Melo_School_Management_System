@@ -15,7 +15,7 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/assessments/setup/exam-recording";
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/admin/dashboard";
   const errorParam = searchParams.get("error");
 
   const handleSubmit = async (e: React.FormEvent) => {

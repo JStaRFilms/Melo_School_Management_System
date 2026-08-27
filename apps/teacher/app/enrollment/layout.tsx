@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { authClient } from "@/lib/auth-client";
 import { useAuth } from "@/lib/AuthProvider";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 
@@ -68,6 +69,7 @@ export default function EnrollmentLayout({
       userRole={session?.user?.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

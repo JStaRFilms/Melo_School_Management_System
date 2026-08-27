@@ -20,7 +20,9 @@ import {
   LayoutDashboard,
   Landmark,
   BookOpenText,
+  Lock,
 } from "lucide-react";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -47,6 +49,11 @@ export interface WorkspaceNavbarProps {
   userRole?: string | null;
   schoolBranding?: WorkspaceSchoolBranding | null;
   onSignOut?: () => void;
+  onChangePassword?: (args: {
+    currentPassword: string;
+    newPassword: string;
+    revokeOtherSessions?: boolean;
+  }) => Promise<{ error?: { message?: string } | null } | void>;
   renderLink: (props: LinkRenderProps) => ReactNode;
   children: ReactNode;
 }
@@ -61,6 +68,7 @@ export function WorkspaceNavbar({
   userRole,
   schoolBranding,
   onSignOut,
+  onChangePassword,
   renderLink,
   children,
 }: WorkspaceNavbarProps) {
@@ -78,6 +86,7 @@ export function WorkspaceNavbar({
 
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -340,6 +349,19 @@ export function WorkspaceNavbar({
                     <p className="text-sm font-bold text-slate-950 truncate mt-0.5">{userName}</p>
                     <p className="text-[10px] font-medium text-slate-500 mt-0.5">{userRole}</p>
                   </div>
+                  {onChangePassword && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setIsPasswordModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 mb-0.5"
+                    >
+                      <Lock className="h-4 w-4 text-slate-400" />
+                      Change password
+                    </button>
+                  )}
                   <button
                     onClick={onSignOut}
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50"
@@ -430,16 +452,37 @@ export function WorkspaceNavbar({
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white/95 p-4 backdrop-blur-md">
-               <button
+            <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white/95 p-4 backdrop-blur-md space-y-2">
+              {onChangePassword && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setIsPasswordModalOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-700 shadow-sm"
+                >
+                  <Lock className="h-4 w-4 text-slate-400" />
+                  Change password
+                </button>
+              )}
+              <button
                 onClick={onSignOut}
-                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 py-4 text-sm font-bold text-white shadow-lg shadow-slate-950/20"
+                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 py-3.5 text-sm font-bold text-white shadow-lg shadow-slate-950/20"
               >
                 <LogOut className="h-4 w-4" />
                 Sign out secure session
               </button>
             </div>
           </div>
+        )}
+
+        {onChangePassword && (
+          <ChangePasswordModal
+            isOpen={isPasswordModalOpen}
+            onClose={() => setIsPasswordModalOpen(false)}
+            onChangePassword={onChangePassword}
+          />
         )}
       </div>
     </div>

@@ -20,6 +20,8 @@ export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigat
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
 export { MeloLoader } from "./components/MeloLoader";
+export { ChangePasswordModal } from "./components/ChangePasswordModal";
+export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
 
 // Exam Recording Domain
 export * from "./exam-recording";

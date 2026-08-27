@@ -9,6 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { authClient } from "@/auth-client";
 
 export default function AcademicLayout({
   children,
@@ -106,6 +107,7 @@ function AcademicWorkspaceNavbar({
       userRole={userRole}
       schoolBranding={schoolBranding ?? null}
       onSignOut={onSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

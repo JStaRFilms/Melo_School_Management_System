@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { authClient } from "@/auth-client";
 
 export default function BillingLayout({
   children,
@@ -62,6 +63,7 @@ export default function BillingLayout({
       userRole={session?.user?.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

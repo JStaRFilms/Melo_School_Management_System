@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { MeloLoader } from "@school/shared";
+import { MeloLoader, ChangePasswordModal } from "@school/shared";
+import { authClient } from "@/auth-client";
 
 export function SchoolsLayoutClient({
   children,
@@ -30,6 +31,8 @@ export function SchoolsLayoutClient({
       router.replace("/sign-in?error=unauthorized");
     }
   }, [isAuthenticated, isLoading, pathname, router, isPlatformAdmin]);
+
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -73,13 +76,21 @@ export function SchoolsLayoutClient({
               </Link>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="hidden sm:block text-xs text-slate-500">
+            <div className="flex items-center gap-2.5">
+              <span className="hidden sm:block text-xs font-semibold text-slate-700">
                 {session?.user?.name ?? session?.user?.email}
               </span>
               <button
+                type="button"
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-sm"
+              >
+                Change Password
+              </button>
+              <button
+                type="button"
                 onClick={handleSignOut}
-                className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+                className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 Sign Out
               </button>
@@ -89,6 +100,18 @@ export function SchoolsLayoutClient({
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">{children}</main>
+
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        onChangePassword={async ({ currentPassword, newPassword, revokeOtherSessions }) => {
+          return await authClient.changePassword({
+            currentPassword,
+            newPassword,
+            revokeOtherSessions,
+          });
+        }}
+      />
     </div>
   );
 }

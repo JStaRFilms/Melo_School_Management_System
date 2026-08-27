@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { authClient } from "@/lib/auth-client";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/AuthProvider";
@@ -59,6 +60,7 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
       userRole={session?.user?.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

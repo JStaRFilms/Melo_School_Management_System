@@ -17,7 +17,7 @@ export default function HomePage() {
   }
 
   if (!isConvexConfigured()) {
-    redirect("/assessments/setup/exam-recording");
+    redirect("/admin/dashboard");
   }
 
   if (!isAuthenticated) {
