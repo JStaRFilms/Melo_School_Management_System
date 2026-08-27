@@ -193,7 +193,7 @@ export default function SessionsPage() {
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition cursor-pointer shrink-0"
+                className="flex items-center gap-2 rounded-2xl bg-brand-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
               >
                 <Plus className="h-4 w-4" />
                 <span>New Session</span>
@@ -221,7 +221,7 @@ export default function SessionsPage() {
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-2xl bg-brand-primary px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90 transition cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Create First Academic Session

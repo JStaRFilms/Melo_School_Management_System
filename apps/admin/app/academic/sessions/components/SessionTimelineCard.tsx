@@ -140,7 +140,7 @@ export function SessionTimelineCard({
             <div
               className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
                 session.isActive
-                  ? "bg-slate-900 text-white shadow-xs"
+                  ? "bg-brand-primary text-white shadow-xs"
                   : "bg-slate-100 text-slate-500"
               }`}
             >
@@ -205,7 +205,7 @@ export function SessionTimelineCard({
             <button
               type="button"
               onClick={() => setIsAddTermModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 rounded-xl bg-brand-primary px-3.5 py-2 text-xs font-bold text-white hover:opacity-90 transition cursor-pointer shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Term</span>
@@ -263,7 +263,7 @@ export function SessionTimelineCard({
                     type="button"
                     onClick={handleAutoFillTerms}
                     disabled={isAutoFilling}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 shadow-xs transition cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90 shadow-xs transition cursor-pointer disabled:opacity-50"
                   >
                     <CalendarCheck className="h-3.5 w-3.5" />
                     {isAutoFilling ? "Creating..." : "Auto-Generate Standard 3 Terms"}

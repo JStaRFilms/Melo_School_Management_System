@@ -88,6 +88,21 @@ export interface WorkspaceNavbarProps {
 
 /* ─── Component ──────────────────────────────────────────────── */
 
+function hexToRgba(hex: string, alpha: number) {
+  let c = hex.replace("#", "");
+  if (c.length === 3) {
+    c = c.split("").map((x) => x + x).join("");
+  }
+  const num = parseInt(c, 16);
+  if (Number.isNaN(num) || c.length !== 6) {
+    return `rgba(15, 23, 42, ${alpha})`;
+  }
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function WorkspaceNavbar({
   workspace,
   currentPath,
@@ -106,7 +121,7 @@ export function WorkspaceNavbar({
     userName?.trim().charAt(0).toUpperCase() ?? def.label.charAt(0);
   const schoolName = schoolBranding?.name?.trim() || null;
   const schoolInitials = buildSchoolInitials(schoolName ?? def.label);
-  const primaryColor = schoolBranding?.theme?.primaryColor || "#020617";
+  const primaryColor = schoolBranding?.theme?.primaryColor || "#0f172a";
   const accentColor = schoolBranding?.theme?.accentColor || "#2563eb";
   const workspaceTitle = schoolName
     ? `${schoolName} · ${def.label}`
@@ -386,7 +401,16 @@ export function WorkspaceNavbar({
   }, [currentPath]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
+    <div
+      className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans"
+      style={{
+        "--school-primary": primaryColor,
+        "--school-accent": accentColor,
+        "--school-primary-light": hexToRgba(primaryColor, 0.06),
+        "--school-primary-border": hexToRgba(primaryColor, 0.15),
+        "--school-accent-light": hexToRgba(accentColor, 0.10),
+      } as React.CSSProperties}
+    >
       
       {/* ═══ DESKTOP SIDEBAR (Pinned) ═══════════════════════════ */}
       <aside className="hidden h-full w-72 flex-col border-r border-slate-200 bg-white xl:flex shrink-0 z-30">
@@ -425,7 +449,9 @@ export function WorkspaceNavbar({
                         key={s.href} 
                         section={s} 
                         active={activeSection?.href === s.href} 
-                        renderLink={renderLink} 
+                        renderLink={renderLink}
+                        primaryColor={primaryColor}
+                        accentColor={accentColor}
                       />
                     ))}
                   </div>
@@ -449,6 +475,8 @@ export function WorkspaceNavbar({
                         section={singleSection}
                         active={isLinkActive}
                         renderLink={renderLink}
+                        primaryColor={primaryColor}
+                        accentColor={accentColor}
                       />
                     );
                   }
@@ -468,7 +496,10 @@ export function WorkspaceNavbar({
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-700"}`}>
+                          <span
+                            style={isGroupActive && accentColor ? { color: accentColor } : undefined}
+                            className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-700"}`}
+                          >
                             {group.icon}
                           </span>
                           <span className="truncate">{group.label}</span>
@@ -494,6 +525,8 @@ export function WorkspaceNavbar({
                               active={activeSection?.href === s.href}
                               renderLink={renderLink}
                               isNested
+                              primaryColor={primaryColor}
+                              accentColor={accentColor}
                             />
                           ))}
                         </div>
@@ -509,7 +542,10 @@ export function WorkspaceNavbar({
             <div className="space-y-4 py-1">
               <div className="px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-between">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100/80 shrink-0">
+                  <div
+                    style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/60 shrink-0"
+                  >
                     {activeGroup.icon}
                   </div>
                   <div className="min-w-0">
@@ -530,6 +566,8 @@ export function WorkspaceNavbar({
                     section={s}
                     active={activeSection?.href === s.href}
                     renderLink={renderLink}
+                    primaryColor={primaryColor}
+                    accentColor={accentColor}
                   />
                 ))}
               </div>
@@ -749,7 +787,9 @@ export function WorkspaceNavbar({
                               key={s.href} 
                               section={s} 
                               active={activeSection?.href === s.href} 
-                              renderLink={renderLink} 
+                              renderLink={renderLink}
+                              primaryColor={primaryColor}
+                              accentColor={accentColor}
                             />
                         ))}
                       </div>
@@ -773,6 +813,8 @@ export function WorkspaceNavbar({
                             section={singleSection}
                             active={isLinkActive}
                             renderLink={renderLink}
+                            primaryColor={primaryColor}
+                            accentColor={accentColor}
                           />
                         );
                       }
@@ -790,7 +832,10 @@ export function WorkspaceNavbar({
                             }`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400"}`}>
+                              <span
+                                style={isGroupActive && accentColor ? { color: accentColor } : undefined}
+                                className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400"}`}
+                              >
                                 {group.icon}
                               </span>
                               <span className="truncate">{group.label}</span>
@@ -816,6 +861,8 @@ export function WorkspaceNavbar({
                                   active={activeSection?.href === s.href}
                                   renderLink={renderLink}
                                   isNested
+                                  primaryColor={primaryColor}
+                                  accentColor={accentColor}
                                 />
                               ))}
                             </div>
@@ -835,6 +882,8 @@ export function WorkspaceNavbar({
                       section={s}
                       active={activeSection?.href === s.href}
                       renderLink={renderLink}
+                      primaryColor={primaryColor}
+                      accentColor={accentColor}
                     />
                   ))}
                 </div>
@@ -999,34 +1048,45 @@ function SidebarLink({
   active,
   renderLink,
   isNested = false,
+  primaryColor,
+  accentColor,
 }: {
   section: any;
   active: boolean;
   renderLink: any;
   isNested?: boolean;
+  primaryColor?: string;
+  accentColor?: string;
 }) {
   return renderLink({
     href: section.href,
     children: (
       <span
         data-sidebar-active={active ? "true" : undefined}
+        style={active && primaryColor ? { backgroundColor: primaryColor } : undefined}
         className={`flex items-center justify-between rounded-xl transition-all duration-150 group ${
           isNested ? "px-3 py-2 text-[12.5px]" : "px-3.5 py-2.5 text-[13px]"
         } font-bold ${
           active 
-            ? "bg-slate-950 text-white shadow-sm" 
+            ? "text-white shadow-sm" 
             : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-950"
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className={`transition-colors ${active ? "text-blue-400" : "text-slate-400 group-hover:text-slate-700"}`}>
+          <span
+            style={active && accentColor ? { color: accentColor } : undefined}
+            className={`transition-colors ${active ? "text-blue-300" : "text-slate-400 group-hover:text-slate-700"}`}
+          >
             {getSectionIcon(section.href)}
           </span>
           <span className="truncate">{section.label}</span>
         </div>
-        <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-all ${
-          active ? "text-blue-400 opacity-100" : "text-slate-300 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5"
-        }`} />
+        <ChevronRight
+          style={active && accentColor ? { color: accentColor } : undefined}
+          className={`h-3.5 w-3.5 shrink-0 transition-all ${
+            active ? "opacity-100" : "text-slate-300 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5"
+          }`}
+        />
       </span>
     ),
   });
@@ -1037,32 +1097,45 @@ function MobileLink({
   active,
   renderLink,
   isNested = false,
+  primaryColor,
+  accentColor,
 }: {
   section: any;
   active: boolean;
   renderLink: any;
   isNested?: boolean;
+  primaryColor?: string;
+  accentColor?: string;
 }) {
   return renderLink({
     href: section.href,
     children: (
       <span
         data-sidebar-active={active ? "true" : undefined}
+        style={active && primaryColor ? { backgroundColor: primaryColor } : undefined}
         className={`flex items-center justify-between rounded-xl transition-all ${
           isNested ? "px-3.5 py-2.5 text-[13px]" : "px-4 py-3.5 text-sm"
         } font-bold ${
           active 
-            ? "bg-slate-950 text-white shadow-lg shadow-slate-950/10" 
+            ? "text-white shadow-lg shadow-slate-950/10" 
             : "text-slate-600 hover:bg-slate-50"
         }`}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className={`transition-colors ${active ? "text-blue-400" : "text-slate-400"}`}>
+          <span
+            style={active && accentColor ? { color: accentColor } : undefined}
+            className={`transition-colors ${active ? "text-blue-300" : "text-slate-400"}`}
+          >
             {getSectionIcon(section.href)}
           </span>
           <span className="truncate">{section.label}</span>
         </div>
-        {active && <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />}
+        {active && (
+          <div
+            className="h-1.5 w-1.5 rounded-full shadow-xs"
+            style={{ backgroundColor: accentColor || "#60a5fa" }}
+          />
+        )}
       </span>
     ),
   });
