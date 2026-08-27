@@ -32,7 +32,6 @@ import type * as functions_academic_demoData from "../functions/academic/demoDat
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
-import type * as functions_academic_inspectSchoolData from "../functions/academic/inspectSchoolData.js";
 import type * as functions_academic_judgeCurriculumSeed from "../functions/academic/judgeCurriculumSeed.js";
 import type * as functions_academic_judgeLessonSeed from "../functions/academic/judgeLessonSeed.js";
 import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
@@ -54,6 +53,8 @@ import type * as functions_academic_lessonKnowledgeSourceProof from "../function
 import type * as functions_academic_lessonKnowledgeTeacher from "../functions/academic/lessonKnowledgeTeacher.js";
 import type * as functions_academic_lessonKnowledgeTemplates from "../functions/academic/lessonKnowledgeTemplates.js";
 import type * as functions_academic_lessonKnowledgeTemplatesHelpers from "../functions/academic/lessonKnowledgeTemplatesHelpers.js";
+import type * as functions_academic_migrateSplitBranches from "../functions/academic/migrateSplitBranches.js";
+import type * as functions_academic_migrateSplitBranchesAction from "../functions/academic/migrateSplitBranchesAction.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
@@ -119,7 +120,6 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
-  "functions/academic/inspectSchoolData": typeof functions_academic_inspectSchoolData;
   "functions/academic/judgeCurriculumSeed": typeof functions_academic_judgeCurriculumSeed;
   "functions/academic/judgeLessonSeed": typeof functions_academic_judgeLessonSeed;
   "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;
@@ -141,6 +141,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeTeacher": typeof functions_academic_lessonKnowledgeTeacher;
   "functions/academic/lessonKnowledgeTemplates": typeof functions_academic_lessonKnowledgeTemplates;
   "functions/academic/lessonKnowledgeTemplatesHelpers": typeof functions_academic_lessonKnowledgeTemplatesHelpers;
+  "functions/academic/migrateSplitBranches": typeof functions_academic_migrateSplitBranches;
+  "functions/academic/migrateSplitBranchesAction": typeof functions_academic_migrateSplitBranchesAction;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;

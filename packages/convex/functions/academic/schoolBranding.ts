@@ -55,29 +55,33 @@ function fallbackFeatures(features?: {
 
 export const getCurrentSchoolBranding = query({
   args: {},
-  returns: schoolBrandingSummaryValidator,
+  returns: v.union(schoolBrandingSummaryValidator, v.null()),
   handler: async (ctx) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
-      allowSuspended: true,
-    });
-    const school = await ctx.db.get(schoolId);
-    if (!school) {
-      throw new ConvexError("School not found");
-    }
+    try {
+      const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
+        allowSuspended: true,
+      });
+      const school = await ctx.db.get(schoolId);
+      if (!school) {
+        return null;
+      }
 
-    return {
-      schoolId,
-      name: normalizeHumanName(school.name),
-      slug: school.slug,
-      status: school.status ?? "active",
-      logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
-      motto: school.motto,
-      theme: fallbackTheme(school.theme),
-      contactEmail: school.contactEmail,
-      contactPhone: school.contactPhone,
-      address: school.address,
-      features: fallbackFeatures(school.features),
-    };
+      return {
+        schoolId,
+        name: normalizeHumanName(school.name),
+        slug: school.slug,
+        status: school.status ?? "active",
+        logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+        motto: school.motto,
+        theme: fallbackTheme(school.theme),
+        contactEmail: school.contactEmail,
+        contactPhone: school.contactPhone,
+        address: school.address,
+        features: fallbackFeatures(school.features),
+      };
+    } catch {
+      return null;
+    }
   },
 });
 

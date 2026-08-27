@@ -8,25 +8,40 @@ export const { getAuthUser } = authComponent.clientApi();
 export const getViewerContext = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.safeGetAuthUser(ctx);
-    if (!authUser) {
+    const [authUser, identity] = await Promise.all([
+      authComponent.safeGetAuthUser(ctx),
+      ctx.auth.getUserIdentity(),
+    ]);
+
+    const authId = identity?.subject ?? authUser?._id ?? (authUser as any)?.id;
+    if (!authId && !authUser?.email) {
       return null;
     }
 
-    const appUser = await ctx.db
-      .query("users")
-      .withIndex("by_auth", (q: any) => q.eq("authId", authUser._id))
-      .unique();
+    let appUser = null;
+    if (authId) {
+      appUser = await ctx.db
+        .query("users")
+        .withIndex("by_auth", (q: any) => q.eq("authId", authId))
+        .unique();
+    }
 
-    if (!appUser) {
+    if (!appUser && authUser?.email) {
+      appUser = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q: any) => q.eq("email", authUser.email.toLowerCase()))
+        .first();
+    }
+
+    if (!appUser || appUser.isArchived) {
       return null;
     }
 
     return {
-      authUserId: authUser._id,
+      authUserId: authId,
       appUserId: appUser._id,
-      email: authUser.email,
-      name: authUser.name,
+      email: appUser.email,
+      name: appUser.name,
       role: appUser.role,
       isSchoolAdmin: appUser.role === "admin" || appUser.isSchoolAdmin === true,
       schoolId: appUser.schoolId,

@@ -156,6 +156,7 @@ export const requestCurriculumGeneration = action({
           supportingExcerpt: unit.supportingExcerpt, confidence: unit.confidence,
         })), tokenPromptCount: result.inputTokens, tokenCompletionCount: result.outputTokens,
       });
+      if (!aiRunLogId) throw new ConvexError("AI run log was not started");
       return { importId: args.importId, aiRunLogId, proposalCount: completion.proposalCount };
     } catch (error) {
       const failure = toCurriculumGenerationFailure(error);

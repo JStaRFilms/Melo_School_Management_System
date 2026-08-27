@@ -25,11 +25,27 @@ export const listSchools = query({
 
     const result = [];
     for (const school of schools) {
-      const adminUser = await ctx.db
-        .query("users")
+      const leadership = await ctx.db
+        .query("schoolAdminLeadership")
         .withIndex("by_school", (q) => q.eq("schoolId", school._id))
-        .filter((q) => q.eq(q.field("role"), "admin"))
         .first();
+
+      let adminUser = leadership?.leadAdminUserId
+        ? await ctx.db.get(leadership.leadAdminUserId)
+        : null;
+
+      if (!adminUser || adminUser.isArchived) {
+        adminUser = await ctx.db
+          .query("users")
+          .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+          .filter((q) =>
+            q.and(
+              q.eq(q.field("role"), "admin"),
+              q.neq(q.field("isArchived"), true)
+            )
+          )
+          .first();
+      }
 
       result.push({
         _id: school._id,
@@ -351,11 +367,27 @@ export const findSchoolAdminAuthIdInternal = internalQuery({
     v.null()
   ),
   handler: async (ctx, args) => {
-    const adminUser = await ctx.db
-      .query("users")
+    const leadership = await ctx.db
+      .query("schoolAdminLeadership")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .filter((q) => q.eq(q.field("role"), "admin"))
       .first();
+
+    let adminUser = leadership?.leadAdminUserId
+      ? await ctx.db.get(leadership.leadAdminUserId)
+      : null;
+
+    if (!adminUser || adminUser.isArchived) {
+      adminUser = await ctx.db
+        .query("users")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("role"), "admin"),
+            q.neq(q.field("isArchived"), true)
+          )
+        )
+        .first();
+    }
 
     if (!adminUser) return null;
 
