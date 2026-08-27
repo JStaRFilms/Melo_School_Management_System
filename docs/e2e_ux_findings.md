@@ -56,11 +56,28 @@ This document tracks all observations, issues, UX refinements, and their resolut
   - *What was done*:
     - Added `resetSchoolAdminPassword` backend action and `ResetSchoolAdminPasswordModal` in Platform Super Admin (`http://localhost:3006/schools`).
     - Allows Super Admin to instantly reset the password for any school admin with automatic session invalidation.
-- [x] **Modular Navigation Grouping & Real-Time Feature Toggles**
+- [x] **Super Admin Workspace UI Overhaul (`http://localhost:3006/schools`)**
   - *What was done*:
-    - Restructured admin workspace navigation into Core Operations (Dashboard, Students, Teachers, Classes, Sessions & Terms, Subjects, Events), Assessments & Grading (Score Entry, Report Cards, Exam Setup, Grading Bands), and optional modules.
-    - Added `ManageFeaturesModal` in Platform Super Admin to toggle optional modules per school: Finance & Fee Billing, Curriculum Studio, AI Knowledge Library, Online Admissions.
-    - Real-time reactive synchronization in `WorkspaceNavbar` immediately hides/shows sidebar groups based on school entitlements.
+    - Replaced the plain table view with a dense, minimalist KPI summary strip (*Total Schools, Live Active Tenants, Pending Admin Setup, Convex Cloud Engine status*).
+    - Added instant real-time search (by school name, slug, or admin email) and tab filters (*All, Active, Pending*).
+    - Fixed slug typography with crisp slate badges, added glowing pulse dots to active status badges, and standardized action buttons.
+- [x] **Dedicated School Profile & Branding Settings (`/admin/settings`)**
+  - *What was done*:
+    - Created a comprehensive institution settings page at `/admin/settings` (linked under Administration).
+    - Allows school admins to update Official School Name, School Motto / Tagline, Crest / Logo image (with Convex storage uploads and live preview), Brand Color Palette (Primary & Accent color pickers + curated preset palettes), and Official Contact Details (Email, Phone, Campus Address).
+    - Tenant slug is displayed as an immutable, protected read-only badge with 1-click copy.
+    - Retired the obsolete, nested logo uploader from Report Cards Extras and pointed it to Settings.
+- [x] **Route Protection & Friendly Fallbacks for Disabled Modules**
+  - *What was done*:
+    - Added layout guards on `/billing` and `/academic/knowledge/*`.
+    - If a school admin accesses a URL for a module disabled on their school's tier, they are shown a friendly "Module Inactive" screen explaining that the feature is turned off on their plan with a 1-click "Return to Dashboard" button.
+
+---
+
+## 🔍 Downstream Impact Verification Checkpoints (For Later Flow Testing)
+- [ ] **Receipts & Invoices Header (`/billing`):** Verify that school motto, official contact phone/email, and physical campus address render on billing statements and PDF payment receipts.
+- [ ] **Report Card Transcripts (`/assessments/report-cards`):** Verify that updated crest logo, school motto sub-banner, brand primary color bar, and school address footer appear on printable term report sheets.
+- [ ] **Parent & Student Portals (`:3003`):** Verify that school custom palette, crest favicon, and school tagline render in portal headers.
 
 ---
 
