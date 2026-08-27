@@ -1,0 +1,576 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useMutation, useQuery } from "convex/react";
+import { isConvexConfigured } from "@/convex-runtime";
+import { appToast, getErrorMessage } from "@school/shared/toast";
+import {
+  Building2,
+  Upload,
+  Trash2,
+  Save,
+  Palette,
+  Mail,
+  Phone,
+  MapPin,
+  Sparkles,
+  Lock,
+  Copy,
+  Check,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
+
+interface SchoolBrandingData {
+  schoolId: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  motto?: string;
+  theme: {
+    primaryColor: string;
+    accentColor: string;
+  };
+  contactEmail?: string;
+  contactPhone?: string;
+  address?: string;
+  features: {
+    billing: boolean;
+    curriculum: boolean;
+    knowledgeLibrary: boolean;
+    admissions: boolean;
+  };
+}
+
+const PRESET_PALETTES = [
+  { name: "Slate Navy & Amber Gold", primary: "#0f172a", accent: "#d97706" },
+  { name: "Royal Blue & Gold", primary: "#1e3a8a", accent: "#f59e0b" },
+  { name: "Emerald & Gold", primary: "#064e3b", accent: "#eab308" },
+  { name: "Burgundy & Rose", primary: "#881337", accent: "#f43f5e" },
+  { name: "Classic Obsidian & Sky", primary: "#020617", accent: "#0284c7" },
+  { name: "Deep Indigo & Violet", primary: "#312e81", accent: "#8b5cf6" },
+];
+
+export default function SchoolSettingsPage() {
+  const isConfigured = isConvexConfigured();
+
+  const branding = useQuery(
+    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
+    isConfigured ? ({} as never) : ("skip" as never)
+  ) as SchoolBrandingData | undefined;
+
+  const updateProfile = useMutation(
+    "functions/academic/schoolBranding:updateSchoolProfile" as never
+  );
+  const generateLogoUploadUrl = useMutation(
+    "functions/academic/schoolBranding:generateSchoolLogoUploadUrl" as never
+  );
+  const saveSchoolLogo = useMutation(
+    "functions/academic/schoolBranding:saveSchoolLogo" as never
+  );
+  const removeSchoolLogo = useMutation(
+    "functions/academic/schoolBranding:removeSchoolLogo" as never
+  );
+
+  // Form states
+  const [name, setName] = useState("");
+  const [motto, setMotto] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#0f172a");
+  const [accentColor, setAccentColor] = useState("#d97706");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [address, setAddress] = useState("");
+
+  // Logo upload state
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [copiedSlug, setCopiedSlug] = useState(false);
+
+  useEffect(() => {
+    if (branding) {
+      setName(branding.name || "");
+      setMotto(branding.motto || "");
+      setPrimaryColor(branding.theme?.primaryColor || "#0f172a");
+      setAccentColor(branding.theme?.accentColor || "#d97706");
+      setContactEmail(branding.contactEmail || "");
+      setContactPhone(branding.contactPhone || "");
+      setAddress(branding.address || "");
+    }
+  }, [branding]);
+
+  const logoPreviewUrl = useMemo(() => {
+    if (logoFile) {
+      return URL.createObjectURL(logoFile);
+    }
+    return branding?.logoUrl ?? null;
+  }, [logoFile, branding?.logoUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (logoFile && logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    };
+  }, [logoFile, logoPreviewUrl]);
+
+  const handleCopySlug = () => {
+    if (branding?.slug) {
+      navigator.clipboard.writeText(branding.slug);
+      setCopiedSlug(true);
+      setTimeout(() => setCopiedSlug(false), 2000);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      appToast.warning("School name required", {
+        description: "Please enter your official school name.",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 1. Upload logo if new file chosen
+      if (logoFile) {
+        const uploadUrl = (await generateLogoUploadUrl({} as never)) as string;
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": logoFile.type },
+          body: logoFile,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error("Logo upload failed");
+        }
+
+        const payload = (await uploadResponse.json()) as { storageId: string };
+        await saveSchoolLogo({
+          logoStorageId: payload.storageId as never,
+          logoFileName: logoFile.name,
+          logoContentType: logoFile.type,
+        } as never);
+        setLogoFile(null);
+      }
+
+      // 2. Update profile details
+      await updateProfile({
+        name: name.trim(),
+        motto: motto.trim() || undefined,
+        theme: {
+          primaryColor,
+          accentColor,
+        },
+        contactEmail: contactEmail.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        address: address.trim() || undefined,
+      } as never);
+
+      appToast.success("Settings saved", {
+        description: "School profile, branding, and contact info updated.",
+      });
+    } catch (err) {
+      appToast.error("Failed to save settings", {
+        description: getErrorMessage(err, "Could not update school profile."),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!confirm("Are you sure you want to remove the school logo?")) return;
+    setIsSaving(true);
+    try {
+      await removeSchoolLogo({} as never);
+      setLogoFile(null);
+      appToast.success("Logo removed");
+    } catch (err) {
+      appToast.error("Failed to remove logo", {
+        description: getErrorMessage(err, "Could not delete logo."),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!branding) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-xs">
+          <p className="text-sm text-slate-500 font-medium">Loading school settings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto p-4 sm:p-6 pb-20 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">School Profile & Branding</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSaveProfile}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Saving Profile...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              Save All Changes
+            </>
+          )}
+        </button>
+      </div>
+
+      <form onSubmit={handleSaveProfile} className="space-y-6">
+        {/* Section 1: Official Identity */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+          <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+            <Building2 className="h-4 w-4 text-slate-500" />
+            <span>Institution Identity</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                Official School Name *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Meridian Crest Academy"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+              <p className="text-[11px] text-slate-400">
+                Displayed on official transcripts, student portal navigation, and invoice letterheads.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                School Motto / Tagline
+              </label>
+              <input
+                type="text"
+                value={motto}
+                onChange={(e) => setMotto(e.target.value)}
+                placeholder="e.g. Nurturing Intellectual Depth, Character, and Global Leadership."
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+              <p className="text-[11px] text-slate-400">
+                Printed beneath the school crest on official report cards, fee receipts, and portal headers.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                Tenant Slug Identifier (Immutable)
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={branding.slug}
+                    readOnly
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-mono text-slate-500 cursor-not-allowed pr-8"
+                  />
+                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopySlug}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  {copiedSlug ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5 text-slate-400" />
+                      Copy Slug
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Protected system identifier used for tenant isolation and subdomains. Managed by Super Admin.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Crest & Logo */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+          <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <span>School Crest & Logo</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            {/* Preview Box */}
+            <div className="relative aspect-[4/3] rounded-2xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center p-4">
+              {logoPreviewUrl ? (
+                <Image
+                  src={logoPreviewUrl}
+                  alt={name || "School Crest"}
+                  fill
+                  unoptimized
+                  className="object-contain p-4"
+                />
+              ) : (
+                <div className="text-center p-4">
+                  <div
+                    className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm mb-2"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {name
+                      .split(" ")
+                      .map((w) => w[0])
+                      .slice(0, 3)
+                      .join("")
+                      .toUpperCase() || "SCH"}
+                  </div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    No Crest Uploaded
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Controls */}
+            <div className="md:col-span-2 space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Upload Institution Crest</h4>
+                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                  Recommended: High-resolution PNG, SVG, or WebP with a transparent background (min 400x400px).
+                  This crest dynamically populates browser tab favicons, printable report cards, and student portal headers.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <label className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-xs">
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Choose Image</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      if (file) {
+                        setLogoFile(file);
+                      }
+                    }}
+                  />
+                </label>
+
+                {(branding.logoUrl || logoFile) && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              {logoFile && (
+                <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5" />
+                  Ready to upload: {logoFile.name} (Click "Save All Changes" to confirm)
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Brand Colors */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+          <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+            <Palette className="h-4 w-4 text-indigo-600" />
+            <span>Brand Color Palette</span>
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Primary Brand Color
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
+                  />
+                  <input
+                    type="text"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400">Used on report card header banners and navbar branding.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Accent Brand Color
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
+                  />
+                  <input
+                    type="text"
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400">Used for badges, highlights, and report card distinctions.</p>
+              </div>
+            </div>
+
+            {/* Presets */}
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                Curated Preset Palettes
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {PRESET_PALETTES.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => {
+                      setPrimaryColor(preset.primary);
+                      setAccentColor(preset.accent);
+                    }}
+                    className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all ${
+                      primaryColor.toLowerCase() === preset.primary.toLowerCase() &&
+                      accentColor.toLowerCase() === preset.accent.toLowerCase()
+                        ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center -space-x-1">
+                      <span
+                        className="h-5 w-5 rounded-full border border-white shadow-xs"
+                        style={{ backgroundColor: preset.primary }}
+                      />
+                      <span
+                        className="h-5 w-5 rounded-full border border-white shadow-xs"
+                        style={{ backgroundColor: preset.accent }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-700 truncate">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Contact & Letterhead Details */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+          <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+            <Mail className="h-4 w-4 text-emerald-600" />
+            <span>Official Contact & Letterhead Details</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-slate-400" />
+                Official School Email
+              </label>
+              <input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                placeholder="e.g. info@meridiancrest.org"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-slate-400" />
+                Official Contact Phone
+              </label>
+              <input
+                type="text"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="e.g. +234 803 123 4567"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                Physical Campus Address
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="e.g. Plot 12, Heritage Way, Victoria Island, Lagos"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+              <p className="text-[11px] text-slate-400">
+                Printed in the header of invoice fee statements and the footer of term report cards.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Floating Save Action */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 disabled:opacity-50 transition-all"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving Changes...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Save Profile & Branding
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

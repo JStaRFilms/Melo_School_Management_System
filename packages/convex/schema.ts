@@ -232,6 +232,16 @@ export default defineSchema({
     logoFileName: v.optional(v.string()),
     logoContentType: v.optional(v.string()),
     logoUpdatedAt: v.optional(v.number()),
+    motto: v.optional(v.string()),
+    theme: v.optional(
+      v.object({
+        primaryColor: v.string(),
+        accentColor: v.string(),
+      })
+    ),
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    address: v.optional(v.string()),
     features: v.optional(
       v.object({
         billing: v.boolean(),

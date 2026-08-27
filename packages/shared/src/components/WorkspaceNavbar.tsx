@@ -230,7 +230,7 @@ export function WorkspaceNavbar({
               label: "Administration",
               icon: <Landmark className="h-4 w-4" />,
               links: sections.filter((section) =>
-                ["/admin", "/academic/archived-records", "/assessments/report-cards/backfill"].includes(section.href)
+                ["/admin/settings", "/admin", "/academic/archived-records", "/assessments/report-cards/backfill"].includes(section.href)
               ),
             },
           };

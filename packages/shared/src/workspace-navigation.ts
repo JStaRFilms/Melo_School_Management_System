@@ -87,6 +87,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         label: "Assessment Profiles",
         matchers: ["/academic/knowledge/assessment-profiles"],
       },
+      { href: "/admin/settings", label: "School Profile & Branding", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {
         href: "/academic/archived-records",

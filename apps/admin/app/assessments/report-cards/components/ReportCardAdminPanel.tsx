@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
-import { SchoolLogoManagerCard } from "./SchoolLogoManagerCard";
 import { 
   MessageSquare, 
   Calendar, 
@@ -582,17 +581,28 @@ export function ReportCardAdminPanel({
       </section>
 
       {/* School Setup */}
-      <section className="space-y-4 pt-6 border-t border-slate-100">
-        <div className="flex items-center gap-2 px-1">
-          <ImageIcon className="h-4 w-4 text-slate-400" />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Branding
-          </h3>
+      <section className="space-y-3 pt-6 border-t border-slate-100">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-slate-400" />
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              School Branding
+            </h3>
+          </div>
+          <Link
+            href="/admin/settings"
+            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            Manage in Settings &rarr;
+          </Link>
         </div>
-        <SchoolLogoManagerCard
-          schoolName={reportCard.schoolName}
-          schoolLogoUrl={reportCard.schoolLogoUrl}
-        />
+        <p className="text-[11px] text-slate-400 leading-relaxed px-1">
+          School crest, official motto, and brand colors are managed in{" "}
+          <Link href="/admin/settings" className="font-semibold text-slate-700 underline">
+            School Profile &amp; Branding Settings
+          </Link>
+          .
+        </p>
       </section>
     </div>
   );
