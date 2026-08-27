@@ -262,8 +262,8 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen bg-slate-50/50 px-2 sm:px-4 py-3 sm:py-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
         
         {/* ═══ COMMAND CENTER HEADER ═══════════════════════════ */}
         <AdminHeader
@@ -307,7 +307,7 @@ export default function AdminDashboardPage() {
 
         {/* ═══ SECTION 1: SETUP CHECKLIST (Flat, Breathable, Unboxed) ═══ */}
         {!isSetupFullyComplete ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 md:p-6 shadow-2xs space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-5 md:p-6 shadow-2xs space-y-3 sm:space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
@@ -379,9 +379,9 @@ export default function AdminDashboardPage() {
               {setupMilestones.map((m) => (
                 <div
                   key={m.id}
-                  className="py-3 flex items-center justify-between gap-3 hover:bg-slate-50/50 rounded-lg px-1 transition-colors"
+                  className="py-2.5 flex items-center justify-between gap-2.5 hover:bg-slate-50/50 rounded-lg px-0.5 transition-colors"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
                       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
                         m.status
@@ -396,9 +396,13 @@ export default function AdminDashboardPage() {
                       )}
                     </div>
 
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-slate-950 truncate">{m.title}</h4>
-                      <p className="text-[11px] text-slate-500 truncate">{m.description}</p>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-bold text-slate-950 leading-tight break-words">
+                        {m.title}
+                      </h4>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {m.description}
+                      </p>
                     </div>
                   </div>
 
@@ -409,7 +413,7 @@ export default function AdminDashboardPage() {
                   ) : (
                     <Link
                       href={m.href}
-                      className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand-primary active:scale-95 transition shrink-0 shadow-2xs"
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-bold text-white hover:bg-brand-primary active:scale-95 transition shrink-0 shadow-2xs"
                     >
                       <span>
                         {m.actionLabel
@@ -418,7 +422,7 @@ export default function AdminDashboardPage() {
                           .replace("Add ", "")
                           .replace("Enroll ", "")}
                       </span>
-                      <ArrowRight className="h-3 w-3" />
+                      <ArrowRight className="h-2.5 w-2.5" />
                     </Link>
                   )}
                 </div>
@@ -570,69 +574,69 @@ export default function AdminDashboardPage() {
         </section>
 
         {/* ═══ SECTION 3: 1-CLICK DAILY ACTIONS STRIP ═══════════ */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
+          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Quick Administrative Triggers
             </span>
             <span className="text-[11px] font-bold text-slate-600">Daily Operations</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             <Link
               href="/academic/students"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <Plus className="h-4 w-4" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                <Plus className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs font-bold text-slate-800 truncate">Enroll Student</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">Enroll Student</span>
             </Link>
 
             <Link
               href="/academic/teachers"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <Plus className="h-4 w-4" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                <Plus className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs font-bold text-slate-800 truncate">Add Teacher</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">Add Teacher</span>
             </Link>
 
             <Link
               href="/assessments/results/entry"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <ClipboardCheck className="h-4 w-4" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                <ClipboardCheck className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs font-bold text-slate-800 truncate">Enter Scores</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">Enter Scores</span>
             </Link>
 
             <Link
               href="/billing"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <Banknote className="h-4 w-4" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                <Banknote className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs font-bold text-slate-800 truncate">Billing Hub</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">Billing Hub</span>
             </Link>
 
             <Link
               href="/academic/events"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group sm:col-span-2 md:col-span-1"
+              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group sm:col-span-2 md:col-span-1"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <CalendarDays className="h-4 w-4" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                <CalendarDays className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs font-bold text-slate-800 truncate">School Events</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight">School Events</span>
             </Link>
           </div>
         </div>
 
         {/* ═══ SECTION 4: CLASSROOM CAPACITY & AUDIT STREAM ═════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 sm:gap-6">
           
           {/* Left Panel: Classroom Roll & Capacity Breakdown */}
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 md:p-6 shadow-2xs space-y-4">
