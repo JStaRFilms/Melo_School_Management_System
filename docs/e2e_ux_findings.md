@@ -69,8 +69,11 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - Uses Convex scheduled jobs (`ctx.scheduler.runAfter(5 * 60, ...)` / 5-10 min debounce window) to coalesce multiple rapid changes into a single consolidated digest email (*"3 updates were made to your teaching schedule"*).
   - **Explicit "Send Invitations" Control:**
     - Provide admins with an intentional "Send Welcome Emails / Send Invitations" action button so bulk roster setups don't trigger emails until the administrator is ready.
+- [ ] **Demo School Tenant Migration from Dev to Production:**
+  - Once the new Demo School is created, configured, and verified locally in Dev, run a scoped tenant migration to export all its child tables and replicate it onto Production as the official showcase school.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
+
 
 
