@@ -50,7 +50,7 @@ export function SchoolsLayoutClient({
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-24">
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-8">
+        <div className="w-full px-4 sm:px-8 lg:px-12">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
@@ -99,7 +99,7 @@ export function SchoolsLayoutClient({
         </div>
       </nav>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6">{children}</main>
+      <main className="w-full px-4 sm:px-8 lg:px-12 py-6">{children}</main>
 
       <ChangePasswordModal
         isOpen={isPasswordModalOpen}
