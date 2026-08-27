@@ -52,6 +52,15 @@ This document tracks all observations, issues, UX refinements, and their resolut
 - [x] **Admin Sign-In Default Landing Route Fix**
   - *What was done*:
     - Fixed legacy hardcoded default redirect from `/assessments/setup/exam-recording` to the main `/admin/dashboard` in `apps/admin/app/page.tsx` and `apps/admin/app/sign-in/page.tsx`.
+- [x] **Super Admin Password Reset for School Admins**
+  - *What was done*:
+    - Added `resetSchoolAdminPassword` backend action and `ResetSchoolAdminPasswordModal` in Platform Super Admin (`http://localhost:3006/schools`).
+    - Allows Super Admin to instantly reset the password for any school admin with automatic session invalidation.
+- [x] **Modular Navigation Grouping & Real-Time Feature Toggles**
+  - *What was done*:
+    - Restructured admin workspace navigation into Core Operations (Dashboard, Students, Teachers, Classes, Sessions & Terms, Subjects, Events), Assessments & Grading (Score Entry, Report Cards, Exam Setup, Grading Bands), and optional modules.
+    - Added `ManageFeaturesModal` in Platform Super Admin to toggle optional modules per school: Finance & Fee Billing, Curriculum Studio, AI Knowledge Library, Online Admissions.
+    - Real-time reactive synchronization in `WorkspaceNavbar` immediately hides/shows sidebar groups based on school entitlements.
 
 ---
 
