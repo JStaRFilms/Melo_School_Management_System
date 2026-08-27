@@ -25,15 +25,7 @@ function getTrustedOrigins() {
   const localOrigins =
     process.env.NODE_ENV === "production"
       ? []
-      : [
-          "http://localhost:3000",
-          "http://localhost:3001",
-          "http://localhost:3002",
-          "http://localhost:3003",
-          "http://localhost:3004",
-          "http://localhost:3005",
-          "http://localhost:3006",
-        ];
+      : ["http://localhost:3001", "http://localhost:3002", "http://localhost:3003"];
 
   return Array.from(new Set([...configuredOrigins, ...localOrigins]));
 }
