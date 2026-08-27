@@ -44,13 +44,13 @@ function getModuleIcon(iconName: PlatformModuleDefinition["iconName"]) {
 function getWorkspaceBadge(workspace: "Admin" | "Teacher" | "Portal" | "Public") {
   switch (workspace) {
     case "Admin":
-      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/70">Admin</span>;
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/70 shrink-0 whitespace-nowrap">Admin</span>;
     case "Teacher":
-      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200/70">Teacher</span>;
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200/70 shrink-0 whitespace-nowrap">Teacher</span>;
     case "Portal":
-      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70">Portal</span>;
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0 whitespace-nowrap">Portal</span>;
     case "Public":
-      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/70">Public</span>;
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/70 shrink-0 whitespace-nowrap">Public</span>;
   }
 }
 
@@ -149,23 +149,23 @@ export function ManageFeaturesModal({
                     : "border-slate-200 bg-white hover:bg-slate-50/80 opacity-75"
                 }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3.5 pr-4">
-                    <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 mt-0.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                    <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 mt-0.5 shrink-0">
                       {getModuleIcon(m.iconName)}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-900">{m.title}</span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900 leading-tight">{m.title}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap border border-slate-200/60">
                           {m.badge}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{m.description}</p>
                     </div>
                   </div>
 
-                  <div className="pt-0.5">
+                  <div className="pt-0.5 shrink-0">
                     <button
                       type="button"
                       role="switch"
