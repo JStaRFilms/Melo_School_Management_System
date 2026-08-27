@@ -54,97 +54,101 @@ function SchoolsTable({
   onResetPassword: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
-  const [tableBodyRef] = useAutoAnimate<HTMLTableSectionElement>();
+  const [tableBodyRef] = useAutoAnimate<HTMLTableSectionElement>({
+    duration: 200,
+    easing: "ease-out",
+  });
+
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs hidden md:block">
-      <table className="w-full text-left border-collapse">
+    <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
+      <table className="w-full text-left border-collapse min-w-[840px]">
         <thead>
-          <tr className="border-b border-slate-100 bg-slate-50/75">
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug Identifier</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Assigned Admin</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Active Modules</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
-            <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
+          <tr className="border-b border-slate-100 bg-slate-50/80">
+            <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
+            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
+            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
+            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
+            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
+            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
+            <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody ref={tableBodyRef} className="divide-y divide-slate-100">
+        <tbody ref={tableBodyRef} className="divide-y divide-slate-100/90">
           {schools.map((school) => {
             const isPending = school.status === "pending";
             const isSuspended = school.status === "suspended";
 
             return (
-              <tr key={school._id} className="hover:bg-slate-50/60 transition-colors">
-                <td className="px-4 py-3.5">
-                  <div className="font-bold text-sm text-slate-900">{school.name}</div>
+              <tr key={school._id} className="hover:bg-slate-50/70 transition-colors">
+                <td className="px-5 py-4">
+                  <div className="font-bold text-sm text-slate-900 leading-snug">{school.name}</div>
                 </td>
-                <td className="px-4 py-3.5">
-                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/60">
+                <td className="px-4 py-4">
+                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/70 whitespace-nowrap">
                     {school.slug}
                   </span>
                 </td>
-                <td className="px-4 py-3.5">
+                <td className="px-4 py-4">
                   {isPending ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200/80">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200/80 whitespace-nowrap">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                      Pending Admin
+                      Pending
                     </span>
                   ) : isSuspended ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200/80">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200/80 whitespace-nowrap">
                       <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                       Suspended
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80 whitespace-nowrap">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Active Tenant
+                      Active
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3.5">
+                <td className="px-4 py-4">
                   {school.adminEmail ? (
-                    <div className="text-xs">
-                      <div className="font-bold text-slate-800">{school.adminName || "Admin User"}</div>
+                    <div className="text-xs space-y-0.5">
+                      <div className="font-bold text-slate-800 leading-tight">{school.adminName || "Admin User"}</div>
                       <div className="text-slate-400 font-mono text-[11px]">{school.adminEmail}</div>
                     </div>
                   ) : (
                     <span className="text-xs italic text-slate-400">Unassigned</span>
                   )}
                 </td>
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-1 flex-wrap">
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
                     {school.features?.billing !== false && (
-                      <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                      <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 whitespace-nowrap">
                         Billing
                       </span>
                     )}
                     {school.features?.curriculum !== false && (
-                      <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
+                      <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200 whitespace-nowrap">
                         Curriculum
                       </span>
                     )}
                     {school.features?.knowledgeLibrary !== false && (
-                      <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                      <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 whitespace-nowrap">
                         AI Library
                       </span>
                     )}
                     {school.features?.admissions === true && (
-                      <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                      <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200 whitespace-nowrap">
                         Admissions
                       </span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3.5 text-xs text-slate-500 font-medium">
+                <td className="px-4 py-4 text-xs text-slate-500 font-medium whitespace-nowrap">
                   {formatDate(school.createdAt)}
                 </td>
-                <td className="px-4 py-3.5 text-right">
+                <td className="px-5 py-4 text-right whitespace-nowrap">
                   <div className="inline-flex items-center justify-end gap-1.5">
                     <button
                       type="button"
                       onClick={() => onManageFeatures(school)}
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                       title="Manage Features"
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -153,7 +157,7 @@ function SchoolsTable({
                     {isPending ? (
                       <Link
                         href={`/schools/${school._id}/assign-admin`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-xs"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-xs"
                       >
                         <UserCheck className="h-3.5 w-3.5" />
                         Assign Admin
@@ -163,7 +167,7 @@ function SchoolsTable({
                         <button
                           type="button"
                           onClick={() => onResetPassword(school)}
-                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                           title="Reset Admin Password"
                         >
                           <KeyRound className="h-3.5 w-3.5" />
@@ -172,7 +176,7 @@ function SchoolsTable({
                         <button
                           type="button"
                           onClick={() => onToggleStatus(school)}
-                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors ${
+                          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
                             isSuspended
                               ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
                               : "text-rose-600 hover:bg-rose-50 hover:text-rose-700"
@@ -215,64 +219,115 @@ function SchoolsCards({
   onResetPassword: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
-  const [cardsRef] = useAutoAnimate<HTMLDivElement>();
+  const [cardsRef] = useAutoAnimate<HTMLDivElement>({
+    duration: 200,
+    easing: "ease-out",
+  });
 
   return (
-    <div ref={cardsRef} className="md:hidden space-y-3">
+    <div ref={cardsRef} className="md:hidden space-y-3.5">
       {schools.map((school) => {
         const isPending = school.status === "pending";
         const isSuspended = school.status === "suspended";
+        const initials = school.name
+          .split(" ")
+          .map((n) => n[0])
+          .filter(Boolean)
+          .slice(0, 2)
+          .join("")
+          .toUpperCase() || "SC";
 
         return (
           <div
             key={school._id}
-            className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-3"
+            className="bg-white rounded-2xl border border-slate-200/90 p-4.5 shadow-xs space-y-3.5"
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">{school.name}</h3>
-                <span className="inline-block mt-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-600">
-                  {school.slug}
-                </span>
+            {/* Header: Avatar, Name & Status */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200/70 shadow-2xs">
+                  {initials}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm leading-snug">{school.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60">
+                      {school.slug}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {formatDate(school.createdAt)}
+                    </span>
+                  </div>
+                </div>
               </div>
-              {isPending ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
-                  Pending
-                </span>
-              ) : isSuspended ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
-                  Suspended
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                  Active
-                </span>
-              )}
+
+              <div>
+                {isPending ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Pending
+                  </span>
+                ) : isSuspended ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                    Suspended
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Active
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-1.5 text-xs border-t border-slate-100 pt-2.5">
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-medium">Administrator</span>
-                {school.adminName ? (
+            {/* Admin Info & Modules Strip */}
+            <div className="rounded-xl bg-slate-50/75 p-3 border border-slate-100 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Admin</span>
+                {school.adminEmail ? (
                   <div className="text-right">
-                    <span className="font-bold text-slate-900">{school.adminName}</span>
+                    <span className="font-bold text-slate-800">{school.adminName || "Admin User"}</span>
                     <div className="text-[10px] text-slate-400 font-mono">{school.adminEmail}</div>
                   </div>
                 ) : (
-                  <span className="text-slate-400 italic">Not assigned</span>
+                  <span className="text-slate-400 italic">Unassigned</span>
                 )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-medium">Created</span>
-                <span className="text-slate-600 font-medium">{formatDate(school.createdAt)}</span>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/50">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Modules</span>
+                <div className="flex items-center gap-1 flex-wrap justify-end">
+                  {school.features?.billing !== false && (
+                    <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                      Billing
+                    </span>
+                  )}
+                  {school.features?.curriculum !== false && (
+                    <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
+                      Curriculum
+                    </span>
+                  )}
+                  {school.features?.knowledgeLibrary !== false && (
+                    <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                      AI Library
+                    </span>
+                  )}
+                  {school.features?.admissions === true && (
+                    <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                      Admissions
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-1">
               {isPending ? (
                 <Link
                   href={`/schools/${school._id}/assign-admin`}
-                  className="block w-full text-center py-2 px-3 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
+                  className="block w-full text-center py-2 px-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors shadow-xs"
                 >
                   Assign Admin
                 </Link>
@@ -281,7 +336,7 @@ function SchoolsCards({
                   <button
                     type="button"
                     onClick={() => onManageFeatures(school)}
-                    className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
                     Features
@@ -289,7 +344,7 @@ function SchoolsCards({
                   <button
                     type="button"
                     onClick={() => onResetPassword(school)}
-                    className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
                   >
                     <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                     Password
@@ -297,13 +352,23 @@ function SchoolsCards({
                   <button
                     type="button"
                     onClick={() => onToggleStatus(school)}
-                    className={`flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border text-xs font-bold transition-colors ${
+                    className={`flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border text-xs font-bold transition-colors shadow-2xs ${
                       isSuspended
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-rose-200 bg-rose-50 text-rose-600"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        : "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
                     }`}
                   >
-                    {isSuspended ? "Reactivate" : "Suspend"}
+                    {isSuspended ? (
+                      <>
+                        <Play className="h-3.5 w-3.5 text-emerald-600" />
+                        Reactivate
+                      </>
+                    ) : (
+                      <>
+                        <Ban className="h-3.5 w-3.5 text-rose-500" />
+                        Suspend
+                      </>
+                    )}
                   </button>
                 </>
               )}
