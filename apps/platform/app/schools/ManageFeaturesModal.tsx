@@ -187,25 +187,29 @@ export function ManageFeaturesModal({
                   </div>
                 </div>
 
-                {/* Controlled Routes Strip */}
-                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-0.5">
-                    {isEnabled ? "Active Routes:" : "Hidden Routes:"}
-                  </span>
-                  {m.controlledRoutes.map((r) => (
-                    <span
-                      key={r.path}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono transition-colors ${
-                        isEnabled
-                          ? "bg-white text-slate-800 font-medium border border-slate-200/80 shadow-2xs"
-                          : "bg-slate-100/60 text-slate-400 line-through opacity-70 border border-slate-200/40"
-                      }`}
-                    >
-                      {getWorkspaceBadge(r.workspace)}
-                      <span className="font-sans font-semibold text-slate-700">{r.label}</span>
-                      <span className="text-slate-400">{r.path}</span>
-                    </span>
-                  ))}
+                {/* Controlled Routes Grid */}
+                <div className="mt-3 pt-2.5 border-t border-slate-100/80 space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {isEnabled ? "Controlled Workspaces & Routes:" : "Disabled Routes (Hidden from Sidebar):"}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {m.controlledRoutes.map((r) => (
+                      <div
+                        key={r.path}
+                        className={`flex items-center gap-2 p-1.5 px-2 rounded-lg text-[10px] min-w-0 transition-colors ${
+                          isEnabled
+                            ? "bg-white text-slate-800 border border-slate-200/80 shadow-2xs"
+                            : "bg-slate-100/50 text-slate-400 line-through opacity-70 border border-slate-200/40"
+                        }`}
+                      >
+                        <div className="shrink-0">{getWorkspaceBadge(r.workspace)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-slate-800 truncate leading-tight">{r.label}</div>
+                          <div className="font-mono text-[9px] text-slate-400 truncate">{r.path}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             );

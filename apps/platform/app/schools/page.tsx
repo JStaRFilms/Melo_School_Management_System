@@ -60,17 +60,17 @@ function SchoolsTable({
   });
 
   return (
-    <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
-      <table className="w-full text-left border-collapse min-w-[840px]">
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
+      <table className="w-full table-fixed text-left border-collapse">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50/80">
-            <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
-            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
-            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
-            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
-            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
-            <th className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
-            <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
+            <th className="w-[30%] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
+            <th className="w-[13%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
+            <th className="w-[10%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
+            <th className="w-[18%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
+            <th className="w-[14%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
+            <th className="w-[8%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
+            <th className="w-[17%] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
           </tr>
         </thead>
         <tbody ref={tableBodyRef} className="divide-y divide-slate-100/90">
@@ -81,10 +81,10 @@ function SchoolsTable({
             return (
               <tr key={school._id} className="hover:bg-slate-50/70 transition-colors">
                 <td className="px-5 py-4">
-                  <div className="font-bold text-sm text-slate-900 leading-snug">{school.name}</div>
+                  <div className="font-bold text-sm text-slate-900 leading-snug break-words pr-2">{school.name}</div>
                 </td>
                 <td className="px-4 py-4">
-                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/70 whitespace-nowrap">
+                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/70 truncate max-w-full">
                     {school.slug}
                   </span>
                 </td>
@@ -108,16 +108,16 @@ function SchoolsTable({
                 </td>
                 <td className="px-4 py-4">
                   {school.adminEmail ? (
-                    <div className="text-xs space-y-0.5">
-                      <div className="font-bold text-slate-800 leading-tight">{school.adminName || "Admin User"}</div>
-                      <div className="text-slate-400 font-mono text-[11px]">{school.adminEmail}</div>
+                    <div className="text-xs space-y-0.5 pr-2">
+                      <div className="font-bold text-slate-800 leading-tight truncate">{school.adminName || "Admin User"}</div>
+                      <div className="text-slate-400 font-mono text-[11px] truncate">{school.adminEmail}</div>
                     </div>
                   ) : (
                     <span className="text-xs italic text-slate-400">Unassigned</span>
                   )}
                 </td>
                 <td className="px-4 py-4">
-                  <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
+                  <div className="flex items-center gap-1 flex-wrap">
                     {school.features?.billing !== false && (
                       <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 whitespace-nowrap">
                         Billing
@@ -225,7 +225,7 @@ function SchoolsCards({
   });
 
   return (
-    <div ref={cardsRef} className="md:hidden space-y-3.5">
+    <div ref={cardsRef} className="md:hidden space-y-4">
       {schools.map((school) => {
         const isPending = school.status === "pending";
         const isSuspended = school.status === "suspended";
@@ -240,18 +240,18 @@ function SchoolsCards({
         return (
           <div
             key={school._id}
-            className="bg-white rounded-2xl border border-slate-200/90 p-4.5 shadow-xs space-y-3.5"
+            className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4"
           >
             {/* Header: Avatar, Name & Status */}
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200/70 shadow-2xs">
                   {initials}
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-slate-900 text-sm leading-snug">{school.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60 truncate max-w-[160px]">
                       {school.slug}
                     </span>
                     <span className="text-[11px] text-slate-400 font-medium">
@@ -261,7 +261,7 @@ function SchoolsCards({
                 </div>
               </div>
 
-              <div>
+              <div className="shrink-0">
                 {isPending ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 whitespace-nowrap">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -282,21 +282,21 @@ function SchoolsCards({
             </div>
 
             {/* Admin Info & Modules Strip */}
-            <div className="rounded-xl bg-slate-50/75 p-3 border border-slate-100 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Admin</span>
+            <div className="rounded-xl bg-slate-50/75 p-3.5 border border-slate-100 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Admin</span>
                 {school.adminEmail ? (
-                  <div className="text-right">
-                    <span className="font-bold text-slate-800">{school.adminName || "Admin User"}</span>
-                    <div className="text-[10px] text-slate-400 font-mono">{school.adminEmail}</div>
+                  <div className="text-right truncate">
+                    <span className="font-bold text-slate-800 block truncate">{school.adminName || "Admin User"}</span>
+                    <span className="text-[10px] text-slate-400 font-mono block truncate">{school.adminEmail}</span>
                   </div>
                 ) : (
                   <span className="text-slate-400 italic">Unassigned</span>
                 )}
               </div>
 
-              <div className="flex items-center justify-between pt-1 border-t border-slate-200/50">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Modules</span>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200/50 gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Modules</span>
                 <div className="flex items-center gap-1 flex-wrap justify-end">
                   {school.features?.billing !== false && (
                     <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
@@ -322,21 +322,21 @@ function SchoolsCards({
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 pt-1">
+            {/* Action Buttons Grid with Proper Spacing */}
+            <div className="pt-2 border-t border-slate-100/90">
               {isPending ? (
                 <Link
                   href={`/schools/${school._id}/assign-admin`}
-                  className="block w-full text-center py-2 px-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors shadow-xs"
+                  className="block w-full text-center py-2.5 px-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors shadow-xs"
                 >
                   Assign Admin
                 </Link>
               ) : (
-                <>
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => onManageFeatures(school)}
-                    className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+                    className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
                     Features
@@ -344,7 +344,7 @@ function SchoolsCards({
                   <button
                     type="button"
                     onClick={() => onResetPassword(school)}
-                    className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+                    className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
                   >
                     <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                     Password
@@ -352,7 +352,7 @@ function SchoolsCards({
                   <button
                     type="button"
                     onClick={() => onToggleStatus(school)}
-                    className={`flex-1 inline-flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl border text-xs font-bold transition-colors shadow-2xs ${
+                    className={`inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl border text-xs font-bold transition-colors shadow-2xs ${
                       isSuspended
                         ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         : "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
@@ -370,7 +370,7 @@ function SchoolsCards({
                       </>
                     )}
                   </button>
-                </>
+                </div>
               )}
             </div>
           </div>
