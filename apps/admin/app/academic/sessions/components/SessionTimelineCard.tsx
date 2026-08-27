@@ -82,8 +82,8 @@ export function SessionTimelineCard({
       await createTerm({
         sessionId: session._id,
         name: "First Term",
-        startDate: new Date(yr, 8, 8).getTime(),
-        endDate: new Date(yr, 11, 19).getTime(),
+        startDate: new Date(yr, 8, 8, 12, 0, 0).getTime(),
+        endDate: new Date(yr, 11, 19, 12, 0, 0).getTime(),
         isActive: true,
         resultCalculationMode: "standalone",
       } as never);
@@ -92,8 +92,8 @@ export function SessionTimelineCard({
       await createTerm({
         sessionId: session._id,
         name: "Second Term",
-        startDate: new Date(nextYr, 0, 12).getTime(),
-        endDate: new Date(nextYr, 3, 17).getTime(),
+        startDate: new Date(nextYr, 0, 12, 12, 0, 0).getTime(),
+        endDate: new Date(nextYr, 3, 17, 12, 0, 0).getTime(),
         isActive: false,
         resultCalculationMode: "standalone",
       } as never);
@@ -102,8 +102,8 @@ export function SessionTimelineCard({
       await createTerm({
         sessionId: session._id,
         name: "Third Term",
-        startDate: new Date(nextYr, 4, 4).getTime(),
-        endDate: new Date(nextYr, 6, 24).getTime(),
+        startDate: new Date(nextYr, 4, 4, 12, 0, 0).getTime(),
+        endDate: new Date(nextYr, 6, 24, 12, 0, 0).getTime(),
         isActive: false,
         resultCalculationMode: "cumulative_annual",
       } as never);
@@ -134,102 +134,102 @@ export function SessionTimelineCard({
         {/* Session Top Bar (Clickable to toggle expansion) */}
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-4 sm:p-5 md:p-6 border-b border-slate-100 flex flex-col gap-3.5 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
+          className="p-4 sm:p-5 md:p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
         >
-          {/* Main Top Header: Icon + Title + Status Badges + Chevron */}
-          <div className="flex items-start justify-between gap-3 min-w-0">
-            <div className="flex items-start gap-3 min-w-0">
-              <div
-                className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
-                  session.isActive
-                    ? "bg-brand-primary text-white shadow-xs"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {session.isActive ? (
-                  <CalendarCheck className="h-5 w-5 animate-in zoom-in-75 duration-300" />
-                ) : (
-                  <History className="h-5 w-5" />
-                )}
-              </div>
+          {/* Left Area: Icon + Title + Status Badges + Date Line */}
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div
+              className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                session.isActive
+                  ? "bg-brand-primary text-white shadow-xs"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {session.isActive ? (
+                <CalendarCheck className="h-5 w-5 animate-in zoom-in-75 duration-300" />
+              ) : (
+                <History className="h-5 w-5" />
+              )}
+            </div>
 
-              <div className="min-w-0 space-y-1">
-                <h3 className="font-display text-sm sm:text-base font-bold text-slate-950 leading-snug break-words">
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-display text-base font-bold text-slate-950 leading-snug">
                   {session.name}
                 </h3>
 
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {session.isActive ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-200 animate-in fade-in zoom-in-95 duration-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Active Session
-                    </span>
-                  ) : (
-                    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      Historical Record
-                    </span>
-                  )}
+                {session.isActive ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-200 animate-in fade-in zoom-in-95 duration-300 shrink-0">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Active Session
+                  </span>
+                ) : (
+                  <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">
+                    Historical Record
+                  </span>
+                )}
 
-                  {activeTerm && (
-                    <span
-                      key={activeTerm._id}
-                      className="inline-flex text-[10px] sm:text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 animate-in fade-in zoom-in-90 duration-300"
-                    >
-                      Current: <strong className="font-bold text-slate-900 ml-1">{activeTerm.name}</strong>
-                    </span>
-                  )}
-                </div>
+                {activeTerm && (
+                  <span
+                    key={activeTerm._id}
+                    className="inline-flex text-[10px] sm:text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 animate-in fade-in zoom-in-90 duration-300 shrink-0"
+                  >
+                    Current: <strong className="font-bold text-slate-900 ml-1">{activeTerm.name}</strong>
+                  </span>
+                )}
               </div>
+
+              <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 flex-wrap">
+                <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="font-medium">{formatDateRange(session.startDate, session.endDate)}</span>
+                <span className="text-slate-300">·</span>
+                <span className="font-medium">{terms ? `${terms.length} Academic Term${terms.length === 1 ? "" : "s"}` : "Loading terms..."}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Action Button Bar & Toggle */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-2 shrink-0 self-stretch md:self-auto pt-2 md:pt-0 border-t md:border-t-0 border-slate-100/80 justify-between md:justify-end"
+          >
+            <div className="flex items-center gap-2 flex-1 md:flex-initial">
+              {!session.isActive && (
+                <button
+                  type="button"
+                  onClick={() => setIsActivateSessionConfirmOpen(true)}
+                  className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 active:scale-95 transition cursor-pointer whitespace-nowrap"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Set As Active Session</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsAddTermModalOpen(true)}
+                className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 rounded-xl bg-brand-primary px-3.5 py-2 text-xs font-bold text-white hover:opacity-90 active:scale-95 transition cursor-pointer shadow-xs whitespace-nowrap"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span>Add Term</span>
+              </button>
+
+              {!session.isActive && (
+                <button
+                  type="button"
+                  onClick={() => setIsArchiveConfirmOpen(true)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                  title="Archive session"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
 
             {/* Expand / Collapse Chevron indicator */}
-            <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 text-slate-500 hover:bg-slate-100 transition-colors">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </div>
-          </div>
-
-          {/* Date Range & Metadata Subtitle */}
-          <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 pl-0 sm:pl-1 flex-wrap">
-            <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            <span className="font-medium">{formatDateRange(session.startDate, session.endDate)}</span>
-            <span className="text-slate-300">·</span>
-            <span className="font-medium">{terms ? `${terms.length} Academic Term${terms.length === 1 ? "" : "s"}` : "Loading terms..."}</span>
-          </div>
-
-          {/* Dedicated Action Button Bar (Clean Responsive Row) */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-2 pt-2 border-t border-slate-100/80 flex-wrap"
-          >
-            {!session.isActive && (
-              <button
-                type="button"
-                onClick={() => setIsActivateSessionConfirmOpen(true)}
-                className="flex-1 sm:flex-initial rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 active:scale-95 transition cursor-pointer text-center"
-              >
-                Set As Active Session
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setIsAddTermModalOpen(true)}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 rounded-xl bg-brand-primary px-3.5 py-2 text-xs font-bold text-white hover:opacity-90 active:scale-95 transition cursor-pointer shadow-xs"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add Term</span>
-            </button>
-
-            {!session.isActive && (
-              <button
-                type="button"
-                onClick={() => setIsArchiveConfirmOpen(true)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
-                title="Archive session"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
           </div>
         </div>
 

@@ -46,6 +46,11 @@ function formatDateRange(start: number, end: number) {
   return `${startStr} – ${endStr}`;
 }
 
+function parseDateInputToTimestamp(dateStr: string) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0).getTime();
+}
+
 export function TermCard({ term, sessionName }: TermCardProps) {
   const activateTerm = useMutation("functions/academic/academicSetup:activateTerm" as never);
   const updateTermDates = useMutation("functions/academic/academicSetup:updateTermDates" as never);
@@ -110,8 +115,8 @@ export function TermCard({ term, sessionName }: TermCardProps) {
       return;
     }
 
-    const startTs = new Date(startDate).getTime();
-    const endTs = new Date(endDate).getTime();
+    const startTs = parseDateInputToTimestamp(startDate);
+    const endTs = parseDateInputToTimestamp(endDate);
 
     if (startTs >= endTs) {
       appToast.error("Validation Error", {
@@ -124,8 +129,8 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   };
 
   const handleConfirmSaveDates = async () => {
-    const startTs = new Date(startDate).getTime();
-    const endTs = new Date(endDate).getTime();
+    const startTs = parseDateInputToTimestamp(startDate);
+    const endTs = parseDateInputToTimestamp(endDate);
 
     setIsSavingDates(true);
     try {

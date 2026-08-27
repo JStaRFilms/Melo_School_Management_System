@@ -54,7 +54,7 @@ export function TermCreationModal({
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
     if (!year || !month || !day) return Number.NaN;
-    return new Date(year, month - 1, day).getTime();
+    return new Date(year, month - 1, day, 12, 0, 0).getTime();
   };
 
   const handleSelectPreset = (presetName: string, defaultMode: ReportCardCalculationMode) => {

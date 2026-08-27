@@ -42,7 +42,7 @@ export function SessionCreationModal({
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
     if (!year || !month || !day) return Number.NaN;
-    return new Date(year, month - 1, day).getTime();
+    return new Date(year, month - 1, day, 12, 0, 0).getTime();
   };
 
   const handleApplyPreset = (yearOffset: number) => {
@@ -87,8 +87,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "First Term",
-          startDate: new Date(yr, 8, 8).getTime(),
-          endDate: new Date(yr, 11, 19).getTime(),
+          startDate: new Date(yr, 8, 8, 12, 0, 0).getTime(),
+          endDate: new Date(yr, 11, 19, 12, 0, 0).getTime(),
           isActive: true,
           resultCalculationMode: "standalone",
         } as never);
@@ -97,8 +97,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "Second Term",
-          startDate: new Date(nextYr, 0, 12).getTime(),
-          endDate: new Date(nextYr, 3, 17).getTime(),
+          startDate: new Date(nextYr, 0, 12, 12, 0, 0).getTime(),
+          endDate: new Date(nextYr, 3, 17, 12, 0, 0).getTime(),
           isActive: false,
           resultCalculationMode: "standalone",
         } as never);
@@ -107,8 +107,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "Third Term",
-          startDate: new Date(nextYr, 4, 4).getTime(),
-          endDate: new Date(nextYr, 6, 24).getTime(),
+          startDate: new Date(nextYr, 4, 4, 12, 0, 0).getTime(),
+          endDate: new Date(nextYr, 6, 24, 12, 0, 0).getTime(),
           isActive: false,
           resultCalculationMode: "cumulative_annual",
         } as never);

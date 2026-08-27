@@ -7,9 +7,7 @@ import {
   Calendar,
   CalendarCheck,
   CalendarDays,
-  CheckCircle2,
   Clock,
-  History,
   Plus,
   ShieldCheck,
 } from "lucide-react";
@@ -140,74 +138,73 @@ export default function SessionsPage() {
 
   if (sessions === undefined) {
     return (
-      <main className="min-h-screen bg-slate-50/50 px-3 py-4 sm:px-6 sm:py-6 md:px-8">
-        <div className="mx-auto max-w-7xl space-y-5 animate-pulse">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between pb-2">
+      <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-6 animate-pulse">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-2">
             <div className="space-y-2">
               <div className="h-3 w-28 rounded bg-slate-200" />
               <div className="h-6 w-48 rounded bg-slate-200" />
               <div className="h-3 w-72 rounded bg-slate-200" />
             </div>
-            <div className="h-9 w-32 rounded-xl bg-slate-200" />
+            <div className="h-10 w-64 rounded-xl bg-slate-200" />
           </div>
 
-          <div className="h-20 rounded-2xl bg-white border border-slate-200/60 p-4" />
-          <div className="h-56 rounded-2xl bg-white border border-slate-200/60 p-4" />
+          <div className="h-36 rounded-2xl bg-white border border-slate-200/60 p-6" />
+          <div className="h-56 rounded-2xl bg-white border border-slate-200/60 p-6" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50/50 px-3 py-4 sm:px-6 sm:py-6 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+    <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
         
-        {/* ═══ ADMIN HEADER & ACTIONS ════════════════════════════ */}
-        <div className="space-y-4">
-          <AdminHeader
-            label="Institutional timeline & calendar"
-            title="Sessions & Terms"
-            description="Manage school academic years, term sequence dates, and report card calculation policies."
-            actions={
+        {/* ═══ ADMIN HEADER ════════════════════════════════════ */}
+        <AdminHeader
+          label="Institutional timeline & calendar"
+          title="Sessions & Terms"
+          description="Manage school academic years, term sequence dates, and report card calculation policies."
+          actions={
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+              <div className="w-full sm:w-auto overflow-x-auto scrollbar-hide py-0.5">
+                <StatGroup
+                  variant="scroll"
+                  stats={[
+                    {
+                      label: "Sessions",
+                      value: String(sessions.length),
+                      icon: <CalendarDays />,
+                    },
+                    {
+                      label: "Current",
+                      value: activeSession ? activeSession.name.split(" ")[0] : "None",
+                      icon: <CalendarCheck />,
+                    },
+                    {
+                      label: "Audit Logs",
+                      value: String(auditEvents?.length ?? 0),
+                      icon: <ShieldCheck />,
+                    },
+                  ]}
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:opacity-90 active:scale-95 transition cursor-pointer"
+                className="flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:opacity-90 active:scale-95 transition cursor-pointer shrink-0"
               >
-                <Plus className="h-4 w-4 shrink-0" />
+                <Plus className="h-4 w-4" />
                 <span>New Session</span>
               </button>
-            }
-          />
-
-          {/* Dedicated Responsive Stat Strip */}
-          <div className="w-full overflow-hidden">
-            <StatGroup
-              variant="scroll"
-              stats={[
-                {
-                  label: "Sessions",
-                  value: String(sessions.length),
-                  icon: <CalendarDays />,
-                },
-                {
-                  label: "Current",
-                  value: activeSession ? activeSession.name.split(" ")[0] : "None",
-                  icon: <CalendarCheck />,
-                },
-                {
-                  label: "Audit Logs",
-                  value: String(auditEvents?.length ?? 0),
-                  icon: <ShieldCheck />,
-                },
-              ]}
-            />
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* ═══ EMPTY STATE (0 SESSIONS) ════════════════════════ */}
         {sessions.length === 0 ? (
-          <div className="rounded-2xl sm:rounded-3xl border border-dashed border-slate-300 bg-white p-6 sm:p-12 text-center space-y-4 shadow-2xs">
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 sm:p-12 text-center space-y-4 shadow-2xs">
             <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 mx-auto shadow-xs">
               <Calendar className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>

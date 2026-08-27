@@ -88,6 +88,14 @@ function normalizeClassLevel(level: string) {
   return normalized;
 }
 
+function toCalendarDayString(timestamp: number) {
+  const d = new Date(timestamp);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function buildClassName(args: {
   gradeName?: string | null;
   classLabel?: string | null;
@@ -958,6 +966,17 @@ export const createTerm = mutation({
       throw new ConvexError("End date must be after start date");
     }
 
+    const sessionStartStr = toCalendarDayString(session.startDate);
+    const sessionEndStr = toCalendarDayString(session.endDate);
+    const termStartStr = toCalendarDayString(args.startDate);
+    const termEndStr = toCalendarDayString(args.endDate);
+
+    if (termStartStr < sessionStartStr || termEndStr > sessionEndStr) {
+      throw new ConvexError(
+        "Term dates must stay within the academic session date range"
+      );
+    }
+
     // If setting as active, deactivate other terms in same school
     if (args.isActive) {
       const activeTerms = await ctx.db
@@ -1048,7 +1067,13 @@ export const updateTermDates = mutation({
     if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Academic session not found");
     }
-    if (args.startDate < session.startDate || args.endDate > session.endDate) {
+
+    const sessionStartStr = toCalendarDayString(session.startDate);
+    const sessionEndStr = toCalendarDayString(session.endDate);
+    const termStartStr = toCalendarDayString(args.startDate);
+    const termEndStr = toCalendarDayString(args.endDate);
+
+    if (termStartStr < sessionStartStr || termEndStr > sessionEndStr) {
       throw new ConvexError(
         "Term dates must stay within the academic session date range"
       );
@@ -1061,8 +1086,8 @@ export const updateTermDates = mutation({
     const overlappingTerm = siblingTerms.find(
       (candidate) =>
         candidate._id !== term._id &&
-        args.startDate <= candidate.endDate &&
-        args.endDate >= candidate.startDate
+        termStartStr <= toCalendarDayString(candidate.endDate) &&
+        termEndStr >= toCalendarDayString(candidate.startDate)
     );
     if (overlappingTerm) {
       throw new ConvexError(
