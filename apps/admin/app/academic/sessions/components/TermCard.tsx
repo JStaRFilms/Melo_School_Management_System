@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import {
   CalendarDays,
@@ -9,6 +9,7 @@ import {
   Clock,
   Pencil,
   Save,
+  Sparkles,
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -71,6 +72,19 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   // Modern Confirmation Modals State
   const [isActivateConfirmOpen, setIsActivateConfirmOpen] = useState(false);
   const [isDateConfirmOpen, setIsDateConfirmOpen] = useState(false);
+
+  // Visual Swap Highlight Animation
+  const [justActivated, setJustActivated] = useState(false);
+  const prevIsActive = useRef(term.isActive);
+
+  useEffect(() => {
+    if (!prevIsActive.current && term.isActive) {
+      setJustActivated(true);
+      const timer = setTimeout(() => setJustActivated(false), 2400);
+      return () => clearTimeout(timer);
+    }
+    prevIsActive.current = term.isActive;
+  }, [term.isActive]);
 
   const [startDate, setStartDate] = useState(() => formatDateInput(term.startDate));
   const [endDate, setEndDate] = useState(() => formatDateInput(term.endDate));
@@ -164,10 +178,12 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   return (
     <>
       <div
-        className={`relative flex flex-col justify-between rounded-2xl border p-4 transition-all duration-200 ${
-          term.isActive
-            ? "border-emerald-300/90 bg-emerald-50/30 shadow-xs ring-1 ring-emerald-500/20"
-            : "border-slate-200/80 bg-white hover:border-slate-300"
+        className={`relative flex flex-col justify-between rounded-2xl border p-4 transition-all duration-500 ease-out ${
+          justActivated
+            ? "border-emerald-500 bg-emerald-100/50 shadow-lg shadow-emerald-500/20 ring-4 ring-emerald-400/50 scale-[1.02]"
+            : term.isActive
+              ? "border-emerald-300/90 bg-emerald-50/40 shadow-sm ring-2 ring-emerald-500/20"
+              : "border-slate-200/80 bg-white hover:border-slate-300 opacity-95 hover:opacity-100"
         }`}
       >
         <div className="space-y-3">
@@ -181,8 +197,11 @@ export function TermCard({ term, sessionName }: TermCardProps) {
 
             <div className="flex items-center gap-1.5 shrink-0">
               {term.isActive ? (
-                <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-xs">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                <span
+                  key="active-badge"
+                  className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-xs animate-in zoom-in-75 duration-300"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
                   Active
                 </span>
               ) : (
@@ -190,7 +209,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
                   type="button"
                   onClick={() => setIsActivateConfirmOpen(true)}
                   disabled={isActivating}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-900 hover:text-white transition cursor-pointer disabled:opacity-50"
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-900 hover:text-white transition-all duration-200 cursor-pointer disabled:opacity-50 active:scale-95"
                 >
                   Make Active
                 </button>
@@ -209,7 +228,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
 
           {/* Date Range Display or Inline Editor */}
           {!isEditingDates ? (
-            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50/80 px-2.5 py-1.5 rounded-xl border border-slate-200/60">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50/80 px-2.5 py-1.5 rounded-xl border border-slate-200/60 transition-colors">
               <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
               <span className="text-[11px] font-semibold truncate">
                 {formatDateRange(term.startDate, term.endDate)}

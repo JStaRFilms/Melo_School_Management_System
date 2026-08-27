@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   Calendar,
@@ -56,6 +56,20 @@ export function SessionTimelineCard({
   const [isActivateSessionConfirmOpen, setIsActivateSessionConfirmOpen] = useState(false);
   const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
 
+  // Visual Session Activation Transition
+  const [justActivated, setJustActivated] = useState(false);
+  const prevIsActive = useRef(session.isActive);
+
+  useEffect(() => {
+    if (!prevIsActive.current && session.isActive) {
+      setJustActivated(true);
+      setIsExpanded(true);
+      const timer = setTimeout(() => setJustActivated(false), 2400);
+      return () => clearTimeout(timer);
+    }
+    prevIsActive.current = session.isActive;
+  }, [session.isActive]);
+
   const activeTerm = terms?.find((t) => t.isActive);
 
   const handleAutoFillTerms = async () => {
@@ -109,10 +123,12 @@ export function SessionTimelineCard({
   return (
     <>
       <div
-        className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
-          session.isActive
-            ? "border-slate-300/80 bg-white shadow-xs"
-            : "border-slate-200/80 bg-white shadow-2xs"
+        className={`rounded-2xl border transition-all duration-500 ease-out overflow-hidden ${
+          justActivated
+            ? "border-emerald-500 bg-white shadow-xl shadow-emerald-500/10 ring-4 ring-emerald-400/50 scale-[1.005]"
+            : session.isActive
+              ? "border-slate-300/80 bg-white shadow-xs"
+              : "border-slate-200/80 bg-white shadow-2xs hover:border-slate-300"
         }`}
       >
         {/* Session Top Bar (Clickable to toggle expansion) */}
@@ -122,14 +138,14 @@ export function SessionTimelineCard({
         >
           <div className="flex items-start gap-3.5 min-w-0">
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
                 session.isActive
                   ? "bg-slate-900 text-white shadow-xs"
                   : "bg-slate-100 text-slate-500"
               }`}
             >
               {session.isActive ? (
-                <CalendarCheck className="h-5 w-5" />
+                <CalendarCheck className="h-5 w-5 animate-in zoom-in-75 duration-300" />
               ) : (
                 <History className="h-5 w-5" />
               )}
@@ -142,7 +158,7 @@ export function SessionTimelineCard({
                 </h3>
 
                 {session.isActive ? (
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-200">
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-200 animate-in fade-in zoom-in-95 duration-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Active Session
                   </span>
@@ -153,7 +169,10 @@ export function SessionTimelineCard({
                 )}
 
                 {activeTerm && (
-                  <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                  <span
+                    key={activeTerm._id}
+                    className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 animate-in fade-in zoom-in-90 duration-300"
+                  >
                     Current Term: <strong className="font-bold text-slate-900">{activeTerm.name}</strong>
                   </span>
                 )}
@@ -177,7 +196,7 @@ export function SessionTimelineCard({
               <button
                 type="button"
                 onClick={() => setIsActivateSessionConfirmOpen(true)}
-                className="rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
+                className="rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition-all duration-200 cursor-pointer active:scale-95"
               >
                 Set As Active Session
               </button>
@@ -203,7 +222,7 @@ export function SessionTimelineCard({
               </button>
             )}
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-transform">
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </div>
           </div>
@@ -211,7 +230,7 @@ export function SessionTimelineCard({
 
         {/* Terms Horizontal Timeline Grid */}
         {isExpanded && (
-          <div className="p-5 md:p-6 bg-slate-50/40 animate-in fade-in duration-200">
+          <div className="p-5 md:p-6 bg-slate-50/40 animate-in fade-in duration-300">
             <div className="flex items-center justify-between mb-3.5">
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Academic Term Sequence
