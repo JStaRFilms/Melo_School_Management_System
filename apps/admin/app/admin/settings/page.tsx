@@ -20,6 +20,10 @@ import {
   Check,
   Loader2,
   ShieldCheck,
+  LayoutGrid,
+  FolderTree,
+  Columns3,
+  Compass,
 } from "lucide-react";
 
 interface SchoolBrandingData {
@@ -86,6 +90,31 @@ export default function SchoolSettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState(false);
+
+  // Navigation layout preference state (default: 'grouped')
+  const [navLayout, setNavLayout] = useState<"grouped" | "accordion" | "domain_tabs">("grouped");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("melo_nav_layout");
+      if (saved === "grouped" || saved === "accordion" || saved === "domain_tabs") {
+        setNavLayout(saved);
+      }
+    }
+  }, []);
+
+  const handleNavLayoutChange = (layout: "grouped" | "accordion" | "domain_tabs") => {
+    setNavLayout(layout);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("melo_nav_layout", layout);
+      window.dispatchEvent(new Event("melo-nav-layout-changed"));
+      appToast.success("Navigation style updated", {
+        description: `Workspace layout switched to ${
+          layout === "grouped" ? "Straight Grouped List" : layout === "accordion" ? "Collapsible Accordions" : "Top Domain Switcher"
+        }.`,
+      });
+    }
+  };
 
   useEffect(() => {
     if (branding) {
@@ -547,6 +576,106 @@ export default function SchoolSettingsPage() {
                 Printed in the header of invoice fee statements and the footer of term report cards.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Section 5: Navigation & Workspace Interface */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+              <Compass className="h-4 w-4 text-indigo-600" />
+              <span>Workspace Navigation Style</span>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+              Live Preference
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Choose how your main navigation organizes modules and sub-pages. Changes apply immediately across your workspace.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* Option 1: Straight Grouped List */}
+            <button
+              type="button"
+              onClick={() => handleNavLayoutChange("grouped")}
+              className={`flex flex-col text-left p-4 rounded-xl border transition-all duration-150 relative cursor-pointer ${
+                navLayout === "grouped"
+                  ? "border-slate-950 bg-slate-50/80 ring-1 ring-slate-950 shadow-xs"
+                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <div className={`p-2 rounded-lg ${navLayout === "grouped" ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                  <LayoutGrid className="h-4 w-4" />
+                </div>
+                {navLayout === "grouped" ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-950 bg-white border border-slate-200 px-2 py-0.5 rounded-full shadow-2xs">
+                    <Check className="h-3 w-3 text-indigo-600" />
+                    Default
+                  </span>
+                ) : null}
+              </div>
+              <h4 className="text-xs font-bold text-slate-950">Straight Grouped List</h4>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                All 5 domains visible with 1-click speed across the entire workspace.
+              </p>
+            </button>
+
+            {/* Option 2: Collapsible Accordions */}
+            <button
+              type="button"
+              onClick={() => handleNavLayoutChange("accordion")}
+              className={`flex flex-col text-left p-4 rounded-xl border transition-all duration-150 relative cursor-pointer ${
+                navLayout === "accordion"
+                  ? "border-slate-950 bg-slate-50/80 ring-1 ring-slate-950 shadow-xs"
+                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <div className={`p-2 rounded-lg ${navLayout === "accordion" ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                  <FolderTree className="h-4 w-4" />
+                </div>
+                {navLayout === "accordion" ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-950 bg-white border border-slate-200 px-2 py-0.5 rounded-full shadow-2xs">
+                    <Check className="h-3 w-3 text-indigo-600" />
+                    Active
+                  </span>
+                ) : null}
+              </div>
+              <h4 className="text-xs font-bold text-slate-950">Collapsible Accordions</h4>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                2-tier expandable groups with item counts and focus guide lines.
+              </p>
+            </button>
+
+            {/* Option 3: Top Domain Switcher */}
+            <button
+              type="button"
+              onClick={() => handleNavLayoutChange("domain_tabs")}
+              className={`flex flex-col text-left p-4 rounded-xl border transition-all duration-150 relative cursor-pointer ${
+                navLayout === "domain_tabs"
+                  ? "border-slate-950 bg-slate-50/80 ring-1 ring-slate-950 shadow-xs"
+                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <div className={`p-2 rounded-lg ${navLayout === "domain_tabs" ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>
+                  <Columns3 className="h-4 w-4" />
+                </div>
+                {navLayout === "domain_tabs" ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-950 bg-white border border-slate-200 px-2 py-0.5 rounded-full shadow-2xs">
+                    <Check className="h-3 w-3 text-indigo-600" />
+                    Active
+                  </span>
+                ) : null}
+              </div>
+              <h4 className="text-xs font-bold text-slate-950">Top Domain Switcher</h4>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Horizontal domain tabs in the header paired with a focused sidebar.
+              </p>
+            </button>
           </div>
         </div>
 

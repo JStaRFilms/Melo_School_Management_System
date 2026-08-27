@@ -14,6 +14,7 @@ function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const callbackUrl = searchParams.get("callbackUrl") ?? "/admin/dashboard";
   const errorParam = searchParams.get("error");
@@ -27,13 +28,18 @@ function SignInForm() {
       return;
     }
 
-    const result = await signIn(email, password);
-    if (result.success) {
-      router.push(callbackUrl);
-      return;
-    }
+    setIsSubmitting(true);
+    try {
+      const result = await signIn(email, password);
+      if (result.success) {
+        router.push(callbackUrl);
+        return;
+      }
 
-    setLocalError(result.error ?? AUTH_ERROR_MESSAGES.retry);
+      setLocalError(result.error ?? AUTH_ERROR_MESSAGES.retry);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const displayError =
@@ -85,7 +91,7 @@ function SignInForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@school.com"
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isLoading}
+                disabled={isSubmitting}
                 autoComplete="email"
               />
             </div>
@@ -104,17 +110,17 @@ function SignInForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isLoading}
+                disabled={isSubmitting}
                 autoComplete="current-password"
               />
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="w-full py-2 px-4 bg-slate-900 text-white rounded-md text-sm font-medium hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isSubmitting ? "Signing in..." : "Sign In"}
             </button>
           </form>
         </div>

@@ -121,6 +121,17 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - Gracefully render static school badge if user belongs to only 1 school; render interactive dropdown if user has memberships in $\ge 2$ schools.
   - **Data Integrity:**
     - Preserves independent billing configurations, separate Paystack subaccounts, distinct grading bands, separate term calendars, and isolated student rolls per branch.
+- [ ] **Interactive New User Onboarding & Interface Setup Tour**
+  - **Overview & Walkthrough Flow:**
+    - Provide a guided onboarding wizard for newly registered school administrators and teachers that introduces the full platform architecture.
+    - Walkthrough steps:
+      1. *Institution Profile & Brand Palette* (School Name, Motto, Crest Upload, Theme Colors).
+      2. *Academic Structure Checklist* (Creating Active Academic Session, Terms, Classes, and Subjects).
+      3. *Grading & Assessment Framework* (Setting up Grade Scales, Exam Profiles, and Report Add-ons).
+      4. *Roster Population Options* (Single addition vs. Bulk Excel/CSV upload).
+      5. *Workspace Navigation Preference Selection* (Allows the admin to choose between **Straight Grouped List [Default]**, **Collapsible Accordions**, or **Top Domain Switcher**).
+  - **Interactive Orientation Checklist:**
+    - Persistent dismissible "Setup Progress" widget on the Admin Dashboard showing completed vs. pending institution setup milestones with direct deep links.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.

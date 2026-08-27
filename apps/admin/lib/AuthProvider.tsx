@@ -106,7 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
-    return Boolean(viewerContext?.role ?? sessionRole);
+    if (viewerContext !== undefined) {
+      return true;
+    }
+
+    return Boolean(sessionRole);
   }, [session, sessionRole, viewerContext]);
 
   const signIn = useCallback(

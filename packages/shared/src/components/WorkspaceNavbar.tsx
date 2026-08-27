@@ -115,7 +115,6 @@ export function WorkspaceNavbar({
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -262,6 +261,29 @@ export function WorkspaceNavbar({
   const desktopNavRef = useRef<HTMLElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
 
+  // Dynamic Navigation Layout Preference (default: 'grouped' aka Option 1)
+  const [navLayout, setNavLayout] = useState<"grouped" | "accordion" | "domain_tabs">("grouped");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncLayout = () => {
+      const saved = localStorage.getItem("melo_nav_layout");
+      if (saved === "grouped" || saved === "accordion" || saved === "domain_tabs") {
+        setNavLayout(saved);
+      } else {
+        setNavLayout("grouped");
+      }
+    };
+    syncLayout();
+    window.addEventListener("melo-nav-layout-changed", syncLayout);
+    window.addEventListener("storage", syncLayout);
+    return () => {
+      window.removeEventListener("melo-nav-layout-changed", syncLayout);
+      window.removeEventListener("storage", syncLayout);
+    };
+  }, []);
+
   const activeSection =
     sections
       .filter((section) => isWorkspaceSectionActive(section, currentPath))
@@ -270,6 +292,41 @@ export function WorkspaceNavbar({
         const bLength = Math.max(...b.matchers.map((matcher) => matcher.length));
         return bLength - aLength;
       })[0] ?? null;
+
+  // Auto-expand the active section's group in accordion mode
+  useEffect(() => {
+    if (activeSection && navLayout === "accordion") {
+      for (const [key, group] of Object.entries(groups)) {
+        if (group.links.some((s: WorkspaceSection) => s.href === activeSection.href)) {
+          setExpandedGroups((prev) => ({ ...prev, [key]: true }));
+          break;
+        }
+      }
+    }
+  }, [activeSection?.href, navLayout]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Active domain calculation for domain_tabs mode
+  const activeDomainKey = useMemo(() => {
+    if (!activeSection) return Object.keys(groups)[0] ?? "";
+    for (const [key, group] of Object.entries(groups)) {
+      if (group.links.some((s: WorkspaceSection) => s.href === activeSection.href)) {
+        return key;
+      }
+    }
+    return Object.keys(groups)[0] ?? "";
+  }, [activeSection?.href, groups]);
+
+  const activeGroup =
+    (groups as unknown as Record<string, { label: string; icon: ReactNode; links: WorkspaceSection[] }>)[activeDomainKey] ??
+    Object.values(groups)[0] ?? {
+      label: def.label,
+      icon: <LayoutDashboard className="h-4 w-4" />,
+      links: sections,
+    };
 
   // Robust auto-scroll into view when active item changes
   useEffect(() => {
@@ -297,7 +354,7 @@ export function WorkspaceNavbar({
       }
     }, 80);
     return () => clearTimeout(timer);
-  }, [activeSection?.href, open]);
+  }, [activeSection?.href, open, navLayout]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -350,28 +407,135 @@ export function WorkspaceNavbar({
           </div>
         </div>
 
-        <nav ref={desktopNavRef} className="flex-1 overflow-y-auto px-3.5 py-2.5 custom-scrollbar scroll-smooth">
-          <div className="space-y-5 py-2">
-            {Object.entries(groups)
-              .filter(([, group]) => group.links.length > 0)
-              .map(([key, group]) => (
-              <div key={key} className="space-y-1">
-                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
-                  {group.label}
-                </h3>
-                <div className="grid gap-0.5">
-                  {group.links.map((s: WorkspaceSection) => (
-                    <SidebarLink 
-                      key={s.href} 
-                      section={s} 
-                      active={activeSection?.href === s.href} 
-                      renderLink={renderLink} 
-                    />
-                  ))}
+        <nav ref={desktopNavRef} className="flex-1 overflow-y-auto px-3.5 py-3 custom-scrollbar scroll-smooth">
+          
+          {/* 1. Straight Grouped List Mode (Option 1 - Default) */}
+          {navLayout === "grouped" && (
+            <div className="space-y-5 py-1">
+              {Object.entries(groups)
+                .filter(([, group]) => group.links.length > 0)
+                .map(([key, group]) => (
+                <div key={key} className="space-y-1">
+                  <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                    {group.label}
+                  </h3>
+                  <div className="grid gap-0.5">
+                    {group.links.map((s: WorkspaceSection) => (
+                      <SidebarLink 
+                        key={s.href} 
+                        section={s} 
+                        active={activeSection?.href === s.href} 
+                        renderLink={renderLink} 
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2. 2-Tier Collapsible Accordion Mode (Option 2) */}
+          {navLayout === "accordion" && (
+            <div className="space-y-1.5 py-1">
+              {Object.entries(groups)
+                .filter(([, group]) => group.links.length > 0)
+                .map(([key, group]) => {
+                  if (group.links.length === 1) {
+                    const singleSection = group.links[0];
+                    const isLinkActive = activeSection?.href === singleSection.href;
+                    return (
+                      <SidebarLink
+                        key={singleSection.href}
+                        section={singleSection}
+                        active={isLinkActive}
+                        renderLink={renderLink}
+                      />
+                    );
+                  }
+
+                  const isGroupExpanded = expandedGroups[key] ?? false;
+                  const isGroupActive = group.links.some((s: WorkspaceSection) => s.href === activeSection?.href);
+
+                  return (
+                    <div key={key} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(key)}
+                        className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all duration-150 group cursor-pointer ${
+                          isGroupActive
+                            ? "bg-slate-100/90 text-slate-950 font-extrabold"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-700"}`}>
+                            {group.icon}
+                          </span>
+                          <span className="truncate">{group.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500">
+                            {group.links.length}
+                          </span>
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+                              isGroupExpanded ? "rotate-180 text-slate-700" : ""
+                            }`}
+                          />
+                        </div>
+                      </button>
+
+                      {isGroupExpanded && (
+                        <div className="ml-5 pl-2.5 border-l-2 border-slate-100 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                          {group.links.map((s: WorkspaceSection) => (
+                            <SidebarLink
+                              key={s.href}
+                              section={s}
+                              active={activeSection?.href === s.href}
+                              renderLink={renderLink}
+                              isNested
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {/* 3. Top Domain Switcher Mode (Option 3) */}
+          {navLayout === "domain_tabs" && (
+            <div className="space-y-4 py-1">
+              <div className="px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100/80 shrink-0">
+                    {activeGroup.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-black text-slate-950 truncate uppercase tracking-wider">
+                      {activeGroup.label}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-400">
+                      {activeGroup.links.length} {activeGroup.links.length === 1 ? "section" : "sections"}
+                    </p>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="space-y-1">
+                {activeGroup.links.map((s: WorkspaceSection) => (
+                  <SidebarLink
+                    key={s.href}
+                    section={s}
+                    active={activeSection?.href === s.href}
+                    renderLink={renderLink}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
         </nav>
 
       </aside>
@@ -406,6 +570,35 @@ export function WorkspaceNavbar({
               )}
             </div>
           </div>
+
+          {/* ── TOP DOMAIN SWITCHER TABS (Rendered only when navLayout === 'domain_tabs') ── */}
+          {navLayout === "domain_tabs" && (
+            <div className="hidden md:flex items-center gap-1 p-1 bg-slate-100/90 rounded-xl border border-slate-200/60 shadow-2xs">
+              {Object.entries(groups)
+                .filter(([, group]) => group.links.length > 0)
+                .map(([key, group]) => {
+                  const isDomainActive = key === activeDomainKey;
+                  const targetHref = group.links[0]?.href ?? "#";
+                  return renderLink({
+                    href: targetHref,
+                    children: (
+                      <span
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          isDomainActive
+                            ? "bg-white text-slate-950 shadow-xs border border-slate-200/80 font-extrabold"
+                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50"
+                        }`}
+                      >
+                        <span className={isDomainActive ? "text-indigo-600" : "text-slate-400"}>
+                          {group.icon}
+                        </span>
+                        {group.label}
+                      </span>
+                    ),
+                  });
+                })}
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <div className="relative" ref={profileRef}>
@@ -515,25 +708,138 @@ export function WorkspaceNavbar({
                 </div>
               </div>
 
-              <div className="space-y-8">
-                {Object.entries(groups)
-                  .filter(([, group]) => group.links.length > 0)
-                  .map(([key, group]) => (
-                  <div key={key} className="space-y-3">
-                    <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
-                    <div className="grid gap-1">
-                      {group.links.map((s: WorkspaceSection) => (
-                         <MobileLink 
-                            key={s.href} 
-                            section={s} 
-                            active={activeSection?.href === s.href} 
-                            renderLink={renderLink} 
-                          />
-                      ))}
+              {/* Mobile Domain Tabs for domain_tabs mode */}
+              {navLayout === "domain_tabs" && (
+                <div className="mb-5 flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
+                  {Object.entries(groups)
+                    .filter(([, group]) => group.links.length > 0)
+                    .map(([key, group]) => {
+                      const isDomainActive = key === activeDomainKey;
+                      const targetHref = group.links[0]?.href ?? "#";
+                      return renderLink({
+                        href: targetHref,
+                        children: (
+                          <span
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
+                              isDomainActive
+                                ? "bg-slate-950 text-white shadow-xs"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            {group.icon}
+                            {group.label}
+                          </span>
+                        ),
+                      });
+                    })}
+                </div>
+              )}
+
+              {/* Mobile Straight Grouped List */}
+              {navLayout === "grouped" && (
+                <div className="space-y-8">
+                  {Object.entries(groups)
+                    .filter(([, group]) => group.links.length > 0)
+                    .map(([key, group]) => (
+                    <div key={key} className="space-y-3">
+                      <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
+                      <div className="grid gap-1">
+                        {group.links.map((s: WorkspaceSection) => (
+                           <MobileLink 
+                              key={s.href} 
+                              section={s} 
+                              active={activeSection?.href === s.href} 
+                              renderLink={renderLink} 
+                            />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Mobile Accordion Mode */}
+              {navLayout === "accordion" && (
+                <div className="space-y-2">
+                  {Object.entries(groups)
+                    .filter(([, group]) => group.links.length > 0)
+                    .map(([key, group]) => {
+                      if (group.links.length === 1) {
+                        const singleSection = group.links[0];
+                        const isLinkActive = activeSection?.href === singleSection.href;
+                        return (
+                          <MobileLink
+                            key={singleSection.href}
+                            section={singleSection}
+                            active={isLinkActive}
+                            renderLink={renderLink}
+                          />
+                        );
+                      }
+
+                      const isGroupExpanded = expandedGroups[key] ?? false;
+                      const isGroupActive = group.links.some((s: WorkspaceSection) => s.href === activeSection?.href);
+
+                      return (
+                        <div key={key} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(key)}
+                            className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition-all ${
+                              isGroupActive ? "bg-slate-100 text-slate-950 font-extrabold" : "text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400"}`}>
+                                {group.icon}
+                              </span>
+                              <span className="truncate">{group.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500">
+                                {group.links.length}
+                              </span>
+                              <ChevronDown
+                                className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
+                                  isGroupExpanded ? "rotate-180 text-slate-700" : ""
+                                }`}
+                              />
+                            </div>
+                          </button>
+
+                          {isGroupExpanded && (
+                            <div className="ml-5 pl-2.5 border-l-2 border-slate-100 space-y-1">
+                              {group.links.map((s: WorkspaceSection) => (
+                                <MobileLink
+                                  key={s.href}
+                                  section={s}
+                                  active={activeSection?.href === s.href}
+                                  renderLink={renderLink}
+                                  isNested
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Mobile Domain Tabs Focused Links */}
+              {navLayout === "domain_tabs" && (
+                <div className="space-y-1.5">
+                  {activeGroup.links.map((s: WorkspaceSection) => (
+                    <MobileLink
+                      key={s.href}
+                      section={s}
+                      active={activeSection?.href === s.href}
+                      renderLink={renderLink}
+                    />
+                  ))}
+                </div>
+              )}
+
             </div>
 
             <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white/95 p-4 backdrop-blur-md space-y-2">
