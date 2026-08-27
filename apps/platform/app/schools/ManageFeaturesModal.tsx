@@ -149,23 +149,21 @@ export function ManageFeaturesModal({
                     : "border-slate-200 bg-white hover:bg-slate-50/80 opacity-75"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                    <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 mt-0.5 shrink-0">
+                {/* Top Row: Icon, Title, Badge & Switch */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 shrink-0">
                       {getModuleIcon(m.iconName)}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-slate-900 leading-tight">{m.title}</span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap border border-slate-200/60">
-                          {m.badge}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{m.description}</p>
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="text-sm font-bold text-slate-900 leading-tight">{m.title}</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap border border-slate-200/60">
+                        {m.badge}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="pt-0.5 shrink-0">
+                  <div className="shrink-0">
                     <button
                       type="button"
                       role="switch"
@@ -186,6 +184,9 @@ export function ManageFeaturesModal({
                     </button>
                   </div>
                 </div>
+
+                {/* Full-width Description */}
+                <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">{m.description}</p>
 
                 {/* Controlled Routes Grid */}
                 <div className="mt-3 pt-2.5 border-t border-slate-100/80 space-y-1.5">
