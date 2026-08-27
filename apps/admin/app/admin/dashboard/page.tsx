@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import {
   ArrowRight,
@@ -9,6 +9,7 @@ import {
   BookOpenText,
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   GraduationCap,
@@ -17,6 +18,8 @@ import {
   Users,
   AlertCircle,
   Clock,
+  X,
+  ExternalLink,
 } from "lucide-react";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -139,7 +142,8 @@ export default function AdminDashboardPage() {
     "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
   ) as TimelineAuditEvent[] | undefined;
 
-  const [showCompletedChecklist, setShowCompletedChecklist] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(true);
 
   // Derived real database metrics
   const activeSession = useMemo(
@@ -219,6 +223,33 @@ export default function AdminDashboardPage() {
   const setupPercentage = Math.round((completedMilestones / setupMilestones.length) * 100);
   const isSetupFullyComplete = completedMilestones === setupMilestones.length;
 
+  // 30-Day Expiry & Local Dismissal Tracking
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (isSetupFullyComplete) {
+      const storedCompletedAt = localStorage.getItem("melo_setup_completed_at");
+      let completedAt = storedCompletedAt ? parseInt(storedCompletedAt, 10) : null;
+      if (!completedAt) {
+        completedAt = Date.now();
+        localStorage.setItem("melo_setup_completed_at", String(completedAt));
+      }
+
+      const dismissed = localStorage.getItem("melo_setup_banner_dismissed") === "true";
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const isExpired = Date.now() - completedAt > THIRTY_DAYS_MS;
+
+      setIsBannerDismissed(dismissed || isExpired);
+    }
+  }, [isSetupFullyComplete]);
+
+  const handleDismissBanner = () => {
+    setIsBannerDismissed(true);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("melo_setup_banner_dismissed", "true");
+    }
+  };
+
   const isLoaded =
     teachers !== undefined &&
     classes !== undefined &&
@@ -240,28 +271,41 @@ export default function AdminDashboardPage() {
           title="Admin Dashboard"
           description="Operational pulse, institution setup progress, and real-time academic workflows."
           actions={
-            activeSession ? (
-              <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 border border-slate-200/80 shadow-xs">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[11px] font-bold text-slate-900">
-                  Active: <span className="font-extrabold text-indigo-600">{activeSession.name}</span>
-                </span>
-              </div>
-            ) : (
-              <Link
-                href="/academic/sessions"
-                className="flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2 border border-amber-200/80 shadow-xs hover:bg-amber-100/60 transition"
-              >
-                <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900">
-                  Action Req: Set Active Session
-                </span>
-              </Link>
-            )
+            <div className="flex items-center gap-2">
+              {isSetupFullyComplete && (
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-2xl bg-white px-3.5 py-2 border border-slate-200/80 shadow-xs hover:border-indigo-200 hover:bg-indigo-50/40 text-slate-700 hover:text-indigo-700 transition cursor-pointer text-[11px] font-bold"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <span>Review Setup</span>
+                </button>
+              )}
+
+              {activeSession ? (
+                <div className="flex items-center gap-2 rounded-2xl bg-white px-3.5 py-2 border border-slate-200/80 shadow-xs">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[11px] font-bold text-slate-900">
+                    Active: <span className="font-extrabold text-indigo-600">{activeSession.name}</span>
+                  </span>
+                </div>
+              ) : (
+                <Link
+                  href="/academic/sessions"
+                  className="flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2 border border-amber-200/80 shadow-xs hover:bg-amber-100/60 transition"
+                >
+                  <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900">
+                    Action Req: Set Active Session
+                  </span>
+                </Link>
+              )}
+            </div>
           }
         />
 
-        {/* ═══ SECTION 1: DYNAMIC SETUP & ONBOARDING STEPPER ═══ */}
+        {/* ═══ SECTION 1: SETUP STEPPER (Unfinished) OR DISMISSIBLE BANNER (Finished) ═══ */}
         {!isSetupFullyComplete ? (
           <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -329,41 +373,111 @@ export default function AdminDashboardPage() {
               ))}
             </div>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm">
+        ) : !isBannerDismissed ? (
+          <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-3.5 shadow-2xs flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-xs shrink-0">
                 <Check className="h-4 w-4 stroke-[3]" />
               </div>
-              <div>
-                <h4 className="text-xs font-bold text-emerald-950">All Core School Systems Operational</h4>
-                <p className="text-[11px] text-emerald-700">
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-emerald-950 truncate">All Core School Systems Operational</h4>
+                <p className="text-[11px] text-emerald-700 truncate">
                   Sessions, classrooms, subjects, staff roster, and student body are configured.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowCompletedChecklist(!showCompletedChecklist)}
-              className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline underline-offset-4 cursor-pointer"
-            >
-              {showCompletedChecklist ? "Hide Checklist" : "Review Setup"}
-            </button>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(true)}
+                className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline underline-offset-4 cursor-pointer"
+              >
+                Review Setup
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissBanner}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-650 hover:bg-emerald-100/60 hover:text-emerald-900 transition-colors cursor-pointer"
+                title="Dismiss banner"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-        )}
+        ) : null}
 
-        {showCompletedChecklist && isSetupFullyComplete && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-2xl border border-slate-200 bg-white animate-in fade-in duration-200">
-            {setupMilestones.map((m) => (
-              <div key={m.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1">
-                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                  <Check className="h-3 w-3" /> Configured
-                </span>
-                <p className="text-xs font-bold text-slate-950">{m.title}</p>
-                <p className="text-[11px] text-slate-500">{m.description}</p>
+        {/* ═══ REVIEW SETUP MODAL ═══════════════════════════════ */}
+        {isReviewModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+            onClick={() => setIsReviewModalOpen(false)}
+          >
+            <div
+              className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-slate-950">
+                      School Foundation & Launch Readiness
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      All 5 core foundation milestones are fully configured.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            ))}
+
+              <div className="grid gap-2.5">
+                {setupMilestones.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/60"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">{m.title}</h4>
+                        <p className="text-[11px] text-slate-500">{m.description}</p>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={m.href}
+                      onClick={() => setIsReviewModalOpen(false)}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                    >
+                      <span>Manage</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(false)}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Close Review
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
