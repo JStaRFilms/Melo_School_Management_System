@@ -41,6 +41,17 @@ This document tracks all observations, issues, UX refinements, and their resolut
   - *What was done*:
     - Purged `Preston Academy` (empty stub) and `Demo Academy` (and 1,963 associated tenant records: users, students, classes, subjects, assessments, billing records).
     - Confirmed remaining Dev database holds clean copies of `Olive Blessed Crest Academy` and `Codex Academy`.
+- [x] **Dynamic School Tab Titles & Favicon Sync**
+  - *What was done*:
+    - Replaced all legacy and placeholder metadata titles across apps (`Melo Admin`, `Melo Teacher`, `Melo Portal`, `Melo Platform Admin`).
+    - Added reactive synchronization in `WorkspaceNavbar` to update the document title (`Admin · Olive Blessed Crest Academy`) and swap the browser tab favicon to the active school's crest logo dynamically upon sign-in.
+- [x] **Universal "Change Password" Modal & Security UI**
+  - *What was done*:
+    - Built a reusable, accessible `ChangePasswordModal` in `@school/shared` powered by Better Auth.
+    - Integrated "Change Password" buttons directly into Platform Super Admin top bar and into the user profile dropdown across `admin`, `teacher`, and `portal` workspaces.
+- [x] **Admin Sign-In Default Landing Route Fix**
+  - *What was done*:
+    - Fixed legacy hardcoded default redirect from `/assessments/setup/exam-recording` to the main `/admin/dashboard` in `apps/admin/app/page.tsx` and `apps/admin/app/sign-in/page.tsx`.
 
 ---
 
