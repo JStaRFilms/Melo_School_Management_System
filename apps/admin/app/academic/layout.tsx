@@ -8,7 +8,7 @@ import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
 import { authClient } from "@/auth-client";
 import { Lock } from "lucide-react";
 
@@ -98,6 +98,15 @@ function AcademicWorkspaceNavbar({
   const schoolBranding = useQuery(
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
     {}  );
+
+  if (schoolBranding?.status === "suspended") {
+    return (
+      <SchoolSuspendedLockScreen
+        school={schoolBranding}
+        onSignOut={onSignOut}
+      />
+    );
+  }
 
   const isCurriculumDisabled =
     currentPath.startsWith("/academic/knowledge/curriculum") &&

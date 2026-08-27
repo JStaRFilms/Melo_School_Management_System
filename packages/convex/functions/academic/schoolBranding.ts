@@ -22,6 +22,7 @@ export const schoolBrandingSummaryValidator = v.object({
   schoolId: v.id("schools"),
   name: v.string(),
   slug: v.string(),
+  status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
   logoUrl: v.union(v.string(), v.null()),
   motto: v.optional(v.string()),
   theme: schoolBrandingThemeValidator,
@@ -56,7 +57,9 @@ export const getCurrentSchoolBranding = query({
   args: {},
   returns: schoolBrandingSummaryValidator,
   handler: async (ctx) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
+      allowSuspended: true,
+    });
     const school = await ctx.db.get(schoolId);
     if (!school) {
       throw new ConvexError("School not found");
@@ -66,6 +69,7 @@ export const getCurrentSchoolBranding = query({
       schoolId,
       name: normalizeHumanName(school.name),
       slug: school.slug,
+      status: school.status ?? "active",
       logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
       motto: school.motto,
       theme: fallbackTheme(school.theme),

@@ -186,6 +186,15 @@ const reportCardBatchStudentValidator = v.object({
 export const reportCardResultValidator = v.object({
   schoolName: v.string(),
   schoolLogoUrl: v.union(v.string(), v.null()),
+  schoolAddress: v.optional(v.union(v.string(), v.null())),
+  schoolContact: v.optional(v.union(v.string(), v.null())),
+  schoolMotto: v.optional(v.union(v.string(), v.null())),
+  theme: v.optional(
+    v.object({
+      primaryColor: v.string(),
+      accentColor: v.string(),
+    })
+  ),
   sessionName: v.string(),
   termName: v.string(),
   classId: v.id("classes"),
@@ -956,6 +965,13 @@ export async function buildStudentReportCard(
   return {
     schoolName: normalizeHumanName(school.name),
     schoolLogoUrl,
+    schoolAddress: school.address ?? null,
+    schoolContact: [school.contactPhone, school.contactEmail].filter(Boolean).join(" • ") || null,
+    schoolMotto: school.motto ?? null,
+    theme: {
+      primaryColor: school.theme?.primaryColor || "#0f172a",
+      accentColor: school.theme?.accentColor || "#d97706",
+    },
     sessionName: normalizeHumanName(session.name),
     termName: normalizeHumanName(term.name),
     classId: reportCardClassId,

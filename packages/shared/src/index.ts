@@ -22,6 +22,8 @@ export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintSt
 export { MeloLoader } from "./components/MeloLoader";
 export { ChangePasswordModal } from "./components/ChangePasswordModal";
 export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
+export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";
+export type { SuspendedSchoolDetails } from "./components/SchoolSuspendedLockScreen";
 
 // Exam Recording Domain
 export * from "./exam-recording";

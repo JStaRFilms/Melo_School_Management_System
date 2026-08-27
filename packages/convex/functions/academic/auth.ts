@@ -9,7 +9,8 @@ import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelper
  * @throws ConvexError "School membership not found" if user has no school
  */
 export async function getAuthenticatedSchoolMembership(
-  ctx: any
+  ctx: any,
+  options?: { allowSuspended?: boolean }
 ): Promise<{
   userId: Id<"users">;
   schoolId: Id<"schools">;
@@ -36,7 +37,7 @@ export async function getAuthenticatedSchoolMembership(
   }
 
   const school = await ctx.db.get(user.schoolId);
-  if (school?.status === "suspended") {
+  if (!options?.allowSuspended && school?.status === "suspended") {
     throw new ConvexError("This school workspace is currently suspended by platform administration");
   }
 

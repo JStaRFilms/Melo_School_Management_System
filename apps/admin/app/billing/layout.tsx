@@ -7,7 +7,7 @@ import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
-import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
 import { authClient } from "@/auth-client";
 import { Lock } from "lucide-react";
 
@@ -25,6 +25,11 @@ export default function BillingLayout({
   ) as {
     name: string;
     logoUrl: string | null;
+    status?: string;
+    motto?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    address?: string;
     theme: { primaryColor: string; accentColor: string };
     features?: { billing: boolean; curriculum: boolean; knowledgeLibrary: boolean; admissions: boolean };
   } | undefined;
@@ -57,6 +62,15 @@ export default function BillingLayout({
       <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">
         <MeloLoader message="Preparing your billing panel..." />
       </div>
+    );
+  }
+
+  if (schoolBranding?.status === "suspended") {
+    return (
+      <SchoolSuspendedLockScreen
+        school={schoolBranding}
+        onSignOut={handleSignOut}
+      />
     );
   }
 

@@ -73,7 +73,7 @@ function SchoolsTable({
             const isSuspended = school.status === "suspended";
 
             return (
-              <tr key={school._id} className="hover:bg-slate-50/60 transition-colors">
+              <tr key={school._id} className="hover:bg-slate-50/60 transition-all duration-150 animate-in fade-in">
                 <td className="px-4 py-3.5">
                   <div className="font-bold text-sm text-slate-900">{school.name}</div>
                 </td>
