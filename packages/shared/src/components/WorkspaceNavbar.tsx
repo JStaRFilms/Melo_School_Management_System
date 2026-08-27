@@ -21,6 +21,26 @@ import {
   Landmark,
   BookOpenText,
   Lock,
+  Users,
+  UserCheck,
+  Calendar,
+  CalendarRange,
+  ClipboardPenLine,
+  FileText,
+  Sliders,
+  TrendingUp,
+  PlusCircle,
+  SlidersHorizontal,
+  Upload,
+  CheckCircle2,
+  BookOpen,
+  FileCode,
+  BadgePercent,
+  CreditCard,
+  Settings,
+  ShieldCheck,
+  Archive,
+  History,
 } from "lucide-react";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 
@@ -168,69 +188,72 @@ export function WorkspaceNavbar({
             },
           }
         : {
-            operations: {
-              label: "Core Operations",
+            main: {
+              label: "Overview",
               icon: <LayoutDashboard className="h-4 w-4" />,
-              links: sections.filter((section) =>
-                [
-                  "/admin/dashboard",
-                  "/academic/students",
-                  "/academic/teachers",
-                  "/academic/classes",
-                  "/academic/sessions",
-                  "/academic/subjects",
-                  "/academic/events",
-                ].includes(section.href)
+              links: sections.filter((s) => s.href === "/admin/dashboard"),
+            },
+            people: {
+              label: "People & Operations",
+              icon: <Users className="h-4 w-4" />,
+              links: sections.filter((s) =>
+                ["/academic/students", "/academic/teachers", "/academic/events"].includes(s.href)
               ),
             },
-            assessments: {
-              label: "Assessments & Grading",
-              icon: <ClipboardCheck className="h-4 w-4" />,
-              links: sections.filter((section) =>
-                [
-                  "/assessments/results/entry",
-                  "/assessments/report-card-extras",
-                  "/assessments/setup/exam-recording",
-                  "/assessments/setup/grading-bands",
-                  "/assessments/setup/report-card-bundles",
-                  "/assessments/report-cards/manual-adjustments",
-                ].includes(section.href)
-              ),
-            },
-            finance: {
-              label: "Finance & Invoicing",
-              icon: <Landmark className="h-4 w-4" />,
-              links: schoolBranding?.features?.billing !== false
-                ? sections.filter((section) => section.href === "/billing")
-                : [],
-            },
-            curriculum: {
-              label: "Curriculum Studio",
-              icon: <BookOpenText className="h-4 w-4" />,
-              links: sections.filter((section) => {
+            academics: {
+              label: "Academic & Grading",
+              icon: <GraduationCap className="h-4 w-4" />,
+              links: sections.filter((s) => {
                 if (
-                  section.href === "/academic/knowledge/curriculum-import" ||
-                  section.href === "/academic/knowledge/curriculum-readiness"
+                  [
+                    "/assessments/results/entry",
+                    "/assessments/report-card-extras",
+                    "/assessments/setup/exam-recording",
+                    "/assessments/setup/grading-bands",
+                    "/assessments/setup/report-card-bundles",
+                    "/assessments/report-cards/manual-adjustments",
+                  ].includes(s.href)
+                ) {
+                  return true;
+                }
+                if (
+                  s.href === "/academic/knowledge/curriculum-import" ||
+                  s.href === "/academic/knowledge/curriculum-readiness"
                 ) {
                   return schoolBranding?.features?.curriculum !== false;
                 }
-                if (section.href === "/academic/knowledge/library") {
+                if (s.href === "/academic/knowledge/library") {
                   return schoolBranding?.features?.knowledgeLibrary !== false;
                 }
                 if (
-                  section.href === "/academic/knowledge/templates" ||
-                  section.href === "/academic/knowledge/assessment-profiles"
+                  s.href === "/academic/knowledge/templates" ||
+                  s.href === "/academic/knowledge/assessment-profiles"
                 ) {
                   return true;
                 }
                 return false;
               }),
             },
-            administration: {
-              label: "Administration",
+            finance: {
+              label: "Finance & Invoicing",
               icon: <Landmark className="h-4 w-4" />,
-              links: sections.filter((section) =>
-                ["/admin/settings", "/admin", "/academic/archived-records", "/assessments/report-cards/backfill"].includes(section.href)
+              links: schoolBranding?.features?.billing !== false
+                ? sections.filter((s) => s.href === "/billing")
+                : [],
+            },
+            settings: {
+              label: "Setup & Settings",
+              icon: <Settings className="h-4 w-4" />,
+              links: sections.filter((s) =>
+                [
+                  "/academic/sessions",
+                  "/academic/classes",
+                  "/academic/subjects",
+                  "/admin/settings",
+                  "/admin",
+                  "/academic/archived-records",
+                  "/assessments/report-cards/backfill",
+                ].includes(s.href)
               ),
             },
           };
@@ -295,13 +318,13 @@ export function WorkspaceNavbar({
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
-          <div className="space-y-7 py-3">
+        <nav className="flex-1 overflow-y-auto px-3.5 py-2.5 custom-scrollbar">
+          <div className="space-y-5 py-2">
             {Object.entries(groups)
               .filter(([, group]) => group.links.length > 0)
               .map(([key, group]) => (
-              <div key={key} className="space-y-2.5">
-                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+              <div key={key} className="space-y-1">
+                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
                   {group.label}
                 </h3>
                 <div className="grid gap-0.5">
@@ -569,20 +592,89 @@ function SchoolBrandMark({
   );
 }
 
+function getSectionIcon(href: string) {
+  switch (href) {
+    case "/":
+    case "/admin/dashboard":
+      return <LayoutDashboard className="h-4 w-4 shrink-0" />;
+    case "/academic/students":
+      return <Users className="h-4 w-4 shrink-0" />;
+    case "/academic/teachers":
+      return <UserCheck className="h-4 w-4 shrink-0" />;
+    case "/academic/events":
+      return <Calendar className="h-4 w-4 shrink-0" />;
+    case "/assessments/results/entry":
+    case "/assessments/exams/entry":
+      return <ClipboardPenLine className="h-4 w-4 shrink-0" />;
+    case "/assessments/report-card-extras":
+    case "/assessments/report-card-workbench":
+    case "/report-cards":
+      return <FileText className="h-4 w-4 shrink-0" />;
+    case "/assessments/setup/exam-recording":
+      return <Sliders className="h-4 w-4 shrink-0" />;
+    case "/assessments/setup/grading-bands":
+      return <TrendingUp className="h-4 w-4 shrink-0" />;
+    case "/assessments/setup/report-card-bundles":
+      return <PlusCircle className="h-4 w-4 shrink-0" />;
+    case "/assessments/report-cards/manual-adjustments":
+      return <SlidersHorizontal className="h-4 w-4 shrink-0" />;
+    case "/academic/knowledge/library":
+    case "/planning/library":
+      return <BookOpen className="h-4 w-4 shrink-0" />;
+    case "/academic/knowledge/curriculum-import":
+      return <Upload className="h-4 w-4 shrink-0" />;
+    case "/academic/knowledge/curriculum-readiness":
+      return <CheckCircle2 className="h-4 w-4 shrink-0" />;
+    case "/academic/knowledge/templates":
+    case "/planning":
+      return <FileCode className="h-4 w-4 shrink-0" />;
+    case "/academic/knowledge/assessment-profiles":
+      return <BadgePercent className="h-4 w-4 shrink-0" />;
+    case "/billing":
+      return <CreditCard className="h-4 w-4 shrink-0" />;
+    case "/academic/sessions":
+      return <CalendarRange className="h-4 w-4 shrink-0" />;
+    case "/academic/classes":
+    case "/enrollment/subjects":
+      return <GraduationCap className="h-4 w-4 shrink-0" />;
+    case "/academic/subjects":
+    case "/learning/topics":
+      return <BookOpenText className="h-4 w-4 shrink-0" />;
+    case "/admin/settings":
+      return <Settings className="h-4 w-4 shrink-0" />;
+    case "/admin":
+      return <ShieldCheck className="h-4 w-4 shrink-0" />;
+    case "/academic/archived-records":
+      return <Archive className="h-4 w-4 shrink-0" />;
+    case "/assessments/report-cards/backfill":
+    case "/results":
+      return <History className="h-4 w-4 shrink-0" />;
+    case "/notifications":
+      return <ClipboardCheck className="h-4 w-4 shrink-0" />;
+    default:
+      return <ChevronRight className="h-4 w-4 shrink-0" />;
+  }
+}
+
 function SidebarLink({ section, active, renderLink }: { section: any, active: boolean, renderLink: any }) {
   return renderLink({
     href: section.href,
     children: (
       <span
-        className={`flex items-center justify-between rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all duration-200 group ${
+        className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all duration-150 group ${
           active 
-            ? "bg-slate-950 text-white shadow-md shadow-slate-950/10" 
-            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+            ? "bg-slate-950 text-white shadow-sm" 
+            : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-950"
         }`}
       >
-        {section.label}
-        <ChevronRight className={`h-3.5 w-3.5 transition-all ${
-          active ? "text-blue-400 translate-x-0" : "text-slate-300 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5"
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`transition-colors ${active ? "text-blue-400" : "text-slate-400 group-hover:text-slate-700"}`}>
+            {getSectionIcon(section.href)}
+          </span>
+          <span className="truncate">{section.label}</span>
+        </div>
+        <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-all ${
+          active ? "text-blue-400 opacity-100" : "text-slate-300 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5"
         }`} />
       </span>
     ),
@@ -600,7 +692,12 @@ function MobileLink({ section, active, renderLink }: { section: any, active: boo
             : "text-slate-600 hover:bg-slate-50"
         }`}
       >
-        {section.label}
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`transition-colors ${active ? "text-blue-400" : "text-slate-400"}`}>
+            {getSectionIcon(section.href)}
+          </span>
+          <span className="truncate">{section.label}</span>
+        </div>
         {active && <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />}
       </span>
     ),

@@ -33,35 +33,21 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     available: true,
     description: "Manage daily school operations first, with setup and maintenance close by.",
     sections: [
+      // 1. Overview
       { href: "/admin/dashboard", label: "Dashboard", matchers: ["/admin/dashboard"] },
+
+      // 2. People & Operations
       { href: "/academic/students", label: "Students", matchers: ["/academic/students"] },
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
-      { href: "/billing", label: "Billing", matchers: ["/billing"] },
+      { href: "/academic/events", label: "Events & Calendar", matchers: ["/academic/events"] },
+
+      // 3. Academic & Grading
       { href: "/assessments/results/entry", label: "Score Entry", matchers: ["/assessments/results/entry"] },
       {
         href: "/assessments/report-card-extras",
         label: "Report Cards",
         matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
       },
-      {
-        href: "/academic/knowledge/library",
-        label: "Knowledge Library",
-        matchers: ["/academic/knowledge/library"],
-      },
-      {
-        href: "/academic/knowledge/curriculum-import",
-        label: "Curriculum Import",
-        matchers: ["/academic/knowledge/curriculum-import"],
-      },
-      {
-        href: "/academic/knowledge/curriculum-readiness",
-        label: "Curriculum Readiness",
-        matchers: ["/academic/knowledge/curriculum-readiness"],
-      },
-      { href: "/academic/sessions", label: "Sessions", matchers: ["/academic/sessions"] },
-      { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
-      { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
-      { href: "/academic/events", label: "Events", matchers: ["/academic/events"] },
       {
         href: "/assessments/setup/exam-recording",
         label: "Exam Setup",
@@ -78,8 +64,28 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         matchers: ["/assessments/setup/report-card-bundles"],
       },
       {
+        href: "/assessments/report-cards/manual-adjustments",
+        label: "Manual Adjustments",
+        matchers: ["/assessments/report-cards/manual-adjustments"],
+      },
+      {
+        href: "/academic/knowledge/library",
+        label: "Knowledge Library",
+        matchers: ["/academic/knowledge/library"],
+      },
+      {
+        href: "/academic/knowledge/curriculum-import",
+        label: "Curriculum Import",
+        matchers: ["/academic/knowledge/curriculum-import"],
+      },
+      {
+        href: "/academic/knowledge/curriculum-readiness",
+        label: "Curriculum Readiness",
+        matchers: ["/academic/knowledge/curriculum-readiness"],
+      },
+      {
         href: "/academic/knowledge/templates",
-        label: "Lesson/Notes Templates",
+        label: "Lesson Templates",
         matchers: ["/academic/knowledge/templates"],
       },
       {
@@ -87,17 +93,20 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
         label: "Assessment Profiles",
         matchers: ["/academic/knowledge/assessment-profiles"],
       },
-      { href: "/admin/settings", label: "School Profile & Branding", matchers: ["/admin/settings"] },
+
+      // 4. Finance & Invoicing
+      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing"] },
+
+      // 5. Setup & Settings
+      { href: "/academic/sessions", label: "Sessions & Terms", matchers: ["/academic/sessions"] },
+      { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
+      { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
+      { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {
         href: "/academic/archived-records",
         label: "Archive Audit",
         matchers: ["/academic/archived-records"],
-      },
-      {
-        href: "/assessments/report-cards/manual-adjustments",
-        label: "Manual Adjustments",
-        matchers: ["/assessments/report-cards/manual-adjustments"],
       },
       {
         href: "/assessments/report-cards/backfill",
