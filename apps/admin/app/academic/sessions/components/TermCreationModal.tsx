@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Check,
   Plus,
-  Sparkles,
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage, type ReportCardCalculationMode } from "@school/shared";
@@ -105,7 +104,7 @@ export function TermCreationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -114,7 +113,7 @@ export function TermCreationModal({
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
               <CalendarDays className="h-4 w-4" />
             </div>
             <div>
@@ -149,7 +148,7 @@ export function TermCreationModal({
                 onClick={() => handleSelectPreset(p.name, p.defaultMode)}
                 className={`py-2 px-3 rounded-xl border text-xs font-bold transition cursor-pointer ${
                   termName === p.name
-                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-500/20"
+                    ? "border-slate-900 bg-slate-900 text-white shadow-xs"
                     : "border-slate-200 bg-slate-50/50 text-slate-600 hover:border-slate-300 hover:bg-white"
                 }`}
               >
@@ -171,7 +170,7 @@ export function TermCreationModal({
               onChange={(e) => setTermName(humanNameTyping(e.target.value))}
               onBlur={(e) => setTermName(humanNameFinal(e.target.value))}
               placeholder="e.g., First Term"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
             />
           </div>
 
@@ -185,7 +184,7 @@ export function TermCreationModal({
                 required
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
             </div>
             <div className="space-y-1.5">
@@ -198,7 +197,7 @@ export function TermCreationModal({
                 value={endDate}
                 min={startDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
             </div>
           </div>
@@ -212,7 +211,7 @@ export function TermCreationModal({
               onChange={(e) =>
                 setResultCalculationMode(e.target.value as ReportCardCalculationMode)
               }
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:bg-white cursor-pointer"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-slate-900 focus:bg-white cursor-pointer"
             >
               <option value="standalone">Standalone Term (Default for Term 1 & Term 2)</option>
               <option value="cumulative_annual">
@@ -226,7 +225,7 @@ export function TermCreationModal({
               type="checkbox"
               checked={activateTerm}
               onChange={(e) => setActivateTerm(e.target.checked)}
-              className="h-4 w-4 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded-md border-slate-300 text-slate-900 focus:ring-slate-900"
             />
             <span className="font-semibold text-slate-800">
               Set as the active term immediately

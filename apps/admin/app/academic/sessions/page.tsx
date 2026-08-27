@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   Calendar,
+  CalendarCheck,
   CalendarDays,
   CheckCircle2,
   Clock,
   History,
   Plus,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
@@ -105,17 +105,10 @@ export default function SessionsPage() {
   };
 
   const handleArchive = async (sessionId: string) => {
-    if (
-      !window.confirm(
-        "Archive this session? Historical report cards and student records will be preserved, but it will be hidden from daily setup."
-      )
-    ) {
-      return;
-    }
     try {
       await archiveSession({ sessionId } as never);
       appToast.success("Session Archived", {
-        description: "The session has been archived to history.",
+        description: "The session has been moved to history.",
       });
     } catch (err) {
       appToast.error("Archive Failed", {
@@ -166,7 +159,7 @@ export default function SessionsPage() {
                   {
                     label: "Current",
                     value: activeSession ? activeSession.name.split(" ")[0] : "None",
-                    icon: <Sparkles />,
+                    icon: <CalendarCheck />,
                   },
                   {
                     label: "Audit Logs",
@@ -191,7 +184,7 @@ export default function SessionsPage() {
         {/* ═══ EMPTY STATE (0 SESSIONS) ════════════════════════ */}
         {sessions.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center space-y-4 shadow-2xs">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 mx-auto shadow-xs">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 mx-auto shadow-xs">
               <Calendar className="h-7 w-7" />
             </div>
             <div className="space-y-1 max-w-md mx-auto">
@@ -207,7 +200,7 @@ export default function SessionsPage() {
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Create First Academic Session
@@ -267,7 +260,7 @@ export default function SessionsPage() {
               <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
                       <ShieldCheck className="h-4 w-4" />
                     </div>
                     <div>

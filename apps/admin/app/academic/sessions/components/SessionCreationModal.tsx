@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import {
+  CalendarCheck,
   CalendarDays,
   Check,
   Plus,
-  Sparkles,
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
@@ -87,8 +87,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "First Term",
-          startDate: new Date(yr, 8, 8).getTime(), // Sep 8
-          endDate: new Date(yr, 11, 19).getTime(), // Dec 19
+          startDate: new Date(yr, 8, 8).getTime(),
+          endDate: new Date(yr, 11, 19).getTime(),
           isActive: true,
           resultCalculationMode: "standalone",
         } as never);
@@ -97,8 +97,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "Second Term",
-          startDate: new Date(nextYr, 0, 12).getTime(), // Jan 12
-          endDate: new Date(nextYr, 3, 17).getTime(), // Apr 17
+          startDate: new Date(nextYr, 0, 12).getTime(),
+          endDate: new Date(nextYr, 3, 17).getTime(),
           isActive: false,
           resultCalculationMode: "standalone",
         } as never);
@@ -107,8 +107,8 @@ export function SessionCreationModal({
         await createTerm({
           sessionId,
           name: "Third Term",
-          startDate: new Date(nextYr, 4, 4).getTime(), // May 4
-          endDate: new Date(nextYr, 6, 24).getTime(), // Jul 24
+          startDate: new Date(nextYr, 4, 4).getTime(),
+          endDate: new Date(nextYr, 6, 24).getTime(),
           isActive: false,
           resultCalculationMode: "cumulative_annual",
         } as never);
@@ -133,7 +133,7 @@ export function SessionCreationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -142,8 +142,8 @@ export function SessionCreationModal({
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-              <CalendarDays className="h-4 w-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+              <CalendarCheck className="h-4 w-4" />
             </div>
             <div>
               <h3 className="font-display text-sm font-bold text-slate-950">
@@ -181,7 +181,7 @@ export function SessionCreationModal({
                   onClick={() => handleApplyPreset(offset)}
                   className={`py-2 px-3 rounded-xl border text-xs font-bold transition cursor-pointer ${
                     isSelected
-                      ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-500/20"
+                      ? "border-slate-900 bg-slate-900 text-white shadow-xs"
                       : "border-slate-200 bg-slate-50/50 text-slate-600 hover:border-slate-300 hover:bg-white"
                   }`}
                 >
@@ -204,7 +204,7 @@ export function SessionCreationModal({
               onChange={(e) => setSessionName(humanNameTyping(e.target.value))}
               onBlur={(e) => setSessionName(humanNameFinal(e.target.value))}
               placeholder="e.g., 2025/2026 Academic Session"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
             />
           </div>
 
@@ -218,7 +218,7 @@ export function SessionCreationModal({
                 required
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
             </div>
             <div className="space-y-1.5">
@@ -231,7 +231,7 @@ export function SessionCreationModal({
                 value={endDate}
                 min={startDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
             </div>
           </div>
@@ -243,23 +243,23 @@ export function SessionCreationModal({
                 type="checkbox"
                 checked={activateSession}
                 onChange={(e) => setActivateSession(e.target.checked)}
-                className="h-4 w-4 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                className="h-4 w-4 rounded-md border-slate-300 text-slate-900 focus:ring-slate-900"
               />
               <span className="font-semibold text-slate-800">
                 Set as the active school session
               </span>
             </label>
 
-            <label className="flex items-center gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs text-indigo-950 cursor-pointer">
+            <label className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-900 cursor-pointer">
               <input
                 type="checkbox"
                 checked={autoGenerateTerms}
                 onChange={(e) => setAutoGenerateTerms(e.target.checked)}
-                className="h-4 w-4 rounded-md border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                className="h-4 w-4 rounded-md border-slate-300 text-slate-900 focus:ring-slate-900"
               />
               <div>
                 <span className="font-bold">Auto-create 3 Standard Terms</span>
-                <p className="text-[11px] text-indigo-700 font-normal">
+                <p className="text-[11px] text-slate-500 font-normal">
                   Generates First Term (Active), Second Term, and Third Term automatically.
                 </p>
               </div>
