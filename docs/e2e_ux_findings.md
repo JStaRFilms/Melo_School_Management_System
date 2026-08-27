@@ -60,7 +60,17 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - **Time-Drift & Stale Backup Detection:** Warn if incoming import sheet contains older timestamps or conflicts with existing records updated on the platform since the export date.
   - **Interactive UI Reconciliation Screen:**
     - Visual side-by-side review workbench where school administrators inspect proposed records, resolve fuzzy conflicts, override assignments, and approve the final merge before writing to the database.
+- [ ] **Smart Transactional & Batched Staff/Guardian Notification Engine**
+  - **Immediate High-Priority Events:**
+    - New Admin / Teacher onboarding invitation with secure one-time activation link.
+    - Password reset and security/auth alerts (sent immediately with zero delay).
+  - **Debounced / Digest Outbox for Operational Edits (Anti-Spam):**
+    - When an administrator modifies a teacher/student (e.g. changing 3 classes, updating subjects, tweaking contact details in quick succession), events are buffered in a `notificationOutbox` table.
+    - Uses Convex scheduled jobs (`ctx.scheduler.runAfter(5 * 60, ...)` / 5-10 min debounce window) to coalesce multiple rapid changes into a single consolidated digest email (*"3 updates were made to your teaching schedule"*).
+  - **Explicit "Send Invitations" Control:**
+    - Provide admins with an intentional "Send Welcome Emails / Send Invitations" action button so bulk roster setups don't trigger emails until the administrator is ready.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
+
 

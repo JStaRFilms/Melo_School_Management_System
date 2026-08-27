@@ -82,6 +82,23 @@ export function WorkspaceNavbar({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  // Dynamically synchronize document tab title and school logo favicon
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (schoolName) {
+      document.title = `${def.label} · ${schoolName}`;
+    }
+    if (schoolBranding?.logoUrl) {
+      let iconLink = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+      if (!iconLink) {
+        iconLink = document.createElement("link");
+        iconLink.rel = "shortcut icon";
+        document.head.appendChild(iconLink);
+      }
+      iconLink.href = schoolBranding.logoUrl;
+    }
+  }, [schoolName, def.label, schoolBranding?.logoUrl]);
+
   const isStudentPortalUser = userRole === "student";
 
   const groups =

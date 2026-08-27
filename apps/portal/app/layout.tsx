@@ -7,8 +7,8 @@ import { AppToaster } from "@school/shared/toast";
 import { getToken } from "@/auth-server";
 
 export const metadata: Metadata = {
-  title: "Portal - Academic Dashboard",
-  description: "Parent and student academic portal for the school management system",
+  title: "Melo Portal",
+  description: "Melo - Parent & Student Portal",
   robots: {
     index: false,
     follow: false,
