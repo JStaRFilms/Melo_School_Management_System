@@ -9,7 +9,7 @@ interface ConfirmationModalProps {
   title: string;
   description: string;
   confirmLabel?: string;
-  confirmVariant?: "primary" | "danger" | "emerald";
+  confirmVariant?: "primary" | "danger" | "emerald" | "warning";
   isLoading?: boolean;
 }
 
@@ -31,6 +31,8 @@ export function ConfirmationModal({
         return "bg-rose-600 hover:bg-rose-700 text-white";
       case "emerald":
         return "bg-emerald-600 hover:bg-emerald-700 text-white";
+      case "warning":
+        return "bg-amber-600 hover:bg-amber-700 text-white";
       default:
         return "bg-slate-900 hover:bg-slate-800 text-white";
     }
@@ -50,6 +52,12 @@ export function ConfirmationModal({
             <CheckCircle2 className="h-5 w-5" />
           </div>
         );
+      case "warning":
+        return (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+        );
       default:
         return (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
@@ -65,13 +73,13 @@ export function ConfirmationModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-md rounded-2xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-3.5">
+        <div className="flex items-start gap-3">
           {getIcon()}
           <div className="space-y-1 min-w-0 flex-1">
-            <h3 className="font-display text-base font-bold text-slate-950 leading-snug">
+            <h3 className="font-display text-sm sm:text-base font-bold text-slate-950 leading-snug">
               {title}
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-line">
@@ -80,12 +88,12 @@ export function ConfirmationModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-2 border-t border-slate-100">
           <button
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50 text-center"
           >
             Cancel
           </button>
@@ -95,7 +103,7 @@ export function ConfirmationModal({
               onConfirm();
             }}
             disabled={isLoading}
-            className={`rounded-xl px-5 py-2 text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50 ${getButtonStyles()}`}
+            className={`w-full sm:w-auto rounded-xl px-5 py-2.5 sm:py-2 text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50 text-center ${getButtonStyles()}`}
           >
             {isLoading ? "Processing..." : confirmLabel}
           </button>

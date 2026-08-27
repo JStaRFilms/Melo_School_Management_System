@@ -104,23 +104,23 @@ export function TermCreationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-lg rounded-2xl bg-white p-4.5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
               <CalendarDays className="h-4 w-4" />
             </div>
             <div>
               <h3 className="font-display text-sm font-bold text-slate-950">
                 Add Academic Term
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] sm:text-xs text-slate-500">
                 Creating term for <span className="font-semibold text-slate-700">{sessionName}</span>
               </p>
             </div>
@@ -129,7 +129,7 @@ export function TermCreationModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
@@ -140,15 +140,15 @@ export function TermCreationModal({
           <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block pl-0.5">
             Quick Term Presets
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
             {TERM_PRESETS.map((p) => (
               <button
                 key={p.name}
                 type="button"
                 onClick={() => handleSelectPreset(p.name, p.defaultMode)}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                className={`py-2 px-1.5 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-bold transition cursor-pointer text-center truncate ${
                   termName === p.name
-                    ? "border-slate-900 bg-slate-900 text-white shadow-xs"
+                    ? "border-slate-900 bg-brand-primary text-white shadow-xs"
                     : "border-slate-200 bg-slate-50/50 text-slate-600 hover:border-slate-300 hover:bg-white"
                 }`}
               >
@@ -158,7 +158,7 @@ export function TermCreationModal({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
           <div className="space-y-1.5">
             <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block pl-0.5">
               Term Title
@@ -170,11 +170,11 @@ export function TermCreationModal({
               onChange={(e) => setTermName(humanNameTyping(e.target.value))}
               onBlur={(e) => setTermName(humanNameFinal(e.target.value))}
               placeholder="e.g., First Term"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block pl-0.5">
                 Term Start Date
@@ -232,18 +232,18 @@ export function TermCreationModal({
             </span>
           </label>
 
-          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto rounded-xl bg-brand-primary px-5 py-2.5 sm:py-2 text-xs font-bold text-white shadow-xs hover:opacity-90 transition cursor-pointer disabled:opacity-50 text-center"
             >
               {isSaving ? "Adding..." : "Add Term"}
             </button>

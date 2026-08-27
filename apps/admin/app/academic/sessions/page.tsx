@@ -140,76 +140,79 @@ export default function SessionsPage() {
 
   if (sessions === undefined) {
     return (
-      <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8">
-        <div className="mx-auto max-w-7xl space-y-6 animate-pulse">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between pb-2">
+      <main className="min-h-screen bg-slate-50/50 px-3 py-4 sm:px-6 sm:py-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-5 animate-pulse">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between pb-2">
             <div className="space-y-2">
-              <div className="h-3 w-32 rounded bg-slate-200" />
-              <div className="h-6.5 w-64 rounded bg-slate-200" />
-              <div className="h-3 w-96 rounded bg-slate-200" />
+              <div className="h-3 w-28 rounded bg-slate-200" />
+              <div className="h-6 w-48 rounded bg-slate-200" />
+              <div className="h-3 w-72 rounded bg-slate-200" />
             </div>
-            <div className="h-9 w-40 rounded-xl bg-slate-200" />
+            <div className="h-9 w-32 rounded-xl bg-slate-200" />
           </div>
 
-          <div className="h-44 rounded-2xl bg-white border border-slate-200/60 p-6" />
-          <div className="h-64 rounded-2xl bg-white border border-slate-200/60 p-6" />
+          <div className="h-20 rounded-2xl bg-white border border-slate-200/60 p-4" />
+          <div className="h-56 rounded-2xl bg-white border border-slate-200/60 p-4" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50/50 px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen bg-slate-50/50 px-3 py-4 sm:px-6 sm:py-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
         
-        {/* ═══ ADMIN HEADER ════════════════════════════════════ */}
-        <AdminHeader
-          label="Institutional timeline & calendar"
-          title="Sessions & Terms"
-          description="Manage school academic years, term sequence dates, and report card calculation policies."
-          actions={
-            <div className="flex items-center gap-3">
-              <StatGroup
-                variant="scroll"
-                stats={[
-                  {
-                    label: "Sessions",
-                    value: String(sessions.length),
-                    icon: <CalendarDays />,
-                  },
-                  {
-                    label: "Current",
-                    value: activeSession ? activeSession.name.split(" ")[0] : "None",
-                    icon: <CalendarCheck />,
-                  },
-                  {
-                    label: "Audit Logs",
-                    value: String(auditEvents?.length ?? 0),
-                    icon: <ShieldCheck />,
-                  },
-                ]}
-              />
-
+        {/* ═══ ADMIN HEADER & ACTIONS ════════════════════════════ */}
+        <div className="space-y-4">
+          <AdminHeader
+            label="Institutional timeline & calendar"
+            title="Sessions & Terms"
+            description="Manage school academic years, term sequence dates, and report card calculation policies."
+            actions={
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="flex items-center gap-2 rounded-2xl bg-brand-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
+                className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:opacity-90 active:scale-95 transition cursor-pointer"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4 w-4 shrink-0" />
                 <span>New Session</span>
               </button>
-            </div>
-          }
-        />
+            }
+          />
+
+          {/* Dedicated Responsive Stat Strip */}
+          <div className="w-full overflow-hidden">
+            <StatGroup
+              variant="scroll"
+              stats={[
+                {
+                  label: "Sessions",
+                  value: String(sessions.length),
+                  icon: <CalendarDays />,
+                },
+                {
+                  label: "Current",
+                  value: activeSession ? activeSession.name.split(" ")[0] : "None",
+                  icon: <CalendarCheck />,
+                },
+                {
+                  label: "Audit Logs",
+                  value: String(auditEvents?.length ?? 0),
+                  icon: <ShieldCheck />,
+                },
+              ]}
+            />
+          </div>
+        </div>
 
         {/* ═══ EMPTY STATE (0 SESSIONS) ════════════════════════ */}
         {sessions.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center space-y-4 shadow-2xs">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 mx-auto shadow-xs">
-              <Calendar className="h-7 w-7" />
+          <div className="rounded-2xl sm:rounded-3xl border border-dashed border-slate-300 bg-white p-6 sm:p-12 text-center space-y-4 shadow-2xs">
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 mx-auto shadow-xs">
+              <Calendar className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
             <div className="space-y-1 max-w-md mx-auto">
-              <h3 className="font-display text-base font-bold text-slate-950">
+              <h3 className="font-display text-sm sm:text-base font-bold text-slate-950">
                 No Academic Sessions Created
               </h3>
               <p className="text-xs text-slate-500">
@@ -221,7 +224,7 @@ export default function SessionsPage() {
               <button
                 type="button"
                 onClick={() => setIsNewSessionModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-brand-primary px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90 transition cursor-pointer"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90 transition cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Create First Academic Session
@@ -229,22 +232,22 @@ export default function SessionsPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             
             {/* ═══ ACTIVE SESSION (HERO TIMELINE) ══════════════ */}
             {activeSession && (
               <div
                 key={`hero-slot-${activeSession._id}`}
-                className={`space-y-3 transition-all duration-700 ease-out ${
+                className={`space-y-2.5 sm:space-y-3 transition-all duration-700 ease-out ${
                   justPromotedSessionId === activeSession._id
                     ? "animate-in slide-in-from-bottom-8 fade-in-0 duration-700"
                     : ""
                 }`}
               >
                 <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <h4 className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                       Active School Calendar
                     </h4>
 
@@ -276,14 +279,14 @@ export default function SessionsPage() {
 
             {/* ═══ PREVIOUS / HISTORICAL SESSIONS ══════════════ */}
             {otherSessions.length > 0 && (
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2.5 sm:space-y-3 pt-1">
                 <div className="flex items-center justify-between px-1">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <h4 className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
                     Academic Year History ({otherSessions.length})
                   </h4>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {otherSessions.map((session) => (
                     <div
                       key={session._id}
@@ -307,17 +310,17 @@ export default function SessionsPage() {
 
             {/* ═══ RECENT TIMELINE AUDIT ACTIVITY ══════════════ */}
             {auditEvents && auditEvents.length > 0 && (
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-2xs space-y-4">
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-2xs space-y-3 sm:space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
                       <ShieldCheck className="h-4 w-4" />
                     </div>
                     <div>
                       <h4 className="font-display text-xs font-bold text-slate-950">
                         Academic Timeline Audit Trail
                       </h4>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[10px] sm:text-[11px] text-slate-500">
                         Immutable record of session/term date changes and activation events.
                       </p>
                     </div>
@@ -328,12 +331,12 @@ export default function SessionsPage() {
                   {auditEvents.slice(0, 6).map((log) => (
                     <div
                       key={log._id}
-                      className="py-2.5 flex items-center justify-between gap-4 hover:bg-slate-50/50 rounded-lg px-1 transition-colors"
+                      className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4 hover:bg-slate-50/50 rounded-lg px-1 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Clock className="h-4 w-4 text-slate-400 shrink-0" />
+                      <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                        <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 shrink-0 mt-0.5 sm:mt-0" />
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-900 truncate">
+                          <p className="text-xs font-semibold text-slate-900 leading-snug">
                             {timelineEventLabel(log.eventType)} ·{" "}
                             <span className="font-bold text-slate-950">{log.entityName}</span>
                           </p>
@@ -343,7 +346,7 @@ export default function SessionsPage() {
                         </div>
                       </div>
 
-                      <time className="shrink-0 text-[10px] font-bold text-slate-400">
+                      <time className="shrink-0 text-[10px] font-bold text-slate-400 pl-6 sm:pl-0">
                         {formatRelativeTime(log.createdAt)}
                       </time>
                     </div>
