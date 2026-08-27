@@ -115,6 +115,7 @@ export function WorkspaceNavbar({
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -258,6 +259,31 @@ export function WorkspaceNavbar({
             },
           };
 
+  const activeSection =
+    sections
+      .filter((section) => isWorkspaceSectionActive(section, currentPath))
+      .sort((a, b) => {
+        const aLength = Math.max(...a.matchers.map((matcher) => matcher.length));
+        const bLength = Math.max(...b.matchers.map((matcher) => matcher.length));
+        return bLength - aLength;
+      })[0] ?? null;
+
+  // Auto-expand the active section's group
+  useEffect(() => {
+    if (activeSection) {
+      for (const [key, group] of Object.entries(groups)) {
+        if (group.links.some((s: WorkspaceSection) => s.href === activeSection.href)) {
+          setExpandedGroups((prev) => ({ ...prev, [key]: true }));
+          break;
+        }
+      }
+    }
+  }, [activeSection?.href]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -287,15 +313,6 @@ export function WorkspaceNavbar({
     setProfileOpen(false);
   }, [currentPath]);
 
-  const activeSection =
-    sections
-      .filter((section) => isWorkspaceSectionActive(section, currentPath))
-      .sort((a, b) => {
-        const aLength = Math.max(...a.matchers.map((matcher) => matcher.length));
-        const bLength = Math.max(...b.matchers.map((matcher) => matcher.length));
-        return bLength - aLength;
-      })[0] ?? null;
-
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
       
@@ -318,27 +335,74 @@ export function WorkspaceNavbar({
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3.5 py-2.5 custom-scrollbar">
-          <div className="space-y-5 py-2">
+        <nav className="flex-1 overflow-y-auto px-3.5 py-3 custom-scrollbar">
+          <div className="space-y-1.5">
             {Object.entries(groups)
               .filter(([, group]) => group.links.length > 0)
-              .map(([key, group]) => (
-              <div key={key} className="space-y-1">
-                <h3 className="sticky top-0 z-10 -mx-1 bg-white/95 backdrop-blur-sm px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
-                  {group.label}
-                </h3>
-                <div className="grid gap-0.5">
-                  {group.links.map((s: WorkspaceSection) => (
-                    <SidebarLink 
-                      key={s.href} 
-                      section={s} 
-                      active={activeSection?.href === s.href} 
-                      renderLink={renderLink} 
+              .map(([key, group]) => {
+                // If single link, render directly as top-level link
+                if (group.links.length === 1) {
+                  const singleSection = group.links[0];
+                  const isLinkActive = activeSection?.href === singleSection.href;
+                  return (
+                    <SidebarLink
+                      key={singleSection.href}
+                      section={singleSection}
+                      active={isLinkActive}
+                      renderLink={renderLink}
                     />
-                  ))}
-                </div>
-              </div>
-            ))}
+                  );
+                }
+
+                // Multiple links -> Collapsible Accordion Tier
+                const isGroupExpanded = expandedGroups[key] ?? false;
+                const isGroupActive = group.links.some((s: WorkspaceSection) => s.href === activeSection?.href);
+
+                return (
+                  <div key={key} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(key)}
+                      className={`w-full flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all duration-150 group cursor-pointer ${
+                        isGroupActive
+                          ? "bg-slate-100/90 text-slate-950 font-extrabold"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-700"}`}>
+                          {group.icon}
+                        </span>
+                        <span className="truncate">{group.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500">
+                          {group.links.length}
+                        </span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+                            isGroupExpanded ? "rotate-180 text-slate-700" : ""
+                          }`}
+                        />
+                      </div>
+                    </button>
+
+                    {isGroupExpanded && (
+                      <div className="ml-5 pl-2.5 border-l-2 border-slate-100 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {group.links.map((s: WorkspaceSection) => (
+                          <SidebarLink
+                            key={s.href}
+                            section={s}
+                            active={activeSection?.href === s.href}
+                            renderLink={renderLink}
+                            isNested
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </nav>
 
@@ -483,24 +547,69 @@ export function WorkspaceNavbar({
                 </div>
               </div>
 
-              <div className="space-y-8">
+              <div className="space-y-2">
                 {Object.entries(groups)
                   .filter(([, group]) => group.links.length > 0)
-                  .map(([key, group]) => (
-                  <div key={key} className="space-y-3">
-                    <h3 className="px-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</h3>
-                    <div className="grid gap-1">
-                      {group.links.map((s: WorkspaceSection) => (
-                         <MobileLink 
-                            key={s.href} 
-                            section={s} 
-                            active={isWorkspaceSectionActive(s, currentPath)} 
-                            renderLink={renderLink} 
-                          />
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  .map(([key, group]) => {
+                    if (group.links.length === 1) {
+                      const singleSection = group.links[0];
+                      const isLinkActive = activeSection?.href === singleSection.href;
+                      return (
+                        <MobileLink
+                          key={singleSection.href}
+                          section={singleSection}
+                          active={isLinkActive}
+                          renderLink={renderLink}
+                        />
+                      );
+                    }
+
+                    const isGroupExpanded = expandedGroups[key] ?? false;
+                    const isGroupActive = group.links.some((s: WorkspaceSection) => s.href === activeSection?.href);
+
+                    return (
+                      <div key={key} className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(key)}
+                          className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition-all ${
+                            isGroupActive ? "bg-slate-100 text-slate-950 font-extrabold" : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`transition-colors ${isGroupActive ? "text-indigo-600" : "text-slate-400"}`}>
+                              {group.icon}
+                            </span>
+                            <span className="truncate">{group.label}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500">
+                              {group.links.length}
+                            </span>
+                            <ChevronDown
+                              className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
+                                isGroupExpanded ? "rotate-180 text-slate-700" : ""
+                              }`}
+                            />
+                          </div>
+                        </button>
+
+                        {isGroupExpanded && (
+                          <div className="ml-5 pl-2.5 border-l-2 border-slate-100 space-y-1">
+                            {group.links.map((s: WorkspaceSection) => (
+                              <MobileLink
+                                key={s.href}
+                                section={s}
+                                active={activeSection?.href === s.href}
+                                renderLink={renderLink}
+                                isNested
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             </div>
 
@@ -656,18 +765,30 @@ function getSectionIcon(href: string) {
   }
 }
 
-function SidebarLink({ section, active, renderLink }: { section: any, active: boolean, renderLink: any }) {
+function SidebarLink({
+  section,
+  active,
+  renderLink,
+  isNested = false,
+}: {
+  section: any;
+  active: boolean;
+  renderLink: any;
+  isNested?: boolean;
+}) {
   return renderLink({
     href: section.href,
     children: (
       <span
-        className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all duration-150 group ${
+        className={`flex items-center justify-between rounded-xl transition-all duration-150 group ${
+          isNested ? "px-3 py-2 text-[12.5px]" : "px-3.5 py-2.5 text-[13px]"
+        } font-bold ${
           active 
             ? "bg-slate-950 text-white shadow-sm" 
             : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-950"
         }`}
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <span className={`transition-colors ${active ? "text-blue-400" : "text-slate-400 group-hover:text-slate-700"}`}>
             {getSectionIcon(section.href)}
           </span>
@@ -681,12 +802,24 @@ function SidebarLink({ section, active, renderLink }: { section: any, active: bo
   });
 }
 
-function MobileLink({ section, active, renderLink }: { section: any, active: boolean, renderLink: any }) {
+function MobileLink({
+  section,
+  active,
+  renderLink,
+  isNested = false,
+}: {
+  section: any;
+  active: boolean;
+  renderLink: any;
+  isNested?: boolean;
+}) {
   return renderLink({
     href: section.href,
     children: (
       <span
-        className={`flex items-center justify-between rounded-xl px-4 py-3.5 text-sm font-bold transition-all ${
+        className={`flex items-center justify-between rounded-xl transition-all ${
+          isNested ? "px-3.5 py-2.5 text-[13px]" : "px-4 py-3.5 text-sm"
+        } font-bold ${
           active 
             ? "bg-slate-950 text-white shadow-lg shadow-slate-950/10" 
             : "text-slate-600 hover:bg-slate-50"

@@ -46,7 +46,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       {
         href: "/assessments/report-card-extras",
         label: "Report Cards",
-        matchers: ["/assessments/report-card-extras", "/assessments/report-cards"],
+        matchers: ["/assessments/report-card-extras", "/assessments/report-cards$"],
       },
       {
         href: "/assessments/setup/exam-recording",
