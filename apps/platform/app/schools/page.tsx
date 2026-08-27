@@ -60,17 +60,17 @@ function SchoolsTable({
   });
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
-      <table className="w-full table-fixed text-left border-collapse">
+    <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
+      <table className="w-full text-left border-collapse min-w-[1080px]">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50/80">
-            <th className="w-[30%] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
-            <th className="w-[13%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
-            <th className="w-[10%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
-            <th className="w-[18%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
-            <th className="w-[14%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
-            <th className="w-[8%] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
-            <th className="w-[17%] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
+            <th className="min-w-[240px] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
+            <th className="min-w-[130px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
+            <th className="min-w-[100px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
+            <th className="min-w-[200px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
+            <th className="min-w-[170px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
+            <th className="min-w-[100px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
+            <th className="min-w-[240px] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
           </tr>
         </thead>
         <tbody ref={tableBodyRef} className="divide-y divide-slate-100/90">
@@ -81,26 +81,26 @@ function SchoolsTable({
             return (
               <tr key={school._id} className="hover:bg-slate-50/70 transition-colors">
                 <td className="px-5 py-4">
-                  <div className="font-bold text-sm text-slate-900 leading-snug break-words pr-2">{school.name}</div>
+                  <div className="font-bold text-sm text-slate-900 leading-snug">{school.name}</div>
                 </td>
-                <td className="px-4 py-4">
-                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/70 truncate max-w-full">
+                <td className="px-4 py-4 whitespace-nowrap">
+                  <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-medium text-slate-600 border border-slate-200/70">
                     {school.slug}
                   </span>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 whitespace-nowrap">
                   {isPending ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200/80 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200/80">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                       Pending
                     </span>
                   ) : isSuspended ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200/80 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200/80">
                       <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                       Suspended
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       Active
                     </span>
@@ -108,9 +108,9 @@ function SchoolsTable({
                 </td>
                 <td className="px-4 py-4">
                   {school.adminEmail ? (
-                    <div className="text-xs space-y-0.5 pr-2">
-                      <div className="font-bold text-slate-800 leading-tight truncate">{school.adminName || "Admin User"}</div>
-                      <div className="text-slate-400 font-mono text-[11px] truncate">{school.adminEmail}</div>
+                    <div className="text-xs space-y-0.5">
+                      <div className="font-bold text-slate-800 leading-tight">{school.adminName || "Admin User"}</div>
+                      <div className="text-slate-400 font-mono text-[11px]">{school.adminEmail}</div>
                     </div>
                   ) : (
                     <span className="text-xs italic text-slate-400">Unassigned</span>
