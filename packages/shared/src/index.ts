@@ -24,6 +24,7 @@ export { ChangePasswordModal } from "./components/ChangePasswordModal";
 export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
 export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";
 export type { SuspendedSchoolDetails } from "./components/SchoolSuspendedLockScreen";
+export { useAutoAnimate } from "@formkit/auto-animate/react";
 
 // Exam Recording Domain
 export * from "./exam-recording";

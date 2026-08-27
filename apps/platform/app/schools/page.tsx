@@ -22,6 +22,7 @@ import {
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { useAutoAnimate } from "@school/shared";
 
 interface SchoolItem {
   _id: string;
@@ -53,6 +54,7 @@ function SchoolsTable({
   onResetPassword: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
+  const [tableBodyRef] = useAutoAnimate<HTMLTableSectionElement>();
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs hidden md:block">
       <table className="w-full text-left border-collapse">
@@ -67,13 +69,13 @@ function SchoolsTable({
             <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody ref={tableBodyRef} className="divide-y divide-slate-100">
           {schools.map((school) => {
             const isPending = school.status === "pending";
             const isSuspended = school.status === "suspended";
 
             return (
-              <tr key={school._id} className="hover:bg-slate-50/60 transition-all duration-150 animate-in fade-in">
+              <tr key={school._id} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-4 py-3.5">
                   <div className="font-bold text-sm text-slate-900">{school.name}</div>
                 </td>
@@ -96,41 +98,39 @@ function SchoolsTable({
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Active
+                      Active Tenant
                     </span>
                   )}
                 </td>
                 <td className="px-4 py-3.5">
-                  {school.adminName ? (
-                    <div>
-                      <div className="font-semibold text-xs text-slate-900">{school.adminName}</div>
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        {school.adminEmail}
-                      </div>
+                  {school.adminEmail ? (
+                    <div className="text-xs">
+                      <div className="font-bold text-slate-800">{school.adminName || "Admin User"}</div>
+                      <div className="text-slate-400 font-mono text-[11px]">{school.adminEmail}</div>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400 italic">Not assigned</span>
+                    <span className="text-xs italic text-slate-400">Unassigned</span>
                   )}
                 </td>
                 <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap">
                     {school.features?.billing !== false && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                      <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                         Billing
                       </span>
                     )}
                     {school.features?.curriculum !== false && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                      <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
                         Curriculum
                       </span>
                     )}
                     {school.features?.knowledgeLibrary !== false && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                      <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
                         AI Library
                       </span>
                     )}
                     {school.features?.admissions === true && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60">
+                      <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
                         Admissions
                       </span>
                     )}
@@ -140,11 +140,20 @@ function SchoolsTable({
                   {formatDate(school.createdAt)}
                 </td>
                 <td className="px-4 py-3.5 text-right">
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="inline-flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onManageFeatures(school)}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                      title="Manage Features"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      Features
+                    </button>
                     {isPending ? (
                       <Link
                         href={`/schools/${school._id}/assign-admin`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-xs"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-xs"
                       >
                         <UserCheck className="h-3.5 w-3.5" />
                         Assign Admin
@@ -153,28 +162,22 @@ function SchoolsTable({
                       <>
                         <button
                           type="button"
-                          onClick={() => onManageFeatures(school)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
-                          Features
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => onResetPassword(school)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          title="Reset Admin Password"
                         >
-                          <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+                          <KeyRound className="h-3.5 w-3.5" />
                           Password
                         </button>
                         <button
                           type="button"
                           onClick={() => onToggleStatus(school)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors shadow-2xs ${
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors ${
                             isSuspended
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                              : "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                              ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                              : "text-rose-600 hover:bg-rose-50 hover:text-rose-700"
                           }`}
+                          title={isSuspended ? "Reactivate School" : "Suspend School"}
                         >
                           {isSuspended ? (
                             <>
@@ -212,8 +215,10 @@ function SchoolsCards({
   onResetPassword: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
+  const [cardsRef] = useAutoAnimate<HTMLDivElement>();
+
   return (
-    <div className="md:hidden space-y-3">
+    <div ref={cardsRef} className="md:hidden space-y-3">
       {schools.map((school) => {
         const isPending = school.status === "pending";
         const isSuspended = school.status === "suspended";

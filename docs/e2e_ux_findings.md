@@ -108,11 +108,19 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - Provide admins with an intentional "Send Welcome Emails / Send Invitations" action button so bulk roster setups don't trigger emails until the administrator is ready.
 - [ ] **Demo School Tenant Migration from Dev to Production:**
   - Once the new Demo School is created, configured, and verified locally in Dev, run a scoped tenant migration to export all its child tables and replicate it onto Production as the official showcase school.
-- [ ] **Authentication Architecture & Security Enhancements:**
-  - **Production Email Verification:** Toggle `requireEmailVerification: true` in `packages/convex/betterAuth.ts` and set up verification email delivery flow for production self-serve onboarding.
-  - **Multi-Tenant Account & School Switching UX:** Streamline multi-school membership handling (`resolveActiveSchoolMembershipsV1`) so users with roles across multiple schools can seamlessly switch active school contexts without re-authenticating.
-  - **Auth Session & Viewer Context Hydration Optimization:** Optimize the two-step client-side session resolution (`authClient.useSession()` -> `getViewerContext` Convex query) to reduce workspace layout load fallbacks.
-  - **Legacy Auth Identifier Migration:** Perform a controlled database backfill to populate `authTokenIdentifier` across legacy `users` rows, enabling the deprecation of `authId` compatibility fallback queries.
+- [ ] **Multi-Tenant Campus & School Switcher Architecture (Proprietor / Multi-School Portal)**
+  - **Overview:**
+    - Allows network proprietors, directors, or multi-branch staff to log in with a single email/account while maintaining strict tenant isolation across distinct school branches (e.g. `Olive Blessed Crest Academy (Fedrah, Abuja)` and `Olive Blessed Crest Academy (Ruga, Nasarawa)`).
+  - **Backend Layer:**
+    - Transition single-school auth resolution in `functions/academic/auth.ts` (`getAuthenticatedSchoolMembership`) from `.unique()` queries to multi-membership resolution (matching `functions/foundation/auth.ts` / `resolveActiveSchoolMembershipsV1`).
+    - Add `functions/auth:getMySchoolMemberships` to return all active school memberships for the authenticated identity.
+    - Support optional/explicit `schoolId` parameter on tenant-scoped queries and mutations with active membership verification.
+  - **Frontend Layer:**
+    - Implement `ActiveSchoolProvider` React context in `apps/admin` (and optionally `apps/teacher`/`apps/portal`) to track `activeSchoolId` backed by `localStorage` persistence.
+    - Implement `CampusSwitcher` dropdown in the `AdminHeader` / `WorkspaceNavbar` allowing 1-click switching between campuses without requiring re-authentication.
+    - Gracefully render static school badge if user belongs to only 1 school; render interactive dropdown if user has memberships in $\ge 2$ schools.
+  - **Data Integrity:**
+    - Preserves independent billing configurations, separate Paystack subaccounts, distinct grading bands, separate term calendars, and isolated student rolls per branch.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.

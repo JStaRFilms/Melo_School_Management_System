@@ -251,7 +251,7 @@ export function getWorkspaceDefaultHref(workspace: WorkspaceKey) {
 export interface ControlledRoute {
   label: string;
   path: string;
-  workspace: "Admin" | "Teacher" | "Public";
+  workspace: "Admin" | "Teacher" | "Portal" | "Public";
 }
 
 export interface PlatformModuleDefinition {
@@ -273,6 +273,7 @@ export const PLATFORM_MODULE_DEFINITIONS: PlatformModuleDefinition[] = [
     controlledRoutes: [
       { label: "Billing Overview", path: "/billing", workspace: "Admin" },
       { label: "Fee Schedules & Invoices", path: "/billing/schedules", workspace: "Admin" },
+      { label: "Parent Fee Ledger", path: "/portal/fees", workspace: "Portal" },
     ],
   },
   {

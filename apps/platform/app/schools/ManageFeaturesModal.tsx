@@ -41,6 +41,19 @@ function getModuleIcon(iconName: PlatformModuleDefinition["iconName"]) {
   }
 }
 
+function getWorkspaceBadge(workspace: "Admin" | "Teacher" | "Portal" | "Public") {
+  switch (workspace) {
+    case "Admin":
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/70">Admin</span>;
+    case "Teacher":
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200/70">Teacher</span>;
+    case "Portal":
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70">Portal</span>;
+    case "Public":
+      return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/70">Public</span>;
+  }
+}
+
 export function ManageFeaturesModal({
   isOpen,
   onClose,
@@ -182,14 +195,15 @@ export function ManageFeaturesModal({
                   {m.controlledRoutes.map((r) => (
                     <span
                       key={r.path}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono transition-colors ${
                         isEnabled
-                          ? "bg-slate-100 text-slate-700 font-medium"
-                          : "bg-slate-100/50 text-slate-400 line-through opacity-70"
+                          ? "bg-white text-slate-800 font-medium border border-slate-200/80 shadow-2xs"
+                          : "bg-slate-100/60 text-slate-400 line-through opacity-70 border border-slate-200/40"
                       }`}
                     >
-                      <span className={`h-1 w-1 rounded-full ${isEnabled ? "bg-emerald-500" : "bg-slate-300"}`} />
-                      {r.label} ({r.path})
+                      {getWorkspaceBadge(r.workspace)}
+                      <span className="font-sans font-semibold text-slate-700">{r.label}</span>
+                      <span className="text-slate-400">{r.path}</span>
                     </span>
                   ))}
                 </div>
