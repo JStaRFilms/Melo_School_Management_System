@@ -227,7 +227,7 @@ export default defineSchema({
   schools: defineTable({
     name: v.string(),
     slug: v.string(),
-    status: v.optional(v.union(v.literal("pending"), v.literal("active"))),
+    status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
     logoStorageId: v.optional(v.id("_storage")),
     logoFileName: v.optional(v.string()),
     logoContentType: v.optional(v.string()),

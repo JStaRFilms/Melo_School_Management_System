@@ -438,3 +438,26 @@ export const resetSchoolAdminPassword = action({
   },
 });
 
+export const setSchoolStatus = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    status: v.union(v.literal("active"), v.literal("suspended")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await getAuthenticatedPlatformAdmin(ctx);
+
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+
+    await ctx.db.patch(args.schoolId, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+

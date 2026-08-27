@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useMemo, type ReactNode } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import {
   SlidersHorizontal,
@@ -14,10 +14,14 @@ import {
   Radio,
   Search,
   Plus,
-  ArrowUpRight,
+  Ban,
+  Play,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
+import { appToast, getErrorMessage } from "@school/shared/toast";
 
 interface SchoolItem {
   _id: string;
@@ -42,10 +46,12 @@ function SchoolsTable({
   schools,
   onManageFeatures,
   onResetPassword,
+  onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onToggleStatus: (school: SchoolItem) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs hidden md:block">
@@ -64,6 +70,7 @@ function SchoolsTable({
         <tbody className="divide-y divide-slate-100">
           {schools.map((school) => {
             const isPending = school.status === "pending";
+            const isSuspended = school.status === "suspended";
 
             return (
               <tr key={school._id} className="hover:bg-slate-50/60 transition-colors">
@@ -80,6 +87,11 @@ function SchoolsTable({
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200/80">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                       Pending Admin
+                    </span>
+                  ) : isSuspended ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200/80">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                      Suspended
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/80">
@@ -128,7 +140,7 @@ function SchoolsTable({
                   {formatDate(school.createdAt)}
                 </td>
                 <td className="px-4 py-3.5 text-right">
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-1.5">
                     {isPending ? (
                       <Link
                         href={`/schools/${school._id}/assign-admin`}
@@ -142,7 +154,7 @@ function SchoolsTable({
                         <button
                           type="button"
                           onClick={() => onManageFeatures(school)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
                         >
                           <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
                           Features
@@ -150,10 +162,31 @@ function SchoolsTable({
                         <button
                           type="button"
                           onClick={() => onResetPassword(school)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
                         >
                           <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                           Password
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onToggleStatus(school)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors shadow-2xs ${
+                            isSuspended
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                          }`}
+                        >
+                          {isSuspended ? (
+                            <>
+                              <Play className="h-3.5 w-3.5 text-emerald-600" />
+                              Reactivate
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="h-3.5 w-3.5 text-rose-500" />
+                              Suspend
+                            </>
+                          )}
                         </button>
                       </>
                     )}
@@ -172,15 +205,18 @@ function SchoolsCards({
   schools,
   onManageFeatures,
   onResetPassword,
+  onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onToggleStatus: (school: SchoolItem) => void;
 }) {
   return (
     <div className="md:hidden space-y-3">
       {schools.map((school) => {
         const isPending = school.status === "pending";
+        const isSuspended = school.status === "suspended";
 
         return (
           <div
@@ -197,6 +233,10 @@ function SchoolsCards({
               {isPending ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
                   Pending
+                </span>
+              ) : isSuspended ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+                  Suspended
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
@@ -249,6 +289,17 @@ function SchoolsCards({
                     <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                     Password
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleStatus(school)}
+                    className={`flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border text-xs font-bold transition-colors ${
+                      isSuspended
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-rose-200 bg-rose-50 text-rose-600"
+                    }`}
+                  >
+                    {isSuspended ? "Reactivate" : "Suspend"}
+                  </button>
                 </>
               )}
             </div>
@@ -263,6 +314,7 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
   const total = schools.length;
   const active = schools.filter((s) => s.status === "active").length;
   const pending = schools.filter((s) => s.status === "pending").length;
+  const suspended = schools.filter((s) => s.status === "suspended").length;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -301,15 +353,108 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
 
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cloud Engine</span>
-          <Radio className="h-4 w-4 text-indigo-500" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            {suspended > 0 ? "Suspended" : "Cloud Engine"}
+          </span>
+          {suspended > 0 ? (
+            <Ban className="h-4 w-4 text-rose-500" />
+          ) : (
+            <Radio className="h-4 w-4 text-indigo-500" />
+          )}
         </div>
         <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-sm font-bold text-slate-900">Convex Dev</span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            100% Online
-          </span>
+          {suspended > 0 ? (
+            <>
+              <span className="text-2xl font-bold text-rose-600 tracking-tight">{suspended}</span>
+              <span className="text-[11px] font-medium text-rose-500">Disabled</span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-bold text-slate-900">Convex Dev</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                100% Online
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusConfirmModal({
+  school,
+  isOpen,
+  onClose,
+  onConfirm,
+  isProcessing,
+}: {
+  school: SchoolItem | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  isProcessing: boolean;
+}) {
+  if (!isOpen || !school) return null;
+
+  const isSuspending = school.status === "active";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              isSuspending ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+            }`}
+          >
+            {isSuspending ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-950">
+              {isSuspending ? "Suspend School Tenant?" : "Reactivate School Tenant?"}
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">{school.name}</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {isSuspending
+            ? "Suspending this school will immediately block all administrators, teachers, parents, and students from accessing their dashboards and data."
+            : "Reactivating this school will immediately restore full workspace access for all associated staff, students, and parents."}
+        </p>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isProcessing}
+            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isProcessing}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white transition-colors shadow-xs ${
+              isSuspending
+                ? "bg-rose-600 hover:bg-rose-700"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Updating...
+              </>
+            ) : isSuspending ? (
+              "Confirm Suspension"
+            ) : (
+              "Confirm Reactivation"
+            )}
+          </button>
         </div>
       </div>
     </div>
@@ -319,13 +464,17 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
 function SchoolsListPageWithConvex() {
   const [featureModalSchool, setFeatureModalSchool] = useState<SchoolItem | null>(null);
   const [resetPasswordSchool, setResetPasswordSchool] = useState<SchoolItem | null>(null);
+  const [statusModalSchool, setStatusModalSchool] = useState<SchoolItem | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending" | "suspended">("all");
 
   const schools = useQuery(
     "functions/platform/index:listSchools" as never,
     {} as never
   ) as SchoolItem[] | undefined;
+
+  const setStatus = useMutation("functions/platform/index:setSchoolStatus" as never);
 
   const filteredSchools = useMemo(() => {
     if (!schools) return [];
@@ -342,6 +491,33 @@ function SchoolsListPageWithConvex() {
       return matchesStatus && matchesQuery;
     });
   }, [schools, searchQuery, statusFilter]);
+
+  const handleConfirmStatusToggle = async () => {
+    if (!statusModalSchool) return;
+
+    const nextStatus = statusModalSchool.status === "active" ? "suspended" : "active";
+    setIsUpdatingStatus(true);
+    try {
+      await setStatus({
+        schoolId: statusModalSchool._id as never,
+        status: nextStatus as never,
+      } as never);
+
+      appToast.success(
+        nextStatus === "suspended" ? "School suspended" : "School reactivated",
+        {
+          description: `${statusModalSchool.name} is now ${nextStatus}.`,
+        }
+      );
+      setStatusModalSchool(null);
+    } catch (err) {
+      appToast.error("Failed to update status", {
+        description: getErrorMessage(err, "Could not change school status."),
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   if (schools === undefined) {
     return (
@@ -370,7 +546,7 @@ function SchoolsListPageWithConvex() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60">
             <button
               type="button"
@@ -399,6 +575,17 @@ function SchoolsListPageWithConvex() {
             >
               Pending ({schools.filter((s) => s.status === "pending").length})
             </button>
+            {schools.some((s) => s.status === "suspended") && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter("suspended")}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                  statusFilter === "suspended" ? "bg-white text-rose-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Suspended ({schools.filter((s) => s.status === "suspended").length})
+              </button>
+            )}
           </div>
 
           <Link
@@ -424,11 +611,13 @@ function SchoolsListPageWithConvex() {
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onToggleStatus={(school) => setStatusModalSchool(school)}
           />
           <SchoolsCards
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onToggleStatus={(school) => setStatusModalSchool(school)}
           />
         </>
       )}
@@ -444,6 +633,14 @@ function SchoolsListPageWithConvex() {
         isOpen={Boolean(resetPasswordSchool)}
         onClose={() => setResetPasswordSchool(null)}
         school={resetPasswordSchool}
+      />
+
+      <StatusConfirmModal
+        school={statusModalSchool}
+        isOpen={Boolean(statusModalSchool)}
+        onClose={() => setStatusModalSchool(null)}
+        onConfirm={handleConfirmStatusToggle}
+        isProcessing={isUpdatingStatus}
       />
     </>
   );

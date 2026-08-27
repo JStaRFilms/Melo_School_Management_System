@@ -35,6 +35,11 @@ export async function getAuthenticatedSchoolMembership(
     throw new ConvexError("Your account has been archived");
   }
 
+  const school = await ctx.db.get(user.schoolId);
+  if (school?.status === "suspended") {
+    throw new ConvexError("This school workspace is currently suspended by platform administration");
+  }
+
   return {
     userId: user._id,
     schoolId: user.schoolId,
