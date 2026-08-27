@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
+  ArrowUpDown,
   Calendar,
   CalendarCheck,
   CalendarDays,
@@ -80,6 +81,8 @@ export default function SessionsPage() {
   );
 
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
+  const [swappingSessionId, setSwappingSessionId] = useState<string | null>(null);
+  const [justPromotedSessionId, setJustPromotedSessionId] = useState<string | null>(null);
 
   const activeSession = useMemo(
     () => sessions?.find((s) => s.isActive) ?? null,
@@ -91,16 +94,34 @@ export default function SessionsPage() {
     [sessions]
   );
 
+  // Track changes in active session to trigger the swap animation
+  const prevActiveSessionId = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeSession && prevActiveSessionId.current && prevActiveSessionId.current !== activeSession._id) {
+      setJustPromotedSessionId(activeSession._id);
+      const timer = setTimeout(() => {
+        setJustPromotedSessionId(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    if (activeSession) {
+      prevActiveSessionId.current = activeSession._id;
+    }
+  }, [activeSession]);
+
   const handleMakeActive = async (sessionId: string) => {
+    setSwappingSessionId(sessionId);
     try {
       await updateSession({ sessionId, isActive: true } as never);
-      appToast.success("Session Activated", {
-        description: "The selected academic session is now active.",
+      appToast.success("Active Session Swapped", {
+        description: "The selected academic session is now live as the primary school calendar.",
       });
     } catch (err) {
       appToast.error("Activation Failed", {
         description: getUserFacingErrorMessage(err, "Failed to activate session"),
       });
+    } finally {
+      setSwappingSessionId(null);
     }
   };
 
@@ -212,23 +233,44 @@ export default function SessionsPage() {
             
             {/* ═══ ACTIVE SESSION (HERO TIMELINE) ══════════════ */}
             {activeSession && (
-              <div className="space-y-3">
+              <div
+                key={`hero-slot-${activeSession._id}`}
+                className={`space-y-3 transition-all duration-700 ease-out ${
+                  justPromotedSessionId === activeSession._id
+                    ? "animate-in slide-in-from-bottom-8 fade-in-0 duration-700"
+                    : ""
+                }`}
+              >
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       Active School Calendar
                     </h4>
+
+                    {justPromotedSessionId === activeSession._id && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full animate-in zoom-in-75 duration-300">
+                        <ArrowUpDown className="h-3 w-3 animate-spin" /> Swapped to Active
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <SessionTimelineCard
-                  key={activeSession._id}
-                  session={activeSession}
-                  onMakeActive={handleMakeActive}
-                  onArchive={handleArchive}
-                  defaultExpanded={true}
-                />
+                <div
+                  className={`rounded-2xl transition-all duration-700 ${
+                    justPromotedSessionId === activeSession._id
+                      ? "ring-4 ring-emerald-400/50 shadow-2xl shadow-emerald-500/10"
+                      : ""
+                  }`}
+                >
+                  <SessionTimelineCard
+                    key={activeSession._id}
+                    session={activeSession}
+                    onMakeActive={handleMakeActive}
+                    onArchive={handleArchive}
+                    defaultExpanded={true}
+                  />
+                </div>
               </div>
             )}
 
@@ -243,13 +285,21 @@ export default function SessionsPage() {
 
                 <div className="space-y-4">
                   {otherSessions.map((session) => (
-                    <SessionTimelineCard
+                    <div
                       key={session._id}
-                      session={session}
-                      onMakeActive={handleMakeActive}
-                      onArchive={handleArchive}
-                      defaultExpanded={false}
-                    />
+                      className={`transition-all duration-500 ${
+                        swappingSessionId === session._id
+                          ? "opacity-60 scale-[0.99] ring-2 ring-indigo-400 animate-pulse"
+                          : "animate-in slide-in-from-top-4 fade-in-0 duration-500"
+                      }`}
+                    >
+                      <SessionTimelineCard
+                        session={session}
+                        onMakeActive={handleMakeActive}
+                        onArchive={handleArchive}
+                        defaultExpanded={false}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
