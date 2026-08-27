@@ -56,7 +56,7 @@ export default function BillingLayout({
 
   if (
     isConvexConfigured() &&
-    (isLoading || !isAuthenticated || session?.user?.role !== "admin")
+    (isLoading || !isAuthenticated || session?.user?.role !== "admin" || schoolBranding === undefined)
   ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">

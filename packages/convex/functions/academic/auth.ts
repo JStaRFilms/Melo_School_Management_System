@@ -16,6 +16,7 @@ export async function getAuthenticatedSchoolMembership(
   schoolId: Id<"schools">;
   role: string;
   isSchoolAdmin: boolean;
+  isSuspended: boolean;
 }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -37,7 +38,8 @@ export async function getAuthenticatedSchoolMembership(
   }
 
   const school = await ctx.db.get(user.schoolId);
-  if (!options?.allowSuspended && school?.status === "suspended") {
+  const isSuspended = school?.status === "suspended";
+  if (!options?.allowSuspended && isSuspended) {
     throw new ConvexError("This school workspace is currently suspended by platform administration");
   }
 
@@ -46,6 +48,7 @@ export async function getAuthenticatedSchoolMembership(
     schoolId: user.schoolId,
     role: user.role,
     isSchoolAdmin: user.role === "admin" || user.isSchoolAdmin === true,
+    isSuspended,
   };
 }
 

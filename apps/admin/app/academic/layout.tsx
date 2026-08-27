@@ -99,6 +99,14 @@ function AcademicWorkspaceNavbar({
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
     {}  );
 
+  if (schoolBranding === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">
+        <MeloLoader message="Preparing your academic workbench..." />
+      </div>
+    );
+  }
+
   if (schoolBranding?.status === "suspended") {
     return (
       <SchoolSuspendedLockScreen

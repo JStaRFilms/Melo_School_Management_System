@@ -247,3 +247,67 @@ export function getWorkspaceDefaultHref(workspace: WorkspaceKey) {
   const definition = workspaceDefinitions[workspace];
   return definition.sections.length > 0 ? definition.sections[0].href : "/";
 }
+
+export interface ControlledRoute {
+  label: string;
+  path: string;
+  workspace: "Admin" | "Teacher" | "Public";
+}
+
+export interface PlatformModuleDefinition {
+  key: "billing" | "curriculum" | "knowledgeLibrary" | "admissions";
+  title: string;
+  description: string;
+  badge: string;
+  iconName: "Landmark" | "BookOpenText" | "Sparkles" | "UserPlus";
+  controlledRoutes: ControlledRoute[];
+}
+
+export const PLATFORM_MODULE_DEFINITIONS: PlatformModuleDefinition[] = [
+  {
+    key: "billing",
+    title: "Finance & Fee Billing",
+    description: "Invoicing, fee schedules, student accounts, payment records, and financial ledger.",
+    badge: "Core Optional",
+    iconName: "Landmark",
+    controlledRoutes: [
+      { label: "Billing Overview", path: "/billing", workspace: "Admin" },
+      { label: "Fee Schedules & Invoices", path: "/billing/schedules", workspace: "Admin" },
+    ],
+  },
+  {
+    key: "curriculum",
+    title: "Curriculum & Planning Studio",
+    description: "Teacher planning tools, curriculum syllabus import, and scheme readiness checkers.",
+    badge: "Academic",
+    iconName: "BookOpenText",
+    controlledRoutes: [
+      { label: "Curriculum Import", path: "/academic/knowledge/curriculum-import", workspace: "Admin" },
+      { label: "Curriculum Readiness", path: "/academic/knowledge/curriculum-readiness", workspace: "Admin" },
+      { label: "Lesson Templates", path: "/academic/knowledge/templates", workspace: "Admin" },
+      { label: "Lesson Planning Studio", path: "/planning", workspace: "Teacher" },
+    ],
+  },
+  {
+    key: "knowledgeLibrary",
+    title: "AI Knowledge Library",
+    description: "AI-indexed school documents, scheme-of-work repositories, and shared learning assets.",
+    badge: "AI Powered",
+    iconName: "Sparkles",
+    controlledRoutes: [
+      { label: "Knowledge Library", path: "/academic/knowledge/library", workspace: "Admin" },
+      { label: "AI Question Generator", path: "/planning/drafts", workspace: "Teacher" },
+    ],
+  },
+  {
+    key: "admissions",
+    title: "Online Admissions Portal",
+    description: "Public application forms, guardian intake portal, and enrollment conversions.",
+    badge: "Tier Add-on",
+    iconName: "UserPlus",
+    controlledRoutes: [
+      { label: "Admissions Pipeline", path: "/admissions/pipeline", workspace: "Admin" },
+      { label: "Student Intake Forms", path: "/apply", workspace: "Public" },
+    ],
+  },
+];

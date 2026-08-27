@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { WorkspaceNavbar, MeloLoader } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
 import { authClient } from "@/lib/auth-client";
 import { useAuth } from "@/lib/AuthProvider";
 import { isConvexConfigured } from "@/lib/convex-runtime";
@@ -21,7 +21,16 @@ export default function PlanningLayout({
   const schoolBranding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
     isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
-  ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
+  ) as {
+    name: string;
+    logoUrl: string | null;
+    status?: string;
+    motto?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    address?: string;
+    theme: { primaryColor: string; accentColor: string };
+  } | undefined;
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {
@@ -47,12 +56,22 @@ export default function PlanningLayout({
     isConvexConfigured() &&
     (isLoading ||
       !isAuthenticated ||
-      (session?.user?.role !== "teacher" && session?.user?.role !== "admin"))
+      (session?.user?.role !== "teacher" && session?.user?.role !== "admin") ||
+      schoolBranding === undefined)
   ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] w-full">
         <MeloLoader message="Preparing your planning workspace..." />
       </div>
+    );
+  }
+
+  if (schoolBranding?.status === "suspended") {
+    return (
+      <SchoolSuspendedLockScreen
+        school={schoolBranding}
+        onSignOut={handleSignOut}
+      />
     );
   }
 

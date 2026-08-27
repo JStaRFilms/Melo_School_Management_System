@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { X, Check, Landmark, BookOpenText, Sparkles, UserPlus, Loader2 } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import {
+  PLATFORM_MODULE_DEFINITIONS,
+  type PlatformModuleDefinition,
+} from "@school/shared";
 
 export interface SchoolFeatureSet {
   billing: boolean;
@@ -20,6 +24,21 @@ export interface ManageFeaturesModalProps {
     name: string;
     features: SchoolFeatureSet;
   } | null;
+}
+
+function getModuleIcon(iconName: PlatformModuleDefinition["iconName"]) {
+  switch (iconName) {
+    case "Landmark":
+      return <Landmark className="h-5 w-5 text-emerald-600" />;
+    case "BookOpenText":
+      return <BookOpenText className="h-5 w-5 text-indigo-600" />;
+    case "Sparkles":
+      return <Sparkles className="h-5 w-5 text-amber-500" />;
+    case "UserPlus":
+      return <UserPlus className="h-5 w-5 text-blue-600" />;
+    default:
+      return <Sparkles className="h-5 w-5 text-slate-500" />;
+  }
 }
 
 export function ManageFeaturesModal({
@@ -80,37 +99,6 @@ export function ManageFeaturesModal({
     }
   };
 
-  const modules = [
-    {
-      key: "billing" as const,
-      title: "Finance & Fee Billing",
-      description: "Invoicing, fee schedules, student accounts, payment records, and financial ledger.",
-      icon: <Landmark className="h-5 w-5 text-emerald-600" />,
-      badge: "Core Optional",
-    },
-    {
-      key: "curriculum" as const,
-      title: "Curriculum & Planning Studio",
-      description: "Teacher planning tools, curriculum syllabus import, and scheme readiness checkers.",
-      icon: <BookOpenText className="h-5 w-5 text-indigo-600" />,
-      badge: "Academic",
-    },
-    {
-      key: "knowledgeLibrary" as const,
-      title: "AI Knowledge Library",
-      description: "AI-indexed school documents, scheme-of-work repositories, and shared learning assets.",
-      icon: <Sparkles className="h-5 w-5 text-amber-500" />,
-      badge: "AI Powered",
-    },
-    {
-      key: "admissions" as const,
-      title: "Online Admissions Portal",
-      description: "Public application forms, guardian intake portal, and enrollment conversions.",
-      icon: <UserPlus className="h-5 w-5 text-blue-600" />,
-      badge: "Tier Add-on",
-    },
-  ];
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
@@ -118,12 +106,12 @@ export function ManageFeaturesModal({
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h2 className="text-base font-bold text-slate-900">Manage School Modules</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Configure enabled workspaces for <span className="font-semibold text-slate-700">{school.name}</span>
+              Configure enabled workspaces and routes for <span className="font-semibold text-slate-700">{school.name}</span>
             </p>
           </div>
           <button
@@ -135,53 +123,75 @@ export function ManageFeaturesModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-3 max-h-[65vh] overflow-y-auto">
-          {modules.map((m) => {
+        <div className="p-6 space-y-3.5 max-h-[65vh] overflow-y-auto">
+          {PLATFORM_MODULE_DEFINITIONS.map((m) => {
             const isEnabled = features[m.key];
             return (
               <div
                 key={m.key}
                 onClick={() => handleToggle(m.key)}
-                className={`flex items-start justify-between p-4 rounded-xl border cursor-pointer transition-all ${
+                className={`p-4 rounded-xl border cursor-pointer transition-all ${
                   isEnabled
-                    ? "border-indigo-200 bg-indigo-50/40 shadow-sm ring-1 ring-indigo-100"
+                    ? "border-indigo-200 bg-indigo-50/30 shadow-xs ring-1 ring-indigo-100"
                     : "border-slate-200 bg-white hover:bg-slate-50/80 opacity-75"
                 }`}
               >
-                <div className="flex items-start gap-3.5 pr-4">
-                  <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 mt-0.5">
-                    {m.icon}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900">{m.title}</span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
-                        {m.badge}
-                      </span>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3.5 pr-4">
+                    <div className="p-2 rounded-lg bg-white shadow-xs border border-slate-100 mt-0.5">
+                      {getModuleIcon(m.iconName)}
                     </div>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{m.description}</p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">{m.title}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                          {m.badge}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isEnabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggle(m.key);
+                      }}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isEnabled ? "bg-indigo-600" : "bg-slate-200"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          isEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
 
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isEnabled}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggle(m.key);
-                    }}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      isEnabled ? "bg-indigo-600" : "bg-slate-200"
-                    }`}
-                  >
+                {/* Controlled Routes Strip */}
+                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-0.5">
+                    {isEnabled ? "Active Routes:" : "Hidden Routes:"}
+                  </span>
+                  {m.controlledRoutes.map((r) => (
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                        isEnabled ? "translate-x-5" : "translate-x-0"
+                      key={r.path}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                        isEnabled
+                          ? "bg-slate-100 text-slate-700 font-medium"
+                          : "bg-slate-100/50 text-slate-400 line-through opacity-70"
                       }`}
-                    />
-                  </button>
+                    >
+                      <span className={`h-1 w-1 rounded-full ${isEnabled ? "bg-emerald-500" : "bg-slate-300"}`} />
+                      {r.label} ({r.path})
+                    </span>
+                  ))}
                 </div>
               </div>
             );

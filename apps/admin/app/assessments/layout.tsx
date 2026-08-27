@@ -53,7 +53,10 @@ export default function AssessmentsLayout({
   };
 
 
-  if (isConvexConfigured() && (isLoading || !isAuthenticated || session?.user?.role !== "admin")) {
+  if (
+    isConvexConfigured() &&
+    (isLoading || !isAuthenticated || session?.user?.role !== "admin" || schoolBranding === undefined)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 w-full">
         <MeloLoader message="Preparing your assessments workbench..." />

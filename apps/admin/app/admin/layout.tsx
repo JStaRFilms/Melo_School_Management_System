@@ -52,7 +52,10 @@ export default function AdminLayout({
     window.location.href = "/sign-in";
   };
 
-  if (isConvexConfigured() && (isLoading || !isAuthenticated || session?.user?.role !== "admin")) {
+  if (
+    isConvexConfigured() &&
+    (isLoading || !isAuthenticated || session?.user?.role !== "admin" || schoolBranding === undefined)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] w-full">
         <MeloLoader message="Preparing your admin workspace..." />
