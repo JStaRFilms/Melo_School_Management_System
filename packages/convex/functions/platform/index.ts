@@ -10,6 +10,7 @@ import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { getAuthenticatedPlatformAdmin } from "./auth";
 import { provisionSchoolAdminAuthUser } from "./provisioningHelpers";
+import { createAuth } from "../../betterAuth";
 
 /**
  * List all schools with status and assigned-admin summary.
@@ -39,6 +40,12 @@ export const listSchools = query({
         updatedAt: school.updatedAt,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
+        features: {
+          billing: school.features?.billing ?? true,
+          curriculum: school.features?.curriculum ?? true,
+          knowledgeLibrary: school.features?.knowledgeLibrary ?? true,
+          admissions: school.features?.admissions ?? false,
+        },
       });
     }
 
@@ -300,3 +307,134 @@ export const provisionSchoolAdmin = action({
     return result;
   },
 });
+
+/**
+ * Mutation: Update modular feature toggles for a school.
+ * Platform-admin only.
+ */
+export const updateSchoolFeatures = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    features: v.object({
+      billing: v.boolean(),
+      curriculum: v.boolean(),
+      knowledgeLibrary: v.boolean(),
+      admissions: v.boolean(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await getAuthenticatedPlatformAdmin(ctx);
+
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) {
+      throw new ConvexError("School not found");
+    }
+
+    await ctx.db.patch(args.schoolId, {
+      features: args.features,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+export const findSchoolAdminAuthIdInternal = internalQuery({
+  args: { schoolId: v.id("schools") },
+  returns: v.union(
+    v.object({
+      userId: v.id("users"),
+      authId: v.string(),
+      email: v.string(),
+      name: v.string(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    const adminUser = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .filter((q) => q.eq(q.field("role"), "admin"))
+      .first();
+
+    if (!adminUser) return null;
+
+    return {
+      userId: adminUser._id,
+      authId: adminUser.authId,
+      email: adminUser.email,
+      name: adminUser.name,
+    };
+  },
+});
+
+/**
+ * Action: Platform Super Admin resets the password for any school admin.
+ * Platform-admin only.
+ */
+export const resetSchoolAdminPassword = action({
+  args: {
+    schoolId: v.id("schools"),
+    newPassword: v.string(),
+  },
+  returns: v.object({
+    success: v.boolean(),
+    adminEmail: v.string(),
+    adminName: v.string(),
+  }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    success: boolean;
+    adminEmail: string;
+    adminName: string;
+  }> => {
+    await ctx.runQuery(
+      internal.functions.platform.auth.requirePlatformAdminInternal,
+      {}
+    );
+
+    if (!args.newPassword || args.newPassword.length < 8) {
+      throw new ConvexError("Password must be at least 8 characters");
+    }
+
+    const admin = await ctx.runQuery(
+      internal.functions.platform.index.findSchoolAdminAuthIdInternal,
+      { schoolId: args.schoolId }
+    );
+
+    if (!admin) {
+      throw new ConvexError("No administrator account found for this school");
+    }
+
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    const passwordHash = await authContext.password.hash(args.newPassword);
+
+    const existingAuth = (await authContext.internalAdapter.findUserByEmail(
+      admin.email.trim().toLowerCase(),
+      { includeAccounts: true }
+    )) as { user: { id: string }; accounts?: Array<{ id: string }> } | null;
+
+    if (existingAuth?.accounts?.length) {
+      await authContext.internalAdapter.updatePassword(admin.authId, passwordHash);
+    } else {
+      await authContext.internalAdapter.linkAccount({
+        userId: admin.authId,
+        providerId: "credential",
+        accountId: admin.authId,
+        password: passwordHash,
+      });
+    }
+
+    await authContext.internalAdapter.deleteSessions(admin.authId);
+
+    return {
+      success: true,
+      adminEmail: admin.email,
+      adminName: admin.name,
+    };
+  },
+});
+

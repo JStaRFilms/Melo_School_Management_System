@@ -32,6 +32,13 @@ interface LinkRenderProps {
   children: ReactNode;
 }
 
+export interface WorkspaceSchoolFeatures {
+  billing?: boolean;
+  curriculum?: boolean;
+  knowledgeLibrary?: boolean;
+  admissions?: boolean;
+}
+
 export interface WorkspaceSchoolBranding {
   name: string;
   logoUrl?: string | null;
@@ -39,6 +46,7 @@ export interface WorkspaceSchoolBranding {
     primaryColor: string;
     accentColor: string;
   } | null;
+  features?: WorkspaceSchoolFeatures | null;
 }
 
 export interface WorkspaceNavbarProps {
@@ -161,43 +169,64 @@ export function WorkspaceNavbar({
           }
         : {
             operations: {
-              label: "Daily Operations",
+              label: "Core Operations",
               icon: <LayoutDashboard className="h-4 w-4" />,
               links: sections.filter((section) =>
                 [
                   "/admin/dashboard",
                   "/academic/students",
                   "/academic/teachers",
-                  "/billing",
-                  "/assessments/results/entry",
-                  "/assessments/report-card-extras",
-                  "/academic/knowledge/library",
-                  "/academic/knowledge/curriculum-import",
-                  "/academic/knowledge/curriculum-readiness",
+                  "/academic/classes",
+                  "/academic/sessions",
+                  "/academic/subjects",
+                  "/academic/events",
                 ].includes(section.href)
               ),
             },
-            academicSetup: {
-              label: "Academic Setup",
-              icon: <GraduationCap className="h-4 w-4" />,
-              links: sections.filter((section) =>
-                ["/academic/sessions", "/academic/classes", "/academic/subjects", "/academic/events"].includes(section.href)
-              ),
-            },
-            assessmentSetup: {
-              label: "Assessment Setup",
+            assessments: {
+              label: "Assessments & Grading",
               icon: <ClipboardCheck className="h-4 w-4" />,
               links: sections.filter((section) =>
                 [
+                  "/assessments/results/entry",
+                  "/assessments/report-card-extras",
                   "/assessments/setup/exam-recording",
                   "/assessments/setup/grading-bands",
                   "/assessments/setup/report-card-bundles",
-                  "/academic/knowledge/templates",
-                  "/academic/knowledge/assessment-profiles",
+                  "/assessments/report-cards/manual-adjustments",
                 ].includes(section.href)
               ),
             },
-            maintenance: {
+            finance: {
+              label: "Finance & Invoicing",
+              icon: <Landmark className="h-4 w-4" />,
+              links: schoolBranding?.features?.billing !== false
+                ? sections.filter((section) => section.href === "/billing")
+                : [],
+            },
+            curriculum: {
+              label: "Curriculum Studio",
+              icon: <BookOpenText className="h-4 w-4" />,
+              links: sections.filter((section) => {
+                if (
+                  section.href === "/academic/knowledge/curriculum-import" ||
+                  section.href === "/academic/knowledge/curriculum-readiness"
+                ) {
+                  return schoolBranding?.features?.curriculum !== false;
+                }
+                if (section.href === "/academic/knowledge/library") {
+                  return schoolBranding?.features?.knowledgeLibrary !== false;
+                }
+                if (
+                  section.href === "/academic/knowledge/templates" ||
+                  section.href === "/academic/knowledge/assessment-profiles"
+                ) {
+                  return true;
+                }
+                return false;
+              }),
+            },
+            administration: {
               label: "Administration",
               icon: <Landmark className="h-4 w-4" />,
               links: sections.filter((section) =>

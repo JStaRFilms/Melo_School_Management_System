@@ -232,6 +232,14 @@ export default defineSchema({
     logoFileName: v.optional(v.string()),
     logoContentType: v.optional(v.string()),
     logoUpdatedAt: v.optional(v.number()),
+    features: v.optional(
+      v.object({
+        billing: v.boolean(),
+        curriculum: v.boolean(),
+        knowledgeLibrary: v.boolean(),
+        admissions: v.boolean(),
+      })
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -1,9 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
+import { SlidersHorizontal, KeyRound, UserCheck, ShieldCheck } from "lucide-react";
+import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
+import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
+
+interface SchoolItem {
+  _id: string;
+  name: string;
+  slug: string;
+  status: string;
+  createdAt: number;
+  adminName: string | null;
+  adminEmail: string | null;
+  features: SchoolFeatureSet;
+}
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -15,16 +29,12 @@ function formatDate(timestamp: number): string {
 
 function SchoolsTable({
   schools,
+  onManageFeatures,
+  onResetPassword,
 }: {
-  schools: Array<{
-    _id: string;
-    name: string;
-    slug: string;
-    status: string;
-    createdAt: number;
-    adminName: string | null;
-    adminEmail: string | null;
-  }>;
+  schools: SchoolItem[];
+  onManageFeatures: (school: SchoolItem) => void;
+  onResetPassword: (school: SchoolItem) => void;
 }) {
   return (
     <div className="table-responsive hidden md:block">
@@ -35,53 +45,109 @@ function SchoolsTable({
             <th className="table-th">Slug</th>
             <th className="table-th">Status</th>
             <th className="table-th">Admin</th>
+            <th className="table-th">Active Modules</th>
             <th className="table-th">Created</th>
-            <th className="table-th">Actions</th>
+            <th className="table-th text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {schools.map((school) => (
-            <tr key={school._id} className="hover:bg-slate-50 transition-colors">
-              <td className="table-td font-bold">{school.name}</td>
-              <td className="table-td font-mono text-xs text-slate-500">
-                {school.slug}
-              </td>
-              <td className="table-td">
-                <span
-                  className={
-                    school.status === "active" ? "badge-active" : "badge-pending"
-                  }
-                >
-                  {school.status}
-                </span>
-              </td>
-              <td className="table-td">
-                {school.adminName ? (
-                  <div>
-                    <div className="font-bold text-sm">{school.adminName}</div>
-                    <div className="text-xs text-slate-400">
-                      {school.adminEmail}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-xs text-slate-400">Not assigned</span>
-                )}
-              </td>
-              <td className="table-td text-xs text-slate-500">
-                {formatDate(school.createdAt)}
-              </td>
-              <td className="table-td">
-                {school.status === "pending" && (
-                  <Link
-                    href={`/schools/${school._id}/assign-admin`}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+          {schools.map((school) => {
+            const enabledCount = [
+              school.features?.billing !== false,
+              school.features?.curriculum !== false,
+              school.features?.knowledgeLibrary !== false,
+              school.features?.admissions === true,
+            ].filter(Boolean).length;
+
+            return (
+              <tr key={school._id} className="hover:bg-slate-50 transition-colors">
+                <td className="table-td font-bold text-slate-900">{school.name}</td>
+                <td className="table-td font-mono text-xs text-slate-500">
+                  {school.slug}
+                </td>
+                <td className="table-td">
+                  <span
+                    className={
+                      school.status === "active" ? "badge-active" : "badge-pending"
+                    }
                   >
-                    Assign Admin
-                  </Link>
-                )}
-              </td>
-            </tr>
-          ))}
+                    {school.status}
+                  </span>
+                </td>
+                <td className="table-td">
+                  {school.adminName ? (
+                    <div>
+                      <div className="font-bold text-sm text-slate-900">{school.adminName}</div>
+                      <div className="text-xs text-slate-400 font-mono">
+                        {school.adminEmail}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">Not assigned</span>
+                  )}
+                </td>
+                <td className="table-td">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {school.features?.billing !== false && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Billing
+                      </span>
+                    )}
+                    {school.features?.curriculum !== false && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Curriculum
+                      </span>
+                    )}
+                    {school.features?.knowledgeLibrary !== false && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                        AI Library
+                      </span>
+                    )}
+                    {school.features?.admissions === true && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                        Admissions
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="table-td text-xs text-slate-500">
+                  {formatDate(school.createdAt)}
+                </td>
+                <td className="table-td text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    {school.status === "pending" ? (
+                      <Link
+                        href={`/schools/${school._id}/assign-admin`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors shadow-xs"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        Assign Admin
+                      </Link>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onManageFeatures(school)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+                        >
+                          <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                          Features
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onResetPassword(school)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+                        >
+                          <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+                          Password
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -90,23 +156,19 @@ function SchoolsTable({
 
 function SchoolsCards({
   schools,
+  onManageFeatures,
+  onResetPassword,
 }: {
-  schools: Array<{
-    _id: string;
-    name: string;
-    slug: string;
-    status: string;
-    createdAt: number;
-    adminName: string | null;
-    adminEmail: string | null;
-  }>;
+  schools: SchoolItem[];
+  onManageFeatures: (school: SchoolItem) => void;
+  onResetPassword: (school: SchoolItem) => void;
 }) {
   return (
     <div className="md:hidden space-y-3">
       {schools.map((school) => (
         <div
           key={school._id}
-          className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm"
+          className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"
         >
           <div className="flex items-start justify-between mb-3">
             <div>
@@ -127,8 +189,8 @@ function SchoolsCards({
               <span className="text-slate-500">Admin</span>
               {school.adminName ? (
                 <div className="text-right">
-                  <div className="font-bold">{school.adminName}</div>
-                  <div className="text-xs text-slate-400">
+                  <div className="font-bold text-slate-900">{school.adminName}</div>
+                  <div className="text-xs text-slate-400 font-mono">
                     {school.adminEmail}
                   </div>
                 </div>
@@ -144,16 +206,35 @@ function SchoolsCards({
             </div>
           </div>
 
-          {school.status === "pending" && (
-            <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+            {school.status === "pending" ? (
               <Link
                 href={`/schools/${school._id}/assign-admin`}
-                className="block w-full text-center py-2 px-4 bg-indigo-600 text-white rounded-md text-sm font-bold hover:bg-indigo-700 transition-colors"
+                className="block w-full text-center py-2 px-4 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors"
               >
                 Assign Admin
               </Link>
-            </div>
-          )}
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onManageFeatures(school)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                  Features
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onResetPassword(school)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+                  Password
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -211,21 +292,14 @@ function ConvexNotConfiguredNotice() {
 }
 
 function SchoolsListPageWithConvex() {
+  const [featureModalSchool, setFeatureModalSchool] = useState<SchoolItem | null>(null);
+  const [resetPasswordSchool, setResetPasswordSchool] = useState<SchoolItem | null>(null);
+
   // Fetch schools via Convex query
   const schools = useQuery(
     "functions/platform/index:listSchools" as never,
     {} as never
-  ) as
-    | Array<{
-        _id: string;
-        name: string;
-        slug: string;
-        status: string;
-        createdAt: number;
-        adminName: string | null;
-        adminEmail: string | null;
-      }>
-    | undefined;
+  ) as SchoolItem[] | undefined;
 
   return (
     <>
@@ -274,10 +348,31 @@ function SchoolsListPageWithConvex() {
       {/* Schools List */}
       {schools && schools.length > 0 && (
         <>
-          <SchoolsTable schools={schools} />
-          <SchoolsCards schools={schools} />
+          <SchoolsTable
+            schools={schools}
+            onManageFeatures={(school) => setFeatureModalSchool(school)}
+            onResetPassword={(school) => setResetPasswordSchool(school)}
+          />
+          <SchoolsCards
+            schools={schools}
+            onManageFeatures={(school) => setFeatureModalSchool(school)}
+            onResetPassword={(school) => setResetPasswordSchool(school)}
+          />
         </>
       )}
+
+      {/* Modals */}
+      <ManageFeaturesModal
+        isOpen={Boolean(featureModalSchool)}
+        onClose={() => setFeatureModalSchool(null)}
+        school={featureModalSchool}
+      />
+
+      <ResetSchoolAdminPasswordModal
+        isOpen={Boolean(resetPasswordSchool)}
+        onClose={() => setResetPasswordSchool(null)}
+        school={resetPasswordSchool}
+      />
     </>
   );
 }

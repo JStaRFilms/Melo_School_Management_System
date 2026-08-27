@@ -11,17 +11,39 @@ const schoolBrandingThemeValidator = v.object({
   accentColor: v.string(),
 });
 
+export const schoolFeaturesValidator = v.object({
+  billing: v.boolean(),
+  curriculum: v.boolean(),
+  knowledgeLibrary: v.boolean(),
+  admissions: v.boolean(),
+});
+
 export const schoolBrandingSummaryValidator = v.object({
   schoolId: v.id("schools"),
   name: v.string(),
   logoUrl: v.union(v.string(), v.null()),
   theme: schoolBrandingThemeValidator,
+  features: schoolFeaturesValidator,
 });
 
 function fallbackTheme() {
   return {
     primaryColor: "#020617",
     accentColor: "#2563eb",
+  };
+}
+
+function fallbackFeatures(features?: {
+  billing: boolean;
+  curriculum: boolean;
+  knowledgeLibrary: boolean;
+  admissions: boolean;
+}) {
+  return {
+    billing: features?.billing ?? true,
+    curriculum: features?.curriculum ?? true,
+    knowledgeLibrary: features?.knowledgeLibrary ?? true,
+    admissions: features?.admissions ?? false,
   };
 }
 
@@ -40,6 +62,7 @@ export const getCurrentSchoolBranding = query({
       name: normalizeHumanName(school.name),
       logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
       theme: fallbackTheme(),
+      features: fallbackFeatures(school.features),
     };
   },
 });
