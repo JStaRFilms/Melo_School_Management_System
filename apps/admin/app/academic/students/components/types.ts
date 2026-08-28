@@ -46,3 +46,9 @@ export type EnrollmentNotice = {
   tone: "success" | "error" | "warning";
   message: string;
 };
+
+export type PromotionSubjectMode =
+  | "all_target_class_subjects"
+  | "matching_previous_subjects"
+  | "none";
+

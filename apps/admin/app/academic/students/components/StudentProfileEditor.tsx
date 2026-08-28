@@ -5,12 +5,13 @@ import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect,useMemo,useState } from "react";
 
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import { StudentFamilyPanel } from "./StudentFamilyPanel";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import { StudentProfileFormFields } from "./StudentProfileFormFields";
 import { uploadStudentPhoto } from "./studentPhotoUpload";
-import type { ClassSummary,EnrollmentNotice } from "./types";
+import type { ClassSummary, EnrollmentNotice } from "./types";
 
 interface StudentProfileEditorProps {
   studentId: string | null;
@@ -178,15 +179,21 @@ export function StudentProfileEditor({
     }
   };
 
-  const handleArchive = async () => {
-    if (!studentProfile) return;
-    if (!window.confirm(`Archive ${displayName}?`)) return;
+  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
 
+  const handleArchive = () => {
+    if (!studentProfile) return;
+    setIsArchiveConfirmOpen(true);
+  };
+
+  const executeArchive = async () => {
+    if (!studentProfile) return;
     setIsArchiving(true);
     try {
       await archiveStudent({ studentId: studentProfile._id } as never);
       onNotice({ tone: "success", message: `${displayName} archived.` });
       onStudentArchived?.(studentProfile._id);
+      setIsArchiveConfirmOpen(false);
     } catch (error) {
       onNotice({ tone: "error", message: getUserFacingErrorMessage(error, "Archive failed.") });
     } finally {
@@ -340,6 +347,18 @@ export function StudentProfileEditor({
           />
         </div>
       )}
+
+      {/* Archive Student Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isArchiveConfirmOpen}
+        onClose={() => setIsArchiveConfirmOpen(false)}
+        onConfirm={executeArchive}
+        title="Archive Student Record"
+        description={`Are you sure you want to archive ${displayName}? The student will be removed from active class rosters and preserved in historical archives.`}
+        confirmLabel="Archive Student"
+        confirmVariant="danger"
+        isLoading={isArchiving}
+      />
     </div>
   );
 }

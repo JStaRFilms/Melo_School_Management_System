@@ -29,10 +29,12 @@ humanNameTypingStrict,
 } from "@/human-name";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
-import { StudentCreationForm } from "./components/StudentCreationForm";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
+import { PromotionConfirmationModal } from "./components/PromotionConfirmationModal";
+import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { StudentPromotionPanel, type PromotionSubjectMode } from "./components/StudentPromotionPanel";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
@@ -214,34 +216,46 @@ export default function StudentsPage() {
     setPromotionStudentIds(unpromotedIds);
   }, [matrix]);
 
+  const [cancellingPromotionStudent, setCancellingPromotionStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
+  const [isCancellingPromotion, setIsCancellingPromotion] = useState(false);
+
   const handleCancelPromotion = useCallback(
-    async (studentId: string) => {
+    (studentId: string) => {
       if (!selectedSessionId) return;
       const student = matrix?.students.find((s) => s._id === studentId);
       const studentName = student?.studentName ?? "this student";
-      if (!window.confirm(`Cancel staged promotion for ${studentName}?`)) {
-        return;
-      }
-
-      try {
-        await cancelStudentPromotion({
-          studentId: studentId as never,
-          fromSessionId: selectedSessionId as never,
-        });
-        showNotice({
-          tone: "success",
-          message: `Cancelled promotion for ${studentName}.`,
-        });
-        setPromotionStudentIds((prev) => prev.filter((id) => id !== studentId));
-      } catch (err) {
-        showNotice({
-          tone: "error",
-          message: getUserFacingErrorMessage(err, "Failed to cancel promotion."),
-        });
-      }
+      setCancellingPromotionStudent({ studentId, studentName });
     },
-    [cancelStudentPromotion, matrix, selectedSessionId, showNotice]
+    [matrix, selectedSessionId]
   );
+
+  const executeCancelPromotion = async () => {
+    if (!cancellingPromotionStudent || !selectedSessionId) return;
+    const { studentId, studentName } = cancellingPromotionStudent;
+    setIsCancellingPromotion(true);
+    try {
+      await cancelStudentPromotion({
+        studentId: studentId as never,
+        fromSessionId: selectedSessionId as never,
+      });
+      showNotice({
+        tone: "success",
+        message: `Cancelled promotion for ${studentName}.`,
+      });
+      setPromotionStudentIds((prev) => prev.filter((id) => id !== studentId));
+      setCancellingPromotionStudent(null);
+    } catch (err) {
+      showNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(err, "Failed to cancel promotion."),
+      });
+    } finally {
+      setIsCancellingPromotion(false);
+    }
+  };
 
   const activeStudentForSheet = useMemo(() => {
     if (!matrix || !selectedStudentId) return null;
@@ -518,7 +532,9 @@ export default function StudentsPage() {
     setPromotionStudentIds(matrix.students.map((student) => student._id));
   }, [matrix]);
 
-  const handlePromoteStudents = useCallback(async () => {
+  const [isPromotionConfirmOpen, setIsPromotionConfirmOpen] = useState(false);
+
+  const handlePromoteStudents = useCallback(() => {
     if (
       !selectedClassId ||
       !selectedSessionId ||
@@ -544,40 +560,30 @@ export default function StudentsPage() {
       return;
     }
 
-    const targetClassName =
-      classes?.find((classDoc) => classDoc._id === promotionTargetClassId)?.name ??
-      "the target class";
-    const targetSessionName =
-      sessions?.find((session) => session._id === promotionTargetSessionId)?.name ??
-      "the target session";
+    setIsPromotionConfirmOpen(true);
+  }, [
+    promotionStudentIds.length,
+    promotionTargetClassId,
+    promotionTargetSessionId,
+    selectedClassId,
+    selectedSessionId,
+    showNotice,
+  ]);
 
-    const alreadyPromotedStudents = matrix?.students.filter(
-      (s) => promotionStudentIds.includes(s._id) && s.promotionStatus?.isPromoted
-    );
-
-    if (alreadyPromotedStudents && alreadyPromotedStudents.length > 0) {
-      const names = alreadyPromotedStudents
-        .slice(0, 3)
-        .map((s) => s.studentName)
-        .join(", ");
-      const extra =
-        alreadyPromotedStudents.length > 3
-          ? ` and ${alreadyPromotedStudents.length - 3} others`
-          : "";
-      if (
-        !window.confirm(
-          `${alreadyPromotedStudents.length} selected student(s) (${names}${extra}) are already slated for a promotion. Re-promoting will overwrite their previous target class with ${targetClassName} (${targetSessionName}). Continue?`
-        )
-      ) {
-        return;
-      }
-    } else if (
-      !window.confirm(
-        `Promote ${promotionStudentIds.length} student(s) to ${targetClassName} / ${targetSessionName}? Old report cards and invoices will not be changed.`
-      )
+  const executePromotion = useCallback(async () => {
+    if (
+      !selectedClassId ||
+      !selectedSessionId ||
+      !promotionTargetClassId ||
+      !promotionTargetSessionId ||
+      promotionStudentIds.length === 0
     ) {
       return;
     }
+
+    const targetClassName =
+      classes?.find((classDoc) => classDoc._id === promotionTargetClassId)?.name ??
+      "the target class";
 
     setIsPromoting(true);
     try {
@@ -591,9 +597,10 @@ export default function StudentsPage() {
       } as never);
       showNotice({
         tone: "success",
-        message: `Promoted ${promotionStudentIds.length} students to ${targetClassName}.`,
+        message: `Promoted ${promotionStudentIds.length} student${promotionStudentIds.length === 1 ? "" : "s"} to ${targetClassName}.`,
       });
       setPromotionStudentIds([]);
+      setIsPromotionConfirmOpen(false);
     } catch (err) {
       showNotice({
         tone: "error",
@@ -604,7 +611,6 @@ export default function StudentsPage() {
     }
   }, [
     classes,
-    matrix,
     promoteStudents,
     promotionStudentIds,
     promotionSubjectMode,
@@ -612,7 +618,6 @@ export default function StudentsPage() {
     promotionTargetSessionId,
     selectedClassId,
     selectedSessionId,
-    sessions,
     showNotice,
   ]);
 
@@ -629,6 +634,22 @@ export default function StudentsPage() {
       studentNameInputRef.current?.focus();
     }, 300);
   };
+
+  const promotionSourceClassName =
+    classes?.find((c) => c._id === selectedClassId)?.name ?? "Current Class";
+  const promotionSourceSessionName =
+    sessions?.find((s) => s._id === selectedSessionId)?.name ?? "Current Session";
+  const promotionTargetClassName =
+    classes?.find((c) => c._id === promotionTargetClassId)?.name ?? "Target Class";
+  const promotionTargetSessionName =
+    sessions?.find((s) => s._id === promotionTargetSessionId)?.name ?? "Target Session";
+
+  const alreadyPromotedStudentsList = useMemo(() => {
+    if (!matrix?.students) return [];
+    return matrix.students.filter(
+      (s) => promotionStudentIds.includes(s._id) && s.promotionStatus?.isPromoted
+    );
+  }, [matrix, promotionStudentIds]);
 
   if (classes === undefined || sessions === undefined) {
     return (
@@ -1066,6 +1087,33 @@ export default function StudentsPage() {
           </div>
         </div>
       )}
+
+      {/* Cohort Promotion Confirmation Modal */}
+      <PromotionConfirmationModal
+        isOpen={isPromotionConfirmOpen}
+        onClose={() => setIsPromotionConfirmOpen(false)}
+        onConfirm={executePromotion}
+        isPromoting={isPromoting}
+        studentCount={promotionStudentIds.length}
+        sourceClassName={promotionSourceClassName}
+        sourceSessionName={promotionSourceSessionName}
+        targetClassName={promotionTargetClassName}
+        targetSessionName={promotionTargetSessionName}
+        subjectMode={promotionSubjectMode}
+        alreadyPromotedStudents={alreadyPromotedStudentsList}
+      />
+
+      {/* Cancel Staged Promotion Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={Boolean(cancellingPromotionStudent)}
+        onClose={() => setCancellingPromotionStudent(null)}
+        onConfirm={executeCancelPromotion}
+        title="Cancel Staged Promotion"
+        description={`Are you sure you want to cancel the staged promotion for ${cancellingPromotionStudent?.studentName}? The student will remain enrolled in their current class.`}
+        confirmLabel="Cancel Promotion"
+        confirmVariant="danger"
+        isLoading={isCancellingPromotion}
+      />
     </div>
   );
 }

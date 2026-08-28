@@ -7,6 +7,7 @@ import { api } from "@school/convex/_generated/api";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import type { EnrollmentNotice } from "./types";
 
@@ -439,15 +440,14 @@ export function StudentFamilyPanel({
     setPendingReview(null);
   };
 
-  const handleUnlinkStudent = async () => {
-    if (
-      !window.confirm(
-        `Unlink only ${studentName} from this household? The household record and other linked students will remain.`
-      )
-    ) {
-      return;
-    }
+  const [isUnlinkModalOpen, setIsUnlinkModalOpen] = useState(false);
+  const [parentToRemove, setParentToRemove] = useState<StudentFamilyProfile["parents"][number] | null>(null);
 
+  const handleUnlinkStudent = () => {
+    setIsUnlinkModalOpen(true);
+  };
+
+  const executeUnlinkStudent = async () => {
     setIsSubmitting(true);
     try {
       await unlinkStudentFromFamily({ studentId } as never);
@@ -455,6 +455,7 @@ export function StudentFamilyPanel({
         tone: "success",
         message: `${studentName} was removed from this household.`,
       });
+      setIsUnlinkModalOpen(false);
     } catch (error) {
       onNotice({
         tone: "error",
@@ -465,22 +466,20 @@ export function StudentFamilyPanel({
     }
   };
 
-  const handleRemoveParent = async (parent: StudentFamilyProfile["parents"][number]) => {
-    if (
-      !window.confirm(
-        `Remove ${parent.name} from this household? This household-wide action affects every student linked to the family.`
-      )
-    ) {
-      return;
-    }
+  const handleRemoveParent = (parent: StudentFamilyProfile["parents"][number]) => {
+    setParentToRemove(parent);
+  };
 
+  const executeRemoveParent = async () => {
+    if (!parentToRemove) return;
     setIsSubmitting(true);
     try {
-      await removeStudentFamilyLink({ familyMemberId: parent._id } as never);
+      await removeStudentFamilyLink({ familyMemberId: parentToRemove._id } as never);
       onNotice({
         tone: "success",
-        message: `${parent.name} was removed from the household.`,
+        message: `${parentToRemove.name} was removed from the household.`,
       });
+      setParentToRemove(null);
     } catch (error) {
       onNotice({
         tone: "error",
@@ -972,9 +971,34 @@ export function StudentFamilyPanel({
           <span>{isSubmitting ? "Linking..." : "Link to household"}</span>
         </button>
       </form>
+
+      {/* Unlink Student Modal */}
+      <ConfirmationModal
+        isOpen={isUnlinkModalOpen}
+        onClose={() => setIsUnlinkModalOpen(false)}
+        onConfirm={executeUnlinkStudent}
+        title="Unlink Student from Household"
+        description={`Unlink only ${studentName} from this household? The household record and other linked students will remain intact.`}
+        confirmLabel="Unlink Student"
+        confirmVariant="danger"
+        isLoading={isSubmitting}
+      />
+
+      {/* Remove Parent Modal */}
+      <ConfirmationModal
+        isOpen={Boolean(parentToRemove)}
+        onClose={() => setParentToRemove(null)}
+        onConfirm={executeRemoveParent}
+        title="Remove Parent from Household"
+        description={`Remove ${parentToRemove?.name} from this household? This household-wide action affects every student linked to the family.`}
+        confirmLabel="Remove Parent"
+        confirmVariant="danger"
+        isLoading={isSubmitting}
+      />
     </section>
   );
 }
 
 const fieldInputClassName =
   "h-10 w-full rounded-lg border border-slate-200 bg-white/80 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300";
+

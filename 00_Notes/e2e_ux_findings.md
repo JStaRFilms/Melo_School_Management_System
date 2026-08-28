@@ -73,6 +73,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Default-collapsed promotion rollover card with smooth expand/collapse.
   - Replaced text "Close" with standardized `X` icon matching design patterns across the application.
   - Added smooth slide-up animation and sheet interactions for mobile student additions and promotion drawers.
+- [x] **Rich Promotion Confirmation Modal (`PromotionConfirmationModal.tsx`)**
+  - Replaced native browser `window.confirm(...)` dialogue with a custom, branded confirmation modal.
+  - Displays transfer routing badge (From: Class/Session &rarr; To: Class/Session), subject enrollment mode explanation, and amber overwrite warning banner for students already staged.
+  - Added safety reassurance badge and loading spinner during promotion execution.
+  - Replaced `window.confirm` with portaled `ConfirmationModal` across student cancel promotion, student archiving, family unlinking, and class aggregation removals.
 
 ### 4. Academic Class Management & Subject Blueprint Builder
 - [x] **Class Blueprint Builder Layout Overhaul (`/academic/classes`)**
