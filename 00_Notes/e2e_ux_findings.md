@@ -158,6 +158,7 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - **Graduation & Alumni Transition:** Official graduation date, graduating class (e.g. SSS 3 / Year 12), diploma/certificate issuance status, transition to alumni directory.
   - **UI & Transcript Generation:**
     - **Visual Lifecycle Journey:** Interactive vertical timeline widget on the student's admin & parent profile displaying all enrollment transitions with status badges.
+    - **Official Certificate & Transcript Export:** Automated generation of Letters of Attestation and Official Transcripts accurately certifying dates of attendance (*"Attended [School Name] from September 2024 to July 2027..."*).
 - [ ] **First-Time Faculty Sign-In & Mandatory Password Reset**
   - Upon receiving the onboarding invitation with temporary credentials, faculty/staff must be presented with a mandatory "Create Your Password" step before entering the workspace.
 - [ ] **Configurable School House System (Settings & Student Links)**
