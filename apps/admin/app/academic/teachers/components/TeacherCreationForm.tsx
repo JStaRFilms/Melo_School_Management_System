@@ -1,7 +1,7 @@
 "use client";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameFinalStrict,humanNameTypingStrict } from "@/human-name";
+import { humanNameFinalStrict } from "@/human-name";
 import { Check,Copy,Send } from "lucide-react";
 import { useState } from "react";
 
@@ -112,10 +112,10 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
             type="text"
             required
             value={name}
-            onChange={(e) => setName(humanNameTypingStrict(e.target.value))}
+            onChange={(e) => setName(e.target.value)}
             onBlur={(e) => setName(humanNameFinalStrict(e.target.value))}
             placeholder="Adebayo Ogunlesi"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
           />
         </FormField>
 

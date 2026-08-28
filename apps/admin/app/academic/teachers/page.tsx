@@ -2,12 +2,13 @@
 
 import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Search, GraduationCap, Sparkles, X, UserPlus } from "lucide-react";
+import { Search, GraduationCap, Sparkles, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { TeacherCard } from "./components/TeacherCard";
 import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
@@ -54,11 +55,12 @@ export default function TeachersPage() {
 
   const [search, setSearch] = useState("");
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+  const [teacherToArchive, setTeacherToArchive] = useState<TeacherRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const isMobile = useIsMobile();
-
 
   const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
     const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
@@ -175,37 +177,28 @@ export default function TeachersPage() {
     }
   };
 
-  const handleArchive = async (id: string) => {
-    const teacher = teachers?.find(t => t._id === id);
-    if (!teacher) return;
-
-    if (selectedTeacherId === id && selectedTeacherArchiveBlockers === undefined) {
-      showNotice({
-        tone: "error",
-        title: "Still Checking Links",
-        message: "Please wait while active class and subject links are checked.",
-      });
-      return;
-    }
-
-    const archiveBlockers =
-      selectedTeacherId === id
-        ? normalizeArchiveBlockers(selectedTeacherArchiveBlockers)
-        : [];
-    if (archiveBlockers.length > 0) {
+  const handleArchivePrompt = (teacher: TeacherRecord) => {
+    const blockers = normalizeArchiveBlockers(teacher.archiveBlockers);
+    if (blockers.length > 0) {
       showNotice({
         tone: "error",
         title: "Reassignment Required",
-        message: getTeacherArchiveBlockerMessage(archiveBlockers),
+        message: getTeacherArchiveBlockerMessage(blockers),
       });
       return;
     }
+    setTeacherToArchive(teacher);
+  };
 
-    if (!window.confirm(`Archive ${teacher.name}? This will deactivate their active access while preserving historical records.`)) return;
-
+  const executeArchive = async () => {
+    if (!teacherToArchive) return;
+    setIsArchiving(true);
     try {
-      await archiveTeacher({ teacherId: id } as never);
-      setSelectedTeacherId(null);
+      await archiveTeacher({ teacherId: teacherToArchive._id } as never);
+      if (selectedTeacherId === teacherToArchive._id) {
+        setSelectedTeacherId(null);
+      }
+      setTeacherToArchive(null);
       showNotice({ tone: "success", title: "Teacher Archived", message: "Active access deactivated. Historical records preserved." });
     } catch (err) {
       const message = getUserFacingErrorMessage(err, "Failed to deactivate record.");
@@ -216,25 +209,53 @@ export default function TeachersPage() {
           : "Archive Failed",
         message,
       });
+    } finally {
+      setIsArchiving(false);
     }
   };
 
   if (teachers === undefined) {
     return (
-      <div className="mx-auto max-w-[1600px] px-3 py-10 md:px-8">
-        <div className="animate-pulse space-y-10">
-          <div className="h-10 w-48 rounded-lg bg-slate-100" />
-          <div className="grid gap-10 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-10 h-96 rounded-xl bg-slate-50" />
-            <div className="h-96 rounded-xl bg-slate-50" />
-          </div>
+      <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+        <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
+          <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 shrink-0">
+            <div className="animate-pulse space-y-6">
+              <div className="h-64 rounded-xl bg-slate-100/50" />
+              <div className="h-20 rounded-xl bg-slate-100/50" />
+            </div>
+          </aside>
+          <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-12 custom-scrollbar">
+            <div className="max-w-[1200px] mx-auto animate-pulse space-y-10">
+              <div className="h-10 w-48 rounded-lg bg-slate-100/50" />
+              <div className="h-32 rounded-xl bg-slate-100/50" />
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="h-40 rounded-xl bg-slate-100/50" />
+                ))}
+              </div>
+            </div>
+          </main>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
+    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+
+      {/* Confirmation Modal for Archiving */}
+      <ConfirmationModal
+        isOpen={Boolean(teacherToArchive)}
+        onClose={() => setTeacherToArchive(null)}
+        onConfirm={executeArchive}
+        title={`Archive ${teacherToArchive?.name || "Staff Member"}?`}
+        description="This will deactivate their active access to the school workspace while preserving historical attendance, graded subject scores, and past records."
+        confirmLabel="Archive Teacher"
+        confirmVariant="danger"
+        isLoading={isArchiving}
+      />
+
       {/* Mobile Editor Sheet */}
       <AdminSheet
         isOpen={Boolean(selectedTeacherId) && isMobile}
@@ -247,7 +268,7 @@ export default function TeachersPage() {
              teacher={selectedTeacherWithArchiveState}
              onUpdate={handleUpdate}
              onResetPassword={handleResetPassword}
-             onArchive={handleArchive}
+             onArchive={() => handleArchivePrompt(selectedTeacherWithArchiveState)}
              onClose={() => setSelectedTeacherId(null)}
              isSaving={isSaving}
              isResetting={isResetting}
@@ -257,48 +278,50 @@ export default function TeachersPage() {
         )}
       </AdminSheet>
 
-      <div className="flex-1 flex flex-col lg:flex-row-reverse lg:overflow-hidden">
-        {/* Sidebar Bucket */}
-        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar p-4 md:p-8">
-          <div className="hidden lg:block">
-            {selectedTeacherWithArchiveState ? (
-              <TeacherEditForm
-                teacher={selectedTeacherWithArchiveState}
-                onUpdate={handleUpdate}
-                onResetPassword={handleResetPassword}
-                onArchive={handleArchive}
-                onClose={() => setSelectedTeacherId(null)}
-                isSaving={isSaving}
-                isResetting={isResetting}
-                isArchiveStatusLoading={isArchiveStatusLoading}
-              />
-            ) : (
-              <TeacherCreationForm
-                onProvision={handleProvision}
-                isSubmitting={isSubmitting}
-              />
-            )}
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
+        {/* Sidebar Bucket - Locked & Pinned */}
+        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
+          <div id="teacher-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
+            <div className="hidden lg:block">
+              {selectedTeacherWithArchiveState ? (
+                <TeacherEditForm
+                  teacher={selectedTeacherWithArchiveState}
+                  onUpdate={handleUpdate}
+                  onResetPassword={handleResetPassword}
+                  onArchive={() => handleArchivePrompt(selectedTeacherWithArchiveState)}
+                  onClose={() => setSelectedTeacherId(null)}
+                  isSaving={isSaving}
+                  isResetting={isResetting}
+                  isArchiveStatusLoading={isArchiveStatusLoading}
+                />
+              ) : (
+                <TeacherCreationForm
+                  onProvision={handleProvision}
+                  isSubmitting={isSubmitting}
+                />
+              )}
+            </div>
+
+            <div className="lg:hidden">
+              {!selectedTeacher && (
+                 <TeacherCreationForm
+                   onProvision={handleProvision}
+                   isSubmitting={isSubmitting}
+                 />
+              )}
+            </div>
           </div>
 
-          <div className="lg:hidden">
-            {!selectedTeacher && (
-               <TeacherCreationForm
-                 onProvision={handleProvision}
-                 isSubmitting={isSubmitting}
-               />
-            )}
-          </div>
-          
-          <div className="mt-8 pt-8 border-t border-slate-200/60">
-            <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">System Notification</h4>
-            <p className="mt-1.5 text-xs leading-relaxed font-medium text-slate-400">
+          <div className="pt-3 border-t border-slate-200/60 shrink-0">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">System Notification</h4>
+            <p className="mt-1 text-[11px] leading-relaxed font-medium text-slate-400">
               Staff accounts are linked to school email addresses. Deactivation is permanent and irreversible.
             </p>
           </div>
         </aside>
 
         {/* Main Bucket */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8">
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-12 custom-scrollbar">
           <div className="max-w-[1200px] mx-auto space-y-6 md:space-y-8">
             <AdminHeader
               title="Teaching Staff"
@@ -320,7 +343,6 @@ export default function TeachersPage() {
               }
             />
 
-
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
                 <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Records</h3>
@@ -334,7 +356,7 @@ export default function TeachersPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Find record..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
                 />
               </div>
             </div>
@@ -346,7 +368,7 @@ export default function TeachersPage() {
                     teacher={teacher}
                     isSelected={selectedTeacherId === teacher._id}
                     onSelect={() => setSelectedTeacherId(teacher._id)}
-                    onArchive={() => handleArchive(teacher._id)}
+                    onArchive={() => handleArchivePrompt(teacher)}
                   />
                 </div>
               ))}

@@ -132,6 +132,21 @@ This document tracks all observations, issues, UX refinements, and their resolut
       5. *Workspace Navigation Preference Selection* (Allows the admin to choose between **Straight Grouped List [Default]**, **Collapsible Accordions**, or **Top Domain Switcher**).
   - **Interactive Orientation Checklist:**
     - Persistent dismissible "Setup Progress" widget on the Admin Dashboard showing completed vs. pending institution setup milestones with direct deep links.
+- [ ] **Comprehensive Staff Onboarding & Structured Faculty Profiles Module**
+  - **Overview:**
+    - As institutions grow, expand the basic teacher directory into a structured Faculty & Staff HR module supporting detailed personal information, professional credentials, and self-service onboarding.
+  - **Structured Faculty Identity:**
+    - **Honorific / Title:** `Mr.`, `Mrs.`, `Ms.`, `Dr.`, `Prof.`, `Engr.`, `Pastor`, `Imam`.
+    - **Name Fields:** `firstName`, `middleName` (optional), `lastName`.
+    - **Demographics:** `gender` (`male`, `female`, `other`), `dateOfBirth` (optional), `phone`, `emergencyContact`.
+  - **Professional & Employment Metadata:**
+    - **Staff Identifier:** System or school-assigned `staffCode` / `employeeId`.
+    - **Department & Designation:** Primary department (e.g. *Humanities*, *Sciences*, *Vocational*), administrative title (e.g. *Vice Principal*, *HOD Science*, *Form Tutor*).
+    - **Credentials & Documentation:** Highest degree obtained, certifications, resume/CV storage files.
+  - **Full Staff Onboarding Workflow (Dedicated Module):**
+    - Guided self-service onboarding link sent via email upon provisioning.
+    - Document collection (National ID / Passport, degree certificates).
+    - Contract acknowledgment and staff code of conduct sign-off before activating portal privileges.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
