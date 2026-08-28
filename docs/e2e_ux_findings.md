@@ -147,6 +147,18 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - Guided self-service onboarding link sent via email upon provisioning.
     - Document collection (National ID / Passport, degree certificates).
     - Contract acknowledgment and staff code of conduct sign-off before activating portal privileges.
+- [ ] **Comprehensive Student Lifecycle, Enrollment History & Timeline Audit Logs**
+  - **Overview:**
+    - Provide an immutable chronological audit trail and timeline history for every student, tracking their complete journey at the institution from initial admission to graduation or exit.
+  - **Key Lifecycle Events & State Tracking:**
+    - **Admission & Initial Enrollment:** Date admitted, entry academic session & term, initial grade/class placement, official admission number.
+    - **Session Promotions & Class Progressions:** Historical record of every grade and class attended (e.g. Nursery 2 $\to$ Primary 1 $\to$ Primary 2) with session completion milestones and form teacher assignments.
+    - **Withdrawals, Leaves of Absence & Transfers Out:** Date of departure, departure term/session, reason for leaving (relocation, medical leave, school transfer), exit status (`withdrawn`, `transferred_out`, `temporary_leave`).
+    - **Re-Admissions & Resumptions:** Re-enrollment date, returning session/term, re-entry grade placement, re-activation approval notes.
+    - **Graduation & Alumni Transition:** Official graduation date, graduating class (e.g. SSS 3 / Year 12), diploma/certificate issuance status, transition to alumni directory.
+  - **UI & Transcript Generation:**
+    - **Visual Lifecycle Journey:** Interactive vertical timeline widget on the student's admin & parent profile displaying all enrollment transitions with status badges.
+    - **Official Certificate & Transcript Export:** Automated generation of Letters of Attestation and Official Transcripts accurately certifying dates of attendance (*"Attended [School Name] from September 2024 to July 2027..."*).
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
