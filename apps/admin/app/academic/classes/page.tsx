@@ -326,7 +326,7 @@ export default function ClassesPage() {
   }
 
   return (
-    <div className="relative h-full w-full flex flex-col overflow-hidden bg-surface-200/50">
+    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
       {/* Confirmation Modal for Archiving */}
@@ -386,7 +386,7 @@ export default function ClassesPage() {
         )}
       </AdminSheet>
 
-      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 h-full overflow-hidden">
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
         {/* Sidebar Bucket - Locked & Pinned */}
         <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
           <div id="class-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
