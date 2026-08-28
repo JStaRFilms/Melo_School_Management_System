@@ -1483,6 +1483,7 @@ export const createClass = mutation({
     classLabel: v.optional(v.string()),
     level: v.string(),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
+    sessionId: v.optional(v.id("academicSessions")),
   },
   returns: v.id("classes"),
   handler: async (ctx, args) => {
@@ -1513,7 +1514,7 @@ export const createClass = mutation({
     });
 
     const now = Date.now();
-    return await ctx.db.insert("classes", {
+    const classId = await ctx.db.insert("classes", {
       schoolId,
       name: displayName,
       level,
@@ -1524,11 +1525,39 @@ export const createClass = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Resolve target session
+    let targetSessionId = args.sessionId;
+    if (!targetSessionId) {
+      const activeSession = await ctx.db
+        .query("academicSessions")
+        .withIndex("by_school_active", (q) =>
+          q.eq("schoolId", schoolId).eq("isActive", true)
+        )
+        .first();
+      targetSessionId = activeSession?._id;
+    }
+
+    if (args.formTeacherId && targetSessionId) {
+      await ctx.db.insert("classSessionFormTeachers", {
+        schoolId,
+        classId,
+        sessionId: targetSessionId,
+        formTeacherId: args.formTeacherId,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+    }
+
+    return classId;
   },
 });
 
 export const listClasses = query({
-  args: {},
+  args: {
+    sessionId: v.optional(v.id("academicSessions")),
+  },
   returns: v.array(
     v.object({
       _id: v.id("classes"),
@@ -1543,23 +1572,50 @@ export const listClasses = query({
       createdAt: v.number(),
     })
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    const classes = await ctx.db
-      .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .collect();
+    const activeSession = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .first();
+
+    const targetSessionId = args.sessionId ?? activeSession?._id;
+
+    const [classes, sessionAssignments] = await Promise.all([
+      ctx.db
+        .query("classes")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .collect(),
+      targetSessionId
+        ? ctx.db
+            .query("classSessionFormTeachers")
+            .withIndex("by_school_and_session", (q) =>
+              q.eq("schoolId", schoolId).eq("sessionId", targetSessionId)
+            )
+            .collect()
+        : Promise.resolve([]),
+    ]);
+
+    const sessionFormTeacherByClass = new Map<string, Id<"users">>(
+      sessionAssignments.map((a) => [String(a.classId), a.formTeacherId])
+    );
 
     const results = await Promise.all(
       classes
         .filter((classDoc) => !classDoc.isArchived)
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(async (classDoc) => {
+          const effectiveTeacherId =
+            sessionFormTeacherByClass.get(String(classDoc._id)) ??
+            classDoc.formTeacherId;
+
           const [teacher, offerings, students] = await Promise.all([
-            classDoc.formTeacherId ? ctx.db.get(classDoc.formTeacherId) : null,
+            effectiveTeacherId ? ctx.db.get(effectiveTeacherId) : null,
             ctx.db
               .query("classSubjects")
               .withIndex("by_class", (q) => q.eq("classId", classDoc._id))
@@ -1573,34 +1629,34 @@ export const listClasses = query({
           ]);
 
           const subjectNames = (
-              await Promise.all(
-                offerings.map(async (offering) => {
-                  const subject = await ctx.db.get(offering.subjectId);
-                  return subject?.name && !subject.isArchived
-                    ? normalizeHumanName(subject.name)
-                    : null;
-                })
-              )
-            ).filter((name): name is string => Boolean(name));
+            await Promise.all(
+              offerings.map(async (offering) => {
+                const subject = await ctx.db.get(offering.subjectId);
+                return subject?.name && !subject.isArchived
+                  ? normalizeHumanName(subject.name)
+                  : null;
+              })
+            )
+          ).filter((name): name is string => Boolean(name));
 
-            return {
-              _id: classDoc._id,
-              name: buildClassName({
-                gradeName: classDoc.gradeName ?? classDoc.name,
-                classLabel: classDoc.classLabel,
-                legacyName: classDoc.name,
-              }),
-              level: normalizeClassLevel(classDoc.level),
-              gradeName: getStoredGradeName(classDoc),
-              classLabel: getStoredClassLabel(classDoc),
-              formTeacherId: teacher?.isArchived ? undefined : classDoc.formTeacherId,
-              formTeacherName:
-                teacher?.name && !teacher.isArchived
-                  ? normalizePersonName(teacher.name)
-                  : undefined,
-              subjectNames,
-              studentCount: students.filter((student) => !student.isArchived).length,
-              createdAt: classDoc.createdAt,
+          return {
+            _id: classDoc._id,
+            name: buildClassName({
+              gradeName: classDoc.gradeName ?? classDoc.name,
+              classLabel: classDoc.classLabel,
+              legacyName: classDoc.name,
+            }),
+            level: normalizeClassLevel(classDoc.level),
+            gradeName: getStoredGradeName(classDoc),
+            classLabel: getStoredClassLabel(classDoc),
+            formTeacherId: teacher?.isArchived ? undefined : effectiveTeacherId,
+            formTeacherName:
+              teacher?.name
+                ? normalizePersonName(teacher.name)
+                : undefined,
+            subjectNames,
+            studentCount: students.filter((student) => !student.isArchived).length,
+            createdAt: classDoc.createdAt,
           };
         })
     );
@@ -1664,6 +1720,7 @@ export const updateClass = mutation({
     level: v.optional(v.string()),
     classLabel: v.optional(v.union(v.string(), v.null())),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
+    sessionId: v.optional(v.id("academicSessions")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1704,12 +1761,61 @@ export const updateClass = mutation({
       classLabel: nextClassLabel,
       legacyName: args.name ?? classDoc.name,
     });
+
+    // Resolve target session
+    const activeSession = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .first();
+
+    const targetSessionId = args.sessionId ?? activeSession?._id;
+    const isTargetSessionActive =
+      targetSessionId && activeSession && String(targetSessionId) === String(activeSession._id);
+
+    if (args.formTeacherId !== undefined && targetSessionId) {
+      const existingAssignment = await ctx.db
+        .query("classSessionFormTeachers")
+        .withIndex("by_class_and_session", (q) =>
+          q.eq("classId", args.classId).eq("sessionId", targetSessionId)
+        )
+        .unique();
+
+      if (args.formTeacherId === null) {
+        if (existingAssignment) {
+          await ctx.db.delete(existingAssignment._id);
+        }
+      } else {
+        if (existingAssignment) {
+          await ctx.db.patch(existingAssignment._id, {
+            formTeacherId: args.formTeacherId,
+            updatedAt,
+            updatedBy: userId,
+          });
+        } else {
+          await ctx.db.insert("classSessionFormTeachers", {
+            schoolId,
+            classId: args.classId,
+            sessionId: targetSessionId,
+            formTeacherId: args.formTeacherId,
+            createdAt: updatedAt,
+            updatedAt,
+            updatedBy: userId,
+          });
+        }
+      }
+    }
+
+    // Synchronize classes.formTeacherId when editing without a session or targeting the active session
     const nextFormTeacherId =
       args.formTeacherId === undefined
         ? classDoc.formTeacherId
-        : args.formTeacherId ?? undefined;
+        : (isTargetSessionActive || !args.sessionId)
+          ? args.formTeacherId ?? undefined
+          : classDoc.formTeacherId;
 
-    if (args.formTeacherId === null || args.classLabel === null) {
+    if ((args.formTeacherId === null && (isTargetSessionActive || !args.sessionId)) || args.classLabel === null) {
       const replacement = {
         schoolId: classDoc.schoolId,
         name: nextName,
@@ -1737,8 +1843,8 @@ export const updateClass = mutation({
     if (args.classLabel !== undefined) {
       updates.classLabel = nextClassLabel;
     }
-    if (args.formTeacherId !== undefined) {
-      updates.formTeacherId = args.formTeacherId;
+    if (args.formTeacherId !== undefined && (isTargetSessionActive || !args.sessionId)) {
+      updates.formTeacherId = args.formTeacherId ?? undefined;
     }
 
     await ctx.db.patch(args.classId, updates);

@@ -12,12 +12,23 @@ import {
   LayoutGrid,
   Search,
   Sparkles,
+  ChevronDown,
+  Calendar,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ClassCreationForm } from "./components/ClassCreationForm";
 import { ClassEditForm } from "./components/ClassEditForm";
 import { ClassSection } from "./components/ClassSection";
+
+type AcademicSession = {
+  _id: string;
+  name: string;
+  startDate: number;
+  endDate: number;
+  isActive: boolean;
+  createdAt: number;
+};
 
 type ClassSummary = {
   _id: string;
@@ -55,7 +66,24 @@ type ClassOffering = {
 
 export default function ClassesPage() {
   const router = useRouter();
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassSummary[] | undefined;
+  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as AcademicSession[] | undefined;
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (sessions && !selectedSessionId) {
+      const active = sessions.find((s) => s.isActive);
+      if (active) {
+        setSelectedSessionId(active._id);
+      } else if (sessions.length > 0) {
+        setSelectedSessionId(sessions[0]._id);
+      }
+    }
+  }, [sessions, selectedSessionId]);
+
+  const classes = useQuery(
+    "functions/academic/academicSetup:listClasses" as never,
+    selectedSessionId ? ({ sessionId: selectedSessionId } as never) : {}
+  ) as ClassSummary[] | undefined;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
   const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as Teacher[] | undefined;
 
@@ -194,6 +222,14 @@ export default function ClassesPage() {
     }
   };
 
+  const selectedSessionName = useMemo(() => {
+    return (
+      sessions?.find((s) => s._id === selectedSessionId)?.name ??
+      sessions?.find((s) => s.isActive)?.name ??
+      "Active Session"
+    );
+  }, [sessions, selectedSessionId]);
+
   const handleProvision = async (data: {
     gradeName: string;
     classLabel?: string;
@@ -208,6 +244,7 @@ export default function ClassesPage() {
         classLabel: data.classLabel || undefined,
         level: data.level,
         formTeacherId: data.formTeacherId || null,
+        sessionId: selectedSessionId ? (selectedSessionId as never) : undefined,
       } as never)) as string;
 
       if (data.subjectIds.length > 0) {
@@ -242,6 +279,7 @@ export default function ClassesPage() {
         gradeName: data.gradeName,
         classLabel: data.classLabel || null,
         formTeacherId: data.formTeacherId || null,
+        sessionId: selectedSessionId ? (selectedSessionId as never) : undefined,
       } as never);
 
       await setClassSubjects({
@@ -382,6 +420,7 @@ export default function ClassesPage() {
              onDirtyChange={setIsEditorDirty}
              isSaving={isSaving}
              variant="sheet"
+             sessionName={selectedSessionName}
            />
         )}
       </AdminSheet>
@@ -403,6 +442,7 @@ export default function ClassesPage() {
                   onAssignTeacher={(subId, teachId) => handleAssignTeacher(selectedClassId, subId, teachId)}
                   onDirtyChange={setIsEditorDirty}
                   isSaving={isSaving}
+                  sessionName={selectedSessionName}
                 />
               ) : (
                 <ClassCreationForm
@@ -411,6 +451,7 @@ export default function ClassesPage() {
                   teachers={teachers}
                   subjects={subjects}
                   initialLevel={builderLevel}
+                  sessionName={selectedSessionName}
                 />
               )}
             </div>
@@ -423,6 +464,7 @@ export default function ClassesPage() {
                    teachers={teachers}
                    subjects={subjects}
                    initialLevel={builderLevel}
+                   sessionName={selectedSessionName}
                  />
               )}
             </div>
@@ -482,14 +524,32 @@ export default function ClassesPage() {
                   Search across grade names, class labels, and form teachers.
                 </p>
               </div>
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Filter records..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
-                />
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                {sessions && sessions.length > 0 && (
+                  <div className="relative min-w-[180px]">
+                    <select
+                      value={selectedSessionId ?? ""}
+                      onChange={(e) => setSelectedSessionId(e.target.value)}
+                      className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3.5 pr-8 text-xs font-bold text-slate-900 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 cursor-pointer"
+                    >
+                      {sessions.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name} {s.isActive ? "(Active)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  </div>
+                )}
+                <div className="relative w-full sm:max-w-xs flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Filter records..."
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
+                  />
+                </div>
               </div>
             </div>
 

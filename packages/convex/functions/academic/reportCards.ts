@@ -691,10 +691,20 @@ export async function buildStudentReportCard(
     throw new ConvexError("Class not found");
   }
 
+  const sessionFormTeacherAssignment = await ctx.db
+    .query("classSessionFormTeachers")
+    .withIndex("by_class_and_session", (q: any) =>
+      q.eq("classId", reportCardClassId).eq("sessionId", args.sessionId)
+    )
+    .unique();
+
+  const effectiveFormTeacherId =
+    sessionFormTeacherAssignment?.formTeacherId ?? classDoc.formTeacherId ?? null;
+
   const classTeacher =
-    classDoc.formTeacherId &&
-    String(classDoc.formTeacherId) !== String(student.userId)
-      ? await ctx.db.get(classDoc.formTeacherId)
+    effectiveFormTeacherId &&
+    String(effectiveFormTeacherId) !== String(student.userId)
+      ? await ctx.db.get(effectiveFormTeacherId)
       : null;
   const studentName = getReadableUserName(studentUser);
   const classTeacherName = getReadableUserName(classTeacher);

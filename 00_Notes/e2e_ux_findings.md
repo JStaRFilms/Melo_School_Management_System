@@ -1,208 +1,171 @@
 # E2E & UX Audit Tracking Log
 
-This document tracks all observations, issues, UX refinements, and their resolution statuses during the end-to-end testing session.
+This document tracks all observations, issues, UX refinements, completed changes, downstream blast radius checkpoints, and backlog items during the end-to-end testing and system polish session.
 
 ---
 
-## 🎯 Things to Do Now
+## 🎯 Current Status & Active Focus
 
 - [x] **Step 1: Convex Prod-to-Dev Sync & Verification**
-  - [x] Perform read-only export from Production database (`tmp/prod_export.zip`).
+  - [x] Read-only export from Production database (`tmp/prod_export.zip`).
   - [x] Import/Restore data into Dev deployment (`dev:scrupulous-chinchilla-25`, wiped and fully synced).
-  - [x] List all schools in the Dev database for user review.
-- [x] **Step 2: Old Demo School Removal**
-  - [x] Deleted `Preston Academy` (`preston-academy`) and `Demo Academy` (`demo-school`) along with 1,964 associated child records in the Dev database.
   - [x] Verified remaining active tenants in Dev (`Olive Blessed Crest Academy`, `Codex Academy`).
+- [x] **Step 2: Old Demo School Removal**
+  - [x] Deleted `Preston Academy` and `Demo Academy` along with 1,964 associated child records in Dev.
 - [ ] **Step 3: New Demo School Creation & Manual UI Walkthrough**
   - [ ] Walk through school registration and setup flow via UI.
   - [ ] Populate clean test data directly through user interfaces.
 - [ ] **Step 4: Systematic App-by-App UX Testing & Polish**
-  - [ ] `apps/admin`
-  - [ ] `apps/teacher`
-  - [ ] `apps/portal`
-  - [ ] `apps/platform`
-  - [ ] `apps/sites` / `apps/www`
+  - [ ] `apps/admin` (Academics, Rosters, Grading, Settings, Staff)
+  - [ ] `apps/teacher` (Grading entry, Report card extras, Class rosters)
+  - [ ] `apps/portal` (Parent views, Student cards, Historical report cards)
+  - [ ] `apps/platform` (Super Admin tenant oversight, Cloud metrics)
+  - [ ] `apps/sites` / `apps/www` (Public admission forms, Landing pages)
 
 ---
 
-## ✅ Done
+## ✅ Done (Completed Implementations & Fixes)
 
+### 1. Foundation, Branding & Security
 - [x] **Branch Setup & Unified Branded Spinner (`MeloLoader`)**
-  - *What was done*:
-    - Created branch `audit/e2e-ux-polish` originating from `master`.
-    - Ported and unified `MeloLoader` component in `packages/shared/src/components/MeloLoader.tsx`.
-    - Integrated `MeloLoader` across all app layout guards and loading fallbacks (`admin`, `teacher`, `portal`, `platform`).
+  - Created branch `audit/e2e-ux-polish` from `master`.
+  - Built `@school/shared/components/MeloLoader.tsx` with smooth SVG animations.
+  - Integrated across all app layout guards and loading fallbacks (`admin`, `teacher`, `portal`, `platform`).
 - [x] **Production-to-Dev Database Mirroring & Backup**
-  - *What was done*:
-    - Generated a production snapshot export (`tmp/prod_export.zip`, 7,391 documents + 133 storage files).
-    - Cleared and restored all production tables and storage files into the isolated local Dev Convex deployment (`dev:scrupulous-chinchilla-25`).
-    - Verified all 4 existing schools and their tenant memberships.
-- [x] **Obsolete Dev Schools Clean Cascade Deletion**
-  - *What was done*:
-    - Purged `Preston Academy` (empty stub) and `Demo Academy` (and 1,963 associated tenant records: users, students, classes, subjects, assessments, billing records).
-    - Confirmed remaining Dev database holds clean copies of `Olive Blessed Crest Academy` and `Codex Academy`.
+  - Exported production snapshot (`tmp/prod_export.zip`, 7,391 docs + 133 files).
+  - Restored into local Dev Convex deployment (`dev:scrupulous-chinchilla-25`).
 - [x] **Dynamic School Tab Titles & Favicon Sync**
-  - *What was done*:
-    - Replaced all legacy and placeholder metadata titles across apps (`Melo Admin`, `Melo Teacher`, `Melo Portal`, `Melo Platform Admin`).
-    - Added reactive synchronization in `WorkspaceNavbar` to update the document title (`Admin · Olive Blessed Crest Academy`) and swap the browser tab favicon to the active school's crest logo dynamically upon sign-in.
+  - Synchronized browser tab titles (`Admin · [School Name]`) and reactive favicon swap to school crest logo on sign-in.
 - [x] **Universal "Change Password" Modal & Security UI**
-  - *What was done*:
-    - Built a reusable, accessible `ChangePasswordModal` in `@school/shared` powered by Better Auth.
-    - Integrated "Change Password" buttons directly into Platform Super Admin top bar and into the user profile dropdown across `admin`, `teacher`, and `portal` workspaces.
-- [x] **Admin Sign-In Default Landing Route Fix**
-  - *What was done*:
-    - Fixed legacy hardcoded default redirect from `/assessments/setup/exam-recording` to the main `/admin/dashboard` in `apps/admin/app/page.tsx` and `apps/admin/app/sign-in/page.tsx`.
+  - Built reusable `ChangePasswordModal` in `@school/shared` powered by Better Auth.
+  - Added into Platform Super Admin top bar and user profile dropdowns across `admin`, `teacher`, and `portal`.
+- [x] **Admin Default Landing Route Fix**
+  - Replaced legacy redirect to `/assessments/setup/exam-recording` with `/admin/dashboard`.
 - [x] **Super Admin Password Reset for School Admins**
-  - *What was done*:
-    - Added `resetSchoolAdminPassword` backend action and `ResetSchoolAdminPasswordModal` in Platform Super Admin (`http://localhost:3006/schools`).
-    - Allows Super Admin to instantly reset the password for any school admin with automatic session invalidation.
-- [x] **Super Admin Workspace UI Overhaul (`http://localhost:3006/schools`)**
-  - *What was done*:
-    - Replaced the plain table view with a dense, minimalist KPI summary strip (*Total Schools, Live Active Tenants, Pending Admin Setup, Convex Cloud Engine status*).
-    - Added instant real-time search (by school name, slug, or admin email) and tab filters (*All, Active, Pending*).
-    - Fixed slug typography with crisp slate badges, added glowing pulse dots to active status badges, and standardized action buttons.
-- [x] **Dedicated School Profile & Branding Settings (`/admin/settings`)**
-  - *What was done*:
-    - Created a comprehensive institution settings page at `/admin/settings` (linked under Administration).
-    - Allows school admins to update Official School Name, School Motto / Tagline, Crest / Logo image (with Convex storage uploads and live preview), Brand Color Palette (Primary & Accent color pickers + curated preset palettes), and Official Contact Details (Email, Phone, Campus Address).
-    - Tenant slug is displayed as an immutable, protected read-only badge with 1-click copy.
-    - Retired the obsolete, nested logo uploader from Report Cards Extras and pointed it to Settings.
-- [x] **Route Protection & Friendly Fallbacks for Disabled Modules**
-  - *What was done*:
-    - Added layout guards on `/billing` and `/academic/knowledge/*`.
-    - If a school admin accesses a URL for a module disabled on their school's tier, they are shown a friendly "Module Inactive" screen explaining that the feature is turned off on their plan with a 1-click "Return to Dashboard" button.
+  - Added `resetSchoolAdminPassword` backend mutation and `ResetSchoolAdminPasswordModal` in Platform Super Admin (`:3006/schools`).
+- [x] **Super Admin Workspace UI Overhaul (`:3006/schools`)**
+  - Dense KPI summary strip (*Total Schools, Live Tenants, Pending Setup, Cloud Engine*).
+  - Real-time search, status filter tabs, glowing pulse indicators, and copyable slug badges.
+- [x] **Dedicated School Profile & Institution Settings (`/admin/settings`)**
+  - Centralized institution settings: Name, Motto/Tagline, Crest Logo uploader, Brand Color Palette picker with curated presets, Official Contact info (Email, Phone, Campus Address).
+  - Protected read-only tenant slug badge.
+- [x] **Route Protection for Disabled Tier Modules**
+  - Added layout guards on `/billing` and `/academic/knowledge/*` with user-friendly "Module Inactive" screen.
+
+### 2. Enrollment, Image Uploads & Photo Cropping
+- [x] **Photo Upload Validation & File Size Guard**
+  - Fixed client-side error threshold check so valid photos under 1MB are accepted without false-positive error triggers.
+  - Enforced strict 1MB file size limits and image mime-type validation.
+- [x] **Image Cropping UX Refinement**
+  - Cleaned up image cropping modal interface to align with the design system.
+
+### 3. Session-Oriented Promotions & Class Roster Resolution
+- [x] **Intra-Session Promotion Guard & Deep-Link Navigation**
+  - Blocked promotion of students within the same session.
+  - Added intelligent warning prompting admins to select a new session when initiating rollover.
+  - If no upcoming session exists, provides a 1-click deep-link directly to `/academic/sessions` (fixed legacy link that mistakenly went to `/academic/subjects`).
+  - Added session date validation preventing backward promotions to earlier sessions.
+- [x] **Promotion Staging & Class Roster Architecture**
+  - Added `studentSessionPromotions` table (`schoolId`, `studentId`, `sourceSessionId`, `targetSessionId`, `sourceClassId`, `targetClassId`, `status`, `promotedAt`, `promotedBy`).
+  - Staged promotions ensure promoted students don't prematurely collide with existing rosters in the target class before the new session begins.
+  - Resolved session-scoped student counts and active class rosters per session.
+- [x] **Promotion Banner UX & Mobile Drawer Polish**
+  - Default-collapsed promotion rollover card with smooth expand/collapse.
+  - Replaced text "Close" with standardized `X` icon matching design patterns across the application.
+  - Added smooth slide-up animation and sheet interactions for mobile student additions and promotion drawers.
+
+### 4. Academic Class Management & Subject Blueprint Builder
+- [x] **Class Blueprint Builder Layout Overhaul (`/academic/classes`)**
+  - Converted `ClassCreationForm` and `ClassEditForm` to full-height flex column layouts with a pinned bottom "Save Class Blueprint" action bar.
+  - Added instant real-time subject search filter in the subject offerings selector.
+  - Added "Select All" and "Clear" quick actions with live selection counters.
+- [x] **Session-Scoped Form Teacher Assignments & History Preservation**
+  - Added `classSessionFormTeachers` table (`schoolId`, `classId`, `sessionId`, `formTeacherId`, `createdAt`, `updatedAt`, `updatedBy`) with 4 composite indexes.
+  - `createClass` and `updateClass` persist form teachers scoped to the targeted academic session while synchronizing `classes.formTeacherId` on the active session for backwards compatibility.
+  - `listClasses` query accepts an optional `sessionId` filter and dynamically resolves session form teachers.
+  - Added session selector dropdown in `/academic/classes` header and session context badges in creation/edit forms.
+- [x] **Historical Report Card Form Teacher Attribution**
+  - `buildStudentReportCard` in `reportCards.ts` resolves form teacher from `classSessionFormTeachers` for the exact session of the report card.
+  - Historical report cards accurately display the teacher who led the class during that academic year, even if the teacher was later reassigned or soft-archived.
+- [x] **Safe Teacher Archiving Guardrails**
+  - `listTeacherArchiveBlockers` in `archiveGuardrails.ts` now inspects only form teacher and subject assignments in the **currently active session**.
+  - Teachers who concluded previous sessions and have no active duties can now be safely archived without triggering blocking validation errors.
 
 ---
 
-## 🔍 Downstream Impact Verification Checkpoints (For Later Flow Testing)
-- [ ] **Receipts & Invoices Header (`/billing`):** Verify that school motto, official contact phone/email, and physical campus address render on billing statements and PDF payment receipts.
-- [ ] **Report Card Transcripts (`/assessments/report-cards`):** Verify that updated crest logo, school motto sub-banner, brand primary color bar, and school address footer appear on printable term report sheets.
-- [ ] **Parent & Student Portals (`:3003`):** Verify that school custom palette, crest favicon, and school tagline render in portal headers.
+## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
+
+*Whenever core schemas and shared workflows are modified, downstream modules may be affected. Use this checklist during subsequent testing passes:*
+
+### 1. Academic Classes & Blueprint Changes
+- [ ] **Class Roster Views (`/academic/classes`):**
+  - Switching between different academic sessions in the dropdown must re-fetch and render the correct session-specific form teacher for each class.
+  - Modifying a class form teacher while viewing an older or future session must only mutate `classSessionFormTeachers` for that session, leaving the active session's live pointer intact.
+- [ ] **Curriculum & Subject Assignments (`/academic/subjects`, `/academic/classes`):**
+  - Assigning subject teachers within a class blueprint must persist cleanly without interfering with the session form teacher mapping.
+
+### 2. Student Promotions & Enrollment Rosters
+- [ ] **Student Directory (`/students`):**
+  - Verify student count badges per class accurately reflect students placed in that class for the selected session.
+  - Promoting a cohort from JSS 1 to JSS 2 for 2026/2027 must NOT alter the current 2025/2026 JSS 1 class list while the 2025/2026 session is still active.
+- [ ] **Student Detail & Profile Sheet (`/students/[id]`):**
+  - Verify student class name and session progression status render correctly on individual profiles.
+
+### 3. Report Cards & Transcripts (Historical Integrity)
+- [ ] **Report Card Generation (`/assessments/report-cards`):**
+  - Open a 2024/2025 report card for a student: verify the footer displays the 2024/2025 Form Teacher's name.
+  - Open a 2025/2026 report card for the same student: verify it displays the 2025/2026 Form Teacher's name.
+  - Verify that soft-archiving a departed teacher still renders their human-readable name on historical report card PDF prints without crashing or displaying "Unassigned".
+
+### 4. Staff Management & Teacher Archiving
+- [ ] **Teacher Archiving Modal (`/staff` / `/admin/teachers`):**
+  - Attempting to archive a teacher who is an active form teacher in the *current active session* must display the blocking warning listing the exact class name.
+  - Attempting to archive a teacher who *only* taught in past sessions must succeed immediately with zero blockers.
+
+### 5. Teacher Workspace Authorization
+- [ ] **Teacher Portal Extras (`apps/teacher`):**
+  - Verify `getTeacherExtrasAuthorization` grants comment/affective domain entry access to teachers who are form teachers in the active session.
+
+### 6. Billing & Communications Downstream
+- [ ] **Receipts & Invoices Header (`/billing`):**
+  - Verify school motto, official contact phone/email, and physical campus address from Settings render on billing statements and PDF payment receipts.
+- [ ] **Parent & Student Portals (`:3003`):**
+  - Verify that custom school palette, crest favicon, and school tagline render in portal headers.
 
 ---
 
-## 🚀 Future / Backlog
+## 🚀 Roadmap & Backlog
 
-- [ ] **Intelligent School Bulk Data Import & Full Export Engine**
-  - **Full School Data Export (Internal/Admin Only):**
-    - Platform capability to generate complete, structured Excel/CSV snapshot exports of an entire school tenant (academics, rosters, guardians, billing, assessments).
-    - Kept internal / non-public to standard school users.
-  - **Standardized Import Template & AI Assistance:**
-    - Provide schools with a structured CSV/Excel template that can be populated using AI or exported from legacy school software.
-    - Robust parsing tolerant of optional/blank columns without crashing.
-  - **Intelligent Audit, Deduplication & Conflict Resolution Pipeline:**
-    - **Fuzzy Name Matching:** Detect duplicate or existing students across name variations and inverted name orders (e.g. `First Last` vs `Last First`).
-    - **Class & Grade Placement:** Automatically map and suggest correct class/grade assignments with confidence indicators.
-    - **Guardian/Parent Deduplication:** Match parents by normalized phone numbers, emails, and family surname links.
-    - **Time-Drift & Stale Backup Detection:** Warn if incoming import sheet contains older timestamps or conflicts with existing records updated on the platform since the export date.
-  - **Interactive UI Reconciliation Screen:**
-    - Visual side-by-side review workbench where school administrators inspect proposed records, resolve fuzzy conflicts, override assignments, and approve the final merge before writing to the database.
-- [ ] **Smart Transactional & Batched Staff/Guardian Notification Engine**
-  - **Immediate High-Priority Events:**
-    - New Admin / Teacher onboarding invitation with secure one-time activation link.
-    - Password reset and security/auth alerts (sent immediately with zero delay).
-  - **Debounced / Digest Outbox for Operational Edits (Anti-Spam):**
-    - When an administrator modifies a teacher/student (e.g. changing 3 classes, updating subjects, tweaking contact details in quick succession), events are buffered in a `notificationOutbox` table.
-    - Uses Convex scheduled jobs (`ctx.scheduler.runAfter(5 * 60, ...)` / 5-10 min debounce window) to coalesce multiple rapid changes into a single consolidated digest email (*"3 updates were made to your teaching schedule"*).
-  - **Explicit "Send Invitations" Control:**
-    - Provide admins with an intentional "Send Welcome Emails / Send Invitations" action button so bulk roster setups don't trigger emails until the administrator is ready.
-- [ ] **Demo School Tenant Migration from Dev to Production:**
-  - Once the new Demo School is created, configured, and verified locally in Dev, run a scoped tenant migration to export all its child tables and replicate it onto Production as the official showcase school.
-- [ ] **Multi-Tenant Campus & School Switcher Architecture (Proprietor / Multi-School Portal)**
-  - **Overview:**
-    - Allows network proprietors, directors, or multi-branch staff to log in with a single email/account while maintaining strict tenant isolation across distinct school branches (e.g. `Olive Blessed Crest Academy (Fedrah, Abuja)` and `Olive Blessed Crest Academy (Ruga, Nasarawa)`).
-  - **Backend Layer:**
-    - Transition single-school auth resolution in `functions/academic/auth.ts` (`getAuthenticatedSchoolMembership`) from `.unique()` queries to multi-membership resolution (matching `functions/foundation/auth.ts` / `resolveActiveSchoolMembershipsV1`).
-    - Add `functions/auth:getMySchoolMemberships` to return all active school memberships for the authenticated identity.
-    - Support optional/explicit `schoolId` parameter on tenant-scoped queries and mutations with active membership verification.
-  - **Frontend Layer:**
-    - Implement `ActiveSchoolProvider` React context in `apps/admin` (and optionally `apps/teacher`/`apps/portal`) to track `activeSchoolId` backed by `localStorage` persistence.
-    - Implement `CampusSwitcher` dropdown in the `AdminHeader` / `WorkspaceNavbar` allowing 1-click switching between campuses without requiring re-authentication.
-    - Gracefully render static school badge if user belongs to only 1 school; render interactive dropdown if user has memberships in $\ge 2$ schools.
-  - **Data Integrity:**
-    - Preserves independent billing configurations, separate Paystack subaccounts, distinct grading bands, separate term calendars, and isolated student rolls per branch.
-- [ ] **Interactive New User Onboarding & Interface Setup Tour**
-  - **Overview & Walkthrough Flow:**
-    - Provide a guided onboarding wizard for newly registered school administrators and teachers that introduces the full platform architecture.
-    - Walkthrough steps:
-      1. *Institution Profile & Brand Palette* (School Name, Motto, Crest Upload, Theme Colors).
-      2. *Academic Structure Checklist* (Creating Active Academic Session, Terms, Classes, and Subjects).
-      3. *Grading & Assessment Framework* (Setting up Grade Scales, Exam Profiles, and Report Add-ons).
-      4. *Roster Population Options* (Single addition vs. Bulk Excel/CSV upload).
-      5. *Workspace Navigation Preference Selection* (Allows the admin to choose between **Straight Grouped List [Default]**, **Collapsible Accordions**, or **Top Domain Switcher**).
-  - **Interactive Orientation Checklist:**
-    - Persistent dismissible "Setup Progress" widget on the Admin Dashboard showing completed vs. pending institution setup milestones with direct deep links.
-- [ ] **Comprehensive Staff Onboarding, Structured Faculty Profiles & Lifecycle Tracking**
-  - **Overview:**
-    - As institutions grow, expand the basic teacher directory into a structured Faculty & Staff HR module supporting detailed personal information, professional credentials, dynamic role progressions, session-bound assignments, and separation documentation.
-  - **Structured Faculty Identity:**
-    - **Honorific / Title:** `Mr.`, `Mrs.`, `Ms.`, `Dr.`, `Prof.`, `Engr.`, `Pastor`, `Imam`.
-    - **Name Fields:** `firstName`, `middleName` (optional), `lastName`.
-    - **Demographics:** `gender` (`male`, `female`, `other`), `dateOfBirth` (optional), `phone`, `emergencyContact`.
-  - **Professional & Employment Metadata:**
-    - **Staff Identifier:** System or school-assigned `staffCode` / `employeeId`.
-    - **Employment Date & Initial Role:** Employment start date, initial hiring designation/rank (e.g. *Assistant Teacher*, *Subject Teacher*, *Class Form Teacher*, *Head of Department*, *Vice Principal*).
-    - **Dynamic Role Registry:** School-wide configurable roles and designations that grow organically and populate dropdown selectors across the system.
-  - **Career Progression & Role Promotion History:**
-    - Immutable chronological log of internal role changes, promotions, department transfers, and title elevations with effective dates, previous title, new title, and authorizing admin notes.
-  - **Session-Scoped Class & Form Teacher Assignments:**
-    - Explicit `(classId, sessionId) → formTeacherId` mapping ensuring class leadership is bounded to specific academic sessions.
-    - Historical report cards and assessment records preserve the exact form teacher assigned during that historical session.
-    - Safe archiving: teachers who conclude a session can be archived in subsequent sessions without throwing active class assignment blockers or breaking historical report cards.
-  - **Separation, Exits & Supporting Documentation Uploads:**
-    - Formal recording of staff departure: exit date, departure type (`resigned`, `contract_ended`, `terminated_with_cause`, `retired`, `transferred`), and final handover status.
-    - Secure storage file uploads for supporting documentation (e.g. *Employment Letter*, *Promotion Letter*, *Resignation Letter*, *Termination Notice*, *Clearance Certificate*).
-  - **Full Staff Onboarding Workflow (Dedicated Module):**
-    - Guided self-service onboarding link sent via email upon provisioning.
-    - Document collection (National ID / Passport, degree certificates, CV/Resume).
-    - Contract acknowledgment and staff code of conduct sign-off before activating portal privileges.
-- [ ] **Comprehensive Student Lifecycle, Enrollment History & Timeline Audit Logs**
-  - **Overview:**
-    - Provide an immutable chronological audit trail and timeline history for every student, tracking their complete journey at the institution from initial admission to graduation or exit.
-  - **Key Lifecycle Events & State Tracking:**
-    - **Admission & Initial Enrollment:** Date admitted, entry academic session & term, initial grade/class placement, official admission number.
-    - **Session Promotions & Class Progressions:** Historical record of every grade and class attended (e.g. Nursery 2 $\to$ Primary 1 $\to$ Primary 2) with session completion milestones and form teacher assignments.
-    - **Withdrawals, Leaves of Absence & Transfers Out:** Date of departure, departure term/session, reason for leaving (relocation, medical leave, school transfer), exit status (`withdrawn`, `transferred_out`, `temporary_leave`).
-    - **Re-Admissions & Resumptions:** Re-enrollment date, returning session/term, re-entry grade placement, re-activation approval notes.
-    - **Graduation & Alumni Transition:** Official graduation date, graduating class (e.g. SSS 3 / Year 12), diploma/certificate issuance status, transition to alumni directory.
-  - **UI & Transcript Generation:**
-    - **Visual Lifecycle Journey:** Interactive vertical timeline widget on the student's admin & parent profile displaying all enrollment transitions with status badges.
-    - **Official Certificate & Transcript Export:** Automated generation of Letters of Attestation and Official Transcripts accurately certifying dates of attendance (*"Attended [School Name] from September 2024 to July 2027..."*).
-- [ ] **First-Time Faculty Sign-In & Mandatory Password Reset**
-  - Upon receiving the onboarding invitation with temporary credentials, faculty/staff must be presented with a mandatory "Create Your Password" step before entering the workspace.
-- [ ] **Configurable School House System (Settings & Student Links)**
-  - Institution-level settings to define school houses with color identifiers (e.g. Green `#16a34a`, Purple `#9333ea`) and custom names (e.g. *"Tododo House"*, *"Emerald House"*).
-  - Student onboarding and profile editors use a structured dropdown populated from active school houses instead of manual arbitrary text.
-- [ ] **Date Validation: Future Date Restriction for Student Records**
-  - Set strict HTML5/form constraints (`max={today}`) so administrators cannot input future dates for Date of Birth (`dob`) or historical enrollment dates.
-- [ ] **Multi-Parent Household & Guardian Linking Architecture (Backend & Schema Migration)**
-  - **Comprehensive Household Support:**
-    - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
-    - Distinct first name, last name, phone, email, and occupation/relationship fields.
-  - **Smart Relationship & Address Inheritance:**
-    - 1-click toggle: *"Primary Guardian is Parent 1 / Parent 2"* auto-syncing contact details.
-    - Residential address sync: option to inherit parent household address or provide separate guardian residence.
-  - **Household Deduplication:**
-    - Link siblings under a unified `householdId` when parent phone numbers/emails match, streamlining family billing and notifications.
-- [ ] **Configurable Institutional Email Domain & Outbound Mail Infrastructure**
-  - **Custom Email Domain Integration & Address Convention:**
-    - Settings interface in School Settings allowing administrators to configure the institution's official email domain (e.g. `@meridiancrest.edu.ng`, `@schoolname.org`).
-    - Standardized naming convention: `firstname.lastname@schoolsdomain.com` (e.g. `kenechukwu.okafor@meridiancrest.edu.ng`) with duplicate collision handling (e.g. `firstname.lastname2@...` or middle initial).
-  - **SMTP & Transactional Mail Provider:**
-    - Outbound email routing with custom DKIM, SPF, and MX verification (Google Workspace, Zoho Mail, Resend).
-- [ ] **Sequential Auto-Incrementing Admission Numbers & Starting Sequence Seed**
-  - **Customizable Sequence Template:**
-    - Configurable format pattern in School / Enrollment Settings (e.g. `SCH/{YEAR}/{SEQ:4}` $\to$ `SCH/2026/0042` or `NUR-{SEQ:4}` $\to$ `NUR-0517`).
-  - **Starting Counter Seed (Migration Friendly):**
-    - Administrator can define the *"Last Used Admission Number"* or *"Starting Seed Number"* (e.g. `516`), allowing onboarding schools to migrate seamlessly without ID gaps or duplicate collisions.
-  - **Admissions Pipeline Synchronization:**
-    - Accepted applications from the public admission form automatically receive the next sequential ID upon approval/enrollment.
+### High Priority / Next Up
+- [ ] **Sequential Auto-Incrementing Admission Numbers & Starting Counter Seed**
+  - Configurable format pattern in School Settings (e.g. `SCH/{YEAR}/{SEQ:4}` $\to$ `SCH/2026/0042` or `NUR-{SEQ:4}`).
+  - Admin defines *"Last Used Admission Number"* / *"Starting Seed Number"* (e.g. `516`) so onboarding schools migrate without ID gaps.
+  - Auto-assign next sequential number upon enrollment approval.
+- [ ] **Institutional Email Domain & Standardized Staff/Student Email Convention**
+  - School domain configuration in Settings (e.g. `@meridiancrest.edu.ng`).
+  - Standardized email address generation: `firstname.lastname@schoolsdomain.com` with collision resolution.
 - [ ] **Form Unsaved State Guard & Draft Protection**
-  - Prompt / confirm warning before navigating away when an enrollment or creation form is dirty with unsaved entries.
-  - Optional local draft persistence in `localStorage`/IndexedDB so transient tab closures or accidental reloads never lose in-progress enrollment inputs.
-- [ ] Automated regression test suite for core multi-tenant boundaries.
-- [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
-- [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
+  - Confirmation prompt before navigating away when an enrollment or setup form has unsaved edits.
+  - Local draft backup in `localStorage` for form resilience against accidental reloads.
+- [ ] **Mobile Scroll Progress Bar for Long Forms**
+  - Fixed top progress indicator on mobile viewports during multi-step student enrollment and wizard forms.
 
-
-
+### Architecture & Medium-Term Enhancements
+- [ ] **Multi-Parent Household & Guardian Linking Architecture**
+  - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
+  - Relationship and residential address inheritance toggles.
+  - Sibling auto-linking under unified `householdId` when contact details match.
+- [ ] **Comprehensive Student Lifecycle, Enrollment History & Timeline Audit Logs**
+  - Interactive vertical timeline widget on student admin & parent profiles (Admission $\to$ Class Progressions $\to$ Leaves/Transfers $\to$ Graduation).
+  - Official Certificate & Attestation Transcript export certifying exact dates of attendance.
+- [ ] **Comprehensive Staff Onboarding & HR Profiles**
+  - Honorific titles (`Mr.`, `Mrs.`, `Dr.`, `Engr.`), staff codes, employment dates, and role progression logs.
+  - Formal exit recording (`resigned`, `retired`, `transferred`) and document uploads (contracts, clearance certificates).
+- [ ] **Multi-Tenant Campus & School Switcher (Proprietor Portal)**
+  - 1-click campus switching in navbar for multi-branch school owners without re-authentication.
+- [ ] **Intelligent School Bulk Data Import & Full Export Engine**
+  - Full structured tenant exports (Excel/CSV).
+  - AI-assisted import parsing with fuzzy name matching, grade placement confidence, and interactive deduplication review workbench.
+- [ ] **Smart Transactional & Batched Notification Engine**
+  - Immediate security/auth alerts.
+  - Debounced digest outbox for rapid operational edits to avoid guardian email fatigue.

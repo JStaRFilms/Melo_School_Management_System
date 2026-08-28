@@ -57,6 +57,7 @@ interface ClassEditFormProps {
   onDirtyChange?: (isDirty: boolean) => void;
   isSaving: boolean;
   variant?: "sidebar" | "sheet";
+  sessionName?: string;
 }
 
 export function ClassEditForm({
@@ -71,6 +72,7 @@ export function ClassEditForm({
   onDirtyChange,
   isSaving,
   variant = "sidebar",
+  sessionName,
 }: ClassEditFormProps) {
   const [activeTab, setActiveTab] = useState<"blueprint" | "faculty" | "aggregates">("blueprint");
   const [gradeName, setGradeName] = useState("");
@@ -260,7 +262,14 @@ export function ClassEditForm({
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight ml-0.5">Form Teacher</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight ml-0.5">Form Teacher</p>
+                    {sessionName && (
+                      <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 truncate max-w-[100px]">
+                        {sessionName}
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <select
                       value={formTeacherId}

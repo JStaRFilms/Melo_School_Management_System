@@ -29,6 +29,7 @@ interface ClassCreationFormProps {
   teachers: Teacher[];
   subjects: Subject[];
   initialLevel?: string;
+  sessionName?: string;
 }
 
 export function ClassCreationForm({
@@ -37,6 +38,7 @@ export function ClassCreationForm({
   teachers,
   subjects,
   initialLevel = "Nursery",
+  sessionName,
 }: ClassCreationFormProps) {
   const [gradeName, setGradeName] = useState("");
   const [classLabel, setClassLabel] = useState("");
@@ -173,9 +175,16 @@ export function ClassCreationForm({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
-                Form Teacher
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                  Form Teacher
+                </label>
+                {sessionName && (
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 truncate max-w-[80px]">
+                    {sessionName}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <select
                   value={formTeacherId}

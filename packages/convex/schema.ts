@@ -1121,6 +1121,20 @@ export default defineSchema({
     .index("by_subject", ["subjectId"])
     .index("by_class_and_subject", ["classId", "subjectId"]),
 
+  classSessionFormTeachers: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    formTeacherId: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_teacher_and_session", ["formTeacherId", "sessionId"])
+    .index("by_school_and_session", ["schoolId", "sessionId"]),
+
   classSubjectAggregations: defineTable({
     schoolId: v.id("schools"),
     classId: v.id("classes"),
