@@ -183,10 +183,42 @@ export function PrintableFinanceModal({
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {invoice.invoice.lineItems.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-4 py-3 font-bold text-slate-950">{item.label}</td>
-                          <td className="px-4 py-3 text-xs font-bold uppercase tracking-widest text-slate-400">{item.category}</td>
-                          <td className="px-4 py-3 text-right font-black text-slate-950">{formatMoney(item.amount, invoice.invoice.currency)}</td>
+                        <tr
+                          key={item.id}
+                          className={
+                            item.isOptional && item.isSelected === false
+                              ? "opacity-50 bg-slate-50/50"
+                              : ""
+                          }
+                        >
+                          <td className="px-4 py-3 font-bold text-slate-950">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{item.label}</span>
+                              {item.isOptional && (
+                                <span
+                                  className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                                    item.isSelected === false
+                                      ? "bg-slate-100 text-slate-500 line-through"
+                                      : "bg-amber-50 text-amber-800 border border-amber-200"
+                                  }`}
+                                >
+                                  {item.isSelected === false ? "Opted Out" : "Optional Add-on"}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+                            {item.category}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right font-black ${
+                              item.isOptional && item.isSelected === false
+                                ? "line-through text-slate-400"
+                                : "text-slate-950"
+                            }`}
+                          >
+                            {formatMoney(item.amount, invoice.invoice.currency)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

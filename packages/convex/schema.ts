@@ -1683,6 +1683,7 @@ export default defineSchema({
           v.literal("other")
         ),
         order: v.number(),
+        isOptional: v.optional(v.boolean()),
       })
     ),
     installmentPolicy: v.object({
@@ -1744,6 +1745,8 @@ export default defineSchema({
           v.literal("other")
         ),
         order: v.number(),
+        isOptional: v.optional(v.boolean()),
+        isSelected: v.optional(v.boolean()),
       })
     ),
     installmentSchedule: v.array(

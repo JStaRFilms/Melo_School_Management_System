@@ -236,20 +236,22 @@ export default function BillingPage() {
     e.preventDefault();
     const success = await actions.runAction(async () => {
       await actions.createFeePlan({
-        name: feePlanDraft.name,
-        description: feePlanDraft.description,
-        currency: feePlanDraft.currency,
+        name: feePlanDraft.name.trim(),
+        description: feePlanDraft.description?.trim() || undefined,
+        currency: feePlanDraft.currency || "NGN",
         billingMode: feePlanDraft.billingMode,
-        targetClassIds: feePlanDraft.targetClassIds,
-        installmentEnabled: feePlanDraft.installmentEnabled,
-        installmentCount: Number(feePlanDraft.installmentCount),
-        intervalDays: Number(feePlanDraft.intervalDays),
-        firstDueDays: Number(feePlanDraft.firstDueDays),
-        lineItems: feePlanDraft.lineItems.map((item: any) => ({
-             label: item.label,
-             amount: Number(item.amount),
-             category: item.category,
-             order: 0
+        targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
+        installmentPolicy: {
+          enabled: feePlanDraft.installmentEnabled,
+          installmentCount: Number(feePlanDraft.installmentCount) || 1,
+          intervalDays: Number(feePlanDraft.intervalDays) || 0,
+          firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
+        },
+        lineItems: feePlanDraft.lineItems.map((item) => ({
+          label: item.label.trim(),
+          amount: Number(item.amount) || 0,
+          category: item.category,
+          isOptional: Boolean(item.isOptional),
         })),
       } as never);
     }, "Fee Plan Created", "Unable to create new fee plan.");

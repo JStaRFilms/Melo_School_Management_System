@@ -195,6 +195,7 @@ export function createDraftLineItem(
     label: overrides?.label ?? "",
     amount: overrides?.amount ?? "",
     category: overrides?.category ?? "other",
+    isOptional: overrides?.isOptional ?? false,
   };
 }
 

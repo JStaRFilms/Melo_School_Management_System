@@ -118,6 +118,13 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Added smart number typing normalization preventing awkward leading zeros (e.g. `068000`).
   - Added real-time live total calculation card (`Total Plan Value: ₦XX,XXX.XX`) dynamically reflecting line item additions and modifications.
   - Enhanced Financial Arsenal desktop navigation with clear active state badges and highlight rings.
+- [x] **Fee Plan Creation Argument Validation & Optional Line Item Toggles (`FeePlanForm.tsx`, `billing.ts`, `schema.ts`)**
+  - Fixed runtime `ArgumentValidationError` where extra `order` property and root `installmentEnabled` were submitted instead of nested `installmentPolicy`.
+  - Added `isOptional` field to `feePlans.lineItems` and `isOptional` + `isSelected` to `studentInvoices.lineItems`.
+  - Allowed line items in `FeePlanForm.tsx` to be toggled as **`✨ Optional Add-on (Payer Can Toggle)`** vs **`🔒 Mandatory Fee`**, letting parents choose non-compulsory fees (e.g. screen uniforms, bus services).
+  - Updated `computeBillingSubtotal` and `computeBillingInvoiceTotal` to compute subtotal from mandatory items plus selected optional items.
+  - Added `toggleInvoiceOptionalLineItem` mutation allowing payers and admins to opt in/out of optional items before invoice settlement.
+  - Added target class dropdown to `FeePlanForm.tsx` supporting both general templates and class-specific fee plans.
 
 ---
 

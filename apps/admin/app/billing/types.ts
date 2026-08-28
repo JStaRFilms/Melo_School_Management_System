@@ -34,6 +34,7 @@ export type FeePlanDraftItem = {
   label: string;
   amount: string;
   category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other";
+  isOptional?: boolean;
 };
 
 export type FeePlanDraft = {
@@ -203,7 +204,15 @@ export type BillingDashboardData = {
     currency: string;
     billingMode: "class_default" | "manual_extra";
     targetClassIds: string[];
-    lineItems: Array<{ id: string; label: string; amount: number; category: string; order: number }>;
+    lineItems: Array<{
+      id: string;
+      label: string;
+      amount: number;
+      category: string;
+      order: number;
+      isOptional?: boolean;
+      isSelected?: boolean;
+    }>;
     installmentPolicy: {
       enabled: boolean;
       installmentCount: number;
@@ -250,7 +259,15 @@ export type BillingDashboardData = {
       invoiceNumber: string;
       feePlanNameSnapshot: string;
       currency: string;
-      lineItems: Array<{ id: string; label: string; amount: number; category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other"; order: number }>;
+      lineItems: Array<{
+        id: string;
+        label: string;
+        amount: number;
+        category: "tuition" | "boarding" | "transport" | "exam" | "activity" | "other";
+        order: number;
+        isOptional?: boolean;
+        isSelected?: boolean;
+      }>;
       installmentSchedule: Array<{ id: string; label: string; dueAt: number; amount: number; isPaid: boolean }>;
       subtotal: number;
       waiverAmount: number;
