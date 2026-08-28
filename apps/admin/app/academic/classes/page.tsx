@@ -10,7 +10,6 @@ import { useMutation, useQuery } from "convex/react";
 import {
   Database,
   LayoutGrid,
-  Plus,
   Search,
   Sparkles,
 } from "lucide-react";
@@ -403,30 +402,20 @@ export default function ClassesPage() {
             <AdminHeader
               title="Class Management"
               actions={
-                <div className="flex items-center gap-3">
-                  <StatGroup
-                    stats={[
-                      {
-                        label: "Active Units",
-                        value: classes.length,
-                        icon: <LayoutGrid className="h-4 w-4" />,
-                      },
-                      {
-                        label: "Curriculum Map",
-                        value: subjects.length,
-                        icon: <Sparkles className="h-4 w-4" />,
-                      },
-                    ]}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRequestCreate("Nursery")}
-                    className="lg:hidden inline-flex items-center gap-1.5 rounded-xl bg-brand-primary px-3 py-2 text-xs font-bold text-white shadow-xs hover:opacity-90 transition shrink-0 cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>New Class</span>
-                  </button>
-                </div>
+                <StatGroup
+                  stats={[
+                    {
+                      label: "Active Units",
+                      value: classes.length,
+                      icon: <LayoutGrid className="h-4 w-4" />,
+                    },
+                    {
+                      label: "Curriculum Map",
+                      value: subjects.length,
+                      icon: <Sparkles className="h-4 w-4" />,
+                    },
+                  ]}
+                />
               }
             />
 
