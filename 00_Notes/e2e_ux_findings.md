@@ -78,6 +78,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Displays transfer routing badge (From: Class/Session &rarr; To: Class/Session), subject enrollment mode explanation, and amber overwrite warning banner for students already staged.
   - Added safety reassurance badge and loading spinner during promotion execution.
   - Replaced `window.confirm` with portaled `ConfirmationModal` across student cancel promotion, student archiving, family unlinking, and class aggregation removals.
+- [x] **Student Identity Roster Matrix & Promotion Badge Redesign (`SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
+  - Expanded sticky Student Identity column from cramped 240px to 340px, eliminating name truncation and overflow.
+  - Relocated "All" and "Clear" subject selection controls into compact top-right inline action pills.
+  - Replaced tall 4-line wrapping promotion block with a sleek, single-line emerald badge (`Promoted → Primary 5 (26/27)`) with an integrated `(X)` cancel action button.
+  - Reduced row vertical height by ~50%, improving data density and visual balance.
 
 ### 4. Academic Class Management & Subject Blueprint Builder
 - [x] **Class Blueprint Builder Layout Overhaul (`/academic/classes`)**

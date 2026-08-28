@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { BookOpen, GraduationCap, UserCog } from "lucide-react";
+import { BookOpen, GraduationCap, UserCog, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { humanNameFinalStrict } from "@/human-name";
@@ -103,24 +103,42 @@ export function SubjectSelectionMobileEditor({
 
                 {/* Promotion Status Badge */}
                 {student.promotionStatus?.isPromoted ? (
-                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
-                      <GraduationCap className="h-3 w-3 text-indigo-600 shrink-0" />
-                      <span>Promoted &rarr; {student.promotionStatus.targetClassName}</span>
+                  <div className="mt-2 flex items-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 text-[10px] font-medium text-emerald-900 max-w-full">
+                      <GraduationCap className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        Promoted &rarr;{" "}
+                        <strong className="font-bold text-emerald-950">
+                          {student.promotionStatus.targetClassName}
+                        </strong>
+                        {student.promotionStatus.targetSessionName && (
+                          <span className="ml-1 text-emerald-700/80 font-normal">
+                            (
+                            {student.promotionStatus.targetSessionName
+                              .replace(/ Academic Session/i, "")
+                              .replace(/ Session/i, "")}
+                            )
+                          </span>
+                        )}
+                      </span>
+                      {onCancelPromotion && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCancelPromotion(student._id);
+                          }}
+                          className="ml-1 rounded p-0.5 text-emerald-700 hover:bg-emerald-200/60 hover:text-rose-700 transition cursor-pointer shrink-0"
+                          title="Cancel staged promotion"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </span>
-                    {onCancelPromotion && (
-                      <button
-                        type="button"
-                        onClick={() => onCancelPromotion(student._id)}
-                        className="text-[9px] font-bold text-slate-400 hover:text-rose-600 transition-colors"
-                      >
-                        Undo
-                      </button>
-                    )}
                   </div>
                 ) : isPromotionMode ? (
                   <div className="mt-2">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
+                    <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
                       Unpromoted
                     </span>
                   </div>
