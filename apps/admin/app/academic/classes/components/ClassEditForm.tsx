@@ -217,7 +217,7 @@ export function ClassEditForm({
                   <input
                     required
                     value={gradeName}
-                    onChange={(e) => setGradeName(humanNameTyping(e.target.value))}
+                    onChange={(e) => setGradeName(e.target.value)}
                     onBlur={(e) => setGradeName(humanNameFinal(e.target.value))}
                     placeholder="Grade Designation"
                     className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
@@ -228,7 +228,7 @@ export function ClassEditForm({
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight ml-0.5">Class Label</p>
                   <input
                     value={classLabel}
-                    onChange={(e) => setClassLabel(humanNameTyping(e.target.value))}
+                    onChange={(e) => setClassLabel(e.target.value)}
                     onBlur={(e) => setClassLabel(humanNameFinal(e.target.value))}
                     placeholder="e.g. Olive Blossom"
                     className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
