@@ -46,9 +46,6 @@ We will implement a dual-mode interface:
 - `activeClass`: A local state copy of the selected class to prevent layout shifts when Convex queries update.
 - `isMobile`: Layout switch based on viewport width.
 
-## Implementation Steps
-1. **Initialize Directory**: Clean up `apps/admin/app/academic/classes/components/`.
-2. **Build Components**: Implement the new card and forms.
-3. **Assemble Page**: Update `page.tsx` with the new layout and state logic.
-4. **Logic Migration**: Move business logic into the new component structure.
-5. **Verify**: Ensure smooth transitions, auto-scrolling on mobile, and type safety.
+## Verification & Architectural Reference
+- Pinned split-pane workbench contract & scrolling isolation rules: See [`AdminSplitPaneWorkbenchArchitecture.md`](./AdminSplitPaneWorkbenchArchitecture.md).
+- Ensure smooth transitions, auto-scrolling on mobile, locked desktop sidebars, and type safety.

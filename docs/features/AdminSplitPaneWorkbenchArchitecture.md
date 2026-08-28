@@ -64,13 +64,21 @@ In `packages/shared/src/components/WorkspaceNavbar.tsx`:
 - The right column container must have `min-h-0 h-full` to prevent flex items from defaulting to `min-height: auto`.
 - The `<main>` scroll container uses:
   ```tsx
-  <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full relative custom-scrollbar scrollbar-hide">
-    <div className={fullBleed ? "w-full min-h-full" : "mx-auto max-w-[1600px]"}>
+  <main
+    className={`flex-1 min-h-0 w-full relative custom-scrollbar scrollbar-hide ${
+      fullBleed
+        ? "overflow-y-auto lg:overflow-hidden"
+        : "overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8"
+    }`}
+  >
+    <div className={fullBleed ? "w-full min-h-full lg:h-full lg:min-h-0" : "mx-auto max-w-[1600px]"}>
       {children}
     </div>
   </main>
   ```
-- This ensures mobile devices have 100% smooth vertical touch scrolling site-wide, while desktop full-bleed split panes fill `100%` of viewport height without page double-scrollbars.
+- This ensures:
+  1. **Mobile devices (`< lg`)**: Have 100% smooth vertical touch scrolling site-wide via `overflow-y-auto min-h-full`.
+  2. **Desktop devices (`lg:` / `xl:`)**: Have strict container lock via `lg:overflow-hidden` so scrolling mousewheel on the right sidebar NEVER slides or scrolls the outer workbench frame.
 
 ---
 
