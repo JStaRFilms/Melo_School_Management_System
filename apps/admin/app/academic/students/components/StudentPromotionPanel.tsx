@@ -1,15 +1,20 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   ArrowRight,
+  BookOpen,
+  Calendar,
   CheckCircle2,
+  ChevronDown,
   GraduationCap,
   Layers,
-  Calendar,
-  BookOpen,
+  PlusCircle,
   ShieldCheck,
 } from "lucide-react";
+import { cn } from "@/utils";
 
 import type { ClassSummary, SessionSummary } from "./types";
 
@@ -53,226 +58,264 @@ export function StudentPromotionPanel({
   onClearSelection,
   onPromote,
 }: StudentPromotionPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
   const hasSource = Boolean(sourceClassId && sourceSessionId);
-  const isSameContext =
-    hasSource &&
-    sourceClassId === targetClassId &&
-    sourceSessionId === targetSessionId;
+  const upcomingSessions = sessions.filter(
+    (session) => session._id !== sourceSessionId
+  );
+
+  const isSameSession = Boolean(
+    hasSource && targetSessionId && sourceSessionId === targetSessionId
+  );
+  const isSameClass = Boolean(
+    hasSource && targetClassId && sourceClassId === targetClassId
+  );
+
   const canPromote =
     selectedCount > 0 &&
     Boolean(targetClassId && targetSessionId) &&
-    !isSameContext &&
+    !isSameSession &&
+    !isSameClass &&
     !isPromoting;
 
   const sourceClassName =
-    classes.find((classDoc) => classDoc._id === sourceClassId)?.name ?? "Current Class";
+    classes.find((c) => c._id === sourceClassId)?.name ?? "Current Class";
   const sourceSessionName =
-    sessions.find((session) => session._id === sourceSessionId)?.name ?? "Current Session";
+    sessions.find((s) => s._id === sourceSessionId)?.name ?? "Current Session";
 
-  const targetClassName =
-    classes.find((classDoc) => classDoc._id === targetClassId)?.name;
-  const targetSessionName =
-    sessions.find((session) => session._id === targetSessionId)?.name;
+  const targetClassName = classes.find((c) => c._id === targetClassId)?.name;
+  const targetSessionName = sessions.find((s) => s._id === targetSessionId)?.name;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 md:p-6 shadow-xl shadow-slate-100/40 space-y-6">
-      {/* Visual Accent bar */}
-      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-600" />
-
-      {/* Header section with intent definition */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600 shadow-sm flex items-center justify-center flex-shrink-0">
-            <GraduationCap className="h-5 w-5" />
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all">
+      {/* ── HEADER ACCORDION BAR ── */}
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex cursor-pointer items-center justify-between gap-3 p-4 bg-slate-50/70 hover:bg-slate-50 transition-colors border-b border-slate-200/80 select-none"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+            <GraduationCap className="h-4 w-4" />
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              End-of-Session Student Promotion Workspace
-            </h2>
-            <p className="text-xs text-slate-500 max-w-xl mt-0.5 leading-relaxed">
-              Batch promote students to their next academic level. Placements will become effective for target roster roles during next session rollover.
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 font-display">
+                End-of-Session Promotion Rollover
+              </h2>
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700 uppercase">
+                Term 3 Active
+              </span>
+              {selectedCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                  {selectedCount} student(s) selected
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">
+              Batch roll students over into the upcoming academic session for next year.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-indigo-50/60 border border-indigo-100/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-700 self-start sm:self-center shadow-sm">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
-          </span>
-          Cumulative Annual Active
-        </div>
+
+        <button
+          type="button"
+          aria-label={isExpanded ? "Collapse panel" : "Expand panel"}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+        >
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 transition-transform duration-200",
+              isExpanded && "rotate-180"
+            )}
+          />
+        </button>
       </div>
 
-      {/* Workspace Visual Pipeline */}
-      <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-4 md:p-5 flex flex-col md:flex-row md:items-center gap-5 justify-between">
-        {/* Source context node */}
-        <div className="flex-1 min-w-0 bg-white border border-slate-200/60 p-3.5 rounded-xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100 flex-shrink-0">
-            <Layers className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Current Source Roster</p>
-            <p className="text-sm font-bold text-slate-800 truncate mt-0.5">{sourceClassName}</p>
-            <p className="text-xs text-slate-500 font-semibold truncate">{sourceSessionName}</p>
-          </div>
-        </div>
-
-        {/* Pipeline transfer connector */}
-        <div className="flex flex-col items-center justify-center flex-shrink-0 md:px-2 gap-1.5">
-          <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm flex-shrink-0">
-            <ArrowRight className="h-4.5 w-4.5" />
-          </div>
-          <div className="bg-indigo-600 text-white font-extrabold text-[9px] uppercase tracking-widest px-2.5 py-1 rounded-full shadow-md shadow-indigo-600/10">
-            {selectedCount} Prepared
-          </div>
-        </div>
-
-        {/* Target destination node */}
-        <div className={`flex-1 min-w-0 p-3.5 rounded-xl border transition-all duration-300 ${targetClassId && targetSessionId ? "bg-white border-slate-200/60 shadow-sm flex items-center gap-3" : "bg-white/40 border-dashed border-slate-200 flex items-center justify-center py-5"}`}>
-          {targetClassId && targetSessionId ? (
-            <>
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100 flex-shrink-0">
-                <GraduationCap className="h-4.5 w-4.5 animate-in zoom-in-50 duration-300" />
+      {/* ── EXPANDABLE WORKSPACE BODY ── */}
+      {isExpanded && (
+        <div className="p-4 md:p-5 space-y-4 animate-in fade-in slide-in-from-top-1">
+          {/* Missing Upcoming Session Warning */}
+          {upcomingSessions.length === 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 text-xs text-amber-900">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-bold">Next Academic Session Required</p>
+                  <p className="text-[11px] text-amber-800 font-medium">
+                    Annual promotions require creating the upcoming academic session (e.g. next year&apos;s session).
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Destination Class & Session</p>
-                <p className="text-sm font-bold text-slate-800 truncate mt-0.5">{targetClassName}</p>
-                <p className="text-xs text-slate-500 font-semibold truncate">{targetSessionName}</p>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-300 animate-ping"></span>
-              Select Target Destination...
-            </p>
+              <Link
+                href="/academic/classes"
+                className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg bg-amber-900 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-amber-950 transition-colors shrink-0"
+              >
+                <PlusCircle className="h-3.5 w-3.5" />
+                <span>Create Next Session</span>
+              </Link>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Quick selection workspace helpers */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-indigo-50/20 border border-indigo-100/30 p-3 rounded-xl">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-indigo-500 flex-shrink-0" />
-          <p className="text-xs font-semibold text-slate-700">
-            Roster Selection: <span className="text-indigo-600 font-extrabold">{selectedCount}</span> student(s) selected for promotion.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onSelectAllVisible}
-            disabled={!hasSource || isPromoting}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none hover:border-slate-300 cursor-pointer"
-          >
-            Select Full Roster
-          </button>
-          <button
-            type="button"
-            onClick={onClearSelection}
-            disabled={selectedCount === 0 || isPromoting}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none hover:text-slate-700 cursor-pointer"
-          >
-            Clear Selection
-          </button>
-        </div>
-      </div>
-
-      {/* Inputs Configuration form */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-1">
-            <Layers className="h-3 w-3" />
-            Target Class
-          </span>
-          <select
-            value={targetClassId}
-            onChange={(event) => onTargetClassChange(event.target.value)}
-            className={fieldClassName}
-            disabled={isPromoting}
-            aria-label="Target Class for Promotion"
-          >
-            <option value="">Choose class...</option>
-            {classes.map((classDoc) => (
-              <option key={classDoc._id} value={classDoc._id}>
-                {classDoc.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            Target Session
-          </span>
-          <select
-            value={targetSessionId}
-            onChange={(event) => onTargetSessionChange(event.target.value)}
-            className={fieldClassName}
-            disabled={isPromoting}
-            aria-label="Target Session for Promotion"
-          >
-            <option value="">Choose session...</option>
-            {sessions.map((session) => (
-              <option key={session._id} value={session._id}>
-                {session.name}
-                {session.isActive ? " (Active)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-1">
-            <BookOpen className="h-3 w-3" />
-            New Subject Enrollment Mode
-          </span>
-          <select
-            value={subjectMode}
-            onChange={(event) =>
-              onSubjectModeChange(event.target.value as PromotionSubjectMode)
-            }
-            className={fieldClassName}
-            disabled={isPromoting}
-            aria-label="New Subject Enrollment Mode"
-          >
-            <option value="all_target_class_subjects">Enroll all target-class subjects</option>
-            <option value="matching_previous_subjects">Only matching old subjects</option>
-            <option value="none">Do not enroll subjects yet</option>
-          </select>
-        </label>
-      </div>
-
-      {/* Safety messages and execution controls */}
-      <div className="border-t border-slate-100 pt-5 flex flex-col lg:flex-row gap-4 items-center justify-between">
-        <div className="flex gap-3 items-start bg-indigo-50/40 border border-indigo-100/50 rounded-xl p-3.5 w-full lg:flex-1">
-          <ShieldCheck className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" />
-          <div className="space-y-0.5">
-            <p className="text-[10px] font-black uppercase tracking-wider text-indigo-800">Roster Protection Standard</p>
-            <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
-              Safe rollover enabled. Historical report cards, academic grades, and prior billing invoices are protected and will remain permanently unchanged.
-            </p>
+          {/* Source & Destination Summary Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-display">Source:</span>
+              <strong className="font-bold text-slate-800">{sourceClassName}</strong>
+              <span className="text-slate-400">({sourceSessionName})</span>
+            </div>
+            <ArrowRight className="hidden sm:block h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-display">Target:</span>
+              <strong className={cn("font-bold", targetClassName ? "text-indigo-700" : "text-slate-400")}>
+                {targetClassName || "Select class below"}
+              </strong>
+              {targetSessionName && (
+                <span className="text-slate-500">({targetSessionName})</span>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="w-full lg:w-auto">
-          <button
-            type="button"
-            onClick={onPromote}
-            disabled={!canPromote}
-            className="w-full lg:w-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-600/10 hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-30 disabled:shadow-none disabled:pointer-events-none cursor-pointer"
-          >
-            {isPromoting ? "Executing Promotion..." : "Execute Promotion"}
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+          {/* Quick Roster Selection Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+            <div className="flex items-center gap-2 text-xs">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="text-slate-600 font-medium">
+                <strong className="text-slate-900 font-bold">{selectedCount}</strong> student(s) selected from roster
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onSelectAllVisible}
+                disabled={!hasSource || isPromoting}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={onClearSelection}
+                disabled={selectedCount === 0 || isPromoting}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
 
-      {/* Validation Message */}
-      {isSameContext && (
-        <div className="flex gap-2 items-center bg-rose-50 border border-rose-100 text-rose-800 rounded-xl p-3 text-xs font-bold animate-pulse">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span>Destination class and session must differ from current class and session.</span>
+          {/* Form Configuration Grid */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 pt-1">
+            {/* Target Class */}
+            <label className="space-y-1 block">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display flex items-center gap-1">
+                <Layers className="h-3 w-3" />
+                Target Class *
+              </span>
+              <select
+                value={targetClassId}
+                onChange={(e) => onTargetClassChange(e.target.value)}
+                className={fieldClassName}
+                disabled={isPromoting}
+              >
+                <option value="">Select destination class...</option>
+                {classes.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name} ({c.level})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Target Session */}
+            <label className="space-y-1 block">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Upcoming Academic Session *
+              </span>
+              <select
+                value={targetSessionId}
+                onChange={(e) => onTargetSessionChange(e.target.value)}
+                className={fieldClassName}
+                disabled={isPromoting}
+              >
+                <option value="">Select upcoming session...</option>
+                {upcomingSessions.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name} {s.isActive ? "(Active)" : ""}
+                  </option>
+                ))}
+                {sourceSessionId && (
+                  <option value={sourceSessionId} disabled>
+                    {sourceSessionName} (Current Session — Promotion Not Allowed)
+                  </option>
+                )}
+              </select>
+            </label>
+
+            {/* Subject Enrollment Mode */}
+            <label className="space-y-1 block sm:col-span-2 lg:col-span-1">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
+                Subject Registration for New Class
+              </span>
+              <select
+                value={subjectMode}
+                onChange={(e) =>
+                  onSubjectModeChange(e.target.value as PromotionSubjectMode)
+                }
+                className={fieldClassName}
+                disabled={isPromoting}
+              >
+                <option value="all_target_class_subjects">
+                  Enroll in all subjects for new class (Standard)
+                </option>
+                <option value="matching_previous_subjects">
+                  Keep continuing subjects only
+                </option>
+                <option value="none">
+                  Do not register subjects now (Manual later)
+                </option>
+              </select>
+            </label>
+          </div>
+
+          {/* Validation Warnings */}
+          {isSameSession && (
+            <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-bold text-rose-800">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>
+                Students cannot be promoted to a higher grade within the current session. Select an upcoming academic session. For mid-session transfers, edit the student record directly.
+              </span>
+            </div>
+          )}
+
+          {isSameClass && (
+            <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-bold text-rose-800">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>
+                Destination class cannot be the same as current source class.
+              </span>
+            </div>
+          )}
+
+          {/* Footer Action Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <ShieldCheck className="h-4 w-4 text-slate-400 shrink-0" />
+              <span>Historical report cards and prior session invoices remain locked and protected.</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onPromote}
+              disabled={!canPromote}
+              className="w-full sm:w-auto flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            >
+              <span>{isPromoting ? "Promoting..." : `Promote ${selectedCount} Student${selectedCount === 1 ? "" : "s"}`}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </section>
@@ -280,4 +323,5 @@ export function StudentPromotionPanel({
 }
 
 const fieldClassName =
-  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition shadow-sm hover:border-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-50 disabled:bg-slate-50";
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 disabled:opacity-40 shadow-sm";
+

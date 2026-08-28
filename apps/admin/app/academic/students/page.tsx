@@ -167,8 +167,10 @@ export default function StudentsPage() {
       return;
     }
 
-    const activeSession = sessions.find((session) => session.isActive);
-    setPromotionTargetSessionId(activeSession?._id ?? sessions[0]?._id ?? "");
+    const nextSession = sessions.find((session) => !session.isActive);
+    if (nextSession) {
+      setPromotionTargetSessionId(nextSession._id);
+    }
   }, [promotionTargetSessionId, sessions]);
 
 

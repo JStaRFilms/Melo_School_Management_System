@@ -1055,11 +1055,13 @@ export const promoteStudents = mutation({
     if (uniqueStudentIds.length > 100) {
       throw new ConvexError("Promote 100 students or fewer at a time");
     }
-    if (
-      String(args.fromClassId) === String(args.toClassId) &&
-      String(args.fromSessionId) === String(args.toSessionId)
-    ) {
-      throw new ConvexError("Choose a different target class or session");
+    if (String(args.fromSessionId) === String(args.toSessionId)) {
+      throw new ConvexError(
+        "Student promotion requires selecting an upcoming academic session. For mid-session class changes, update the student record directly."
+      );
+    }
+    if (String(args.fromClassId) === String(args.toClassId)) {
+      throw new ConvexError("Choose a different target class for promotion");
     }
 
     const [fromClass, toClass, fromSession, toSession] = await Promise.all([
