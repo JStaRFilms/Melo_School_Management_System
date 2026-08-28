@@ -3,7 +3,7 @@
 **Status:** Genesis decision draft for review
 **Session:** `orch-20260722-114501` / G1
 **Date:** 2026-07-22
-**Decision record:** [`ADR-AdmissionsApplicationSurfaceAndLifecycle.md`](../decisions/ADR-AdmissionsApplicationSurfaceAndLifecycle.md)
+**Decision record:** [`ADR-008-admissions-application-surface-and-lifecycle.md`](../decisions/ADR-008-admissions-application-surface-and-lifecycle.md)
 
 ## 1. Executive decision
 

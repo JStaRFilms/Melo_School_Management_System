@@ -1,4 +1,4 @@
-# OCR Architecture Decision
+# ADR-007: OCR Architecture Decision
 
 ## Decision
 

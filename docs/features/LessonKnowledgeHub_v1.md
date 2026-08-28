@@ -298,8 +298,8 @@ Additional rules:
 
 The kickoff sample references already in the repo are:
 
-- `docs/School curriculim example/2ND TERM JS 1 SOCIAL STUDIES.pdf`
-- `docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf`
+- `docs/School curriculum example/2ND TERM JS 1 SOCIAL STUDIES.pdf`
+- `docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf`
 
 Use these as the reference pair for label extraction, topic naming, and expected lesson-note structure. The first file is the canonical curriculum source sample; the second is the reference lesson-note shape.
 

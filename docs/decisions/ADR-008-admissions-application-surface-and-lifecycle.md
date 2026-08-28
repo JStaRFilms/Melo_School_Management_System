@@ -1,4 +1,4 @@
-# ADR: Admissions Application Surface and Lifecycle
+# ADR-008: Admissions Application Surface and Lifecycle
 
 - **Status:** Proposed — Genesis review required
 - **Date:** 2026-07-22

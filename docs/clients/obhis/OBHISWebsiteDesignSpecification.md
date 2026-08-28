@@ -1,7 +1,7 @@
 # OBHIS Website Design Specification — `obhis-v1`
 
 **Status:** D2 design source of truth for B5; factual content and brand assets remain approval-gated.
-**Depends on:** `OBHISPublicWebsiteBrief.md`, `SharedCoreBespokeSchoolWebsiteArchitecture.md`, `ADR-SharedCoreBespokeSchoolSites.md`, and `ADR-AdmissionsApplicationSurfaceAndLifecycle.md`.
+**Depends on:** `OBHISPublicWebsiteBrief.md`, `SharedCoreBespokeSchoolWebsiteArchitecture.md`, `ADR-009-shared-core-bespoke-school-sites.md`, and `ADR-008-admissions-application-surface-and-lifecycle.md`.
 **Companion mockup:** `docs/mockups/sites/obhis-public-site.html`
 **Companion approvals:** `docs/features/OBHISContentApprovalSheet.md`
 

@@ -1,4 +1,4 @@
-# ADR: Shared Core with Code-Controlled Bespoke School Sites
+# ADR-009: Shared Core with Code-Controlled Bespoke School Sites
 
 - **Status:** Accepted for Genesis handoff
 - **Date:** 2026-07-22

@@ -254,7 +254,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
   it("reads a digital PDF with the native parser", async () => {
     const samplePdf = readFileSync(
       new URL(
-        "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
+        "../../../../../docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
         import.meta.url
       )
     );
@@ -275,7 +275,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
   it("fails instead of indexing partial PDF text when the global parse budget expires", async () => {
     const samplePdf = readFileSync(
       new URL(
-        "../../../../../docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
+        "../../../../../docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
         import.meta.url
       )
     );
