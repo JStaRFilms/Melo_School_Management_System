@@ -13,6 +13,7 @@ import {
   Layers,
   PlusCircle,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { cn } from "@/utils";
 
@@ -27,6 +28,9 @@ interface StudentPromotionPanelProps {
   classes: ClassSummary[];
   sessions: SessionSummary[];
   selectedCount: number;
+  totalRosterCount?: number;
+  promotedCount?: number;
+  unpromotedCount?: number;
   sourceClassId: string | null;
   sourceSessionId: string | null;
   targetClassId: string;
@@ -37,6 +41,7 @@ interface StudentPromotionPanelProps {
   onTargetSessionChange: (value: string) => void;
   onSubjectModeChange: (value: PromotionSubjectMode) => void;
   onSelectAllVisible: () => void;
+  onSelectUnpromotedOnly?: () => void;
   onClearSelection: () => void;
   onPromote: () => void;
 }
@@ -45,6 +50,9 @@ export function StudentPromotionPanel({
   classes,
   sessions,
   selectedCount,
+  totalRosterCount,
+  promotedCount = 0,
+  unpromotedCount = 0,
   sourceClassId,
   sourceSessionId,
   targetClassId,
@@ -55,6 +63,7 @@ export function StudentPromotionPanel({
   onTargetSessionChange,
   onSubjectModeChange,
   onSelectAllVisible,
+  onSelectUnpromotedOnly,
   onClearSelection,
   onPromote,
 }: StudentPromotionPanelProps) {
@@ -168,14 +177,24 @@ export function StudentPromotionPanel({
             <strong className="text-slate-900 font-bold">{selectedCount}</strong> student(s) selected from roster
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onSelectUnpromotedOnly && (
+            <button
+              type="button"
+              onClick={onSelectUnpromotedOnly}
+              disabled={!hasSource || isPromoting || unpromotedCount === 0}
+              className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+            >
+              Select Unpromoted ({unpromotedCount})
+            </button>
+          )}
           <button
             type="button"
             onClick={onSelectAllVisible}
             disabled={!hasSource || isPromoting}
             className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
           >
-            Select All
+            Select All ({totalRosterCount ?? 0})
           </button>
           <button
             type="button"
@@ -343,6 +362,11 @@ export function StudentPromotionPanel({
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700 uppercase">
                   Term 3 Active
                 </span>
+                {totalRosterCount !== undefined && totalRosterCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200/80 px-2 py-0.5 text-[9px] font-bold text-slate-700">
+                    {promotedCount} of {totalRosterCount} Promoted
+                  </span>
+                )}
                 {selectedCount > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
                     {selectedCount} student(s) selected
@@ -408,9 +432,10 @@ export function StudentPromotionPanel({
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                aria-label="Close"
               >
-                Close
+                <X className="h-4 w-4" />
               </button>
             </div>
 

@@ -192,11 +192,56 @@ export default function StudentsPage() {
     );
   }, [matrix]);
 
-  useEffect(() => {
-    if (!shouldShowPromotionPanel) {
-      setPromotionStudentIds([]);
-    }
-  }, [shouldShowPromotionPanel]);
+  const cancelStudentPromotion = useMutation(
+    "functions/academic/studentEnrollment:cancelStudentPromotion" as never
+  );
+
+  const promotedStudentsCount = useMemo(() => {
+    if (!matrix?.students) return 0;
+    return matrix.students.filter((s) => s.promotionStatus?.isPromoted).length;
+  }, [matrix]);
+
+  const unpromotedStudentsCount = useMemo(() => {
+    if (!matrix?.students) return 0;
+    return matrix.students.filter((s) => !s.promotionStatus?.isPromoted).length;
+  }, [matrix]);
+
+  const handleSelectUnpromotedOnly = useCallback(() => {
+    if (!matrix?.students) return;
+    const unpromotedIds = matrix.students
+      .filter((s) => !s.promotionStatus?.isPromoted)
+      .map((s) => s._id);
+    setPromotionStudentIds(unpromotedIds);
+  }, [matrix]);
+
+  const handleCancelPromotion = useCallback(
+    async (studentId: string) => {
+      if (!selectedSessionId) return;
+      const student = matrix?.students.find((s) => s._id === studentId);
+      const studentName = student?.studentName ?? "this student";
+      if (!window.confirm(`Cancel staged promotion for ${studentName}?`)) {
+        return;
+      }
+
+      try {
+        await cancelStudentPromotion({
+          studentId: studentId as never,
+          fromSessionId: selectedSessionId as never,
+        });
+        showNotice({
+          tone: "success",
+          message: `Cancelled promotion for ${studentName}.`,
+        });
+        setPromotionStudentIds((prev) => prev.filter((id) => id !== studentId));
+      } catch (err) {
+        showNotice({
+          tone: "error",
+          message: getUserFacingErrorMessage(err, "Failed to cancel promotion."),
+        });
+      }
+    },
+    [cancelStudentPromotion, matrix, selectedSessionId, showNotice]
+  );
 
   const activeStudentForSheet = useMemo(() => {
     if (!matrix || !selectedStudentId) return null;
@@ -466,15 +511,12 @@ export default function StudentsPage() {
   }, []);
 
   const handleSelectAllVisibleForPromotion = useCallback(() => {
-    const visibleIds = matrix?.students.map((student) => student._id) ?? [];
-    if (visibleIds.length > MAX_PROMOTION_BATCH) {
-      showNotice({
-        tone: "warning",
-        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once. Narrow the roster or select fewer students.`,
-      });
+    if (!matrix?.students) {
+      return;
     }
-    setPromotionStudentIds(visibleIds.slice(0, MAX_PROMOTION_BATCH));
-  }, [matrix, showNotice]);
+
+    setPromotionStudentIds(matrix.students.map((student) => student._id));
+  }, [matrix]);
 
   const handlePromoteStudents = useCallback(async () => {
     if (
@@ -484,13 +526,9 @@ export default function StudentsPage() {
       !promotionTargetSessionId ||
       promotionStudentIds.length === 0
     ) {
-      return;
-    }
-
-    if (promotionStudentIds.length > MAX_PROMOTION_BATCH) {
       showNotice({
         tone: "warning",
-        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once.`,
+        message: "Choose students, target class, and target session to promote.",
       });
       return;
     }
@@ -513,7 +551,27 @@ export default function StudentsPage() {
       sessions?.find((session) => session._id === promotionTargetSessionId)?.name ??
       "the target session";
 
-    if (
+    const alreadyPromotedStudents = matrix?.students.filter(
+      (s) => promotionStudentIds.includes(s._id) && s.promotionStatus?.isPromoted
+    );
+
+    if (alreadyPromotedStudents && alreadyPromotedStudents.length > 0) {
+      const names = alreadyPromotedStudents
+        .slice(0, 3)
+        .map((s) => s.studentName)
+        .join(", ");
+      const extra =
+        alreadyPromotedStudents.length > 3
+          ? ` and ${alreadyPromotedStudents.length - 3} others`
+          : "";
+      if (
+        !window.confirm(
+          `${alreadyPromotedStudents.length} selected student(s) (${names}${extra}) are already slated for a promotion. Re-promoting will overwrite their previous target class with ${targetClassName} (${targetSessionName}). Continue?`
+        )
+      ) {
+        return;
+      }
+    } else if (
       !window.confirm(
         `Promote ${promotionStudentIds.length} student(s) to ${targetClassName} / ${targetSessionName}? Old report cards and invoices will not be changed.`
       )
@@ -523,28 +581,19 @@ export default function StudentsPage() {
 
     setIsPromoting(true);
     try {
-      const result = (await promoteStudents({
+      await promoteStudents({
         studentIds: promotionStudentIds,
         fromClassId: selectedClassId,
         fromSessionId: selectedSessionId,
         toClassId: promotionTargetClassId,
         toSessionId: promotionTargetSessionId,
         subjectEnrollmentMode: promotionSubjectMode,
-      } as never)) as { promotedCount: number; subjectSelectionCount: number };
-
+      } as never);
       showNotice({
         tone: "success",
-        message:
-          selectedSessionId === promotionTargetSessionId
-            ? `Promoted ${result.promotedCount} student(s). Added ${result.subjectSelectionCount} target subject enrollment(s).`
-            : `Pre-promoted ${result.promotedCount} student(s) for the target session. Added ${result.subjectSelectionCount} subject enrollment(s); placements will become effective on rollover.`,
+        message: `Promoted ${promotionStudentIds.length} students to ${targetClassName}.`,
       });
       setPromotionStudentIds([]);
-      setSelectedStudentId(null);
-      if (selectedSessionId === promotionTargetSessionId) {
-        setSelectedClassId(promotionTargetClassId);
-        setSelectedSessionId(promotionTargetSessionId);
-      }
     } catch (err) {
       showNotice({
         tone: "error",
@@ -555,6 +604,7 @@ export default function StudentsPage() {
     }
   }, [
     classes,
+    matrix,
     promoteStudents,
     promotionStudentIds,
     promotionSubjectMode,
@@ -572,17 +622,13 @@ export default function StudentsPage() {
     setIsUnifiedSheetOpen(true);
   }, []);
 
-  const handleNewAdmission = useCallback(() => {
+  const handleNewAdmission = () => {
     setSelectedStudentId(null);
-    setActiveTab("profile");
-    setCreationTab("quick");
-    resetStudentCreationForm();
-    if (isMobile) {
-      setIsCreationSheetOpen(true);
-      return;
-    }
-    window.setTimeout(() => studentNameInputRef.current?.focus(), 0);
-  }, [isMobile, resetStudentCreationForm]);
+    setIsCreationSheetOpen(true);
+    setTimeout(() => {
+      studentNameInputRef.current?.focus();
+    }, 300);
+  };
 
   if (classes === undefined || sessions === undefined) {
     return (
@@ -633,7 +679,6 @@ export default function StudentsPage() {
         {/* Main Bucket - Content Primary */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 overflow-x-hidden">
           <div className="max-w-[1400px] mx-auto space-y-8">
-            
             <div className="space-y-4">
               <AdminHeader
                 title="Student Enrollment"
@@ -670,21 +715,17 @@ export default function StudentsPage() {
                 }
               />
 
-              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-                <EnrollmentFilters
-                  classes={classes}
-                  sessions={sessions}
-                  selectedClassId={selectedClassId}
-                  selectedSessionId={selectedSessionId}
-                  onClassChange={setSelectedClassId}
-                  onSessionChange={setSelectedSessionId}
-                />
-              </div>
+              <EnrollmentFilters
+                classes={classes}
+                sessions={sessions}
+                selectedClassId={selectedClassId}
+                selectedSessionId={selectedSessionId}
+                onClassChange={setSelectedClassId}
+                onSessionChange={setSelectedSessionId}
+              />
             </div>
 
-
             <div className="space-y-8">
-
               {selectedClassId && selectedSessionId ? (
                 <>
                   {shouldShowPromotionPanel ? (
@@ -692,6 +733,9 @@ export default function StudentsPage() {
                       classes={classes}
                       sessions={sessions}
                       selectedCount={promotionStudentIds.length}
+                      totalRosterCount={matrix?.students.length ?? 0}
+                      promotedCount={promotedStudentsCount}
+                      unpromotedCount={unpromotedStudentsCount}
                       sourceClassId={selectedClassId}
                       sourceSessionId={selectedSessionId}
                       targetClassId={promotionTargetClassId}
@@ -702,6 +746,7 @@ export default function StudentsPage() {
                       onTargetSessionChange={setPromotionTargetSessionId}
                       onSubjectModeChange={setPromotionSubjectMode}
                       onSelectAllVisible={handleSelectAllVisibleForPromotion}
+                      onSelectUnpromotedOnly={handleSelectUnpromotedOnly}
                       onClearSelection={() => setPromotionStudentIds([])}
                       onPromote={handlePromoteStudents}
                     />
@@ -714,8 +759,10 @@ export default function StudentsPage() {
                     studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
                     selectedStudentId={selectedStudentId}
                     promotionStudentIds={promotionStudentIds}
+                    isPromotionMode={shouldShowPromotionPanel}
                     onSelectStudent={setSelectedStudentId}
                     onTogglePromotionStudent={handleTogglePromotionStudent}
+                    onCancelPromotion={handleCancelPromotion}
                     onOpenUnifiedEditor={openUnifiedEditor}
                     onToggle={handleToggleSubject}
                     onSetStudentSubjects={handleSetStudentSubjects}
@@ -894,10 +941,10 @@ export default function StudentsPage() {
       {isMobile && isCreationSheetOpen && (
         <div className="fixed inset-0 z-[70]">
           <div 
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300"
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-overlay-fade-in"
             onClick={() => setIsCreationSheetOpen(false)}
           />
-          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-in slide-in-from-bottom duration-500 ease-out">
+          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-sheet-slide-up ease-out">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
               <div className="space-y-1">
                 <h3 className="text-xl font-black tracking-tight text-slate-950">New Admission</h3>

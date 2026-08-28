@@ -1113,10 +1113,33 @@ export const promoteStudents = mutation({
         throw new ConvexError("One selected student account is not available");
       }
 
-      if (String(student.classId) !== String(args.fromClassId)) {
-        throw new ConvexError(
-          "Only students currently enrolled in the selected source class can be promoted"
-        );
+      // Check existing promotion for this student and fromSession
+      const existingPromo = await ctx.db
+        .query("studentPromotions")
+        .withIndex("by_student_and_from_session", (q) =>
+          q.eq("studentId", studentId).eq("fromSessionId", args.fromSessionId)
+        )
+        .first();
+
+      if (existingPromo) {
+        // Clean up previous staged selections if target class or session changed
+        if (
+          String(existingPromo.toClassId) !== String(args.toClassId) ||
+          String(existingPromo.toSessionId) !== String(args.toSessionId)
+        ) {
+          const oldStaged = await ctx.db
+            .query("studentSubjectSelections")
+            .withIndex("by_student_and_class_and_session", (q: any) =>
+              q
+                .eq("studentId", studentId)
+                .eq("classId", existingPromo.toClassId)
+                .eq("sessionId", existingPromo.toSessionId)
+            )
+            .collect();
+          for (const oldSel of oldStaged) {
+            await ctx.db.delete(oldSel._id);
+          }
+        }
       }
 
       const previousSelections = await ctx.db
@@ -1156,14 +1179,7 @@ export const promoteStudents = mutation({
         ...new Set(subjectIdsToEnroll.map((subjectId) => String(subjectId))),
       ] as Array<Id<"subjects">>;
 
-      if (String(args.fromSessionId) === String(args.toSessionId)) {
-        await ctx.db.patch(studentId, {
-          classId: args.toClassId,
-          updatedAt: now,
-        });
-      } else {
-        await ctx.db.patch(studentId, { updatedAt: now });
-      }
+      await ctx.db.patch(studentId, { updatedAt: now });
 
       let insertedForStudent = 0;
       for (const subjectId of uniqueSubjectIdsToEnroll) {
@@ -1183,25 +1199,84 @@ export const promoteStudents = mutation({
         insertedForStudent += 1;
       }
 
-      await ctx.db.insert("studentPromotions", {
-        schoolId,
-        studentId,
-        fromClassId: args.fromClassId,
-        toClassId: args.toClassId,
-        fromSessionId: args.fromSessionId,
-        toSessionId: args.toSessionId,
-        subjectEnrollmentMode: args.subjectEnrollmentMode,
-        subjectEnrollmentCount: insertedForStudent,
-        batchKey,
-        createdAt: now,
-        createdBy: userId,
-      });
+      if (existingPromo) {
+        await ctx.db.patch(existingPromo._id, {
+          fromClassId: args.fromClassId,
+          toClassId: args.toClassId,
+          fromSessionId: args.fromSessionId,
+          toSessionId: args.toSessionId,
+          subjectEnrollmentMode: args.subjectEnrollmentMode,
+          subjectEnrollmentCount: insertedForStudent,
+          batchKey,
+          createdAt: now,
+          createdBy: userId,
+        });
+      } else {
+        await ctx.db.insert("studentPromotions", {
+          schoolId,
+          studentId,
+          fromClassId: args.fromClassId,
+          toClassId: args.toClassId,
+          fromSessionId: args.fromSessionId,
+          toSessionId: args.toSessionId,
+          subjectEnrollmentMode: args.subjectEnrollmentMode,
+          subjectEnrollmentCount: insertedForStudent,
+          batchKey,
+          createdAt: now,
+          createdBy: userId,
+        });
+      }
 
       promotedCount += 1;
       subjectSelectionCount += insertedForStudent;
     }
 
     return { promotedCount, subjectSelectionCount };
+  },
+});
+
+export const cancelStudentPromotion = mutation({
+  args: {
+    studentId: v.id("students"),
+    fromSessionId: v.id("academicSessions"),
+  },
+  returns: v.object({
+    cancelled: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const promotion = await ctx.db
+      .query("studentPromotions")
+      .withIndex("by_student_and_from_session", (q) =>
+        q.eq("studentId", args.studentId).eq("fromSessionId", args.fromSessionId)
+      )
+      .first();
+
+    if (!promotion || promotion.schoolId !== schoolId) {
+      throw new ConvexError("Promotion record not found for this session");
+    }
+
+    // Remove staged subject selections for target class & target session
+    const stagedSelections = await ctx.db
+      .query("studentSubjectSelections")
+      .withIndex("by_student_and_class_and_session", (q) =>
+        q
+          .eq("studentId", args.studentId)
+          .eq("classId", promotion.toClassId)
+          .eq("sessionId", promotion.toSessionId)
+      )
+      .collect();
+
+    for (const sel of stagedSelections) {
+      await ctx.db.delete(sel._id);
+    }
+
+    await ctx.db.delete(promotion._id);
+    await ctx.db.patch(args.studentId, { updatedAt: Date.now() });
+
+    return { cancelled: true };
   },
 });
 
@@ -1468,6 +1543,17 @@ export const getClassStudentSubjectMatrix = query({
         admissionNumber: v.string(),
         photoUrl: v.union(v.string(), v.null()),
         selectedSubjectIds: v.array(v.id("subjects")),
+        promotionStatus: v.union(
+          v.object({
+            isPromoted: v.boolean(),
+            targetClassId: v.optional(v.id("classes")),
+            targetClassName: v.optional(v.string()),
+            targetSessionId: v.optional(v.id("academicSessions")),
+            targetSessionName: v.optional(v.string()),
+            promotedAt: v.optional(v.number()),
+          }),
+          v.null()
+        ),
       })
     ),
   }),
@@ -1514,22 +1600,41 @@ export const getClassStudentSubjectMatrix = query({
       if (subject && !subject.isArchived) {
         subjects.push({
           _id: subject._id,
-            name: normalizeHumanName(subject.name),
+          name: normalizeHumanName(subject.name),
           code: subject.code,
         });
       }
     }
     const visibleSubjectIds = new Set(subjects.map((subject) => String(subject._id)));
 
-    // Get students in this class
-    const students = await ctx.db
-      .query("students")
-      .withIndex("by_school_and_class", (q) =>
-        q.eq("schoolId", schoolId).eq("classId", args.classId)
+    // 1. Resolve students for this class and session
+    const studentIdSet = new Set<string>();
+
+    if (sessionDoc.isActive) {
+      const baselineStudents = await ctx.db
+        .query("students")
+        .withIndex("by_school_and_class", (q) =>
+          q.eq("schoolId", schoolId).eq("classId", args.classId)
+        )
+        .collect();
+      for (const student of baselineStudents) {
+        if (!student.isArchived) {
+          studentIdSet.add(String(student._id));
+        }
+      }
+    }
+
+    const promotedIntoClass = await ctx.db
+      .query("studentPromotions")
+      .withIndex("by_to_class_and_to_session", (q) =>
+        q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)
       )
       .collect();
+    for (const promo of promotedIntoClass) {
+      studentIdSet.add(String(promo.studentId));
+    }
 
-    const [allSelections, aggregations, optOuts] = await Promise.all([
+    const [allSelections, aggregations, optOuts, outgoingPromotions] = await Promise.all([
       ctx.db
         .query("studentSubjectSelections")
         .withIndex("by_class_and_session", (q) =>
@@ -1544,7 +1649,54 @@ export const getClassStudentSubjectMatrix = query({
         classId: args.classId,
         sessionId: args.sessionId,
       }),
+      ctx.db
+        .query("studentPromotions")
+        .withIndex("by_from_class_and_from_session", (q) =>
+          q.eq("fromClassId", args.classId).eq("fromSessionId", args.sessionId)
+        )
+        .collect(),
     ]);
+
+    for (const selection of allSelections) {
+      studentIdSet.add(String(selection.studentId));
+    }
+
+    // Build outgoing promotion lookup maps
+    const outgoingPromoMap = new Map<string, (typeof outgoingPromotions)[0]>();
+    const targetClassIds = new Set<string>();
+    const targetSessionIds = new Set<string>();
+
+    for (const promo of outgoingPromotions) {
+      outgoingPromoMap.set(String(promo.studentId), promo);
+      targetClassIds.add(String(promo.toClassId));
+      targetSessionIds.add(String(promo.toSessionId));
+    }
+
+    const targetClassDocs = await Promise.all(
+      Array.from(targetClassIds).map((id) => ctx.db.get(id as Id<"classes">))
+    );
+    const targetClassMap = new Map<string, string>();
+    for (const doc of targetClassDocs) {
+      if (doc) targetClassMap.set(String(doc._id), normalizeHumanName(doc.name));
+    }
+
+    const targetSessionDocs = await Promise.all(
+      Array.from(targetSessionIds).map((id) => ctx.db.get(id as Id<"academicSessions">))
+    );
+    const targetSessionMap = new Map<string, string>();
+    for (const doc of targetSessionDocs) {
+      if (doc) targetSessionMap.set(String(doc._id), normalizeHumanName(doc.name));
+    }
+
+    // Fetch student documents
+    const studentDocs = (
+      await Promise.all(
+        Array.from(studentIdSet).map((id) => ctx.db.get(id as Id<"students">))
+      )
+    ).filter(
+      (student): student is NonNullable<typeof student> =>
+        Boolean(student && student.schoolId === schoolId && !student.isArchived)
+    );
 
     // Build selection map
     const selectionMap = new Map<string, string[]>();
@@ -1559,6 +1711,7 @@ export const getClassStudentSubjectMatrix = query({
       }
       selectionMap.get(key)!.push(String(selection.subjectId));
     }
+
     const optOutMap = new Map<string, Set<string>>();
     for (const optOut of optOuts) {
       const studentKey = String(optOut.studentId);
@@ -1568,28 +1721,43 @@ export const getClassStudentSubjectMatrix = query({
       optOutMap.get(studentKey)!.add(String(optOut.aggregationId));
     }
 
-    const studentResults = students
-      .filter((student) => !student.isArchived)
+    const studentResults = studentDocs
       .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
-        .map(async (student) => {
-          const [studentUser, photoUrl] = await Promise.all([
-            ctx.db.get(student.userId),
-            student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
-          ]);
-          const studentName = getReadableUserName(studentUser);
-          const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
-            explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
-            aggregations,
-            optOutAggregationIds: optOutMap.get(String(student._id)) ?? new Set(),
-          });
-          return {
-            _id: student._id,
-            studentName: studentName.displayName || "Unnamed Student",
-            admissionNumber: student.admissionNumber,
-            photoUrl,
-            selectedSubjectIds: Array.from(effectiveSubjectIds)
-              .filter((id) => visibleSubjectIds.has(id))
-              .map((id) => id as any),
+      .map(async (student) => {
+        const [studentUser, photoUrl] = await Promise.all([
+          ctx.db.get(student.userId),
+          student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+        ]);
+        const studentName = getReadableUserName(studentUser);
+        const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
+          explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
+          aggregations,
+          optOutAggregationIds: optOutMap.get(String(student._id)) ?? new Set(),
+        });
+
+        const promo = outgoingPromoMap.get(String(student._id));
+        const promotionStatus = promo
+          ? {
+              isPromoted: true,
+              targetClassId: promo.toClassId,
+              targetClassName: targetClassMap.get(String(promo.toClassId)) ?? "Target Class",
+              targetSessionId: promo.toSessionId,
+              targetSessionName: targetSessionMap.get(String(promo.toSessionId)) ?? "Target Session",
+              promotedAt: promo.createdAt,
+            }
+          : {
+              isPromoted: false,
+            };
+
+        return {
+          _id: student._id,
+          studentName: studentName.displayName || "Unnamed Student",
+          admissionNumber: student.admissionNumber,
+          photoUrl,
+          selectedSubjectIds: Array.from(effectiveSubjectIds)
+            .filter((id) => visibleSubjectIds.has(id))
+            .map((id) => id as any),
+          promotionStatus,
         };
       });
 

@@ -1197,7 +1197,10 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_student", ["studentId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"])
-    .index("by_to_class_and_to_session", ["toClassId", "toSessionId"]),
+    .index("by_to_class_and_to_session", ["toClassId", "toSessionId"])
+    .index("by_from_class_and_from_session", ["fromClassId", "fromSessionId"])
+    .index("by_student_and_from_session", ["studentId", "fromSessionId"])
+    .index("by_student_and_to_session", ["studentId", "toSessionId"]),
 
   studentSubjectAggregationOptOuts: defineTable({
     schoolId: v.id("schools"),

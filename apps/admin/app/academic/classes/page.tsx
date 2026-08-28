@@ -388,9 +388,9 @@ export default function ClassesPage() {
 
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
         {/* Sidebar Bucket - Locked & Pinned */}
-        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
-          <div id="class-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
-            <div className="hidden lg:block h-full">
+        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0 gap-2">
+          <div id="class-builder-section" className="flex-1 min-h-0 flex flex-col">
+            <div className="hidden lg:flex lg:flex-col h-full min-h-0">
               {selectedClassId && currentClass ? (
                 <ClassEditForm
                   classDoc={currentClass}

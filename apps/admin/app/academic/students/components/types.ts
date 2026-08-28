@@ -21,6 +21,15 @@ export type TermSummary = {
   reportCardCalculationMode: "standalone" | "cumulative_annual";
 };
 
+export type PromotionStatus = {
+  isPromoted: boolean;
+  targetClassId?: string;
+  targetClassName?: string;
+  targetSessionId?: string;
+  targetSessionName?: string;
+  promotedAt?: number;
+} | null;
+
 export type EnrollmentMatrix = {
   subjects: Array<{ _id: string; name: string; code: string }>;
   students: Array<{
@@ -29,6 +38,7 @@ export type EnrollmentMatrix = {
     admissionNumber: string;
     photoUrl: string | null;
     selectedSubjectIds: string[];
+    promotionStatus?: PromotionStatus;
   }>;
 };
 

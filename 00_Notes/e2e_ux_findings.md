@@ -132,20 +132,29 @@ This document tracks all observations, issues, UX refinements, and their resolut
       5. *Workspace Navigation Preference Selection* (Allows the admin to choose between **Straight Grouped List [Default]**, **Collapsible Accordions**, or **Top Domain Switcher**).
   - **Interactive Orientation Checklist:**
     - Persistent dismissible "Setup Progress" widget on the Admin Dashboard showing completed vs. pending institution setup milestones with direct deep links.
-- [ ] **Comprehensive Staff Onboarding & Structured Faculty Profiles Module**
+- [ ] **Comprehensive Staff Onboarding, Structured Faculty Profiles & Lifecycle Tracking**
   - **Overview:**
-    - As institutions grow, expand the basic teacher directory into a structured Faculty & Staff HR module supporting detailed personal information, professional credentials, and self-service onboarding.
+    - As institutions grow, expand the basic teacher directory into a structured Faculty & Staff HR module supporting detailed personal information, professional credentials, dynamic role progressions, session-bound assignments, and separation documentation.
   - **Structured Faculty Identity:**
     - **Honorific / Title:** `Mr.`, `Mrs.`, `Ms.`, `Dr.`, `Prof.`, `Engr.`, `Pastor`, `Imam`.
     - **Name Fields:** `firstName`, `middleName` (optional), `lastName`.
     - **Demographics:** `gender` (`male`, `female`, `other`), `dateOfBirth` (optional), `phone`, `emergencyContact`.
   - **Professional & Employment Metadata:**
     - **Staff Identifier:** System or school-assigned `staffCode` / `employeeId`.
-    - **Department & Designation:** Primary department (e.g. *Humanities*, *Sciences*, *Vocational*), administrative title (e.g. *Vice Principal*, *HOD Science*, *Form Tutor*).
-    - **Credentials & Documentation:** Highest degree obtained, certifications, resume/CV storage files.
+    - **Employment Date & Initial Role:** Employment start date, initial hiring designation/rank (e.g. *Assistant Teacher*, *Subject Teacher*, *Class Form Teacher*, *Head of Department*, *Vice Principal*).
+    - **Dynamic Role Registry:** School-wide configurable roles and designations that grow organically and populate dropdown selectors across the system.
+  - **Career Progression & Role Promotion History:**
+    - Immutable chronological log of internal role changes, promotions, department transfers, and title elevations with effective dates, previous title, new title, and authorizing admin notes.
+  - **Session-Scoped Class & Form Teacher Assignments:**
+    - Explicit `(classId, sessionId) → formTeacherId` mapping ensuring class leadership is bounded to specific academic sessions.
+    - Historical report cards and assessment records preserve the exact form teacher assigned during that historical session.
+    - Safe archiving: teachers who conclude a session can be archived in subsequent sessions without throwing active class assignment blockers or breaking historical report cards.
+  - **Separation, Exits & Supporting Documentation Uploads:**
+    - Formal recording of staff departure: exit date, departure type (`resigned`, `contract_ended`, `terminated_with_cause`, `retired`, `transferred`), and final handover status.
+    - Secure storage file uploads for supporting documentation (e.g. *Employment Letter*, *Promotion Letter*, *Resignation Letter*, *Termination Notice*, *Clearance Certificate*).
   - **Full Staff Onboarding Workflow (Dedicated Module):**
     - Guided self-service onboarding link sent via email upon provisioning.
-    - Document collection (National ID / Passport, degree certificates).
+    - Document collection (National ID / Passport, degree certificates, CV/Resume).
     - Contract acknowledgment and staff code of conduct sign-off before activating portal privileges.
 - [ ] **Comprehensive Student Lifecycle, Enrollment History & Timeline Audit Logs**
   - **Overview:**

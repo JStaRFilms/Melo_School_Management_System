@@ -241,6 +241,7 @@ describe("getAuthenticatedSchoolMembership", () => {
       schoolId: "school-1",
       role: "teacher",
       isSchoolAdmin: false,
+      isSuspended: false,
     });
   });
 

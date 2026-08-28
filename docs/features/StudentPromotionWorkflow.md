@@ -1,37 +1,41 @@
 # Student Promotion Workflow
 
 ## Goal
-Allow school admins to promote selected active students from one class/session context to another without rewriting historical academic or billing records.
+Allow school admins to stage and execute student promotions across academic sessions without colliding student rosters or modifying historical academic and billing records.
 
-## Audit Outcome
-Promotions were previously **partial**: admins could edit a student's active `classId` from the profile editor, but there was no bulk promotion workflow, no target-session subject enrollment, and no promotion audit row. Historical report-card reads could also mix same-session subject selections across old and new classes.
+## Problem Solved
+Previously, modifying a student's class pointer immediately shifted them across all queries, causing collisions when viewing an older session's roster or preparing the next session's roster. The system now decouples annual promotions into a **Session-Oriented Promotion Architecture**.
 
-## Implemented Behavior
-- Admins can select students from `/academic/students` and promote them to a target class and target session.
-- The promotion panel is intentionally end-of-year scoped: it only appears when the selected session's active term is set to `cumulative_annual` report-card mode. Standalone term reporting keeps the student roster focused on enrollment and subject selection.
-- The workflow updates only the student's current active class pointer.
-- Historical records remain tied to their original context:
-  - `studentSubjectSelections` for the old class/session are preserved.
-  - `assessmentRecords` are not mutated.
-  - `studentInvoices` and payment rows are not mutated.
-  - `familyId`, family members, and parent links are not mutated.
-- Archived students and archived linked student users are blocked from promotion.
-- The target class and target session must belong to the same school and be active/non-archived.
-- New subject enrollment can be created in the target class/session using one of three modes:
-  - all active target-class subjects
-  - only subjects that match the old source selection
-  - no subject enrollment yet
-- Each promoted student writes an auditable `studentPromotions` row with source/target class, source/target session, subject enrollment mode, subject count, batch key, timestamp, and actor.
-- Report-card subject resolution now uses subject selections for the report-card class context only, preventing same-session old/new class selections from being combined.
+## Architecture & Data Flow
+
+### 1. Staging & Persistence (`studentPromotions`)
+- End-of-session promotions (available during Term 3 / cumulative annual mode) write a record to `studentPromotions` with `(studentId, fromClassId, fromSessionId, toClassId, toSessionId)`.
+- Re-promoting students updates their existing promotion entry and cleans up previous staged subject selections.
+- Staged promotions can be cancelled/undone via `cancelStudentPromotion`.
+
+### 2. Backwards Session Lockdown
+- Promotions to previous sessions or within the same session are strictly blocked.
+- The UI disables past sessions in the destination dropdown and displays an alert banner if no upcoming session has been created.
+- The backend enforces `toSession.startDate > fromSession.startDate`.
+
+### 3. Dynamic Session Roster Resolution
+Class membership for a session `(classId, sessionId)` is computed dynamically:
+1. Active session baseline students (`students.classId === classId && session.isActive`).
+2. Students promoted into `(classId, sessionId)` (`studentPromotions.toClassId === classId && studentPromotions.toSessionId === sessionId`).
+3. Students with existing `studentSubjectSelections` or `assessmentRecords` for `(classId, sessionId)`.
+
+### 4. Source Session Badging
+- In the source session, students remain in their source class and receive a visual badge:
+  `Promoted → [Target Class] ([Target Session])` with an optional Undo action.
+- Admins can filter by "Select Unpromoted" to quickly batch-promote remaining students.
+- Re-promoting an already-promoted student triggers a confirmation modal warning that their target class assignment will be overwritten.
+
+### 5. Historical Isolation
+- Historical records (`assessmentRecords`, `studentSubjectSelections`, `studentInvoices`) remain strictly tied to their historical session and class.
+- Archived students are filtered from promotion lists.
 
 ## Safety Rules
-- Promotion is admin-only.
-- A promotion cannot target the exact same class and session as the source context.
-- The mutation processes at most 100 selected students at a time.
-- Existing target subject-selection rows are not duplicated.
-- Old report cards and invoices are intentionally left unchanged.
-
-## Verification Notes
-- Student movement is school-scoped through Convex auth membership and source/target record ownership checks.
-- Billing invoices remain tied to their saved `studentId`, `classId`, `sessionId`, and `termId` snapshots.
-- Report cards continue to prefer saved `assessmentRecords.classId`; batch report cards pass the selected class as preferred context.
+- Promotion and cancellation mutations require school admin privileges.
+- Backwards promotions and same-(class,session) promotions are prohibited.
+- Promotions process at most 100 students per batch.
+- Subject selection modes allow rolling over all target class subjects, matching previous subjects, or none.

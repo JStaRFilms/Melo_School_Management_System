@@ -1,10 +1,9 @@
-"use client";
-
 import Image from "next/image";
+import { BookOpen, GraduationCap, UserCog } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { humanNameFinalStrict } from "@/human-name";
-import { BookOpen, UserCog } from "lucide-react";
-import { useEffect, useState } from "react";
+
 import type { EnrollmentMatrix } from "./types";
 
 interface SubjectSelectionMobileEditorProps {
@@ -12,8 +11,10 @@ interface SubjectSelectionMobileEditorProps {
   totalSubjects: number;
   selectedStudentId?: string | null;
   promotionStudentIds?: string[];
+  isPromotionMode?: boolean;
   onSelectStudent?: (studentId: string) => void;
   onTogglePromotionStudent?: (studentId: string) => void;
+  onCancelPromotion?: (studentId: string) => void;
   openUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
 }
 
@@ -22,7 +23,9 @@ export function SubjectSelectionMobileEditor({
   totalSubjects,
   selectedStudentId,
   promotionStudentIds = [],
+  isPromotionMode = false,
   onTogglePromotionStudent,
+  onCancelPromotion,
   openUnifiedEditor,
 }: SubjectSelectionMobileEditorProps) {
   const [editorStudentId, setEditorStudentId] = useState<string | null>(
@@ -97,6 +100,31 @@ export function SubjectSelectionMobileEditor({
                     <UserCog className="h-4 w-4 text-slate-400" />
                   </button>
                 </div>
+
+                {/* Promotion Status Badge */}
+                {student.promotionStatus?.isPromoted ? (
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                      <GraduationCap className="h-3 w-3 text-indigo-600 shrink-0" />
+                      <span>Promoted &rarr; {student.promotionStatus.targetClassName}</span>
+                    </span>
+                    {onCancelPromotion && (
+                      <button
+                        type="button"
+                        onClick={() => onCancelPromotion(student._id)}
+                        className="text-[9px] font-bold text-slate-400 hover:text-rose-600 transition-colors"
+                      >
+                        Undo
+                      </button>
+                    )}
+                  </div>
+                ) : isPromotionMode ? (
+                  <div className="mt-2">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
+                      Unpromoted
+                    </span>
+                  </div>
+                ) : null}
                 
                 <div className="mt-5 grid grid-cols-[auto_1fr] gap-2">
                   <button

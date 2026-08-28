@@ -1,6 +1,5 @@
-"use client";
-
 import Image from "next/image";
+import { GraduationCap } from "lucide-react";
 
 import { humanNameFinalStrict } from "@/human-name";
 
@@ -10,8 +9,10 @@ interface SubjectSelectionDesktopTableProps {
   matrix: EnrollmentMatrix;
   selectedStudentId?: string | null;
   promotionStudentIds?: string[];
+  isPromotionMode?: boolean;
   onSelectStudent?: (studentId: string) => void;
   onTogglePromotionStudent?: (studentId: string) => void;
+  onCancelPromotion?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -20,8 +21,10 @@ export function SubjectSelectionDesktopTable({
   matrix,
   selectedStudentId,
   promotionStudentIds = [],
+  isPromotionMode = false,
   onSelectStudent,
   onTogglePromotionStudent,
+  onCancelPromotion,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionDesktopTableProps) {
@@ -33,7 +36,7 @@ export function SubjectSelectionDesktopTable({
       <table className="w-full border-separate border-spacing-0">
         <thead>
           <tr>
-            <th className="sticky left-0 z-30 min-w-[220px] border-b border-r-2 border-b-slate-200 border-r-slate-100 bg-slate-50 p-4 text-left text-[9px] font-black uppercase tracking-[0.15em] text-slate-950">
+            <th className="sticky left-0 z-30 min-w-[240px] border-b border-r-2 border-b-slate-200 border-r-slate-100 bg-slate-50 p-4 text-left text-[9px] font-black uppercase tracking-[0.15em] text-slate-950">
               Student Identity
             </th>
             {matrix.subjects.map((subject) => (
@@ -95,6 +98,36 @@ export function SubjectSelectionDesktopTable({
                         {student.admissionNumber}
                       </p>
                     </div>
+
+                    {/* Promotion Status Badge */}
+                    {student.promotionStatus?.isPromoted ? (
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                          <GraduationCap className="h-3 w-3 text-indigo-600 shrink-0" />
+                          <span>Promoted &rarr; {student.promotionStatus.targetClassName}</span>
+                          {student.promotionStatus.targetSessionName && (
+                            <span className="text-indigo-400 font-medium">({student.promotionStatus.targetSessionName})</span>
+                          )}
+                        </span>
+                        {onCancelPromotion && (
+                          <button
+                            type="button"
+                            onClick={() => onCancelPromotion(student._id)}
+                            className="text-[9px] font-bold text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Cancel staged promotion"
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
+                    ) : isPromotionMode ? (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
+                          Unpromoted
+                        </span>
+                      </div>
+                    ) : null}
+
                     <div className="mt-2 flex flex-wrap gap-1">
                       <button
                         type="button"

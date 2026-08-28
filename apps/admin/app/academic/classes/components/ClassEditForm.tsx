@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, type SVGProps } from "react";
-import { Layers3, ChevronDown, Archive, Save, X, Sparkles, BookOpen } from "lucide-react";
+import { Layers3, ChevronDown, Archive, Save, X, Sparkles, BookOpen, Search, Check } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";
 import { ClassAggregationManager } from "./ClassAggregationManager";
@@ -77,6 +77,7 @@ export function ClassEditForm({
   const [classLabel, setClassLabel] = useState("");
   const [formTeacherId, setFormTeacherId] = useState("");
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
+  const [subjectSearch, setSubjectSearch] = useState("");
 
   const initialGradeName = classDoc.gradeName || classDoc.name || "";
   const initialClassLabel = classDoc.classLabel || "";
@@ -85,6 +86,16 @@ export function ClassEditForm({
     () => (currentOfferings?.map((offering) => offering.subjectId) ?? []).sort(),
     [currentOfferings]
   );
+
+  const filteredSubjects = useMemo(() => {
+    const query = subjectSearch.trim().toLowerCase();
+    if (!query) return allSubjects;
+    return allSubjects.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.code.toLowerCase().includes(query)
+    );
+  }, [allSubjects, subjectSearch]);
 
   useEffect(() => {
     setGradeName(initialGradeName);
@@ -119,11 +130,24 @@ export function ClassEditForm({
     );
   };
 
+  const handleSelectAllFiltered = () => {
+    const filteredIds = filteredSubjects.map((s) => s._id);
+    setSubjectIds((current) => {
+      const combined = new Set([...current, ...filteredIds]);
+      return Array.from(combined);
+    });
+  };
+
+  const handleClearAll = () => {
+    setSubjectIds([]);
+  };
+
   const handleDiscard = () => {
     setGradeName(initialGradeName);
     setClassLabel(initialClassLabel);
     setFormTeacherId(initialFormTeacherId);
     setSubjectIds(initialSubjectIds);
+    setSubjectSearch("");
   };
 
   const handleSave = async () => {
@@ -255,34 +279,111 @@ export function ClassEditForm({
             </AdminSurface>
 
             {/* Subject Offerings */}
-            <AdminSurface intensity="medium" rounded="lg" className="p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between border-b border-slate-50 pb-1.5">
-                <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-brand-primary">
-                  Subject Catalog
-                </label>
-                <span className="px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary text-[9px] font-bold">
+            <AdminSurface intensity="medium" rounded="lg" className="p-3.5 space-y-3 flex-1 flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-900 block">
+                    Subject Catalog
+                  </label>
+                  <p className="text-[10px] text-slate-400 font-medium">Assign subjects to this class</p>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary text-[10px] font-black tracking-tight">
                   {subjectIds.length} Selected
                 </span>
               </div>
-              <div className="max-h-[160px] overflow-y-auto px-1 -mx-1 grid grid-cols-2 gap-1.5 custom-scrollbar">
-                {allSubjects.map((subject) => {
+
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={subjectSearch}
+                  onChange={(e) => setSubjectSearch(e.target.value)}
+                  placeholder="Search subjects..."
+                  className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10"
+                />
+                {subjectSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSubjectSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Select Actions */}
+              <div className="flex items-center justify-between text-[10px] px-0.5">
+                <span className="text-slate-400 font-medium">
+                  {filteredSubjects.length} of {allSubjects.length} subjects
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFiltered}
+                    className="text-[9px] font-bold uppercase tracking-wider text-brand-primary hover:underline cursor-pointer"
+                  >
+                    {subjectSearch ? "Select Matches" : "Select All"}
+                  </button>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    disabled={subjectIds.length === 0}
+                    className="text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 disabled:opacity-40 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Subjects Grid */}
+              <div className="min-h-[160px] max-h-[300px] overflow-y-auto px-1 -mx-1 grid grid-cols-1 gap-1.5 custom-scrollbar">
+                {filteredSubjects.map((subject) => {
                   const isSelected = subjectIds.includes(subject._id);
                   return (
                     <button
                       key={subject._id}
                       type="button"
                       onClick={() => handleSubjectToggle(subject._id)}
-                      className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-[10px] font-bold transition-all border cursor-pointer ${
+                      className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold transition-all border cursor-pointer ${
                         isSelected
-                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
-                          : "border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200"
+                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary shadow-xs"
+                          : "border-slate-100 bg-slate-50/70 text-slate-600 hover:border-slate-200 hover:bg-white"
                       }`}
                     >
-                      <span className="truncate">{subject.name}</span>
-                      {isSelected && <Sparkles className="h-3 w-3 shrink-0" />}
+                      <div className="min-w-0 flex-1 pr-2">
+                        <span className="truncate block text-xs font-bold">{subject.name}</span>
+                        {subject.code && (
+                          <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 block mt-0.5">
+                            {subject.code}
+                          </span>
+                        )}
+                      </div>
+                      {isSelected ? (
+                        <div className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-primary text-white shrink-0 shadow-xs">
+                          <Check className="h-3 w-3 stroke-[2.5]" />
+                        </div>
+                      ) : (
+                        <div className="h-5 w-5 rounded-md border border-slate-200 bg-white shrink-0" />
+                      )}
                     </button>
                   );
                 })}
+
+                {filteredSubjects.length === 0 && (
+                  <div className="py-8 text-center text-xs text-slate-400 space-y-1">
+                    <p className="font-medium">No subjects found matching &ldquo;{subjectSearch}&rdquo;</p>
+                    <button
+                      type="button"
+                      onClick={() => setSubjectSearch("")}
+                      className="text-[10px] font-bold text-brand-primary hover:underline cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )}
               </div>
             </AdminSurface>
           </>
