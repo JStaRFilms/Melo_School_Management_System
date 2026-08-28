@@ -301,7 +301,7 @@ export default function ClassesPage() {
   }
 
   return (
-    <div className="relative min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200/50">
+    <div className="relative h-full w-full flex flex-col overflow-hidden bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
       {/* Confirmation Modal for Archiving */}
@@ -339,9 +339,9 @@ export default function ClassesPage() {
         )}
       </AdminSheet>
 
-      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 h-full overflow-hidden">
         {/* Sidebar Bucket - Independent Scroll */}
-        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl px-4 py-6 md:px-8 md:py-10 custom-scrollbar z-10">
+        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-y-auto lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl px-4 py-6 md:px-8 md:py-10 custom-scrollbar z-10 shrink-0">
           <div id="class-builder-section" className="space-y-6">
             <div className="hidden lg:block">
               {selectedClassId && currentClass ? (
