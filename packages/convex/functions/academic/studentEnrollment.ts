@@ -1777,12 +1777,15 @@ export const getParentEmailReview = query({
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    const normalizedEmail = normalizeOptionalEmail(args.email);
-    if (!normalizedEmail) {
-      throw new ConvexError("Parent email is required");
+    const trimmed = (args.email ?? "").trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return {
+        email: trimmed,
+        matches: [],
+      };
     }
 
-    const users = await findUsersByEmail(ctx, schoolId, normalizedEmail);
+    const users = await findUsersByEmail(ctx, schoolId, trimmed);
     const matches = await Promise.all(
       users.map(async (user: any) => {
         const families =
@@ -1803,7 +1806,7 @@ export const getParentEmailReview = query({
     );
 
     return {
-      email: normalizedEmail,
+      email: trimmed,
       matches,
     };
   },

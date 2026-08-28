@@ -52,15 +52,17 @@ export async function cropStudentPhotoFile(
   );
 
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, file.type || "image/jpeg", 0.9);
+    canvas.toBlob(resolve, "image/jpeg", 0.88);
   });
 
   if (!blob) {
     throw new Error("Photo crop failed");
   }
 
-  return new File([blob], file.name, {
-    type: blob.type || file.type || "image/jpeg",
+  const outputFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+
+  return new File([blob], outputFileName, {
+    type: "image/jpeg",
     lastModified: Date.now(),
   });
 }

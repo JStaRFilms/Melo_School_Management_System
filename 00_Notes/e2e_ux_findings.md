@@ -175,6 +175,15 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - Residential address sync: option to inherit parent household address or provide separate guardian residence.
   - **Household Deduplication:**
     - Link siblings under a unified `householdId` when parent phone numbers/emails match, streamlining family billing and notifications.
+- [ ] **Configurable Institutional Email Domain & Outbound Mail Infrastructure**
+  - **Custom Email Domain Integration:**
+    - Settings interface in School Settings allowing administrators to configure the institution's official email domain (e.g. `@meridiancrest.edu.ng`, `@schoolname.org`).
+    - Auto-provisioned student portals and faculty invites automatically inherit this domain (e.g. `nur-0014@meridiancrest.edu.ng` instead of `@students.local` or generic `@gmail.com`).
+  - **SMTP & Transactional Mail Provider:**
+    - Outbound email routing with custom DKIM, SPF, and MX verification (Google Workspace, Zoho Mail, Resend).
+- [ ] **Form Unsaved State Guard & Draft Protection**
+  - Prompt / confirm warning before navigating away when an enrollment or creation form is dirty with unsaved entries.
+  - Optional local draft persistence in `localStorage`/IndexedDB so transient tab closures or accidental reloads never lose in-progress enrollment inputs.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.

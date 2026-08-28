@@ -6,7 +6,7 @@ import Image from "next/image";
 
 import { StudentPhotoCropControls } from "./StudentPhotoCropControls";
 import { cropStudentPhotoFile, type StudentPhotoCrop } from "./studentPhotoCrop";
-import { getStudentPhotoValidationError } from "./studentPhotoValidation";
+import { getStudentPhotoValidationError, MAX_CROPPED_STUDENT_PHOTO_SIZE_BYTES } from "./studentPhotoValidation";
 
 interface StudentPhotoPanelProps {
   name: string;
@@ -77,7 +77,7 @@ export function StudentPhotoPanel({
       cropStudentPhotoFile(sourceFile, crop)
         .then((croppedFile) => {
           if (!isCurrent) return;
-          const validationError = getStudentPhotoValidationError(croppedFile);
+          const validationError = getStudentPhotoValidationError(croppedFile, MAX_CROPPED_STUDENT_PHOTO_SIZE_BYTES);
           if (validationError) {
             if (inputRef.current) inputRef.current.value = "";
             onPhotoChangeRef.current(null);

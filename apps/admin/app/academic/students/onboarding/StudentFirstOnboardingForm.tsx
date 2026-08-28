@@ -152,12 +152,14 @@ export function StudentFirstOnboardingForm({
   onSubmit,
 }: StudentFirstOnboardingFormProps) {
   const [classSearch, setClassSearch] = useState("");
+  const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
   const deferredClassSearch = useDeferredValue(classSearch);
   const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
 
+  const isParentEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim());
   const parentReview = useQuery(
     "functions/academic/studentEnrollment:getParentEmailReview" as any,
-    parentEmail.trim().length >= 3 ? { email: parentEmail.trim() } : "skip"
+    isParentEmailValid ? { email: parentEmail.trim() } : "skip"
   ) as { matches: any[] } | undefined;
 
   const emailMatches = parentReview?.matches ?? [];
@@ -379,7 +381,7 @@ export function StudentFirstOnboardingForm({
 
         {/* ── LEFT MAIN WORKBENCH: Scrollable Canvas ── */}
         <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-10 custom-scrollbar">
-          <div className="max-w-4xl mx-auto space-y-8">
+          <div className="max-w-4xl mx-auto space-y-6">
             {/* Top Navigation Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
               <div className="space-y-1">
@@ -413,83 +415,122 @@ export function StudentFirstOnboardingForm({
               )}
             </div>
 
-            {/* ── SECTION 1: Academic Class Placement ── */}
-            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
-                    <LayoutGrid className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
-                      1. Academic Class Placement
-                    </h2>
-                    <p className="text-[11px] font-medium text-slate-400">
-                      Select the class division for this student&apos;s active enrollment.
-                    </p>
-                  </div>
+            {/* ── SECTION 1: Academic Class Placement (Compact Smart Dropdown) ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-4 md:p-5 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                  <LayoutGrid className="h-4 w-4" />
                 </div>
-
-                {/* Search / Filter Filter */}
-                <div className="relative w-full sm:w-60">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
-                  <input
-                    type="text"
-                    value={classSearch}
-                    onChange={(e) => setClassSearch(e.target.value)}
-                    placeholder="Search classes..."
-                    className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs font-bold text-slate-900 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 placeholder:text-slate-300"
-                  />
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
+                    1. Academic Class Placement *
+                  </h2>
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Select the class division for this student&apos;s active enrollment.
+                  </p>
                 </div>
               </div>
 
-              {/* Class Buttons Grouped by Level */}
-              <div className="space-y-4">
-                {classesByLevel.map((group) => (
-                  <div key={group.level} className="space-y-2">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display pl-0.5">
-                      {group.level} Section
-                    </p>
-                    <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
-                      {group.classes.map((classDoc) => {
-                        const isSelected = selectedClassId === classDoc._id;
-                        return (
-                          <button
-                            key={classDoc._id}
-                            type="button"
-                            onClick={() => onClassIdChange(classDoc._id)}
-                            className={cn(
-                              "flex items-center justify-between rounded-xl border p-3 text-left transition-all",
-                              isSelected
-                                ? "border-brand-primary bg-brand-primary text-white shadow-md shadow-brand-primary/15"
-                                : "border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                            )}
-                          >
-                            <span className="text-xs font-bold uppercase truncate mr-2">
-                              {classDoc.name}
-                            </span>
-                            {isSelected ? (
-                              <Check className="h-4 w-4 shrink-0 text-white" />
-                            ) : (
-                              <div className="h-3.5 w-3.5 shrink-0 rounded-full border border-slate-200" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+              {/* Smart Combobox / Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)}
+                  className={cn(
+                    "flex h-11 w-full items-center justify-between rounded-xl border px-3.5 text-left transition-all",
+                    selectedClassId
+                      ? "border-brand-primary/40 bg-brand-primary/[0.03] text-slate-900 shadow-sm"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <LayoutGrid className={cn("h-4 w-4 shrink-0", selectedClassId ? "text-brand-primary" : "text-slate-400")} />
+                    <span className="text-xs font-bold truncate">
+                      {selectedClassName ? (
+                        <span className="text-slate-950 font-display">{selectedClassName}</span>
+                      ) : (
+                        "Select Target Class..."
+                      )}
+                    </span>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {selectedClass && (
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 uppercase">
+                        {selectedClass.level}
+                      </span>
+                    )}
+                    <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform duration-200", isClassDropdownOpen && "rotate-180")} />
+                  </div>
+                </button>
 
-                {filteredClasses.length === 0 && (
-                  <div className="py-6 text-center text-xs font-medium text-slate-400">
-                    No classes match &quot;{classSearch}&quot;
-                  </div>
+                {/* Dropdown Menu */}
+                {isClassDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={() => setIsClassDropdownOpen(false)}
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-30 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl animate-in fade-in slide-in-from-top-2">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={classSearch}
+                          onChange={(e) => setClassSearch(e.target.value)}
+                          placeholder="Type to filter classes..."
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-8 pr-3 text-xs font-bold text-slate-900 outline-none focus:border-brand-primary focus:bg-white"
+                        />
+                      </div>
+
+                      <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-3 p-0.5">
+                        {classesByLevel.map((group) => (
+                          <div key={group.level} className="space-y-1">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display pl-2">
+                              {group.level} Section
+                            </p>
+                            <div className="grid gap-1">
+                              {group.classes.map((classDoc) => {
+                                const isSelected = selectedClassId === classDoc._id;
+                                return (
+                                  <button
+                                    key={classDoc._id}
+                                    type="button"
+                                    onClick={() => {
+                                      onClassIdChange(classDoc._id);
+                                      setIsClassDropdownOpen(false);
+                                      setClassSearch("");
+                                    }}
+                                    className={cn(
+                                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-all text-xs",
+                                      isSelected
+                                        ? "bg-slate-950 text-white font-bold"
+                                        : "text-slate-700 hover:bg-slate-50 font-medium"
+                                    )}
+                                  >
+                                    <span className="truncate">{classDoc.name}</span>
+                                    {isSelected && <Check className="h-3.5 w-3.5 text-white" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+
+                        {filteredClasses.length === 0 && (
+                          <p className="py-4 text-center text-xs font-medium text-slate-400">
+                            No classes found
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </AdminSurface>
 
-            {/* ── SECTION 2: Student Identity Core ── */}
-            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-6">
+            {/* ── SECTION 2: Student Identity Core & Passport ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-5">
               <div className="flex items-center gap-2.5 border-b border-slate-200/60 pb-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
                   <Fingerprint className="h-4 w-4" />
@@ -499,31 +540,31 @@ export function StudentFirstOnboardingForm({
                     2. Student Identity & Passport
                   </h2>
                   <p className="text-[11px] font-medium text-slate-400">
-                    Official identification and basic demographic records.
+                    Official identification, passport photograph, and core demographic records.
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-12">
-                {/* Photo Upload Column */}
-                <div className="md:col-span-4 space-y-2">
+              <div className="flex flex-col md:flex-row gap-6 items-start">
+                {/* Photo Upload Box */}
+                <div className="w-full md:w-48 shrink-0 space-y-2">
                   <label className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display">
-                    Passport Photo (Optional)
+                    Passport Photo
                   </label>
                   <StudentPhotoPanel
                     name={fullNameDisplay}
                     previewUrl={photoPreviewUrl}
                     onPhotoChange={onPhotoChange}
                     onRemovePhoto={onRemovePhoto}
-                    helperText="JPG/PNG up to 1 MB."
+                    helperText="JPG/PNG up to 5 MB."
                     resetKey={photoResetKey}
                     onProcessingChange={setIsPhotoProcessing}
                     onValidationError={onPhotoValidationError}
                   />
                 </div>
 
-                {/* Inputs Column */}
-                <div className="md:col-span-8 grid gap-4 sm:grid-cols-2">
+                {/* Core Identity Inputs Grid */}
+                <div className="flex-1 w-full grid gap-4 sm:grid-cols-2">
                   <Field label="First Name *">
                     <input
                       ref={firstNameInputRef}
