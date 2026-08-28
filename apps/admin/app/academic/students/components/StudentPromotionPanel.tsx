@@ -61,9 +61,38 @@ export function StudentPromotionPanel({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const hasSource = Boolean(sourceClassId && sourceSessionId);
-  const upcomingSessions = sessions.filter(
-    (session) => session._id !== sourceSessionId
+  const sourceSession = sessions.find((s) => s._id === sourceSessionId);
+  const targetSession = sessions.find((s) => s._id === targetSessionId);
+
+  const isPastSession = Boolean(
+    sourceSession?.startDate !== undefined &&
+    targetSession?.startDate !== undefined &&
+    targetSession.startDate < sourceSession.startDate
   );
+
+  const upcomingSessions = sessions.filter((s) => {
+    if (s._id === sourceSessionId) return false;
+    if (
+      sourceSession?.startDate !== undefined &&
+      s.startDate !== undefined &&
+      s.startDate < sourceSession.startDate
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const pastSessions = sessions.filter((s) => {
+    if (s._id === sourceSessionId) return false;
+    if (
+      sourceSession?.startDate !== undefined &&
+      s.startDate !== undefined &&
+      s.startDate < sourceSession.startDate
+    ) {
+      return true;
+    }
+    return false;
+  });
 
   const isSameSession = Boolean(
     hasSource && targetSessionId && sourceSessionId === targetSessionId
@@ -77,15 +106,16 @@ export function StudentPromotionPanel({
     Boolean(targetClassId && targetSessionId) &&
     !isSameSession &&
     !isSameClass &&
+    !isPastSession &&
     !isPromoting;
 
   const sourceClassName =
     classes.find((c) => c._id === sourceClassId)?.name ?? "Current Class";
   const sourceSessionName =
-    sessions.find((s) => s._id === sourceSessionId)?.name ?? "Current Session";
+    sourceSession?.name ?? "Current Session";
 
   const targetClassName = classes.find((c) => c._id === targetClassId)?.name;
-  const targetSessionName = sessions.find((s) => s._id === targetSessionId)?.name;
+  const targetSessionName = targetSession?.name;
 
   const renderPromotionForm = (isMobileSheet = false) => (
     <div className="space-y-4">
@@ -204,6 +234,11 @@ export function StudentPromotionPanel({
                 {sourceSessionName} (Current Session — Promotion Not Allowed)
               </option>
             )}
+            {pastSessions.map((s) => (
+              <option key={s._id} value={s._id} disabled>
+                {s.name} (Previous Session — Backwards Promotion Blocked)
+              </option>
+            ))}
           </select>
         </label>
 
@@ -235,6 +270,18 @@ export function StudentPromotionPanel({
       </div>
 
       {/* Validation Warnings */}
+      {isPastSession && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-bold text-red-900 shadow-sm animate-pulse">
+          <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <p>Backwards Promotion Blocked</p>
+            <p className="font-medium text-[11px] text-red-800 mt-0.5">
+              You cannot promote students into a previous academic session ({targetSessionName}). Annual promotions must advance forward to an upcoming academic session.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isSameSession && (
         <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-bold text-rose-800">
           <AlertCircle className="h-4 w-4 shrink-0" />

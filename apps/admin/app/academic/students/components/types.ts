@@ -7,6 +7,8 @@ export type ClassSummary = {
 export type SessionSummary = {
   _id: string;
   name: string;
+  startDate?: number;
+  endDate?: number;
   isActive: boolean;
 };
 
