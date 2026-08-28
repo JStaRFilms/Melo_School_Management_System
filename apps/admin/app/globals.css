@@ -313,3 +313,34 @@ h3 {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
   background-color: #fef2f2;
 }
+
+/* Bottom Sheet Animations */
+@keyframes sheetSlideUp {
+  0% {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes overlayFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-sheet-slide-up {
+  animation: sheetSlideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-overlay-fade-in {
+  animation: overlayFadeIn 0.22s ease-out forwards;
+  will-change: opacity;
+}

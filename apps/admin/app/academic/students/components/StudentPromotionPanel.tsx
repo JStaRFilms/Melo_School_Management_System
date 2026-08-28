@@ -379,25 +379,36 @@ export function StudentPromotionPanel({
 
       {/* ── MOBILE SLIDE-UP BOTTOM SHEET (< lg) ── */}
       {isExpanded && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center lg:hidden animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center lg:hidden">
+          {/* Backdrop with fade animation */}
           <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm animate-overlay-fade-in"
             onClick={() => setIsExpanded(false)}
           />
-          <div className="relative z-10 w-full max-h-[90vh] overflow-y-auto rounded-t-2xl border-t border-slate-200 bg-white p-5 shadow-2xl space-y-4 animate-in slide-in-from-bottom duration-250">
+
+          {/* Bottom Sheet Drawer with slide-up animation */}
+          <div className="relative z-10 w-full max-h-[85vh] overflow-y-auto rounded-t-3xl border-t border-slate-200 bg-white p-5 shadow-2xl space-y-4 animate-sheet-slide-up">
+            {/* Top Drag Indicator Handle */}
+            <div className="flex justify-center -mt-1 pb-1">
+              <div className="h-1.5 w-12 rounded-full bg-slate-300" />
+            </div>
+
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
-                  <GraduationCap className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 shadow-sm">
+                  <GraduationCap className="h-4 w-4" />
                 </div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 font-display">
-                  End-of-Session Promotion
-                </h3>
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 font-display">
+                    End-of-Session Promotion
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-medium">Session Rollover Configuration</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 Close
               </button>
