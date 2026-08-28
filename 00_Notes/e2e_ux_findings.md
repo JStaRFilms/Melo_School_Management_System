@@ -176,11 +176,18 @@ This document tracks all observations, issues, UX refinements, and their resolut
   - **Household Deduplication:**
     - Link siblings under a unified `householdId` when parent phone numbers/emails match, streamlining family billing and notifications.
 - [ ] **Configurable Institutional Email Domain & Outbound Mail Infrastructure**
-  - **Custom Email Domain Integration:**
+  - **Custom Email Domain Integration & Address Convention:**
     - Settings interface in School Settings allowing administrators to configure the institution's official email domain (e.g. `@meridiancrest.edu.ng`, `@schoolname.org`).
-    - Auto-provisioned student portals and faculty invites automatically inherit this domain (e.g. `nur-0014@meridiancrest.edu.ng` instead of `@students.local` or generic `@gmail.com`).
+    - Standardized naming convention: `firstname.lastname@schoolsdomain.com` (e.g. `kenechukwu.okafor@meridiancrest.edu.ng`) with duplicate collision handling (e.g. `firstname.lastname2@...` or middle initial).
   - **SMTP & Transactional Mail Provider:**
     - Outbound email routing with custom DKIM, SPF, and MX verification (Google Workspace, Zoho Mail, Resend).
+- [ ] **Sequential Auto-Incrementing Admission Numbers & Starting Sequence Seed**
+  - **Customizable Sequence Template:**
+    - Configurable format pattern in School / Enrollment Settings (e.g. `SCH/{YEAR}/{SEQ:4}` $\to$ `SCH/2026/0042` or `NUR-{SEQ:4}` $\to$ `NUR-0517`).
+  - **Starting Counter Seed (Migration Friendly):**
+    - Administrator can define the *"Last Used Admission Number"* or *"Starting Seed Number"* (e.g. `516`), allowing onboarding schools to migrate seamlessly without ID gaps or duplicate collisions.
+  - **Admissions Pipeline Synchronization:**
+    - Accepted applications from the public admission form automatically receive the next sequential ID upon approval/enrollment.
 - [ ] **Form Unsaved State Guard & Draft Protection**
   - Prompt / confirm warning before navigating away when an enrollment or creation form is dirty with unsaved entries.
   - Optional local draft persistence in `localStorage`/IndexedDB so transient tab closures or accidental reloads never lose in-progress enrollment inputs.

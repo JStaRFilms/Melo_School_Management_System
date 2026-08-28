@@ -3,6 +3,8 @@
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { Camera, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { cn } from "@/utils";
 
 import { StudentPhotoCropControls } from "./StudentPhotoCropControls";
 import { cropStudentPhotoFile, type StudentPhotoCrop } from "./studentPhotoCrop";
@@ -26,7 +28,7 @@ export function StudentPhotoPanel({
   previewUrl,
   onPhotoChange,
   onRemovePhoto,
-  helperText = "JPG/PNG up to 1 MB.",
+  helperText = "JPG/PNG up to 5 MB.",
   resetKey,
   onProcessingChange,
   onValidationError,
@@ -34,6 +36,7 @@ export function StudentPhotoPanel({
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [crop, setCrop] = useState<StudentPhotoCrop>(defaultCrop);
   const [isCropping, setIsCropping] = useState(false);
+  const [showCropAdjuster, setShowCropAdjuster] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const onPhotoChangeRef = useRef(onPhotoChange);
   const onValidationErrorRef = useRef(onValidationError);
@@ -49,6 +52,7 @@ export function StudentPhotoPanel({
     setSourceFile(null);
     setCrop(defaultCrop);
     setIsCropping(false);
+    setShowCropAdjuster(false);
     if (inputRef.current) inputRef.current.value = "";
     onProcessingChangeRef.current?.(false);
   }, [resetKey]);
@@ -123,6 +127,7 @@ export function StudentPhotoPanel({
 
     setCrop(defaultCrop);
     setIsCropping(true);
+    setShowCropAdjuster(false);
     onProcessingChangeRef.current?.(true);
     onPhotoChange(null);
     setSourceFile(file);
@@ -139,6 +144,7 @@ export function StudentPhotoPanel({
     setSourceFile(null);
     setCrop(defaultCrop);
     setIsCropping(false);
+    setShowCropAdjuster(false);
     onProcessingChangeRef.current?.(false);
     onRemovePhoto();
   };
@@ -146,59 +152,112 @@ export function StudentPhotoPanel({
   const visiblePreviewUrl = sourcePreviewUrl ?? previewUrl;
 
   return (
-    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <p className="shrink-0 whitespace-nowrap text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-          Student Photo
-        </p>
-        <span className="min-h-3 shrink-0 whitespace-nowrap text-right text-[9px] font-black uppercase tracking-[0.12em] text-indigo-500">
-          {isCropping ? "Cropping..." : ""}
-        </span>
-      </div>
-      {visiblePreviewUrl ? (
-        <div className="relative mx-auto aspect-[3/4] w-full max-w-56 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
-          <Image
-            src={visiblePreviewUrl}
-            alt={name}
-            fill
-            sizes="224px"
-            unoptimized
-            className="object-cover"
-            style={
-              sourcePreviewUrl
-                ? {
-                    objectPosition: `${crop.x}% ${crop.y}%`,
-                    transform: `scale(${crop.zoom})`,
-                    transformOrigin: `${crop.x}% ${crop.y}%`,
-                  }
-                : undefined
-            }
-          />
-        </div>
-      ) : (
-        <div className="mx-auto flex aspect-[3/4] w-full max-w-56 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-          No Photo
-        </div>
-      )}
-      {sourceFile ? (
-        <StudentPhotoCropControls crop={crop} onCropChange={handleCropChange} />
-      ) : null}
+    <div className="w-full space-y-2.5">
+      {/* Hidden file input */}
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
         onChange={handlePhotoInputChange}
-        className="block w-full text-xs text-slate-500"
+        className="hidden"
       />
-      <p className="text-xs text-slate-500">{helperText}</p>
-      <button
-        type="button"
-        onClick={handleRemovePhoto}
-        disabled={!previewUrl && !sourceFile}
-        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Remove Photo
-      </button>
+
+      {visiblePreviewUrl ? (
+        <div className="space-y-2">
+          {/* Active Photo Frame */}
+          <div className="relative mx-auto aspect-[3/4] w-full max-w-[180px] overflow-hidden rounded-xl border border-slate-200/90 bg-slate-900 shadow-sm ring-1 ring-slate-100">
+            <Image
+              src={visiblePreviewUrl}
+              alt={name}
+              fill
+              sizes="180px"
+              unoptimized
+              className="object-cover"
+              style={
+                sourcePreviewUrl
+                  ? {
+                      objectPosition: `${crop.x}% ${crop.y}%`,
+                      transform: `scale(${crop.zoom})`,
+                      transformOrigin: `${crop.x}% ${crop.y}%`,
+                    }
+                  : undefined
+              }
+            />
+            {isCropping && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 backdrop-blur-[1px]">
+                <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-900 shadow">
+                  Optimizing...
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Button Row */}
+          <div className="mx-auto flex max-w-[180px] items-center gap-1.5">
+            {sourceFile && (
+              <button
+                type="button"
+                onClick={() => setShowCropAdjuster(!showCropAdjuster)}
+                className={cn(
+                  "flex flex-1 h-7 items-center justify-center gap-1 rounded-lg border text-[10px] font-bold transition-colors shadow-sm",
+                  showCropAdjuster
+                    ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                <span>{showCropAdjuster ? "Close" : "Crop"}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex flex-1 h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              <Upload className="h-3 w-3 text-slate-400" />
+              <span>Change</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRemovePhoto}
+              title="Remove Photo"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 shadow-sm"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Collapsible Crop Adjuster */}
+          {showCropAdjuster && sourceFile && (
+            <div className="mx-auto max-w-[200px]">
+              <StudentPhotoCropControls
+                crop={crop}
+                onCropChange={handleCropChange}
+                onReset={() => setCrop(defaultCrop)}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Empty State Dropzone */
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="group mx-auto flex aspect-[3/4] w-full max-w-[180px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200/90 bg-slate-50/40 p-4 text-center transition-all hover:border-brand-primary/50 hover:bg-brand-primary/[0.02]"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/60 transition-transform group-hover:scale-110">
+            <Camera className="h-4 w-4 text-slate-400 group-hover:text-brand-primary transition-colors" />
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-bold text-slate-700 group-hover:text-brand-primary transition-colors font-display">
+              Upload Photo
+            </p>
+            <p className="text-[9px] font-medium text-slate-400">
+              {helperText}
+            </p>
+          </div>
+        </button>
+      )}
     </div>
   );
 }

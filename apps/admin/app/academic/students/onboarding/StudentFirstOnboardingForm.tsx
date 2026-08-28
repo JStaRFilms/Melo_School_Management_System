@@ -202,6 +202,14 @@ export function StudentFirstOnboardingForm({
 
   const canSubmit = hasClassPlacement && hasCoreIdentity && !isPhotoProcessing;
 
+  const completedStepsCount = [
+    hasClassPlacement,
+    hasCoreIdentity,
+    hasParentOrGuardian,
+    hasPortalAccess,
+  ].filter(Boolean).length;
+  const progressPercent = Math.round((completedStepsCount / 4) * 100);
+
   const fullNameDisplay = [firstName, lastName].filter(Boolean).join(" ") || "New Student";
 
   return (
@@ -910,10 +918,21 @@ export function StudentFirstOnboardingForm({
         </main>
 
         {/* ── MOBILE STICKY ACTION BAR (< lg) ── */}
-        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-xl lg:hidden">
-          <div className="flex items-center gap-4">
+        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur-xl lg:hidden">
+          {/* Subtle Dynamic Progress Line */}
+          <div className="h-1 w-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 ease-out"
+              style={{ width: `${Math.max(10, progressPercent)}%` }}
+            />
+          </div>
+
+          <div className="flex items-center gap-4 p-3.5">
             <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Target Class</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 font-display">Target Class</p>
+                <span className="text-[9px] font-bold text-emerald-600 font-mono">• {completedStepsCount}/4 Done</span>
+              </div>
               <p className="text-xs font-bold text-slate-950 truncate">
                 {selectedClassName || "Unselected"}
               </p>
@@ -921,7 +940,7 @@ export function StudentFirstOnboardingForm({
             <button
               type="submit"
               disabled={isSubmitting || !canSubmit}
-              className="flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-5 text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-30 shadow-md active:scale-95"
+              className="flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-30 shadow-md active:scale-95 shrink-0"
             >
               <UserPlus className="h-4 w-4" />
               <span>{isSubmitting ? "..." : "Enroll Student"}</span>
