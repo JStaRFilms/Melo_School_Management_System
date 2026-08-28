@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 import { Layers3, ChevronDown, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";
@@ -28,6 +29,7 @@ interface ClassCreationFormProps {
   isSubmitting: boolean;
   teachers: Teacher[];
   subjects: Subject[];
+  initialLevel?: string;
 }
 
 export function ClassCreationForm({
@@ -35,12 +37,19 @@ export function ClassCreationForm({
   isSubmitting,
   teachers,
   subjects,
+  initialLevel = "Nursery",
 }: ClassCreationFormProps) {
   const [gradeName, setGradeName] = useState("");
   const [classLabel, setClassLabel] = useState("");
-  const [level, setLevel] = useState("Primary");
+  const [level, setLevel] = useState(initialLevel);
   const [formTeacherId, setFormTeacherId] = useState("");
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (initialLevel) {
+      setLevel(initialLevel);
+    }
+  }, [initialLevel]);
 
   const handleSubjectToggle = (subjectId: string) => {
     setSubjectIds((current) =>
@@ -66,7 +75,7 @@ export function ClassCreationForm({
     // Reset form
     setGradeName("");
     setClassLabel("");
-    setLevel("Primary");
+    setLevel(initialLevel || "Nursery");
     setFormTeacherId("");
     setSubjectIds([]);
   };
@@ -79,7 +88,7 @@ export function ClassCreationForm({
       className="p-5 space-y-5"
     >
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-xl shadow-slate-950/20">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary text-white shadow-xl shadow-brand-primary/20">
           <Layers3 className="h-5 w-5" />
         </div>
         <div className="text-right">
@@ -104,7 +113,7 @@ export function ClassCreationForm({
               onChange={(e) => setGradeName(humanNameTyping(e.target.value))}
               onBlur={(e) => setGradeName(humanNameFinal(e.target.value))}
               placeholder="e.g. Primary 4"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
             />
           </div>
 
@@ -117,7 +126,7 @@ export function ClassCreationForm({
               onChange={(e) => setClassLabel(humanNameTyping(e.target.value))}
               onBlur={(e) => setClassLabel(humanNameFinal(e.target.value))}
               placeholder="e.g. Olive Blossom"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
             />
           </div>
 
@@ -130,7 +139,7 @@ export function ClassCreationForm({
                 <select
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
-                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950"
+                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary"
                 >
                   <option value="Nursery">Nursery</option>
                   <option value="Primary">Primary</option>
@@ -148,7 +157,7 @@ export function ClassCreationForm({
                 <select
                   value={formTeacherId}
                   onChange={(e) => setFormTeacherId(e.target.value)}
-                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950"
+                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary"
                 >
                   <option value="">No Assignment</option>
                   {teachers.map((t) => (
@@ -165,7 +174,7 @@ export function ClassCreationForm({
            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 block mb-1.5">
             Initial Subject Offerings
           </label>
-          <div className="max-h-[200px] overflow-y-auto px-1 -mx-1 grid grid-cols-1 gap-2">
+          <div className="max-h-[200px] overflow-y-auto px-1 -mx-1 grid grid-cols-1 gap-2 custom-scrollbar">
             {subjects.map((subject) => {
               const isSelected = subjectIds.includes(subject._id);
               return (
@@ -175,8 +184,8 @@ export function ClassCreationForm({
                   onClick={() => handleSubjectToggle(subject._id)}
                   className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold transition-all border ${
                     isSelected
-                      ? "border-slate-950 bg-slate-950/5 text-slate-950"
-                      : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                      ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                      : "border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200"
                   }`}
                 >
                   <span>{subject.name}</span>
@@ -190,7 +199,7 @@ export function ClassCreationForm({
         <button
           type="submit"
           disabled={isSubmitting || !gradeName.trim()}
-          className="group relative h-12 w-full overflow-hidden rounded-xl bg-slate-950 text-white shadow-xl transition-all hover:bg-slate-900 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+          className="group relative h-12 w-full overflow-hidden rounded-xl bg-brand-primary text-white shadow-xl transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 cursor-pointer"
         >
           <div className="flex items-center justify-center gap-2">
             <span className="text-[11px] font-bold uppercase tracking-[0.2em]">

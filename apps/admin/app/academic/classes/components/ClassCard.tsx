@@ -43,14 +43,14 @@ export function ClassCard({
       intensity={isSelected ? "high" : "medium"}
       rounded="lg"
       className={`relative p-3.5 transition-all duration-300 cursor-pointer group ${
-        isSelected ? "ring-2 ring-slate-950 shadow-md" : "hover:border-slate-300 hover:shadow-md"
+        isSelected ? "ring-2 ring-brand-primary shadow-md" : "hover:border-slate-300 hover:shadow-md"
       }`}
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
-            isSelected ? "bg-slate-950 text-white shadow-sm" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+            isSelected ? "bg-brand-primary text-white shadow-sm" : "bg-slate-100 text-slate-700 group-hover:bg-slate-200"
           }`}>
             {initials}
           </div>
@@ -65,9 +65,9 @@ export function ClassCard({
             )}
             <div className="flex items-center gap-2 mt-1">
                <p className={`text-[10px] font-bold uppercase tracking-wider ${
-                classDoc.formTeacherName ? "text-emerald-600" : "text-slate-300 italic"
+                classDoc.formTeacherName ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"
               }`}>
-                {classDoc.formTeacherName || "No Form Teacher"}
+                {classDoc.formTeacherName || "⚠️ No Form Teacher"}
               </p>
             </div>
           </div>

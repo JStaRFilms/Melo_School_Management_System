@@ -214,10 +214,10 @@ export function ClassEditForm({
             {/* Subject Offerings */}
             <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">
+                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-primary">
                     Subject Catalog
                   </label>
-                  <div className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[9px] font-bold">{subjectIds.length} Selected</div>
+                  <div className="px-2 py-0.5 rounded bg-brand-primary/10 text-brand-primary text-[9px] font-bold">{subjectIds.length} Selected</div>
               </div>
               <div className="max-h-[350px] overflow-y-auto px-1 -mx-1 grid grid-cols-2 gap-2 custom-scrollbar">
                 {allSubjects.map((subject) => {
@@ -229,8 +229,8 @@ export function ClassEditForm({
                       onClick={() => handleSubjectToggle(subject._id)}
                       className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-[11px] font-bold transition-all border ${
                         isSelected
-                          ? "border-slate-950 bg-slate-950/5 text-slate-950"
-                          : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                          : "border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200"
                       }`}
                     >
                       <span className="truncate">{subject.name}</span>
@@ -241,11 +241,12 @@ export function ClassEditForm({
               </div>
               
               <button
+                type="button"
                 onClick={handleSave}
                 disabled={isSaving || !gradeName.trim()}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-950/10 transition-all hover:bg-slate-900 active:scale-[0.98] disabled:opacity-50"
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-xl shadow-brand-primary/10 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
               >
-                <Save className="h-4 w-4 text-white/50" />
+                <Save className="h-4 w-4 text-white/70" />
                 {isSaving ? "Syncing..." : "Update Blueprint"}
               </button>
             </AdminSurface>
