@@ -1,11 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
-import { ArrowLeft, CheckCircle2, ChevronDown, Copy, Fingerprint, Home, Info, KeyRound, LayoutGrid, Search, Shield, UserPlus, Users, AlertCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Fingerprint,
+  Info,
+  KeyRound,
+  LayoutGrid,
+  Search,
+  Shield,
+  UserPlus,
+  Users,
+  AlertCircle,
+  RotateCcw,
+  Sparkles,
+  Check,
+} from "lucide-react";
 import Link from "next/link";
 
-import { AdminHeader } from "@/components/ui/AdminHeader";
+import { AdminSurface } from "@/components/ui/AdminSurface";
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
@@ -73,6 +90,7 @@ type StudentFirstOnboardingFormProps = {
   onPhotoChange: (file: File | null) => void;
   onRemovePhoto: () => void;
   onPhotoValidationError: (message: string) => void;
+  onReset?: () => void;
   onSubmit: (event: FormEvent) => Promise<void>;
 };
 
@@ -130,11 +148,12 @@ export function StudentFirstOnboardingForm({
   onPhotoChange,
   onRemovePhoto,
   onPhotoValidationError,
+  onReset,
   onSubmit,
 }: StudentFirstOnboardingFormProps) {
   const [classSearch, setClassSearch] = useState("");
-  const [isClassSelectOpen, setIsClassSelectOpen] = useState(false);
   const deferredClassSearch = useDeferredValue(classSearch);
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
 
   const parentReview = useQuery(
     "functions/academic/studentEnrollment:getParentEmailReview" as any,
@@ -142,15 +161,15 @@ export function StudentFirstOnboardingForm({
   ) as { matches: any[] } | undefined;
 
   const emailMatches = parentReview?.matches ?? [];
-  const existingStudentWithEmail = emailMatches.find(m => m.role === "student" && !m.isArchived);
-  const existingParentWithEmail = emailMatches.find(m => m.role === "parent" && !m.isArchived);
+  const existingStudentWithEmail = emailMatches.find((m) => m.role === "student" && !m.isArchived);
+  const existingParentWithEmail = emailMatches.find((m) => m.role === "parent" && !m.isArchived);
 
   const filteredClasses = useMemo(() => {
     const query = deferredClassSearch.toLowerCase().trim();
     if (!query) return classes;
-    return classes.filter((c: ClassSummary) => 
-      c.name.toLowerCase().includes(query) || 
-      c.level.toLowerCase().includes(query)
+    return classes.filter(
+      (c: ClassSummary) =>
+        c.name.toLowerCase().includes(query) || c.level.toLowerCase().includes(query)
     );
   }, [classes, deferredClassSearch]);
 
@@ -163,181 +182,349 @@ export function StudentFirstOnboardingForm({
       .filter((group) => group.classes.length > 0);
   }, [filteredClasses]);
 
-  const selectedClassName =
-    classes.find((classDoc) => classDoc._id === selectedClassId)?.name ?? null;
+  const selectedClass = classes.find((classDoc) => classDoc._id === selectedClassId) ?? null;
+  const selectedClassName = selectedClass?.name ?? null;
 
-  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
+  const todayDateString = new Date().toISOString().split("T")[0];
 
-  const canSubmit =
-    firstName.trim() &&
-    lastName.trim() &&
-    admissionNumber.trim() &&
-    gender.trim() &&
-    selectedClassId &&
-    !isPhotoProcessing;
+  const hasCoreIdentity = Boolean(
+    firstName.trim() && lastName.trim() && admissionNumber.trim() && gender.trim()
+  );
+  const hasClassPlacement = Boolean(selectedClassId);
+  const hasParentOrGuardian = Boolean(
+    guardianName.trim() || parentFirstName.trim() || parentEmail.trim()
+  );
+  const hasPortalAccess = Boolean(
+    provisionStudentPortalAccess || provisionParentPortalAccess
+  );
+
+  const canSubmit = hasClassPlacement && hasCoreIdentity && !isPhotoProcessing;
+
+  const fullNameDisplay = [firstName, lastName].filter(Boolean).join(" ") || "New Student";
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-50/50">
-      {/* Dense Workbench Header */}
-      <header className="z-20 shrink-0 border-b border-slate-200/60 bg-white px-6 py-4 lg:px-10">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <Link
-                href="/academic/students"
-                className="group flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
-              >
-                <ArrowLeft className="h-3 w-3 text-slate-400 group-hover:text-slate-900" />
-              </Link>
-              <div className="h-4 w-px bg-slate-200" />
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                  Live Enrollment Session
+    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+
+      {/* Split Workbench View */}
+      <form
+        onSubmit={(event) => void onSubmit(event)}
+        className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden"
+      >
+        {/* ── RIGHT SIDEBAR: Locked & Pinned Live Enrollment Inspector ── */}
+        <aside className="w-full lg:w-[380px] xl:w-[400px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-5">
+            {/* Live Profile Card */}
+            <AdminSurface intensity="low" rounded="xl" className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 font-display">
+                  Live Record Preview
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                    canSubmit
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-slate-100 text-slate-500 border border-slate-200"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      canSubmit ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                    )}
+                  />
+                  {canSubmit ? "Ready" : "Incomplete"}
                 </span>
               </div>
-            </div>
-            <div className="flex items-baseline gap-3">
-              <h1 className="text-xl font-black tracking-tight text-slate-950">
-                Student Onboarding
-              </h1>
+
+              <div className="flex items-center gap-3.5 pt-1">
+                <div className="h-14 w-14 rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
+                  {photoPreviewUrl ? (
+                    <img
+                      src={photoPreviewUrl}
+                      alt="Preview"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Fingerprint className="h-6 w-6 text-slate-300" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <h3 className="text-sm font-bold text-slate-950 truncate font-display">
+                    {fullNameDisplay}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-slate-500">
+                    <span className="font-mono font-bold text-slate-700">
+                      {admissionNumber.trim() || "ID Pending"}
+                    </span>
+                    {gender && <span>• {gender}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/50 text-[10px]">
+                <div className="space-y-0.5">
+                  <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Class Placement</p>
+                  <p className="font-bold text-slate-800 truncate">
+                    {selectedClassName || "Unassigned"}
+                  </p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">House Group</p>
+                  <p className="font-bold text-slate-800 truncate">
+                    {houseName.trim() || "None"}
+                  </p>
+                </div>
+              </div>
+            </AdminSurface>
+
+            {/* Enrollment Readiness Checklist */}
+            <AdminSurface intensity="low" rounded="xl" className="p-4 space-y-3">
+              <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 font-display">
+                Onboarding Readiness
+              </h4>
+              <div className="space-y-2">
+                <ChecklistItem
+                  isDone={hasClassPlacement}
+                  label="Academic Class Selected"
+                  detail={selectedClassName ?? "Required for roster assignment"}
+                />
+                <ChecklistItem
+                  isDone={hasCoreIdentity}
+                  label="Student Core Identity"
+                  detail="First name, last name, admission ID, and gender"
+                />
+                <ChecklistItem
+                  isDone={hasParentOrGuardian}
+                  label="Parent / Guardian Contact"
+                  detail={
+                    guardianName.trim() || parentFirstName.trim()
+                      ? "Contact details linked"
+                      : "Optional during initial setup"
+                  }
+                  optional
+                />
+                <ChecklistItem
+                  isDone={hasPortalAccess}
+                  label="Digital Portal Access"
+                  detail={
+                    hasPortalAccess
+                      ? "Credentials configured"
+                      : "Optional self-service access"
+                  }
+                  optional
+                />
+              </div>
+            </AdminSurface>
+
+            {/* Credential Output Summary (If generated) */}
+            {credentialSummary && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 font-display">
+                    Account Provisioned
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {credentialSummary.student && (
+                    <CredentialCard
+                      label="Student Portal"
+                      email={credentialSummary.student.email}
+                      password={credentialSummary.student.temporaryPassword}
+                    />
+                  )}
+                  {credentialSummary.parent && (
+                    <CredentialCard
+                      label="Parent Portal"
+                      email={credentialSummary.parent.email}
+                      password={credentialSummary.parent.temporaryPassword}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Pinned Action Area */}
+          <div className="pt-3 border-t border-slate-200/60 shrink-0 space-y-2">
+            <button
+              type="submit"
+              disabled={isSubmitting || !canSubmit}
+              className="w-full flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 text-xs font-bold uppercase tracking-wider text-white transition-all hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-slate-950/10 active:scale-[0.98]"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>
+                {isSubmitting ? "Enrolling..." : isPhotoProcessing ? "Processing Photo..." : "Enroll Student"}
+              </span>
+            </button>
+
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="w-full flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                <RotateCcw className="h-3 w-3 text-slate-400" />
+                <span>Reset Form</span>
+              </button>
+            )}
+
+            <p className="text-[10px] leading-relaxed font-medium text-slate-400 text-center">
+              Student record will be synced across all registers upon enrollment.
+            </p>
+          </div>
+        </aside>
+
+        {/* ── LEFT MAIN WORKBENCH: Scrollable Canvas ── */}
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-10 custom-scrollbar">
+          <div className="max-w-4xl mx-auto space-y-8">
+            {/* Top Navigation Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <Link
+                    href="/academic/students"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Back to Roster</span>
+                  </Link>
+                  <span className="h-4 w-px bg-slate-200" />
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Enrollment Session
+                  </span>
+                </div>
+                <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-slate-950 font-display">
+                  Student Onboarding
+                </h1>
+              </div>
+
               {selectedClassName && (
-                <div className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5">
-                  <LayoutGrid className="h-2.5 w-2.5 text-slate-400" />
-                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tight">{selectedClassName}</span>
+                <div className="inline-flex items-center gap-2 rounded-xl bg-slate-950 text-white px-3.5 py-2 shadow-sm self-start sm:self-auto">
+                  <LayoutGrid className="h-3.5 w-3.5 text-brand-secondary" />
+                  <div className="text-left">
+                    <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Target Class</p>
+                    <p className="text-xs font-bold uppercase">{selectedClassName}</p>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="hidden lg:flex items-center gap-4">
-            <p className="max-w-[300px] text-right text-[10px] font-medium leading-tight text-slate-400">
-              Complete the identity core and household linkage to finalize enrollment.
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <form
-        onSubmit={(event) => void onSubmit(event)}
-        className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-white"
-      >
-        {/* Main Workbench Area (Scrollable) */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 bg-slate-50/30">
-          <div className="mx-auto max-w-4xl space-y-10">
-
-            {/* Target Placement Section — Mobile Only */}
-            <section className="space-y-4 lg:hidden animate-in fade-in slide-in-from-top-4 duration-700">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <LayoutGrid className="h-4 w-4 text-slate-950" />
+            {/* ── SECTION 1: Academic Class Placement ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                    <LayoutGrid className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
+                      1. Academic Class Placement
+                    </h2>
+                    <p className="text-[11px] font-medium text-slate-400">
+                      Select the class division for this student&apos;s active enrollment.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Target Placement</h2>
-                  <p className="text-[10px] font-medium text-slate-400">Select the class for this student</p>
+
+                {/* Search / Filter Filter */}
+                <div className="relative w-full sm:w-60">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+                  <input
+                    type="text"
+                    value={classSearch}
+                    onChange={(e) => setClassSearch(e.target.value)}
+                    placeholder="Search classes..."
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs font-bold text-slate-900 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 placeholder:text-slate-300"
+                  />
                 </div>
               </div>
 
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsClassSelectOpen(!isClassSelectOpen)}
-                  className={cn(
-                    "flex h-12 w-full items-center justify-between rounded-xl border px-4 transition-all",
-                    selectedClassId ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-950/10" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                  )}
-                >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <Search className={cn("h-4 w-4 shrink-0", selectedClassId ? "text-slate-400" : "text-slate-300")} />
-                    <span className="truncate text-xs font-black uppercase tracking-wider">
-                      {selectedClassName || "Select a class..."}
-                    </span>
-                  </div>
-                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-300", isClassSelectOpen && "rotate-180")} />
-                </button>
-
-                {isClassSelectOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40 lg:hidden" 
-                      onClick={() => setIsClassSelectOpen(false)} 
-                    />
-                    <div className="absolute inset-x-0 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-300 overflow-hidden">
-                      <div className="relative mb-2">
-                        <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-300" />
-                        <input
-                          type="text"
-                          autoFocus
-                          value={classSearch}
-                          onChange={(e) => setClassSearch(e.target.value)}
-                          placeholder="Search classes..."
-                          className="h-9 w-full rounded-lg border border-slate-100 bg-slate-50/50 pl-9 pr-3 text-[11px] font-bold text-slate-950 outline-none"
-                        />
-                      </div>
-                      <div className="max-h-[240px] overflow-y-auto custom-scrollbar space-y-4 p-1">
-                        {classesByLevel.map((group) => (
-                          <div key={group.level} className="space-y-1.5">
-                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-300 pl-2">{group.level}</p>
-                            <div className="grid gap-1">
-                              {group.classes.map((c) => (
-                                <button
-                                  key={c._id}
-                                  type="button"
-                                  onClick={() => {
-                                    onClassIdChange(c._id);
-                                    setIsClassSelectOpen(false);
-                                    setClassSearch("");
-                                  }}
-                                  className={cn(
-                                    "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
-                                    selectedClassId === c._id ? "bg-slate-900 text-white shadow-md" : "text-slate-600 hover:bg-slate-50"
-                                  )}
-                                >
-                                  <span className="text-[10px] font-bold uppercase truncate">{c.name}</span>
-                                  {selectedClassId === c._id && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                        {filteredClasses.length === 0 && (
-                          <p className="py-8 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">No matching classes</p>
-                        )}
-                      </div>
+              {/* Class Buttons Grouped by Level */}
+              <div className="space-y-4">
+                {classesByLevel.map((group) => (
+                  <div key={group.level} className="space-y-2">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display pl-0.5">
+                      {group.level} Section
+                    </p>
+                    <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
+                      {group.classes.map((classDoc) => {
+                        const isSelected = selectedClassId === classDoc._id;
+                        return (
+                          <button
+                            key={classDoc._id}
+                            type="button"
+                            onClick={() => onClassIdChange(classDoc._id)}
+                            className={cn(
+                              "flex items-center justify-between rounded-xl border p-3 text-left transition-all",
+                              isSelected
+                                ? "border-brand-primary bg-brand-primary text-white shadow-md shadow-brand-primary/15"
+                                : "border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                            )}
+                          >
+                            <span className="text-xs font-bold uppercase truncate mr-2">
+                              {classDoc.name}
+                            </span>
+                            {isSelected ? (
+                              <Check className="h-4 w-4 shrink-0 text-white" />
+                            ) : (
+                              <div className="h-3.5 w-3.5 shrink-0 rounded-full border border-slate-200" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </>
+                  </div>
+                ))}
+
+                {filteredClasses.length === 0 && (
+                  <div className="py-6 text-center text-xs font-medium text-slate-400">
+                    No classes match &quot;{classSearch}&quot;
+                  </div>
                 )}
               </div>
-            </section>
+            </AdminSurface>
 
-            {/* Profile Core */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <Fingerprint className="h-4 w-4 text-slate-950" />
+            {/* ── SECTION 2: Student Identity Core ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-6">
+              <div className="flex items-center gap-2.5 border-b border-slate-200/60 pb-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                  <Fingerprint className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Identity Core</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
+                    2. Student Identity & Passport
+                  </h2>
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Official identification and basic demographic records.
+                  </p>
                 </div>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-12">
-                {/* Photo Panel */}
-                <div className="lg:col-span-3 order-2 lg:order-1">
+              <div className="grid gap-6 md:grid-cols-12">
+                {/* Photo Upload Column */}
+                <div className="md:col-span-4 space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display">
+                    Passport Photo (Optional)
+                  </label>
                   <StudentPhotoPanel
-                    name={[firstName, lastName].filter(Boolean).join(" ") || "Student photo"}
+                    name={fullNameDisplay}
                     previewUrl={photoPreviewUrl}
                     onPhotoChange={onPhotoChange}
                     onRemovePhoto={onRemovePhoto}
-                    helperText="Passport photo (Optional)"
+                    helperText="JPG/PNG up to 1 MB."
                     resetKey={photoResetKey}
                     onProcessingChange={setIsPhotoProcessing}
                     onValidationError={onPhotoValidationError}
                   />
                 </div>
 
-                <div className="lg:col-span-9 grid gap-4 sm:grid-cols-2 order-1 lg:order-2">
-                  <Field label="First Name">
+                {/* Inputs Column */}
+                <div className="md:col-span-8 grid gap-4 sm:grid-cols-2">
+                  <Field label="First Name *">
                     <input
                       ref={firstNameInputRef}
                       value={firstName}
@@ -348,7 +535,8 @@ export function StudentFirstOnboardingForm({
                       required
                     />
                   </Field>
-                  <Field label="Last Name">
+
+                  <Field label="Last Name *">
                     <input
                       value={lastName}
                       onChange={(e) => onLastNameChange(e.target.value)}
@@ -358,7 +546,8 @@ export function StudentFirstOnboardingForm({
                       required
                     />
                   </Field>
-                  <Field label="Admission Number">
+
+                  <Field label="Admission Number *">
                     <input
                       value={admissionNumber}
                       onChange={(e) => onAdmissionNumberChange(e.target.value)}
@@ -367,7 +556,8 @@ export function StudentFirstOnboardingForm({
                       required
                     />
                   </Field>
-                  <Field label="Gender">
+
+                  <Field label="Gender *">
                     <select
                       value={gender}
                       onChange={(e) => onGenderChange(e.target.value)}
@@ -379,201 +569,234 @@ export function StudentFirstOnboardingForm({
                       <option value="Female">Female</option>
                     </select>
                   </Field>
-                </div>
-              </div>
-            </section>
 
-            {/* Extended Attributes */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <Info className="h-4 w-4 text-slate-950" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Extended Attributes</h2>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="House / Team">
-                  <input
-                    value={houseName}
-                    onChange={(e) => onHouseNameChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="e.g. Blue"
-                  />
-                </Field>
-                <Field label="Date of Birth">
-                  <input
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(e) => onDateOfBirthChange(e.target.value)}
-                    className={fieldInputClassName}
-                  />
-                </Field>
-                <Field label="Primary Guardian">
-                  <input
-                    value={guardianName}
-                    onChange={(e) => onGuardianNameChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="e.g. John Doe"
-                  />
-                </Field>
-                <Field label="Guardian Phone">
-                  <input
-                    value={guardianPhone}
-                    onChange={(e) => onGuardianPhoneChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="+234..."
-                  />
-                </Field>
-                <Field label="Residential Address" className="sm:col-span-2">
-                  <textarea
-                    rows={1}
-                    value={address}
-                    onChange={(e) => onAddressChange(e.target.value)}
-                    className={cn(fieldInputClassName, "h-auto py-2 resize-none")}
-                    placeholder="Full residential address..."
-                  />
-                </Field>
-              </div>
-            </section>
-
-            {/* Household Linkage */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <Users className="h-4 w-4 text-slate-950" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Household Linkage</h2>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Parent First Name">
-                  <input
-                    value={parentFirstName}
-                    onChange={(e) => onParentFirstNameChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="e.g. Aisha"
-                  />
-                </Field>
-                <Field label="Parent Last Name">
-                  <input
-                    value={parentLastName}
-                    onChange={(e) => onParentLastNameChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="e.g. Bello"
-                  />
-                </Field>
-                <Field label="Parent Primary Email">
-                  <input
-                    type="email"
-                    value={parentEmail}
-                    onChange={(e) => onParentEmailChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="parent@example.com"
-                  />
-                </Field>
-                <Field label="Parent Mobile Number">
-                  <input
-                    value={parentPhone}
-                    onChange={(e) => onParentPhoneChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="+234..."
-                  />
-                </Field>
-                <Field label="Relationship Status" className="sm:col-span-2">
-                  <input
-                    value={parentRelationship}
-                    onChange={(e) => onParentRelationshipChange(e.target.value)}
-                    className={fieldInputClassName}
-                    placeholder="Mother, Father, Guardian, etc."
-                  />
-                </Field>
-                <div className="sm:col-span-2">
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 transition-all hover:border-slate-300 cursor-pointer">
+                  <Field label="House / Team">
                     <input
-                      type="checkbox"
-                      checked={isParentPrimaryContact}
-                      onChange={(e) => onIsParentPrimaryContactChange(e.target.checked)}
-                      className="h-5 w-5 rounded-md border-slate-300 text-slate-950 focus:ring-slate-950/10"
+                      value={houseName}
+                      onChange={(e) => onHouseNameChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="e.g. Blue House"
                     />
-                    <div className="space-y-0.5">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-slate-950">Set as Primary Contact</p>
-                      <p className="text-[10px] font-medium text-slate-400">This parent will be the first point of call for notifications and emergencies.</p>
-                    </div>
-                  </label>
-                </div>
+                  </Field>
 
-                {parentEmail.trim().length >= 3 && emailMatches.length > 0 && (
-                  <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2">
-                    <div className={cn(
-                      "flex items-start gap-3 rounded-xl border p-4",
-                      existingStudentWithEmail ? "border-amber-200 bg-amber-50" : "border-blue-200 bg-blue-50"
-                    )}>
-                      {existingStudentWithEmail ? (
-                        <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
-                      ) : (
-                        <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                      )}
-                      <div className="space-y-1">
-                        <p className={cn(
-                          "text-[10px] font-black uppercase tracking-wider",
-                          existingStudentWithEmail ? "text-amber-700" : "text-blue-700"
-                        )}>
-                          {existingStudentWithEmail ? "Student Match Detected" : "Identity Registry Check"}
-                        </p>
-                        <p className={cn(
-                          "text-[11px] font-medium leading-relaxed",
-                          existingStudentWithEmail ? "text-amber-800" : "text-blue-800"
-                        )}>
-                          {existingStudentWithEmail ? (
-                            <>A student named <strong>{existingStudentWithEmail.name}</strong> is already registered with this email. Please verify if you intended to link an existing user or if this is a mistake.</>
-                          ) : existingParentWithEmail ? (
-                            <>A parent record for <strong>{existingParentWithEmail.name}</strong> was found. We&apos;ll automatically link this student to their existing household profile.</>
-                          ) : (
-                            "This email is not currently in our system. A new user account will be provisioned upon enrollment."
-                          )}
+                  <Field label="Date of Birth">
+                    <input
+                      type="date"
+                      max={todayDateString}
+                      value={dateOfBirth}
+                      onChange={(e) => onDateOfBirthChange(e.target.value)}
+                      className={fieldInputClassName}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </AdminSurface>
+
+            {/* ── SECTION 3: Household & Primary Guardian ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-6">
+              <div className="flex items-center gap-2.5 border-b border-slate-200/60 pb-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                  <Users className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
+                    3. Household & Primary Guardian
+                  </h2>
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Emergency contacts, residential location, and parent links.
+                  </p>
+                </div>
+              </div>
+
+              {/* Primary Guardian Section */}
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500 font-display">
+                  Primary Guardian Details
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Primary Guardian Name">
+                    <input
+                      value={guardianName}
+                      onChange={(e) => onGuardianNameChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="e.g. John Doe"
+                    />
+                  </Field>
+                  <Field label="Guardian Phone">
+                    <input
+                      value={guardianPhone}
+                      onChange={(e) => onGuardianPhoneChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="+234..."
+                    />
+                  </Field>
+                  <Field label="Residential Address" className="sm:col-span-2">
+                    <textarea
+                      rows={2}
+                      value={address}
+                      onChange={(e) => onAddressChange(e.target.value)}
+                      className={cn(fieldInputClassName, "h-auto py-2 resize-none")}
+                      placeholder="Full residential address..."
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Parent Portal Linkage */}
+              <div className="space-y-3 pt-3 border-t border-slate-200/60">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500 font-display">
+                  Parent Profile & Household Linkage
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Parent First Name">
+                    <input
+                      value={parentFirstName}
+                      onChange={(e) => onParentFirstNameChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="e.g. Aisha"
+                    />
+                  </Field>
+                  <Field label="Parent Last Name">
+                    <input
+                      value={parentLastName}
+                      onChange={(e) => onParentLastNameChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="e.g. Bello"
+                    />
+                  </Field>
+                  <Field label="Parent Primary Email">
+                    <input
+                      type="email"
+                      value={parentEmail}
+                      onChange={(e) => onParentEmailChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="parent@example.com"
+                    />
+                  </Field>
+                  <Field label="Parent Mobile Number">
+                    <input
+                      value={parentPhone}
+                      onChange={(e) => onParentPhoneChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="+234..."
+                    />
+                  </Field>
+                  <Field label="Relationship Status" className="sm:col-span-2">
+                    <input
+                      value={parentRelationship}
+                      onChange={(e) => onParentRelationshipChange(e.target.value)}
+                      className={fieldInputClassName}
+                      placeholder="Mother, Father, Guardian, etc."
+                    />
+                  </Field>
+
+                  <div className="sm:col-span-2">
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 transition-all hover:border-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isParentPrimaryContact}
+                        onChange={(e) => onIsParentPrimaryContactChange(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-brand-primary/20"
+                      />
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-slate-950">Set as Primary Contact</p>
+                        <p className="text-[11px] font-medium text-slate-400">
+                          This parent will be the primary point of contact for emergency alerts and grade notifications.
                         </p>
                       </div>
-                    </div>
+                    </label>
                   </div>
-                )}
-              </div>
-            </section>
 
-            {/* Digital Access Provisioning */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <Shield className="h-4 w-4 text-slate-950" />
+                  {parentEmail.trim().length >= 3 && emailMatches.length > 0 && (
+                    <div className="sm:col-span-2 animate-in fade-in">
+                      <div
+                        className={cn(
+                          "flex items-start gap-3 rounded-xl border p-4",
+                          existingStudentWithEmail
+                            ? "border-amber-200 bg-amber-50"
+                            : "border-blue-200 bg-blue-50"
+                        )}
+                      >
+                        {existingStudentWithEmail ? (
+                          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                        ) : (
+                          <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                        )}
+                        <div className="space-y-1">
+                          <p
+                            className={cn(
+                              "text-xs font-bold uppercase tracking-wider",
+                              existingStudentWithEmail ? "text-amber-800" : "text-blue-800"
+                            )}
+                          >
+                            {existingStudentWithEmail
+                              ? "Student Match Detected"
+                              : "Existing Parent Match Found"}
+                          </p>
+                          <p
+                            className={cn(
+                              "text-xs font-medium leading-relaxed",
+                              existingStudentWithEmail ? "text-amber-800" : "text-blue-800"
+                            )}
+                          >
+                            {existingStudentWithEmail ? (
+                              <>
+                                A student named <strong>{existingStudentWithEmail.name}</strong> is already registered with this email. Please verify if you intended to link an existing user.
+                              </>
+                            ) : existingParentWithEmail ? (
+                              <>
+                                An existing parent account for <strong>{existingParentWithEmail.name}</strong> was found. This student will be automatically linked to their household profile.
+                              </>
+                            ) : null}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </AdminSurface>
+
+            {/* ── SECTION 4: Digital Portal Access ── */}
+            <AdminSurface intensity="medium" rounded="xl" className="p-5 md:p-6 space-y-6">
+              <div className="flex items-center gap-2.5 border-b border-slate-200/60 pb-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                  <Shield className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">Digital Access</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-950 font-display">
+                    4. Digital Portal Credentials
+                  </h2>
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Provision instant login credentials for online student and parent portals.
+                  </p>
                 </div>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div className={cn(
-                  "group relative overflow-hidden rounded-xl border bg-white p-4 transition-all",
-                  provisionStudentPortalAccess ? "border-slate-950 shadow-md ring-4 ring-slate-950/5" : "border-slate-200"
-                )}>
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Student Portal Card */}
+                <div
+                  className={cn(
+                    "group relative overflow-hidden rounded-xl border bg-white p-4 transition-all",
+                    provisionStudentPortalAccess
+                      ? "border-slate-950 shadow-md ring-2 ring-slate-950/5"
+                      : "border-slate-200"
+                  )}
+                >
                   <div className="flex items-center justify-between mb-3">
                     <div className="space-y-0.5">
-                      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-900">Student Portal</p>
-                      <p className="text-[10px] font-medium text-slate-400">Immediate app access.</p>
+                      <p className="text-xs font-bold text-slate-900 font-display">Student Portal Access</p>
+                      <p className="text-[11px] font-medium text-slate-400">Enable student login app.</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={provisionStudentPortalAccess}
                       onChange={(e) => onProvisionStudentPortalAccessChange(e.target.checked)}
-                      className="h-5 w-5 rounded-md border-slate-300 text-slate-950 focus:ring-slate-950/10"
+                      className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-brand-primary/20"
                     />
                   </div>
                   {provisionStudentPortalAccess && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-3 pt-2 border-t border-slate-100 animate-in fade-in">
                       <Field label="Temporary Password">
                         <div className="relative">
                           <KeyRound className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
@@ -581,42 +804,44 @@ export function StudentFirstOnboardingForm({
                             type="text"
                             value={studentTemporaryPassword}
                             onChange={(e) => onStudentTemporaryPasswordChange(e.target.value)}
-                            className={cn(fieldInputClassName, "pl-10")}
+                            className={cn(fieldInputClassName, "pl-9")}
                             placeholder="Student123!Pass"
                           />
                         </div>
                       </Field>
-                      <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 border border-slate-100">
-                        <Fingerprint className="h-3 w-3 text-slate-400" />
-                        <div className="min-w-0">
-                          <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Assigned Username</p>
-                          <p className="text-[10px] font-bold text-slate-600 truncate italic">
-                            {admissionNumber.trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "adm000"}@students.local
-                          </p>
-                        </div>
+                      <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100 text-[11px]">
+                        <span className="font-bold text-slate-400 uppercase text-[9px] block">Assigned Username:</span>
+                        <span className="font-bold font-mono text-slate-700">
+                          {admissionNumber.trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "adm000"}@students.local
+                        </span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                <div className={cn(
-                  "group relative overflow-hidden rounded-xl border bg-white p-4 transition-all",
-                  provisionParentPortalAccess ? "border-slate-950 shadow-md ring-4 ring-slate-950/5" : "border-slate-200"
-                )}>
+                {/* Parent Portal Card */}
+                <div
+                  className={cn(
+                    "group relative overflow-hidden rounded-xl border bg-white p-4 transition-all",
+                    provisionParentPortalAccess
+                      ? "border-slate-950 shadow-md ring-2 ring-slate-950/5"
+                      : "border-slate-200"
+                  )}
+                >
                   <div className="flex items-center justify-between mb-3">
                     <div className="space-y-0.5">
-                      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-900">Parent Portal</p>
-                      <p className="text-[10px] font-medium text-slate-400">Immediate app access.</p>
+                      <p className="text-xs font-bold text-slate-900 font-display">Parent Portal Access</p>
+                      <p className="text-[11px] font-medium text-slate-400">Enable guardian grades app.</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={provisionParentPortalAccess}
                       onChange={(e) => onProvisionParentPortalAccessChange(e.target.checked)}
-                      className="h-5 w-5 rounded-md border-slate-300 text-slate-950 focus:ring-slate-950/10"
+                      className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-brand-primary/20"
                     />
                   </div>
                   {provisionParentPortalAccess && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-3 pt-2 border-t border-slate-100 animate-in fade-in">
                       <Field label="Temporary Password">
                         <div className="relative">
                           <KeyRound className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
@@ -624,166 +849,41 @@ export function StudentFirstOnboardingForm({
                             type="text"
                             value={parentTemporaryPassword}
                             onChange={(e) => onParentTemporaryPasswordChange(e.target.value)}
-                            className={cn(fieldInputClassName, "pl-10")}
+                            className={cn(fieldInputClassName, "pl-9")}
                             placeholder="Parent123!Pass"
                           />
                         </div>
                       </Field>
-                      <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 border border-slate-100">
-                        <Users className="h-3 w-3 text-slate-400" />
-                        <div className="min-w-0">
-                          <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Target Email</p>
-                          <p className={cn(
-                            "text-[10px] font-bold truncate italic",
-                            parentEmail.trim() ? "text-slate-600" : "text-amber-500"
-                          )}>
-                            {parentEmail.trim().toLowerCase() || "Missing Parent Email"}
-                          </p>
-                        </div>
+                      <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100 text-[11px]">
+                        <span className="font-bold text-slate-400 uppercase text-[9px] block">Target Email:</span>
+                        <span className={cn("font-bold", parentEmail.trim() ? "text-slate-700" : "text-amber-600")}>
+                          {parentEmail.trim().toLowerCase() || "Enter parent email above"}
+                        </span>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Credential Summary */}
-              {credentialSummary && (
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-6 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Provisioning Successful</p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {credentialSummary.student && (
-                      <CredentialCard
-                        label="Student Access"
-                        email={credentialSummary.student.email}
-                        password={credentialSummary.student.temporaryPassword}
-                      />
-                    )}
-                    {credentialSummary.parent && (
-                      <CredentialCard
-                        label="Parent Access"
-                        email={credentialSummary.parent.email}
-                        password={credentialSummary.parent.temporaryPassword}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* Bottom Spacer for Mobile */}
-            <div className="h-32 lg:hidden" />
+            </AdminSurface>
           </div>
         </main>
 
-        {/* Configuration Sidebar — Desktop Only */}
-        <aside className="hidden lg:flex w-[340px] shrink-0 border-l border-slate-200 bg-white flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <LayoutGrid className="h-3.5 w-3.5 text-slate-400" />
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Placement</p>
-                </div>
-                <h3 className="text-lg font-black tracking-tight text-slate-950 uppercase">Class Selection</h3>
-              </div>
-
-              {/* Live Filter */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
-                <input
-                  type="text"
-                  value={classSearch}
-                  onChange={(e) => setClassSearch(e.target.value)}
-                  placeholder="Filter classes..."
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-9 pr-3 text-[11px] font-bold text-slate-900 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-slate-950/5"
-                />
-              </div>
-
-              <p className="text-[11px] font-medium text-slate-400 leading-relaxed">
-                Assign this student to a specific academic division to complete onboarding.
-              </p>
-            </div>
-
-            <div className="space-y-5">
-              {classesByLevel.map((group: { level: string; classes: ClassSummary[] }) => (
-                <div key={group.level} className="space-y-2.5">
-                  <p className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-400/80 pl-1">
-                    {group.level}
-                  </p>
-                  <div className="grid gap-1.5">
-                    {group.classes.map((classDoc: ClassSummary) => {
-                      const isSelected = selectedClassId === classDoc._id;
-                      return (
-                        <button
-                          key={classDoc._id}
-                          type="button"
-                          onClick={() => onClassIdChange(classDoc._id)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-lg border px-3.5 py-2.5 text-left transition-all duration-200",
-                            isSelected
-                              ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-950/10"
-                              : "border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200 hover:bg-slate-50"
-                          )}
-                        >
-                          <span className="text-[10px] font-black tracking-wide uppercase truncate mr-2">{classDoc.name}</span>
-                          {isSelected ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-white" />
-                          ) : (
-                            <div className="h-3.5 w-3.5 shrink-0 rounded-full border border-slate-200" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 mt-auto">
-              <button
-                type="submit"
-                disabled={isSubmitting || !canSubmit}
-                className="group relative flex h-12 w-full items-center justify-center gap-3 overflow-hidden rounded-xl bg-slate-950 text-white transition-all hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-slate-950/20"
-              >
-                <UserPlus className="h-4 w-4 transition group-hover:scale-110" />
-                <span className="text-[11px] font-black uppercase tracking-[0.15em]">
-                  {isSubmitting ? "..." : isPhotoProcessing ? "Preparing photo..." : "Enroll Student"}
-                </span>
-              </button>
-
-              <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                <Info className="h-3 w-3 text-slate-400 mt-0.5" />
-                <p className="text-[9px] font-medium leading-relaxed text-slate-400">
-                  Profile will be synced across all registers and parent portals upon commitment.
-                </p>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-
-
-        {/* Mobile Sticky Action Bar */}
+        {/* ── MOBILE STICKY ACTION BAR (< lg) ── */}
         <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-xl lg:hidden">
           <div className="flex items-center gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Target Placement</p>
-              <p className="text-xs font-black text-slate-950 truncate">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Target Class</p>
+              <p className="text-xs font-bold text-slate-950 truncate">
                 {selectedClassName || "Unselected"}
               </p>
             </div>
             <button
               type="submit"
               disabled={isSubmitting || !canSubmit}
-              className="flex h-12 items-center gap-2 rounded-xl bg-slate-950 px-6 text-white transition-all disabled:opacity-30 shadow-lg shadow-slate-950/20"
+              className="flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-5 text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-30 shadow-md active:scale-95"
             >
               <UserPlus className="h-4 w-4" />
-              <span className="text-[11px] font-black uppercase tracking-wider">
-                {isSubmitting ? "..." : isPhotoProcessing ? "Preparing..." : "Enroll"}
-              </span>
+              <span>{isSubmitting ? "..." : "Enroll Student"}</span>
             </button>
           </div>
         </div>
@@ -791,7 +891,6 @@ export function StudentFirstOnboardingForm({
     </div>
   );
 }
-
 
 /* ─── Helpers ─── */
 
@@ -805,12 +904,47 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className={cn("space-y-1.5", className)}>
-      <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-slate-400/80">
+    <label className={cn("space-y-1.5 block", className)}>
+      <span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 font-display">
         {label}
       </span>
       {children}
     </label>
+  );
+}
+
+function ChecklistItem({
+  isDone,
+  label,
+  detail,
+  optional = false,
+}: {
+  isDone: boolean;
+  label: string;
+  detail: string;
+  optional?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 text-xs">
+      <div
+        className={cn(
+          "h-4 w-4 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+          isDone
+            ? "bg-emerald-500 text-white"
+            : optional
+            ? "border border-slate-200 text-transparent"
+            : "border-2 border-amber-400 text-transparent"
+        )}
+      >
+        <Check className="h-2.5 w-2.5 stroke-[3]" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={cn("font-bold text-xs", isDone ? "text-slate-900" : "text-slate-600")}>
+          {label}
+        </p>
+        <p className="text-[10px] font-medium text-slate-400 truncate">{detail}</p>
+      </div>
+    </div>
   );
 }
 
@@ -823,36 +957,37 @@ function CredentialCard({
   email: string;
   password: string;
 }) {
+  const [copied, setCopied] = useState(false);
+
   const handleCopy = () => {
     void navigator.clipboard.writeText(`Email: ${email}\nPassword: ${password}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="group relative rounded-xl border border-emerald-200 bg-white p-4 transition-all hover:shadow-md">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-600">{label}</p>
+    <div className="rounded-lg border border-emerald-200 bg-white p-3 space-y-1.5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 font-display">
+          {label}
+        </span>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50 px-2 py-1 text-[9px] font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          className="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[9px] font-bold text-slate-700 transition-colors"
         >
-          <Copy className="h-3 w-3" />
-          Copy
+          {copied ? <Check className="h-2.5 w-2.5 text-emerald-600" /> : <Copy className="h-2.5 w-2.5" />}
+          <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-      <div className="space-y-1.5">
-        <div className="space-y-0.5">
-          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">ID / Username</p>
-          <p className="text-xs font-bold text-slate-700 truncate">{email}</p>
-        </div>
-        <div className="space-y-0.5">
-          <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Security Key</p>
-          <p className="text-sm font-black text-slate-950 font-mono tracking-tight">{password}</p>
-        </div>
+      <div className="text-[11px] space-y-0.5">
+        <div className="text-slate-600 truncate font-medium">User: <strong className="text-slate-900 font-mono">{email}</strong></div>
+        <div className="text-slate-600 font-medium">Password: <strong className="text-slate-900 font-mono">{password}</strong></div>
       </div>
     </div>
   );
 }
 
 const fieldInputClassName =
-  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-[4px] focus:ring-slate-950/5 placeholder:text-slate-200 shadow-sm";
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 placeholder:text-slate-300 shadow-sm";
+

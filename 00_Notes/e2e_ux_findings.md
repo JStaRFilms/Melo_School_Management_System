@@ -158,7 +158,22 @@ This document tracks all observations, issues, UX refinements, and their resolut
     - **Graduation & Alumni Transition:** Official graduation date, graduating class (e.g. SSS 3 / Year 12), diploma/certificate issuance status, transition to alumni directory.
   - **UI & Transcript Generation:**
     - **Visual Lifecycle Journey:** Interactive vertical timeline widget on the student's admin & parent profile displaying all enrollment transitions with status badges.
-    - **Official Certificate & Transcript Export:** Automated generation of Letters of Attestation and Official Transcripts accurately certifying dates of attendance (*"Attended [School Name] from September 2024 to July 2027..."*).
+- [ ] **First-Time Faculty Sign-In & Mandatory Password Reset**
+  - Upon receiving the onboarding invitation with temporary credentials, faculty/staff must be presented with a mandatory "Create Your Password" step before entering the workspace.
+- [ ] **Configurable School House System (Settings & Student Links)**
+  - Institution-level settings to define school houses with color identifiers (e.g. Green `#16a34a`, Purple `#9333ea`) and custom names (e.g. *"Tododo House"*, *"Emerald House"*).
+  - Student onboarding and profile editors use a structured dropdown populated from active school houses instead of manual arbitrary text.
+- [ ] **Date Validation: Future Date Restriction for Student Records**
+  - Set strict HTML5/form constraints (`max={today}`) so administrators cannot input future dates for Date of Birth (`dob`) or historical enrollment dates.
+- [ ] **Multi-Parent Household & Guardian Linking Architecture (Backend & Schema Migration)**
+  - **Comprehensive Household Support:**
+    - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
+    - Distinct first name, last name, phone, email, and occupation/relationship fields.
+  - **Smart Relationship & Address Inheritance:**
+    - 1-click toggle: *"Primary Guardian is Parent 1 / Parent 2"* auto-syncing contact details.
+    - Residential address sync: option to inherit parent household address or provide separate guardian residence.
+  - **Household Deduplication:**
+    - Link siblings under a unified `householdId` when parent phone numbers/emails match, streamlining family billing and notifications.
 - [ ] Automated regression test suite for core multi-tenant boundaries.
 - [ ] Merge back feature worktrees (`_w/atomic-campaigns`, `_w/draft`, `_w/ui-refinement`) into main pipeline.
 - [ ] Production snapshot reconciliation and selective cleanup after local sign-off.
