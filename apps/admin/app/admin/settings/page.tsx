@@ -250,7 +250,7 @@ export default function SchoolSettingsPage() {
           type="button"
           onClick={handleSaveProfile}
           disabled={isSaving}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
         >
           {isSaving ? (
             <>
@@ -677,27 +677,6 @@ export default function SchoolSettingsPage() {
               </p>
             </button>
           </div>
-        </div>
-
-        {/* Floating Save Action */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 disabled:opacity-50 transition-all"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving Changes...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                Save Profile & Branding
-              </>
-            )}
-          </button>
         </div>
       </form>
     </div>
