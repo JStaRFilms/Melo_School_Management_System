@@ -141,9 +141,32 @@ export default function ClassesPage() {
   ) as ClassOffering[] | undefined;
 
   const [activeClass, setActiveClass] = useState<ClassSummary | null>(null);
+  const [isEditorDirty, setIsEditorDirty] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+
   useEffect(() => {
     if (currentClass) setActiveClass(currentClass);
   }, [currentClass]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isEditorDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isEditorDirty]);
+
+  const guardUnsavedAction = (action: () => void) => {
+    if (isEditorDirty) {
+      setPendingNavigation(() => action);
+      setShowUnsavedModal(true);
+    } else {
+      action();
+    }
+  };
 
   useEffect(() => {
     if (selectedClassId && typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -162,6 +185,7 @@ export default function ClassesPage() {
   const handleRequestCreate = (level: string = "Nursery") => {
     setSelectedClassId(null);
     setBuilderLevel(level);
+    setIsEditorDirty(false);
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       const builder = document.getElementById("class-builder-section");
       if (builder) {
@@ -225,6 +249,7 @@ export default function ClassesPage() {
         subjectIds: data.subjectIds,
       } as never);
 
+      setIsEditorDirty(false);
       showNotice({ tone: "success", title: "Class Records Updated", message: "Blueprint modifications saved successfully." });
     } catch (err) {
       showNotice({
@@ -316,10 +341,31 @@ export default function ClassesPage() {
         isLoading={isArchiving}
       />
 
+      {/* Confirmation Modal for Unsaved Changes */}
+      <ConfirmationModal
+        isOpen={showUnsavedModal}
+        onClose={() => {
+          setShowUnsavedModal(false);
+          setPendingNavigation(null);
+        }}
+        onConfirm={() => {
+          setIsEditorDirty(false);
+          setShowUnsavedModal(false);
+          if (pendingNavigation) {
+            pendingNavigation();
+            setPendingNavigation(null);
+          }
+        }}
+        title="Discard Unsaved Changes?"
+        description={`You have unsaved edits in ${currentClass?.name || "this class record"}. If you switch classes or close the editor now, your changes will be discarded.`}
+        confirmLabel="Discard & Continue"
+        confirmVariant="warning"
+      />
+
       {/* Mobile Editor Sheet */}
       <AdminSheet
         isOpen={Boolean(selectedClassId) && isMobile}
-        onClose={() => setSelectedClassId(null)}
+        onClose={() => guardUnsavedAction(() => setSelectedClassId(null))}
         title="Edit Class Record"
         description="Modify blueprints and subject mappings."
       >
@@ -331,8 +377,9 @@ export default function ClassesPage() {
              currentOfferings={currentOfferings}
              onUpdate={handleUpdate}
              onArchive={() => handleArchivePrompt(activeClass._id)}
-             onClose={() => setSelectedClassId(null)}
+             onClose={() => guardUnsavedAction(() => setSelectedClassId(null))}
              onAssignTeacher={(subId, teachId) => handleAssignTeacher(activeClass._id, subId, teachId)}
+             onDirtyChange={setIsEditorDirty}
              isSaving={isSaving}
              variant="sheet"
            />
@@ -343,7 +390,7 @@ export default function ClassesPage() {
         {/* Sidebar Bucket - Locked & Pinned */}
         <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
           <div id="class-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
-            <div className="hidden lg:block">
+            <div className="hidden lg:block h-full">
               {selectedClassId && currentClass ? (
                 <ClassEditForm
                   classDoc={currentClass}
@@ -352,8 +399,9 @@ export default function ClassesPage() {
                   currentOfferings={currentOfferings}
                   onUpdate={handleUpdate}
                   onArchive={() => handleArchivePrompt(selectedClassId)}
-                  onClose={() => setSelectedClassId(null)}
+                  onClose={() => guardUnsavedAction(() => setSelectedClassId(null))}
                   onAssignTeacher={(subId, teachId) => handleAssignTeacher(selectedClassId, subId, teachId)}
+                  onDirtyChange={setIsEditorDirty}
                   isSaving={isSaving}
                 />
               ) : (
@@ -380,24 +428,26 @@ export default function ClassesPage() {
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-200/60 shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Class Lifecycle</h4>
-                <p className="text-[10px] font-medium text-slate-400">
-                  Archiving preserves past grades.
-                </p>
+          {!selectedClassId && (
+            <div className="pt-3 border-t border-slate-200/60 shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Class Lifecycle</h4>
+                  <p className="text-[10px] font-medium text-slate-400">
+                    Archiving preserves past grades.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/academic/archived-records")}
+                  className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-500 hover:text-slate-950 transition-colors bg-slate-100/70 py-1.5 px-2.5 rounded-lg border border-slate-200/50 cursor-pointer"
+                >
+                  <Database className="h-3 w-3" />
+                  <span>Archives</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => router.push("/academic/archived-records")}
-                className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-500 hover:text-slate-950 transition-colors bg-slate-100/70 py-1.5 px-2.5 rounded-lg border border-slate-200/50 cursor-pointer"
-              >
-                <Database className="h-3 w-3" />
-                <span>Archives</span>
-              </button>
             </div>
-          </div>
+          )}
         </aside>
 
         {/* Main Content Bucket - Independent Scroll */}
@@ -452,9 +502,9 @@ export default function ClassesPage() {
                 accentClass="bg-amber-50 text-amber-600 border border-amber-200/60"
                 classes={nurseryClasses}
                 selectedClassId={selectedClassId}
-                onSelect={setSelectedClassId}
+                onSelect={(id) => guardUnsavedAction(() => setSelectedClassId(id))}
                 onArchive={handleArchivePrompt}
-                onRequestCreate={handleRequestCreate}
+                onRequestCreate={(lvl) => guardUnsavedAction(() => handleRequestCreate(lvl))}
               />
 
               <ClassSection
@@ -464,9 +514,9 @@ export default function ClassesPage() {
                 accentClass="bg-emerald-50 text-emerald-700 border border-emerald-200/60"
                 classes={primaryClasses}
                 selectedClassId={selectedClassId}
-                onSelect={setSelectedClassId}
+                onSelect={(id) => guardUnsavedAction(() => setSelectedClassId(id))}
                 onArchive={handleArchivePrompt}
-                onRequestCreate={handleRequestCreate}
+                onRequestCreate={(lvl) => guardUnsavedAction(() => handleRequestCreate(lvl))}
               />
 
               <ClassSection
@@ -476,9 +526,9 @@ export default function ClassesPage() {
                 accentClass="bg-blue-50 text-blue-700 border border-blue-200/60"
                 classes={secondaryClasses}
                 selectedClassId={selectedClassId}
-                onSelect={setSelectedClassId}
+                onSelect={(id) => guardUnsavedAction(() => setSelectedClassId(id))}
                 onArchive={handleArchivePrompt}
-                onRequestCreate={handleRequestCreate}
+                onRequestCreate={(lvl) => guardUnsavedAction(() => handleRequestCreate(lvl))}
               />
             </div>
           </div>
