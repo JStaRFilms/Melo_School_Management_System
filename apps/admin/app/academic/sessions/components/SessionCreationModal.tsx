@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import {
   CalendarCheck,
@@ -24,6 +25,7 @@ export function SessionCreationModal({
   onClose,
   onSessionCreated,
 }: SessionCreationModalProps) {
+  const [mounted, setMounted] = useState(false);
   const createSession = useMutation("functions/academic/academicSetup:createSession" as never);
   const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
 
@@ -37,7 +39,21 @@ export function SessionCreationModal({
   const [autoGenerateTerms, setAutoGenerateTerms] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
@@ -131,9 +147,9 @@ export function SessionCreationModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -284,6 +300,7 @@ export function SessionCreationModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

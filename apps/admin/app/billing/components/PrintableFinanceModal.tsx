@@ -1,6 +1,7 @@
 import { ExternalLink, Printer, QrCode, X } from "lucide-react";
 import QRCode from "qrcode";
-import { useEffect, useRef, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import type { BillingDashboardData, PaymentLinkResult } from "../types";
 import { formatDateTime, formatMoney } from "../utils";
 
@@ -51,6 +52,12 @@ export function PrintableFinanceModal({
   onGeneratePaymentLink,
   onClose,
 }: PrintableFinanceModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const canShowPaymentLink = invoice.invoice.balanceDue > 0;
   const reusableGeneratedLink =
     amountsMatch(generatedPaymentLink?.amount, invoice.invoice.balanceDue) &&
@@ -97,8 +104,10 @@ export function PrintableFinanceModal({
     })),
   ].sort((left, right) => left.occurredAt - right.occurredAt);
 
-  return (
-    <div className="billing-print-root fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm print:static print:block print:overflow-visible print:bg-white print:p-0 print:backdrop-blur-0">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="billing-print-root fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm print:static print:block print:overflow-visible print:bg-white print:p-0 print:backdrop-blur-0">
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -277,7 +286,8 @@ export function PrintableFinanceModal({
           )}
         </article>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

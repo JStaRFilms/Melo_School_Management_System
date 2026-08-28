@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import {
   CalendarDays,
@@ -37,6 +38,7 @@ export function TermCreationModal({
   sessionEndDate,
   existingTermCount = 0,
 }: TermCreationModalProps) {
+  const [mounted, setMounted] = useState(false);
   const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
 
   const initialPreset = TERM_PRESETS[Math.min(existingTermCount, 2)] ?? TERM_PRESETS[0];
@@ -49,7 +51,21 @@ export function TermCreationModal({
   );
   const [isSaving, setIsSaving] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
@@ -102,9 +118,9 @@ export function TermCreationModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -161,7 +177,7 @@ export function TermCreationModal({
         <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
           <div className="space-y-1.5">
             <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block pl-0.5">
-              Term Title
+              Term Name
             </label>
             <input
               type="text"
@@ -183,6 +199,8 @@ export function TermCreationModal({
                 type="date"
                 required
                 value={startDate}
+                min={sessionStartDate ? new Date(sessionStartDate).toISOString().split("T")[0] : undefined}
+                max={sessionEndDate ? new Date(sessionEndDate).toISOString().split("T")[0] : undefined}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
@@ -195,7 +213,8 @@ export function TermCreationModal({
                 type="date"
                 required
                 value={endDate}
-                min={startDate}
+                min={startDate || (sessionStartDate ? new Date(sessionStartDate).toISOString().split("T")[0] : undefined)}
+                max={sessionEndDate ? new Date(sessionEndDate).toISOString().split("T")[0] : undefined}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
               />
@@ -250,6 +269,7 @@ export function TermCreationModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

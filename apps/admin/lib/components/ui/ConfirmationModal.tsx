@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Info, Loader2 } from "lucide-react";
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export interface ConfirmationModalProps {
   isOpen: boolean;
@@ -24,7 +25,23 @@ export function ConfirmationModal({
   confirmVariant = "primary",
   isLoading = false,
 }: ConfirmationModalProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const getButtonStyles = () => {
     switch (confirmVariant) {
@@ -68,9 +85,9 @@ export function ConfirmationModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -115,6 +132,7 @@ export function ConfirmationModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

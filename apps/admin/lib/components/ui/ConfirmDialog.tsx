@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AdminSurface } from "./AdminSurface";
 
 interface ConfirmDialogProps {
@@ -22,9 +23,24 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,13 +83,13 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onCancel]);
 
-  if (!open) {
+  if (!open || !mounted) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[4px]"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[4px]"
       onMouseDown={onCancel}
     >
       <div
@@ -89,7 +105,7 @@ export function ConfirmDialog({
           as="section"
           intensity="high"
           rounded="xl"
-          className="relative z-[121] border-slate-950/10 p-5 shadow-2xl"
+          className="relative z-[10000] border-slate-950/10 p-5 shadow-2xl"
         >
           <div className="space-y-2">
             <h2 id={titleId} className="font-display text-base font-bold tracking-tight text-slate-950">
@@ -118,6 +134,7 @@ export function ConfirmDialog({
           </div>
         </AdminSurface>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
