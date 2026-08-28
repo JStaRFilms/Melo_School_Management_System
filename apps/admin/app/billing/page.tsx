@@ -541,38 +541,77 @@ export default function BillingPage() {
         <aside className="hidden lg:block w-[400px] border-l border-slate-950/5 relative overflow-hidden bg-white/50 backdrop-blur-sm">
           <div className="absolute inset-x-0 top-0 h-64 bg-slate-950/5 skew-y-12 -translate-y-32 pointer-events-none" />
           <div className="relative z-10 h-full flex flex-col">
-            <div className="p-8 border-b border-slate-950/5 space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Financial Arsenal</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-6 lg:p-7 border-b border-slate-950/5 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                  Financial Arsenal
+                </h3>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {sidebarVariant === "plan"
+                    ? "New Plan"
+                    : sidebarVariant === "payment"
+                      ? "Receipt"
+                      : sidebarVariant === "link"
+                        ? "Handoff"
+                        : sidebarVariant === "application"
+                          ? "Bulk Invoice"
+                          : "Action Hub"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
                  <button 
-                   onClick={() => openSidebar("payment")}
-                   className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                   type="button"
+                   onClick={() => setSidebarVariant("payment")}
+                   className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                     sidebarVariant === "payment"
+                       ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-emerald-500/30"
+                       : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                   }`}
                  >
-                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform">
-                       <Plus className="h-5 w-5" />
+                    <div className={`p-2 rounded-xl transition-transform ${
+                      sidebarVariant === "payment" ? "bg-emerald-500/20 text-emerald-300 scale-105" : "bg-emerald-50 text-emerald-600"
+                    }`}>
+                       <Plus className="h-4 w-4" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Receipt</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Receipt</span>
                  </button>
                  <button 
-                    onClick={() => openSidebar("link")}
-                    className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                    type="button"
+                    onClick={() => setSidebarVariant("link")}
+                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                      sidebarVariant === "link"
+                        ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-orange-500/30"
+                        : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                    }`}
                  >
-                    <div className="p-2.5 rounded-2xl bg-orange-50 text-orange-600 group-hover:scale-110 transition-transform">
-                       <Link2 className="h-5 w-5" />
+                    <div className={`p-2 rounded-xl transition-transform ${
+                      sidebarVariant === "link" ? "bg-orange-500/20 text-orange-300 scale-105" : "bg-orange-50 text-orange-600"
+                    }`}>
+                       <Link2 className="h-4 w-4" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Handoff</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Handoff</span>
                  </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <button 
-                  onClick={() => openSidebar("application")}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-white border border-slate-200 text-slate-950 font-black text-[9px] uppercase tracking-widest shadow-sm hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                  type="button"
+                  onClick={() => setSidebarVariant("application")}
+                  className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
+                    sidebarVariant === "application"
+                      ? "bg-slate-950 text-white border border-slate-950 shadow-md ring-2 ring-indigo-500/30"
+                      : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400"
+                  }`}
                 >
                   Bulk Invoicing
                 </button>
                 <button 
-                  onClick={() => openSidebar("plan")}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-slate-950 text-white font-black text-[9px] uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                  type="button"
+                  onClick={() => setSidebarVariant("plan")}
+                  className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
+                    sidebarVariant === "plan"
+                      ? "bg-slate-950 text-white border border-slate-950 shadow-md ring-2 ring-indigo-500/30"
+                      : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400"
+                  }`}
                 >
                   <Plus className="h-3 w-3" /> New Plan
                 </button>

@@ -111,11 +111,13 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Built `calculateDynamicTermSchedule` and `suggestTermDateRange` in `@school/shared` to automatically partition any session into 3 balanced terms separated by realistic 2-3 week holiday breaks.
   - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips and ensuring all 3 terms are created transactionally.
   - Enhanced `TermCreationModal` to prepopulate smart start/end dates based on session boundaries and term sequence presets.
-- [x] **Session Date & Information Editing with Audit Trail (`updateSessionDates`)**
-  - Added `updateSessionDates` mutation in `academicSetup.ts` to allow admins to safely correct session dates and session names.
-  - Implemented boundary validation ensuring updated session dates strictly encompass all already-defined terms (e.g. session start date cannot be moved after a term starts).
-  - Records every session date modification into `academicTimelineAuditEvents` (`session_dates_updated`) with before/after state snapshots.
-  - Added inline date editor to `SessionTimelineCard.tsx` (desktop & mobile) with ConfirmationModal explaining the calendar impact and audit trail logging.
+### 6. Billing Ledger & Fee Plan Currency UX
+- [x] **Currency Amount Input Truncation & Zero Clipping Fix (`FeePlanForm.tsx`, `BillingSidebar.tsx`)**
+  - Expanded line item amount input width from cramped 112px (`w-28`) to 160px (`w-40`), ensuring 5-7 digit values and trailing zeros never overflow or get clipped.
+  - Disabled native browser WebKit spin buttons (`[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none`) which previously crowded and occluded the right-aligned digits.
+  - Added smart number typing normalization preventing awkward leading zeros (e.g. `068000`).
+  - Added real-time live total calculation card (`Total Plan Value: ₦XX,XXX.XX`) dynamically reflecting line item additions and modifications.
+  - Enhanced Financial Arsenal desktop navigation with clear active state badges and highlight rings.
 
 ---
 

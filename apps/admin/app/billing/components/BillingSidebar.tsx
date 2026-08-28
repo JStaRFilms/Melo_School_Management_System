@@ -210,12 +210,26 @@ export function BillingSidebar({
               <div className="space-y-1.5">
                 <label className={labelCx}>Amount Received</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-500">NGN</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-500 font-mono">
+                    NGN
+                  </span>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={paymentDraft.amountReceived}
-                    onChange={(e) => onPaymentDraftChange({ ...paymentDraft, amountReceived: e.target.value })}
-                    className={`${inputCx} !pl-14`}
+                    onChange={(e) => {
+                      let cleaned = e.target.value.replace(/[^0-9.]/g, "");
+                      const parts = cleaned.split(".");
+                      if (parts.length > 2) {
+                        cleaned = parts[0] + "." + parts.slice(1).join("");
+                      }
+                      if (cleaned.length > 1 && cleaned.startsWith("0") && !cleaned.startsWith("0.")) {
+                        cleaned = cleaned.replace(/^0+/, "");
+                      }
+                      onPaymentDraftChange({ ...paymentDraft, amountReceived: cleaned });
+                    }}
+                    placeholder="0.00"
+                    className={`${inputCx} !pl-14 font-mono font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                   />
                 </div>
                 {selectedInvoice && (
@@ -304,13 +318,26 @@ export function BillingSidebar({
                     <div className="space-y-1.5">
                       <label className={labelCx}>Amount Owed</label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-500">NGN</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-500 font-mono">
+                          NGN
+                        </span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={paymentLinkDraft.amount}
-                          onChange={(e) => onPaymentLinkDraftChange({ ...paymentLinkDraft, amount: e.target.value })}
-                          className={`${inputCx} !pl-14`}
-                          placeholder="0"
+                          onChange={(e) => {
+                            let cleaned = e.target.value.replace(/[^0-9.]/g, "");
+                            const parts = cleaned.split(".");
+                            if (parts.length > 2) {
+                              cleaned = parts[0] + "." + parts.slice(1).join("");
+                            }
+                            if (cleaned.length > 1 && cleaned.startsWith("0") && !cleaned.startsWith("0.")) {
+                              cleaned = cleaned.replace(/^0+/, "");
+                            }
+                            onPaymentLinkDraftChange({ ...paymentLinkDraft, amount: cleaned });
+                          }}
+                          className={`${inputCx} !pl-14 font-mono font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                          placeholder="0.00"
                         />
                       </div>
                       {selectedLinkInvoice ? (
