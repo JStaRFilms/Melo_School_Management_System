@@ -340,9 +340,9 @@ export default function ClassesPage() {
       </AdminSheet>
 
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 h-full overflow-hidden">
-        {/* Sidebar Bucket - Independent Scroll */}
-        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-y-auto lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl px-4 py-6 md:px-8 md:py-10 custom-scrollbar z-10 shrink-0">
-          <div id="class-builder-section" className="space-y-6">
+        {/* Sidebar Bucket - Locked & Pinned */}
+        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
+          <div id="class-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
             <div className="hidden lg:block">
               {selectedClassId && currentClass ? (
                 <ClassEditForm
@@ -378,20 +378,24 @@ export default function ClassesPage() {
                  />
               )}
             </div>
+          </div>
 
-            <div className="pt-6 border-t border-slate-200/60">
-                <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Class Lifecycle</h4>
-                <p className="mt-2 text-[11px] leading-relaxed font-bold text-slate-400">
-                  Classes define the structure of reports and faculty access. Archiving preserves enrollment history.
+          <div className="pt-3 border-t border-slate-200/60 shrink-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Class Lifecycle</h4>
+                <p className="text-[10px] font-medium text-slate-400">
+                  Archiving preserves past grades.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => router.push("/academic/archived-records")}
-                  className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-950 transition-colors bg-slate-100/50 p-2 rounded-lg border border-slate-200/50 cursor-pointer"
-                >
-                  <Database className="h-3 w-3" />
-                  View Historical Archives
-                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/academic/archived-records")}
+                className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-500 hover:text-slate-950 transition-colors bg-slate-100/70 py-1.5 px-2.5 rounded-lg border border-slate-200/50 cursor-pointer"
+              >
+                <Database className="h-3 w-3" />
+                <span>Archives</span>
+              </button>
             </div>
           </div>
         </aside>

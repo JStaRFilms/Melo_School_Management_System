@@ -219,7 +219,7 @@ export function ClassEditForm({
                   </label>
                   <div className="px-2 py-0.5 rounded bg-brand-primary/10 text-brand-primary text-[9px] font-bold">{subjectIds.length} Selected</div>
               </div>
-              <div className="max-h-[350px] overflow-y-auto px-1 -mx-1 grid grid-cols-2 gap-2 custom-scrollbar">
+              <div className="max-h-[220px] overflow-y-auto px-1 -mx-1 grid grid-cols-2 gap-1.5 custom-scrollbar">
                 {allSubjects.map((subject) => {
                   const isSelected = subjectIds.includes(subject._id);
                   return (
@@ -227,7 +227,7 @@ export function ClassEditForm({
                       key={subject._id}
                       type="button"
                       onClick={() => handleSubjectToggle(subject._id)}
-                      className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-[11px] font-bold transition-all border ${
+                      className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] font-bold transition-all border ${
                         isSelected
                           ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
                           : "border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200"
@@ -244,7 +244,7 @@ export function ClassEditForm({
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving || !gradeName.trim()}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-xl shadow-brand-primary/10 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-md shadow-brand-primary/10 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
               >
                 <Save className="h-4 w-4 text-white/70" />
                 {isSaving ? "Syncing..." : "Update Blueprint"}
