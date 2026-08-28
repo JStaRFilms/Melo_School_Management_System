@@ -15,6 +15,7 @@ import {
   normalizeHumanName,
   normalizePersonName,
 } from "@school/shared/name-format";
+import { calculateDynamicTermSchedule } from "@school/shared";
 import {
   assertClassCanBeArchived,
   assertSubjectCanBeArchived,
@@ -647,6 +648,7 @@ export const createSession = mutation({
     startDate: v.number(),
     endDate: v.number(),
     isActive: v.boolean(),
+    autoGenerateTerms: v.optional(v.boolean()),
   },
   returns: v.id("academicSessions"),
   handler: async (ctx, args) => {
@@ -657,6 +659,8 @@ export const createSession = mutation({
     if (args.endDate <= args.startDate) {
       throw new ConvexError("End date must be after start date");
     }
+
+    const now = Date.now();
 
     // If setting as active, deactivate other sessions
     if (args.isActive) {
@@ -670,13 +674,12 @@ export const createSession = mutation({
       for (const session of activeSessions) {
         await ctx.db.patch(session._id, {
           isActive: false,
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
       }
     }
 
-    const now = Date.now();
-    return await ctx.db.insert("academicSessions", {
+    const sessionId = await ctx.db.insert("academicSessions", {
       schoolId,
       name: normalizeHumanName(args.name),
       startDate: args.startDate,
@@ -686,6 +689,47 @@ export const createSession = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    if (args.autoGenerateTerms) {
+      const dynamicTerms = calculateDynamicTermSchedule(
+        args.startDate,
+        args.endDate
+      );
+
+      // If session is active, deactivate existing active terms in the school
+      if (args.isActive) {
+        const activeTerms = await ctx.db
+          .query("academicTerms")
+          .withIndex("by_school_active", (q) =>
+            q.eq("schoolId", schoolId).eq("isActive", true)
+          )
+          .collect();
+
+        for (const term of activeTerms) {
+          await ctx.db.patch(term._id, {
+            isActive: false,
+            updatedAt: now,
+          });
+        }
+      }
+
+      for (let i = 0; i < dynamicTerms.length; i++) {
+        const term = dynamicTerms[i];
+        await ctx.db.insert("academicTerms", {
+          schoolId,
+          sessionId,
+          name: normalizeHumanName(term.name),
+          startDate: term.startDate,
+          endDate: term.endDate,
+          isActive: args.isActive ? term.isActive : false,
+          reportCardCalculationMode: term.resultCalculationMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    return sessionId;
   },
 });
 

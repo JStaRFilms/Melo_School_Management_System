@@ -31,3 +31,4 @@ export * from "./exam-recording";
 export * from "./cumulative-results";
 export * from "./subject-aggregation";
 export * from "./admissions-foundation";
+export * from "./academic-timeline";

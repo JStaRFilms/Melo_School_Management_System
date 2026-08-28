@@ -27,7 +27,6 @@ export function SessionCreationModal({
 }: SessionCreationModalProps) {
   const [mounted, setMounted] = useState(false);
   const createSession = useMutation("functions/academic/academicSetup:createSession" as never);
-  const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
 
   const currentYear = new Date().getFullYear();
   const defaultSessionName = `${currentYear}/${currentYear + 1} Academic Session`;
@@ -92,46 +91,11 @@ export function SessionCreationModal({
         startDate: startTimestamp,
         endDate: endTimestamp,
         isActive: activateSession,
+        autoGenerateTerms,
       } as never);
 
-      // Auto-generate 3 terms if selected
-      if (autoGenerateTerms && sessionId) {
-        const yr = new Date(startTimestamp).getFullYear();
-        const nextYr = yr + 1;
-
-        // First Term (Sep - Dec)
-        await createTerm({
-          sessionId,
-          name: "First Term",
-          startDate: new Date(yr, 8, 8, 12, 0, 0).getTime(),
-          endDate: new Date(yr, 11, 19, 12, 0, 0).getTime(),
-          isActive: true,
-          resultCalculationMode: "standalone",
-        } as never);
-
-        // Second Term (Jan - Apr)
-        await createTerm({
-          sessionId,
-          name: "Second Term",
-          startDate: new Date(nextYr, 0, 12, 12, 0, 0).getTime(),
-          endDate: new Date(nextYr, 3, 17, 12, 0, 0).getTime(),
-          isActive: false,
-          resultCalculationMode: "standalone",
-        } as never);
-
-        // Third Term (May - Jul)
-        await createTerm({
-          sessionId,
-          name: "Third Term",
-          startDate: new Date(nextYr, 4, 4, 12, 0, 0).getTime(),
-          endDate: new Date(nextYr, 6, 24, 12, 0, 0).getTime(),
-          isActive: false,
-          resultCalculationMode: "cumulative_annual",
-        } as never);
-      }
-
       appToast.success("Session Created", {
-        description: `${normalizedName} ${autoGenerateTerms ? "with 3 standard terms" : ""} is ready.`,
+        description: `${normalizedName} ${autoGenerateTerms ? "with 3 balanced terms" : ""} is ready.`,
       });
 
       if (onSessionCreated && sessionId) {

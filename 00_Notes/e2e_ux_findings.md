@@ -91,6 +91,17 @@ This document tracks all observations, issues, UX refinements, completed changes
   - `listTeacherArchiveBlockers` in `archiveGuardrails.ts` now inspects only form teacher and subject assignments in the **currently active session**.
   - Teachers who concluded previous sessions and have no active duties can now be safely archived without triggering blocking validation errors.
 
+### 5. Academic Sessions, Dynamic Term Partitioning & Modal Overlay Polish
+- [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
+  - Portaled modal dialogs to `document.body` with `z-[9999]`, SSR mount guards, and `document.body` scroll locking.
+  - Fixes backdrop darkening and blur being trapped in `<main>`, now spanning the full 100vw x 100vh viewport over sticky navbar and desktop sidebar.
+  - Applied across `SessionCreationModal`, `TermCreationModal`, `ConfirmationModal`, `AdminSheet`, `ConfirmDialog`, `MobileSheet`, `PrintableFinanceModal`, and `CurriculumApprovalDialog`.
+- [x] **Dynamic Academic Session Term Partitioning & Bounded Calendar Generation**
+  - Eliminated hardcoded calendar dates (which previously caused validation errors when session start/end dates were customized).
+  - Built `calculateDynamicTermSchedule` and `suggestTermDateRange` in `@school/shared` to automatically partition any session into 3 balanced terms separated by realistic 2-3 week holiday breaks.
+  - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips and ensuring all 3 terms are created transactionally.
+  - Enhanced `TermCreationModal` to prepopulate smart start/end dates based on session boundaries and term sequence presets.
+
 ---
 
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
@@ -131,6 +142,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Verify school motto, official contact phone/email, and physical campus address from Settings render on billing statements and PDF payment receipts.
 - [ ] **Parent & Student Portals (`:3003`):**
   - Verify that custom school palette, crest favicon, and school tagline render in portal headers.
+
+### 7. Academic Timeline & Dynamic Term Scheduling
+- [ ] **Session & Term Creation (`/academic/sessions`):**
+  - Create a new academic session with arbitrary custom start/end dates (e.g. October 1 to June 30) with auto-create terms enabled: verify that 3 non-overlapping terms are created atomically without throwing date range bounds errors.
+  - Adding a manual term to an existing session: verify that start/end date inputs are automatically prepopulated with recommended dates corresponding to the selected term preset.
 
 ---
 

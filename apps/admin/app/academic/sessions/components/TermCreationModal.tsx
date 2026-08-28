@@ -9,7 +9,11 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { getUserFacingErrorMessage, type ReportCardCalculationMode } from "@school/shared";
+import {
+  getUserFacingErrorMessage,
+  suggestTermDateRange,
+  type ReportCardCalculationMode,
+} from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { humanNameFinal, humanNameTyping } from "@/human-name";
 
@@ -29,6 +33,14 @@ const TERM_PRESETS = [
   { name: "Third Term", defaultMode: "cumulative_annual" as ReportCardCalculationMode },
 ];
 
+function formatInputDate(timestamp: number) {
+  const d = new Date(timestamp);
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${da}`;
+}
+
 export function TermCreationModal({
   isOpen,
   onClose,
@@ -41,10 +53,20 @@ export function TermCreationModal({
   const [mounted, setMounted] = useState(false);
   const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
 
-  const initialPreset = TERM_PRESETS[Math.min(existingTermCount, 2)] ?? TERM_PRESETS[0];
+  const initialIndex = Math.min(existingTermCount, 2);
+  const initialPreset = TERM_PRESETS[initialIndex] ?? TERM_PRESETS[0];
+  const initialSuggested =
+    sessionStartDate && sessionEndDate
+      ? suggestTermDateRange(sessionStartDate, sessionEndDate, initialIndex)
+      : null;
+
   const [termName, setTermName] = useState(initialPreset.name);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(
+    initialSuggested ? formatInputDate(initialSuggested.startDate) : ""
+  );
+  const [endDate, setEndDate] = useState(
+    initialSuggested ? formatInputDate(initialSuggested.endDate) : ""
+  );
   const [activateTerm, setActivateTerm] = useState(existingTermCount === 0);
   const [resultCalculationMode, setResultCalculationMode] = useState<ReportCardCalculationMode>(
     initialPreset.defaultMode
@@ -54,6 +76,19 @@ export function TermCreationModal({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && sessionStartDate && sessionEndDate) {
+      const idx = Math.min(existingTermCount, 2);
+      const preset = TERM_PRESETS[idx] ?? TERM_PRESETS[0];
+      const suggested = suggestTermDateRange(sessionStartDate, sessionEndDate, idx);
+      setTermName(preset.name);
+      setResultCalculationMode(preset.defaultMode);
+      setStartDate(formatInputDate(suggested.startDate));
+      setEndDate(formatInputDate(suggested.endDate));
+      setActivateTerm(existingTermCount === 0);
+    }
+  }, [isOpen, sessionStartDate, sessionEndDate, existingTermCount]);
 
   useEffect(() => {
     if (isOpen) {
@@ -73,9 +108,18 @@ export function TermCreationModal({
     return new Date(year, month - 1, day, 12, 0, 0).getTime();
   };
 
-  const handleSelectPreset = (presetName: string, defaultMode: ReportCardCalculationMode) => {
+  const handleSelectPreset = (
+    presetName: string,
+    defaultMode: ReportCardCalculationMode,
+    presetIndex: number
+  ) => {
     setTermName(presetName);
     setResultCalculationMode(defaultMode);
+    if (sessionStartDate && sessionEndDate) {
+      const suggested = suggestTermDateRange(sessionStartDate, sessionEndDate, presetIndex);
+      setStartDate(formatInputDate(suggested.startDate));
+      setEndDate(formatInputDate(suggested.endDate));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -157,11 +201,11 @@ export function TermCreationModal({
             Quick Term Presets
           </label>
           <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-            {TERM_PRESETS.map((p) => (
+            {TERM_PRESETS.map((p, idx) => (
               <button
                 key={p.name}
                 type="button"
-                onClick={() => handleSelectPreset(p.name, p.defaultMode)}
+                onClick={() => handleSelectPreset(p.name, p.defaultMode, idx)}
                 className={`py-2 px-1.5 sm:px-3 rounded-xl border text-[11px] sm:text-xs font-bold transition cursor-pointer text-center truncate ${
                   termName === p.name
                     ? "border-slate-900 bg-brand-primary text-white shadow-xs"
