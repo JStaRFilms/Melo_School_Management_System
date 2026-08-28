@@ -111,6 +111,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Built `calculateDynamicTermSchedule` and `suggestTermDateRange` in `@school/shared` to automatically partition any session into 3 balanced terms separated by realistic 2-3 week holiday breaks.
   - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips and ensuring all 3 terms are created transactionally.
   - Enhanced `TermCreationModal` to prepopulate smart start/end dates based on session boundaries and term sequence presets.
+- [x] **Session Date & Information Editing with Audit Trail (`updateSessionDates`)**
+  - Added `updateSessionDates` mutation in `academicSetup.ts` to allow admins to safely correct session dates and session names.
+  - Implemented boundary validation ensuring updated session dates strictly encompass all already-defined terms (e.g. session start date cannot be moved after a term starts).
+  - Records every session date modification into `academicTimelineAuditEvents` (`session_dates_updated`) with before/after state snapshots.
+  - Added inline date editor to `SessionTimelineCard.tsx` (desktop & mobile) with ConfirmationModal explaining the calendar impact and audit trail logging.
 
 ---
 

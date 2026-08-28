@@ -743,6 +743,7 @@ export const listSessions = query({
       endDate: v.number(),
       isActive: v.boolean(),
       createdAt: v.number(),
+      updatedAt: v.optional(v.number()),
     })
   ),
   handler: async (ctx) => {
@@ -765,6 +766,7 @@ export const listSessions = query({
         endDate: s.endDate,
         isActive: s.isActive,
         createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
       }));
   },
 });
@@ -885,6 +887,104 @@ export const updateSession = mutation({
     }
 
     await ctx.db.patch(args.sessionId, updates);
+    return null;
+  },
+});
+
+export const updateSessionDates = mutation({
+  args: {
+    sessionId: v.id("academicSessions"),
+    name: v.optional(v.string()),
+    startDate: v.number(),
+    endDate: v.number(),
+    expectedUpdatedAt: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
+      throw new ConvexError("Academic session not found");
+    }
+
+    if (
+      args.expectedUpdatedAt !== undefined &&
+      session.updatedAt !== args.expectedUpdatedAt
+    ) {
+      throw new ConvexError(
+        "This session changed after you opened it. Refresh and review the latest dates before saving."
+      );
+    }
+
+    if (args.endDate <= args.startDate) {
+      throw new ConvexError("Session end date must be after its start date");
+    }
+
+    const newSessionStartStr = toCalendarDayString(args.startDate);
+    const newSessionEndStr = toCalendarDayString(args.endDate);
+
+    // Verify existing terms stay within the updated session range
+    const terms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+
+    for (const term of terms) {
+      const termStartStr = toCalendarDayString(term.startDate);
+      const termEndStr = toCalendarDayString(term.endDate);
+
+      if (termStartStr < newSessionStartStr) {
+        throw new ConvexError(
+          `Session start date (${newSessionStartStr}) cannot be after ${normalizeHumanName(
+            term.name
+          )} start date (${termStartStr}). Adjust the term dates first.`
+        );
+      }
+      if (termEndStr > newSessionEndStr) {
+        throw new ConvexError(
+          `Session end date (${newSessionEndStr}) cannot be before ${normalizeHumanName(
+            term.name
+          )} end date (${termEndStr}). Adjust the term dates first.`
+        );
+      }
+    }
+
+    const now = Date.now();
+    const updates: Record<string, unknown> = {
+      startDate: args.startDate,
+      endDate: args.endDate,
+      updatedAt: now,
+    };
+    if (args.name !== undefined && args.name.trim().length > 0) {
+      updates.name = normalizeHumanName(args.name);
+    }
+
+    await ctx.db.patch(args.sessionId, updates);
+
+    await ctx.db.insert("academicTimelineAuditEvents", {
+      schoolId,
+      eventType: "session_dates_updated",
+      entityType: "session",
+      entityId: String(session._id),
+      entityName: normalizeHumanName(args.name ?? session.name),
+      before: JSON.stringify({
+        name: session.name,
+        startDate: session.startDate,
+        endDate: session.endDate,
+      }),
+      after: JSON.stringify({
+        name: args.name ?? session.name,
+        startDate: args.startDate,
+        endDate: args.endDate,
+      }),
+      actorUserId: userId,
+      actorLabel: "Authenticated administrator",
+      createdAt: now,
+    });
+
     return null;
   },
 });

@@ -18,6 +18,8 @@ export type SessionRecord = {
   startDate: number;
   endDate: number;
   isActive: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 export type TeacherRecord = {
