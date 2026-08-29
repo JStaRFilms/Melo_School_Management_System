@@ -213,6 +213,12 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Local draft backup in `localStorage` for form resilience against accidental reloads.
 - [ ] **Mobile Scroll Progress Bar for Long Forms**
   - Fixed top progress indicator on mobile viewports during multi-step student enrollment and wizard forms.
+- [ ] **School Assets & PDF Compression Foundation** → see [docs/features/SchoolAssetsAndPdfCompression.md](../docs/features/SchoolAssetsAndPdfCompression.md)
+  - Per-school private document store (`schoolAssets` table) for non-lesson-knowledge PDFs: policy docs, report templates, past papers, circulars, logos. Complements (does not replace) the existing lesson-knowledge storage in `LessonKnowledgeHub_v1.md` / `v2`.
+  - Per-school 5 GiB quota, 25 MB per-file cap, MIME allowlist (`application/pdf`, `image/png`, `image/jpeg`).
+  - Server-side pure-Node PDF compression in a Convex Node action using `pdf-lib` (metadata strip, font dedup, object-stream recompression). Replaces the stored copy only if savings exceed 10%. Idempotent + cron-retryable.
+  - `SchoolAssetsPanel` admin UI with usage bar, kind filter, per-row delete. No public/parent downloads in v1.
+  - Out of scope: Ghostscript / native binary compression, `sharp` image re-encoding (verify Convex Node runtime first), AV scanning, versioned assets.
 
 ### Architecture & Medium-Term Enhancements
 - [ ] **Migrate All AI Generation from Vercel to Convex — Reliability & Offline Resilience**
