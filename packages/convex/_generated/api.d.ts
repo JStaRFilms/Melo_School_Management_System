@@ -29,6 +29,7 @@ import type * as functions_academic_curriculumReadinessHelpers from "../function
 import type * as functions_academic_curriculumReviewLifecycle from "../functions/academic/curriculumReviewLifecycle.js";
 import type * as functions_academic_demoAssets from "../functions/academic/demoAssets.js";
 import type * as functions_academic_demoData from "../functions/academic/demoData.js";
+import type * as functions_academic_documentGeneration from "../functions/academic/documentGeneration.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
@@ -117,6 +118,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/curriculumReviewLifecycle": typeof functions_academic_curriculumReviewLifecycle;
   "functions/academic/demoAssets": typeof functions_academic_demoAssets;
   "functions/academic/demoData": typeof functions_academic_demoData;
+  "functions/academic/documentGeneration": typeof functions_academic_documentGeneration;
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;

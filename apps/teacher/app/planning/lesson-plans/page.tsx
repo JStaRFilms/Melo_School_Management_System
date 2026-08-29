@@ -1,9 +1,10 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import type { Id } from "@school/convex/_generated/dataModel";
 import {
   buildTeacherPlanningLibraryAttachHref,
   parsePlanningContextFromSearchParams,
@@ -11,6 +12,7 @@ import {
 } from "@school/shared";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { X } from "lucide-react";
+import { api } from "@school/convex/_generated/api";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
 import type {
@@ -101,6 +103,9 @@ export default function LessonPlansPage() {
 
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
+  );
+  const generateDraftAction = useAction(
+    api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft
   );
   const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
   const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
@@ -212,32 +217,25 @@ export default function LessonPlansPage() {
 
   const handleGenerateDraft = async () => {
     try {
-      const response = await fetch("/api/ai/lesson-plans/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          outputType,
-          sourceIds: effectiveSourceIds,
-          targetTopicLabel: effectiveTopicLabel ?? undefined,
-          planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
-        }),
-      });
+      const planningContextArg =
+        planningContext?.kind === "topic"
+          ? {
+              kind: "topic" as const,
+              classId: planningContext.classId as Id<"classes">,
+              termId: planningContext.termId as Id<"academicTerms">,
+              subjectId: planningContext.subjectId as Id<"subjects">,
+              level: planningContext.level,
+              topicId: planningContext.topicId as Id<"knowledgeTopics">,
+            }
+          : undefined;
 
-      const payload = (await response.json().catch(() => null)) as
-        | LessonPlanSaveResult
-        | { error?: string; warnings?: string[] }
-        | null;
-
-      if (!response.ok) {
-        const message =
-          (payload && "error" in payload && payload.error) ||
-          "Generation failed.";
-        throw new Error(message);
-      }
-
-      return payload as LessonPlanSaveResult;
+      const result = (await generateDraftAction({
+        outputType,
+        sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
+        targetTopicLabel: effectiveTopicLabel ?? undefined,
+        planningContext: planningContextArg,
+      })) as LessonPlanSaveResult;
+      return result;
     } catch (error) {
       const toastMessage = getLessonPlanGenerationToast(error);
       appToast.error(toastMessage.title, {

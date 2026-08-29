@@ -80,15 +80,34 @@ export function resolveDocumentModelId(
   );
 }
 
+export function resolveDocumentProviderName() {
+  return "openrouter";
+}
+
+export function getDocumentRuntimeEnvSummary() {
+  return {
+    apiKeyConfigured: Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim().length > 0),
+    httpReferer: process.env.OPENROUTER_HTTP_REFERER?.trim() || null,
+    appTitle: process.env.OPENROUTER_APP_TITLE?.trim() || null,
+    modelOverrides: {
+      lesson_plan: readEnvModelOverride("lesson_plan") ?? null,
+      student_note: readEnvModelOverride("student_note") ?? null,
+      assignment: readEnvModelOverride("assignment") ?? null,
+      question_bank_draft: readEnvModelOverride("question_bank_draft") ?? null,
+      cbt_draft: readEnvModelOverride("cbt_draft") ?? null,
+    },
+  } as const;
+}
+
 function buildDefaultHeaders() {
   const headers: Record<string, string> = {};
 
-  if (process.env.OPENROUTER_HTTP_REFERER) {
-    headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER;
+  if (process.env.OPENROUTER_HTTP_REFERER && process.env.OPENROUTER_HTTP_REFERER.trim().length > 0) {
+    headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER.trim();
   }
 
-  if (process.env.OPENROUTER_APP_TITLE) {
-    headers["X-Title"] = process.env.OPENROUTER_APP_TITLE;
+  if (process.env.OPENROUTER_APP_TITLE && process.env.OPENROUTER_APP_TITLE.trim().length > 0) {
+    headers["X-Title"] = process.env.OPENROUTER_APP_TITLE.trim();
   }
 
   return headers;

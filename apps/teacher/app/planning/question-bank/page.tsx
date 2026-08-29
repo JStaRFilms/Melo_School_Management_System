@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { Id } from "@school/convex/_generated/dataModel";
 import {
   buildTeacherPlanningLibraryAttachHref,
   parsePlanningContextFromSearchParams,
 } from "@school/shared";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { api } from "@school/convex/_generated/api";
 
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
@@ -113,12 +115,18 @@ export default function QuestionBankPage() {
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeAssessmentDrafts:saveTeacherAssessmentBankDraft" as never
   );
-  const effectiveSourceIds =
-    selectedSourceIds.length > 0
-      ? selectedSourceIds
-      : workspace?.sourceIds.length
-        ? workspace.sourceIds
-        : workspace?.selectedSources.map((source) => source._id) ?? [];
+  const generateDraftAction = useAction(
+    api.functions.academic.documentGeneration.generateTeacherAssessmentDraft
+  );
+  const effectiveSourceIds = useMemo(() => {
+    if (selectedSourceIds.length > 0) {
+      return selectedSourceIds;
+    }
+    if (workspace?.sourceIds && workspace.sourceIds.length > 0) {
+      return workspace.sourceIds;
+    }
+    return workspace?.selectedSources.map((source) => source._id) ?? [];
+  }, [selectedSourceIds, workspace?.sourceIds, workspace?.selectedSources]);
   const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
 
   useEffect(() => {
@@ -262,34 +270,65 @@ export default function QuestionBankPage() {
     effectiveGenerationSettings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>
   ) => {
     try {
-      const response = await fetch("/api/ai/question-bank/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          draftMode,
-          sourceIds: effectiveSourceIds,
-          targetTopicLabel: effectiveTopicLabel ?? undefined,
-          planningContext:
-            planningContext?.kind === "topic" || planningContext?.kind === "exam_scope"
-              ? planningContext
-              : undefined,
-          effectiveGenerationSettings,
-        }),
-      });
+      let planningContextArg:
+        | {
+            kind: "topic";
+            classId: Id<"classes">;
+            termId: Id<"academicTerms">;
+            subjectId: Id<"subjects">;
+            level: string;
+            topicId: Id<"knowledgeTopics">;
+          }
+        | {
+            kind: "exam_scope";
+            classId: Id<"classes">;
+            termId: Id<"academicTerms">;
+            subjectId: Id<"subjects">;
+            level: string;
+            scopeKind: "full_subject_term" | "topic_subset";
+            topicIds?: Array<Id<"knowledgeTopics">>;
+          }
+        | undefined;
 
-      const payload = (await response.json().catch(() => null)) as
-        | AssessmentBankGenerationResult
-        | { error?: string; warnings?: string[] }
-        | null;
-
-      if (!response.ok) {
-        const message = (payload && "error" in payload && payload.error) || "Generation failed.";
-        throw new Error(message);
+      if (planningContext?.kind === "topic") {
+        planningContextArg = {
+          kind: "topic",
+          classId: planningContext.classId as Id<"classes">,
+          termId: planningContext.termId as Id<"academicTerms">,
+          subjectId: planningContext.subjectId as Id<"subjects">,
+          level: planningContext.level,
+          topicId: planningContext.topicId as Id<"knowledgeTopics">,
+        };
+      } else if (planningContext?.kind === "exam_scope") {
+        planningContextArg = {
+          kind: "exam_scope",
+          classId: planningContext.classId as Id<"classes">,
+          termId: planningContext.termId as Id<"academicTerms">,
+          subjectId: planningContext.subjectId as Id<"subjects">,
+          level: planningContext.level,
+          scopeKind: planningContext.scopeKind as "full_subject_term" | "topic_subset",
+          ...(planningContext.topicIds && planningContext.topicIds.length > 0
+            ? { topicIds: planningContext.topicIds.map((id) => id as Id<"knowledgeTopics">) }
+            : {}),
+        };
+      } else {
+        planningContextArg = undefined;
       }
 
-      return payload as AssessmentBankGenerationResult;
+      const result = (await generateDraftAction({
+        draftMode,
+        sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
+        targetTopicLabel: effectiveTopicLabel ?? undefined,
+        planningContext: planningContextArg,
+        effectiveGenerationSettings: {
+          ...effectiveGenerationSettings,
+          profileId:
+            effectiveGenerationSettings.profileId == null
+              ? null
+              : (effectiveGenerationSettings.profileId as Id<"assessmentGenerationProfiles">),
+        },
+      })) as AssessmentBankGenerationResult;
+      return result;
     } catch (error) {
       const toastMessage = getQuestionBankGenerationToast(error);
       appToast.error(toastMessage.title, {
