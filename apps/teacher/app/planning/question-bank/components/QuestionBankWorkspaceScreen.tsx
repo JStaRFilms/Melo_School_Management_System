@@ -814,30 +814,29 @@ export function QuestionBankWorkspaceScreen({
   );
 
   return (
-    <div className="space-y-8">
+    <div className="h-full flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden relative">
+      {/* RIGHT SIDEBAR: WORKBENCH & CONTEXT */}
+      {!isMobile && (
+        <aside className="hidden lg:block w-[360px] 2xl:w-[380px] shrink-0 h-full overflow-y-auto border-l border-slate-200/80 p-4 xl:p-6 space-y-6 custom-scrollbar bg-slate-50/20">
+          {SidebarContent}
+        </aside>
+      )}
 
-      <div className="flex flex-col gap-6 lg:flex-row-reverse lg:items-start">
-        {/* RIGHT SIDEBAR: WORKBENCH & CONTEXT */}
-        {!isMobile && (
-          <aside className="w-full space-y-6 lg:sticky lg:top-8 lg:w-[380px] lg:shrink-0">
+      {isMobile && (
+        <TeacherSheet
+          isOpen={isSheetOpen}
+          onClose={() => setIsSheetOpen(false)}
+          title="Workbench Settings"
+        >
+          <div className="p-6 space-y-8">
             {SidebarContent}
-          </aside>
-        )}
+          </div>
+        </TeacherSheet>
+      )}
 
-        {isMobile && (
-          <TeacherSheet
-            isOpen={isSheetOpen}
-            onClose={() => setIsSheetOpen(false)}
-            title="Workbench Settings"
-          >
-            <div className="p-6 space-y-8">
-              {SidebarContent}
-            </div>
-          </TeacherSheet>
-        )}
-
-        {/* MAIN WORKSPACE: EDITOR & ITEMS */}
-        <main className="flex-1 space-y-8 min-w-0">
+      {/* MAIN WORKSPACE: EDITOR & ITEMS */}
+      <main className="flex-1 min-w-0 h-full overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar">
+        <div className="max-w-4xl mx-auto space-y-8 pb-16">
           {/* EDITOR HEADER */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5 p-5 lg:p-8">
             <div className="space-y-8">
@@ -850,7 +849,7 @@ export function QuestionBankWorkspaceScreen({
                     {isMobile && (
                       <button
                         onClick={() => setIsSheetOpen(true)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 cursor-pointer"
                       >
                         <Settings2 className="h-4 w-4" />
                       </button>
@@ -1111,8 +1110,8 @@ export function QuestionBankWorkspaceScreen({
               )}
             </div>
           </section>
-        </main>
-      </div>
+        </div>
+      </main>
 
       {/* MOBILE STICKY ACTIONS */}
       {isMobile && (

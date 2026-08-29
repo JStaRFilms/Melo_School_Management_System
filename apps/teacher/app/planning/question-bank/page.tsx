@@ -344,47 +344,51 @@ export default function QuestionBankPage() {
   }
 
   return (
-    <main className="min-h-screen space-y-8 px-4 py-6 md:px-6 md:py-8">
-      <TeacherHeader
-        title="Question Bank Workspace"
-        label="Teacher Planning"
-        description="Design and refine assessment collections using your course repository and AI-driven generation profiles."
-        actions={
-          <div className="flex items-center gap-2">
-            <Link
-              href="/planning/library"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-            >
-              Back to library
-            </Link>
-          </div>
-        }
-      />
+    <div className="w-full h-full flex flex-col min-h-0 bg-slate-50/50 overflow-hidden">
+      <div className="shrink-0 border-b border-slate-200/80 bg-white px-4 py-3 md:px-8 flex items-center justify-between z-10">
+        <TeacherHeader
+          title="Question Bank Workspace"
+          label="Teacher Planning"
+          description="Design and refine assessment collections using your course repository and AI-driven generation profiles."
+          actions={
+            <div className="flex items-center gap-2">
+              <Link
+                href="/planning/library"
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                Back to library
+              </Link>
+            </div>
+          }
+        />
+      </div>
 
       {workspace.planningContext?.kind === "topic" || workspace.sourceContext.topicLabel || draftMode === "exam_draft" ? null : (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm ring-1 ring-amber-950/5">
+        <div className="shrink-0 mx-4 md:mx-8 my-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-2xs">
           <label className="block text-[10px] font-black uppercase tracking-widest text-amber-700">Target topic for generation</label>
           <input
             value={targetTopicLabel}
             onChange={(event) => setTargetTopicLabel(event.target.value)}
             placeholder="e.g. Photosynthesis and food chains"
-            className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-950 outline-none focus:ring-4 focus:ring-amber-500/10"
+            className="mt-1.5 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-amber-500/20"
           />
-          <p className="mt-2 text-[11px] font-medium leading-relaxed text-amber-900/60">
+          <p className="mt-1.5 text-[11px] font-medium leading-relaxed text-amber-900/60">
             Your selected sources are broad planning references, so the workspace will not derive a topic from them. Add a target topic to steer this question-bank generation.
           </p>
         </div>
       )}
 
-      <QuestionBankWorkspaceScreen
-        key={`${draftMode}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
-        workspace={workspace}
-        onDraftModeChange={updateDraftMode}
-        onRemoveSource={handleRemoveSource}
-        onOpenLibrary={handleOpenLibrary}
-        onSaveDraft={handleSaveDraft}
-        onGenerateDraft={handleGenerateDraft}
-      />
-    </main>
+      <div className="flex-1 min-h-0 w-full overflow-hidden">
+        <QuestionBankWorkspaceScreen
+          key={`${draftMode}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
+          workspace={workspace}
+          onDraftModeChange={updateDraftMode}
+          onRemoveSource={handleRemoveSource}
+          onOpenLibrary={handleOpenLibrary}
+          onSaveDraft={handleSaveDraft}
+          onGenerateDraft={handleGenerateDraft}
+        />
+      </div>
+    </div>
   );
 }

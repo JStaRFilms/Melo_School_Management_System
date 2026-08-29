@@ -426,67 +426,68 @@ export function LessonPlanWorkspaceScreen({
   );
 
   return (
-    <div className="space-y-4">
-
-      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
-        <aside className="hidden space-y-4 xl:block xl:sticky xl:top-6 xl:self-start">
-          <section className="rounded-xl border border-slate-200 bg-white/50 backdrop-blur-sm p-3.5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Library</p>
-                <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Attachments</h2>
-              </div>
-              <button
-                type="button"
-                onClick={onOpenLibrary}
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50"
-              >
-                <BookOpenText className="h-3 w-3" />
-                Library
-              </button>
+    <div className="h-full flex flex-col xl:flex-row min-h-0 overflow-hidden relative">
+      {/* ── LEFT COLUMN: Library Attachments (Pinned on desktop with internal scroll) ── */}
+      <aside className="hidden xl:block w-[260px] 2xl:w-[280px] shrink-0 h-full overflow-y-auto border-r border-slate-200/80 p-4 space-y-4 custom-scrollbar bg-slate-50/20">
+        <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Library</p>
+              <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Attachments</h2>
             </div>
+            <button
+              type="button"
+              onClick={onOpenLibrary}
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 cursor-pointer"
+            >
+              <BookOpenText className="h-3 w-3" />
+              Library
+            </button>
+          </div>
 
-            <div className="mt-4 space-y-2">
-              {workspace.selectedSources.length > 0 ? (
-                workspace.selectedSources.map((source) => (
-                  <div key={source._id} className="group relative rounded-lg border border-slate-100 bg-white p-2.5 transition hover:border-slate-300">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[10px] font-bold text-slate-950">{source.title}</p>
-                        <p className="mt-0.5 text-[8px] font-medium text-slate-400 uppercase tracking-wider">{source.sourceType.replace("_", " ")}</p>
-                      </div>
-                      <button
-                        onClick={() => onRemoveSource(source._id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+          <div className="mt-4 space-y-2">
+            {workspace.selectedSources.length > 0 ? (
+              workspace.selectedSources.map((source) => (
+                <div key={source._id} className="group relative rounded-lg border border-slate-100 bg-white p-2.5 transition hover:border-slate-300">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[10px] font-bold text-slate-950">{source.title}</p>
+                      <p className="mt-0.5 text-[8px] font-medium text-slate-400 uppercase tracking-wider">{source.sourceType.replace("_", " ")}</p>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      <span className="rounded bg-slate-50 px-1 py-0.5 text-[7px] font-black uppercase tracking-tighter text-slate-400">
-                        {source.visibility.replace("_", " ")}
-                      </span>
-                      <span className="rounded bg-slate-50 px-1 py-0.5 text-[7px] font-black uppercase tracking-tighter text-slate-400">
-                        {source.reviewStatus}
-                      </span>
-                    </div>
+                    <button
+                      onClick={() => onRemoveSource(source._id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-4 text-[10px] text-slate-400 text-center">
-                  No attachments loaded.
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <span className="rounded bg-slate-50 px-1 py-0.5 text-[7px] font-black uppercase tracking-tighter text-slate-400">
+                      {source.visibility.replace("_", " ")}
+                    </span>
+                    <span className="rounded bg-slate-50 px-1 py-0.5 text-[7px] font-black uppercase tracking-tighter text-slate-400">
+                      {source.reviewStatus}
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
-          </section>
-        </aside>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-4 text-[10px] text-slate-400 text-center">
+                No attachments loaded.
+              </div>
+            )}
+          </div>
+        </section>
+      </aside>
 
-        <main className="space-y-4">
+      {/* ── MIDDLE COLUMN: Main Content Area (Independent smooth scrolling) ── */}
+      <main className="flex-1 min-w-0 h-full overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar">
+        <div className="max-w-4xl mx-auto space-y-6">
           {/* FAB for Mobile Resources */}
           <div className="fixed bottom-6 right-6 z-40 xl:hidden">
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 ring-4 ring-white transition-all hover:scale-110 active:scale-95"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 ring-4 ring-white transition-all hover:scale-110 active:scale-95 cursor-pointer"
             >
               <Layers className="h-6 w-6" />
               {workspace.selectedSourceCount + workspace.revisions.length > 0 && (
@@ -497,7 +498,7 @@ export function LessonPlanWorkspaceScreen({
             </button>
           </div>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6 lg:p-7">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs md:p-6 lg:p-7">
             <div className="flex flex-col gap-6">
               {/* Output Tabs & Sync Status */}
               <div className="flex items-center justify-between">
@@ -509,9 +510,9 @@ export function LessonPlanWorkspaceScreen({
                         key={option.value}
                         type="button"
                         onClick={() => handleOutputTypeChange(option.value)}
-                        className={`rounded px-2.5 py-1 text-[9px] font-black uppercase tracking-tight transition-all ${
+                        className={`rounded px-2.5 py-1 text-[9px] font-black uppercase tracking-tight transition-all cursor-pointer ${
                           selected 
-                            ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200" 
+                            ? "bg-white text-slate-950 shadow-2xs ring-1 ring-slate-200" 
                             : "text-slate-400 hover:text-slate-600"
                         }`}
                       >
@@ -522,7 +523,7 @@ export function LessonPlanWorkspaceScreen({
                 </div>
 
                 <div className="flex items-center gap-2">
-                   <div className={`h-1 w-1 rounded-full ${dirty ? "bg-amber-400" : "bg-emerald-400"}`} />
+                   <div className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{dirty ? "Saving..." : "Synced"}</span>
                 </div>
               </div>
@@ -549,8 +550,6 @@ export function LessonPlanWorkspaceScreen({
                   </div>
                 </div>
               </div>
-
-              {/* Revision Switcher - Removed as per feedback */}
             </div>
 
             <div className="mt-6 space-y-4">
@@ -560,7 +559,7 @@ export function LessonPlanWorkspaceScreen({
                   setTitle(event.target.value);
                   setSaveState("idle");
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-2 focus:ring-slate-950/5"
                 placeholder="Document Title..."
               />
 
@@ -574,7 +573,7 @@ export function LessonPlanWorkspaceScreen({
                         type="button"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => applyToolbarAction(action.id)}
-                        className="shrink-0 inline-flex h-7 items-center gap-1 rounded border border-transparent bg-transparent px-2 text-[10px] font-bold text-slate-500 transition-all hover:bg-white hover:text-slate-950 hover:shadow-sm"
+                        className="shrink-0 inline-flex h-7 items-center gap-1 rounded border border-transparent bg-transparent px-2 text-[10px] font-bold text-slate-500 transition-all hover:bg-white hover:text-slate-950 hover:shadow-2xs cursor-pointer"
                       >
                         <Icon className="h-3 w-3" />
                         <span className="hidden sm:inline">{action.label}</span>
@@ -591,14 +590,14 @@ export function LessonPlanWorkspaceScreen({
                     setPlainText(markdownToPlainText(event.target.value));
                     setSaveState("idle");
                   }}
-                  rows={28}
-                  className="min-h-[50vh] xl:min-h-[60vh] w-full rounded-lg border-none bg-white px-5 py-4 text-sm leading-relaxed text-slate-900 outline-none transition-all placeholder:text-slate-300 resize-none"
+                  rows={24}
+                  className="min-h-[45vh] xl:min-h-[55vh] w-full rounded-lg border-none bg-white px-5 py-4 text-sm leading-relaxed text-slate-900 outline-none transition-all placeholder:text-slate-300 resize-none font-mono"
                   placeholder="Start drafting..."
                 />
               </div>
 
               {isGenerating || isRestoring ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3">
                   <div className="flex items-center gap-3">
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" />
                     <span className="text-[10px] font-bold text-amber-900 tracking-tight">
@@ -617,7 +616,7 @@ export function LessonPlanWorkspaceScreen({
                     type="button"
                     onClick={handleManualSave}
                     disabled={!dirty || saveState === "saving" || !canAutosave}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-30"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-30 cursor-pointer shadow-2xs"
                   >
                     {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     Save Snapshot
@@ -626,7 +625,7 @@ export function LessonPlanWorkspaceScreen({
                     type="button"
                     onClick={handleGenerate}
                     disabled={!canGenerate}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/10 disabled:opacity-30"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-sm disabled:opacity-30 cursor-pointer"
                   >
                     {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                     Generate Draft
@@ -635,65 +634,66 @@ export function LessonPlanWorkspaceScreen({
               </div>
             </div>
           </section>
-        </main>
+        </div>
+      </main>
 
-        <aside className="hidden space-y-4 xl:block xl:sticky xl:top-6 xl:self-start">
-          <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Structure</p>
-            <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Resolved Template</h2>
-            {workspace.template ? (
-              <div className="mt-4 space-y-2">
-                <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2">
-                  <p className="text-[10px] font-bold text-slate-950">{workspace.template.title}</p>
-                  <p className="mt-0.5 text-[9px] text-slate-500 truncate">{workspace.template.resolutionPath}</p>
-                </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2 text-[9px] text-slate-600">
-                  <p className="font-bold text-slate-900">Required Sections</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {getTemplateSectionLabels(workspace.template).map((label) => (
-                      <span key={label} className="rounded border border-slate-200 bg-white px-1 py-0.5 font-bold text-[9px] text-slate-500">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
+      {/* ── RIGHT COLUMN: Structure & History Snapshots (Pinned on desktop with internal scroll) ── */}
+      <aside className="hidden xl:block w-[280px] 2xl:w-[300px] shrink-0 h-full overflow-y-auto border-l border-slate-200/80 p-4 space-y-4 custom-scrollbar bg-slate-50/20">
+        <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs">
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Structure</p>
+          <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Resolved Template</h2>
+          {workspace.template ? (
+            <div className="mt-4 space-y-2">
+              <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2">
+                <p className="text-[10px] font-bold text-slate-950">{workspace.template.title}</p>
+                <p className="mt-0.5 text-[9px] text-slate-500 truncate">{workspace.template.resolutionPath}</p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-2 text-[9px] text-slate-600">
+                <p className="font-bold text-slate-900">Required Sections</p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {getTemplateSectionLabels(workspace.template).map((label) => (
+                    <span key={label} className="rounded border border-slate-200 bg-white px-1 py-0.5 font-bold text-[9px] text-slate-500">
+                      {label}
+                    </span>
+                  ))}
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-[10px] font-medium text-amber-800 italic">
+              No template resolved.
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs">
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">History</p>
+          <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Snapshots</h2>
+          <div className="mt-3 space-y-1.5 custom-scrollbar">
+            {workspace.revisions.length > 0 ? (
+              workspace.revisions.map((revision) => (
+                <button
+                  key={revision._id}
+                  onClick={() => handleRestoreRevision(revision._id)}
+                  className="w-full text-left rounded-lg border border-slate-100 bg-slate-50/40 p-2 transition hover:border-slate-300 hover:bg-white cursor-pointer"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold text-slate-950">v{revision.revisionNumber}</p>
+                    <span className="text-[8px] font-bold text-slate-400">
+                      {new Date(revision.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[9px] leading-relaxed text-slate-500 line-clamp-2">{revision.snippet}</p>
+                </button>
+              ))
             ) : (
-              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-[10px] font-medium text-amber-800 italic">
-                No template resolved.
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-[10px] text-slate-400 text-center">
+                No snapshots yet.
               </div>
             )}
-          </section>
-
-          <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">History</p>
-            <h2 className="mt-0.5 text-xs font-bold tracking-tight text-slate-950">Snapshots</h2>
-            <div className="mt-4 space-y-1.5 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
-              {workspace.revisions.length > 0 ? (
-                workspace.revisions.map((revision) => (
-                  <button
-                    key={revision._id}
-                    onClick={() => handleRestoreRevision(revision._id)}
-                    className="w-full text-left rounded-lg border border-slate-100 bg-slate-50/30 p-2 transition hover:border-slate-300 hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold text-slate-950">v{revision.revisionNumber}</p>
-                      <span className="text-[8px] font-bold text-slate-400">
-                        {new Date(revision.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[9px] leading-relaxed text-slate-500 line-clamp-2">{revision.snippet}</p>
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-[10px] text-slate-400 text-center">
-                  No snapshots yet.
-                </div>
-              )}
-            </div>
-          </section>
-        </aside>
-      </div>
+          </div>
+        </section>
+      </aside>
 
       {isSidebarOpen && createPortal(
         <div
