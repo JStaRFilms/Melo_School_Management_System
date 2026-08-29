@@ -15,6 +15,8 @@ interface SubjectSelectionMobileEditorProps {
   onSelectStudent?: (studentId: string) => void;
   onTogglePromotionStudent?: (studentId: string) => void;
   onCancelPromotion?: (studentId: string) => void;
+  onCancelGraduation?: (studentId: string) => void;
+  onViewAttestation?: (studentId: string) => void;
   openUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
 }
 
@@ -26,6 +28,8 @@ export function SubjectSelectionMobileEditor({
   isPromotionMode = false,
   onTogglePromotionStudent,
   onCancelPromotion,
+  onCancelGraduation,
+  onViewAttestation,
   openUnifiedEditor,
 }: SubjectSelectionMobileEditorProps) {
   const [editorStudentId, setEditorStudentId] = useState<string | null>(
@@ -94,15 +98,48 @@ export function SubjectSelectionMobileEditor({
                   <button
                     type="button"
                     onClick={() => openUnifiedEditor(student._id, "profile")}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5 transition-all active:scale-[0.98] hover:border-indigo-200 hover:bg-slate-50"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-950/5 transition-all active:scale-[0.98] hover:border-indigo-200 hover:bg-slate-50 cursor-pointer"
                     aria-label="Edit Profile"
                   >
                     <UserCog className="h-4 w-4 text-slate-400" />
                   </button>
                 </div>
 
-                {/* Promotion Status Badge */}
-                {student.promotionStatus?.isPromoted ? (
+                {/* Status Badges */}
+                {student.graduationStatus?.isGraduated ? (
+                  <div className="mt-2 flex items-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-950 max-w-full shadow-2xs">
+                      <GraduationCap className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                      <span className="truncate">🎓 Graduated (Alumnus)</span>
+                      {onViewAttestation && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewAttestation(student._id);
+                          }}
+                          className="ml-1 text-[9px] font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                          title="View Official Letter of Attestation"
+                        >
+                          Attestation
+                        </button>
+                      )}
+                      {onCancelGraduation && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCancelGraduation(student._id);
+                          }}
+                          className="ml-1 rounded p-0.5 text-emerald-700 hover:bg-emerald-200/80 hover:text-rose-700 transition cursor-pointer shrink-0"
+                          title="Cancel graduation"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ) : student.promotionStatus?.isPromoted ? (
                   <div className="mt-2 flex items-center">
                     <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 text-[10px] font-medium text-emerald-900 max-w-full">
                       <GraduationCap className="h-3.5 w-3.5 text-emerald-600 shrink-0" />

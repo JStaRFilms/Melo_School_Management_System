@@ -932,24 +932,41 @@ export const updateSessionDates = mutation({
       .withIndex("by_session", (q) => q.eq("sessionId", session._id))
       .collect();
 
-    for (const term of terms) {
-      const termStartStr = toCalendarDayString(term.startDate);
-      const termEndStr = toCalendarDayString(term.endDate);
+    const termsToPatch: Array<{ termId: Id<"academicTerms">; updates: Record<string, unknown> }> = [];
 
-      if (termStartStr < newSessionStartStr) {
-        throw new ConvexError(
-          `Session start date (${newSessionStartStr}) cannot be after ${normalizeHumanName(
-            term.name
-          )} start date (${termStartStr}). Adjust the term dates first.`
-        );
+    for (const term of terms) {
+      const termUpdates: Record<string, unknown> = {};
+      let effectiveTermStart = term.startDate;
+      let effectiveTermEnd = term.endDate;
+
+      if (effectiveTermStart < args.startDate) {
+        if (args.startDate >= term.endDate) {
+          throw new ConvexError(
+            `Session start date cannot be set after ${normalizeHumanName(term.name)} end date.`
+          );
+        }
+        effectiveTermStart = args.startDate;
+        termUpdates.startDate = args.startDate;
+        termUpdates.updatedAt = Date.now();
       }
-      if (termEndStr > newSessionEndStr) {
-        throw new ConvexError(
-          `Session end date (${newSessionEndStr}) cannot be before ${normalizeHumanName(
-            term.name
-          )} end date (${termEndStr}). Adjust the term dates first.`
-        );
+
+      if (effectiveTermEnd > args.endDate) {
+        if (effectiveTermStart >= args.endDate) {
+          throw new ConvexError(
+            `Session end date cannot be set before ${normalizeHumanName(term.name)} start date.`
+          );
+        }
+        termUpdates.endDate = args.endDate;
+        termUpdates.updatedAt = Date.now();
       }
+
+      if (Object.keys(termUpdates).length > 0) {
+        termsToPatch.push({ termId: term._id, updates: termUpdates });
+      }
+    }
+
+    for (const { termId, updates: termUpdates } of termsToPatch) {
+      await ctx.db.patch(termId, termUpdates);
     }
 
     const now = Date.now();

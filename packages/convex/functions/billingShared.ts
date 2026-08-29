@@ -478,7 +478,6 @@ export function normalizeBillingLineItems(input: Array<{
   amount: number;
   category?: string;
   isOptional?: boolean;
-  isSelected?: boolean;
 }>, prefix: string) {
   return input.map((item, index) => ({
     id: makeBillingLineItemId(prefix, index, item.label),
@@ -493,7 +492,6 @@ export function normalizeBillingLineItems(input: Array<{
       | "other") ?? "other",
     order: index,
     isOptional: Boolean(item.isOptional),
-    isSelected: item.isSelected ?? true,
   }));
 }
 

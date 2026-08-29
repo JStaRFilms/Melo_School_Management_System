@@ -16,6 +16,8 @@ interface SubjectSelectionMatrixProps {
   onSelectStudent?: (studentId: string) => void;
   onTogglePromotionStudent?: (studentId: string) => void;
   onCancelPromotion?: (studentId: string) => void;
+  onCancelGraduation?: (studentId: string) => void;
+  onViewAttestation?: (studentId: string) => void;
   onOpenUnifiedEditor: (studentId: string, tab: "subjects" | "profile") => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
@@ -33,6 +35,8 @@ export function SubjectSelectionMatrix({
   onSelectStudent,
   onTogglePromotionStudent,
   onCancelPromotion,
+  onCancelGraduation,
+  onViewAttestation,
   onOpenUnifiedEditor,
   onToggle,
   onSetStudentSubjects,
@@ -89,6 +93,8 @@ export function SubjectSelectionMatrix({
                 onSelectStudent={onSelectStudent}
                 onTogglePromotionStudent={onTogglePromotionStudent}
                 onCancelPromotion={onCancelPromotion}
+                onCancelGraduation={onCancelGraduation}
+                onViewAttestation={onViewAttestation}
                 openUnifiedEditor={onOpenUnifiedEditor}
               />
             </div>
@@ -101,6 +107,8 @@ export function SubjectSelectionMatrix({
                 onSelectStudent={onSelectStudent}
                 onTogglePromotionStudent={onTogglePromotionStudent}
                 onCancelPromotion={onCancelPromotion}
+                onCancelGraduation={onCancelGraduation}
+                onViewAttestation={onViewAttestation}
                 onToggle={onToggle}
                 onSetStudentSubjects={onSetStudentSubjects}
               />

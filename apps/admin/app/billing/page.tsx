@@ -234,25 +234,40 @@ export default function BillingPage() {
 
   const handleCreateFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    const planName = feePlanDraft.name.trim();
+    if (!planName) {
+      appToast.error("Please enter a fee plan name");
+      return;
+    }
+
+    const validLineItems = feePlanDraft.lineItems
+      .filter((item) => item.label.trim().length > 0 && (Number(item.amount) || 0) > 0)
+      .map((item) => ({
+        label: item.label.trim(),
+        amount: Number(item.amount) || 0,
+        category: item.category,
+        isOptional: Boolean(item.isOptional),
+      }));
+
+    if (validLineItems.length === 0) {
+      appToast.error("Please fill in at least one fee line item with a name and amount");
+      return;
+    }
+
     const success = await actions.runAction(async () => {
       await actions.createFeePlan({
-        name: feePlanDraft.name.trim(),
+        name: planName,
         description: feePlanDraft.description?.trim() || undefined,
         currency: feePlanDraft.currency || "NGN",
         billingMode: feePlanDraft.billingMode,
         targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
         installmentPolicy: {
           enabled: feePlanDraft.installmentEnabled,
-          installmentCount: Number(feePlanDraft.installmentCount) || 1,
-          intervalDays: Number(feePlanDraft.intervalDays) || 0,
+          installmentCount: feePlanDraft.installmentEnabled ? Math.max(2, Number(feePlanDraft.installmentCount) || 2) : 1,
+          intervalDays: feePlanDraft.installmentEnabled ? Math.max(1, Number(feePlanDraft.intervalDays) || 30) : 0,
           firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
         },
-        lineItems: feePlanDraft.lineItems.map((item) => ({
-          label: item.label.trim(),
-          amount: Number(item.amount) || 0,
-          category: item.category,
-          isOptional: Boolean(item.isOptional),
-        })),
+        lineItems: validLineItems,
       } as never);
     }, "Fee Plan Created", "Unable to create new fee plan.");
     if (success) {
@@ -415,8 +430,8 @@ export default function BillingPage() {
   if (!data) return <DashboardSkeleton />;
 
   return (
-    <main className="lg:h-screen lg:overflow-hidden bg-slate-50/50 flex flex-col">
-      <div className="flex-1 flex lg:overflow-hidden">
+    <main className="lg:h-[calc(100vh-56px)] lg:max-h-[calc(100dvh-56px)] lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
           <div className="p-4 lg:p-8 space-y-8">
@@ -516,6 +531,13 @@ export default function BillingPage() {
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
                      onNewPlan={() => openSidebar("plan")}
+                     onApplyPlan={(planId) => {
+                       setFeePlanApplicationDraft((current) => ({
+                         ...current,
+                         feePlanId: planId as any,
+                       }));
+                       openSidebar("application");
+                     }}
                    />
                 )}
 
@@ -620,7 +642,7 @@ export default function BillingPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto no-scrollbar relative">
+            <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
               <BillingSidebar 
                 onClose={() => setSidebarOpen(false)}

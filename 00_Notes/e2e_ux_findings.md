@@ -111,6 +111,15 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Built `calculateDynamicTermSchedule` and `suggestTermDateRange` in `@school/shared` to automatically partition any session into 3 balanced terms separated by realistic 2-3 week holiday breaks.
   - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips and ensuring all 3 terms are created transactionally.
   - Enhanced `TermCreationModal` to prepopulate smart start/end dates based on session boundaries and term sequence presets.
+- [x] **Session Date Modification & Dynamic Term Recalibration (`updateSession` in `academicSetup.ts`)**
+  - Resolved session start/end date editing constraints so extending or modifying an academic session dynamically checks and recalibrates child term dates.
+- [x] **Student Graduation Workflow & Official Attestation Letter (`studentGraduation.ts`, `GraduationConfirmationModal.tsx`, `AttestationLetterModal.tsx`)**
+  - Added atomic `graduateStudents` backend mutation marking student statuses as `"graduated"` with graduation session metadata and exit timestamps.
+  - Built `GraduationConfirmationModal` allowing batch graduation of terminal classes (e.g. SS 3, Primary 6).
+  - Built `AttestationLetterModal` providing official institutional letters of completion/attestation with school letterhead, student biographical details, attendance dates, and print styles.
+- [x] **Promotion Roster Isolation Per Academic Session (`SubjectSelectionMatrix.tsx`, `page.tsx`)**
+  - Ensured students promoted to an upcoming session remain isolated in the future session's roster without polluting active class lists for the ongoing term.
+
 ### 6. Billing Ledger & Fee Plan Currency UX
 - [x] **Currency Amount Input Truncation & Zero Clipping Fix (`FeePlanForm.tsx`, `BillingSidebar.tsx`)**
   - Expanded line item amount input width from cramped 112px (`w-28`) to 160px (`w-40`), ensuring 5-7 digit values and trailing zeros never overflow or get clipped.
@@ -124,7 +133,19 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Allowed line items in `FeePlanForm.tsx` to be toggled as **`✨ Optional Add-on (Payer Can Toggle)`** vs **`🔒 Mandatory Fee`**, letting parents choose non-compulsory fees (e.g. screen uniforms, bus services).
   - Updated `computeBillingSubtotal` and `computeBillingInvoiceTotal` to compute subtotal from mandatory items plus selected optional items.
   - Added `toggleInvoiceOptionalLineItem` mutation allowing payers and admins to opt in/out of optional items before invoice settlement.
-  - Added target class dropdown to `FeePlanForm.tsx` supporting both general templates and class-specific fee plans.
+  - Added multi-class target bundling with quick group presets (`+ All Junior`, `+ All Senior`, `+ All Primary`) and universal template modes.
+- [x] **Fee Plan Form Pinning & Background Leakage Prevention (`FeePlanForm.tsx`, `BillingSidebar.tsx`)**
+  - Divided fee plan drawer into a scrollable input container and a solid pinned non-scrolling footer.
+  - Anchored both the Real-Time Breakdown Card and the "Create Fee Plan" CTA in the solid footer, preventing form fields from sliding underneath the button.
+- [x] **Fee Plan "Details" Modal Inspector (`FeePlanList.tsx`, `page.tsx`)**
+  - Implemented interactive modal when clicking "Details" on fee plan cards.
+  - Displays target class badges, installment policy rules, categorized itemized line items, and a one-click **"Bulk Invoice with this Plan"** trigger.
+- [x] **Manual Payment Receipt Reference Generator (`BillingSidebar.tsx`)**
+  - Added an **"⚡ Auto-Generate"** helper button generating formatted identifiers (`REC-YYMMDD-XXXXX`) for cash payments or when no bank teller/session ID is provided.
+- [x] **Executive Institutional Invoice & Statement of Account Redesign (`PrintableFinanceModal.tsx`)**
+  - Restyled both modals into formal institutional bursary documents with school letterheads.
+  - Added structured 4-column student metadata, high-contrast KPI cards (Total Billed, Paid to Date, Balance Due), itemized fee table with opt-out strike-through styling, and a **Running Balance** ledger column for Statements of Account.
+  - Retained embedded Paystack QR code and 1-click checkout link generation.
 
 ---
 
@@ -177,6 +198,9 @@ This document tracks all observations, issues, UX refinements, completed changes
 ## 🚀 Roadmap & Backlog
 
 ### High Priority / Next Up
+- [ ] **School Bank Account Details for Invoices & Statements (Billing Settings / Defect Later)**
+  - Add configurable school bank account profile fields (Account Name, Bank Name, Account Number/IBAN, Sort Code/Branch) in Billing Settings (alongside the Paystack gateway configuration) or General Settings.
+  - Automatically attach and render configured school bank account details on generated and printed student billing invoices and statements of account so parents remitting via direct bank transfer see verified school account numbers.
 - [ ] **Sequential Auto-Incrementing Admission Numbers & Starting Counter Seed**
   - Configurable format pattern in School Settings (e.g. `SCH/{YEAR}/{SEQ:4}` $\to$ `SCH/2026/0042` or `NUR-{SEQ:4}`).
   - Admin defines *"Last Used Admission Number"* / *"Starting Seed Number"* (e.g. `516`) so onboarding schools migrate without ID gaps.
@@ -191,6 +215,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Fixed top progress indicator on mobile viewports during multi-step student enrollment and wizard forms.
 
 ### Architecture & Medium-Term Enhancements
+- [ ] **Migrate All AI Generation from Vercel to Convex — Reliability & Offline Resilience**
+  - **Goal:** Move every OpenRouter AI generation currently in Vercel (`apps/teacher/app/api/planning/lesson-plans/generate/route.ts`, `apps/teacher/app/api/ai/question-bank/generate/route.ts` via `packages/ai/src/models.ts`) to **Convex actions** (like `packages/convex/functions/academic/curriculumGeneration.ts` via `packages/ai/src/runtime.ts`).
+  - **Why:** Vercel routes are tied to the HTTP request lifecycle — if the user closes the tab, network drops, or Vercel hits its timeout (10–300s), generation is aborted and tokens are wasted. Convex actions survive client disconnect, run up to ~10 min, retry automatically, and persist results directly to `ctx.db` for the client to pick up via `useQuery` on reconnect.
+  - **Scope:** (1) Create Convex actions for `lesson_plan`, `student_note`, `assignment`, `question_bank_draft`, `cbt_draft` (use `openai/gpt-5.6-luna` for all). (2) Port `createDocumentModel`/`resolveDocumentModelId` + `OPENROUTER_HTTP_REFERER`/`X-Title` header handling from `models.ts:84-93` into `runtime.ts` (currently Convex ignores those headers). (3) Unify env to single `SCHOOL_AI_*` set in **Convex Dashboard** (`npx convex env set`) instead of split Vercel + Convex. (4) Replace teacher `fetch('/api/.../generate')` calls with `useAction` + reactive `useQuery` polling. (5) Keep streaming if needed via Convex action + `useQuery` incremental updates or accept non-streaming reliable completion.
+  - **Acceptance:** All 6 models (`SCHOOL_AI_LESSON_PLAN_MODEL`, `SCHOOL_AI_STUDENT_NOTE_MODEL`, `SCHOOL_AI_ASSIGNMENT_MODEL`, `SCHOOL_AI_QUESTION_BANK_MODEL`, `SCHOOL_AI_CBT_MODEL`, `SCHOOL_AI_CURRICULUM_MODEL`) set to `openai/gpt-5.6-luna` in **one place (Convex)**; generation completes even if client disconnects mid-request; no `apps/teacher/app/api/**/generate` routes remain for AI.
 - [ ] **Multi-Parent Household & Guardian Linking Architecture**
   - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
   - Relationship and residential address inheritance toggles.

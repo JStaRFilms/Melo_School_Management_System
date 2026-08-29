@@ -1036,6 +1036,17 @@ export default defineSchema({
     ),
     photoSourceDocumentId: v.optional(v.id("admissionsDocuments")),
     photoRetentionHold: v.optional(v.boolean()),
+    enrollmentStatus: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("graduated"),
+        v.literal("withdrawn"),
+        v.literal("transferred_out")
+      )
+    ),
+    graduatedAt: v.optional(v.number()),
+    graduatingSessionId: v.optional(v.id("academicSessions")),
+    graduatingClassId: v.optional(v.id("classes")),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -1215,6 +1226,23 @@ export default defineSchema({
     .index("by_from_class_and_from_session", ["fromClassId", "fromSessionId"])
     .index("by_student_and_from_session", ["studentId", "fromSessionId"])
     .index("by_student_and_to_session", ["studentId", "toSessionId"]),
+
+  studentGraduations: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    graduationDate: v.number(),
+    certificateNumber: v.optional(v.string()),
+    honorsOrRemarks: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_school_and_session", ["schoolId", "sessionId"])
+    .index("by_student_and_session", ["studentId", "sessionId"]),
 
   studentSubjectAggregationOptOuts: defineTable({
     schoolId: v.id("schools"),
@@ -1684,6 +1712,7 @@ export default defineSchema({
         ),
         order: v.number(),
         isOptional: v.optional(v.boolean()),
+        isSelected: v.optional(v.boolean()),
       })
     ),
     installmentPolicy: v.object({

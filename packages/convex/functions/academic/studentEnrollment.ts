@@ -787,6 +787,12 @@ export const getStudentProfile = query({
     photoUrl: v.union(v.string(), v.null()),
     photoFileName: v.union(v.string(), v.null()),
     photoContentType: v.union(v.string(), v.null()),
+    enrollmentStatus: v.union(v.string(), v.null()),
+    graduatedAt: v.union(v.number(), v.null()),
+    graduatingSessionId: v.union(v.id("academicSessions"), v.null()),
+    graduatingSessionName: v.union(v.string(), v.null()),
+    graduatingClassId: v.union(v.id("classes"), v.null()),
+    graduatingClassName: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
@@ -798,10 +804,12 @@ export const getStudentProfile = query({
       throw new ConvexError("Student not found");
     }
 
-    const [studentUser, classDoc, photoUrl] = await Promise.all([
+    const [studentUser, classDoc, photoUrl, gradSessionDoc, gradClassDoc] = await Promise.all([
       ctx.db.get(student.userId),
       ctx.db.get(student.classId),
       student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+      student.graduatingSessionId ? ctx.db.get(student.graduatingSessionId) : null,
+      student.graduatingClassId ? ctx.db.get(student.graduatingClassId) : null,
     ]);
 
     if (
@@ -838,6 +846,12 @@ export const getStudentProfile = query({
       photoUrl,
       photoFileName: student.photoFileName ?? null,
       photoContentType: student.photoContentType ?? null,
+      enrollmentStatus: student.enrollmentStatus ?? "active",
+      graduatedAt: student.graduatedAt ?? null,
+      graduatingSessionId: student.graduatingSessionId ?? null,
+      graduatingSessionName: gradSessionDoc ? normalizeHumanName(gradSessionDoc.name) : null,
+      graduatingClassId: student.graduatingClassId ?? null,
+      graduatingClassName: gradClassDoc ? normalizeHumanName(gradClassDoc.name) : null,
     };
   },
 });
@@ -1280,6 +1294,159 @@ export const cancelStudentPromotion = mutation({
   },
 });
 
+export const graduateStudents = mutation({
+  args: {
+    studentIds: v.array(v.id("students")),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    graduationDate: v.optional(v.number()),
+    honorsOrRemarks: v.optional(v.string()),
+    certificateNumber: v.optional(v.string()),
+  },
+  returns: v.object({
+    graduatedCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const uniqueStudentIds = [...new Set(args.studentIds.map((id) => String(id)))] as Array<Id<"students">>;
+    if (uniqueStudentIds.length === 0) {
+      throw new ConvexError("Select at least one student to graduate");
+    }
+    if (uniqueStudentIds.length > 100) {
+      throw new ConvexError("Graduate 100 students or fewer at a time");
+    }
+
+    const [classDoc, sessionDoc] = await Promise.all([
+      ctx.db.get(args.classId),
+      ctx.db.get(args.sessionId),
+    ]);
+
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
+      throw new ConvexError("Class is not available");
+    }
+    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
+      throw new ConvexError("Academic session is not available");
+    }
+
+    const now = Date.now();
+    const effectiveGraduationDate = args.graduationDate ?? sessionDoc.endDate ?? now;
+    let graduatedCount = 0;
+
+    for (const studentId of uniqueStudentIds) {
+      const student = await ctx.db.get(studentId);
+      if (!student || student.schoolId !== schoolId || student.isArchived) {
+        throw new ConvexError("One selected student is not available");
+      }
+
+      const existingGrad = await ctx.db
+        .query("studentGraduations")
+        .withIndex("by_student_and_session", (q) =>
+          q.eq("studentId", studentId).eq("sessionId", args.sessionId)
+        )
+        .first();
+
+      if (existingGrad) {
+        await ctx.db.patch(existingGrad._id, {
+          classId: args.classId,
+          graduationDate: effectiveGraduationDate,
+          certificateNumber: args.certificateNumber?.trim() || undefined,
+          honorsOrRemarks: args.honorsOrRemarks?.trim() || undefined,
+        });
+      } else {
+        await ctx.db.insert("studentGraduations", {
+          schoolId,
+          studentId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+          graduationDate: effectiveGraduationDate,
+          certificateNumber: args.certificateNumber?.trim() || undefined,
+          honorsOrRemarks: args.honorsOrRemarks?.trim() || undefined,
+          createdAt: now,
+          createdBy: userId,
+        });
+      }
+
+      await ctx.db.patch(studentId, {
+        enrollmentStatus: "graduated",
+        graduatedAt: effectiveGraduationDate,
+        graduatingSessionId: args.sessionId,
+        graduatingClassId: args.classId,
+        updatedAt: now,
+      });
+
+      // Purge any pending outgoing promotions or staged future selections
+      const pendingPromotions = await ctx.db
+        .query("studentPromotions")
+        .withIndex("by_student_and_from_session", (q) =>
+          q.eq("studentId", studentId).eq("fromSessionId", args.sessionId)
+        )
+        .collect();
+      for (const promo of pendingPromotions) {
+        const stagedSelections = await ctx.db
+          .query("studentSubjectSelections")
+          .withIndex("by_student_and_class_and_session", (q: any) =>
+            q
+              .eq("studentId", studentId)
+              .eq("classId", promo.toClassId)
+              .eq("sessionId", promo.toSessionId)
+          )
+          .collect();
+        for (const sel of stagedSelections) {
+          await ctx.db.delete(sel._id);
+        }
+        await ctx.db.delete(promo._id);
+      }
+
+      graduatedCount += 1;
+    }
+
+    return { graduatedCount };
+  },
+});
+
+export const cancelStudentGraduation = mutation({
+  args: {
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+  },
+  returns: v.object({
+    cancelled: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
+      throw new ConvexError("Student not found");
+    }
+
+    const graduations = await ctx.db
+      .query("studentGraduations")
+      .withIndex("by_student_and_session", (q) =>
+        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId)
+      )
+      .collect();
+
+    for (const grad of graduations) {
+      await ctx.db.delete(grad._id);
+    }
+
+    await ctx.db.patch(args.studentId, {
+      enrollmentStatus: "active",
+      graduatedAt: undefined,
+      graduatingSessionId: undefined,
+      graduatingClassId: undefined,
+      updatedAt: Date.now(),
+    });
+
+    return { cancelled: true };
+  },
+});
+
+
 // ==================== STUDENT SUBJECT ENROLLMENT ====================
 
 export const setStudentSubjectSelections = mutation({
@@ -1554,6 +1721,15 @@ export const getClassStudentSubjectMatrix = query({
           }),
           v.null()
         ),
+        graduationStatus: v.union(
+          v.object({
+            isGraduated: v.boolean(),
+            graduationDate: v.optional(v.number()),
+            certificateNumber: v.optional(v.string()),
+            honorsOrRemarks: v.optional(v.string()),
+          }),
+          v.null()
+        ),
       })
     ),
   }),
@@ -1619,19 +1795,53 @@ export const getClassStudentSubjectMatrix = query({
         .collect();
       for (const student of baselineStudents) {
         if (!student.isArchived) {
+          // If student is graduated in a prior session, exclude them from subsequent sessions
+          if (student.enrollmentStatus === "graduated" && student.graduatingSessionId) {
+            const gradSession = await ctx.db.get(student.graduatingSessionId);
+            if (gradSession && sessionDoc.startDate > gradSession.startDate) {
+              continue;
+            }
+          }
+
+          // If student was promoted to a different class for this session, exclude them from this class baseline
+          const promoForSession = await ctx.db
+            .query("studentPromotions")
+            .withIndex("by_student_and_to_session", (q) =>
+              q.eq("studentId", student._id).eq("toSessionId", args.sessionId)
+            )
+            .first();
+          if (promoForSession && String(promoForSession.toClassId) !== String(args.classId)) {
+            continue;
+          }
+
           studentIdSet.add(String(student._id));
         }
       }
     }
 
-    const promotedIntoClass = await ctx.db
-      .query("studentPromotions")
-      .withIndex("by_to_class_and_to_session", (q) =>
-        q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)
-      )
-      .collect();
+    const [promotedIntoClass, graduationsInClassSession] = await Promise.all([
+      ctx.db
+        .query("studentPromotions")
+        .withIndex("by_to_class_and_to_session", (q) =>
+          q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)
+        )
+        .collect(),
+      ctx.db
+        .query("studentGraduations")
+        .withIndex("by_class_and_session", (q) =>
+          q.eq("classId", args.classId).eq("sessionId", args.sessionId)
+        )
+        .collect(),
+    ]);
+
     for (const promo of promotedIntoClass) {
       studentIdSet.add(String(promo.studentId));
+    }
+
+    const graduationMap = new Map<string, (typeof graduationsInClassSession)[0]>();
+    for (const grad of graduationsInClassSession) {
+      graduationMap.set(String(grad.studentId), grad);
+      studentIdSet.add(String(grad.studentId));
     }
 
     const [allSelections, aggregations, optOuts, outgoingPromotions] = await Promise.all([
@@ -1749,6 +1959,25 @@ export const getClassStudentSubjectMatrix = query({
               isPromoted: false,
             };
 
+        const grad = graduationMap.get(String(student._id));
+        const graduationStatus = grad
+          ? {
+              isGraduated: true,
+              graduationDate: grad.graduationDate,
+              certificateNumber: grad.certificateNumber,
+              honorsOrRemarks: grad.honorsOrRemarks,
+            }
+          : student.enrollmentStatus === "graduated" &&
+            String(student.graduatingClassId) === String(args.classId) &&
+            String(student.graduatingSessionId) === String(args.sessionId)
+            ? {
+                isGraduated: true,
+                graduationDate: student.graduatedAt,
+              }
+            : {
+                isGraduated: false,
+              };
+
         return {
           _id: student._id,
           studentName: studentName.displayName || "Unnamed Student",
@@ -1758,6 +1987,7 @@ export const getClassStudentSubjectMatrix = query({
             .filter((id) => visibleSubjectIds.has(id))
             .map((id) => id as any),
           promotionStatus,
+          graduationStatus,
         };
       });
 
@@ -2648,3 +2878,140 @@ export const upsertStudentPortalCredentialsByStudentId = action({
   }),
   handler: upsertStudentPortalCredentialsByStudentIdHandler,
 });
+
+export const getStudentAttestationData = query({
+  args: { studentId: v.id("students") },
+  returns: v.object({
+    student: v.object({
+      _id: v.id("students"),
+      fullName: v.string(),
+      firstName: v.union(v.string(), v.null()),
+      lastName: v.union(v.string(), v.null()),
+      admissionNumber: v.string(),
+      gender: v.union(v.string(), v.null()),
+      dateOfBirth: v.union(v.number(), v.null()),
+      enrollmentDate: v.number(),
+      enrollmentStatus: v.string(),
+      photoUrl: v.union(v.string(), v.null()),
+      className: v.string(),
+      gradeName: v.union(v.string(), v.null()),
+    }),
+    graduation: v.union(
+      v.object({
+        graduationDate: v.number(),
+        certificateNumber: v.union(v.string(), v.null()),
+        honorsOrRemarks: v.union(v.string(), v.null()),
+        graduatingClassName: v.string(),
+        graduatingSessionName: v.string(),
+      }),
+      v.null()
+    ),
+    school: v.object({
+      name: v.string(),
+      slug: v.string(),
+      motto: v.union(v.string(), v.null()),
+      logoUrl: v.union(v.string(), v.null()),
+      contactEmail: v.union(v.string(), v.null()),
+      contactPhone: v.union(v.string(), v.null()),
+      address: v.union(v.string(), v.null()),
+      principalName: v.union(v.string(), v.null()),
+    }),
+    issuedAt: v.number(),
+    referenceCode: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
+      throw new ConvexError("Student not found");
+    }
+
+    const [studentUser, classDoc, schoolDoc, photoUrl, graduationDoc] = await Promise.all([
+      ctx.db.get(student.userId),
+      ctx.db.get(student.classId),
+      ctx.db.get(schoolId),
+      student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+      student.graduatingSessionId
+        ? ctx.db
+            .query("studentGraduations")
+            .withIndex("by_student_and_session", (q) =>
+              q.eq("studentId", student._id).eq("sessionId", student.graduatingSessionId!)
+            )
+            .first()
+        : ctx.db
+            .query("studentGraduations")
+            .withIndex("by_student", (q) => q.eq("studentId", student._id))
+            .first(),
+    ]);
+
+    if (!studentUser || !schoolDoc || !classDoc) {
+      throw new ConvexError("Required academic records not found");
+    }
+
+    const studentName = getReadableUserName(studentUser);
+    const schoolLogoUrl = schoolDoc.logoStorageId
+      ? await ctx.storage.getUrl(schoolDoc.logoStorageId)
+      : null;
+
+    let principalName: string | null = null;
+    const adminUser = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .filter((q) => q.and(q.eq(q.field("role"), "admin"), q.neq(q.field("isArchived"), true)))
+      .first();
+    if (adminUser) {
+      principalName = getReadableUserName(adminUser).displayName || null;
+    }
+
+    let graduationDetails = null;
+    if (graduationDoc) {
+      const [gradClass, gradSession] = await Promise.all([
+        ctx.db.get(graduationDoc.classId),
+        ctx.db.get(graduationDoc.sessionId),
+      ]);
+      graduationDetails = {
+        graduationDate: graduationDoc.graduationDate,
+        certificateNumber: graduationDoc.certificateNumber ?? null,
+        honorsOrRemarks: graduationDoc.honorsOrRemarks ?? null,
+        graduatingClassName: gradClass ? normalizeHumanName(gradClass.name) : normalizeHumanName(classDoc.name),
+        graduatingSessionName: gradSession ? normalizeHumanName(gradSession.name) : "Graduating Session",
+      };
+    }
+
+    const issuedAt = Date.now();
+    const cleanSlug = schoolDoc.slug.toUpperCase().slice(0, 4);
+    const cleanAdm = student.admissionNumber.replace(/[^A-Za-z0-9]/g, "");
+    const referenceCode = `ATT-${cleanSlug}-${cleanAdm}-${new Date(issuedAt).getFullYear()}`;
+
+    return {
+      student: {
+        _id: student._id,
+        fullName: studentName.displayName || "Student",
+        firstName: studentName.firstName,
+        lastName: studentName.lastName,
+        admissionNumber: student.admissionNumber,
+        gender: student.gender ?? null,
+        dateOfBirth: student.dateOfBirth ?? null,
+        enrollmentDate: student.createdAt,
+        enrollmentStatus: student.enrollmentStatus ?? "active",
+        photoUrl,
+        className: normalizeHumanName(classDoc.name),
+        gradeName: classDoc.gradeName ?? null,
+      },
+      graduation: graduationDetails,
+      school: {
+        name: normalizeHumanName(schoolDoc.name),
+        slug: schoolDoc.slug,
+        motto: schoolDoc.motto ?? null,
+        logoUrl: schoolLogoUrl,
+        contactEmail: schoolDoc.contactEmail ?? null,
+        contactPhone: schoolDoc.contactPhone ?? null,
+        address: schoolDoc.address ?? null,
+        principalName,
+      },
+      issuedAt,
+      referenceCode,
+    };
+  },
+});
+

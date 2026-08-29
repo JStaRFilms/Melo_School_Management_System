@@ -18,6 +18,7 @@ interface StudentProfileEditorProps {
   classes: ClassSummary[];
   onNotice: (notice: EnrollmentNotice) => void;
   onStudentArchived?: (studentId: string) => void;
+  onViewAttestation?: (studentId: string) => void;
   variant?: "inline" | "sheet";
   activeTab?: "profile" | "family";
   onTabChange?: (tab: "profile" | "family") => void;
@@ -43,6 +44,12 @@ type StudentProfile = {
   photoUrl: string | null;
   photoFileName: string | null;
   photoContentType: string | null;
+  enrollmentStatus?: string | null;
+  graduatedAt?: number | null;
+  graduatingSessionId?: string | null;
+  graduatingSessionName?: string | null;
+  graduatingClassId?: string | null;
+  graduatingClassName?: string | null;
 };
 
 function toDateInput(value: number | null) {
@@ -55,6 +62,7 @@ export function StudentProfileEditor({
   classes,
   onNotice,
   onStudentArchived,
+  onViewAttestation,
   variant,
   activeTab = "profile",
   onTabChange,
@@ -237,19 +245,51 @@ export function StudentProfileEditor({
 
       {activeTab === "profile" ? (
         <div className="space-y-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                <UserCog className="h-4 w-4" />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                  <UserCog className="h-4 w-4" />
+                </div>
+                <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+                  Edit Identity
+                </h2>
               </div>
-              <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
-                Edit Identity
-              </h2>
+
+              {studentProfile.enrollmentStatus === "graduated" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-bold text-emerald-900">
+                  🎓 Graduated / Alumnus
+                </span>
+              )}
             </div>
             <p className="text-xs font-medium text-slate-500 line-clamp-2">
               Modify core records and credentials for <span className="font-bold text-slate-900">{displayName}</span>.
             </p>
           </div>
+
+          {studentProfile.enrollmentStatus === "graduated" && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">
+                    Alumni Lifecycle Status
+                  </span>
+                  <p className="text-[11px] text-emerald-950 font-medium">
+                    Graduated from {studentProfile.graduatingClassName || studentProfile.className} ({studentProfile.graduatingSessionName || "Final Session"}).
+                  </p>
+                </div>
+                {onViewAttestation && (
+                  <button
+                    type="button"
+                    onClick={() => onViewAttestation(studentProfile._id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 text-[11px] font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <span>Official Letter of Attestation</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-6">
             <StudentPhotoPanel

@@ -13,6 +13,8 @@ interface SubjectSelectionDesktopTableProps {
   onSelectStudent?: (studentId: string) => void;
   onTogglePromotionStudent?: (studentId: string) => void;
   onCancelPromotion?: (studentId: string) => void;
+  onCancelGraduation?: (studentId: string) => void;
+  onViewAttestation?: (studentId: string) => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
 }
@@ -25,6 +27,8 @@ export function SubjectSelectionDesktopTable({
   onSelectStudent,
   onTogglePromotionStudent,
   onCancelPromotion,
+  onCancelGraduation,
+  onViewAttestation,
   onToggle,
   onSetStudentSubjects,
 }: SubjectSelectionDesktopTableProps) {
@@ -137,7 +141,42 @@ export function SubjectSelectionDesktopTable({
                       </div>
 
                       {/* Bottom Row: Promotion Badge or Status */}
-                      {student.promotionStatus?.isPromoted ? (
+                      {student.graduationStatus?.isGraduated ? (
+                        <div className="flex items-center pt-0.5">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-950 max-w-full shadow-2xs">
+                            <GraduationCap className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                            <span className="truncate">
+                              🎓 Graduated (Alumnus)
+                            </span>
+                            {onViewAttestation && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onViewAttestation(student._id);
+                                }}
+                                className="ml-1 text-[9px] font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                                title="View Official Letter of Attestation"
+                              >
+                                Attestation
+                              </button>
+                            )}
+                            {onCancelGraduation && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onCancelGraduation(student._id);
+                                }}
+                                className="ml-1 rounded p-0.5 text-emerald-700 hover:bg-emerald-200/80 hover:text-rose-700 transition cursor-pointer shrink-0"
+                                title="Cancel graduation"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      ) : student.promotionStatus?.isPromoted ? (
                         <div className="flex items-center pt-0.5">
                           <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 text-[10px] font-medium text-emerald-900 max-w-full">
                             <GraduationCap className="h-3.5 w-3.5 text-emerald-600 shrink-0" />

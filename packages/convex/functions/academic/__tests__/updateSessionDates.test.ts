@@ -20,27 +20,31 @@ describe("updateSessionDates boundary constraints", () => {
     { name: "Third Term", startDate: term3Start, endDate: term3End },
   ];
 
-  function validateNewSessionDates(newStart: number, newEnd: number) {
+  function simulateUpdateSessionDates(newStart: number, newEnd: number) {
     if (newEnd <= newStart) {
       throw new Error("Session end date must be after its start date");
     }
 
-    const newStartStr = toCalendarDayString(newStart);
-    const newEndStr = toCalendarDayString(newEnd);
-
     for (const term of terms) {
-      const termStartStr = toCalendarDayString(term.startDate);
-      const termEndStr = toCalendarDayString(term.endDate);
+      let effectiveTermStart = term.startDate;
+      let effectiveTermEnd = term.endDate;
 
-      if (termStartStr < newStartStr) {
-        throw new Error(
-          `Session start date (${newStartStr}) cannot be after ${term.name} start date (${termStartStr}). Adjust the term dates first.`
-        );
+      if (effectiveTermStart < newStart) {
+        if (newStart >= term.endDate) {
+          throw new Error(
+            `Session start date cannot be set after ${term.name} end date.`
+          );
+        }
+        effectiveTermStart = newStart;
       }
-      if (termEndStr > newEndStr) {
-        throw new Error(
-          `Session end date (${newEndStr}) cannot be before ${term.name} end date (${termEndStr}). Adjust the term dates first.`
-        );
+
+      if (effectiveTermEnd > newEnd) {
+        if (effectiveTermStart >= newEnd) {
+          throw new Error(
+            `Session end date cannot be set before ${term.name} start date.`
+          );
+        }
+        effectiveTermEnd = newEnd;
       }
     }
   }
@@ -49,39 +53,37 @@ describe("updateSessionDates boundary constraints", () => {
     const earlierStart = new Date(2026, 7, 15, 12, 0, 0).getTime();
     const laterEnd = new Date(2027, 7, 15, 12, 0, 0).getTime();
 
-    expect(() => validateNewSessionDates(earlierStart, laterEnd)).not.toThrow();
+    expect(() => simulateUpdateSessionDates(earlierStart, laterEnd)).not.toThrow();
   });
 
-  it("permits tightening session date range as long as all terms remain enclosed", () => {
-    const tightStart = new Date(2026, 8, 5, 12, 0, 0).getTime();
-    const tightEnd = new Date(2027, 6, 25, 12, 0, 0).getTime();
-
-    expect(() => validateNewSessionDates(tightStart, tightEnd)).not.toThrow();
-  });
-
-  it("rejects session start date after the first term begins", () => {
-    const tooLateStart = new Date(2026, 8, 15, 12, 0, 0).getTime();
+  it("auto-aligns and clamps session start date even when starting after initial term start", () => {
+    const newStart = new Date(2026, 8, 15, 12, 0, 0).getTime(); // After term1Start (Sep 8), but before term1End (Dec 15)
     const validEnd = new Date(2027, 6, 31, 12, 0, 0).getTime();
 
-    expect(() => validateNewSessionDates(tooLateStart, validEnd)).toThrow(
-      /Session start date.*cannot be after First Term start date/
+    expect(() => simulateUpdateSessionDates(newStart, validEnd)).not.toThrow();
+  });
+
+  it("rejects session start date if it exceeds first term end date", () => {
+    const tooLateStart = new Date(2026, 11, 20, 12, 0, 0).getTime(); // After term1End (Dec 15)
+    const validEnd = new Date(2027, 6, 31, 12, 0, 0).getTime();
+
+    expect(() => simulateUpdateSessionDates(tooLateStart, validEnd)).toThrow(
+      /Session start date cannot be set after First Term end date/
     );
   });
 
-  it("rejects session end date before the last term ends", () => {
+  it("auto-aligns and clamps session end date even when earlier than initial term3End", () => {
     const validStart = new Date(2026, 8, 1, 12, 0, 0).getTime();
-    const tooEarlyEnd = new Date(2027, 6, 10, 12, 0, 0).getTime();
+    const earlierEnd = new Date(2027, 6, 10, 12, 0, 0).getTime(); // Before term3End (Jul 20), but after term3Start (May 1)
 
-    expect(() => validateNewSessionDates(validStart, tooEarlyEnd)).toThrow(
-      /Session end date.*cannot be before Third Term end date/
-    );
+    expect(() => simulateUpdateSessionDates(validStart, earlierEnd)).not.toThrow();
   });
 
   it("rejects invalid end date before start date", () => {
     const start = new Date(2027, 6, 31, 12, 0, 0).getTime();
     const end = new Date(2026, 8, 1, 12, 0, 0).getTime();
 
-    expect(() => validateNewSessionDates(start, end)).toThrow(
+    expect(() => simulateUpdateSessionDates(start, end)).toThrow(
       "Session end date must be after its start date"
     );
   });
