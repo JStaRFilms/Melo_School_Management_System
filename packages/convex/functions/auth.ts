@@ -13,7 +13,7 @@ export const getViewerContext = query({
       ctx.auth.getUserIdentity(),
     ]);
 
-    const authId = identity?.subject ?? authUser?._id ?? (authUser as any)?.id;
+    const authId = identity?.subject ?? authUser?._id;
     if (!authId && !authUser?.email) {
       return null;
     }
@@ -27,6 +27,9 @@ export const getViewerContext = query({
     }
 
     if (!appUser && authUser?.email) {
+      console.warn(
+        `[auth] Email fallback fired for ${authUser.email} — authId lookup failed. Review cross-school tenant isolation.`
+      );
       appUser = await ctx.db
         .query("users")
         .withIndex("by_email", (q: any) => q.eq("email", authUser.email.toLowerCase()))

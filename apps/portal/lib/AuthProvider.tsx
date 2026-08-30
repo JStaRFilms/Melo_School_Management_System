@@ -195,7 +195,7 @@ function AuthProviderWithConvex({
       return true;
     }
 
-    if (viewerContext !== undefined) {
+    if (viewerContext !== undefined && viewerContext !== null) {
       return true;
     }
 

@@ -1585,6 +1585,11 @@ export const createFeePlan = mutation({
     if (billingMode === "manual_extra" && targetClassIds.length > 0) {
       throw new ConvexError("Manual extra fee plans cannot target classes");
     }
+    if (billingMode === "class_default" && targetClassIds.length === 0) {
+      throw new ConvexError(
+        "Class-default fee plans require at least one target class. Use 'manual extra' mode for plans without class targeting."
+      );
+    }
 
     if (targetClassIds.length > 0) {
       const targetClasses = await Promise.all(
@@ -2591,6 +2596,8 @@ export const toggleInvoiceOptionalLineItem = mutation({
     if (!invoice || invoice.schoolId !== viewer.schoolId) {
       throw new ConvexError("Invoice not found");
     }
+
+    assertAdmin(viewer);
 
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new ConvexError("Cannot modify items on a paid or cancelled invoice");

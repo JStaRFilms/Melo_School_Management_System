@@ -1,6 +1,6 @@
 "use node";
 
-import { action } from "../../_generated/server";
+import { internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import type { ActionCtx } from "../../_generated/server";
@@ -65,9 +65,9 @@ async function ensureBetterAuthAccount(
   return created.id;
 }
 
-export const runSplitMigrationAction = action({
+export const runSplitMigrationAction = internalAction({
   args: {
-    password: v.optional(v.string()),
+    password: v.string(),
   },
   handler: async (
     ctx,
@@ -81,7 +81,7 @@ export const runSplitMigrationAction = action({
     fedrahAdminEmail: string;
     rugaAdminEmail: string;
   }> => {
-    const adminPassword = args.password ?? "Admin123!Pass";
+    const adminPassword = args.password;
 
     // 1. Ensure Better Auth accounts for both branch admins
     const fedrahAuthId: string = await ensureBetterAuthAccount(

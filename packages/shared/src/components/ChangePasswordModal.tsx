@@ -97,8 +97,8 @@ export function ChangePasswordModal({
       setTimeout(() => {
         handleClose();
       }, 1500);
-    } catch (err: any) {
-      setErrorMessage(err?.message || "An unexpected error occurred. Please try again.");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }

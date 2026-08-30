@@ -387,12 +387,11 @@ export function WorkspaceNavbar({
   }, [open, profileOpen]);
 
   useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
     if (open) {
       document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => { document.body.style.overflow = prevOverflow; };
   }, [open]);
 
   useEffect(() => {

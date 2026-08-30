@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -116,7 +116,10 @@ export default function SchoolSettingsPage() {
     }
   };
 
+  const brandingInitialized = useRef(false);
+
   useEffect(() => {
+    if (brandingInitialized.current) return;
     if (branding) {
       setName(branding.name || "");
       setMotto(branding.motto || "");
@@ -125,6 +128,7 @@ export default function SchoolSettingsPage() {
       setContactEmail(branding.contactEmail || "");
       setContactPhone(branding.contactPhone || "");
       setAddress(branding.address || "");
+      brandingInitialized.current = true;
     }
   }, [branding]);
 

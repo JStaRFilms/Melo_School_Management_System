@@ -244,3 +244,59 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [ ] **Smart Transactional & Batched Notification Engine**
   - Immediate security/auth alerts.
   - Debounced digest outbox for rapid operational edits to avoid guardian email fatigue.
+
+---
+
+## 🔍 Post-Review Follow-Ups (from 4-agent code review, Aug 2026)
+
+> These items were identified during the multi-agent code review of `audit/e2e-ux-polish` but are not inline code bugs — they require new tests, refactoring, or architectural decisions.
+
+### Testing Gaps (Priority)
+- [ ] **Promotion roster isolation test** — Spec claims "promoted students don't pollute active session roster" but no `convex-test` integration test verifies `getBaselineRoster`/`getClassRoster` after a `studentPromotions` insert.
+- [ ] **Historical report card form-teacher test** — `reportCards.ts` queries `classSessionFormTeachers` by past session, but no test pins this behavior. Critical for transcript integrity.
+- [ ] **Class roster session-switching test** — No test exercises `listClasses({sessionId: futureSessionId})` and asserts `formTeacherName` differs from active session.
+- [ ] **Backwards-promotion rejection test** — Error message `"Cannot promote students backwards"` exists only in production code. Add `convex-test` for both rejection paths.
+- [ ] **Graduation mutation end-to-end test** — `studentGraduation.test.ts` asserts a format string but doesn't exercise the real `graduateStudents` mutation.
+- [ ] **`updateSessionDates` integration test** — Current test reimplements the handler instead of calling the real mutation.
+- [ ] **`sessionScopedFormTeacher` coverage expansion** — Only 1 of 5 branches covered. Add tests for `classSubjects`, `teacherAssignments`, `subjects`, and `activeSession === null` fallback.
+- [ ] **`getParentEmailReview` test coverage** — Add unit tests for malformed input and valid `+tag` addresses.
+
+### Security & Auth Hardening
+- [ ] **`auth.ts` email fallback tenant isolation** — The email fallback at `auth.ts:29` has no `schoolId` scoping. A user matching another school's email can cross-tenant. Long-term: drop the fallback or constrain to stable mapping.
+- [ ] **`auth.ts` use `identity.tokenIdentifier`** — Convex guideline prefers `tokenIdentifier` over `subject`. Current code uses `subject`. Evaluate migration path.
+- [ ] **Platform audit log middleware** — `resetSchoolAdminPassword` and `setSchoolStatus` write zero audit events. Add `recordPlatformAuditEvent` helper and wire into all platform mutations.
+- [ ] **`setSchoolStatus` session invalidation** — Suspending a school doesn't call `deleteSessions` for the school's users. Cached JWTs remain valid for read-only paths.
+- [ ] **`provisionSchoolAdmin` origin validation** — Accepts plaintext `origin` arg forwarded to Better Auth. Validate against server-side allowlist.
+- [ ] **AI generation rate limiting** — Migration from Vercel removed throttling. Add per-teacher daily token-cost budget and `maxDuration` to `generateObject`.
+- [ ] **`school.features.*` backend enforcement** — Feature flags are cosmetic (UI-only). Add `assertSchoolFeatureEnabled()` helper to billing/curriculum/knowledge mutations.
+- [ ] **Platform password reset: rate limit + confirmation** — Add `consumePlatformAdminResetLimit`, require confirmation string, and write audit event.
+
+### Refactoring
+- [ ] **Split `documentGeneration.ts`** — 1,898 lines hosting validators, schema-repair, retry/backoff, prompts, mapping, normalization, Markdown rendering, AI logging, and 2 actions. Split into `documentGeneration/{prompts,repair,actions/{lessonPlan,assessment}}.ts`.
+- [ ] **Split `WorkspaceNavbar.tsx`** — 1,145 lines. Extract mobile drawer, desktop tabs, profile dropdown, and favicon/title effects into separate components.
+- [ ] **Extract shared modal primitive** — 10+ modals lack focus trap, ESC handler, and `aria-modal`. Create one `<Modal>` component (Radix Dialog or hand-rolled) and replace all implementations.
+- [ ] **`callGenerateObject` type safety** — The `schema: unknown` → cast indirection works but obscures types. Consider one helper per output type so each call site is statically typed, especially after AI SDK v7 upgrade.
+
+### Data Integrity
+- [ ] **Promotion re-target audit trail** — Re-promoting a student to a different target class silently deletes prior `studentSubjectSelections` with no audit-log write or UI warning.
+- [ ] **Graduation multi-session guard** — A student can be graduated under multiple sessions. The `patch` overwrites prior `graduationDate`. Consider rejecting when any graduation row exists.
+- [ ] **Unbounded `.collect()` in matrix builder** — `getClassStudentSubjectMatrix` runs 4-5 unbounded `.collect()` calls. Paginate or denormalize for scale.
+- [ ] **`toggleInvoiceOptionalLineItem` installment schedule** — Changing the total does not regenerate the installment schedule. Per-installment `amount` becomes stale.
+- [ ] **`getBillingDashboard` filter tautology** — `if (!event.invoiceId)` then checks `visibleInvoiceIds.has(String(event.invoiceId ?? ""))` — always false. Webhook-test events are dropped.
+
+### AI Migration Completeness
+- [ ] **3 missing AI actions** — Spec asks for `student_note`, `assignment`, `cbt_draft` actions. Only `lessonPlan` and `assessment` exist. UI selectors still expose all 5 types.
+- [ ] **AI SDK version** — `ai@^6.0.168` is pinned; current is `ai@7.x`. Upgrade or document reason for v6 pin.
+- [ ] **`consumeTeacherLessonPlanGenerationLimit` retry semantics** — Not idempotent under Convex's automatic 3× action retries. A flaky network can lock a teacher out for the full rate-limit window.
+
+### UX Polish
+- [ ] **`SchoolSettingsPage.handleRemoveLogo`** uses native `confirm()` — inconsistent with the rest of the app. Use `ConfirmationModal`.
+- [ ] **`SchoolSuspendedLockScreen`** shows hard-coded phone `+234 (800) 6356-724`. Wire to runtime config or remove.
+- [ ] **Hard-coded "Convex Dev — 100% Online"** copy in platform admin page. Remove dev leftover.
+- [ ] **`ResetSchoolAdminPasswordModal`** retains `newPassword` state after close. Clear on `onClose`.
+- [ ] **Dashboard "Upcoming Events"** shows past events — `listEvents` has no `fromTimestamp` filter.
+- [ ] **Dashboard `totalEnrolledStudents`** double-counts cross-listed students. Use `students` table count.
+
+### Scope Creep (land separately)
+- [ ] Navigation chrome (3 nav variants + preference switcher, WorkspaceNavbar +841 lines) — not in spec Done list. Land in a separate branch.
+- [ ] Future-spec docs (`StudentLifecycleAndEnrollmentHistory.md`, `EduClearanceTransferNetwork.md`, `KiddyTrackerAndGateOperations.md`, `ParentWhatsAppAndTransactionalComms.md`) added under `de88dbe`. Move to follow-up.

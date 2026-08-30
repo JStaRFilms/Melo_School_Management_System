@@ -1577,8 +1577,8 @@ export const generateTeacherLessonPlanDraft = action({
             finishedAt,
           }
         );
-      } catch {
-        // Swallow secondary failure; the primary error is what the caller needs.
+      } catch (secondaryErr) {
+        console.error("[documentGeneration] Failed to record AI run failure:", secondaryErr);
       }
 
       throw new ConvexError(failureMessage);
@@ -1888,8 +1888,8 @@ export const generateTeacherAssessmentDraft = action({
             finishedAt,
           }
         );
-      } catch {
-        // Swallow secondary failure; the primary error is what the caller needs.
+      } catch (secondaryErr) {
+        console.error("[documentGeneration] Failed to record AI run failure:", secondaryErr);
       }
 
       throw new ConvexError(errorMessage);

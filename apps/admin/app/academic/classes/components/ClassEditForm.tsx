@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, type SVGProps } from "react";
+import { useState, useEffect, useRef, useMemo, type SVGProps } from "react";
 import { Layers3, ChevronDown, Archive, Save, X, Sparkles, BookOpen, Search, Check } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameTyping, humanNameFinal } from "@/human-name";
@@ -99,14 +99,23 @@ export function ClassEditForm({
     );
   }, [allSubjects, subjectSearch]);
 
+  const hasInitialized = useRef(false);
+
   useEffect(() => {
-    setGradeName(initialGradeName);
-    setClassLabel(initialClassLabel);
-    setFormTeacherId(initialFormTeacherId);
+    if (hasInitialized.current) return;
+    if (initialGradeName || initialClassLabel || initialFormTeacherId) {
+      setGradeName(initialGradeName);
+      setClassLabel(initialClassLabel);
+      setFormTeacherId(initialFormTeacherId);
+      hasInitialized.current = true;
+    }
   }, [initialGradeName, initialClassLabel, initialFormTeacherId]);
 
   useEffect(() => {
-    setSubjectIds(initialSubjectIds);
+    if (hasInitialized.current) return;
+    if (initialSubjectIds.length > 0) {
+      setSubjectIds(initialSubjectIds);
+    }
   }, [initialSubjectIds]);
 
   const isDirty = useMemo(() => {

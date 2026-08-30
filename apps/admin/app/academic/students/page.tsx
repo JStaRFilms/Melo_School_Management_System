@@ -114,6 +114,8 @@ export default function StudentsPage() {
 
   // Graduation States
   const [isGraduationConfirmOpen, setIsGraduationConfirmOpen] = useState(false);
+  // Stable timestamp captured when the graduation modal opens — prevents Date.now() drift on re-renders
+  const stableGraduationDate = useMemo(() => Date.now(), [isGraduationConfirmOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [graduationDraft, setGraduationDraft] = useState<{
     graduationDate?: number;
     certificateNumber?: string;
@@ -1242,7 +1244,7 @@ export default function StudentsPage() {
         studentCount={promotionStudentIds.length}
         sourceClassName={promotionSourceClassName}
         sourceSessionName={promotionSourceSessionName}
-        graduationDate={graduationDraft.graduationDate ?? Date.now()}
+        graduationDate={graduationDraft.graduationDate ?? stableGraduationDate}
         certificateNumber={graduationDraft.certificateNumber}
         honorsOrRemarks={graduationDraft.honorsOrRemarks}
       />
