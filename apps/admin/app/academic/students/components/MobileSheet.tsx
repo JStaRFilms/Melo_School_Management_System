@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface MobileSheetProps {
@@ -18,16 +19,32 @@ export function MobileSheet({
   onClose,
   children,
 }: MobileSheetProps) {
-  if (!isOpen) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) {
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-40 md:hidden">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] md:hidden animate-in fade-in duration-200">
       <button
         type="button"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/45"
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs"
         aria-label={`Close ${title}`}
       />
       <section className="absolute inset-x-0 bottom-0 top-[8vh] overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl">
@@ -61,6 +78,7 @@ export function MobileSheet({
           </div>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }

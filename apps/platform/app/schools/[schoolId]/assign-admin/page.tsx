@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { ResetSchoolAdminPasswordModal } from "../../ResetSchoolAdminPasswordModal";
+import { ManageFeaturesModal, type SchoolFeatureSet } from "../../ManageFeaturesModal";
 
 function AssignAdminForm() {
   const router = useRouter();
@@ -29,6 +31,7 @@ function AssignAdminForm() {
         status: string;
         adminName: string | null;
         adminEmail: string | null;
+        features: SchoolFeatureSet;
       }>
     | undefined;
 
@@ -125,6 +128,9 @@ function AssignAdminForm() {
     );
   }
 
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showFeaturesModal, setShowFeaturesModal] = useState(false);
+
   // Already has admin
   if (school.status === "active" && !success) {
     return (
@@ -137,8 +143,8 @@ function AssignAdminForm() {
             &larr; Back to Schools
           </button>
         </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center">
-          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+          <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -149,27 +155,58 @@ function AssignAdminForm() {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-amber-600"
+              className="text-emerald-600"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <polyline points="16 11 18 13 22 9" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-slate-900 mb-1">
-            Admin Already Assigned
+          <h2 className="text-lg font-bold text-slate-900 mb-1 text-center">
+            Active School Administrator
           </h2>
-          <p className="text-sm text-slate-500 mb-4">
-            {school.name} already has an admin:{" "}
-            <strong>{school.adminName}</strong> ({school.adminEmail})
-          </p>
+          <div className="my-5 p-4 rounded-xl bg-slate-50 border border-slate-100 text-left space-y-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assigned Admin</div>
+            <div className="font-bold text-slate-900">{school.adminName}</div>
+            <div className="text-xs font-mono text-slate-500">{school.adminEmail}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowResetModal(true)}
+              className="py-2.5 px-3 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors shadow-xs"
+            >
+              Reset Admin Password
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFeaturesModal(true)}
+              className="py-2.5 px-3 border border-slate-200 bg-white text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors shadow-xs"
+            >
+              Manage Modules
+            </button>
+          </div>
+
           <button
             onClick={() => router.push("/schools")}
-            className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm font-bold hover:bg-slate-800 transition-colors"
+            className="w-full mt-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors"
           >
-            Back to Schools
+            Return to Schools Overview
           </button>
         </div>
+
+        <ResetSchoolAdminPasswordModal
+          isOpen={showResetModal}
+          onClose={() => setShowResetModal(false)}
+          school={school}
+        />
+
+        <ManageFeaturesModal
+          isOpen={showFeaturesModal}
+          onClose={() => setShowFeaturesModal(false)}
+          school={school}
+        />
       </div>
     );
   }

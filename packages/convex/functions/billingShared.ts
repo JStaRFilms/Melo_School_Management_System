@@ -22,6 +22,8 @@ export const billingLineItemValidator = v.object({
   amount: v.number(),
   category: billingLineItemCategoryValidator,
   order: v.number(),
+  isOptional: v.optional(v.boolean()),
+  isSelected: v.optional(v.boolean()),
 });
 
 export const billingInstallmentScheduleValidator = v.object({
@@ -346,15 +348,17 @@ export function makeBillingLineItemId(prefix: string, order: number, label: stri
 }
 
 export function computeBillingSubtotal(
-  lineItems: Array<{ amount: number }>
+  lineItems: Array<{ amount: number; isOptional?: boolean; isSelected?: boolean }>
 ) {
   return normalizeBillingAmount(
-    lineItems.reduce((sum, item) => sum + item.amount, 0)
+    lineItems
+      .filter((item) => !item.isOptional || item.isSelected !== false)
+      .reduce((sum, item) => sum + item.amount, 0)
   );
 }
 
 export function computeBillingInvoiceTotal(args: {
-  lineItems: Array<{ amount: number }>;
+  lineItems: Array<{ amount: number; isOptional?: boolean; isSelected?: boolean }>;
   waiverAmount?: number;
   discountAmount?: number;
 }) {
@@ -423,17 +427,15 @@ export function buildBillingInstallmentSchedule(args: {
     return amountPerInstallment;
   });
 
+  const intervalDays = Math.max(1, Math.floor(args.policy.intervalDays || 30));
+  const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
+  const firstDueDays = Math.max(0, Math.floor(args.policy.firstDueDays || 14));
+  const firstDueAt = args.issuedAt + firstDueDays * 24 * 60 * 60 * 1000;
+
   return roundedAmounts.map((amount, index) => ({
-    id: `inst-${String(index + 1).padStart(2, "0")}`,
-    label:
-      normalizedCount === 1
-        ? "Full payment"
-        : `Installment ${index + 1}`,
-    dueAt:
-      args.issuedAt +
-      (index === 0
-        ? Math.max(0, args.policy.firstDueDays) * 24 * 60 * 60 * 1000
-        : (Math.max(0, args.policy.firstDueDays) + index * Math.max(0, args.policy.intervalDays)) * 24 * 60 * 60 * 1000),
+    id: `inst-${index + 1}`,
+    label: `Installment ${index + 1}`,
+    dueAt: firstDueAt + index * intervalMs,
     amount,
     isPaid: false,
   }));
@@ -475,6 +477,7 @@ export function normalizeBillingLineItems(input: Array<{
   label: string;
   amount: number;
   category?: string;
+  isOptional?: boolean;
 }>, prefix: string) {
   return input.map((item, index) => ({
     id: makeBillingLineItemId(prefix, index, item.label),
@@ -488,6 +491,7 @@ export function normalizeBillingLineItems(input: Array<{
       | "activity"
       | "other") ?? "other",
     order: index,
+    isOptional: Boolean(item.isOptional),
   }));
 }
 

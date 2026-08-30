@@ -15,6 +15,7 @@ import {
   normalizeHumanName,
   normalizePersonName,
 } from "@school/shared/name-format";
+import { calculateDynamicTermSchedule } from "@school/shared";
 import {
   assertClassCanBeArchived,
   assertSubjectCanBeArchived,
@@ -86,6 +87,14 @@ function normalizeClassLevel(level: string) {
   }
 
   return normalized;
+}
+
+function toCalendarDayString(timestamp: number) {
+  const d = new Date(timestamp);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function buildClassName(args: {
@@ -639,6 +648,7 @@ export const createSession = mutation({
     startDate: v.number(),
     endDate: v.number(),
     isActive: v.boolean(),
+    autoGenerateTerms: v.optional(v.boolean()),
   },
   returns: v.id("academicSessions"),
   handler: async (ctx, args) => {
@@ -649,6 +659,8 @@ export const createSession = mutation({
     if (args.endDate <= args.startDate) {
       throw new ConvexError("End date must be after start date");
     }
+
+    const now = Date.now();
 
     // If setting as active, deactivate other sessions
     if (args.isActive) {
@@ -662,13 +674,12 @@ export const createSession = mutation({
       for (const session of activeSessions) {
         await ctx.db.patch(session._id, {
           isActive: false,
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
       }
     }
 
-    const now = Date.now();
-    return await ctx.db.insert("academicSessions", {
+    const sessionId = await ctx.db.insert("academicSessions", {
       schoolId,
       name: normalizeHumanName(args.name),
       startDate: args.startDate,
@@ -678,6 +689,47 @@ export const createSession = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    if (args.autoGenerateTerms) {
+      const dynamicTerms = calculateDynamicTermSchedule(
+        args.startDate,
+        args.endDate
+      );
+
+      // If session is active, deactivate existing active terms in the school
+      if (args.isActive) {
+        const activeTerms = await ctx.db
+          .query("academicTerms")
+          .withIndex("by_school_active", (q) =>
+            q.eq("schoolId", schoolId).eq("isActive", true)
+          )
+          .collect();
+
+        for (const term of activeTerms) {
+          await ctx.db.patch(term._id, {
+            isActive: false,
+            updatedAt: now,
+          });
+        }
+      }
+
+      for (let i = 0; i < dynamicTerms.length; i++) {
+        const term = dynamicTerms[i];
+        await ctx.db.insert("academicTerms", {
+          schoolId,
+          sessionId,
+          name: normalizeHumanName(term.name),
+          startDate: term.startDate,
+          endDate: term.endDate,
+          isActive: args.isActive ? term.isActive : false,
+          reportCardCalculationMode: term.resultCalculationMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    return sessionId;
   },
 });
 
@@ -691,6 +743,7 @@ export const listSessions = query({
       endDate: v.number(),
       isActive: v.boolean(),
       createdAt: v.number(),
+      updatedAt: v.optional(v.number()),
     })
   ),
   handler: async (ctx) => {
@@ -713,6 +766,7 @@ export const listSessions = query({
         endDate: s.endDate,
         isActive: s.isActive,
         createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
       }));
   },
 });
@@ -833,6 +887,121 @@ export const updateSession = mutation({
     }
 
     await ctx.db.patch(args.sessionId, updates);
+    return null;
+  },
+});
+
+export const updateSessionDates = mutation({
+  args: {
+    sessionId: v.id("academicSessions"),
+    name: v.optional(v.string()),
+    startDate: v.number(),
+    endDate: v.number(),
+    expectedUpdatedAt: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId || session.isArchived) {
+      throw new ConvexError("Academic session not found");
+    }
+
+    if (
+      args.expectedUpdatedAt !== undefined &&
+      session.updatedAt !== args.expectedUpdatedAt
+    ) {
+      throw new ConvexError(
+        "This session changed after you opened it. Refresh and review the latest dates before saving."
+      );
+    }
+
+    if (args.endDate <= args.startDate) {
+      throw new ConvexError("Session end date must be after its start date");
+    }
+
+    const newSessionStartStr = toCalendarDayString(args.startDate);
+    const newSessionEndStr = toCalendarDayString(args.endDate);
+
+    // Verify existing terms stay within the updated session range
+    const terms = await ctx.db
+      .query("academicTerms")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+
+    const termsToPatch: Array<{ termId: Id<"academicTerms">; updates: Record<string, unknown> }> = [];
+
+    for (const term of terms) {
+      const termUpdates: Record<string, unknown> = {};
+      let effectiveTermStart = term.startDate;
+      let effectiveTermEnd = term.endDate;
+
+      if (effectiveTermStart < args.startDate) {
+        if (args.startDate >= term.endDate) {
+          throw new ConvexError(
+            `Session start date cannot be set after ${normalizeHumanName(term.name)} end date.`
+          );
+        }
+        effectiveTermStart = args.startDate;
+        termUpdates.startDate = args.startDate;
+        termUpdates.updatedAt = Date.now();
+      }
+
+      if (effectiveTermEnd > args.endDate) {
+        if (effectiveTermStart >= args.endDate) {
+          throw new ConvexError(
+            `Session end date cannot be set before ${normalizeHumanName(term.name)} start date.`
+          );
+        }
+        termUpdates.endDate = args.endDate;
+        termUpdates.updatedAt = Date.now();
+      }
+
+      if (Object.keys(termUpdates).length > 0) {
+        termsToPatch.push({ termId: term._id, updates: termUpdates });
+      }
+    }
+
+    for (const { termId, updates: termUpdates } of termsToPatch) {
+      await ctx.db.patch(termId, termUpdates);
+    }
+
+    const now = Date.now();
+    const updates: Record<string, unknown> = {
+      startDate: args.startDate,
+      endDate: args.endDate,
+      updatedAt: now,
+    };
+    if (args.name !== undefined && args.name.trim().length > 0) {
+      updates.name = normalizeHumanName(args.name);
+    }
+
+    await ctx.db.patch(args.sessionId, updates);
+
+    await ctx.db.insert("academicTimelineAuditEvents", {
+      schoolId,
+      eventType: "session_dates_updated",
+      entityType: "session",
+      entityId: String(session._id),
+      entityName: normalizeHumanName(args.name ?? session.name),
+      before: JSON.stringify({
+        name: session.name,
+        startDate: session.startDate,
+        endDate: session.endDate,
+      }),
+      after: JSON.stringify({
+        name: args.name ?? session.name,
+        startDate: args.startDate,
+        endDate: args.endDate,
+      }),
+      actorUserId: userId,
+      actorLabel: "Authenticated administrator",
+      createdAt: now,
+    });
+
     return null;
   },
 });
@@ -958,6 +1127,17 @@ export const createTerm = mutation({
       throw new ConvexError("End date must be after start date");
     }
 
+    const sessionStartStr = toCalendarDayString(session.startDate);
+    const sessionEndStr = toCalendarDayString(session.endDate);
+    const termStartStr = toCalendarDayString(args.startDate);
+    const termEndStr = toCalendarDayString(args.endDate);
+
+    if (termStartStr < sessionStartStr || termEndStr > sessionEndStr) {
+      throw new ConvexError(
+        "Term dates must stay within the academic session date range"
+      );
+    }
+
     // If setting as active, deactivate other terms in same school
     if (args.isActive) {
       const activeTerms = await ctx.db
@@ -1048,7 +1228,13 @@ export const updateTermDates = mutation({
     if (!session || session.schoolId !== schoolId || session.isArchived) {
       throw new ConvexError("Academic session not found");
     }
-    if (args.startDate < session.startDate || args.endDate > session.endDate) {
+
+    const sessionStartStr = toCalendarDayString(session.startDate);
+    const sessionEndStr = toCalendarDayString(session.endDate);
+    const termStartStr = toCalendarDayString(args.startDate);
+    const termEndStr = toCalendarDayString(args.endDate);
+
+    if (termStartStr < sessionStartStr || termEndStr > sessionEndStr) {
       throw new ConvexError(
         "Term dates must stay within the academic session date range"
       );
@@ -1061,8 +1247,8 @@ export const updateTermDates = mutation({
     const overlappingTerm = siblingTerms.find(
       (candidate) =>
         candidate._id !== term._id &&
-        args.startDate <= candidate.endDate &&
-        args.endDate >= candidate.startDate
+        termStartStr <= toCalendarDayString(candidate.endDate) &&
+        termEndStr >= toCalendarDayString(candidate.startDate)
     );
     if (overlappingTerm) {
       throw new ConvexError(
@@ -1458,6 +1644,7 @@ export const createClass = mutation({
     classLabel: v.optional(v.string()),
     level: v.string(),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
+    sessionId: v.optional(v.id("academicSessions")),
   },
   returns: v.id("classes"),
   handler: async (ctx, args) => {
@@ -1488,7 +1675,7 @@ export const createClass = mutation({
     });
 
     const now = Date.now();
-    return await ctx.db.insert("classes", {
+    const classId = await ctx.db.insert("classes", {
       schoolId,
       name: displayName,
       level,
@@ -1499,11 +1686,39 @@ export const createClass = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Resolve target session
+    let targetSessionId = args.sessionId;
+    if (!targetSessionId) {
+      const activeSession = await ctx.db
+        .query("academicSessions")
+        .withIndex("by_school_active", (q) =>
+          q.eq("schoolId", schoolId).eq("isActive", true)
+        )
+        .first();
+      targetSessionId = activeSession?._id;
+    }
+
+    if (args.formTeacherId && targetSessionId) {
+      await ctx.db.insert("classSessionFormTeachers", {
+        schoolId,
+        classId,
+        sessionId: targetSessionId,
+        formTeacherId: args.formTeacherId,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+    }
+
+    return classId;
   },
 });
 
 export const listClasses = query({
-  args: {},
+  args: {
+    sessionId: v.optional(v.id("academicSessions")),
+  },
   returns: v.array(
     v.object({
       _id: v.id("classes"),
@@ -1518,23 +1733,50 @@ export const listClasses = query({
       createdAt: v.number(),
     })
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    const classes = await ctx.db
-      .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .collect();
+    const activeSession = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .first();
+
+    const targetSessionId = args.sessionId ?? activeSession?._id;
+
+    const [classes, sessionAssignments] = await Promise.all([
+      ctx.db
+        .query("classes")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .collect(),
+      targetSessionId
+        ? ctx.db
+            .query("classSessionFormTeachers")
+            .withIndex("by_school_and_session", (q) =>
+              q.eq("schoolId", schoolId).eq("sessionId", targetSessionId)
+            )
+            .collect()
+        : Promise.resolve([]),
+    ]);
+
+    const sessionFormTeacherByClass = new Map<string, Id<"users">>(
+      sessionAssignments.map((a) => [String(a.classId), a.formTeacherId])
+    );
 
     const results = await Promise.all(
       classes
         .filter((classDoc) => !classDoc.isArchived)
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(async (classDoc) => {
+          const effectiveTeacherId =
+            sessionFormTeacherByClass.get(String(classDoc._id)) ??
+            classDoc.formTeacherId;
+
           const [teacher, offerings, students] = await Promise.all([
-            classDoc.formTeacherId ? ctx.db.get(classDoc.formTeacherId) : null,
+            effectiveTeacherId ? ctx.db.get(effectiveTeacherId) : null,
             ctx.db
               .query("classSubjects")
               .withIndex("by_class", (q) => q.eq("classId", classDoc._id))
@@ -1548,34 +1790,34 @@ export const listClasses = query({
           ]);
 
           const subjectNames = (
-              await Promise.all(
-                offerings.map(async (offering) => {
-                  const subject = await ctx.db.get(offering.subjectId);
-                  return subject?.name && !subject.isArchived
-                    ? normalizeHumanName(subject.name)
-                    : null;
-                })
-              )
-            ).filter((name): name is string => Boolean(name));
+            await Promise.all(
+              offerings.map(async (offering) => {
+                const subject = await ctx.db.get(offering.subjectId);
+                return subject?.name && !subject.isArchived
+                  ? normalizeHumanName(subject.name)
+                  : null;
+              })
+            )
+          ).filter((name): name is string => Boolean(name));
 
-            return {
-              _id: classDoc._id,
-              name: buildClassName({
-                gradeName: classDoc.gradeName ?? classDoc.name,
-                classLabel: classDoc.classLabel,
-                legacyName: classDoc.name,
-              }),
-              level: normalizeClassLevel(classDoc.level),
-              gradeName: getStoredGradeName(classDoc),
-              classLabel: getStoredClassLabel(classDoc),
-              formTeacherId: teacher?.isArchived ? undefined : classDoc.formTeacherId,
-              formTeacherName:
-                teacher?.name && !teacher.isArchived
-                  ? normalizePersonName(teacher.name)
-                  : undefined,
-              subjectNames,
-              studentCount: students.filter((student) => !student.isArchived).length,
-              createdAt: classDoc.createdAt,
+          return {
+            _id: classDoc._id,
+            name: buildClassName({
+              gradeName: classDoc.gradeName ?? classDoc.name,
+              classLabel: classDoc.classLabel,
+              legacyName: classDoc.name,
+            }),
+            level: normalizeClassLevel(classDoc.level),
+            gradeName: getStoredGradeName(classDoc),
+            classLabel: getStoredClassLabel(classDoc),
+            formTeacherId: teacher?.isArchived ? undefined : effectiveTeacherId,
+            formTeacherName:
+              teacher?.name
+                ? normalizePersonName(teacher.name)
+                : undefined,
+            subjectNames,
+            studentCount: students.filter((student) => !student.isArchived).length,
+            createdAt: classDoc.createdAt,
           };
         })
     );
@@ -1639,6 +1881,7 @@ export const updateClass = mutation({
     level: v.optional(v.string()),
     classLabel: v.optional(v.union(v.string(), v.null())),
     formTeacherId: v.optional(v.union(v.id("users"), v.null())),
+    sessionId: v.optional(v.id("academicSessions")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1679,12 +1922,61 @@ export const updateClass = mutation({
       classLabel: nextClassLabel,
       legacyName: args.name ?? classDoc.name,
     });
+
+    // Resolve target session
+    const activeSession = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .first();
+
+    const targetSessionId = args.sessionId ?? activeSession?._id;
+    const isTargetSessionActive =
+      targetSessionId && activeSession && String(targetSessionId) === String(activeSession._id);
+
+    if (args.formTeacherId !== undefined && targetSessionId) {
+      const existingAssignment = await ctx.db
+        .query("classSessionFormTeachers")
+        .withIndex("by_class_and_session", (q) =>
+          q.eq("classId", args.classId).eq("sessionId", targetSessionId)
+        )
+        .unique();
+
+      if (args.formTeacherId === null) {
+        if (existingAssignment) {
+          await ctx.db.delete(existingAssignment._id);
+        }
+      } else {
+        if (existingAssignment) {
+          await ctx.db.patch(existingAssignment._id, {
+            formTeacherId: args.formTeacherId,
+            updatedAt,
+            updatedBy: userId,
+          });
+        } else {
+          await ctx.db.insert("classSessionFormTeachers", {
+            schoolId,
+            classId: args.classId,
+            sessionId: targetSessionId,
+            formTeacherId: args.formTeacherId,
+            createdAt: updatedAt,
+            updatedAt,
+            updatedBy: userId,
+          });
+        }
+      }
+    }
+
+    // Synchronize classes.formTeacherId when editing without a session or targeting the active session
     const nextFormTeacherId =
       args.formTeacherId === undefined
         ? classDoc.formTeacherId
-        : args.formTeacherId ?? undefined;
+        : (isTargetSessionActive || !args.sessionId)
+          ? args.formTeacherId ?? undefined
+          : classDoc.formTeacherId;
 
-    if (args.formTeacherId === null || args.classLabel === null) {
+    if ((args.formTeacherId === null && (isTargetSessionActive || !args.sessionId)) || args.classLabel === null) {
       const replacement = {
         schoolId: classDoc.schoolId,
         name: nextName,
@@ -1712,8 +2004,8 @@ export const updateClass = mutation({
     if (args.classLabel !== undefined) {
       updates.classLabel = nextClassLabel;
     }
-    if (args.formTeacherId !== undefined) {
-      updates.formTeacherId = args.formTeacherId;
+    if (args.formTeacherId !== undefined && (isTargetSessionActive || !args.sessionId)) {
+      updates.formTeacherId = args.formTeacherId ?? undefined;
     }
 
     await ctx.db.patch(args.classId, updates);

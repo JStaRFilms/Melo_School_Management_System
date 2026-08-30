@@ -234,23 +234,40 @@ export default function BillingPage() {
 
   const handleCreateFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    const planName = feePlanDraft.name.trim();
+    if (!planName) {
+      appToast.error("Please enter a fee plan name");
+      return;
+    }
+
+    const validLineItems = feePlanDraft.lineItems
+      .filter((item) => item.label.trim().length > 0 && (Number(item.amount) || 0) > 0)
+      .map((item) => ({
+        label: item.label.trim(),
+        amount: Number(item.amount) || 0,
+        category: item.category,
+        isOptional: Boolean(item.isOptional),
+      }));
+
+    if (validLineItems.length === 0) {
+      appToast.error("Please fill in at least one fee line item with a name and amount");
+      return;
+    }
+
     const success = await actions.runAction(async () => {
       await actions.createFeePlan({
-        name: feePlanDraft.name,
-        description: feePlanDraft.description,
-        currency: feePlanDraft.currency,
+        name: planName,
+        description: feePlanDraft.description?.trim() || undefined,
+        currency: feePlanDraft.currency || "NGN",
         billingMode: feePlanDraft.billingMode,
-        targetClassIds: feePlanDraft.targetClassIds,
-        installmentEnabled: feePlanDraft.installmentEnabled,
-        installmentCount: Number(feePlanDraft.installmentCount),
-        intervalDays: Number(feePlanDraft.intervalDays),
-        firstDueDays: Number(feePlanDraft.firstDueDays),
-        lineItems: feePlanDraft.lineItems.map((item: any) => ({
-             label: item.label,
-             amount: Number(item.amount),
-             category: item.category,
-             order: 0
-        })),
+        targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
+        installmentPolicy: {
+          enabled: feePlanDraft.installmentEnabled,
+          installmentCount: feePlanDraft.installmentEnabled ? Math.max(2, Number(feePlanDraft.installmentCount) || 2) : 1,
+          intervalDays: feePlanDraft.installmentEnabled ? Math.max(1, Number(feePlanDraft.intervalDays) || 30) : 0,
+          firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
+        },
+        lineItems: validLineItems,
       } as never);
     }, "Fee Plan Created", "Unable to create new fee plan.");
     if (success) {
@@ -413,8 +430,8 @@ export default function BillingPage() {
   if (!data) return <DashboardSkeleton />;
 
   return (
-    <main className="lg:h-screen lg:overflow-hidden bg-slate-50/50 flex flex-col">
-      <div className="flex-1 flex lg:overflow-hidden">
+    <main className="lg:h-[calc(100vh-56px)] lg:max-h-[calc(100dvh-56px)] lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
           <div className="p-4 lg:p-8 space-y-8">
@@ -514,6 +531,13 @@ export default function BillingPage() {
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
                      onNewPlan={() => openSidebar("plan")}
+                     onApplyPlan={(planId) => {
+                       setFeePlanApplicationDraft((current) => ({
+                         ...current,
+                         feePlanId: planId as any,
+                       }));
+                       openSidebar("application");
+                     }}
                    />
                 )}
 
@@ -541,45 +565,84 @@ export default function BillingPage() {
         <aside className="hidden lg:block w-[400px] border-l border-slate-950/5 relative overflow-hidden bg-white/50 backdrop-blur-sm">
           <div className="absolute inset-x-0 top-0 h-64 bg-slate-950/5 skew-y-12 -translate-y-32 pointer-events-none" />
           <div className="relative z-10 h-full flex flex-col">
-            <div className="p-8 border-b border-slate-950/5 space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Financial Arsenal</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-6 lg:p-7 border-b border-slate-950/5 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                  Financial Arsenal
+                </h3>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {sidebarVariant === "plan"
+                    ? "New Plan"
+                    : sidebarVariant === "payment"
+                      ? "Receipt"
+                      : sidebarVariant === "link"
+                        ? "Handoff"
+                        : sidebarVariant === "application"
+                          ? "Bulk Invoice"
+                          : "Action Hub"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
                  <button 
-                   onClick={() => openSidebar("payment")}
-                   className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                   type="button"
+                   onClick={() => setSidebarVariant("payment")}
+                   className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                     sidebarVariant === "payment"
+                       ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-emerald-500/30"
+                       : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                   }`}
                  >
-                    <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform">
-                       <Plus className="h-5 w-5" />
+                    <div className={`p-2 rounded-xl transition-transform ${
+                      sidebarVariant === "payment" ? "bg-emerald-500/20 text-emerald-300 scale-105" : "bg-emerald-50 text-emerald-600"
+                    }`}>
+                       <Plus className="h-4 w-4" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Receipt</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Receipt</span>
                  </button>
                  <button 
-                    onClick={() => openSidebar("link")}
-                    className="flex flex-col items-center justify-center gap-3 p-4 rounded-3xl bg-white border border-slate-950/5 shadow-sm hover:border-slate-950 transition-all group"
+                    type="button"
+                    onClick={() => setSidebarVariant("link")}
+                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                      sidebarVariant === "link"
+                        ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-orange-500/30"
+                        : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                    }`}
                  >
-                    <div className="p-2.5 rounded-2xl bg-orange-50 text-orange-600 group-hover:scale-110 transition-transform">
-                       <Link2 className="h-5 w-5" />
+                    <div className={`p-2 rounded-xl transition-transform ${
+                      sidebarVariant === "link" ? "bg-orange-500/20 text-orange-300 scale-105" : "bg-orange-50 text-orange-600"
+                    }`}>
+                       <Link2 className="h-4 w-4" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-950">Handoff</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Handoff</span>
                  </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <button 
-                  onClick={() => openSidebar("application")}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-white border border-slate-200 text-slate-950 font-black text-[9px] uppercase tracking-widest shadow-sm hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                  type="button"
+                  onClick={() => setSidebarVariant("application")}
+                  className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
+                    sidebarVariant === "application"
+                      ? "bg-slate-950 text-white border border-slate-950 shadow-md ring-2 ring-indigo-500/30"
+                      : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400"
+                  }`}
                 >
                   Bulk Invoicing
                 </button>
                 <button 
-                  onClick={() => openSidebar("plan")}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-3xl bg-slate-950 text-white font-black text-[9px] uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:translate-y-[-2px] active:translate-y-0 transition-all"
+                  type="button"
+                  onClick={() => setSidebarVariant("plan")}
+                  className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
+                    sidebarVariant === "plan"
+                      ? "bg-slate-950 text-white border border-slate-950 shadow-md ring-2 ring-indigo-500/30"
+                      : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400"
+                  }`}
                 >
                   <Plus className="h-3 w-3" /> New Plan
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto no-scrollbar relative">
+            <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
               <BillingSidebar 
                 onClose={() => setSidebarOpen(false)}

@@ -2,7 +2,7 @@
 
 **Status:** Design specification for D1 review  
 **Scope:** Guardian public admissions surface (`B2`) and tenant-scoped staff operations (`B3`)  
-**Architecture source of truth:** [Admissions Application Platform Architecture](AdmissionsApplicationPlatformArchitecture.md) and [ADR: Admissions Application Surface and Lifecycle](../decisions/ADR-AdmissionsApplicationSurfaceAndLifecycle.md)
+**Architecture source of truth:** [Admissions Application Platform Architecture](AdmissionsApplicationPlatformArchitecture.md) and [ADR: Admissions Application Surface and Lifecycle](../decisions/ADR-008-admissions-application-surface-and-lifecycle.md)
 
 ## 1. Design intent and guardrails
 

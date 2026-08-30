@@ -227,11 +227,29 @@ export default defineSchema({
   schools: defineTable({
     name: v.string(),
     slug: v.string(),
-    status: v.optional(v.union(v.literal("pending"), v.literal("active"))),
+    status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
     logoStorageId: v.optional(v.id("_storage")),
     logoFileName: v.optional(v.string()),
     logoContentType: v.optional(v.string()),
     logoUpdatedAt: v.optional(v.number()),
+    motto: v.optional(v.string()),
+    theme: v.optional(
+      v.object({
+        primaryColor: v.string(),
+        accentColor: v.string(),
+      })
+    ),
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    address: v.optional(v.string()),
+    features: v.optional(
+      v.object({
+        billing: v.boolean(),
+        curriculum: v.boolean(),
+        knowledgeLibrary: v.boolean(),
+        admissions: v.boolean(),
+      })
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1018,6 +1036,17 @@ export default defineSchema({
     ),
     photoSourceDocumentId: v.optional(v.id("admissionsDocuments")),
     photoRetentionHold: v.optional(v.boolean()),
+    enrollmentStatus: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("graduated"),
+        v.literal("withdrawn"),
+        v.literal("transferred_out")
+      )
+    ),
+    graduatedAt: v.optional(v.number()),
+    graduatingSessionId: v.optional(v.id("academicSessions")),
+    graduatingClassId: v.optional(v.id("classes")),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -1103,6 +1132,20 @@ export default defineSchema({
     .index("by_subject", ["subjectId"])
     .index("by_class_and_subject", ["classId", "subjectId"]),
 
+  classSessionFormTeachers: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    formTeacherId: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_teacher_and_session", ["formTeacherId", "sessionId"])
+    .index("by_school_and_session", ["schoolId", "sessionId"]),
+
   classSubjectAggregations: defineTable({
     schoolId: v.id("schools"),
     classId: v.id("classes"),
@@ -1179,7 +1222,27 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_student", ["studentId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"])
-    .index("by_to_class_and_to_session", ["toClassId", "toSessionId"]),
+    .index("by_to_class_and_to_session", ["toClassId", "toSessionId"])
+    .index("by_from_class_and_from_session", ["fromClassId", "fromSessionId"])
+    .index("by_student_and_from_session", ["studentId", "fromSessionId"])
+    .index("by_student_and_to_session", ["studentId", "toSessionId"]),
+
+  studentGraduations: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    graduationDate: v.number(),
+    certificateNumber: v.optional(v.string()),
+    honorsOrRemarks: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_class_and_session", ["classId", "sessionId"])
+    .index("by_school_and_session", ["schoolId", "sessionId"])
+    .index("by_student_and_session", ["studentId", "sessionId"]),
 
   studentSubjectAggregationOptOuts: defineTable({
     schoolId: v.id("schools"),
@@ -1648,6 +1711,8 @@ export default defineSchema({
           v.literal("other")
         ),
         order: v.number(),
+        isOptional: v.optional(v.boolean()),
+        isSelected: v.optional(v.boolean()),
       })
     ),
     installmentPolicy: v.object({
@@ -1709,6 +1774,8 @@ export default defineSchema({
           v.literal("other")
         ),
         order: v.number(),
+        isOptional: v.optional(v.boolean()),
+        isSelected: v.optional(v.boolean()),
       })
     ),
     installmentSchedule: v.array(

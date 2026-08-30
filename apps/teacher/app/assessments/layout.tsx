@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
+import { authClient } from "@/lib/auth-client";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/AuthProvider";
@@ -16,7 +17,16 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
   const schoolBranding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
     isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
-  ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
+  ) as {
+    name: string;
+    logoUrl: string | null;
+    status?: string;
+    motto?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    address?: string;
+    theme: { primaryColor: string; accentColor: string };
+  } | undefined;
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {
@@ -42,12 +52,22 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
     isConvexConfigured() &&
     (isLoading ||
       !isAuthenticated ||
-      (session?.user?.role !== "teacher" && session?.user?.role !== "admin"))
+      (session?.user?.role !== "teacher" && session?.user?.role !== "admin") ||
+      schoolBranding === undefined)
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fbfbfc]">
-        <div className="text-obsidian-500">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#fbfbfc] w-full">
+        <MeloLoader message="Preparing your assessments workbench..." />
       </div>
+    );
+  }
+
+  if (schoolBranding?.status === "suspended") {
+    return (
+      <SchoolSuspendedLockScreen
+        school={schoolBranding}
+        onSignOut={handleSignOut}
+      />
     );
   }
 
@@ -59,6 +79,7 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
       userRole={session?.user?.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

@@ -29,21 +29,26 @@ humanNameTypingStrict,
 } from "@/human-name";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
+import { AttestationLetterModal } from "./components/AttestationLetterModal";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
-import { StudentCreationForm } from "./components/StudentCreationForm";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
+import { GraduationConfirmationModal } from "./components/GraduationConfirmationModal";
+import { PromotionConfirmationModal } from "./components/PromotionConfirmationModal";
+import { StudentCreationForm } from "./components/StudentCreationForm";
 import { StudentProfileEditor } from "./components/StudentProfileEditor";
 import { StudentPromotionPanel, type PromotionSubjectMode } from "./components/StudentPromotionPanel";
 import { StudentUnifiedEditorSheet } from "./components/StudentUnifiedEditorSheet";
 import { SubjectSelectionMatrix } from "./components/SubjectSelectionMatrix";
 import { uploadStudentPhoto } from "./components/studentPhotoUpload";
 import type {
-ClassSummary,
-EnrollmentMatrix,
-EnrollmentNotice,
-SessionSummary,
-TermSummary,
+  AttestationData,
+  ClassSummary,
+  EnrollmentMatrix,
+  EnrollmentNotice,
+  SessionSummary,
+  TermSummary,
 } from "./components/types";
 
 const MAX_PROMOTION_BATCH = 100;
@@ -67,6 +72,12 @@ export default function StudentsPage() {
   );
   const promoteStudents = useMutation(
     "functions/academic/studentEnrollment:promoteStudents" as never
+  );
+  const graduateStudents = useMutation(
+    "functions/academic/studentEnrollment:graduateStudents" as never
+  );
+  const cancelStudentGraduation = useMutation(
+    "functions/academic/studentEnrollment:cancelStudentGraduation" as never
   );
   const upsertStudentFamilyLink = useMutation(
     "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
@@ -100,6 +111,24 @@ export default function StudentsPage() {
   const [promotionTargetSessionId, setPromotionTargetSessionId] = useState("");
   const [promotionSubjectMode, setPromotionSubjectMode] =
     useState<PromotionSubjectMode>("all_target_class_subjects");
+
+  // Graduation States
+  const [isGraduationConfirmOpen, setIsGraduationConfirmOpen] = useState(false);
+  // Stable timestamp captured when the graduation modal opens — prevents Date.now() drift on re-renders
+  const stableGraduationDate = useMemo(() => Date.now(), [isGraduationConfirmOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [graduationDraft, setGraduationDraft] = useState<{
+    graduationDate?: number;
+    certificateNumber?: string;
+    honorsOrRemarks?: string;
+  }>({});
+  const [isGraduating, setIsGraduating] = useState(false);
+  const [cancellingGraduationStudent, setCancellingGraduationStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
+  const [isCancellingGraduation, setIsCancellingGraduation] = useState(false);
+  const [attestationStudentId, setAttestationStudentId] = useState<string | null>(null);
+  const [isAttestationModalOpen, setIsAttestationModalOpen] = useState(false);
 
   // New states for Unified Editor
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
@@ -144,6 +173,12 @@ export default function StudentsPage() {
       ? ({ sessionId: selectedSessionId } as never)
       : ("skip" as never)
   ) as TermSummary[] | undefined;
+  const attestationData = useQuery(
+    "functions/academic/studentEnrollment:getStudentAttestationData" as never,
+    attestationStudentId
+      ? ({ studentId: attestationStudentId } as never)
+      : ("skip" as never)
+  ) as AttestationData | undefined;
 
   const shouldShowPromotionPanel = useMemo(() => {
     const activeTerm = selectedSessionTerms?.find((term) => term.isActive);
@@ -167,8 +202,10 @@ export default function StudentsPage() {
       return;
     }
 
-    const activeSession = sessions.find((session) => session.isActive);
-    setPromotionTargetSessionId(activeSession?._id ?? sessions[0]?._id ?? "");
+    const nextSession = sessions.find((session) => !session.isActive);
+    if (nextSession) {
+      setPromotionTargetSessionId(nextSession._id);
+    }
   }, [promotionTargetSessionId, sessions]);
 
 
@@ -190,11 +227,161 @@ export default function StudentsPage() {
     );
   }, [matrix]);
 
-  useEffect(() => {
-    if (!shouldShowPromotionPanel) {
+  const cancelStudentPromotion = useMutation(
+    "functions/academic/studentEnrollment:cancelStudentPromotion" as never
+  );
+
+  const promotedStudentsCount = useMemo(() => {
+    if (!matrix?.students) return 0;
+    return matrix.students.filter((s) => s.promotionStatus?.isPromoted).length;
+  }, [matrix]);
+
+  const unpromotedStudentsCount = useMemo(() => {
+    if (!matrix?.students) return 0;
+    return matrix.students.filter(
+      (s) => !s.promotionStatus?.isPromoted && !s.graduationStatus?.isGraduated
+    ).length;
+  }, [matrix]);
+
+  const graduatedStudentsCount = useMemo(() => {
+    if (!matrix?.students) return 0;
+    return matrix.students.filter((s) => s.graduationStatus?.isGraduated).length;
+  }, [matrix]);
+
+  const handleSelectUnpromotedOnly = useCallback(() => {
+    if (!matrix?.students) return;
+    const unpromotedIds = matrix.students
+      .filter((s) => !s.promotionStatus?.isPromoted && !s.graduationStatus?.isGraduated)
+      .map((s) => s._id);
+    setPromotionStudentIds(unpromotedIds);
+  }, [matrix]);
+
+  const handleGraduateRequest = useCallback(
+    (data: {
+      graduationDate?: number;
+      certificateNumber?: string;
+      honorsOrRemarks?: string;
+    }) => {
+      if (!selectedClassId || !selectedSessionId || promotionStudentIds.length === 0) {
+        showNotice({
+          tone: "warning",
+          message: "Select at least one student from the roster to graduate.",
+        });
+        return;
+      }
+      setGraduationDraft(data);
+      setIsGraduationConfirmOpen(true);
+    },
+    [promotionStudentIds.length, selectedClassId, selectedSessionId, showNotice]
+  );
+
+  const executeGraduation = useCallback(async () => {
+    if (!selectedClassId || !selectedSessionId || promotionStudentIds.length === 0) return;
+    setIsGraduating(true);
+    try {
+      await graduateStudents({
+        studentIds: promotionStudentIds,
+        classId: selectedClassId,
+        sessionId: selectedSessionId,
+        graduationDate: graduationDraft.graduationDate,
+        certificateNumber: graduationDraft.certificateNumber,
+        honorsOrRemarks: graduationDraft.honorsOrRemarks,
+      } as never);
+      showNotice({
+        tone: "success",
+        message: `Successfully graduated ${promotionStudentIds.length} student${promotionStudentIds.length === 1 ? "" : "s"}.`,
+      });
+      setIsGraduationConfirmOpen(false);
       setPromotionStudentIds([]);
+    } catch (err) {
+      showNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(err, "Failed to graduate cohort."),
+      });
+    } finally {
+      setIsGraduating(false);
     }
-  }, [shouldShowPromotionPanel]);
+  }, [graduateStudents, graduationDraft, promotionStudentIds, selectedClassId, selectedSessionId, showNotice]);
+
+  const handleCancelGraduation = useCallback(
+    (studentId: string) => {
+      if (!selectedSessionId) return;
+      const student = matrix?.students.find((s) => s._id === studentId);
+      const studentName = student?.studentName ?? "this student";
+      setCancellingGraduationStudent({ studentId, studentName });
+    },
+    [matrix, selectedSessionId]
+  );
+
+  const executeCancelGraduation = async () => {
+    if (!cancellingGraduationStudent || !selectedSessionId) return;
+    const { studentId, studentName } = cancellingGraduationStudent;
+    setIsCancellingGraduation(true);
+    try {
+      await cancelStudentGraduation({
+        studentId: studentId as never,
+        sessionId: selectedSessionId as never,
+      });
+      showNotice({
+        tone: "success",
+        message: `Restored active enrollment for ${studentName}.`,
+      });
+      setCancellingGraduationStudent(null);
+    } catch (err) {
+      showNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(err, "Failed to restore student status."),
+      });
+    } finally {
+      setIsCancellingGraduation(false);
+    }
+  };
+
+  const handleOpenAttestation = useCallback((studentId: string) => {
+    setAttestationStudentId(studentId);
+    setIsAttestationModalOpen(true);
+  }, []);
+
+  const [cancellingPromotionStudent, setCancellingPromotionStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
+  const [isCancellingPromotion, setIsCancellingPromotion] = useState(false);
+
+  const handleCancelPromotion = useCallback(
+    (studentId: string) => {
+      if (!selectedSessionId) return;
+      const student = matrix?.students.find((s) => s._id === studentId);
+      const studentName = student?.studentName ?? "this student";
+      setCancellingPromotionStudent({ studentId, studentName });
+    },
+    [matrix, selectedSessionId]
+  );
+
+  const executeCancelPromotion = async () => {
+    if (!cancellingPromotionStudent || !selectedSessionId) return;
+    const { studentId, studentName } = cancellingPromotionStudent;
+    setIsCancellingPromotion(true);
+    try {
+      await cancelStudentPromotion({
+        studentId: studentId as never,
+        fromSessionId: selectedSessionId as never,
+      });
+      showNotice({
+        tone: "success",
+        message: `Cancelled promotion for ${studentName}.`,
+      });
+      setPromotionStudentIds((prev) => prev.filter((id) => id !== studentId));
+      setCancellingPromotionStudent(null);
+    } catch (err) {
+      showNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(err, "Failed to cancel promotion."),
+      });
+    } finally {
+      setIsCancellingPromotion(false);
+    }
+  };
 
   const activeStudentForSheet = useMemo(() => {
     if (!matrix || !selectedStudentId) return null;
@@ -464,17 +651,16 @@ export default function StudentsPage() {
   }, []);
 
   const handleSelectAllVisibleForPromotion = useCallback(() => {
-    const visibleIds = matrix?.students.map((student) => student._id) ?? [];
-    if (visibleIds.length > MAX_PROMOTION_BATCH) {
-      showNotice({
-        tone: "warning",
-        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once. Narrow the roster or select fewer students.`,
-      });
+    if (!matrix?.students) {
+      return;
     }
-    setPromotionStudentIds(visibleIds.slice(0, MAX_PROMOTION_BATCH));
-  }, [matrix, showNotice]);
 
-  const handlePromoteStudents = useCallback(async () => {
+    setPromotionStudentIds(matrix.students.map((student) => student._id));
+  }, [matrix]);
+
+  const [isPromotionConfirmOpen, setIsPromotionConfirmOpen] = useState(false);
+
+  const handlePromoteStudents = useCallback(() => {
     if (
       !selectedClassId ||
       !selectedSessionId ||
@@ -482,13 +668,9 @@ export default function StudentsPage() {
       !promotionTargetSessionId ||
       promotionStudentIds.length === 0
     ) {
-      return;
-    }
-
-    if (promotionStudentIds.length > MAX_PROMOTION_BATCH) {
       showNotice({
         tone: "warning",
-        message: `Only ${MAX_PROMOTION_BATCH} students can be promoted at once.`,
+        message: "Choose students, target class, and target session to promote.",
       });
       return;
     }
@@ -504,45 +686,47 @@ export default function StudentsPage() {
       return;
     }
 
-    const targetClassName =
-      classes?.find((classDoc) => classDoc._id === promotionTargetClassId)?.name ??
-      "the target class";
-    const targetSessionName =
-      sessions?.find((session) => session._id === promotionTargetSessionId)?.name ??
-      "the target session";
+    setIsPromotionConfirmOpen(true);
+  }, [
+    promotionStudentIds.length,
+    promotionTargetClassId,
+    promotionTargetSessionId,
+    selectedClassId,
+    selectedSessionId,
+    showNotice,
+  ]);
 
+  const executePromotion = useCallback(async () => {
     if (
-      !window.confirm(
-        `Promote ${promotionStudentIds.length} student(s) to ${targetClassName} / ${targetSessionName}? Old report cards and invoices will not be changed.`
-      )
+      !selectedClassId ||
+      !selectedSessionId ||
+      !promotionTargetClassId ||
+      !promotionTargetSessionId ||
+      promotionStudentIds.length === 0
     ) {
       return;
     }
 
+    const targetClassName =
+      classes?.find((classDoc) => classDoc._id === promotionTargetClassId)?.name ??
+      "the target class";
+
     setIsPromoting(true);
     try {
-      const result = (await promoteStudents({
+      await promoteStudents({
         studentIds: promotionStudentIds,
         fromClassId: selectedClassId,
         fromSessionId: selectedSessionId,
         toClassId: promotionTargetClassId,
         toSessionId: promotionTargetSessionId,
         subjectEnrollmentMode: promotionSubjectMode,
-      } as never)) as { promotedCount: number; subjectSelectionCount: number };
-
+      } as never);
       showNotice({
         tone: "success",
-        message:
-          selectedSessionId === promotionTargetSessionId
-            ? `Promoted ${result.promotedCount} student(s). Added ${result.subjectSelectionCount} target subject enrollment(s).`
-            : `Pre-promoted ${result.promotedCount} student(s) for the target session. Added ${result.subjectSelectionCount} subject enrollment(s); placements will become effective on rollover.`,
+        message: `Promoted ${promotionStudentIds.length} student${promotionStudentIds.length === 1 ? "" : "s"} to ${targetClassName}.`,
       });
       setPromotionStudentIds([]);
-      setSelectedStudentId(null);
-      if (selectedSessionId === promotionTargetSessionId) {
-        setSelectedClassId(promotionTargetClassId);
-        setSelectedSessionId(promotionTargetSessionId);
-      }
+      setIsPromotionConfirmOpen(false);
     } catch (err) {
       showNotice({
         tone: "error",
@@ -560,7 +744,6 @@ export default function StudentsPage() {
     promotionTargetSessionId,
     selectedClassId,
     selectedSessionId,
-    sessions,
     showNotice,
   ]);
 
@@ -570,17 +753,29 @@ export default function StudentsPage() {
     setIsUnifiedSheetOpen(true);
   }, []);
 
-  const handleNewAdmission = useCallback(() => {
+  const handleNewAdmission = () => {
     setSelectedStudentId(null);
-    setActiveTab("profile");
-    setCreationTab("quick");
-    resetStudentCreationForm();
-    if (isMobile) {
-      setIsCreationSheetOpen(true);
-      return;
-    }
-    window.setTimeout(() => studentNameInputRef.current?.focus(), 0);
-  }, [isMobile, resetStudentCreationForm]);
+    setIsCreationSheetOpen(true);
+    setTimeout(() => {
+      studentNameInputRef.current?.focus();
+    }, 300);
+  };
+
+  const promotionSourceClassName =
+    classes?.find((c) => c._id === selectedClassId)?.name ?? "Current Class";
+  const promotionSourceSessionName =
+    sessions?.find((s) => s._id === selectedSessionId)?.name ?? "Current Session";
+  const promotionTargetClassName =
+    classes?.find((c) => c._id === promotionTargetClassId)?.name ?? "Target Class";
+  const promotionTargetSessionName =
+    sessions?.find((s) => s._id === promotionTargetSessionId)?.name ?? "Target Session";
+
+  const alreadyPromotedStudentsList = useMemo(() => {
+    if (!matrix?.students) return [];
+    return matrix.students.filter(
+      (s) => promotionStudentIds.includes(s._id) && s.promotionStatus?.isPromoted
+    );
+  }, [matrix, promotionStudentIds]);
 
   if (classes === undefined || sessions === undefined) {
     return (
@@ -623,6 +818,7 @@ export default function StudentsPage() {
         onSetStudentSubjects={handleSetStudentSubjects}
         classes={classes}
         onNotice={showNotice}
+        onViewAttestation={handleOpenAttestation}
         initialTab={unifiedInitialTab}
         onStudentArchived={() => setIsUnifiedSheetOpen(false)}
       />
@@ -631,7 +827,6 @@ export default function StudentsPage() {
         {/* Main Bucket - Content Primary */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-4 md:p-8 overflow-x-hidden">
           <div className="max-w-[1400px] mx-auto space-y-8">
-            
             <div className="space-y-4">
               <AdminHeader
                 title="Student Enrollment"
@@ -668,21 +863,17 @@ export default function StudentsPage() {
                 }
               />
 
-              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-                <EnrollmentFilters
-                  classes={classes}
-                  sessions={sessions}
-                  selectedClassId={selectedClassId}
-                  selectedSessionId={selectedSessionId}
-                  onClassChange={setSelectedClassId}
-                  onSessionChange={setSelectedSessionId}
-                />
-              </div>
+              <EnrollmentFilters
+                classes={classes}
+                sessions={sessions}
+                selectedClassId={selectedClassId}
+                selectedSessionId={selectedSessionId}
+                onClassChange={setSelectedClassId}
+                onSessionChange={setSelectedSessionId}
+              />
             </div>
 
-
             <div className="space-y-8">
-
               {selectedClassId && selectedSessionId ? (
                 <>
                   {shouldShowPromotionPanel ? (
@@ -690,18 +881,24 @@ export default function StudentsPage() {
                       classes={classes}
                       sessions={sessions}
                       selectedCount={promotionStudentIds.length}
+                      totalRosterCount={matrix?.students.length ?? 0}
+                      promotedCount={promotedStudentsCount}
+                      unpromotedCount={unpromotedStudentsCount}
+                      graduatedCount={graduatedStudentsCount}
                       sourceClassId={selectedClassId}
                       sourceSessionId={selectedSessionId}
                       targetClassId={promotionTargetClassId}
                       targetSessionId={promotionTargetSessionId}
                       subjectMode={promotionSubjectMode}
-                      isPromoting={isPromoting}
+                      isPromoting={isPromoting || isGraduating}
                       onTargetClassChange={setPromotionTargetClassId}
                       onTargetSessionChange={setPromotionTargetSessionId}
                       onSubjectModeChange={setPromotionSubjectMode}
                       onSelectAllVisible={handleSelectAllVisibleForPromotion}
+                      onSelectUnpromotedOnly={handleSelectUnpromotedOnly}
                       onClearSelection={() => setPromotionStudentIds([])}
                       onPromote={handlePromoteStudents}
+                      onGraduate={handleGraduateRequest}
                     />
                   ) : null}
                   <SubjectSelectionMatrix
@@ -712,8 +909,12 @@ export default function StudentsPage() {
                     studentsWithNoSubjects={matrixSummary.studentsWithNoSubjects}
                     selectedStudentId={selectedStudentId}
                     promotionStudentIds={promotionStudentIds}
+                    isPromotionMode={shouldShowPromotionPanel}
                     onSelectStudent={setSelectedStudentId}
                     onTogglePromotionStudent={handleTogglePromotionStudent}
+                    onCancelPromotion={handleCancelPromotion}
+                    onCancelGraduation={handleCancelGraduation}
+                    onViewAttestation={handleOpenAttestation}
                     onOpenUnifiedEditor={openUnifiedEditor}
                     onToggle={handleToggleSubject}
                     onSetStudentSubjects={handleSetStudentSubjects}
@@ -762,6 +963,7 @@ export default function StudentsPage() {
                 classes={classes}
                 onNotice={showNotice}
                 onStudentArchived={() => setSelectedStudentId(null)}
+                onViewAttestation={handleOpenAttestation}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
               />
@@ -892,10 +1094,10 @@ export default function StudentsPage() {
       {isMobile && isCreationSheetOpen && (
         <div className="fixed inset-0 z-[70]">
           <div 
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300"
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-overlay-fade-in"
             onClick={() => setIsCreationSheetOpen(false)}
           />
-          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-in slide-in-from-bottom duration-500 ease-out">
+          <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-sheet-slide-up ease-out">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
               <div className="space-y-1">
                 <h3 className="text-xl font-black tracking-tight text-slate-950">New Admission</h3>
@@ -1017,6 +1219,69 @@ export default function StudentsPage() {
           </div>
         </div>
       )}
+
+      {/* Cohort Promotion Confirmation Modal */}
+      <PromotionConfirmationModal
+        isOpen={isPromotionConfirmOpen}
+        onClose={() => setIsPromotionConfirmOpen(false)}
+        onConfirm={executePromotion}
+        isPromoting={isPromoting}
+        studentCount={promotionStudentIds.length}
+        sourceClassName={promotionSourceClassName}
+        sourceSessionName={promotionSourceSessionName}
+        targetClassName={promotionTargetClassName}
+        targetSessionName={promotionTargetSessionName}
+        subjectMode={promotionSubjectMode}
+        alreadyPromotedStudents={alreadyPromotedStudentsList}
+      />
+
+      {/* Terminal Cohort Graduation Confirmation Modal */}
+      <GraduationConfirmationModal
+        isOpen={isGraduationConfirmOpen}
+        onClose={() => setIsGraduationConfirmOpen(false)}
+        onConfirm={executeGraduation}
+        isGraduating={isGraduating}
+        studentCount={promotionStudentIds.length}
+        sourceClassName={promotionSourceClassName}
+        sourceSessionName={promotionSourceSessionName}
+        graduationDate={graduationDraft.graduationDate ?? stableGraduationDate}
+        certificateNumber={graduationDraft.certificateNumber}
+        honorsOrRemarks={graduationDraft.honorsOrRemarks}
+      />
+
+      {/* Official Letter of Attestation Modal */}
+      <AttestationLetterModal
+        isOpen={isAttestationModalOpen}
+        onClose={() => {
+          setIsAttestationModalOpen(false);
+          setAttestationStudentId(null);
+        }}
+        data={attestationData ?? null}
+      />
+
+      {/* Cancel Staged Promotion Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={Boolean(cancellingPromotionStudent)}
+        onClose={() => setCancellingPromotionStudent(null)}
+        onConfirm={executeCancelPromotion}
+        title="Cancel Staged Promotion"
+        description={`Are you sure you want to cancel the staged promotion for ${cancellingPromotionStudent?.studentName}? The student will remain enrolled in their current class.`}
+        confirmLabel="Cancel Promotion"
+        confirmVariant="danger"
+        isLoading={isCancellingPromotion}
+      />
+
+      {/* Cancel Graduation Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={Boolean(cancellingGraduationStudent)}
+        onClose={() => setCancellingGraduationStudent(null)}
+        onConfirm={executeCancelGraduation}
+        title="Cancel Graduation"
+        description={`Are you sure you want to cancel graduation and restore active enrollment status for ${cancellingGraduationStudent?.studentName}?`}
+        confirmLabel="Restore Active Status"
+        confirmVariant="danger"
+        isLoading={isCancellingGraduation}
+      />
     </div>
   );
 }

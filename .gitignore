@@ -53,6 +53,10 @@ test-results/
 # skills-lock.json
 pi-session-*.html
 
+# --- Temporary / Workspace ---
+tmp/
+*.zip
+
 .jstar/
 .pi/
 .kilo
@@ -60,4 +64,4 @@ pi-session-*.html
 .kilocode/
 .windsurf/
 .agents/
-skills/
+skills/

@@ -88,7 +88,7 @@ Codex was used throughout the Build Week implementation to:
 - **Backend/database:** Convex
 - **Auth:** Better Auth with `@convex-dev/better-auth`
 - **Testing:** Vitest, Testing Library, Playwright
-- **AI:** Vercel AI SDK/OpenRouter integration in the teacher workflows
+- **AI:** OpenRouter via the AI SDK, executed inside native Convex actions in `@school/convex`
 
 ## Prerequisites
 
@@ -142,13 +142,25 @@ Convex is configured from the monorepo root through `convex.json`, with backend 
 
 4. Set the same `BETTER_AUTH_SECRET` across the authenticated apps and Convex deployment.
 
-5. For teacher AI features, set the OpenRouter variables in `apps/teacher/.env.local`:
+5. For teacher AI features (lesson plan, student note, assignment, question bank, and CBT draft generation), set the OpenRouter variables on the **Convex deployment** (these are read by the Convex action runtime, not by the Next.js apps):
 
-   ```env
-   OPENROUTER_API_KEY=your-openrouter-api-key
-   OPENROUTER_HTTP_REFERER=http://localhost:3001
-   OPENROUTER_APP_TITLE=School Management System Teacher
+   ```bash
+   npx convex env set OPENROUTER_API_KEY "your-openrouter-api-key"
+   npx convex env set OPENROUTER_HTTP_REFERER "http://localhost:3001"
+   npx convex env set OPENROUTER_APP_TITLE "School Management System Teacher"
    ```
+
+   Optional per-output model overrides (defaults are baked into `@school/ai`):
+
+   ```bash
+   npx convex env set SCHOOL_AI_LESSON_PLAN_MODEL "openai/gpt-oss-120b:free"
+   npx convex env set SCHOOL_AI_STUDENT_NOTE_MODEL "openai/gpt-oss-120b:free"
+   npx convex env set SCHOOL_AI_ASSIGNMENT_MODEL "openai/gpt-oss-120b:free"
+   npx convex env set SCHOOL_AI_QUESTION_BANK_MODEL "openai/gpt-oss-120b:free"
+   npx convex env set SCHOOL_AI_CBT_MODEL "openai/gpt-oss-120b:free"
+   ```
+
+   You no longer need to copy `OPENROUTER_API_KEY` or `SCHOOL_AI_*` into `apps/teacher/.env.local` — the AI generation now runs entirely on the Convex backend via `useAction(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft)` and `useAction(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft)`.
 
 If `NEXT_PUBLIC_CONVEX_URL` is missing, apps may run in preview/mock-data mode instead of live Convex mode.
 

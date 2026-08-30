@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 const platformWorkspaceUrl =
-  process.env.NEXT_PUBLIC_PLATFORM_SITE_URL ?? "http://localhost:3004";
+  process.env.NEXT_PUBLIC_PLATFORM_SITE_URL ?? "http://localhost:3006";
 
 export const platformWorkspaceBrand = {
   name: "SchoolOS Platform Admin",

@@ -111,6 +111,7 @@ export function StudentProfileFormFields({
       <Field label="Birth Date">
         <input
           type="date"
+          max={new Date().toISOString().split("T")[0]}
           value={dateOfBirth}
           onChange={(event) => onDateOfBirthChange(event.target.value)}
           className={fieldInputClassName}

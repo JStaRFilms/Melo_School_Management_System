@@ -2,13 +2,14 @@
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSheet } from "@/components/ui/AdminSheet";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import type { SubjectRecord } from "@/types";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { useMutation,useQuery } from "convex/react";
-import { BookOpenText,Plus,Search,Shapes,X } from "lucide-react";
-import { useDeferredValue,useEffect,useMemo,useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { BookOpenText, Plus, Search, Shapes } from "lucide-react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { SubjectCard } from "./components/SubjectCard";
 import { SubjectCreationForm } from "./components/SubjectCreationForm";
 import { SubjectEditForm } from "./components/SubjectEditForm";
@@ -24,8 +25,10 @@ export default function SubjectsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [subjectToArchive, setSubjectToArchive] = useState<SubjectRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
   useEffect(() => {
@@ -34,7 +37,6 @@ export default function SubjectsPage() {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-
 
   const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
     const title = notice.title ?? (notice.tone === "success" ? "Success" : "Something went wrong");
@@ -64,7 +66,7 @@ export default function SubjectsPage() {
   useEffect(() => {
     if (selectedSubjectId && typeof window !== "undefined" && window.innerWidth < 1024) {
       const scrollTimer = setTimeout(() => {
-          const element = document.getElementById(`subject-${selectedSubjectId}`);
+        const element = document.getElementById(`subject-${selectedSubjectId}`);
         if (element) {
           const yOffset = -120; // Ensure card is comfortably in view above the sheet
           const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
@@ -127,35 +129,42 @@ export default function SubjectsPage() {
     }
   };
 
-  const handleArchive = async (id: string) => {
-    const subject = subjects?.find(s => s._id === id);
-    if (!subject) return;
-    if (!window.confirm(`Archive ${subject.name}? This hides it from active enrollment.`)) return;
+  const handleArchivePrompt = (subject: SubjectRecord) => {
+    setSubjectToArchive(subject);
+  };
 
+  const executeArchive = async () => {
+    if (!subjectToArchive) return;
+    setIsArchiving(true);
     try {
-      await archiveSubject({ subjectId: id } as never);
-      setSelectedSubjectId(null);
-      showNotice({ tone: "success", title: "Subject Archived", message: "Catalog entry deactivated." });
+      await archiveSubject({ subjectId: subjectToArchive._id } as never);
+      if (selectedSubjectId === subjectToArchive._id) {
+        setSelectedSubjectId(null);
+      }
+      setSubjectToArchive(null);
+      showNotice({ tone: "success", title: "Subject Archived", message: `${subjectToArchive.name} catalog entry deactivated.` });
     } catch (err) {
       showNotice({
         tone: "error",
         title: "Archive Failed",
         message: getUserFacingErrorMessage(err, "Failed to deactivate record.")
       });
+    } finally {
+      setIsArchiving(false);
     }
   };
 
   if (subjects === undefined) {
     return (
-      <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
-        <div className="flex flex-col lg:flex-row-reverse flex-1 min-h-0">
-          <aside className="w-full lg:w-[400px] lg:h-full border-l bg-white/40 backdrop-blur-xl shrink-0 p-4 md:p-8">
+      <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+        <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
+          <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 shrink-0">
             <div className="animate-pulse space-y-6">
               <div className="h-64 rounded-xl bg-slate-100/50" />
               <div className="h-20 rounded-xl bg-slate-100/50" />
             </div>
           </aside>
-          <main className="flex-1 lg:h-full p-4 md:p-8">
+          <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-12 custom-scrollbar">
             <div className="max-w-[1200px] mx-auto animate-pulse space-y-10">
               <div className="h-10 w-48 rounded-lg bg-slate-100/50" />
               <div className="h-32 rounded-xl bg-slate-100/50" />
@@ -172,22 +181,20 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: transparent;
-          border-radius: 10px;
-        }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.15);
-        }
-      `}</style>
+    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+      <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+
+      {/* Confirmation Modal for Archiving */}
+      <ConfirmationModal
+        isOpen={Boolean(subjectToArchive)}
+        onClose={() => setSubjectToArchive(null)}
+        onConfirm={executeArchive}
+        title={`Archive ${subjectToArchive?.name || "Subject"}?`}
+        description="Archived subjects are hidden from active class creation and enrollment catalogs. Historical term results, past exam scores, and student transcripts remain safely preserved."
+        confirmLabel="Archive Subject"
+        confirmVariant="danger"
+        isLoading={isArchiving}
+      />
       
       {/* Mobile Editor Sheet */}
       <AdminSheet
@@ -200,7 +207,7 @@ export default function SubjectsPage() {
           <SubjectEditForm
             subject={activeSubject}
             onUpdate={handleUpdate}
-            onArchive={handleArchive}
+            onArchive={() => handleArchivePrompt(activeSubject)}
             onClose={() => setSelectedSubjectId(null)}
             isSaving={isSaving}
             variant="sheet"
@@ -208,16 +215,16 @@ export default function SubjectsPage() {
         )}
       </AdminSheet>
 
-      <div className="flex flex-col lg:flex-row-reverse flex-1 min-h-0">
-        {/* Sidebar Bucket */}
-        <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
-          <div className="p-4 md:p-6 lg:p-8 space-y-8">
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 lg:h-full lg:overflow-hidden">
+        {/* Sidebar Bucket - Locked & Pinned */}
+        <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
+          <div id="subject-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
             <div className="hidden lg:block">
               {selectedSubject ? (
                 <SubjectEditForm
                   subject={selectedSubject}
                   onUpdate={handleUpdate}
-                  onArchive={handleArchive}
+                  onArchive={() => handleArchivePrompt(selectedSubject)}
                   onClose={() => setSelectedSubjectId(null)}
                   isSaving={isSaving}
                 />
@@ -237,19 +244,19 @@ export default function SubjectsPage() {
                  />
               )}
             </div>
-            
-            <div className="pt-6 border-t border-slate-200/60">
-              <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Inventory Status</h4>
-              <p className="mt-2 text-xs leading-relaxed font-medium text-slate-400">
-                Subjects defined here are available school-wide for class setup and result collation.
-              </p>
-            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200/60 shrink-0">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Inventory Status</h4>
+            <p className="mt-1 text-[11px] leading-relaxed font-medium text-slate-400">
+              Subjects defined here are available school-wide for class setup and result collation.
+            </p>
           </div>
         </aside>
 
         {/* Main Bucket */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar">
-          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-10 space-y-6 md:space-y-8">
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-12 custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto space-y-6 md:space-y-8">
             <AdminHeader
               title="Subject Catalog"
               actions={
@@ -270,7 +277,6 @@ export default function SubjectsPage() {
               }
             />
 
-
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
                 <h3 className="font-display text-xs lg:text-xl font-bold tracking-tight text-slate-950 uppercase">Live Catalog</h3>
@@ -284,7 +290,7 @@ export default function SubjectsPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Filter subjects..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-300"
                 />
               </div>
             </div>
@@ -296,7 +302,7 @@ export default function SubjectsPage() {
                   subject={subject}
                   isSelected={selectedSubjectId === subject._id}
                   onSelect={() => setSelectedSubjectId(subject._id)}
-                  onArchive={() => handleArchive(subject._id)}
+                  onArchive={() => handleArchivePrompt(subject)}
                 />
               ))}
 

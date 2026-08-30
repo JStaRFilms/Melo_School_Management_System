@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { WorkspaceNavbar } from "@school/shared";
+import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
+import { authClient } from "@/auth-client";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 
@@ -20,7 +21,16 @@ export default function PortalLayout({
   const schoolBranding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
     isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
-  ) as { name: string; logoUrl: string | null; theme: { primaryColor: string; accentColor: string } } | undefined;
+  ) as {
+    name: string;
+    logoUrl: string | null;
+    status?: string;
+    motto?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    address?: string;
+    theme: { primaryColor: string; accentColor: string };
+  } | undefined;
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {
@@ -46,12 +56,22 @@ export default function PortalLayout({
     isConvexConfigured() &&
     (isLoading ||
       !isAuthenticated ||
-      (session?.user?.role !== "parent" && session?.user?.role !== "student"))
+      (session?.user?.role !== "parent" && session?.user?.role !== "student") ||
+      schoolBranding === undefined)
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-slate-500">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 w-full">
+        <MeloLoader message="Preparing your portal..." />
       </div>
+    );
+  }
+
+  if (schoolBranding?.status === "suspended") {
+    return (
+      <SchoolSuspendedLockScreen
+        school={schoolBranding}
+        onSignOut={handleSignOut}
+      />
     );
   }
 
@@ -64,6 +84,7 @@ export default function PortalLayout({
       userRole={session?.user?.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      onChangePassword={authClient.changePassword}
       renderLink={(props) => (
         <Link key={props.href} href={props.href} className={props.className}>
           {props.children}

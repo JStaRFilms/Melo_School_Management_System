@@ -1,7 +1,7 @@
 "use client";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameFinal,humanNameTyping } from "@/human-name";
+import { humanNameFinal } from "@/human-name";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
@@ -40,10 +40,10 @@ export function SubjectCreationForm({ onCreate, isSubmitting }: SubjectCreationF
             type="text"
             required
             value={name}
-            onChange={(e) => setName(humanNameTyping(e.target.value))}
+            onChange={(e) => setName(e.target.value)}
             onBlur={(e) => setName(humanNameFinal(e.target.value))}
             placeholder="Mathematics"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
           />
         </FormField>
 
@@ -54,7 +54,7 @@ export function SubjectCreationForm({ onCreate, isSubmitting }: SubjectCreationF
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="MAT"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold uppercase text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold uppercase text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
           />
         </FormField>
 

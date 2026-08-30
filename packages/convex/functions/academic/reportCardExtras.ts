@@ -116,10 +116,32 @@ async function getExtrasWorkspaceAccess(
     throw new ConvexError("Not assigned to this class");
   }
 
-  const formTeacher = classDoc.formTeacherId ? await ctx.db.get(classDoc.formTeacherId) : null;
-  const isExactFormTeacher = String(classDoc.formTeacherId) === String(args.userId);
-  const isLinkedFormTeacher =
-    viewer?.email && formTeacher?.email && viewer.email.toLowerCase() === formTeacher.email.toLowerCase();
+  const activeSession = await ctx.db
+    .query("academicSessions")
+    .withIndex("by_school_active", (q: any) =>
+      q.eq("schoolId", args.schoolId).eq("isActive", true)
+    )
+    .first();
+
+  const targetSessionId = (args as any).sessionId ?? activeSession?._id;
+
+  const sessionFormAssignment = targetSessionId
+    ? await ctx.db
+        .query("classSessionFormTeachers")
+        .withIndex("by_class_and_session", (q: any) =>
+          q.eq("classId", args.classId).eq("sessionId", targetSessionId)
+        )
+        .unique()
+    : null;
+
+  const effectiveFormTeacherId =
+    sessionFormAssignment?.formTeacherId ?? classDoc.formTeacherId ?? null;
+
+  const formTeacher = effectiveFormTeacherId ? await ctx.db.get(effectiveFormTeacherId) : null;
+  const isExactFormTeacher = Boolean(effectiveFormTeacherId && String(effectiveFormTeacherId) === String(args.userId));
+  const isLinkedFormTeacher = Boolean(
+    viewer?.email && formTeacher?.email && viewer.email.toLowerCase() === formTeacher.email.toLowerCase()
+  );
 
   return { canEdit: isExactFormTeacher || isLinkedFormTeacher, isAdmin: false };
 }

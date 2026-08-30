@@ -19,9 +19,16 @@ export { ReportCardBatchNavigator } from "./components/ReportCardBatchNavigator"
 export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigator";
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
+export { MeloLoader } from "./components/MeloLoader";
+export { ChangePasswordModal } from "./components/ChangePasswordModal";
+export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
+export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";
+export type { SuspendedSchoolDetails } from "./components/SchoolSuspendedLockScreen";
+export { useAutoAnimate } from "@formkit/auto-animate/react";
 
 // Exam Recording Domain
 export * from "./exam-recording";
 export * from "./cumulative-results";
 export * from "./subject-aggregation";
 export * from "./admissions-foundation";
+export * from "./academic-timeline";

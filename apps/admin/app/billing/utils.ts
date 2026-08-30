@@ -195,6 +195,7 @@ export function createDraftLineItem(
     label: overrides?.label ?? "",
     amount: overrides?.amount ?? "",
     category: overrides?.category ?? "other",
+    isOptional: overrides?.isOptional ?? false,
   };
 }
 
@@ -213,8 +214,8 @@ export function initialFeePlanDraft(): FeePlanDraft {
     billingMode: "class_default",
     targetClassIds: [],
     installmentEnabled: false,
-    installmentCount: "1",
-    intervalDays: "0",
+    installmentCount: "2",
+    intervalDays: "30",
     firstDueDays: "14",
     lineItems: [createDraftLineItem({ label: "Tuition", category: "tuition" })],
   };

@@ -176,7 +176,11 @@ function AuthProviderWithConvex({ children }: { children: ReactNode }) {
       return true;
     }
 
-    return Boolean(viewerContext?.role ?? sessionRole);
+    if (viewerContext !== undefined && viewerContext !== null) {
+      return true;
+    }
+
+    return Boolean(sessionRole);
   }, [session, sessionRole, viewerContext]);
 
   const isPlatformAdmin = useMemo(() => {

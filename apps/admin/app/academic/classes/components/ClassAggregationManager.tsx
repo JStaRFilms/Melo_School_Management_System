@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { Sparkles, Trash2, Edit3, X, Info, ChevronDown, Save } from "lucide-react";
 
 type ClassOffering = {
@@ -163,20 +164,25 @@ export function ClassAggregationManager({
     }
   };
 
-  const handleRemove = async (aggregationId: string) => {
-    if (!window.confirm("Remove this class aggregation?")) {
-      return;
-    }
+  const [removingAggregationId, setRemovingAggregationId] = useState<string | null>(null);
+
+  const handleRemove = (aggregationId: string) => {
+    setRemovingAggregationId(aggregationId);
+  };
+
+  const executeRemove = async () => {
+    if (!removingAggregationId) return;
 
     setIsSaving(true);
     setError(null);
 
     try {
-      await removeAggregation({ aggregationId } as never);
-      if (editingAggregationId === aggregationId) {
+      await removeAggregation({ aggregationId: removingAggregationId } as never);
+      if (editingAggregationId === removingAggregationId) {
         resetForm();
       }
       appToast.success("Aggregation removed.");
+      setRemovingAggregationId(null);
     } catch (err) {
       setError(
         getUserFacingErrorMessage(err, "Failed to remove subject aggregation")
@@ -381,6 +387,18 @@ export function ClassAggregationManager({
           {isSaving ? "Synchronizing..." : editingAggregationId ? "Sync Modification" : "Publish Aggregation"}
         </button>
       </AdminSurface>
+
+      {/* Remove Aggregation Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={Boolean(removingAggregationId)}
+        onClose={() => setRemovingAggregationId(null)}
+        onConfirm={executeRemove}
+        title="Remove Class Aggregation"
+        description="Are you sure you want to remove this subject aggregation rule? Aggregated components will revert to standalone subjects on future assessments."
+        confirmLabel="Remove Aggregation"
+        confirmVariant="danger"
+        isLoading={isSaving}
+      />
     </div>
   );
 }

@@ -9,12 +9,14 @@ import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelper
  * @throws ConvexError "School membership not found" if user has no school
  */
 export async function getAuthenticatedSchoolMembership(
-  ctx: any
+  ctx: any,
+  options?: { allowSuspended?: boolean }
 ): Promise<{
   userId: Id<"users">;
   schoolId: Id<"schools">;
   role: string;
   isSchoolAdmin: boolean;
+  isSuspended: boolean;
 }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -35,11 +37,18 @@ export async function getAuthenticatedSchoolMembership(
     throw new ConvexError("Your account has been archived");
   }
 
+  const school = await ctx.db.get(user.schoolId);
+  const isSuspended = school?.status === "suspended";
+  if (!options?.allowSuspended && isSuspended) {
+    throw new ConvexError("This school workspace is currently suspended by platform administration");
+  }
+
   return {
     userId: user._id,
     schoolId: user.schoolId,
     role: user.role,
     isSchoolAdmin: user.role === "admin" || user.isSchoolAdmin === true,
+    isSuspended,
   };
 }
 

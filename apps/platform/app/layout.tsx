@@ -8,8 +8,8 @@ import { AppToaster } from "@school/shared/toast";
 import { getToken } from "@/auth-server";
 
 export const metadata: Metadata = {
-  title: "SchoolOS Platform Admin",
-  description: "Internal super-admin workspace for SchoolOS.",
+  title: "Melo Platform Admin",
+  description: "Internal super-admin workspace for Melo.",
   robots: {
     index: false,
     follow: false,

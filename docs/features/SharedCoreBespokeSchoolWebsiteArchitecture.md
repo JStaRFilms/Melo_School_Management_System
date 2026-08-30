@@ -1,7 +1,7 @@
 # Shared-Core, Bespoke School Website Architecture
 
 **Status:** Genesis architecture for G2
-**Decision record:** `docs/decisions/ADR-SharedCoreBespokeSchoolSites.md`
+**Decision record:** `docs/decisions/ADR-009-shared-core-bespoke-school-sites.md`
 **Related brief:** `docs/features/OBHISPublicWebsiteBrief.md`
 
 ## 1. Purpose

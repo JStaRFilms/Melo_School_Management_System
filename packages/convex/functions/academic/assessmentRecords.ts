@@ -122,7 +122,7 @@ export const getExamEntrySheet = query({
     ),
     editingState: assessmentEditingStateReturnValidator,
   }),
-  handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any }) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
       ctx
     );
@@ -172,7 +172,7 @@ export const getExamEntrySheet = query({
     const [settings, editingPolicy] = await Promise.all([
       ctx.db
         .query("schoolAssessmentSettings")
-        .withIndex("by_school_active", (q: any) =>
+        .withIndex("by_school_active", (q) =>
           q.eq("schoolId", schoolId).eq("isActive", true)
         )
         .unique(),
@@ -187,26 +187,55 @@ export const getExamEntrySheet = query({
     // Fetch active grading bands
     const gradingBandsResult = await ctx.db
       .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
+      .withIndex("by_school_active", (q) =>
         q.eq("schoolId", schoolId).eq("isActive", true)
       )
       .collect();
 
     // Sort grading bands by minScore
-    const sortedBands = [...gradingBandsResult].sort((a: any, b: any) => a.minScore - b.minScore);
+    const sortedBands = [...gradingBandsResult].sort((a, b) => a.minScore - b.minScore);
 
-    // Query students in the class (roster)
-    const students = await ctx.db
-      .query("students")
-      .withIndex("by_school_and_class", (q: any) =>
-        q.eq("schoolId", schoolId).eq("classId", args.classId)
+    // Query students in the class for this session (roster)
+    const studentIdSet = new Set<string>();
+
+    if (sessionDoc?.isActive) {
+      const baselineStudents = await ctx.db
+        .query("students")
+        .withIndex("by_school_and_class", (q) =>
+          q.eq("schoolId", schoolId).eq("classId", args.classId)
+        )
+        .collect();
+      for (const student of baselineStudents) {
+        if (!student.isArchived) {
+          studentIdSet.add(String(student._id));
+        }
+      }
+    }
+
+    const promotedIntoClass = await ctx.db
+      .query("studentPromotions")
+      .withIndex("by_to_class_and_to_session", (q) =>
+        q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)
       )
       .collect();
+    for (const promo of promotedIntoClass) {
+      studentIdSet.add(String(promo.studentId));
+    }
+
+    const classSelections = await ctx.db
+      .query("studentSubjectSelections")
+      .withIndex("by_class_and_session", (q) =>
+        q.eq("classId", args.classId).eq("sessionId", args.sessionId)
+      )
+      .collect();
+    for (const sel of classSelections) {
+      studentIdSet.add(String(sel.studentId));
+    }
 
     // Bulk-fetch existing assessment records for this sheet
     const existingRecords = await ctx.db
       .query("assessmentRecords")
-      .withIndex("by_sheet", (q: any) =>
+      .withIndex("by_sheet", (q) =>
         q
           .eq("schoolId", schoolId)
           .eq("sessionId", args.sessionId)
@@ -216,16 +245,29 @@ export const getExamEntrySheet = query({
       )
       .collect();
 
+    for (const record of existingRecords) {
+      studentIdSet.add(String(record.studentId));
+    }
+
+    const studentDocs = (
+      await Promise.all(
+        Array.from(studentIdSet).map((id) => ctx.db.get(id as Id<"students">))
+      )
+    ).filter(
+      (student): student is NonNullable<typeof student> =>
+        Boolean(student && student.schoolId === schoolId && !student.isArchived)
+    );
+
     // Create a map of studentId -> assessmentRecord for efficient lookup
-    const recordMap = new Map(
-      existingRecords.map((record: any) => [record.studentId, record])
+    const recordMap = new Map<string, (typeof existingRecords)[0]>(
+      existingRecords.map((record) => [String(record.studentId), record])
     );
 
     // Left-join roster with existing records
     const roster = await Promise.all(
-      students
-        .filter((student: any) => !student.isArchived)
-        .map(async (student: any) => {
+      studentDocs
+        .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
+        .map(async (student) => {
           // Get user details for student name
           const user = await ctx.db.get(student.userId);
           const studentName = normalizePersonName(user?.name ?? "Unknown");
@@ -233,7 +275,7 @@ export const getExamEntrySheet = query({
           return {
             studentId: student._id,
             studentName,
-            assessmentRecord: recordMap.get(student._id) ?? null,
+            assessmentRecord: recordMap.get(String(student._id)) ?? null,
           };
         })
     );

@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { Send, KeyRound, Archive, X, Eye, EyeOff } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameTypingStrict, humanNameFinalStrict } from "@/human-name";
+import { humanNameFinalStrict } from "@/human-name";
 import type { TeacherRecord } from "@/types";
 
 interface TeacherEditFormProps {
   teacher: TeacherRecord;
   onUpdate: (id: string, name: string, email: string) => Promise<void>;
   onResetPassword: (id: string, password: string) => Promise<void>;
-  onArchive: (id: string) => Promise<void>;
+  onArchive: (id: string) => void | Promise<void>;
   onClose: () => void;
   isSaving: boolean;
   isResetting: boolean;
@@ -76,9 +76,9 @@ export function TeacherEditForm({
               type="text"
               required
               value={name}
-              onChange={(e) => setName(humanNameTypingStrict(e.target.value))}
+              onChange={(e) => setName(e.target.value)}
               onBlur={(e) => setName(humanNameFinalStrict(e.target.value))}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
             />
           </FormField>
 

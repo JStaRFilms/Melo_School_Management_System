@@ -1,7 +1,8 @@
 "use client";
 
 import { X } from "lucide-react";
-import { ReactNode,useEffect,useRef,useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface AdminSheetProps {
   isOpen: boolean;
@@ -18,9 +19,14 @@ export function AdminSheet({
   description,
   children,
 }: AdminSheetProps) {
+  const [mounted, setMounted] = useState(false);
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevOverflowRef = useRef("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -56,10 +62,10 @@ export function AdminSheet({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, shouldRender]);
 
-  if (!shouldRender) return null;
+  if (!shouldRender || !mounted) return null;
 
-  return (
-    <div className={`fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-500 ease-out ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+  return createPortal(
+    <div className={`fixed inset-0 z-[9999] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-500 ease-out ${isAnimating ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
       {/* Overlay */}
       <div
         className={`absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] transition-opacity duration-500 ease-out ${isAnimating ? "opacity-100" : "opacity-0"}`}
@@ -97,6 +103,7 @@ export function AdminSheet({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

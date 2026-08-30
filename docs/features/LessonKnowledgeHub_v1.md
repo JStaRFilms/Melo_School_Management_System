@@ -55,14 +55,16 @@ This blueprint is implementation-grade and locked to v1. It is the source of tru
 | :--- | :--- | :--- | :--- |
 | `/learning/topics/[topicId]` | Approved topic page | Read approved topic resources, view topic-linked lesson outputs, and submit class-scoped supplemental uploads when enabled | This is the only portal surface in v1. There is no library browse route. |
 
-### AI API routes
+### AI generation actions
 
-| Route | Contract | Required inputs | Expected result |
+All teacher AI generation runs as native Convex actions (no Vercel route handlers), invoked from the client via `useAction`.
+
+| Action | Purpose | Required inputs | Result |
 | :--- | :--- | :--- | :--- |
-| `POST /api/ai/lesson-plans/generate` | Generate a lesson-plan draft | School-scoped source material IDs, resolved template key, subject, level, and topic context (either resolved from selected sources or supplied explicitly when using broad planning references) | Creates or updates a draft artifact and records an AI run log after generation prechecks and quota checks pass. |
-| `POST /api/ai/student-notes/generate` | Generate a student-note draft | Same grounding inputs plus the target lesson-plan artifact | Creates an editable student-note artifact derived from approved sources. |
-| `POST /api/ai/assignments/generate` | Generate an assignment draft | Grounding sources, template context, and target topic | Creates an editable assignment artifact with a revision snapshot. |
-| `POST /api/ai/question-bank/generate` | Generate a question-bank or CBT draft | Grounding sources, subject/level context, topic context (resolved or explicit), and output constraints | Creates a structured assessment draft and logs the model output after generation prechecks and quota checks pass. |
+| `documentGeneration.generateTeacherLessonPlanDraft` | Generate a lesson-plan, student-note, or assignment draft | `outputType`, `sourceIds`, optional `targetTopicLabel`, optional `planningContext` | Calls `createDocumentModel` + `generateObject` with the template-bound instruction schema, runs a single retry via `buildTemplateRepairPrompt` on `NoObjectGeneratedError`, persists via `saveTeacherInstructionArtifactDraft`, and writes `aiRunLogs` (`running` → `succeeded`/`failed`) with token counts. |
+| `documentGeneration.generateTeacherAssessmentDraft` | Generate a question-bank or CBT draft | `draftMode`, `sourceIds`, optional `targetTopicLabel`, optional `planningContext`, `effectiveGenerationSettings` | Resolves the active generation profile, calls `createDocumentModel` + `generateObject` with `questionBankDraftSchema` or `cbtDraftSchema`, persists via `saveTeacherAssessmentBankDraft`, and writes `aiRunLogs`. |
+
+Both actions resolve `OPENROUTER_API_KEY`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE`, and the per-output `SCHOOL_AI_*_MODEL` overrides from the Convex deployment environment (set via `npx convex env set`).
 
 ## Actor Permissions
 
@@ -298,8 +300,8 @@ Additional rules:
 
 The kickoff sample references already in the repo are:
 
-- `docs/School curriculim example/2ND TERM JS 1 SOCIAL STUDIES.pdf`
-- `docs/School curriculim example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf`
+- `docs/School curriculum example/2ND TERM JS 1 SOCIAL STUDIES.pdf`
+- `docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf`
 
 Use these as the reference pair for label extraction, topic naming, and expected lesson-note structure. The first file is the canonical curriculum source sample; the second is the reference lesson-note shape.
 

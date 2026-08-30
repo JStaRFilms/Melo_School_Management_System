@@ -103,6 +103,8 @@ Next batch:
 
  - [x] On the admin academic students page, updating a student's record currently uses an inline save notificatoins instead of the toast system we created. This is annoying and needs to be fixed. Thank you.
 
+ - [ ] There's a slight bug in the academic / sessions page on the admin page, where the dropdown menu for the academic year history and active school calendar. When you're clicking on those dropdown options meant to collapse the UI, it is broken. I don't know what happened, but presently as I'm talking to you, it's broken. Something minor to fix, but it's worth fixing.
+
   - [ ] on /academic/students we need to add a nice search feature that searches across the whole school and then we can click on a student and it will open the students class and select the student
  
  - [ ] The main website is mostly just words we need to clean it up and make sure I actually like it and it means something and it's functional and allt he links work and the user flow makes sense including the sub pages.

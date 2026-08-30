@@ -26,8 +26,12 @@ module.exports = {
           200: "#f8fafc",
         },
         brand: {
-          primary: "#0f172a",
-          accent: "#2563eb",
+          // Dynamic School Theme Tokens (injected by WorkspaceNavbar / SchoolThemeProvider)
+          primary: "var(--school-primary, #0f172a)",
+          accent: "var(--school-accent, #2563eb)",
+          light: "var(--school-primary-light, rgba(15, 23, 42, 0.05))",
+          border: "var(--school-primary-border, rgba(15, 23, 42, 0.15))",
+          "accent-light": "var(--school-accent-light, rgba(37, 99, 235, 0.10))",
         },
       },
       fontFamily: {

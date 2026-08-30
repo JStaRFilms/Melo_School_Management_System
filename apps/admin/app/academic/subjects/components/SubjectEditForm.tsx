@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { Save, Archive, X, Info } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameTyping, humanNameFinal } from "@/human-name";
+import { humanNameFinal } from "@/human-name";
 import type { SubjectRecord } from "@/types";
 
 interface SubjectEditFormProps {
   subject: SubjectRecord;
   onUpdate: (id: string, name: string, code: string) => Promise<void>;
-  onArchive: (id: string) => Promise<void>;
+  onArchive: (id: string) => void | Promise<void>;
   onClose: () => void;
   isSaving: boolean;
   variant?: "default" | "sheet";
@@ -61,10 +61,10 @@ export function SubjectEditForm({
             type="text"
             required
             value={editName}
-            onChange={(e) => setEditName(humanNameTyping(e.target.value))}
+            onChange={(e) => setEditName(e.target.value)}
             onBlur={(e) => setEditName(humanNameFinal(e.target.value))}
             placeholder="Mathematics"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-bold text-slate-950 outline-none transition-all focus:bg-white focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-bold text-slate-950 outline-none transition-all focus:bg-white focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
           />
         </FormField>
 
@@ -75,7 +75,7 @@ export function SubjectEditForm({
             value={editCode}
             onChange={(e) => setEditCode(e.target.value.toUpperCase())}
             placeholder="MAT"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-bold uppercase text-slate-950 outline-none transition-all focus:bg-white focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-bold uppercase text-slate-950 outline-none transition-all focus:bg-white focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
           />
         </FormField>
 

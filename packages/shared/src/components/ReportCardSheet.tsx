@@ -6,6 +6,10 @@ export type ReportCardSheetData = {
   schoolContact?: string | null;
   schoolLogoUrl?: string | null;
   schoolMotto?: string | null;
+  theme?: {
+    primaryColor: string;
+    accentColor: string;
+  };
   sessionName: string;
   termName: string;
   classId: string;
@@ -314,6 +318,8 @@ export function ReportCardSheet({
     },
   ];
   const extras = reportCard.extras ?? [];
+  const primaryColor = reportCard.theme?.primaryColor || "#0f172a";
+  const accentColor = reportCard.theme?.accentColor || "#d97706";
 
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
@@ -353,7 +359,7 @@ export function ReportCardSheet({
           style={{
             display: "grid",
             gridTemplateColumns: "110px 1fr 120px",
-            borderBottom: "2px solid #1e293b",
+            borderBottom: `2px solid ${primaryColor}`,
             breakInside: "avoid",
           }}
         >
@@ -384,13 +390,13 @@ export function ReportCardSheet({
                   width: 68,
                   height: 68,
                   borderRadius: "50%",
-                  border: "3px solid #1e40af",
+                  border: `3px solid ${primaryColor}`,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontSize: 20,
                   fontWeight: 900,
-                  color: "#1e40af",
+                  color: primaryColor,
                   background: "white",
                   letterSpacing: "0.04em",
                 }}
@@ -409,10 +415,10 @@ export function ReportCardSheet({
               alignItems: "center",
               padding: "10px 14px",
               textAlign: "center",
-              gap: 3,
+              background: "white",
             }}
           >
-            <h2
+            <h1
               style={{
                 fontSize: 16,
                 fontWeight: 900,
@@ -424,16 +430,14 @@ export function ReportCardSheet({
               }}
             >
               {reportCard.schoolName}
-            </h2>
+            </h1>
             {reportCard.schoolAddress && (
               <p
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
+                  fontSize: 9,
+                  fontWeight: 500,
                   color: "#475569",
-                  margin: 0,
+                  margin: "2px 0 0",
                   lineHeight: 1.3,
                 }}
               >
@@ -443,7 +447,7 @@ export function ReportCardSheet({
             {reportCard.schoolContact && (
               <p
                 style={{
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: 500,
                   color: "#64748b",
                   margin: 0,
@@ -461,7 +465,7 @@ export function ReportCardSheet({
                   fontStyle: "italic",
                   textTransform: "uppercase",
                   letterSpacing: "0.12em",
-                  color: "#94a3b8",
+                  color: accentColor,
                   margin: "3px 0 0",
                 }}
               >
@@ -472,7 +476,7 @@ export function ReportCardSheet({
               style={{
                 marginTop: 4,
                 padding: "3px 12px",
-                background: "#0f172a",
+                background: primaryColor,
                 borderRadius: 3,
               }}
             >
@@ -583,7 +587,7 @@ export function ReportCardSheet({
         <div
           style={{
             padding: "7px 12px",
-            background: "#0f172a",
+            background: primaryColor,
           }}
         >
           <span
@@ -758,8 +762,8 @@ export function ReportCardSheet({
             <div
               style={{
                 padding: "7px 12px",
-                background: "#0f172a",
-                borderTop: "2px solid #1e293b",
+                background: primaryColor,
+                borderTop: `2px solid ${primaryColor}`,
               }}
             >
               <span

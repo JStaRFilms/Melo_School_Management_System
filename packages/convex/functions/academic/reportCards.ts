@@ -186,6 +186,15 @@ const reportCardBatchStudentValidator = v.object({
 export const reportCardResultValidator = v.object({
   schoolName: v.string(),
   schoolLogoUrl: v.union(v.string(), v.null()),
+  schoolAddress: v.optional(v.union(v.string(), v.null())),
+  schoolContact: v.optional(v.union(v.string(), v.null())),
+  schoolMotto: v.optional(v.union(v.string(), v.null())),
+  theme: v.optional(
+    v.object({
+      primaryColor: v.string(),
+      accentColor: v.string(),
+    })
+  ),
   sessionName: v.string(),
   termName: v.string(),
   classId: v.id("classes"),
@@ -682,10 +691,20 @@ export async function buildStudentReportCard(
     throw new ConvexError("Class not found");
   }
 
+  const sessionFormTeacherAssignment = await ctx.db
+    .query("classSessionFormTeachers")
+    .withIndex("by_class_and_session", (q: any) =>
+      q.eq("classId", reportCardClassId).eq("sessionId", args.sessionId)
+    )
+    .unique();
+
+  const effectiveFormTeacherId =
+    sessionFormTeacherAssignment?.formTeacherId ?? classDoc.formTeacherId ?? null;
+
   const classTeacher =
-    classDoc.formTeacherId &&
-    String(classDoc.formTeacherId) !== String(student.userId)
-      ? await ctx.db.get(classDoc.formTeacherId)
+    effectiveFormTeacherId &&
+    String(effectiveFormTeacherId) !== String(student.userId)
+      ? await ctx.db.get(effectiveFormTeacherId)
       : null;
   const studentName = getReadableUserName(studentUser);
   const classTeacherName = getReadableUserName(classTeacher);
@@ -956,6 +975,13 @@ export async function buildStudentReportCard(
   return {
     schoolName: normalizeHumanName(school.name),
     schoolLogoUrl,
+    schoolAddress: school.address ?? null,
+    schoolContact: [school.contactPhone, school.contactEmail].filter(Boolean).join(" • ") || null,
+    schoolMotto: school.motto ?? null,
+    theme: {
+      primaryColor: school.theme?.primaryColor || "#0f172a",
+      accentColor: school.theme?.accentColor || "#d97706",
+    },
     sessionName: normalizeHumanName(session.name),
     termName: normalizeHumanName(term.name),
     classId: reportCardClassId,

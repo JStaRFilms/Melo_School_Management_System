@@ -157,6 +157,7 @@ const createFeePlanValidator = v.object({
           v.literal("other")
         )
       ),
+      isOptional: v.optional(v.boolean()),
     })
   ),
   installmentPolicy: v.optional(
@@ -1581,11 +1582,13 @@ export const createFeePlan = mutation({
 
     const billingMode = args.billingMode ?? "class_default";
     const targetClassIds = normalizeClassIdList(args.targetClassIds ?? []);
-    if (billingMode === "class_default" && targetClassIds.length === 0) {
-      throw new ConvexError("Class-default fee plans need at least one target class");
-    }
     if (billingMode === "manual_extra" && targetClassIds.length > 0) {
       throw new ConvexError("Manual extra fee plans cannot target classes");
+    }
+    if (billingMode === "class_default" && targetClassIds.length === 0) {
+      throw new ConvexError(
+        "Class-default fee plans require at least one target class. Use 'manual extra' mode for plans without class targeting."
+      );
     }
 
     if (targetClassIds.length > 0) {
@@ -2579,3 +2582,72 @@ export const initializePortalOnlinePayment = action({
     return paymentLink;
   },
 });
+
+export const toggleInvoiceOptionalLineItem = mutation({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+    lineItemId: v.string(),
+    isSelected: v.boolean(),
+  },
+  returns: billingInvoiceValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Invoice not found");
+    }
+
+    assertAdmin(viewer);
+
+    if (invoice.status === "paid" || invoice.status === "cancelled") {
+      throw new ConvexError("Cannot modify items on a paid or cancelled invoice");
+    }
+
+    let found = false;
+    const updatedLineItems = invoice.lineItems.map((item) => {
+      if (item.id === args.lineItemId && item.isOptional) {
+        found = true;
+        return { ...item, isSelected: args.isSelected };
+      }
+      return item;
+    });
+
+    if (!found) {
+      throw new ConvexError("Optional line item not found on this invoice");
+    }
+
+    const total = computeBillingInvoiceTotal({
+      lineItems: updatedLineItems,
+      waiverAmount: invoice.waiverAmount,
+      discountAmount: invoice.discountAmount,
+    });
+
+    const balanceDue = Math.max(
+      0,
+      normalizeBillingAmount(total.totalAmount - invoice.amountPaid)
+    );
+    const status = deriveBillingInvoiceStatus({
+      totalAmount: total.totalAmount,
+      amountPaid: invoice.amountPaid,
+      dueDate: invoice.dueDate,
+    });
+
+    const now = Date.now();
+    await ctx.db.patch(invoice._id, {
+      lineItems: updatedLineItems,
+      subtotal: total.subtotal,
+      totalAmount: total.totalAmount,
+      balanceDue,
+      status,
+      updatedAt: now,
+    });
+
+    const refreshed = await ctx.db.get(invoice._id);
+    if (!refreshed) {
+      throw new ConvexError("Invoice not found after update");
+    }
+
+    return invoiceDocToReturn(refreshed);
+  },
+});
+

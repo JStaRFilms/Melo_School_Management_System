@@ -15,6 +15,7 @@
     "@convex-dev/better-auth": "^0.11.3",
     "@school/ai": "workspace:*",
     "@school/shared": "workspace:*",
+    "ai": "^6.0.168",
     "better-auth": "^1.2.0",
     "convex": "^1.0.0",
     "jszip": "^3.10.1",

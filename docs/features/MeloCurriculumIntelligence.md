@@ -221,7 +221,7 @@ These items were intentionally deferred and must remain visible for later work.
 - Ensure upload controls reset after successful publication instead of retaining stale file and form state in the right-hand panel.
 - Provide clear queued, processing, retryable failure, and completed states instead of making chunk counts appear authoritative when extraction failed.
 - Add production-shaped tests for digital PDFs, scanned PDFs, selected page ranges, corrupt files, provider timeouts, and retrying an existing stored file.
-- Continue to follow `docs/features/ReliableScannedPdfOcrFallback.md` and `docs/decisions/OCRArchitectureDecision_2026-05-02.md`; do not replace OCR infrastructure with a general chat model.
+- Continue to follow `docs/features/ReliableScannedPdfOcrFallback.md` and `docs/decisions/ADR-007-ocr-architecture.md`; do not replace OCR infrastructure with a general chat model.
 
 ### 2. Safe curriculum import and topic archival
 

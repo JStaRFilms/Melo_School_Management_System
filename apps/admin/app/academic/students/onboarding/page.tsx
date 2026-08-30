@@ -314,67 +314,66 @@ export default function StudentOnboardingPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col">
-      <StudentFirstOnboardingForm
-        classes={classes}
-        selectedClassId={selectedClassId}
-        firstName={firstName}
-        lastName={lastName}
-        admissionNumber={admissionNumber}
-        gender={gender}
-        houseName={houseName}
-        dateOfBirth={dateOfBirth}
-        guardianName={guardianName}
-        guardianPhone={guardianPhone}
-        address={address}
-        parentFirstName={parentFirstName}
-        parentLastName={parentLastName}
-        parentEmail={parentEmail}
-        parentPhone={parentPhone}
-        parentRelationship={parentRelationship}
-        isParentPrimaryContact={isParentPrimaryContact}
-        provisionStudentPortalAccess={provisionStudentPortalAccess}
-        provisionParentPortalAccess={provisionParentPortalAccess}
-        studentTemporaryPassword={studentTemporaryPassword}
-        parentTemporaryPassword={parentTemporaryPassword}
-        credentialSummary={credentialSummary}
-        photoPreviewUrl={photoPreviewUrl}
-        photoResetKey={studentPhotoResetKey}
-        isSubmitting={isSubmitting}
-        firstNameInputRef={firstNameInputRef}
-        onFirstNameChange={(value) => setFirstName(humanNameTypingStrict(value))}
-        onFirstNameBlur={(value) => setFirstName(humanNameFinalStrict(value))}
-        onLastNameChange={(value) => setLastName(humanNameTypingStrict(value))}
-        onLastNameBlur={(value) => setLastName(humanNameFinalStrict(value))}
-        onAdmissionNumberChange={setAdmissionNumber}
-        onGenderChange={setGender}
-        onHouseNameChange={setHouseName}
-        onDateOfBirthChange={setDateOfBirth}
-        onGuardianNameChange={setGuardianName}
-        onGuardianPhoneChange={setGuardianPhone}
-        onAddressChange={setAddress}
-        onParentFirstNameChange={(value) => setParentFirstName(humanNameTypingStrict(value))}
-        onParentLastNameChange={(value) => setParentLastName(humanNameTypingStrict(value))}
-        onParentEmailChange={setParentEmail}
-        onParentPhoneChange={setParentPhone}
-        onParentRelationshipChange={setParentRelationship}
-        onIsParentPrimaryContactChange={setIsParentPrimaryContact}
-        onProvisionStudentPortalAccessChange={setProvisionStudentPortalAccess}
-        onProvisionParentPortalAccessChange={setProvisionParentPortalAccess}
-        onStudentTemporaryPasswordChange={setStudentTemporaryPassword}
-        onParentTemporaryPasswordChange={setParentTemporaryPassword}
-        onClassIdChange={setSelectedClassId}
-        onPhotoChange={setStudentPhotoFile}
-        onRemovePhoto={() => setStudentPhotoFile(null)}
-        onPhotoValidationError={(message) =>
-          showNotice({
-            tone: "error",
-            message,
-          })
-        }
-        onSubmit={handleSubmit}
-      />
-    </div>
+    <StudentFirstOnboardingForm
+      classes={classes}
+      selectedClassId={selectedClassId}
+      firstName={firstName}
+      lastName={lastName}
+      admissionNumber={admissionNumber}
+      gender={gender}
+      houseName={houseName}
+      dateOfBirth={dateOfBirth}
+      guardianName={guardianName}
+      guardianPhone={guardianPhone}
+      address={address}
+      parentFirstName={parentFirstName}
+      parentLastName={parentLastName}
+      parentEmail={parentEmail}
+      parentPhone={parentPhone}
+      parentRelationship={parentRelationship}
+      isParentPrimaryContact={isParentPrimaryContact}
+      provisionStudentPortalAccess={provisionStudentPortalAccess}
+      provisionParentPortalAccess={provisionParentPortalAccess}
+      studentTemporaryPassword={studentTemporaryPassword}
+      parentTemporaryPassword={parentTemporaryPassword}
+      credentialSummary={credentialSummary}
+      photoPreviewUrl={photoPreviewUrl}
+      photoResetKey={studentPhotoResetKey}
+      isSubmitting={isSubmitting}
+      firstNameInputRef={firstNameInputRef}
+      onFirstNameChange={(value) => setFirstName(value)}
+      onFirstNameBlur={(value) => setFirstName(humanNameFinalStrict(value))}
+      onLastNameChange={(value) => setLastName(value)}
+      onLastNameBlur={(value) => setLastName(humanNameFinalStrict(value))}
+      onAdmissionNumberChange={setAdmissionNumber}
+      onGenderChange={setGender}
+      onHouseNameChange={setHouseName}
+      onDateOfBirthChange={setDateOfBirth}
+      onGuardianNameChange={setGuardianName}
+      onGuardianPhoneChange={setGuardianPhone}
+      onAddressChange={setAddress}
+      onParentFirstNameChange={(value) => setParentFirstName(value)}
+      onParentLastNameChange={(value) => setParentLastName(value)}
+      onParentEmailChange={setParentEmail}
+      onParentPhoneChange={setParentPhone}
+      onParentRelationshipChange={setParentRelationship}
+      onIsParentPrimaryContactChange={setIsParentPrimaryContact}
+      onProvisionStudentPortalAccessChange={setProvisionStudentPortalAccess}
+      onProvisionParentPortalAccessChange={setProvisionParentPortalAccess}
+      onStudentTemporaryPasswordChange={setStudentTemporaryPassword}
+      onParentTemporaryPasswordChange={setParentTemporaryPassword}
+      onClassIdChange={setSelectedClassId}
+      onPhotoChange={setStudentPhotoFile}
+      onRemovePhoto={() => setStudentPhotoFile(null)}
+      onPhotoValidationError={(message) =>
+        showNotice({
+          tone: "error",
+          message,
+        })
+      }
+      onReset={resetForm}
+      onSubmit={handleSubmit}
+    />
   );
 }
 

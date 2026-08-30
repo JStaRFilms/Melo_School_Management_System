@@ -53,8 +53,14 @@ export async function listTeacherArchiveBlockers(
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .collect();
 
-  const [classes, classSubjects, teacherAssignments, subjects] =
+  const [activeSession, classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
+      ctx.db
+        .query("academicSessions")
+        .withIndex("by_school_active", (q) =>
+          q.eq("schoolId", args.schoolId).eq("isActive", true)
+        )
+        .first(),
       ctx.db
         .query("classes")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
@@ -81,6 +87,15 @@ export async function listTeacherArchiveBlockers(
       .map((subject: any) => [String(subject._id), subject] as const)
   );
 
+  const activeSessionFormAssignments = activeSession
+    ? await ctx.db
+        .query("classSessionFormTeachers")
+        .withIndex("by_school_and_session", (q) =>
+          q.eq("schoolId", args.schoolId).eq("sessionId", activeSession._id)
+        )
+        .collect()
+    : [];
+
   const blockersByTeacherId = new Map<string, string[]>();
   const targetTeacherId = args.teacherId ? String(args.teacherId) : null;
   const addBlocker = (teacherId: Id<"users"> | null | undefined, blocker: string) => {
@@ -98,11 +113,26 @@ export async function listTeacherArchiveBlockers(
     blockersByTeacherId.set(key, teacherBlockers);
   };
 
+  const classesWithSessionFormTeacher = new Set<string>();
+
+  for (const assignment of activeSessionFormAssignments) {
+    const classDoc = activeClasses.get(String(assignment.classId));
+    if (classDoc) {
+      classesWithSessionFormTeacher.add(String(assignment.classId));
+      addBlocker(
+        assignment.formTeacherId,
+        `form teacher for ${buildClassName(classDoc)} (${activeSession?.name ?? "Active Session"})`
+      );
+    }
+  }
+
   for (const classDoc of activeClasses.values()) {
-    addBlocker(
-      classDoc.formTeacherId,
-      `form teacher for ${buildClassName(classDoc)}`
-    );
+    if (!classesWithSessionFormTeacher.has(String(classDoc._id))) {
+      addBlocker(
+        classDoc.formTeacherId,
+        `form teacher for ${buildClassName(classDoc)}`
+      );
+    }
   }
 
   for (const offering of classSubjects) {

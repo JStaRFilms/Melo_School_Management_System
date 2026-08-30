@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
+import { MeloLoader, ChangePasswordModal } from "@school/shared";
+import { authClient } from "@/auth-client";
 
 export function SchoolsLayoutClient({
   children,
@@ -30,6 +32,8 @@ export function SchoolsLayoutClient({
     }
   }, [isAuthenticated, isLoading, pathname, router, isPlatformAdmin]);
 
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+
   const handleSignOut = async () => {
     await signOut();
     window.location.href = "/sign-in";
@@ -37,8 +41,8 @@ export function SchoolsLayoutClient({
 
   if (isConvexConfigured() && (isLoading || !isAuthenticated || !isPlatformAdmin)) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
-        <div className="text-[#64748b]">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc] w-full">
+        <MeloLoader message="Preparing your platform dashboard..." />
       </div>
     );
   }
@@ -46,7 +50,7 @@ export function SchoolsLayoutClient({
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-24">
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="w-full px-4 sm:px-8 lg:px-12">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
@@ -72,13 +76,21 @@ export function SchoolsLayoutClient({
               </Link>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="hidden sm:block text-xs text-slate-500">
+            <div className="flex items-center gap-2.5">
+              <span className="hidden sm:block text-xs font-semibold text-slate-700">
                 {session?.user?.name ?? session?.user?.email}
               </span>
               <button
+                type="button"
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 shadow-sm"
+              >
+                Change Password
+              </button>
+              <button
+                type="button"
                 onClick={handleSignOut}
-                className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+                className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 Sign Out
               </button>
@@ -87,7 +99,19 @@ export function SchoolsLayoutClient({
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">{children}</main>
+      <main className="w-full px-4 sm:px-8 lg:px-12 py-6">{children}</main>
+
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        onChangePassword={async ({ currentPassword, newPassword, revokeOtherSessions }) => {
+          return await authClient.changePassword({
+            currentPassword,
+            newPassword,
+            revokeOtherSessions,
+          });
+        }}
+      />
     </div>
   );
 }

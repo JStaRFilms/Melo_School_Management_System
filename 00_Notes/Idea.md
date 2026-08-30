@@ -12,6 +12,13 @@ tags: [creativeos]
 admin: admin@demo-academy.school / Admin123!Pass
 teacher: teacher@demo-academy.school / Teacher123!Pass
 
+### Default Seed Passwords
+- Admin: `Admin123!Pass`
+- Teacher: `Teacher123!Pass`
+- Parent: `Parent123!Pass`
+- Student: `Student123!Pass`
+- Temp/Fallback: `StrongTempPass123!`
+
 pnpm --filter @school/teacher dev
 pnpm --filter @school/admin dev
 

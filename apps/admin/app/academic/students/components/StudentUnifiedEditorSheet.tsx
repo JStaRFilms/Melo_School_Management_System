@@ -18,6 +18,7 @@ interface StudentUnifiedEditorSheetProps {
   classes: ClassSummary[];
   onNotice: (notice: EnrollmentNotice) => void;
   onStudentArchived?: (studentId: string) => void;
+  onViewAttestation?: (studentId: string) => void;
   initialTab?: "subjects" | "profile" | "family";
 }
 
@@ -32,6 +33,7 @@ export function StudentUnifiedEditorSheet({
   classes,
   onNotice,
   onStudentArchived,
+  onViewAttestation,
   initialTab = "subjects",
 }: StudentUnifiedEditorSheetProps) {
   const [activeTab, setActiveTab] = useState<"subjects" | "profile" | "family">(initialTab);
@@ -211,6 +213,7 @@ export function StudentUnifiedEditorSheet({
                 classes={classes}
                 onNotice={onNotice}
                 onStudentArchived={onStudentArchived}
+                onViewAttestation={onViewAttestation}
                 variant="inline"
                 activeTab={activeTab === "family" ? "family" : "profile"}
               />
