@@ -5,6 +5,7 @@ import { isConvexConfigured } from "@/convex-runtime";
 import { validateBandsClient } from "@/exam-helpers";
 import { getMockGradingBands } from "@/mock-data";
 import type { BandValidationError,GradingBandDraft,GradingBandResponse } from "@/types";
+import { api } from "@school/convex/_generated/api";
 import { useMutation,useQuery } from "convex/react";
 import {
 ChevronRight,
@@ -27,10 +28,10 @@ export default function GradingBandsPage() {
 
 function LiveGradingBandsPage() {
   const bands = useQuery(
-    "functions/academic/gradingBands:getActiveGradingBands" as never
+    api.functions.academic.gradingBands.getActiveGradingBands
   ) as GradingBandResponse[] | undefined;
   const saveBands = useMutation(
-    "functions/academic/gradingBands:saveGradingBands" as never
+    api.functions.academic.gradingBands.saveGradingBands
   );
 
   const [draftBands, setDraftBands] = useState<GradingBandDraft[]>([]);
@@ -76,7 +77,7 @@ function LiveGradingBandsPage() {
         gradeLetter: b.gradeLetter,
         remark: b.remark,
       })),
-    } as never);
+    });
     setHasUnsavedChanges(false);
   }, [draftBands, saveBands]);
 

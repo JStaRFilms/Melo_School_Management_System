@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { AdminSurface } from "@/components/ui/AdminSurface";
@@ -42,14 +43,14 @@ export function ClassAggregationManager({
   offerings: ClassOffering[] | undefined;
 }) {
   const aggregations = useQuery(
-    "functions/academic/subjectAggregations:getClassSubjectAggregations" as never,
-    classId ? ({ classId } as never) : ("skip" as never)
+    api.functions.academic.subjectAggregations.getClassSubjectAggregations,
+    classId ? { classId } : "skip"
   ) as AggregationRecord[] | undefined;
   const saveAggregation = useMutation(
-    "functions/academic/subjectAggregations:saveClassSubjectAggregation" as never
+    api.functions.academic.subjectAggregations.saveClassSubjectAggregation
   );
   const removeAggregation = useMutation(
-    "functions/academic/subjectAggregations:removeClassSubjectAggregation" as never
+    api.functions.academic.subjectAggregations.removeClassSubjectAggregation
   );
 
   const [editingAggregationId, setEditingAggregationId] = useState<string | null>(
@@ -148,7 +149,7 @@ export function ClassAggregationManager({
               }
             : {}),
         })),
-      } as never);
+      });
       appToast.success(
         editingAggregationId
           ? "Sync successful."
@@ -177,7 +178,7 @@ export function ClassAggregationManager({
     setError(null);
 
     try {
-      await removeAggregation({ aggregationId: removingAggregationId } as never);
+      await removeAggregation({ aggregationId: removingAggregationId });
       if (editingAggregationId === removingAggregationId) {
         resetForm();
       }

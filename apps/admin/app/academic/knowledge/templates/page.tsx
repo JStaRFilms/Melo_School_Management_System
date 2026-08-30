@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import type { SubjectRecord } from "@/types";
@@ -69,8 +70,8 @@ function parseWholeNumber(value: string, label: string, minimum: number) {
 }
 
 export default function InstructionTemplateStudioPage() {
-  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
+  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as SubjectRecord[] | undefined;
+  const classes = useQuery(api.functions.academic.academicSetup.listClasses) as ClassOptionRecord[] | undefined;
   const [outputType, setOutputType] = useState<InstructionTemplateOutputType>("lesson_plan");
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -93,14 +94,14 @@ export default function InstructionTemplateStudioPage() {
   }, [classes]);
 
   const data = useQuery(
-    "functions/academic/lessonKnowledgeTemplates:listInstructionTemplates" as never,
-    ({
+    api.functions.academic.lessonKnowledgeTemplates.listInstructionTemplates,
+    {
       outputType,
       searchQuery: deferredSearchQuery.trim() || undefined,
-    } as never)
+    }
   ) as InstructionTemplateListResponse | undefined;
 
-  const saveTemplate = useMutation("functions/academic/lessonKnowledgeTemplates:saveInstructionTemplate" as never);
+  const saveTemplate = useMutation(api.functions.academic.lessonKnowledgeTemplates.saveInstructionTemplate);
 
   const templates = useMemo(() => data?.templates ?? [], [data]);
   const summary = useMemo(
@@ -137,7 +138,7 @@ export default function InstructionTemplateStudioPage() {
             ? parseWholeNumber(section.minimumWordCount, `Minimum word count for ${section.label || "section"}`, 1)
             : null,
         })),
-      } as never)) as string;
+      })) as string;
     } catch (error) {
       throw new Error(getUserFacingErrorMessage(error, "Failed to save template."));
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import {
   ArrowUpDown,
   Calendar,
@@ -64,18 +65,18 @@ function timelineEventLabel(eventType: TimelineAuditEvent["eventType"]) {
 
 export default function SessionsPage() {
   const sessions = useQuery(
-    "functions/academic/academicSetup:listSessions" as never
+    api.functions.academic.academicSetup.listSessions
   ) as SessionRecord[] | undefined;
 
   const auditEvents = useQuery(
-    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
+    api.functions.academic.academicSetup.listAcademicTimelineAuditEvents
   ) as TimelineAuditEvent[] | undefined;
 
   const updateSession = useMutation(
-    "functions/academic/academicSetup:updateSession" as never
+    api.functions.academic.academicSetup.updateSession
   );
   const archiveSession = useMutation(
-    "functions/academic/academicSetup:archiveSession" as never
+    api.functions.academic.academicSetup.archiveSession
   );
 
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
@@ -110,7 +111,7 @@ export default function SessionsPage() {
   const handleMakeActive = async (sessionId: string) => {
     setSwappingSessionId(sessionId);
     try {
-      await updateSession({ sessionId, isActive: true } as never);
+      await updateSession({ sessionId, isActive: true });
       appToast.success("Active Session Swapped", {
         description: "The selected academic session is now live as the primary school calendar.",
       });
@@ -125,7 +126,7 @@ export default function SessionsPage() {
 
   const handleArchive = async (sessionId: string) => {
     try {
-      await archiveSession({ sessionId } as never);
+      await archiveSession({ sessionId });
       appToast.success("Session Archived", {
         description: "The session has been moved to history.",
       });

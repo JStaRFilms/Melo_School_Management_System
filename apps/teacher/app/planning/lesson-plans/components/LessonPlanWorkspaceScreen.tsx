@@ -28,6 +28,7 @@ import {
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { useConvex } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 
 import type {
   LessonPlanSaveResult,
@@ -213,10 +214,10 @@ export function LessonPlanWorkspaceScreen({
   const handleRestoreRevision = async (revisionId: string) => {
     try {
       setIsRestoring(true);
-      const content = await convex.query(
-        "functions/academic/lessonKnowledgeLessonPlans:getTeacherInstructionArtifactRevisionContent" as never,
-        { revisionId } as never
-      ) as { title: string; documentState: string; plainText: string };
+      const content = (await convex.query(
+        api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionArtifactRevisionContent,
+        { revisionId }
+      )) as { title: string; documentState: string; plainText: string };
 
       if (content) {
         setTitle(content.title);

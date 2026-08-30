@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useMemo, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { isConvexConfigured } from "@/convex-runtime";
 import {
   SlidersHorizontal,
@@ -540,11 +541,11 @@ function SchoolsListPageWithConvex() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "pending" | "suspended">("all");
 
   const schools = useQuery(
-    "functions/platform/index:listSchools" as never,
-    {} as never
+    api.functions.platform.index.listSchools,
+    {}
   ) as SchoolItem[] | undefined;
 
-  const setStatus = useMutation("functions/platform/index:setSchoolStatus" as never);
+  const setStatus = useMutation(api.functions.platform.index.setSchoolStatus);
 
   const filteredSchools = useMemo(() => {
     if (!schools) return [];
@@ -569,9 +570,9 @@ function SchoolsListPageWithConvex() {
     setIsUpdatingStatus(true);
     try {
       await setStatus({
-        schoolId: statusModalSchool._id as never,
-        status: nextStatus as never,
-      } as never);
+        schoolId: statusModalSchool._id,
+        status: nextStatus,
+      });
 
       appToast.success(
         nextStatus === "suspended" ? "School suspended" : "School reactivated",

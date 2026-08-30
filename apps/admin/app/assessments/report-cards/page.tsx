@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import {
   ReportCardBatchNavigator,
   ReportCardBatchPrintStackV2,
@@ -48,15 +49,15 @@ function AdminReportCardPageContent() {
   const hasTriggeredClassPrintRef = useRef(false);
 
   const reportCard = useQuery(
-    "functions/academic/reportCards:getStudentReportCard" as never,
+    api.functions.academic.reportCards.getStudentReportCard,
     studentId && sessionId && termId
-      ? ({
+      ? {
           studentId,
           sessionId,
           termId,
           ...(classIdParam ? { classId: classIdParam } : {}),
-        } as never)
-      : ("skip" as never)
+        }
+      : "skip"
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
   const extrasHref = buildReportCardExtrasHref({
@@ -66,16 +67,16 @@ function AdminReportCardPageContent() {
     classId: resolvedClassId,
   });
   const batchStudents = useQuery(
-    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
+    api.functions.academic.reportCards.getStudentsForReportCardBatch,
     sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
-      : ("skip" as never)
+      ? { classId: resolvedClassId, sessionId, termId }
+      : "skip"
   ) as ReportCardBatchStudent[] | undefined;
   const classReportCards = useQuery(
-    "functions/academic/reportCards:getClassReportCards" as never,
+    api.functions.academic.reportCards.getClassReportCards,
     isPrintClassMode && sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
-      : ("skip" as never)
+      ? { classId: resolvedClassId, sessionId, termId }
+      : "skip"
   ) as ReportCardSheetData[] | undefined;
   const blockedClassPrintCount =
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;

@@ -2,6 +2,7 @@
 
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { api } from "@school/convex/_generated/api";
 import { useMutation,useQuery } from "convex/react";
 import {
 Archive,
@@ -43,15 +44,15 @@ function LoadingShell() {
 
 export default function ArchivedRecordsPage() {
   const archiveData = useQuery(
-    "functions/academic/archiveRecords:listArchivedRecords" as never
+    api.functions.academic.archiveRecords.listArchivedRecords
   ) as ArchivedRecordsQueryResult | undefined;
-  
-  const restoreTeacher = useMutation("functions/academic/academicSetup:restoreTeacher" as never);
-  const restoreSession = useMutation("functions/academic/academicSetup:restoreSession" as never);
-  const restoreClass = useMutation("functions/academic/academicSetup:restoreClass" as never);
-  const restoreSubject = useMutation("functions/academic/academicSetup:restoreSubject" as never);
-  const restoreStudent = useMutation("functions/academic/studentEnrollment:restoreStudent" as never);
-  const restoreEvent = useMutation("functions/academic/events:restoreEvent" as never);
+
+  const restoreTeacher = useMutation(api.functions.academic.academicSetup.restoreTeacher);
+  const restoreSession = useMutation(api.functions.academic.academicSetup.restoreSession);
+  const restoreClass = useMutation(api.functions.academic.academicSetup.restoreClass);
+  const restoreSubject = useMutation(api.functions.academic.academicSetup.restoreSubject);
+  const restoreStudent = useMutation(api.functions.academic.studentEnrollment.restoreStudent);
+  const restoreEvent = useMutation(api.functions.academic.events.restoreEvent);
 
   const [activeType, setActiveType] = useState<ArchiveFilterType>("all");
   const [searchValue, setSearchValue] = useState("");
@@ -101,12 +102,12 @@ export default function ArchivedRecordsPage() {
 
     try {
       switch (selectedRecord.type) {
-        case "teacher": await restoreTeacher({ teacherId: selectedRecord.recordId as never }); break;
-        case "session": await restoreSession({ sessionId: selectedRecord.recordId as never }); break;
-        case "class": await restoreClass({ classId: selectedRecord.recordId as never }); break;
-        case "subject": await restoreSubject({ subjectId: selectedRecord.recordId as never }); break;
-        case "student": await restoreStudent({ studentId: selectedRecord.recordId as never }); break;
-        case "event": await restoreEvent({ eventId: selectedRecord.recordId as never }); break;
+        case "teacher": await restoreTeacher({ teacherId: selectedRecord.recordId }); break;
+        case "session": await restoreSession({ sessionId: selectedRecord.recordId }); break;
+        case "class": await restoreClass({ classId: selectedRecord.recordId }); break;
+        case "subject": await restoreSubject({ subjectId: selectedRecord.recordId }); break;
+        case "student": await restoreStudent({ studentId: selectedRecord.recordId }); break;
+        case "event": await restoreEvent({ eventId: selectedRecord.recordId }); break;
         case "knowledgeMaterial": throw new Error("Restore knowledge materials from the Knowledge Library for now.");
         default: throw new Error("Unsupported record type");
       }

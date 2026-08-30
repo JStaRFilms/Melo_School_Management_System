@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { 
   ClipboardList, 
   FileText, 
@@ -92,10 +93,10 @@ function normalizeTopicTitle(value: string) {
 
 export default function PlanningIndexPage() {
   const classes = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    api.functions.academic.teacherSelectors.getTeacherAssignableClasses
   ) as ClassOption[] | undefined;
   const terms = useQuery(
-    "functions/academic/teacherSelectors:getTeacherActiveTerms" as never
+    api.functions.academic.teacherSelectors.getTeacherActiveTerms
   ) as TermOption[] | undefined;
 
   const [topicClassId, setTopicClassId] = useState("");
@@ -129,38 +130,38 @@ export default function PlanningIndexPage() {
   const examLevel = readClassLevel(examClass);
 
   const topicSubjects = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
-    topicClassId ? ({ classId: topicClassId } as never) : ("skip" as never)
+    api.functions.academic.teacherSelectors.getTeacherAssignableSubjectsByClass,
+    topicClassId ? { classId: topicClassId } : "skip"
   ) as SubjectOption[] | undefined;
   const examSubjects = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
-    examClassId ? ({ classId: examClassId } as never) : ("skip" as never)
+    api.functions.academic.teacherSelectors.getTeacherAssignableSubjectsByClass,
+    examClassId ? { classId: examClassId } : "skip"
   ) as SubjectOption[] | undefined;
 
   const topicOptions = useQuery(
-    "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
+    api.functions.academic.lessonKnowledgeTeacher.listTeacherKnowledgeTopics,
     topicSubjectId && topicLevel && topicTermId
-      ? ({ subjectId: topicSubjectId, level: topicLevel, termId: topicTermId, limit: 80 } as never)
-      : ("skip" as never)
+      ? { subjectId: topicSubjectId, level: topicLevel, termId: topicTermId, limit: 80 }
+      : "skip"
   ) as TopicOption[] | undefined;
-  
+
   const createTopic = useMutation(
-    "functions/academic/lessonKnowledgeTeacher:createTeacherKnowledgeTopic" as never
+    api.functions.academic.lessonKnowledgeTeacher.createTeacherKnowledgeTopic
   );
-  
+
   const examTopics = useQuery(
-    "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
+    api.functions.academic.lessonKnowledgeTeacher.listTeacherKnowledgeTopics,
     examSubjectId && examLevel && examTermId
-      ? ({ subjectId: examSubjectId, level: examLevel, termId: examTermId, limit: 80 } as never)
-      : ("skip" as never)
+      ? { subjectId: examSubjectId, level: examLevel, termId: examTermId, limit: 80 }
+      : "skip"
   ) as TopicOption[] | undefined;
-  
+
   const planningWork = useQuery(
-    "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
+    api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork,
     {
       searchQuery: workSearchQuery.trim() || undefined,
       limit: 18,
-    } as never
+    }
   ) as PlanningWorkItem[] | undefined;
 
   useEffect(() => {
@@ -262,10 +263,10 @@ export default function PlanningIndexPage() {
     try {
       const created = (await createTopic({
         title,
-        subjectId: topicSubjectId as never,
+        subjectId: topicSubjectId,
         level: topicLevel,
-        termId: topicTermId as never,
-      } as never)) as { topicId: string; title: string; duplicateOf?: string | null };
+        termId: topicTermId,
+      })) as { topicId: string; title: string; duplicateOf?: string | null };
       setTopicId(created.topicId);
       setTopicInput(created.title);
       setTopicNotice(created.duplicateOf ? "Existing topic selected." : "Topic created.");

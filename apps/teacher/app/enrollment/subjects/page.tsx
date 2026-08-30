@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { BookOpen, ShieldAlert, Sparkles, Users } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 
@@ -19,24 +20,24 @@ import type {
 
 export default function TeacherSubjectSelectionPage() {
   const sessions = useQuery(
-    "functions/academic/teacherSelectors:getTeacherSessions" as never
+    api.functions.academic.teacherSelectors.getTeacherSessions
   ) as SessionSummary[] | undefined;
   const classes = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    api.functions.academic.teacherSelectors.getTeacherAssignableClasses
   ) as ClassSummary[] | undefined;
 
   const setStudentSubjectSelections = useMutation(
-    "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
+    api.functions.academic.studentEnrollment.setStudentSubjectSelections
   );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
   const matrix = useQuery(
-    "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
+    api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix,
     selectedClassId && selectedSessionId
-      ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never)
-      : ("skip" as never)
+      ? { classId: selectedClassId, sessionId: selectedSessionId }
+      : "skip"
   ) as EnrollmentMatrix | undefined;
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export default function TeacherSubjectSelectionPage() {
           classId: selectedClassId,
           sessionId: selectedSessionId,
           subjectIds: nextSubjectIds,
-        } as never);
+        });
         appToast.success("Subject selection saved", {
           id: `teacher-subject-selection-${studentId}`,
           description: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,
@@ -124,7 +125,7 @@ export default function TeacherSubjectSelectionPage() {
           classId: selectedClassId,
           sessionId: selectedSessionId,
           subjectIds,
-        } as never);
+        });
         appToast.success("Subject selection saved", {
           id: `teacher-subject-selection-${studentId}`,
           description: `Saved subject updates for ${humanNameFinalStrict(student.studentName)}.`,

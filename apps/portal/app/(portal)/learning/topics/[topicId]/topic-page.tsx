@@ -15,6 +15,7 @@ function isSupportedPortalUpload(file: File) {
   );
 }
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 interface PortalTopicMaterialSourceProof {
@@ -141,10 +142,10 @@ export function TopicPage({ topicId }: { topicId: string }) {
   const searchParams = useSearchParams();
   const studentId = searchParams.get("studentId");
   const topicData = useQuery(
-    "functions/academic/lessonKnowledgePortal:getPortalTopicPageData" as never,
-    { topicId, studentId: studentId ? (studentId as never) : (null as never) } as never
+    api.functions.academic.lessonKnowledgePortal.getPortalTopicPageData,
+    { topicId, studentId: studentId ?? null }
   ) as PortalTopicPageData | undefined;
-  const requestUpload = useMutation("functions/academic/lessonKnowledgePortal:requestPortalSupplementalUploadUrl" as never) as unknown as (args: {
+  const requestUpload = useMutation(api.functions.academic.lessonKnowledgePortal.requestPortalSupplementalUploadUrl) as unknown as (args: {
     topicId: string;
     title: string;
     description: string | null;
@@ -152,7 +153,7 @@ export function TopicPage({ topicId }: { topicId: string }) {
     fileSize: number;
     studentId?: string | null;
   }) => Promise<{ materialId: string; uploadUrl: string }>;
-  const finalizeUpload = useMutation("functions/academic/lessonKnowledgePortal:finalizePortalSupplementalUpload" as never) as unknown as (args: {
+  const finalizeUpload = useMutation(api.functions.academic.lessonKnowledgePortal.finalizePortalSupplementalUpload) as unknown as (args: {
     materialId: string;
     storageId: string;
     studentId?: string | null;

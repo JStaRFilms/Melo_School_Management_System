@@ -224,7 +224,7 @@ export default function BillingPage() {
         payerName: paymentDraft.payerName || undefined,
         payerEmail: paymentDraft.payerEmail || undefined,
         notes: paymentDraft.notes || undefined,
-      } as never);
+      });
     }, "Payment Recorded", "Unable to save manual payment.");
     if (success) {
       setPaymentDraft(initialPaymentDraft());
@@ -268,7 +268,7 @@ export default function BillingPage() {
           firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
         },
         lineItems: validLineItems,
-      } as never);
+      });
     }, "Fee Plan Created", "Unable to create new fee plan.");
     if (success) {
       setFeePlanDraft(initialFeePlanDraft());
@@ -284,7 +284,7 @@ export default function BillingPage() {
         classId: feePlanApplicationDraft.classId,
         sessionId: feePlanApplicationDraft.sessionId,
         termId: feePlanApplicationDraft.termId,
-      } as never);
+      });
     }, "Invoices Generated", "Unable to distribute invoices for class.");
     if (success) {
       setFeePlanApplicationDraft(initialFeePlanApplicationDraft());
@@ -311,7 +311,7 @@ export default function BillingPage() {
         email: paymentLinkDraft.email,
         description: paymentLinkDraft.description.trim() || fallbackDescription,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
-      } as never) as PaymentLinkActionResult;
+      }) as PaymentLinkActionResult;
 
       setGeneratedPaymentLink({
         provider: result?.provider ?? "paystack",
@@ -362,7 +362,7 @@ export default function BillingPage() {
         email: financePackPaymentEmail,
         description: `Payment for ${selectedFinanceInvoice.invoice.invoiceNumber}`,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
-        } as never) as PaymentLinkActionResult;
+        } as PaymentLinkActionResult;
 
         const nextPaymentLink: PaymentLinkResult = {
         provider: result?.provider ?? "paystack",
@@ -394,7 +394,7 @@ export default function BillingPage() {
       await actions.saveBillingSettings({
         ...billingSettingsDraft,
         defaultDueDays: Number(billingSettingsDraft.defaultDueDays),
-      } as never);
+      });
     }, "Settings Updated", "Unable to update billing configuration.");
   };
 
@@ -404,14 +404,14 @@ export default function BillingPage() {
         mode: selectedGatewayMode,
         publicKey: gatewayConfigDraft.publicKey.trim() || null,
         secretKey: gatewayConfigDraft.secretKey.trim() || null,
-      } as never);
+      });
       setGatewayConfigDraft((c: any) => ({ ...c, secretKey: "" }));
     }, "Merchant Credentials Saved", "Unable to save Paystack API keys.");
   };
 
   const handleValidateGatewayConfig = async () => {
     await actions.runAction(async () => {
-      await actions.validateSchoolPaystackGatewayConfig({ mode: selectedGatewayMode } as never);
+      await actions.validateSchoolPaystackGatewayConfig({ mode: selectedGatewayMode });
     }, "Credentials Validated", "Verification failed for merchant credentials.");
   };
 

@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import {
   BookOpenText,
   Clock3,
@@ -153,17 +154,17 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 }
 
 export default function KnowledgeLibraryPage() {
-  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
-  const topics = useQuery("functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeTopics" as never) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
+  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as SubjectRecord[] | undefined;
+  const classes = useQuery(api.functions.academic.academicSetup.listClasses) as ClassOptionRecord[] | undefined;
+  const topics = useQuery(api.functions.academic.lessonKnowledgeAdmin.listAdminKnowledgeTopics) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
 
   const [filters, setFilters] = useState<KnowledgeLibraryFilterState>(DEFAULT_FILTERS);
   const isMobile = useIsMobile();
   const deferredSearch = useDeferredValue(filters.searchQuery);
   const queryArgs = useKnowledgeLibraryQueryArgs(filters, deferredSearch);
   const libraryData = useQuery(
-    "functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeMaterials" as never,
-    queryArgs as never
+    api.functions.academic.lessonKnowledgeAdmin.listAdminKnowledgeMaterials,
+    queryArgs
   ) as KnowledgeLibraryListResponse | undefined;
 
   const levelOptions = useMemo(() => buildLevelOptions(classes), [classes]);
@@ -174,13 +175,13 @@ export default function KnowledgeLibraryPage() {
   const [isSavingState, setIsSavingState] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
-  const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
-  const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
-  const createTopic = useMutation("functions/academic/lessonKnowledgeAdmin:createAdminKnowledgeTopic" as never);
+  const updateDetails = useMutation(api.functions.academic.lessonKnowledgeAdmin.updateAdminKnowledgeMaterialDetails);
+  const updateState = useMutation(api.functions.academic.lessonKnowledgeAdmin.updateAdminKnowledgeMaterialState);
+  const createTopic = useMutation(api.functions.academic.lessonKnowledgeAdmin.createAdminKnowledgeTopic);
 
   const detailQuery = useQuery(
-    "functions/academic/lessonKnowledgeAdmin:getAdminKnowledgeMaterial" as never,
-    selectedMaterialId ? ({ materialId: selectedMaterialId } as never) : ("skip" as never)
+    api.functions.academic.lessonKnowledgeAdmin.getAdminKnowledgeMaterial,
+    selectedMaterialId ? { materialId: selectedMaterialId } : "skip"
   ) as KnowledgeLibraryDetailResponse | undefined;
 
   useEffect(() => {
@@ -283,7 +284,7 @@ export default function KnowledgeLibraryPage() {
         level: args.level,
         topicLabel: args.topicLabel,
         ...(args.topicId ? { topicId: args.topicId } : {}),
-      } as never);
+      });
       showNotice({ tone: "success", title: "Material updated", message: "Material details were saved." });
     } catch (error) {
       showNotice({
@@ -311,7 +312,7 @@ export default function KnowledgeLibraryPage() {
         summary: args.summary ?? null,
         subjectId: args.subjectId,
         level: args.level,
-      } as never)) as {
+      })) as {
         _id: string;
         title: string;
         subjectId: string;
@@ -352,7 +353,7 @@ export default function KnowledgeLibraryPage() {
         materialId: args.materialId,
         ...(args.visibility ? { visibility: args.visibility } : {}),
         ...(args.reviewStatus ? { reviewStatus: args.reviewStatus } : {}),
-      } as never)) as {
+      })) as {
         materialId: string;
         visibility: KnowledgeMaterialVisibility;
         reviewStatus: KnowledgeMaterialReviewStatus;

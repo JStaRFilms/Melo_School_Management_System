@@ -202,7 +202,7 @@ export default function LessonPlansPage() {
         topicLabel: effectiveTopicLabel,
         planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
         revisionKind: "manual_save",
-      } as never)) as LessonPlanSaveResult;
+      })) as LessonPlanSaveResult;
 
       return result;
     } catch (error) {

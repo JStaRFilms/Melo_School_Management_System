@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, CalendarDays, Layers3, School2 } from "lucide-react";
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -37,16 +38,16 @@ function HistoricalBackfillPageContent() {
   );
 
   const sessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    api.functions.academic.adminSelectors.getAdminSessions
   ) as SelectorOption[] | undefined;
   const terms = useQuery(
-    "functions/academic/adminSelectors:getTermsBySession" as never,
+    api.functions.academic.adminSelectors.getTermsBySession,
     selection.sessionId
-      ? ({ sessionId: selection.sessionId } as never)
-      : ("skip" as never)
+      ? { sessionId: selection.sessionId }
+      : "skip"
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    "functions/academic/adminSelectors:getAllClasses" as never
+    api.functions.academic.adminSelectors.getAllClasses
   ) as SelectorOption[] | undefined;
 
   const classIsValid = !selection.classId || classes?.some((option) => option.id === selection.classId);
@@ -54,26 +55,26 @@ function HistoricalBackfillPageContent() {
   const sessionIsValid = !selection.sessionId || sessions?.some((option) => option.id === selection.sessionId);
 
   const students = useQuery(
-    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
+    api.functions.academic.reportCards.getStudentsForReportCardBatch,
     selection.sessionId && selection.termId && selection.classId && classIsValid && termIsValid && sessionIsValid
-      ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
-      : ("skip" as never)
+      ? { sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId }
+      : "skip"
   ) as HistoricalBackfillStudent[] | undefined;
   const subjects = useQuery(
-    "functions/academic/adminSelectors:getSubjectsByClass" as never,
+    api.functions.academic.adminSelectors.getSubjectsByClass,
     selection.classId && classIsValid
-      ? ({ classId: selection.classId } as never)
-      : ("skip" as never)
+      ? { classId: selection.classId }
+      : "skip"
   ) as HistoricalBackfillSubject[] | undefined;
   const existingTotals = useQuery(
-    "functions/academic/historicalTermTotals:listHistoricalTermTotalsForClassTerm" as never,
+    api.functions.academic.historicalTermTotals.listHistoricalTermTotalsForClassTerm,
     selection.sessionId && selection.termId && selection.classId && classIsValid && termIsValid && sessionIsValid
-      ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
-      : ("skip" as never)
+      ? { sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId }
+      : "skip"
   ) as HistoricalBackfillSnapshot[] | undefined;
 
   const saveHistoricalTotals = useMutation(
-    "functions/academic/historicalTermTotals:saveHistoricalTermTotalsBulk" as never
+    api.functions.academic.historicalTermTotals.saveHistoricalTermTotalsBulk
   );
 
   const replaceSelection = useCallback(
@@ -132,7 +133,7 @@ function HistoricalBackfillPageContent() {
         notes?: string | null;
       }>;
     }) =>
-      (await saveHistoricalTotals(args as never)) as {
+      (await saveHistoricalTotals(args)) as {
         created: number;
         updated: number;
       },

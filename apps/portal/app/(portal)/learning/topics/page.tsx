@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { Search, X } from "lucide-react";
 
 interface PortalTopicListItem {
@@ -26,8 +27,8 @@ export default function PortalLearningTopicsPage() {
   const searchParams = useSearchParams();
   const studentId = searchParams.get("studentId");
   const data = useQuery(
-    "functions/academic/lessonKnowledgePortal:getPortalTopicIndexData" as never,
-    { studentId: studentId ? (studentId as never) : (null as never) } as never
+    api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData,
+    { studentId: studentId ?? null }
   ) as PortalTopicIndexData | undefined;
   const [searchQuery, setSearchQuery] = useState("");
 

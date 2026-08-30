@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BookOpenCheck, ClipboardCheck, FileCheck2, FileText, ListChecks, NotebookPen, Sparkles } from "lucide-react";
 import { useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { ReadinessContextBar } from "./components/ReadinessContextBar";
@@ -26,13 +27,13 @@ function uniqueLevels(classes: ClassRecord[] | undefined): SelectOption[] {
 }
 
 export default function CurriculumReadinessPage() {
-  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassRecord[] | undefined;
-  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
+  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as Subject[] | undefined;
+  const classes = useQuery(api.functions.academic.academicSetup.listClasses) as ClassRecord[] | undefined;
+  const sessions = useQuery(api.functions.academic.academicSetup.listSessions) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
   const terms = useQuery(
-    "functions/academic/academicSetup:listTermsBySession" as never,
-    activeSession ? { sessionId: activeSession._id } as never : "skip" as never,
+    api.functions.academic.academicSetup.listTermsBySession,
+    activeSession ? { sessionId: activeSession._id } : "skip",
   ) as Term[] | undefined;
   const activeTerm = terms?.find((term) => term.isActive);
   const subjectOptions = useMemo(() => (subjects ?? []).map((subject) => ({ value: subject._id, label: subject.name })), [subjects]);
@@ -49,8 +50,8 @@ export default function CurriculumReadinessPage() {
   }, [activeTerm?._id, termId, terms]);
 
   const readiness = useQuery(
-    "functions/academic/curriculumReadiness:getAdminCurriculumReadiness" as never,
-    subjectId && level && termId ? { subjectId, level: level.trim(), termId } as never : "skip" as never,
+    api.functions.academic.curriculumReadiness.getAdminCurriculumReadiness,
+    subjectId && level && termId ? { subjectId, level: level.trim(), termId } : "skip",
   ) as CurriculumReadinessResponse | undefined;
   const isLoading = Boolean(subjectId && level && termId) && readiness === undefined;
   const contextReady = Boolean(subjectId && level && termId);

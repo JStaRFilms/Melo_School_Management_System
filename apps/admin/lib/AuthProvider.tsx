@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import type { AuthSession } from "@school/auth";
 import { authClient } from "@/auth-client";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -86,8 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Fetch enriched viewer context from Convex when authenticated
   const viewerContext = useQuery(
-    "functions/auth:getViewerContext" as never,
-    isConvexConfigured() && session?.user ? ({} as never) : ("skip" as never)
+    api.functions.auth.getViewerContext,
+    isConvexConfigured() && session?.user ? {} : "skip"
   ) as { role?: string; schoolId?: string } | null | undefined;
 
   const mappedSession = useMemo(

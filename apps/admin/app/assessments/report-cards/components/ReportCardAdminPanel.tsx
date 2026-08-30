@@ -3,15 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import type { ReportCardSheetData } from "@school/shared";
-import { 
-  MessageSquare, 
-  Calendar, 
-  Users, 
-  Image as ImageIcon, 
-  Save, 
-  Trash2, 
-  Plus 
+import {
+  MessageSquare,
+  Calendar,
+  Users,
+  Image as ImageIcon,
+  Save,
+  Trash2,
+  Plus
 } from "lucide-react";
 
 function formatDateInputValue(value: number | null) {
@@ -63,8 +64,8 @@ export function ReportCardAdminPanel({
   reportCard: ReportCardSheetData;
 }) {
   const termSettings = useQuery(
-    "functions/academic/reportCardTermSettings:getTermReportCardSettings" as never,
-    termId ? ({ termId } as never) : ("skip" as never)
+    api.functions.academic.reportCardTermSettings.getTermReportCardSettings,
+    termId ? { termId } : "skip"
   ) as
     | {
         termId: string;
@@ -82,19 +83,19 @@ export function ReportCardAdminPanel({
       }
     | undefined;
   const classes = useQuery(
-    "functions/academic/adminSelectors:getAllClasses" as never
+    api.functions.academic.adminSelectors.getAllClasses
   ) as Array<{ id: string; name: string }> | undefined;
   const saveComments = useMutation(
-    "functions/academic/reportCards:saveStudentReportCardComments" as never
+    api.functions.academic.reportCards.saveStudentReportCardComments
   );
   const saveTermDefaults = useMutation(
-    "functions/academic/reportCardTermSettings:saveTermReportCardDefaults" as never
+    api.functions.academic.reportCardTermSettings.saveTermReportCardDefaults
   );
   const saveTermGroup = useMutation(
-    "functions/academic/reportCardTermSettings:saveTermReportCardSettingGroup" as never
+    api.functions.academic.reportCardTermSettings.saveTermReportCardSettingGroup
   );
   const deleteTermGroup = useMutation(
-    "functions/academic/reportCardTermSettings:deleteTermReportCardSettingGroup" as never
+    api.functions.academic.reportCardTermSettings.deleteTermReportCardSettingGroup
   );
 
   const [classTeacherComment, setClassTeacherComment] = useState(
@@ -186,7 +187,7 @@ export function ReportCardAdminPanel({
         termId,
         classTeacherComment,
         headTeacherComment,
-      } as never);
+      });
       setCommentSuccess("Comments saved.");
     } catch (error) {
       setCommentError(
@@ -224,7 +225,7 @@ export function ReportCardAdminPanel({
           termSettings?.resultCalculationMode ??
           reportCard.resultCalculationMode ??
           "standalone",
-      } as never);
+      });
       setTermDefaultsSuccess("Term defaults saved.");
     } catch (error) {
       setTermDefaultsError(
@@ -261,7 +262,7 @@ export function ReportCardAdminPanel({
         classIds: groupClassIds,
         nextTermBegins,
         timesSchoolOpened: parseIntegerInputValue(groupTimesOpened),
-      } as never)) as string;
+      })) as string;
       setSelectedGroupId(nextGroupId);
       setGroupSuccess("Class group saved.");
     } catch (error) {
@@ -281,7 +282,7 @@ export function ReportCardAdminPanel({
     setGroupError(null);
     setGroupSuccess(null);
     try {
-      await deleteTermGroup({ groupId } as never);
+      await deleteTermGroup({ groupId });
       setSelectedGroupId(null);
       setGroupSuccess("Group removed.");
     } catch (error) {

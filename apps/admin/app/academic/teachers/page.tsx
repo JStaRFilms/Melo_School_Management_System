@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { Search, GraduationCap, Sparkles, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -45,13 +46,13 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 
 export default function TeachersPage() {
   const teachers = useQuery(
-    "functions/academic/academicSetup:listTeachers" as never
+    api.functions.academic.academicSetup.listTeachers
   ) as TeacherRecord[] | undefined;
-  
-  const createTeacher = useAction("functions/academic/academicSetup:createTeacher" as never);
-  const updateTeacherProfile = useAction("functions/academic/academicSetup:updateTeacherProfile" as never);
-  const resetTeacherPassword = useAction("functions/academic/academicSetup:resetTeacherPassword" as never);
-  const archiveTeacher = useMutation("functions/academic/academicSetup:archiveTeacher" as never);
+
+  const createTeacher = useAction(api.functions.academic.academicSetup.createTeacher);
+  const updateTeacherProfile = useAction(api.functions.academic.academicSetup.updateTeacherProfile);
+  const resetTeacherPassword = useAction(api.functions.academic.academicSetup.resetTeacherPassword);
+  const archiveTeacher = useMutation(api.functions.academic.academicSetup.archiveTeacher);
 
   const [search, setSearch] = useState("");
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
@@ -78,10 +79,10 @@ export default function TeachersPage() {
     teachers?.find((t) => t._id === selectedTeacherId) ?? null,
   [teachers, selectedTeacherId]);
   const selectedTeacherArchiveBlockers = useQuery(
-    "functions/academic/academicSetup:getTeacherArchiveBlockers" as never,
+    api.functions.academic.academicSetup.getTeacherArchiveBlockers,
     selectedTeacherId
-      ? ({ teacherId: selectedTeacherId } as never)
-      : ("skip" as never)
+      ? { teacherId: selectedTeacherId }
+      : "skip"
   ) as string[] | undefined;
   const isArchiveStatusLoading =
     Boolean(selectedTeacherId) && selectedTeacherArchiveBlockers === undefined;
@@ -129,7 +130,7 @@ export default function TeachersPage() {
         email: email.trim().toLowerCase(),
         temporaryPassword: password.trim(),
         origin: window.location.origin,
-      } as never) as ProvisionResult;
+      }) as ProvisionResult;
       
       showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
       return response;
@@ -148,7 +149,7 @@ export default function TeachersPage() {
   const handleUpdate = async (id: string, name: string, email: string) => {
     setIsSaving(true);
     try {
-      await updateTeacherProfile({ teacherId: id, name, email } as never);
+      await updateTeacherProfile({ teacherId: id, name, email });
       showNotice({ tone: "success", title: "Record Updated", message: "Teacher information saved." });
     } catch (err) {
       showNotice({
@@ -164,7 +165,7 @@ export default function TeachersPage() {
   const handleResetPassword = async (id: string, password: string) => {
     setIsResetting(true);
     try {
-      await resetTeacherPassword({ teacherId: id, temporaryPassword: password } as never);
+      await resetTeacherPassword({ teacherId: id, temporaryPassword: password });
       showNotice({ tone: "success", title: "Password Updated", message: "New temporary password set." });
     } catch (err) {
       showNotice({
@@ -194,7 +195,7 @@ export default function TeachersPage() {
     if (!teacherToArchive) return;
     setIsArchiving(true);
     try {
-      await archiveTeacher({ teacherId: teacherToArchive._id } as never);
+      await archiveTeacher({ teacherId: teacherToArchive._id });
       if (selectedTeacherId === teacherToArchive._id) {
         setSelectedTeacherId(null);
       }

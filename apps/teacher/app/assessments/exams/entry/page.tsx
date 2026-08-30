@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { ExamEntryWorkspace } from "./components/ExamEntryWorkspace";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 import {
@@ -56,22 +57,22 @@ export default function ExamEntryPage() {
 
 function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
   const sessions = useQuery(
-    "functions/academic/teacherSelectors:getTeacherSessions" as never
+    api.functions.academic.teacherSelectors.getTeacherSessions
   ) as LegacySelectorOption[] | undefined;
   const terms = useQuery(
-    "functions/academic/teacherSelectors:getTermsBySession" as never,
+    api.functions.academic.teacherSelectors.getTermsBySession,
     selection.sessionId
-      ? ({ sessionId: selection.sessionId } as never)
-      : ("skip" as never)
+      ? { sessionId: selection.sessionId }
+      : "skip"
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    api.functions.academic.teacherSelectors.getTeacherAssignableClasses
   ) as LegacySelectorOption[] | undefined;
   const subjects = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
+    api.functions.academic.teacherSelectors.getTeacherAssignableSubjectsByClass,
     selection.classId
-      ? ({ classId: selection.classId } as never)
-      : ("skip" as never)
+      ? { classId: selection.classId }
+      : "skip"
   ) as SelectorOption[] | undefined;
   const isSelectedSubjectAvailable =
     !selection.subjectId ||
@@ -85,18 +86,18 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
       isSelectedSubjectAvailable
   );
   const sheetData = useQuery(
-    "functions/academic/assessmentRecords:getExamEntrySheet" as never,
+    api.functions.academic.assessmentRecords.getExamEntrySheet,
     isSheetReady
-      ? ({
+      ? {
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
           subjectId: selection.subjectId,
-        } as never)
-      : ("skip" as never)
+        }
+      : "skip"
   ) as ExamEntrySheetResponse | undefined;
   const upsertAssessmentRecordsBulk = useMutation(
-    "functions/academic/assessmentRecords:upsertAssessmentRecordsBulk" as never
+    api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk
   );
 
   const handleSaveRecords = useCallback(
@@ -112,7 +113,7 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
         ca3: number;
         examRawScore: number;
       }>;
-    }) => (await upsertAssessmentRecordsBulk(args as never)) as UpsertResponse,
+    }) => (await upsertAssessmentRecordsBulk(args)) as UpsertResponse,
     [upsertAssessmentRecordsBulk]
   );
 

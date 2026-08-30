@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert, Printer, ArrowLeft } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -60,7 +61,7 @@ function formatDateTime(value: number) {
 
 export function PaystackReturnClient({ reference }: { reference: string }) {
   const verifyPayment = useAction(
-    "functions/billing:verifyOnlinePaymentByReference" as never
+    api.functions.billing.verifyOnlinePaymentByReference
   );
   const [state, setState] = useState<VerificationState>("idle");
   const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);
@@ -81,7 +82,7 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
     try {
       const verification = (await verifyPayment({
         reference,
-      } as never)) as AdminPaymentVerificationResponse;
+      })) as AdminPaymentVerificationResponse;
       const mappedResult: PublicPaymentVerificationResult = {
         reference: verification.event.reference,
         verificationStatus: verification.event.verificationStatus,

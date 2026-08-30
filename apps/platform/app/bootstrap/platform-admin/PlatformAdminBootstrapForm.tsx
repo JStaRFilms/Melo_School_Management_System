@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -26,7 +27,7 @@ export function PlatformAdminBootstrapForm() {
 function PlatformAdminBootstrapFormWithConvex() {
   const router = useRouter();
   const bootstrapPlatformAdmin = useAction(
-    "functions/platform/bootstrap:bootstrapPlatformAdmin" as never
+    api.functions.platform.bootstrap.bootstrapPlatformAdmin
   );
 
   const [bootstrapToken, setBootstrapToken] = useState("");
@@ -78,7 +79,7 @@ function PlatformAdminBootstrapFormWithConvex() {
         adminEmail: trimmedEmail,
         adminPassword: password,
         origin: window.location.origin,
-      } as never)) as {
+      })) as {
         platformAdminId: string;
         adminEmail: string;
       };

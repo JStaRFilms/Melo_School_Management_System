@@ -1,16 +1,17 @@
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { api } from "@school/convex/_generated/api";
 import { useAction,useMutation } from "convex/react";
 
 export function useBillingActions() {
-  const saveBillingSettings = useMutation("functions/billing:upsertBillingSettings" as never);
-  const saveSchoolPaystackGatewayConfig = useMutation("functions/billingProviders:saveSchoolPaystackGatewayConfig" as never);
-  const validateSchoolPaystackGatewayConfig = useAction("functions/billingProviders:validateSchoolPaystackGatewayConfig" as never);
-  const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
-  const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
-  const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
-  const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
-  const createInvoicePaymentLink = useAction("functions/billing:initializeOnlinePayment" as never);
+  const saveBillingSettings = useMutation(api.functions.billing.upsertBillingSettings);
+  const saveSchoolPaystackGatewayConfig = useMutation(api.functions.billingProviders.saveSchoolPaystackGatewayConfig);
+  const validateSchoolPaystackGatewayConfig = useAction(api.functions.billingProviders.validateSchoolPaystackGatewayConfig);
+  const createFeePlan = useMutation(api.functions.billing.createFeePlan);
+  const createInvoice = useMutation(api.functions.billing.createInvoiceFromFeePlan);
+  const applyFeePlanToClassStudents = useMutation(api.functions.billing.applyFeePlanToClassStudents);
+  const recordPayment = useMutation(api.functions.billing.recordManualPayment);
+  const createInvoicePaymentLink = useAction(api.functions.billing.initializeOnlinePayment);
 
   const runAction = async (
     action: () => Promise<unknown>,

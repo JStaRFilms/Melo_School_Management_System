@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAction } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -24,7 +25,7 @@ export function PaystackReturnClient({
   returnHref: string;
 }) {
   const verifyPayment = useAction(
-    "functions/billing:verifyPortalOnlinePaymentByReference" as never
+    api.functions.billing.verifyPortalOnlinePaymentByReference
   );
   const [state, setState] = useState<VerificationState>("idle");
   const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);
@@ -42,7 +43,7 @@ export function PaystackReturnClient({
     setErrorMessage(null);
 
     try {
-      const verification = (await verifyPayment({ reference } as never)) as PublicPaymentVerificationResult;
+      const verification = (await verifyPayment({ reference })) as PublicPaymentVerificationResult;
       setResult(verification);
       setState(
         verification.verificationStatus === "verified" && verification.paymentRecorded

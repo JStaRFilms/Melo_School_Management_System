@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import {
   CalendarDays,
   Check,
@@ -51,7 +52,7 @@ export function TermCreationModal({
   existingTermCount = 0,
 }: TermCreationModalProps) {
   const [mounted, setMounted] = useState(false);
-  const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
+  const createTerm = useMutation(api.functions.academic.academicSetup.createTerm);
 
   const initialIndex = Math.min(existingTermCount, 2);
   const initialPreset = TERM_PRESETS[initialIndex] ?? TERM_PRESETS[0];
@@ -148,7 +149,7 @@ export function TermCreationModal({
         endDate: endTimestamp,
         isActive: activateTerm,
         resultCalculationMode,
-      } as never);
+      });
       appToast.success("Term created successfully", {
         description: `${normalizedName} added to ${sessionName}.`,
       });

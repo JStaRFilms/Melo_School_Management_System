@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { 
-  History, 
+import { api } from "@school/convex/_generated/api";
+import {
+  History,
   Settings2,
   ChevronRight,
   Calendar,
@@ -46,16 +47,16 @@ export default function ExamRecordingSettingsPage() {
 
 function LiveExamSettingsPage() {
   const settings = useQuery(
-    "functions/academic/settings:getSchoolAssessmentSettings" as never
+    api.functions.academic.settings.getSchoolAssessmentSettings
   ) as { examInputMode: ExamInputMode } | null | undefined;
   const sessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    api.functions.academic.adminSelectors.getAdminSessions
   ) as SelectorOption[] | undefined;
   const saveSettings = useMutation(
-    "functions/academic/settings:saveSchoolAssessmentSettings" as never
+    api.functions.academic.settings.saveSchoolAssessmentSettings
   );
   const saveAssessmentEditingPolicy = useMutation(
-    "functions/academic/assessmentEditingPolicies:saveAssessmentEditingPolicy" as never
+    api.functions.academic.assessmentEditingPolicies.saveAssessmentEditingPolicy
   );
 
   const [savedMode, setSavedMode] = useState<ExamInputMode>("raw40");
@@ -86,10 +87,10 @@ function LiveExamSettingsPage() {
   }, [policyDraft.sessionId, sessions]);
 
   const terms = useQuery(
-    "functions/academic/adminSelectors:getTermsBySession" as never,
+    api.functions.academic.adminSelectors.getTermsBySession,
     policyDraft.sessionId
-      ? ({ sessionId: policyDraft.sessionId } as never)
-      : ("skip" as never)
+      ? { sessionId: policyDraft.sessionId }
+      : "skip"
   ) as SelectorOption[] | undefined;
 
   useEffect(() => {
@@ -114,13 +115,13 @@ function LiveExamSettingsPage() {
   }, [policyDraft.sessionId, policyDraft.termId, terms]);
 
   const policy = useQuery(
-    "functions/academic/assessmentEditingPolicies:getAssessmentEditingPolicyForAdmin" as never,
+    api.functions.academic.assessmentEditingPolicies.getAssessmentEditingPolicyForAdmin,
     policyDraft.sessionId && policyDraft.termId
-      ? ({
+      ? {
           sessionId: policyDraft.sessionId,
           termId: policyDraft.termId,
-        } as never)
-      : ("skip" as never)
+        }
+      : "skip"
   ) as AssessmentEditingPolicyResponse | null | undefined;
 
   useEffect(() => {
@@ -194,13 +195,13 @@ function LiveExamSettingsPage() {
 
   const handleSave = useCallback(async () => {
     if (draftMode !== savedMode) {
-      await saveSettings({ examInputMode: draftMode } as never);
+      await saveSettings({ examInputMode: draftMode });
       setSavedMode(draftMode);
     }
 
     if (!isAssessmentEditingPolicyDraftEqual(policyDraft, savedPolicyDraft)) {
       await saveAssessmentEditingPolicy(
-        buildAssessmentEditingPolicyMutationInput(policyDraft) as never
+        buildAssessmentEditingPolicyMutationInput(policyDraft)
       );
       setSavedPolicyDraft(policyDraft);
     }
