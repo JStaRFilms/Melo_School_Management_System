@@ -2760,4 +2760,19 @@ export default defineSchema({
     .index("by_school_and_curriculum_import", ["schoolId", "curriculumImportId"])
     .index("by_school_and_curriculum_unit", ["schoolId", "curriculumUnitId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"]),
+
+  migrationState: defineTable({
+    phase: v.string(),
+    sourceSchoolId: v.id("schools"),
+    targetSchoolId: v.id("schools"),
+    currentTable: v.string(),
+    cursor: v.optional(v.string()),
+    idMaps: v.string(), // JSON stringified map of { [tableName]: { [oldId]: newId } }
+    tablesCompleted: v.array(v.string()),
+    status: v.union(v.literal("idle"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
 });
+

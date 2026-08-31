@@ -20,6 +20,8 @@ import type * as functions_academic_assessmentEditingPolicyHelpers from "../func
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
+import type * as functions_academic_branchSplitV2 from "../functions/academic/branchSplitV2.js";
+import type * as functions_academic_branchSplitV2Action from "../functions/academic/branchSplitV2Action.js";
 import type * as functions_academic_curriculumAdminRead from "../functions/academic/curriculumAdminRead.js";
 import type * as functions_academic_curriculumGeneration from "../functions/academic/curriculumGeneration.js";
 import type * as functions_academic_curriculumHelpers from "../functions/academic/curriculumHelpers.js";
@@ -109,6 +111,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
+  "functions/academic/branchSplitV2": typeof functions_academic_branchSplitV2;
+  "functions/academic/branchSplitV2Action": typeof functions_academic_branchSplitV2Action;
   "functions/academic/curriculumAdminRead": typeof functions_academic_curriculumAdminRead;
   "functions/academic/curriculumGeneration": typeof functions_academic_curriculumGeneration;
   "functions/academic/curriculumHelpers": typeof functions_academic_curriculumHelpers;
