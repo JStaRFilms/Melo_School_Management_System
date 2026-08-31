@@ -249,8 +249,11 @@ async function runOpenRouterMistralOcr(args: { apiKey: string; fileData: string;
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${args.apiKey}`,
-        "HTTP-Referer": "https://school-management-system.local",
-        "X-Title": "School Management System",
+        "HTTP-Referer":
+          process.env.OPENROUTER_HTTP_REFERER?.trim() ||
+          "https://www.meloschool.com/",
+        "X-Title":
+          process.env.OPENROUTER_APP_TITLE?.trim() || "Melo School OS",
       },
       body: JSON.stringify(
         isKnowledgeMaterialPdfContentType(args.contentType)
