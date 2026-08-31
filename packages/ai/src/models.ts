@@ -101,14 +101,13 @@ export function getDocumentRuntimeEnvSummary() {
 
 function buildDefaultHeaders() {
   const headers: Record<string, string> = {};
+  const referer =
+    process.env.OPENROUTER_HTTP_REFERER?.trim() || "https://www.meloschool.com/";
+  const appTitle =
+    process.env.OPENROUTER_APP_TITLE?.trim() || "Melo School OS";
 
-  if (process.env.OPENROUTER_HTTP_REFERER && process.env.OPENROUTER_HTTP_REFERER.trim().length > 0) {
-    headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER.trim();
-  }
-
-  if (process.env.OPENROUTER_APP_TITLE && process.env.OPENROUTER_APP_TITLE.trim().length > 0) {
-    headers["X-Title"] = process.env.OPENROUTER_APP_TITLE.trim();
-  }
+  headers["HTTP-Referer"] = referer;
+  headers["X-Title"] = appTitle;
 
   return headers;
 }

@@ -36,8 +36,24 @@ function readModelId(mode: CurriculumRuntimeMode, modelId: string | undefined) {
   return resolved || defaultModels[mode];
 }
 
+function buildDefaultHeaders() {
+  const headers: Record<string, string> = {};
+  const referer =
+    process.env.OPENROUTER_HTTP_REFERER?.trim() || "https://www.meloschool.com/";
+  const appTitle =
+    process.env.OPENROUTER_APP_TITLE?.trim() || "Melo School OS";
+
+  headers["HTTP-Referer"] = referer;
+  headers["X-Title"] = appTitle;
+
+  return headers;
+}
+
 function createOpenRouterModel(modelId: string, apiKey?: string): LanguageModel {
-  return createOpenRouter({ apiKey: apiKey ?? process.env.OPENROUTER_API_KEY }).chat(modelId);
+  return createOpenRouter({
+    apiKey: apiKey ?? process.env.OPENROUTER_API_KEY,
+    headers: buildDefaultHeaders(),
+  }).chat(modelId);
 }
 
 /** Resolves curriculum generation separately from the existing document-generation runtime. */
