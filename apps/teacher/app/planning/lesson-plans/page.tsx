@@ -93,16 +93,16 @@ export default function LessonPlansPage() {
   );
 
   const workspace = useQuery(
-    api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace,
+    "functions/academic/lessonKnowledgeLessonPlans:getTeacherInstructionWorkspace" as never,
     {
       outputType,
       sourceIds: selectedSourceIds,
       planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
-    }
+    } as never
   ) as LessonPlanWorkspaceData | undefined;
 
   const saveDraft = useMutation(
-    api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft
+    "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
   );
   const generateDraftAction = useAction(
     api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft
