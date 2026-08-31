@@ -272,7 +272,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.errorMessage).toBeNull();
   });
 
-  it("fails instead of indexing partial PDF text when the global parse budget expires", async () => {
+  it("routes to OCR instead of indexing partial PDF text when the global parse budget expires", async () => {
     const samplePdf = readFileSync(
       new URL(
         "../../../../../docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
@@ -285,7 +285,7 @@ describe("lessonKnowledgeIngestionHelpers", () => {
       pdfParseTimeoutMs: 1,
     });
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("ocr_needed");
     expect(result.text).toBe("");
     expect(result.fallbackReason).toBe("parser_error");
     expect(result.errorMessage).toContain("timed out");
@@ -300,6 +300,17 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.extractionPath).toBe("none");
     expect(result.fallbackReason).toBe("scanned_or_problematic");
     expect(result.errorMessage).toContain("Provider-backed OCR is needed");
+  });
+
+  it("routes sparse or low-density text PDFs to OCR instead of failing them", async () => {
+    // A PDF with only a title/header (< 20 words)
+    const headerOnlyPdf = buildBlankPdfBuffer();
+    const result = await extractReadableTextFromBuffer(headerOnlyPdf, {
+      contentType: "application/pdf",
+    });
+
+    expect(result.status).toBe("ocr_needed");
+    expect(result.fallbackReason).toBe("scanned_or_problematic");
   });
 
   it("keeps selected-page scanned PDFs in the OCR-needed path", async () => {

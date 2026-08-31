@@ -16,10 +16,10 @@ import {
 } from "./lessonKnowledgeIngestionHelpers";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_OCR_MODEL = "google/gemma-4-31b-it:free";
-const OPENROUTER_OCR_IMAGE_MODEL = "google/gemma-4-31b-it:free";
+const OPENROUTER_OCR_MODEL = "openai/gpt-5.6-luna";
+const OPENROUTER_OCR_IMAGE_MODEL = "openai/gpt-5.6-luna";
 const OPENROUTER_PDF_ENGINE = "mistral-ocr";
-const OCR_TIMEOUT_MS = 60_000;
+const OCR_TIMEOUT_MS = 120_000;
 
 type NormalizedOcrPage = {
   pageNumber: number;
@@ -55,15 +55,15 @@ function withTimeout<T>(
 function safeProviderError(error: unknown) {
   const message = error instanceof Error ? error.message : "OCR provider request failed";
   if (/timeout/i.test(message)) return { code: "timeout", message: "OCR provider timed out. Please try again later." };
-  if (/401|403|api key|unauthorized/i.test(message)) {
+  if (/429|rate|quota/i.test(message)) return { code: "rate_limited", message: "OCR provider is temporarily rate-limited or exceeded quota. Please try again later." };
+  if (/402|credit|payment|balance/i.test(message)) return { code: "provider_payment_required", message: "OCR provider requires available OpenRouter credits for the selected OCR flow." };
+  if (/401|403|unauthorized/i.test(message)) {
     return {
       code: "provider_auth",
-      message: `OCR provider rejected the request (${message.slice(0, 220)}). Check OpenRouter credits, model access, and OCR engine access.`,
+      message: `OCR provider rejected the request (${message.slice(0, 220)}). Check OpenRouter API key and model access.`,
     };
   }
-  if (/402|credit|payment|balance/i.test(message)) return { code: "provider_payment_required", message: "OCR provider requires available OpenRouter credits for the selected OCR flow." };
-  if (/404|model|engine|plugin/i.test(message)) return { code: "provider_unavailable", message: `OCR provider configuration is unavailable (${message.slice(0, 220)}). Check the OpenRouter model and OCR engine.` };
-  if (/429|rate/i.test(message)) return { code: "rate_limited", message: "OCR provider is temporarily rate-limited. Please try again later." };
+  if (/404|unknown model|not found/i.test(message)) return { code: "provider_unavailable", message: `OCR provider model or engine is unavailable (${message.slice(0, 220)}). Check the OpenRouter model configuration.` };
   return { code: "provider_failed", message: `OCR provider could not process this stored file (${message.slice(0, 220)}). Please try again later.` };
 }
 
@@ -156,6 +156,32 @@ function normalizeOcrPages(payload: unknown): NormalizedOcrPage[] {
   });
 }
 
+const EDUCATIONAL_OCR_SYSTEM_PROMPT =
+  "You are an expert document layout and educational content extraction engine.\n\n" +
+  "### TASK\n" +
+  "Extract all readable text, structured data, and visual context from the provided school document. Process the document page-by-page.\n\n" +
+  "### EXTRACTION RULES\n" +
+  "1. Document Structure & Order:\n" +
+  "   - Preserve natural reading order (handle multi-column worksheets, headers, and footers correctly).\n" +
+  "   - Preserve hierarchical section headings using Markdown (# Heading 1, ## Heading 2).\n\n" +
+  "2. Tables:\n" +
+  "   - Convert all tabular data into clean GitHub-Flavored Markdown tables (| Header 1 | Header 2 |). Never flatten tables into disorganized word strings.\n\n" +
+  "3. Images, Diagrams & Figures:\n" +
+  "   - When a page contains an illustration, diagram, chart, or scientific figure, do NOT ignore it.\n" +
+  "   - Insert a descriptive bracketed caption capturing all educational information (e.g., [Diagram: Human Digestive System labeled with esophagus, stomach, liver, and small intestine]).\n" +
+  "   - Transcribe all callout labels, legend text, and caption text accompanying the image.\n\n" +
+  "4. Mathematics & Formulas:\n" +
+  "   - Transcribe mathematical formulas and chemical equations in standard LaTeX syntax (e.g., $E = mc^2$, $H_2SO_4$).\n\n" +
+  "5. Quality & Fidelity:\n" +
+  "   - Transcribe notes and teacher annotations accurately without summarizing, rewriting, or abbreviating.\n\n" +
+  "### CONSTRAINTS\n" +
+  "- Return ONLY a single raw valid JSON object.\n" +
+  "- Do NOT wrap your output in markdown code fences (do NOT use ```json or ```).\n" +
+  "- Do NOT include conversational filler, greetings, or explanations before or after the JSON.\n" +
+  "- Maintain accurate, sequential 1-based page numbers in the `pageNumber` field.\n\n" +
+  "### OUTPUT JSON SCHEMA\n" +
+  "{\"pages\":[{\"pageNumber\":1,\"text\":\"Extracted Markdown content for page 1 including headings, tables, and [Diagram: ...] descriptions.\"}]}";
+
 function buildOpenRouterPdfOcrBody(args: { fileData: string }) {
   return {
     model: process.env.OPENROUTER_OCR_MODEL?.trim() || OPENROUTER_OCR_MODEL,
@@ -165,8 +191,7 @@ function buildOpenRouterPdfOcrBody(args: { fileData: string }) {
         content: [
           {
             type: "text",
-            text:
-              "Extract the readable text from this school planning PDF. Return only strict JSON in this exact shape: {\"pages\":[{\"pageNumber\":1,\"text\":\"...\"}]}. Preserve page order. Do not summarize, explain, or add markdown fences.",
+            text: EDUCATIONAL_OCR_SYSTEM_PROMPT,
           },
           {
             type: "file",
@@ -201,8 +226,7 @@ function buildOpenRouterImageOcrBody(args: { imageData: string }) {
         content: [
           {
             type: "text",
-            text:
-              "Extract all readable text from this uploaded school planning image. Return only strict JSON in this exact shape: {\"pages\":[{\"pageNumber\":1,\"text\":\"...\"}]}. Use pageNumber 1. Do not summarize, explain, or add markdown fences.",
+            text: EDUCATIONAL_OCR_SYSTEM_PROMPT,
           },
           {
             type: "image_url",

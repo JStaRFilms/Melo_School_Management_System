@@ -147,6 +147,18 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Added structured 4-column student metadata, high-contrast KPI cards (Total Billed, Paid to Date, Balance Due), itemized fee table with opt-out strike-through styling, and a **Running Balance** ledger column for Statements of Account.
   - Retained embedded Paystack QR code and 1-click checkout link generation.
 
+### 7. Document Extraction & OCR Pipeline Overhaul (Luna Migration & Image PDF Reliability)
+- [x] **Eliminated Low-Density PDF False Failure Trap (`lessonKnowledgePdfExtraction.ts`)**
+  - Fixed false-rejection bug where documents with sparse native text (< 20 words / diagrams / worksheet titles) were immediately aborted with `status: "failed"` under `insufficient_text`.
+  - Routed low-density native extractions directly to `status: "ocr_needed"` (`fallbackReason: "scanned_or_problematic"`), enabling provider OCR to process scanned, illustrated, or image-heavy school files.
+- [x] **OpenRouter Model Migration to `openai/gpt-5.6-luna` (`lessonKnowledgeOcrActions.ts`)**
+  - Replaced brittle `google/gemma-4-31b-it:free` default with high-performance, cost-effective `openai/gpt-5.6-luna` ($0.20/1M input, $1.20/1M output).
+  - Increased OCR timeout from 60s to 120s (`120_000`ms) to support multi-page extractions reliably.
+  - Implemented high-fidelity educational layout system prompt enforcing Markdown tables (`| Col 1 | Col 2 |`), visual bracketed captions (`[Diagram: ...]`), LaTeX formulas, and pure JSON output.
+- [x] **Dead Browser-OCR Code Deletion**
+  - Deleted legacy client-side canvas renderer `apps/teacher/features/planning-library/utils/browserPdfOcr.ts`.
+  - Deleted dead backend action `packages/convex/functions/academic/lessonKnowledgeBrowserOcrActions.ts` and pruned `requestKnowledgeMaterialBrowserOcrImageUploadUrls` and `startKnowledgeMaterialBrowserOcrRetryInternal` from `lessonKnowledgeIngestion.ts`.
+
 ---
 
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
@@ -213,6 +225,25 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Local draft backup in `localStorage` for form resilience against accidental reloads.
 - [ ] **Mobile Scroll Progress Bar for Long Forms**
   - Fixed top progress indicator on mobile viewports during multi-step student enrollment and wizard forms.
+- [ ] **AI & Document Ingestion Usage Limits, Storage Quotas & Over-Usage Buffers**
+  - **Context & Need:** Protect platform margins and prevent runaway costs from high-frequency generation, excessive OCR, and large file uploads. Schools on the Basic/Standard plan must have clear baseline quotas with a graceful buffer before hard caps kick in, plus an option to purchase top-up credits or upgrade tiers.
+  - **Tier-1 Simple Metering (Phase 1 - Immediate & Clean):**
+    - **Prompt / Message Quota:** Track AI generations per school per billing cycle (e.g. 500 lesson plan / quiz / assessment prompts per month on Basic).
+    - **Graceful Buffer:** Allow a 10–20% soft buffer (e.g. +50 extra prompts) with warning banners in the UI (*"You have used 95% of your monthly AI quota. Add credits to avoid service interruption"*) rather than jarring sudden cutoffs mid-lesson planning.
+    - **Pre-Upload PDF Page Counter & Smart Guidance Banner:**
+      - The moment a teacher selects a PDF in the file picker, inspect the page count client-side before upload begins.
+      - If the page count is high (> 20 pages), display an educational recommendation banner: *"This PDF contains [X] pages. We recommend using the 'Pages to Index' field below (e.g. `1-10, 25-30`) to focus on the specific chapter you need and conserve your monthly quota."*
+    - **Document Ingestion & OCR Limits:**
+      - File size cap: 15–25 MB per PDF upload.
+      - Page count cap: Maximum pages processed per document (e.g., 20–30 pages per document on Basic) and monthly OCR page allowance (e.g., 150 OCR pages/month).
+      - Storage Quota: Simple tenant-level disk allowance (e.g. 2 GB included on Basic).
+  - **Tier-2 Advanced Token, Compute & Automated Document Batching (Phase 2):**
+    - **Automated Multi-Batch Document Processing:**
+      - For large textbooks or syllabi, offer a 1-click *"Auto-Split & Ingest in Batches"* workflow that splits the PDF into manageable chapters (e.g., Ch 1: 1–20, Ch 2: 21–40).
+      - Display an explicit cost/quota confirmation modal before kickoff (*"Processing this 80-page document in 4 batches will consume 80 pages from your monthly quota. Remaining quota: 70 pages."*).
+    - **Granular Token Metering:**
+      - Transition to granular per-token tracking (`usage.total_tokens` from OpenRouter responses) recorded into a `schoolAiUsage` ledger.
+      - Custom rate cards per tenant for high-volume enterprise chains with automatic credit-drawdown.
 - [ ] **School Assets & PDF Compression Foundation** → see [docs/features/SchoolAssetsAndPdfCompression.md](../docs/features/SchoolAssetsAndPdfCompression.md)
   - Per-school private document store (`schoolAssets` table) for non-lesson-knowledge PDFs: policy docs, report templates, past papers, circulars, logos. Complements (does not replace) the existing lesson-knowledge storage in `LessonKnowledgeHub_v1.md` / `v2`.
   - Per-school 5 GiB quota, 25 MB per-file cap, MIME allowlist (`application/pdf`, `image/png`, `image/jpeg`).

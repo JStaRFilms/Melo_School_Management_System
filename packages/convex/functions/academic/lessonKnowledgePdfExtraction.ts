@@ -523,7 +523,7 @@ export async function extractReadableTextFromBuffer(
   if (parserResult.kind === "error") {
     return buildOcrNeededResult({
       fallbackReason: "parser_error",
-      status: "failed",
+      status: "ocr_needed",
       pageCount: parserResult.pageCount,
       errorMessage: parserResult.errorMessage,
     });
@@ -547,19 +547,7 @@ export async function extractReadableTextFromBuffer(
       ? "scanned_or_problematic"
       : !quality.readable
         ? "unreadable_text"
-        : "insufficient_text";
-
-  if (fallbackReason === "insufficient_text") {
-    return buildResult({
-      status: "failed",
-      text: quality.normalizedText,
-      pages: parserResult.pages,
-      pageCount: parserResult.pageCount,
-      errorMessage: "The PDF text was readable but too short to index. Please upload a fuller PDF or a different source.",
-      extractionPath: "parser",
-      fallbackReason,
-    });
-  }
+        : "scanned_or_problematic";
 
   return buildOcrNeededResult({
     fallbackReason,

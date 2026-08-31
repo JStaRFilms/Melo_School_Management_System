@@ -263,6 +263,25 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         ingestionErrorMessage: extracted.errorMessage,
       });
 
+      if (extracted.status === "ocr_needed" && process.env.OPENROUTER_API_KEY?.trim()) {
+        const ocrJob = await ctx.runMutation(
+          internal.functions.academic.lessonKnowledgeIngestion.queueKnowledgeMaterialOcrInternal,
+          {
+            materialId: args.materialId,
+            schoolId: args.schoolId,
+            actorUserId: args.ownerUserId,
+            actorRole: args.ownerRole,
+          }
+        );
+        if (ocrJob?.jobId) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.functions.academic.lessonKnowledgeOcrActions.processKnowledgeMaterialOcrJobInternal,
+            { jobId: ocrJob.jobId }
+          );
+        }
+      }
+
       return null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Knowledge material ingestion failed";

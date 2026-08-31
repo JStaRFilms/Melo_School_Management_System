@@ -135,10 +135,20 @@ export async function consumeLessonKnowledgeRateLimit(
         actorUserId: args.actorUserId,
         scope: bucket.scope,
       });
-      const existing = await ctx.db
+      const records = await ctx.db
         .query("rateLimitCounters")
         .withIndex("by_key", (q) => q.eq("key", key))
-        .unique();
+        .collect();
+
+      // Self-heal race conditions: if duplicates exist for the same key, keep the newest and delete older ones
+      let existing = records[0] ?? null;
+      if (records.length > 1) {
+        records.sort((a, b) => b.updatedAt - a.updatedAt);
+        existing = records[0];
+        for (let i = 1; i < records.length; i++) {
+          await ctx.db.delete(records[i]._id);
+        }
+      }
 
       return { bucket, key, existing };
     })
