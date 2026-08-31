@@ -6,7 +6,6 @@ import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import type { SubjectRecord } from "@/types";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { appToast } from "@school/shared/toast";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpenText, Plus, Search, Shapes } from "lucide-react";
@@ -17,12 +16,12 @@ import { SubjectEditForm } from "./components/SubjectEditForm";
 
 export default function SubjectsPage() {
   const subjects = useQuery(
-    api.functions.academic.academicSetup.listSubjects
+    "functions/academic/academicSetup:listSubjects" as never
   ) as SubjectRecord[] | undefined;
 
-  const createSubject = useMutation(api.functions.academic.academicSetup.createSubject);
-  const updateSubject = useMutation(api.functions.academic.academicSetup.updateSubject);
-  const archiveSubject = useMutation(api.functions.academic.academicSetup.archiveSubject);
+  const createSubject = useMutation("functions/academic/academicSetup:createSubject" as never);
+  const updateSubject = useMutation("functions/academic/academicSetup:updateSubject" as never);
+  const archiveSubject = useMutation("functions/academic/academicSetup:archiveSubject" as never);
 
   const [search, setSearch] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -100,7 +99,7 @@ export default function SubjectsPage() {
   const handleCreate = async (name: string, code: string) => {
     setIsSubmitting(true);
     try {
-      await createSubject({ name, code });
+      await createSubject({ name, code } as never);
       showNotice({ tone: "success", title: "Catalog Updated", message: `${name} has been added.` });
     } catch (err) {
       showNotice({
@@ -117,7 +116,7 @@ export default function SubjectsPage() {
   const handleUpdate = async (id: string, name: string, code: string) => {
     setIsSaving(true);
     try {
-      await updateSubject({ subjectId: id, name, code });
+      await updateSubject({ subjectId: id, name, code } as never);
       showNotice({ tone: "success", title: "Record Updated", message: "Subject details saved." });
     } catch (err) {
       showNotice({
@@ -138,7 +137,7 @@ export default function SubjectsPage() {
     if (!subjectToArchive) return;
     setIsArchiving(true);
     try {
-      await archiveSubject({ subjectId: subjectToArchive._id });
+      await archiveSubject({ subjectId: subjectToArchive._id } as never);
       if (selectedSubjectId === subjectToArchive._id) {
         setSelectedSubjectId(null);
       }

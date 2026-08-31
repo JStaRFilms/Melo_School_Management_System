@@ -4,7 +4,6 @@ export const dynamic = "force-dynamic";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { buildReportCardHref } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { useMutation,useQuery } from "convex/react";
 import {
 AppWindow,
@@ -22,26 +21,26 @@ export default function AdminReportCardExtrasPage() {
   const selection = useMemo<ExtrasSelection>(() => ({ sessionId: searchParams.get("sessionId"), termId: searchParams.get("termId"), classId: searchParams.get("classId"), studentId: searchParams.get("studentId") }), [searchParams]);
 
   const rawSessions = useQuery(
-    api.functions.academic.adminSelectors.getAdminSessions
+    "functions/academic/adminSelectors:getAdminSessions" as never
   ) as SelectorOption[] | undefined;
-  const rawTerms = useQuery(api.functions.academic.adminSelectors.getTermsBySession, selection.sessionId ? { sessionId: selection.sessionId } : "skip") as SelectorOption[] | undefined;
-  const rawClasses = useQuery(api.functions.academic.adminSelectors.getAllClasses) as SelectorOption[] | undefined;
+  const rawTerms = useQuery("functions/academic/adminSelectors:getTermsBySession" as never, selection.sessionId ? ({ sessionId: selection.sessionId } as never) : ("skip" as never)) as SelectorOption[] | undefined;
+  const rawClasses = useQuery("functions/academic/adminSelectors:getAllClasses" as never) as SelectorOption[] | undefined;
   const sessions = rawSessions ?? [];
   const terms = rawTerms ?? [];
   const classes = rawClasses ?? [];
 
   const classIsValid = !selection.classId || classes.some((option) => option.id === selection.classId);
   const rawStudents = useQuery(
-    api.functions.academic.reportCards.getStudentsForReportCardBatch,
+    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     selection.sessionId && selection.termId && selection.classId && classIsValid
-      ? { sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId }
-      : "skip"
+      ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
+      : ("skip" as never)
   ) as Array<{ studentId: string; studentName: string; admissionNumber: string }> | undefined;
   const students = rawStudents?.map((student) => ({ id: student.studentId, name: `${student.studentName} (${student.admissionNumber})` })) ?? [];
   const studentIsValid = !selection.studentId || students.some((option) => option.id === selection.studentId);
 
-  const entry = useQuery(api.functions.academic.reportCardExtras.getStudentReportCardExtrasEntry, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? { sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } : "skip") as ExtrasEntry | undefined;
-  const saveEntry = useMutation(api.functions.academic.reportCardExtras.saveStudentReportCardExtrasEntry);
+  const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
+  const saveEntry = useMutation("functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never);
 
   const reportCardHref = buildReportCardHref({
     studentId: selection.studentId,
@@ -119,7 +118,7 @@ export default function AdminReportCardExtrasPage() {
               hasStudents={students.length > 0}
               reportCardHref={reportCardHref}
               onSave={(bundleValues) =>
-                saveEntry({ ...(selection as Required<ExtrasSelection>), bundleValues })
+                saveEntry({ ...(selection as Required<ExtrasSelection>), bundleValues } as never)
               }
             />
           </div>

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   CalendarCheck,
   CalendarDays,
@@ -27,7 +26,7 @@ export function SessionCreationModal({
   onSessionCreated,
 }: SessionCreationModalProps) {
   const [mounted, setMounted] = useState(false);
-  const createSession = useMutation(api.functions.academic.academicSetup.createSession);
+  const createSession = useMutation("functions/academic/academicSetup:createSession" as never);
 
   const currentYear = new Date().getFullYear();
   const defaultSessionName = `${currentYear}/${currentYear + 1} Academic Session`;
@@ -93,7 +92,7 @@ export function SessionCreationModal({
         endDate: endTimestamp,
         isActive: activateSession,
         autoGenerateTerms,
-      });
+      } as never);
 
       appToast.success("Session Created", {
         description: `${normalizedName} ${autoGenerateTerms ? "with 3 balanced terms" : ""} is ready.`,

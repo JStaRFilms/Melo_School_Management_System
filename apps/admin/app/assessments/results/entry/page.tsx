@@ -27,7 +27,6 @@ ValidationErrors,
 } from "@/types";
 import type { ExamInputMode } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { api } from "@school/convex/_generated/api";
 import { useMutation,useQuery } from "convex/react";
 import { ChevronLeft } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -94,22 +93,22 @@ function LiveAdminScoreEntryPage({
   selection: SelectionState;
 }) {
   const sessions = useQuery(
-    api.functions.academic.adminSelectors.getAdminSessions
+    "functions/academic/adminSelectors:getAdminSessions" as never
   ) as SelectorOption[] | undefined;
   const terms = useQuery(
-    api.functions.academic.adminSelectors.getTermsBySession,
+    "functions/academic/adminSelectors:getTermsBySession" as never,
     selection.sessionId
-      ? { sessionId: selection.sessionId }
-      : "skip"
+      ? ({ sessionId: selection.sessionId } as never)
+      : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    api.functions.academic.adminSelectors.getAllClasses
+    "functions/academic/adminSelectors:getAllClasses" as never
   ) as SelectorOption[] | undefined;
   const subjects = useQuery(
-    api.functions.academic.adminSelectors.getSubjectsByClass,
+    "functions/academic/adminSelectors:getSubjectsByClass" as never,
     selection.classId
-      ? { classId: selection.classId }
-      : "skip"
+      ? ({ classId: selection.classId } as never)
+      : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const isSelectedSubjectAvailable =
     !selection.subjectId ||
@@ -123,18 +122,18 @@ function LiveAdminScoreEntryPage({
       isSelectedSubjectAvailable
   );
   const sheetData = useQuery(
-    api.functions.academic.assessmentRecords.getExamEntrySheet,
+    "functions/academic/assessmentRecords:getExamEntrySheet" as never,
     isSheetReady
-      ? {
+      ? ({
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
           subjectId: selection.subjectId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as ExamEntrySheetResponse | undefined;
   const upsertAssessmentRecordsBulk = useMutation(
-    api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk
+    "functions/academic/assessmentRecords:upsertAssessmentRecordsBulk" as never
   );
 
   const handleSaveRecords = useCallback(
@@ -151,7 +150,7 @@ function LiveAdminScoreEntryPage({
         examRawScore: number;
       }>;
     }) =>
-      (await upsertAssessmentRecordsBulk(args)) as UpsertResponse,
+      (await upsertAssessmentRecordsBulk(args as never)) as UpsertResponse,
     [upsertAssessmentRecordsBulk]
   );
 

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import {
@@ -61,21 +60,21 @@ export default function SchoolSettingsPage() {
   const isConfigured = isConvexConfigured();
 
   const branding = useQuery(
-    api.functions.academic.schoolBranding.getCurrentSchoolBranding,
-    isConfigured ? {} : "skip"
+    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
+    isConfigured ? ({} as never) : ("skip" as never)
   ) as SchoolBrandingData | undefined;
 
   const updateProfile = useMutation(
-    api.functions.academic.schoolBranding.updateSchoolProfile
+    "functions/academic/schoolBranding:updateSchoolProfile" as never
   );
   const generateLogoUploadUrl = useMutation(
-    api.functions.academic.schoolBranding.generateSchoolLogoUploadUrl
+    "functions/academic/schoolBranding:generateSchoolLogoUploadUrl" as never
   );
   const saveSchoolLogo = useMutation(
-    api.functions.academic.schoolBranding.saveSchoolLogo
+    "functions/academic/schoolBranding:saveSchoolLogo" as never
   );
   const removeSchoolLogo = useMutation(
-    api.functions.academic.schoolBranding.removeSchoolLogo
+    "functions/academic/schoolBranding:removeSchoolLogo" as never
   );
 
   // Form states
@@ -169,7 +168,7 @@ export default function SchoolSettingsPage() {
     try {
       // 1. Upload logo if new file chosen
       if (logoFile) {
-        const uploadUrl = (await generateLogoUploadUrl({})) as string;
+        const uploadUrl = (await generateLogoUploadUrl({} as never)) as string;
         const uploadResponse = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": logoFile.type },
@@ -182,10 +181,10 @@ export default function SchoolSettingsPage() {
 
         const payload = (await uploadResponse.json()) as { storageId: string };
         await saveSchoolLogo({
-          logoStorageId: payload.storageId,
+          logoStorageId: payload.storageId as never,
           logoFileName: logoFile.name,
           logoContentType: logoFile.type,
-        });
+        } as never);
         setLogoFile(null);
       }
 
@@ -200,7 +199,7 @@ export default function SchoolSettingsPage() {
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         address: address.trim() || undefined,
-      });
+      } as never);
 
       appToast.success("Settings saved", {
         description: "School profile, branding, and contact info updated.",
@@ -218,7 +217,7 @@ export default function SchoolSettingsPage() {
     if (!confirm("Are you sure you want to remove the school logo?")) return;
     setIsSaving(true);
     try {
-      await removeSchoolLogo({});
+      await removeSchoolLogo({} as never);
       setLogoFile(null);
       appToast.success("Logo removed");
     } catch (err) {

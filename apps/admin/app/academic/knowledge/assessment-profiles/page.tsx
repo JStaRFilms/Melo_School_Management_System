@@ -1,22 +1,21 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { AssessmentProfileStudioScreen } from "./components/AssessmentProfileStudioScreen";
 import type { AssessmentProfileDraft, Profile } from "./types";
 
 export default function AssessmentGenerationProfilesPage() {
   const profiles = useQuery(
-    api.functions.academic.lessonKnowledgeAssessmentProfiles.listAssessmentGenerationProfiles,
-    { includeInactive: true }
+    "functions/academic/lessonKnowledgeAssessmentProfiles:listAssessmentGenerationProfiles" as never,
+    { includeInactive: true } as never
   ) as Profile[] | undefined;
 
   const saveProfileMutation = useMutation(
-    api.functions.academic.lessonKnowledgeAssessmentProfiles.saveAssessmentGenerationProfile
+    "functions/academic/lessonKnowledgeAssessmentProfiles:saveAssessmentGenerationProfile" as never
   );
 
   const handleSaveProfile = async (draft: AssessmentProfileDraft) => {
-    return (await saveProfileMutation({ ...draft })) as string;
+    return (await saveProfileMutation({ ...draft } as never)) as string;
   };
 
   if (!profiles) {

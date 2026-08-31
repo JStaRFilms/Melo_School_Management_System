@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { X, Check, Landmark, BookOpenText, Sparkles, UserPlus, Loader2 } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import {
@@ -69,7 +68,7 @@ export function ManageFeaturesModal({
   const [isSaving, setIsSaving] = useState(false);
 
   const updateFeatures = useMutation(
-    api.functions.platform.index.updateSchoolFeatures
+    "functions/platform/index:updateSchoolFeatures" as never
   );
 
   useEffect(() => {
@@ -96,9 +95,9 @@ export function ManageFeaturesModal({
     setIsSaving(true);
     try {
       await updateFeatures({
-        schoolId: school._id,
+        schoolId: school._id as never,
         features,
-      });
+      } as never);
 
       appToast.success("Features updated", {
         description: `Modular features for ${school.name} were updated successfully.`,

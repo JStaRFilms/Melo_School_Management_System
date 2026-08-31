@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { BookOpenCheck, RefreshCw } from "lucide-react";
 import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -22,20 +21,20 @@ type Review = { status: string; errorMessage?: string; units: CurriculumUnit[] }
 const EMPTY_FORM: CurriculumImportForm = { materialId: "", subjectId: "", level: "", termId: "" };
 
 export default function CurriculumImportPage() {
-  const context = useQuery(api.functions.academic.curriculumAdminRead.listCurriculumImportContext) as Context | undefined;
-  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as Subject[] | undefined;
-  const sessions = useQuery(api.functions.academic.academicSetup.listSessions) as Session[] | undefined;
+  const context = useQuery("functions/academic/curriculumAdminRead:listCurriculumImportContext" as never) as Context | undefined;
+  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
+  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
-  const terms = useQuery(api.functions.academic.academicSetup.listTermsBySession, activeSession ? { sessionId: activeSession._id } : "skip") as Term[] | undefined;
+  const terms = useQuery("functions/academic/academicSetup:listTermsBySession" as never, activeSession ? { sessionId: activeSession._id } as never : "skip" as never) as Term[] | undefined;
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
   const [approvalUnit, setApprovalUnit] = useState<CurriculumUnit | null>(null);
   const [form, setForm] = useState<CurriculumImportForm>(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
-  const review = useQuery(api.functions.academic.curriculumAdminRead.getCurriculumImportReview, selectedImportId ? { importId: selectedImportId } : "skip") as Review | undefined;
-  const createImport = useMutation(api.functions.academic.curriculumImportLifecycle.createCurriculumImport);
-  const reviewUnit = useMutation(api.functions.academic.curriculumReviewLifecycle.reviewCurriculumUnit);
-  const approveUnit = useMutation(api.functions.academic.curriculumReviewLifecycle.approveCurriculumUnit);
+  const review = useQuery("functions/academic/curriculumAdminRead:getCurriculumImportReview" as never, selectedImportId ? { importId: selectedImportId } as never : "skip" as never) as Review | undefined;
+  const createImport = useMutation("functions/academic/curriculumImportLifecycle:createCurriculumImport" as never);
+  const reviewUnit = useMutation("functions/academic/curriculumReviewLifecycle:reviewCurriculumUnit" as never);
+  const approveUnit = useMutation("functions/academic/curriculumReviewLifecycle:approveCurriculumUnit" as never);
   const selectedImport = useMemo(() => context?.imports.find((item) => item._id === selectedImportId) ?? null, [context, selectedImportId]);
   const editingUnit = review?.units.find((unit) => unit._id === editingUnitId) ?? null;
 
@@ -48,7 +47,7 @@ export default function CurriculumImportPage() {
     if (!form.materialId || !form.subjectId || !form.level.trim() || !form.termId || busy) return;
     setBusy(true);
     try {
-      const importId = await createImport({ ...form, level: form.level.trim() }) as string;
+      const importId = await createImport({ ...form, level: form.level.trim() } as never) as string;
       setSelectedImportId(importId);
       const response = await fetch("/api/ai/curriculum/import", {
         method: "POST",
@@ -69,7 +68,7 @@ export default function CurriculumImportPage() {
     if (busy) return;
     setBusy(true);
     try {
-      await reviewUnit({ unitId: unit._id, reviewStatus: "proposed", ...values });
+      await reviewUnit({ unitId: unit._id, reviewStatus: "proposed", ...values } as never);
       appToast.success("Unit updated");
       setEditingUnitId(null);
     } catch (error) {
@@ -83,7 +82,7 @@ export default function CurriculumImportPage() {
     if (busy) return;
     setBusy(true);
     try {
-      await reviewUnit({ unitId: unit._id, reviewStatus: "rejected" });
+      await reviewUnit({ unitId: unit._id, reviewStatus: "rejected" } as never);
       appToast.success("Unit rejected");
       if (editingUnitId === unit._id) setEditingUnitId(null);
     } catch (error) {
@@ -96,7 +95,7 @@ export default function CurriculumImportPage() {
   const approve = async (unit: CurriculumUnit) => {
     setBusy(true);
     try {
-      await approveUnit({ unitId: unit._id });
+      await approveUnit({ unitId: unit._id } as never);
       appToast.success("Topic approved", { description: "The topic is now available in the academic knowledge workflow." });
       setApprovalUnit(null);
       if (editingUnitId === unit._id) setEditingUnitId(null);

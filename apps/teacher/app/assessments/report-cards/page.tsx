@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   ReportCardBatchNavigator,
   ReportCardBatchPrintStackV2,
@@ -49,15 +48,15 @@ function TeacherReportCardPageContent() {
   const printRaf2Ref = useRef<number | null>(null);
 
   const reportCard = useQuery(
-    api.functions.academic.reportCards.getStudentReportCard,
+    "functions/academic/reportCards:getStudentReportCard" as never,
     studentId && sessionId && termId
-      ? {
+      ? ({
           studentId,
           sessionId,
           termId,
           ...(classIdParam ? { classId: classIdParam } : {}),
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
   const extrasHref = buildReportCardExtrasHref({
@@ -67,16 +66,16 @@ function TeacherReportCardPageContent() {
     classId: resolvedClassId,
   });
   const batchStudents = useQuery(
-    api.functions.academic.reportCards.getStudentsForReportCardBatch,
+    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     sessionId && termId && resolvedClassId
-      ? { classId: resolvedClassId, sessionId, termId }
-      : "skip"
+      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+      : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
   const classReportCards = useQuery(
-    api.functions.academic.reportCards.getClassReportCards,
+    "functions/academic/reportCards:getClassReportCards" as never,
     isPrintClassMode && sessionId && termId && resolvedClassId
-      ? { classId: resolvedClassId, sessionId, termId }
-      : "skip"
+      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+      : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
   const blockedClassPrintCount =
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;

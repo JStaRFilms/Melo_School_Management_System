@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   ArrowRight,
   Banknote,
@@ -133,14 +132,14 @@ function formatEventDate(timestamp: number) {
 }
 
 export default function AdminDashboardPage() {
-  const teachers = useQuery(api.functions.academic.academicSetup.listTeachers) as TeacherRecord[] | undefined;
-  const classes = useQuery(api.functions.academic.academicSetup.listClasses) as ClassRecord[] | undefined;
-  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as SubjectRecord[] | undefined;
-  const sessions = useQuery(api.functions.academic.academicSetup.listSessions) as SessionRecord[] | undefined;
-  const billing = useQuery(api.functions.billing.getBillingDashboard, {}) as BillingDashboard | undefined;
-  const events = useQuery(api.functions.academic.events.listEvents) as SchoolEvent[] | undefined;
+  const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as TeacherRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassRecord[] | undefined;
+  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
+  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as SessionRecord[] | undefined;
+  const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
+  const events = useQuery("functions/academic/events:listEvents" as never) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
-    api.functions.academic.academicSetup.listAcademicTimelineAuditEvents
+    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
   ) as TimelineAuditEvent[] | undefined;
 
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);

@@ -1,7 +1,6 @@
 "use client";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { api } from "@school/convex/_generated/api";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { useMutation } from "convex/react";
 import { ArrowRightLeft,Loader2,Sparkles } from "lucide-react";
@@ -25,7 +24,7 @@ export function TeacherPromotionSection({
   onError,
 }: TeacherPromotionSectionProps) {
   const promoteTeacherToAdmin = useMutation(
-    api.functions.academic.adminLeadership.promoteTeacherToAdmin
+    "functions/academic/adminLeadership:promoteTeacherToAdmin" as never
   );
 
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
@@ -39,7 +38,7 @@ export function TeacherPromotionSection({
     setIsBusy(true);
 
     try {
-      await promoteTeacherToAdmin({ teacherId: selectedTeacherId });
+      await promoteTeacherToAdmin({ teacherId: selectedTeacherId } as never);
       setSelectedTeacherId("");
       onSuccess("Identity elevated. Teaching credentials preserved.");
     } catch (error) {

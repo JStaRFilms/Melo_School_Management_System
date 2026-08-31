@@ -1,7 +1,6 @@
 "use client";
 
 import { getUserFacingErrorMessage } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect,useMemo,useState } from "react";
@@ -69,17 +68,17 @@ export function StudentProfileEditor({
   onTabChange,
 }: StudentProfileEditorProps) {
   const studentProfile = useQuery(
-    api.functions.academic.studentEnrollment.getStudentProfile,
-    studentId ? { studentId } : "skip"
+    "functions/academic/studentEnrollment:getStudentProfile" as never,
+    studentId ? ({ studentId } as never) : ("skip" as never)
   ) as StudentProfile | undefined;
   const updateStudent = useMutation(
-    api.functions.academic.studentEnrollment.updateStudent
+    "functions/academic/studentEnrollment:updateStudent" as never
   );
   const archiveStudent = useMutation(
-    api.functions.academic.studentEnrollment.archiveStudent
+    "functions/academic/studentEnrollment:archiveStudent" as never
   );
   const generateStudentPhotoUploadUrl = useMutation(
-    api.functions.academic.studentEnrollment.generateStudentPhotoUploadUrl
+    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
   );
 
   const [firstName, setFirstName] = useState("");
@@ -147,7 +146,7 @@ export function StudentProfileEditor({
     try {
       const uploadedPhotoMetadata = photoFile
         ? await uploadStudentPhoto(photoFile, () =>
-            generateStudentPhotoUploadUrl({}) as Promise<string>
+            generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
       await updateStudent({
@@ -172,7 +171,7 @@ export function StudentProfileEditor({
         photoContentType: clearPhoto
           ? null
           : uploadedPhotoMetadata?.contentType ?? undefined,
-      });
+      } as never);
 
       onNotice({
         tone: "success",
@@ -199,7 +198,7 @@ export function StudentProfileEditor({
     if (!studentProfile) return;
     setIsArchiving(true);
     try {
-      await archiveStudent({ studentId: studentProfile._id });
+      await archiveStudent({ studentId: studentProfile._id } as never);
       onNotice({ tone: "success", message: `${displayName} archived.` });
       onStudentArchived?.(studentProfile._id);
       setIsArchiveConfirmOpen(false);

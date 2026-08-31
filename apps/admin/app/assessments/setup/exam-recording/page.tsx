@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
-import {
-  History,
+import { 
+  History, 
   Settings2,
   ChevronRight,
   Calendar,
@@ -47,16 +46,16 @@ export default function ExamRecordingSettingsPage() {
 
 function LiveExamSettingsPage() {
   const settings = useQuery(
-    api.functions.academic.settings.getSchoolAssessmentSettings
+    "functions/academic/settings:getSchoolAssessmentSettings" as never
   ) as { examInputMode: ExamInputMode } | null | undefined;
   const sessions = useQuery(
-    api.functions.academic.adminSelectors.getAdminSessions
+    "functions/academic/adminSelectors:getAdminSessions" as never
   ) as SelectorOption[] | undefined;
   const saveSettings = useMutation(
-    api.functions.academic.settings.saveSchoolAssessmentSettings
+    "functions/academic/settings:saveSchoolAssessmentSettings" as never
   );
   const saveAssessmentEditingPolicy = useMutation(
-    api.functions.academic.assessmentEditingPolicies.saveAssessmentEditingPolicy
+    "functions/academic/assessmentEditingPolicies:saveAssessmentEditingPolicy" as never
   );
 
   const [savedMode, setSavedMode] = useState<ExamInputMode>("raw40");
@@ -87,10 +86,10 @@ function LiveExamSettingsPage() {
   }, [policyDraft.sessionId, sessions]);
 
   const terms = useQuery(
-    api.functions.academic.adminSelectors.getTermsBySession,
+    "functions/academic/adminSelectors:getTermsBySession" as never,
     policyDraft.sessionId
-      ? { sessionId: policyDraft.sessionId }
-      : "skip"
+      ? ({ sessionId: policyDraft.sessionId } as never)
+      : ("skip" as never)
   ) as SelectorOption[] | undefined;
 
   useEffect(() => {
@@ -115,13 +114,13 @@ function LiveExamSettingsPage() {
   }, [policyDraft.sessionId, policyDraft.termId, terms]);
 
   const policy = useQuery(
-    api.functions.academic.assessmentEditingPolicies.getAssessmentEditingPolicyForAdmin,
+    "functions/academic/assessmentEditingPolicies:getAssessmentEditingPolicyForAdmin" as never,
     policyDraft.sessionId && policyDraft.termId
-      ? {
+      ? ({
           sessionId: policyDraft.sessionId,
           termId: policyDraft.termId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as AssessmentEditingPolicyResponse | null | undefined;
 
   useEffect(() => {
@@ -195,13 +194,13 @@ function LiveExamSettingsPage() {
 
   const handleSave = useCallback(async () => {
     if (draftMode !== savedMode) {
-      await saveSettings({ examInputMode: draftMode });
+      await saveSettings({ examInputMode: draftMode } as never);
       setSavedMode(draftMode);
     }
 
     if (!isAssessmentEditingPolicyDraftEqual(policyDraft, savedPolicyDraft)) {
       await saveAssessmentEditingPolicy(
-        buildAssessmentEditingPolicyMutationInput(policyDraft)
+        buildAssessmentEditingPolicyMutationInput(policyDraft) as never
       );
       setSavedPolicyDraft(policyDraft);
     }

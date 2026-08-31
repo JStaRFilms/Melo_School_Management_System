@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   Calendar,
   CalendarCheck,
@@ -59,12 +58,12 @@ export function SessionTimelineCard({
   defaultExpanded = true,
 }: SessionTimelineCardProps) {
   const terms = useQuery(
-    api.functions.academic.academicSetup.listTermsBySession,
-    { sessionId: session._id }
+    "functions/academic/academicSetup:listTermsBySession" as never,
+    { sessionId: session._id } as never
   ) as TermRecord[] | undefined;
 
-  const createTerm = useMutation(api.functions.academic.academicSetup.createTerm);
-  const updateSessionDates = useMutation(api.functions.academic.academicSetup.updateSessionDates);
+  const createTerm = useMutation("functions/academic/academicSetup:createTerm" as never);
+  const updateSessionDates = useMutation("functions/academic/academicSetup:updateSessionDates" as never);
 
   const [isAddTermModalOpen, setIsAddTermModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -138,7 +137,7 @@ export function SessionTimelineCard({
         startDate: startTs,
         endDate: endTs,
         expectedUpdatedAt: session.updatedAt,
-      });
+      } as never);
 
       setIsEditingDates(false);
       appToast.success("Session dates updated", {
@@ -174,7 +173,7 @@ export function SessionTimelineCard({
         endDate: new Date(yr, 11, 19, 12, 0, 0).getTime(),
         isActive: true,
         resultCalculationMode: "standalone",
-      });
+      } as never);
 
       // Second Term
       await createTerm({
@@ -184,7 +183,7 @@ export function SessionTimelineCard({
         endDate: new Date(nextYr, 3, 17, 12, 0, 0).getTime(),
         isActive: false,
         resultCalculationMode: "standalone",
-      });
+      } as never);
 
       // Third Term
       await createTerm({
@@ -194,7 +193,7 @@ export function SessionTimelineCard({
         endDate: new Date(nextYr, 6, 24, 12, 0, 0).getTime(),
         isActive: false,
         resultCalculationMode: "cumulative_annual",
-      });
+      } as never);
 
       appToast.success("Terms Auto-Generated", {
         description: "Created First, Second, and Third Terms for " + session.name,

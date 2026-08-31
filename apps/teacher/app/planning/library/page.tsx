@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useMemo, useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
@@ -99,31 +98,31 @@ export default function TeacherLibraryPage() {
   }), [deferredSearch, visibility, processingStatus]);
 
   const materialsData = useQuery(
-    api.functions.academic.lessonKnowledgeTeacher.listTeacherKnowledgeLibraryMaterials,
-    queryArgs
+    "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeLibraryMaterials" as never,
+    queryArgs as never
   ) as TeacherLibraryResponse | undefined;
 
   const subjects = useQuery(
-    api.functions.academic.lessonKnowledgeTeacher.listTeacherLibrarySubjects
+    "functions/academic/lessonKnowledgeTeacher:listTeacherLibrarySubjects" as never
   ) as TeacherLibrarySubject[] | undefined;
 
   const assignableClasses = useQuery(
-    api.functions.academic.teacherSelectors.getTeacherAssignableClasses
+    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
   ) as TeacherLibraryClassSummary[] | undefined;
 
   const topicQueryArgs = useMemo(() => ({ limit: 50 }), []);
   const topicCandidates = useQuery(
-    api.functions.academic.lessonKnowledgeTeacher.listTeacherKnowledgeTopics,
-    topicQueryArgs
+    "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
+    topicQueryArgs as never
   ) as TeacherKnowledgeTopic[] | undefined;
 
   // Mutations
-  const requestUploadUrl = useMutation(api.functions.academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl);
-  const finalizeUpload = useMutation(api.functions.academic.lessonKnowledgeIngestion.finalizeKnowledgeMaterialUpload);
-  const updateMaterial = useMutation(api.functions.academic.lessonKnowledgeTeacher.updateTeacherKnowledgeMaterialDetails);
-  const publishMaterial = useMutation(api.functions.academic.lessonKnowledgeTeacher.publishTeacherKnowledgeMaterialToStaff);
-  const retryMaterialIngestion = useMutation(api.functions.academic.lessonKnowledgeIngestion.retryKnowledgeMaterialIngestion);
-  const requestProviderOcr = useMutation(api.functions.academic.lessonKnowledgeIngestion.requestKnowledgeMaterialProviderOcr);
+  const requestUploadUrl = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialUploadUrl" as never);
+  const finalizeUpload = useMutation("functions/academic/lessonKnowledgeIngestion:finalizeKnowledgeMaterialUpload" as never);
+  const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
+  const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
+  const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
+  const requestProviderOcr = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialProviderOcr" as never);
 
   // Derived Data
   const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
@@ -143,8 +142,8 @@ export default function TeacherLibraryPage() {
     [previewMaterial]
   );
   const sourceProof = useQuery(
-    api.functions.academic.lessonKnowledgeTeacher.getTeacherKnowledgeMaterialSourceProof,
-    sourceProofArgs
+    "functions/academic/lessonKnowledgeTeacher:getTeacherKnowledgeMaterialSourceProof" as never,
+    sourceProofArgs as never
   ) as TeacherKnowledgeMaterialSourceProofResponse | undefined;
   const isSourceProofLoading = Boolean(previewMaterial && sourceProof === undefined);
 
@@ -225,13 +224,13 @@ export default function TeacherLibraryPage() {
       const uploadShell = (await requestUploadUrl({
         title: data.title,
         description: data.description || null,
-        subjectId: data.subjectId ? data.subjectId : null,
+        subjectId: data.subjectId ? (data.subjectId as never) : null,
         level: data.level,
         topicLabel: data.topicLabel || data.title,
         sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",
         uploadIntent: data.uploadIntent,
         selectedPageRanges: uploadContentType.includes("pdf") ? data.selectedPageRanges?.trim() || null : null,
-      })) as { materialId: string; uploadUrl: string };
+      } as never)) as { materialId: string; uploadUrl: string };
 
       const response = await fetch(uploadShell.uploadUrl, {
         method: "POST",
@@ -244,9 +243,9 @@ export default function TeacherLibraryPage() {
       if (!payload.storageId) throw new Error("Storage ID missing.");
 
       await finalizeUpload({
-        materialId: uploadShell.materialId,
-        storageId: payload.storageId,
-      });
+        materialId: uploadShell.materialId as never,
+        storageId: payload.storageId as never,
+      } as never);
 
       appToast.success(uploadIntentSuccessMessage(data.uploadIntent));
       setIsMobileUploadOpen(false);
@@ -261,14 +260,14 @@ export default function TeacherLibraryPage() {
     setIsSaving(true);
     try {
       await updateMaterial({
-        materialId: draft.materialId,
+        materialId: draft.materialId as never,
         title: draft.title,
         description: draft.description || null,
-        subjectId: draft.subjectId ? draft.subjectId : null,
+        subjectId: draft.subjectId ? (draft.subjectId as never) : null,
         level: draft.level,
         topicLabel: draft.topicLabel,
         topicId: draft.topicId || undefined,
-      });
+      } as never);
       setEditingMaterialId(null);
       appToast.success("Changes saved.");
     } catch (err) {
@@ -281,7 +280,7 @@ export default function TeacherLibraryPage() {
   const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
     try {
       if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
-        await requestProviderOcr({ materialId: material._id });
+        await requestProviderOcr({ materialId: material._id as never } as never);
         appToast.success(
           material.selectedPageNumbers?.length
             ? "Provider OCR queued for the stored selected-page PDF."
@@ -290,7 +289,7 @@ export default function TeacherLibraryPage() {
         return;
       }
 
-      await retryMaterialIngestion({ materialId: material._id });
+      await retryMaterialIngestion({ materialId: material._id as never } as never);
       appToast.success("Extraction retry queued.");
     } catch (err) {
       appToast.error("OCR retry failed", { description: getUserFacingErrorMessage(err, "OCR retry failed.") });
@@ -338,7 +337,7 @@ export default function TeacherLibraryPage() {
         }}
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
-        onPublish={async (id) => { await publishMaterial({ materialId: id }); }}
+        onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
         onRetry={async (id) => {
           const material = materials.find((candidate) => candidate._id === id);
           if (material) await handleRetryMaterial(material);

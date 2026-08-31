@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { CalendarRange, Sparkles, Search, PlusCircle, X } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -51,12 +50,12 @@ function toTimestamp(value: string, isEnd = false, isAllDay = false) {
 
 export default function EventsPage() {
   const events = useQuery(
-    api.functions.academic.events.listEvents
+    "functions/academic/events:listEvents" as never
   ) as EventRecord[] | undefined;
-
-  const createEvent = useMutation(api.functions.academic.events.createEvent);
-  const updateEvent = useMutation(api.functions.academic.events.updateEvent);
-  const archiveEvent = useMutation(api.functions.academic.events.archiveEvent);
+  
+  const createEvent = useMutation("functions/academic/events:createEvent" as never);
+  const updateEvent = useMutation("functions/academic/events:updateEvent" as never);
+  const archiveEvent = useMutation("functions/academic/events:archiveEvent" as never);
 
   const [search, setSearch] = useState("");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -139,7 +138,7 @@ export default function EventsPage() {
         ...data,
         startDate: toTimestamp(data.startDate, false, data.isAllDay),
         endDate: toTimestamp(data.endDate, true, data.isAllDay),
-      });
+      } as never);
       showNotice({ tone: "success", title: "Event Created", message: `${data.title} added to calendar.` });
     } catch (err) {
       showNotice({
@@ -167,7 +166,7 @@ export default function EventsPage() {
         ...data,
         startDate: toTimestamp(data.startDate, false, data.isAllDay),
         endDate: toTimestamp(data.endDate, true, data.isAllDay),
-      });
+      } as never);
       showNotice({ tone: "success", title: "Record Updated", message: "Event changes saved successfully." });
     } catch (err) {
       showNotice({
@@ -194,7 +193,7 @@ export default function EventsPage() {
 
     setBusyState("archive");
     try {
-      await archiveEvent({ eventId: id });
+      await archiveEvent({ eventId: id } as never);
       if (selectedEventId === id) setSelectedEventId(null);
       showNotice({ tone: "success", title: "Event Archived", message: "Removed from live calendar." });
     } catch (err) {

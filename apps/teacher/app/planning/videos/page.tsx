@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
-import {
-  Link2,
-  Loader2,
-  ShieldCheck,
-  Sparkles,
-  Upload,
+import { 
+  Link2, 
+  Loader2, 
+  ShieldCheck, 
+  Sparkles, 
+  Upload, 
   Search,
   ExternalLink,
   AlertTriangle,
@@ -137,10 +136,10 @@ function buildLevelOptions(classes: TeacherVideoClassSummary[] | undefined): Lev
 }
 
 export default function TeacherVideosPage() {
-  const subjects = useQuery(api.functions.academic.lessonKnowledgeTeacher.listTeacherLibrarySubjects) as TeacherVideoSubject[] | undefined;
-  const assignableClasses = useQuery(api.functions.academic.teacherSelectors.getTeacherAssignableClasses) as TeacherVideoClassSummary[] | undefined;
-  const videosData = useQuery(api.functions.academic.lessonKnowledgeTeacher.listTeacherYoutubeSubmissions, { limit: 100 }) as TeacherVideoResponse | undefined;
-  const submitVideo = useMutation(api.functions.academic.lessonKnowledgeIngestion.registerKnowledgeMaterialLink);
+  const subjects = useQuery("functions/academic/lessonKnowledgeTeacher:listTeacherLibrarySubjects" as never) as TeacherVideoSubject[] | undefined;
+  const assignableClasses = useQuery("functions/academic/teacherSelectors:getTeacherAssignableClasses" as never) as TeacherVideoClassSummary[] | undefined;
+  const videosData = useQuery("functions/academic/lessonKnowledgeTeacher:listTeacherYoutubeSubmissions" as never, { limit: 100 } as never) as TeacherVideoResponse | undefined;
+  const submitVideo = useMutation("functions/academic/lessonKnowledgeIngestion:registerKnowledgeMaterialLink" as never);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -205,7 +204,7 @@ export default function TeacherVideosPage() {
         level: level.trim(),
         topicLabel: topicLabel.trim(),
         uploadIntent: "request_review",
-      });
+      } as never);
       showNotice({ tone: "success", message: "Video link submitted for review." });
       setTitle("");
       setDescription("");

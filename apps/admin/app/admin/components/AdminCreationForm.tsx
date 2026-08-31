@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import { useAction } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { Crown, Loader2, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
@@ -15,7 +14,7 @@ interface AdminCreationFormProps {
 
 export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps) {
   const createSchoolAdmin = useAction(
-    api.functions.academic.adminLeadership.createSchoolAdmin
+    "functions/academic/adminLeadership:createSchoolAdmin" as never
   );
 
   const [name, setName] = useState("");
@@ -41,7 +40,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
         email: normalizedEmail,
         temporaryPassword: password,
         origin: window.location.origin,
-      })) as { email: string; temporaryPassword: string };
+      } as never)) as { email: string; temporaryPassword: string };
 
       setName("");
       setEmail("");

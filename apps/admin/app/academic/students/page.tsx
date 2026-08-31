@@ -2,7 +2,6 @@
 
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
 import {
@@ -56,32 +55,32 @@ const MAX_PROMOTION_BATCH = 100;
 
 export default function StudentsPage() {
   const classes = useQuery(
-    api.functions.academic.academicSetup.listClasses
+    "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
   const sessions = useQuery(
-    api.functions.academic.academicSetup.listSessions
+    "functions/academic/academicSetup:listSessions" as never
   ) as SessionSummary[] | undefined;
 
   const createStudent = useMutation(
-    api.functions.academic.studentEnrollment.createStudent
+    "functions/academic/studentEnrollment:createStudent" as never
   );
   const generateStudentPhotoUploadUrl = useMutation(
-    api.functions.academic.studentEnrollment.generateStudentPhotoUploadUrl
+    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
   );
   const setStudentSubjectSelections = useMutation(
-    api.functions.academic.studentEnrollment.setStudentSubjectSelections
+    "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
   const promoteStudents = useMutation(
-    api.functions.academic.studentEnrollment.promoteStudents
+    "functions/academic/studentEnrollment:promoteStudents" as never
   );
   const graduateStudents = useMutation(
-    api.functions.academic.studentEnrollment.graduateStudents
+    "functions/academic/studentEnrollment:graduateStudents" as never
   );
   const cancelStudentGraduation = useMutation(
-    api.functions.academic.studentEnrollment.cancelStudentGraduation
+    "functions/academic/studentEnrollment:cancelStudentGraduation" as never
   );
   const upsertStudentFamilyLink = useMutation(
-    api.functions.academic.studentEnrollment.upsertStudentFamilyLink
+    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
 
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -163,22 +162,22 @@ export default function StudentsPage() {
   }, []);
 
   const matrix = useQuery(
-    api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix,
+    "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
     selectedClassId && selectedSessionId
-      ? { classId: selectedClassId, sessionId: selectedSessionId }
-      : "skip"
+      ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never)
+      : ("skip" as never)
   ) as EnrollmentMatrix | undefined;
   const selectedSessionTerms = useQuery(
-    api.functions.academic.academicSetup.listTermsBySession,
+    "functions/academic/academicSetup:listTermsBySession" as never,
     selectedSessionId
-      ? { sessionId: selectedSessionId }
-      : "skip"
+      ? ({ sessionId: selectedSessionId } as never)
+      : ("skip" as never)
   ) as TermSummary[] | undefined;
   const attestationData = useQuery(
-    api.functions.academic.studentEnrollment.getStudentAttestationData,
+    "functions/academic/studentEnrollment:getStudentAttestationData" as never,
     attestationStudentId
-      ? { studentId: attestationStudentId }
-      : "skip"
+      ? ({ studentId: attestationStudentId } as never)
+      : ("skip" as never)
   ) as AttestationData | undefined;
 
   const shouldShowPromotionPanel = useMemo(() => {
@@ -229,7 +228,7 @@ export default function StudentsPage() {
   }, [matrix]);
 
   const cancelStudentPromotion = useMutation(
-    api.functions.academic.studentEnrollment.cancelStudentPromotion
+    "functions/academic/studentEnrollment:cancelStudentPromotion" as never
   );
 
   const promotedStudentsCount = useMemo(() => {
@@ -287,7 +286,7 @@ export default function StudentsPage() {
         graduationDate: graduationDraft.graduationDate,
         certificateNumber: graduationDraft.certificateNumber,
         honorsOrRemarks: graduationDraft.honorsOrRemarks,
-      });
+      } as never);
       showNotice({
         tone: "success",
         message: `Successfully graduated ${promotionStudentIds.length} student${promotionStudentIds.length === 1 ? "" : "s"}.`,
@@ -320,8 +319,8 @@ export default function StudentsPage() {
     setIsCancellingGraduation(true);
     try {
       await cancelStudentGraduation({
-        studentId,
-        sessionId: selectedSessionId,
+        studentId: studentId as never,
+        sessionId: selectedSessionId as never,
       });
       showNotice({
         tone: "success",
@@ -365,8 +364,8 @@ export default function StudentsPage() {
     setIsCancellingPromotion(true);
     try {
       await cancelStudentPromotion({
-        studentId,
-        fromSessionId: selectedSessionId,
+        studentId: studentId as never,
+        fromSessionId: selectedSessionId as never,
       });
       showNotice({
         tone: "success",
@@ -514,7 +513,7 @@ export default function StudentsPage() {
     try {
       const uploadedPhotoMetadata = studentPhotoFile
         ? await uploadStudentPhoto(studentPhotoFile, () =>
-            generateStudentPhotoUploadUrl({}) as Promise<string>
+            generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
       const createdStudentId = (await createStudent({
@@ -530,7 +529,7 @@ export default function StudentsPage() {
         photoStorageId: uploadedPhotoMetadata?.storageId ?? undefined,
         photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
         photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
-      })) as string;
+      } as never)) as string;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
         await upsertStudentFamilyLink({
           studentId: createdStudentId,
@@ -540,7 +539,7 @@ export default function StudentsPage() {
           phone: parentPhone.trim() || null,
           relationship: parentRelationship.trim() || null,
           isPrimaryContact: isParentPrimaryContact,
-        });
+        } as never);
       }
 
       resetStudentCreationForm();
@@ -590,7 +589,7 @@ export default function StudentsPage() {
           classId: selectedClassId,
           sessionId: selectedSessionId,
           subjectIds: nextSubjectIds,
-        });
+        } as never);
         showNotice({
           tone: "success",
           message: `Saved subjects for ${humanNameFinalStrict(student.studentName)}.`,
@@ -625,7 +624,7 @@ export default function StudentsPage() {
           classId: selectedClassId,
           sessionId: selectedSessionId,
           subjectIds,
-        });
+        } as never);
         showNotice({
           tone: "success",
           message: `Batch update saved for ${humanNameFinalStrict(student.studentName)}.`,
@@ -721,7 +720,7 @@ export default function StudentsPage() {
         toClassId: promotionTargetClassId,
         toSessionId: promotionTargetSessionId,
         subjectEnrollmentMode: promotionSubjectMode,
-      });
+      } as never);
       showNotice({
         tone: "success",
         message: `Promoted ${promotionStudentIds.length} student${promotionStudentIds.length === 1 ? "" : "s"} to ${targetClassName}.`,

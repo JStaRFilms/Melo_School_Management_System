@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -137,57 +136,57 @@ function ManualAdjustmentsPageContent() {
   );
 
   const sessions = useQuery(
-    api.functions.academic.adminSelectors.getAdminSessions
+    "functions/academic/adminSelectors:getAdminSessions" as never
   ) as SelectorOption[] | undefined;
   const terms = useQuery(
-    api.functions.academic.adminSelectors.getTermsBySession,
+    "functions/academic/adminSelectors:getTermsBySession" as never,
     selection.sessionId
-      ? { sessionId: selection.sessionId }
-      : "skip"
+      ? ({ sessionId: selection.sessionId } as never)
+      : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    api.functions.academic.adminSelectors.getAllClasses
+    "functions/academic/adminSelectors:getAllClasses" as never
   ) as SelectorOption[] | undefined;
   const students = useQuery(
-    api.functions.academic.reportCards.getStudentsForReportCardBatch,
+    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     selection.sessionId && selection.termId && selection.classId
-      ? {
+      ? ({
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as StudentOption[] | undefined;
   const reportCard = useQuery(
-    api.functions.academic.reportCards.getStudentReportCard,
+    "functions/academic/reportCards:getStudentReportCard" as never,
     selection.sessionId &&
       selection.termId &&
       selection.classId &&
       selection.studentId
-      ? {
+      ? ({
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
           studentId: selection.studentId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as ReportCardSheetData | undefined;
   const manualAdjustments = useQuery(
-    api.functions.academic.reportCardManualAdjustments.listManualAdjustmentsForStudent,
+    "functions/academic/reportCardManualAdjustments:listManualAdjustmentsForStudent" as never,
     selection.sessionId &&
       selection.termId &&
       selection.classId &&
       selection.studentId
-      ? {
+      ? ({
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
           studentId: selection.studentId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as ManualAdjustmentRecord[] | undefined;
   const saveAdjustments = useMutation(
-    api.functions.academic.reportCardManualAdjustments.saveManualAdjustmentsBulk
+    "functions/academic/reportCardManualAdjustments:saveManualAdjustmentsBulk" as never
   );
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -403,7 +402,7 @@ function ManualAdjustmentsPageContent() {
             reason: reason.trim(),
           };
         }),
-      })) as { created: number; updated: number; reset: number };
+      } as never)) as { created: number; updated: number; reset: number };
       setReason("");
       setNotice({
         tone: "success",

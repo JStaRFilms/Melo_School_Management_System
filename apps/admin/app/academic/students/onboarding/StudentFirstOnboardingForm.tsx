@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -159,7 +158,7 @@ export function StudentFirstOnboardingForm({
 
   const isParentEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim());
   const parentReview = useQuery(
-    api.functions.academic.studentEnrollment.getParentEmailReview,
+    "functions/academic/studentEnrollment:getParentEmailReview" as any,
     isParentEmailValid ? { email: parentEmail.trim() } : "skip"
   ) as { matches: any[] } | undefined;
 

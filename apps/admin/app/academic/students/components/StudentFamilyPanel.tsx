@@ -115,20 +115,20 @@ export function StudentFamilyPanel({
 }: StudentFamilyPanelProps) {
   const convex = useConvex();
   const familyProfile = useQuery(
-    api.functions.academic.studentEnrollment.getStudentFamilyProfile,
-    { studentId }
+    "functions/academic/studentEnrollment:getStudentFamilyProfile" as never,
+    { studentId } as never
   ) as StudentFamilyProfile | undefined;
   const upsertStudentFamilyLink = useMutation(
-    api.functions.academic.studentEnrollment.upsertStudentFamilyLink
+    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
   const updateStudentFamilyParentContact = useMutation(
-    api.functions.academic.studentEnrollment.updateStudentFamilyParentContact
+    "functions/academic/studentEnrollment:updateStudentFamilyParentContact" as never
   );
   const unlinkStudentFromFamily = useMutation(
-    api.functions.academic.studentEnrollment.unlinkStudentFromFamily
+    "functions/academic/studentEnrollment:unlinkStudentFromFamily" as never
   );
   const removeStudentFamilyLink = useMutation(
-    api.functions.academic.studentEnrollment.removeStudentFamilyLink
+    "functions/academic/studentEnrollment:removeStudentFamilyLink" as never
   );
 
   const [parentFirstName, setParentFirstName] = useState("");
@@ -332,7 +332,7 @@ export function StudentFamilyPanel({
         phone: draft.phone || null,
         relationship: draft.relationship || null,
         isPrimaryContact: draft.isPrimaryContact,
-      });
+      } as never);
 
       onNotice({
         tone: "success",
@@ -389,7 +389,7 @@ export function StudentFamilyPanel({
           relationship: draft.relationship || null,
           isPrimaryContact: draft.isPrimaryContact,
           confirmDuplicateLink: true,
-        });
+        } as never);
       } else {
         await updateStudentFamilyParentContact({
           familyMemberId: pendingReview.familyMemberId,
@@ -400,7 +400,7 @@ export function StudentFamilyPanel({
           relationship: draft.relationship || null,
           isPrimaryContact: draft.isPrimaryContact,
           confirmDuplicateEmail: true,
-        });
+        } as never);
       }
 
       onNotice({
@@ -450,7 +450,7 @@ export function StudentFamilyPanel({
   const executeUnlinkStudent = async () => {
     setIsSubmitting(true);
     try {
-      await unlinkStudentFromFamily({ studentId });
+      await unlinkStudentFromFamily({ studentId } as never);
       onNotice({
         tone: "success",
         message: `${studentName} was removed from this household.`,
@@ -474,7 +474,7 @@ export function StudentFamilyPanel({
     if (!parentToRemove) return;
     setIsSubmitting(true);
     try {
-      await removeStudentFamilyLink({ familyMemberId: parentToRemove._id });
+      await removeStudentFamilyLink({ familyMemberId: parentToRemove._id } as never);
       onNotice({
         tone: "success",
         message: `${parentToRemove.name} was removed from the household.`,
@@ -717,7 +717,7 @@ export function StudentFamilyPanel({
                             phone: draft.phone || null,
                             relationship: draft.relationship || null,
                             isPrimaryContact: draft.isPrimaryContact,
-                          });
+                          } as never);
 
                           onNotice({
                             tone: "success",

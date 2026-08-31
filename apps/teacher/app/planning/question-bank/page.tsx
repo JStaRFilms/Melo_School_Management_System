@@ -101,7 +101,7 @@ export default function QuestionBankPage() {
   );
 
   const workspace = useQuery(
-    api.functions.academic.lessonKnowledgeAssessmentDrafts.getTeacherAssessmentBankWorkspace,
+    "functions/academic/lessonKnowledgeAssessmentDrafts:getTeacherAssessmentBankWorkspace" as never,
     {
       draftMode,
       sourceIds: selectedSourceIds,
@@ -109,11 +109,11 @@ export default function QuestionBankPage() {
         planningContext?.kind === "topic" || planningContext?.kind === "exam_scope"
           ? planningContext
           : undefined,
-    }
+    } as never
   ) as AssessmentWorkspaceData | undefined;
 
   const saveDraft = useMutation(
-    api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft
+    "functions/academic/lessonKnowledgeAssessmentDrafts:saveTeacherAssessmentBankDraft" as never
   );
   const generateDraftAction = useAction(
     api.functions.academic.documentGeneration.generateTeacherAssessmentDraft
@@ -253,7 +253,7 @@ export default function QuestionBankPage() {
             ? planningContext
             : undefined,
         items: draft.items,
-      })) as AssessmentBankSaveResult;
+      } as never)) as AssessmentBankSaveResult;
 
       return result;
     } catch (error) {

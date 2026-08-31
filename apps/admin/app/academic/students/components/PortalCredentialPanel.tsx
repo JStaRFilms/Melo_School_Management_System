@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useAction } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { BadgeCheck, Copy, KeyRound, RefreshCw } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -34,7 +33,7 @@ export function PortalCredentialPanel({
   onNotice,
 }: PortalCredentialPanelProps) {
   const upsertPortalCredentials = useAction(
-    api.functions.academic.studentEnrollment.upsertPortalCredentials
+    "functions/academic/studentEnrollment:upsertPortalCredentials" as never
   );
 
   const [temporaryPassword, setTemporaryPassword] = useState(defaultPassword);
@@ -84,7 +83,7 @@ export function PortalCredentialPanel({
       const response = (await upsertPortalCredentials({
         userId,
         temporaryPassword: password,
-      })) as PortalCredentialResult;
+      } as never)) as PortalCredentialResult;
 
       setResult(response);
       setCopied(false);

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useAction } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { X, Lock, Eye, EyeOff, KeyRound, Loader2, Check } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 
@@ -27,7 +26,7 @@ export function ResetSchoolAdminPasswordModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetPassword = useAction(
-    api.functions.platform.index.resetSchoolAdminPassword
+    "functions/platform/index:resetSchoolAdminPassword" as never
   );
 
   if (!isOpen || !school) return null;
@@ -45,9 +44,9 @@ export function ResetSchoolAdminPasswordModal({
     setIsSubmitting(true);
     try {
       await resetPassword({
-        schoolId: school._id,
+        schoolId: school._id as never,
         newPassword,
-      });
+      } as never);
 
       appToast.success("Password reset successfully", {
         description: `Admin password for ${school.adminEmail ?? school.name} has been updated.`,

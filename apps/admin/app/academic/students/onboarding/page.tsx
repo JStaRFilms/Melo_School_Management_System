@@ -4,7 +4,6 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { appToast } from "@school/shared/toast";
 
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
@@ -27,22 +26,22 @@ type FamilyLinkResult = {
 
 export default function StudentOnboardingPage() {
   const classes = useQuery(
-    api.functions.academic.academicSetup.listClasses
+    "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
   const createStudent = useMutation(
-    api.functions.academic.studentEnrollment.createStudent
+    "functions/academic/studentEnrollment:createStudent" as never
   );
   const upsertStudentFamilyLink = useMutation(
-    api.functions.academic.studentEnrollment.upsertStudentFamilyLink
+    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
   const generateStudentPhotoUploadUrl = useMutation(
-    api.functions.academic.studentEnrollment.generateStudentPhotoUploadUrl
+    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
   );
   const upsertPortalCredentials = useAction(
-    api.functions.academic.studentEnrollment.upsertPortalCredentials
+    "functions/academic/studentEnrollment:upsertPortalCredentials" as never
   );
   const upsertStudentPortalCredentialsByStudentId = useAction(
-    api.functions.academic.studentEnrollment.upsertStudentPortalCredentialsByStudentId
+    "functions/academic/studentEnrollment:upsertStudentPortalCredentialsByStudentId" as never
   );
 
   const [firstName, setFirstName] = useState("");
@@ -225,7 +224,7 @@ export default function StudentOnboardingPage() {
     try {
       const uploadedPhotoMetadata = studentPhotoFile
         ? await uploadStudentPhoto(studentPhotoFile, () =>
-            generateStudentPhotoUploadUrl({}) as Promise<string>
+            generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
       uploadedPhoto = Boolean(uploadedPhotoMetadata);
@@ -244,7 +243,7 @@ export default function StudentOnboardingPage() {
         photoStorageId: uploadedPhotoMetadata?.storageId,
         photoFileName: uploadedPhotoMetadata?.fileName,
         photoContentType: uploadedPhotoMetadata?.contentType,
-      })) as string;
+      } as never)) as string;
 
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
@@ -256,7 +255,7 @@ export default function StudentOnboardingPage() {
           phone: parentPhone.trim() || null,
           relationship: parentRelationship.trim() || null,
           isPrimaryContact: isParentPrimaryContact,
-        })) as FamilyLinkResult;
+        } as never)) as FamilyLinkResult;
       }
 
       let studentCredentialResult: PortalCredentialResult | null = null;
@@ -264,7 +263,7 @@ export default function StudentOnboardingPage() {
         studentCredentialResult = (await upsertStudentPortalCredentialsByStudentId({
           studentId: createdStudentId,
           temporaryPassword: studentTemporaryPassword.trim(),
-        })) as PortalCredentialResult;
+        } as never)) as PortalCredentialResult;
       }
 
       let parentCredentialResult: PortalCredentialResult | null = null;
@@ -272,7 +271,7 @@ export default function StudentOnboardingPage() {
         parentCredentialResult = (await upsertPortalCredentials({
           userId: familyLinkResult.parentUserId,
           temporaryPassword: parentTemporaryPassword.trim(),
-        })) as PortalCredentialResult;
+        } as never)) as PortalCredentialResult;
       }
 
       const selectedClassName =

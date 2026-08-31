@@ -5,7 +5,6 @@ import { AdminSheet } from "@/components/ui/AdminSheet";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { api } from "@school/convex/_generated/api";
 import { appToast } from "@school/shared/toast";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -67,7 +66,7 @@ type ClassOffering = {
 
 export default function ClassesPage() {
   const router = useRouter();
-  const sessions = useQuery(api.functions.academic.academicSetup.listSessions) as AcademicSession[] | undefined;
+  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as AcademicSession[] | undefined;
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,18 +81,18 @@ export default function ClassesPage() {
   }, [sessions, selectedSessionId]);
 
   const classes = useQuery(
-    api.functions.academic.academicSetup.listClasses,
-    selectedSessionId ? { sessionId: selectedSessionId } : {}
+    "functions/academic/academicSetup:listClasses" as never,
+    selectedSessionId ? ({ sessionId: selectedSessionId } as never) : {}
   ) as ClassSummary[] | undefined;
-  const subjects = useQuery(api.functions.academic.academicSetup.listSubjects) as Subject[] | undefined;
-  const teachers = useQuery(api.functions.academic.academicSetup.listTeachers) as Teacher[] | undefined;
+  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
+  const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as Teacher[] | undefined;
 
-  const createClass = useMutation(api.functions.academic.academicSetup.createClass);
-  const backfillClassNaming = useMutation(api.functions.academic.academicSetup.backfillClassNaming);
-  const updateClass = useMutation(api.functions.academic.academicSetup.updateClass);
-  const archiveClass = useMutation(api.functions.academic.academicSetup.archiveClass);
-  const setClassSubjects = useMutation(api.functions.academic.academicSetup.setClassSubjects);
-  const assignTeacherToClassSubject = useMutation(api.functions.academic.academicSetup.assignTeacherToClassSubject);
+  const createClass = useMutation("functions/academic/academicSetup:createClass" as never);
+  const backfillClassNaming = useMutation("functions/academic/academicSetup:backfillClassNaming" as never);
+  const updateClass = useMutation("functions/academic/academicSetup:updateClass" as never);
+  const archiveClass = useMutation("functions/academic/academicSetup:archiveClass" as never);
+  const setClassSubjects = useMutation("functions/academic/academicSetup:setClassSubjects" as never);
+  const assignTeacherToClassSubject = useMutation("functions/academic/academicSetup:assignTeacherToClassSubject" as never);
 
   const [search, setSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -118,7 +117,7 @@ export default function ClassesPage() {
 
     const runBackfill = async () => {
       try {
-        await backfillClassNaming({});
+        await backfillClassNaming({} as never);
       } catch (error) {
         console.error("backfillClassNaming failed", error);
       } finally {
@@ -165,8 +164,8 @@ export default function ClassesPage() {
   );
 
   const currentOfferings = useQuery(
-    api.functions.academic.academicSetup.getClassSubjects,
-    selectedClassId ? { classId: selectedClassId } : "skip"
+    "functions/academic/academicSetup:getClassSubjects" as never,
+    selectedClassId ? ({ classId: selectedClassId } as never) : ("skip" as never)
   ) as ClassOffering[] | undefined;
 
   const [activeClass, setActiveClass] = useState<ClassSummary | null>(null);
@@ -245,14 +244,14 @@ export default function ClassesPage() {
         classLabel: data.classLabel || undefined,
         level: data.level,
         formTeacherId: data.formTeacherId || null,
-        sessionId: selectedSessionId ? selectedSessionId : undefined,
-      })) as string;
+        sessionId: selectedSessionId ? (selectedSessionId as never) : undefined,
+      } as never)) as string;
 
       if (data.subjectIds.length > 0) {
         await setClassSubjects({
           classId,
           subjectIds: data.subjectIds,
-        });
+        } as never);
       }
       showNotice({ tone: "success", title: "Class Records Initialized", message: `New blueprint created for ${data.gradeName}.` });
     } catch (err) {
@@ -280,13 +279,13 @@ export default function ClassesPage() {
         gradeName: data.gradeName,
         classLabel: data.classLabel || null,
         formTeacherId: data.formTeacherId || null,
-        sessionId: selectedSessionId ? selectedSessionId : undefined,
-      });
+        sessionId: selectedSessionId ? (selectedSessionId as never) : undefined,
+      } as never);
 
       await setClassSubjects({
         classId: selectedClassId,
         subjectIds: data.subjectIds,
-      });
+      } as never);
 
       setIsEditorDirty(false);
       showNotice({ tone: "success", title: "Class Records Updated", message: "Blueprint modifications saved successfully." });
@@ -311,7 +310,7 @@ export default function ClassesPage() {
     if (!classToArchive) return;
     setIsArchiving(true);
     try {
-      await archiveClass({ classId: classToArchive._id });
+      await archiveClass({ classId: classToArchive._id } as never);
       if (selectedClassId === classToArchive._id) {
         setSelectedClassId(null);
       }
@@ -335,7 +334,7 @@ export default function ClassesPage() {
         classId,
         subjectId,
         teacherId,
-      });
+      } as never);
       showNotice({ tone: "success", title: "Assignment Saved", message: "Subject instructor updated." });
     } catch (err) {
       showNotice({

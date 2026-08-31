@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
 import { authClient } from "@/lib/auth-client";
 import { usePathname, useRouter } from "next/navigation";
@@ -16,8 +15,8 @@ export default function AssessmentsLayout({ children }: { children: ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const schoolBranding = useQuery(
-    api.functions.academic.schoolBranding.getCurrentSchoolBranding,
-    isConvexConfigured() && isAuthenticated ? {} : "skip"
+    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
+    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
   ) as {
     name: string;
     logoUrl: string | null;

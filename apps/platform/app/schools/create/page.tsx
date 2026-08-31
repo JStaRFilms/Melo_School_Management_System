@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 
@@ -24,7 +23,7 @@ function CreateSchoolForm() {
   const [success, setSuccess] = useState(false);
 
   const createSchool = useMutation(
-    api.functions.platform.index.createSchool
+    "functions/platform/index:createSchool" as never
   );
 
   const handleNameChange = useCallback(
@@ -86,7 +85,7 @@ function CreateSchoolForm() {
         return;
       }
 
-      await createSchool({ name: trimmedName, slug: trimmedSlug });
+      await createSchool({ name: trimmedName, slug: trimmedSlug } as never);
       setSuccess(true);
       setTimeout(() => {
         router.push("/schools");

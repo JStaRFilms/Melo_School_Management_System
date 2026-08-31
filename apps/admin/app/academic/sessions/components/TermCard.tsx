@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import {
   CalendarDays,
   CheckCircle2,
@@ -53,9 +52,9 @@ function parseDateInputToTimestamp(dateStr: string) {
 }
 
 export function TermCard({ term, sessionName }: TermCardProps) {
-  const activateTerm = useMutation(api.functions.academic.academicSetup.activateTerm);
-  const updateTermDates = useMutation(api.functions.academic.academicSetup.updateTermDates);
-  const updateCalculationMode = useMutation(api.functions.academic.academicSetup.updateTermCalculationMode);
+  const activateTerm = useMutation("functions/academic/academicSetup:activateTerm" as never);
+  const updateTermDates = useMutation("functions/academic/academicSetup:updateTermDates" as never);
+  const updateCalculationMode = useMutation("functions/academic/academicSetup:updateTermCalculationMode" as never);
 
   const [isActivating, setIsActivating] = useState(false);
   const [isEditingDates, setIsEditingDates] = useState(false);
@@ -75,7 +74,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
       await updateCalculationMode({
         termId: term._id,
         resultCalculationMode: mode,
-      });
+      } as never);
 
       appToast.success("Calculation Mode Updated", {
         description: `${term.name} is now set to ${
@@ -92,7 +91,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   const handleConfirmActivate = async () => {
     setIsActivating(true);
     try {
-      await activateTerm({ termId: term._id });
+      await activateTerm({ termId: term._id } as never);
       setJustActivated(true);
       setTimeout(() => setJustActivated(false), 2400);
 
@@ -140,7 +139,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
         startDate: startTs,
         endDate: endTs,
         expectedUpdatedAt: term.updatedAt,
-      });
+      } as never);
 
       setIsEditingDates(false);
       appToast.success("Term dates updated", {

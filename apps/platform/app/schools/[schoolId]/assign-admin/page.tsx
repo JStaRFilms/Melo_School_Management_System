@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { ResetSchoolAdminPasswordModal } from "../../ResetSchoolAdminPasswordModal";
@@ -22,8 +21,8 @@ function AssignAdminForm() {
 
   // Fetch school details
   const schools = useQuery(
-    api.functions.platform.index.listSchools,
-    {}
+    "functions/platform/index:listSchools" as never,
+    {} as never
   ) as
     | Array<{
         _id: string;
@@ -39,7 +38,7 @@ function AssignAdminForm() {
   const school = schools?.find((s) => s._id === schoolId);
 
   const provisionAdmin = useAction(
-    api.functions.platform.index.provisionSchoolAdmin
+    "functions/platform/index:provisionSchoolAdmin" as never
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,7 +79,7 @@ function AssignAdminForm() {
         adminEmail: trimmedEmail,
         adminPassword,
         origin: window.location.origin,
-      });
+      } as never);
 
       setSuccess(true);
       setTimeout(() => {

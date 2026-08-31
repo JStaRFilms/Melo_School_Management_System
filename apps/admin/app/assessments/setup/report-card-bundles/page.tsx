@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { isConvexConfigured } from "@/convex-runtime";
 import { mockClasses } from "@/mock-data";
 import {
@@ -78,17 +77,17 @@ export default function ReportCardBundlesPage() {
 }
 
 function LiveReportCardBundlesPage() {
-const scaleTemplateQuery = useQuery(
-    api.functions.academic.reportCardExtras.listReportCardExtraScaleTemplates
+  const scaleTemplateQuery = useQuery(
+    "functions/academic/reportCardExtras:listReportCardExtraScaleTemplates" as never
   ) as ScaleTemplateRecord[] | undefined;
   const bundleQuery = useQuery(
-    api.functions.academic.reportCardExtras.listReportCardExtraBundles
+    "functions/academic/reportCardExtras:listReportCardExtraBundles" as never
   ) as BundleRecord[] | undefined;
   const classQuery = useQuery(
-    api.functions.academic.adminSelectors.getAllClasses
+    "functions/academic/adminSelectors:getAllClasses" as never
   ) as ClassSummary[] | undefined;
   const assignmentQuery = useQuery(
-    api.functions.academic.reportCardExtras.listSchoolReportCardExtraBundleAssignments
+    "functions/academic/reportCardExtras:listSchoolReportCardExtraBundleAssignments" as never
   ) as ClassAssignmentRecord[] | undefined;
   const scaleTemplates = useMemo(() => scaleTemplateQuery ?? [], [scaleTemplateQuery]);
   const bundles = useMemo(() => bundleQuery ?? [], [bundleQuery]);
@@ -97,13 +96,13 @@ const scaleTemplateQuery = useQuery(
   const initialAssignments = useMemo(() => buildAssignmentMap(assignments), [assignments]);
 
   const saveScaleTemplate = useMutation(
-    api.functions.academic.reportCardExtras.saveReportCardExtraScaleTemplate
+    "functions/academic/reportCardExtras:saveReportCardExtraScaleTemplate" as never
   );
   const saveBundle = useMutation(
-    api.functions.academic.reportCardExtras.saveReportCardExtraBundle
+    "functions/academic/reportCardExtras:saveReportCardExtraBundle" as never
   );
   const setClassBundles = useMutation(
-    api.functions.academic.reportCardExtras.setClassReportCardExtraBundles
+    "functions/academic/reportCardExtras:setClassReportCardExtraBundles" as never
   );
 
   return (
@@ -127,7 +126,7 @@ const scaleTemplateQuery = useQuery(
               systemKey: field.systemKey,
             })),
           })),
-        })) as string
+        } as never)) as string
       }
       onSaveScaleTemplate={async (draft) =>
         (await saveScaleTemplate({
@@ -139,7 +138,7 @@ const scaleTemplateQuery = useQuery(
             label: option.label,
             shortLabel: option.shortLabel || null,
           })),
-        })) as string
+        } as never)) as string
       }
       renderAssignmentPanel={(selectedBundleId) => (
         <LiveClassAssignmentPanel
@@ -147,7 +146,7 @@ const scaleTemplateQuery = useQuery(
           classes={classes}
           initialAssignments={initialAssignments}
           onSetClassBundles={(classId, bundleIds) =>
-            setClassBundles({ classId, bundleIds })
+            setClassBundles({ classId, bundleIds } as never)
           }
           selectedBundleId={selectedBundleId}
         />

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@school/convex/_generated/api";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReportCardHref } from "@school/shared";
 import type { ReportCardSheetData } from "@school/shared";
@@ -58,19 +57,19 @@ export default function TeacherReportCardWorkbenchPage() {
   );
 
   const sessions = useQuery(
-    api.functions.academic.teacherSelectors.getTeacherSessions
+    "functions/academic/teacherSelectors:getTeacherSessions" as never
   ) as LegacySelectorOption[] | undefined;
   const terms = useQuery(
-    api.functions.academic.teacherSelectors.getTermsBySession,
+    "functions/academic/teacherSelectors:getTermsBySession" as never,
     selection.sessionId
-      ? { sessionId: selection.sessionId }
-      : "skip"
+      ? ({ sessionId: selection.sessionId } as never)
+      : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const activeTerms = useQuery(
-    api.functions.academic.teacherSelectors.getTeacherActiveTerms
+    "functions/academic/teacherSelectors:getTeacherActiveTerms" as never
   ) as Array<SelectorOption & { isActive: boolean }> | undefined;
   const classes = useQuery(
-    api.functions.academic.teacherSelectors.getTeacherAssignableClasses
+    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
   ) as LegacySelectorOption[] | undefined;
 
   const normalizedSessions = normalizeLegacyOptions(sessions);
@@ -155,14 +154,14 @@ export default function TeacherReportCardWorkbenchPage() {
   );
 
   const rosterRows = useQuery(
-    api.functions.academic.reportCards.getStudentsForReportCardBatch,
+    "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     hasClassAndSession
-      ? {
+      ? ({
           classId: selection.classId,
           sessionId: selection.sessionId,
           termId: selection.termId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as BatchStudentRecord[] | undefined;
 
   const roster = useMemo<StudentOption[]>(
@@ -190,15 +189,15 @@ export default function TeacherReportCardWorkbenchPage() {
   // â”€â”€ Report card data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const reportCard = useQuery(
-    api.functions.academic.reportCards.getStudentReportCard,
+    "functions/academic/reportCards:getStudentReportCard" as never,
     selection.studentId && selection.sessionId && selection.termId
-      ? {
+      ? ({
           studentId: selection.studentId,
           sessionId: selection.sessionId,
           termId: selection.termId,
           ...(selection.classId ? { classId: selection.classId } : {}),
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as ReportCardSheetData | undefined;
 
   const resolvedClassId = selection.classId ?? reportCard?.classId ?? null;
@@ -212,30 +211,30 @@ export default function TeacherReportCardWorkbenchPage() {
   // â”€â”€ Subject matrix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const subjectMatrix = useQuery(
-    api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix,
+    "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
     selection.classId && selection.sessionId
-      ? {
+      ? ({
           classId: selection.classId,
           sessionId: selection.sessionId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as SubjectMatrix | undefined;
 
   // â”€â”€ Mutations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const saveComment = useMutation(
-    api.functions.academic.reportCards.saveStudentReportCardComments
+    "functions/academic/reportCards:saveStudentReportCardComments" as never
   );
   const extrasEntry = useQuery(
-    api.functions.academic.reportCardExtras.getStudentReportCardExtrasEntry,
+    "functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never,
     selection.studentId && selection.sessionId && selection.termId && resolvedClassId
-      ? {
+      ? ({
           studentId: selection.studentId,
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: resolvedClassId,
-        }
-      : "skip"
+        } as never)
+      : ("skip" as never)
   ) as
     | {
         canEdit: boolean;
@@ -279,10 +278,10 @@ export default function TeacherReportCardWorkbenchPage() {
       }
     | undefined;
   const saveExtras = useMutation(
-    api.functions.academic.reportCardExtras.saveStudentReportCardExtrasEntry
+    "functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never
   );
   const saveSubjectSelections = useMutation(
-    api.functions.academic.studentEnrollment.setStudentSubjectSelections
+    "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
   );
 
   // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -359,7 +358,7 @@ export default function TeacherReportCardWorkbenchPage() {
         args.headTeacherComment = payload.headTeacherComment;
       }
 
-      await saveComment(args);
+      await saveComment(args as never);
     },
     [isAdmin, saveComment, selection.sessionId, selection.studentId, selection.termId]
   );
@@ -374,7 +373,7 @@ export default function TeacherReportCardWorkbenchPage() {
         classId: selection.classId,
         sessionId: selection.sessionId,
         subjectIds,
-      });
+      } as never);
     },
     [
       saveSubjectSelections,
@@ -407,7 +406,7 @@ export default function TeacherReportCardWorkbenchPage() {
         sessionId: selection.sessionId,
         termId: selection.termId,
         bundleValues,
-      });
+      } as never);
     },
     [resolvedClassId, saveExtras, selection.sessionId, selection.studentId, selection.termId]
   );

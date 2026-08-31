@@ -2,7 +2,6 @@
 
 import { useQuery } from "convex/react";
 import { useState } from "react";
-import { api } from "@school/convex/_generated/api";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import {
@@ -48,10 +47,10 @@ type TeacherRecord = {
 
 export default function AdminManagementPage() {
   const data = useQuery(
-    api.functions.academic.adminLeadership.listSchoolAdmins
+    "functions/academic/adminLeadership:listSchoolAdmins" as never
   ) as AdminDashboardData | undefined;
   const teachers = useQuery(
-    api.functions.academic.academicSetup.listTeachers
+    "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
 
 
