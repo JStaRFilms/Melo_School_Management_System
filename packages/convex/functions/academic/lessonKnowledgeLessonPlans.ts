@@ -1188,7 +1188,7 @@ async function recordAiRun(args: {
   startedAt?: number;
   finishedAt?: number;
 }) {
-  await args.ctx.db.insert("aiRunLogs", {
+  return await args.ctx.db.insert("aiRunLogs", {
     schoolId: args.schoolId,
     actorUserId: args.userId,
     actorRole: args.actorRole,
@@ -1984,13 +1984,13 @@ export const saveTeacherInstructionArtifactDraft = mutation({
 
 export const recordTeacherLessonPlanAiRun = mutation({
   args: aiRunLogValidator,
-  returns: v.null(),
+  returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
-    await recordAiRun({
+    return await recordAiRun({
       ctx,
       schoolId,
       userId,
@@ -2010,8 +2010,6 @@ export const recordTeacherLessonPlanAiRun = mutation({
       ...(args.startedAt ? { startedAt: args.startedAt } : {}),
       ...(args.finishedAt ? { finishedAt: args.finishedAt } : {}),
     });
-
-    return null;
   },
 });
 

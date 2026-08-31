@@ -28,7 +28,6 @@ import {
 import { api } from "../../_generated/api";
 import { action, type ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
-import { getAuthenticatedSchoolMembership } from "./auth";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 const MAX_PROVIDER_RETRY_ATTEMPTS = 1;
@@ -1251,9 +1250,17 @@ function assessmentSubjectName(workspace: AssessmentWorkspace): string | null {
 }
 
 async function requireStaffGenerationContext(ctx: ActionCtx) {
-  const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
-  assertStaffGenerationAccess(role, isSchoolAdmin);
-  return { userId, schoolId, role, isSchoolAdmin };
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  if (!viewer) {
+    throw new ConvexError("Unauthorized");
+  }
+  assertStaffGenerationAccess(viewer.role, viewer.isSchoolAdmin);
+  return {
+    userId: viewer.appUserId as Id<"users">,
+    schoolId: viewer.schoolId as Id<"schools">,
+    role: viewer.role,
+    isSchoolAdmin: viewer.isSchoolAdmin,
+  };
 }
 
 function ensureAiRunLogId(value: Id<"aiRunLogs"> | null): Id<"aiRunLogs"> {

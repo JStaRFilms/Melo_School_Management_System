@@ -1635,13 +1635,13 @@ export const saveTeacherAssessmentBankDraft = mutation({
 
 export const recordTeacherAssessmentBankAiRun = mutation({
   args: aiRunLogValidator,
-  returns: v.null(),
+  returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
-    await ctx.db.insert("aiRunLogs", {
+    return await ctx.db.insert("aiRunLogs", {
       schoolId,
       actorUserId: userId,
       actorRole: actor.role,
@@ -1663,7 +1663,5 @@ export const recordTeacherAssessmentBankAiRun = mutation({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-
-    return null;
   },
 });
