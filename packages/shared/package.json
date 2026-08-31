@@ -11,7 +11,8 @@
     "./planning-routes": "./src/planning-routes.ts",
     "./toast": "./src/toast/index.ts",
     "./exam-recording": "./src/exam-recording/index.ts",
-    "./subject-aggregation": "./src/subject-aggregation.ts"
+    "./subject-aggregation": "./src/subject-aggregation.ts",
+    "./migration": "./src/migration/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

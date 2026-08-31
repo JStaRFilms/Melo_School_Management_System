@@ -57,6 +57,11 @@ import type * as functions_academic_lessonKnowledgeTemplates from "../functions/
 import type * as functions_academic_lessonKnowledgeTemplatesHelpers from "../functions/academic/lessonKnowledgeTemplatesHelpers.js";
 import type * as functions_academic_migrateSplitBranches from "../functions/academic/migrateSplitBranches.js";
 import type * as functions_academic_migrateSplitBranchesAction from "../functions/academic/migrateSplitBranchesAction.js";
+import type * as functions_academic_migrationAuth from "../functions/academic/migrationAuth.js";
+import type * as functions_academic_migrationAutosave from "../functions/academic/migrationAutosave.js";
+import type * as functions_academic_migrationIngest from "../functions/academic/migrationIngest.js";
+import type * as functions_academic_migrationMerge from "../functions/academic/migrationMerge.js";
+import type * as functions_academic_migrationWorkspace from "../functions/academic/migrationWorkspace.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
@@ -147,6 +152,11 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeTemplatesHelpers": typeof functions_academic_lessonKnowledgeTemplatesHelpers;
   "functions/academic/migrateSplitBranches": typeof functions_academic_migrateSplitBranches;
   "functions/academic/migrateSplitBranchesAction": typeof functions_academic_migrateSplitBranchesAction;
+  "functions/academic/migrationAuth": typeof functions_academic_migrationAuth;
+  "functions/academic/migrationAutosave": typeof functions_academic_migrationAutosave;
+  "functions/academic/migrationIngest": typeof functions_academic_migrationIngest;
+  "functions/academic/migrationMerge": typeof functions_academic_migrationMerge;
+  "functions/academic/migrationWorkspace": typeof functions_academic_migrationWorkspace;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;

@@ -7,6 +7,7 @@ import { useMutation,useQuery } from "convex/react";
 import {
 ArrowRight,
 BookOpen,
+FileSpreadsheet,
 Plus,
 Search,
 Sparkles,
@@ -851,14 +852,23 @@ export default function StudentsPage() {
                         },
                       ]}
                     />
-                    {isMobile && (
+                    <div className="flex items-center gap-2">
                       <Link 
-                        href="/academic/students/onboarding"
-                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 animate-in fade-in slide-in-from-right-4 duration-700"
+                        href="/students/import"
+                        className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-1.5 rounded-xl border border-indigo-200 transition-colors shadow-2xs"
                       >
-                        Bulk Onboarding <ArrowRight className="h-2.5 w-2.5" />
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        Data Migration
                       </Link>
-                    )}
+                      {isMobile && (
+                        <Link 
+                          href="/academic/students/onboarding"
+                          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 animate-in fade-in slide-in-from-right-4 duration-700"
+                        >
+                          Bulk Onboarding <ArrowRight className="h-2.5 w-2.5" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 }
               />

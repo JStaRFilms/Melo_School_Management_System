@@ -1047,6 +1047,10 @@ export default defineSchema({
     graduatedAt: v.optional(v.number()),
     graduatingSessionId: v.optional(v.id("academicSessions")),
     graduatingClassId: v.optional(v.id("classes")),
+    customAttributes: v.optional(
+      v.record(v.string(), v.union(v.string(), v.number(), v.boolean(), v.null()))
+    ),
+    unmappedData: v.optional(v.record(v.string(), v.any())),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -2774,5 +2778,105 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_status", ["status"]),
+
+  importWorkspaces: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(), // e.g. "2026/2027 Baseline Intake"
+    mode: v.union(v.literal("school_admin"), v.literal("super_admin")),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("analyzing"),
+      v.literal("reviewing"),
+      v.literal("merged"),
+      v.literal("cancelled")
+    ),
+    totalRecords: v.number(),
+    validRecords: v.number(),
+    warningRecords: v.number(),
+    errorRecords: v.number(),
+    sourceFiles: v.array(
+      v.object({
+        storageId: v.id("_storage"),
+        fileName: v.string(),
+        fileSize: v.number(),
+        uploadedAt: v.number(),
+      })
+    ),
+    admissionNumberPrefix: v.optional(v.string()), // e.g. "SCH/2026/"
+    nextAdmissionSequence: v.optional(v.number()), // e.g. 101
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.union(v.id("users"), v.id("platformAdmins")),
+    mergedAt: v.optional(v.number()),
+    mergedBy: v.optional(v.union(v.id("users"), v.id("platformAdmins"))),
+  })
+    .index("by_schoolId", ["schoolId"])
+    .index("by_schoolId_and_status", ["schoolId", "status"]),
+
+  stagedImportRecords: defineTable({
+    workspaceId: v.id("importWorkspaces"),
+    schoolId: v.id("schools"),
+    rowNumber: v.number(),
+    entityType: v.union(v.literal("student"), v.literal("grade_record")),
+    rawPayload: v.record(v.string(), v.any()),
+    parsedData: v.object({
+      firstName: v.string(),
+      lastName: v.string(),
+      middleName: v.optional(v.string()),
+      admissionNumber: v.optional(v.string()),
+      gender: v.string(), // "Male", "Female", or "Unspecified"
+      dateOfBirth: v.optional(v.number()),
+      className: v.string(), // Raw class label from sheet
+      matchedClassId: v.optional(v.id("classes")),
+      guardianName: v.optional(v.string()),
+      guardianPhone: v.optional(v.string()), // Normalized +234
+      guardianEmail: v.optional(v.string()),
+      address: v.optional(v.string()),
+      customAttributes: v.optional(
+        v.record(v.string(), v.union(v.string(), v.number(), v.boolean(), v.null()))
+      ),
+      unmappedFields: v.optional(v.record(v.string(), v.string())),
+      // Grade fields (for grade_record rows)
+      subjectName: v.optional(v.string()),
+      matchedSubjectId: v.optional(v.id("subjects")),
+      ca1: v.optional(v.number()),
+      ca2: v.optional(v.number()),
+      exam: v.optional(v.number()),
+    }),
+    validationStatus: v.union(v.literal("valid"), v.literal("warning"), v.literal("error")),
+    validationErrors: v.array(v.string()),
+    // Clash & Sibling Intelligence
+    clashCandidateId: v.optional(v.id("stagedImportRecords")),
+    existingStudentId: v.optional(v.id("students")),
+    clashConfidence: v.optional(v.number()), // 0 - 100
+    clashReason: v.optional(v.string()),
+    familyClusterKey: v.optional(v.string()), // Phone-based hash grouping siblings
+    isResolved: v.boolean(),
+    resolutionAction: v.optional(
+      v.union(
+        v.literal("create_new"),
+        v.literal("merge_existing"),
+        v.literal("link_as_sibling"),
+        v.literal("ignore")
+      )
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_workspaceId", ["workspaceId"])
+    .index("by_workspaceId_and_validationStatus", ["workspaceId", "validationStatus"])
+    .index("by_workspaceId_and_entityType", ["workspaceId", "entityType"])
+    .index("by_workspaceId_and_familyClusterKey", ["workspaceId", "familyClusterKey"]),
+
+  migrationFeatureSignals: defineTable({
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    rawHeader: v.string(), // e.g. "bus_stop", "genotype", "blood_group"
+    sampleValue: v.optional(v.string()),
+    detectedType: v.string(), // "string", "number", "boolean"
+    status: v.union(v.literal("new"), v.literal("reviewed"), v.literal("adopted")),
+    createdAt: v.number(),
+  })
+    .index("by_rawHeader", ["rawHeader"])
+    .index("by_schoolId", ["schoolId"]),
 });
 
