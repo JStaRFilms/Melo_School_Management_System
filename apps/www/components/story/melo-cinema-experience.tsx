@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Clock,
   Layers,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
@@ -84,14 +85,14 @@ export function MeloCinemaExperience() {
           const nextCard = cards[index + 1];
 
           gsap.to(card, {
-            scale: isDesktop ? 0.94 : 0.97,
-            opacity: isDesktop ? 0.4 : 0.6,
-            yPercent: isDesktop ? -5 : -2,
+            scale: isDesktop ? 0.95 : 0.98,
+            opacity: isDesktop ? 0.5 : 0.7,
+            yPercent: isDesktop ? -4 : -2,
             ease: "none",
             scrollTrigger: {
               trigger: nextCard,
               start: isDesktop ? "top 80%" : "top 85%",
-              end: isDesktop ? "top 20%" : "top 30%",
+              end: isDesktop ? "top 25%" : "top 35%",
               scrub: true,
             },
           });
@@ -202,27 +203,12 @@ export function MeloCinemaExperience() {
   const calculatedTermTuition = estimatorStudents * avgTuition;
   const hoursSavedPerTerm = Math.round((estimatorStudents / 30) * 4.5);
   
-  const recommendedTierInfo =
+  const activePlanName =
     estimatorStudents <= 200
-      ? {
-          tier: "Core Operations Plan",
-          cost: `₦${estimatedPlatformFee.toLocaleString()} / term`,
-          setup: "₦30,000 one-time setup",
-          desc: "Admin, teacher workspaces, academic records & broadsheets.",
-        }
+      ? "Core Operations Plan"
       : estimatorStudents <= 800
-      ? {
-          tier: "Standard Growth Plan",
-          cost: `₦${estimatedPlatformFee.toLocaleString()} / term`,
-          setup: "₦50,000 onboarding & data setup",
-          desc: "Full family portal, Paystack fee collection & branded site starter.",
-        }
-      : {
-          tier: "Enterprise Managed Plan",
-          cost: `₦${estimatedPlatformFee.toLocaleString()} / term`,
-          setup: "Custom managed rollout",
-          desc: "Multi-campus, bank reconciliation automation & priority SLA.",
-        };
+      ? "Standard Growth Plan"
+      : "Enterprise Managed Plan";
 
   return (
     <div className="relative w-full bg-[#FAF9F5] text-stone-900 font-sans selection:bg-amber-500/20 selection:text-stone-950 min-h-screen overflow-x-hidden">
@@ -236,7 +222,7 @@ export function MeloCinemaExperience() {
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-50 rounded-2xl border border-stone-800 bg-stone-950 px-4 sm:px-5 py-2.5 sm:py-3 text-xs font-medium text-white shadow-2xl flex items-center gap-2.5 backdrop-blur-xl max-w-[90vw] text-center"
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl border border-stone-800 bg-stone-950 px-4 sm:px-5 py-2.5 sm:py-3 text-xs font-medium text-white shadow-2xl flex items-center gap-2.5 backdrop-blur-xl max-w-[90vw] text-center"
           >
             <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
             <span className="truncate">{toastMessage}</span>
@@ -259,20 +245,10 @@ export function MeloCinemaExperience() {
       {/* ─────────────────────────────────────────────────────────────
           1. HERO SECTION (INTERACTIVE MAGNETIC HEADING & METRICS)
       ───────────────────────────────────────────────────────────── */}
-      <section className="relative pt-32 sm:pt-44 pb-16 sm:pb-24 px-4 sm:px-8 max-w-6xl mx-auto text-center z-10">
-        <div className="space-y-5 sm:space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-3.5 py-1 text-[11px] sm:text-xs font-mono font-medium text-stone-700 shadow-sm"
-          >
-            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-            <span>THE UNIFIED OPERATING SYSTEM FOR NIGERIAN SCHOOLS</span>
-          </motion.div>
-
+      <section className="relative pt-20 sm:pt-28 md:pt-32 pb-12 sm:pb-16 px-4 sm:px-8 max-w-6xl mx-auto text-center z-10">
+        <div className="space-y-4 sm:space-y-5">
           {/* Interactive Masked Baseline Reveal + Magnetic Hover Heading */}
-          <div className="max-w-5xl mx-auto pt-1 sm:pt-2">
+          <div className="max-w-5xl mx-auto">
             <KineticMagneticHeading />
           </div>
 
@@ -280,7 +256,7 @@ export function MeloCinemaExperience() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="max-w-2xl mx-auto text-sm sm:text-lg text-stone-600 font-light leading-relaxed pt-2 px-2"
+            className="max-w-2xl mx-auto text-sm sm:text-lg text-stone-600 font-light leading-relaxed px-2"
           >
             Melo connects your academic records, broadsheets, Paystack fee collections, and parent
             report cards into one synchronized platform. Stop compiling results in Excel at 4:47 PM.
@@ -290,7 +266,7 @@ export function MeloCinemaExperience() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full px-2"
+            className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full px-2"
           >
             <GoldButton
               href="/contact"
@@ -311,7 +287,7 @@ export function MeloCinemaExperience() {
         </div>
 
         {/* 3 Core Metric Badges with Mouse Tilt */}
-        <div className="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 text-left">
+        <div className="mt-10 sm:mt-14 grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 text-left">
           <Card3DTilt maxTilt={5}>
             <div className="rounded-3xl border border-stone-200 bg-white p-5 sm:p-6 shadow-sm h-full flex flex-col justify-between">
               <div className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-amber-700 font-semibold flex items-center justify-between">
@@ -371,18 +347,14 @@ export function MeloCinemaExperience() {
       ───────────────────────────────────────────────────────────── */}
       <div ref={deckRef} className="relative w-full space-y-12 sm:space-y-16 py-8 sm:py-12">
         {/* ─────────────────────────────────────────────────────────────
-            CARD 1: LIVE INTERACTIVE MELO PLATFORM STUDIO
+            CARD 1: LIVE INTERACTIVE OPERATIONAL PLATFORM
         ───────────────────────────────────────────────────────────── */}
         <section
           id="interactive-demo"
           className="deck-stack-card will-change-transform max-w-6xl mx-auto px-4 sm:px-8"
         >
           <div className="text-center max-w-3xl mx-auto mb-6 sm:mb-8 px-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-1 text-xs font-mono font-semibold text-amber-900 mb-2.5">
-              <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-              <span>Interactive Operational Studio</span>
-            </div>
-            <h2 className="font-serif text-2xl sm:text-4xl md:text-5xl font-bold text-stone-900 tracking-tight">
+            <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-stone-900 tracking-tight">
               See how the platform actually works.
             </h2>
             <p className="mt-1.5 text-stone-600 text-xs sm:text-base font-light">
@@ -779,219 +751,188 @@ export function MeloCinemaExperience() {
         </section>
 
         {/* ─────────────────────────────────────────────────────────────
-            CARD 2: PER-STUDENT COMMERCIAL IMPACT ESTIMATOR
+            CARD 2: UNIFIED SCALE ESTIMATOR & PRICING SUITE
         ───────────────────────────────────────────────────────────── */}
         <section className="deck-stack-card will-change-transform max-w-6xl mx-auto px-4 sm:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10 px-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-3.5 py-1 text-xs font-mono font-medium text-stone-700 mb-2.5">
-              <TrendingUp className="h-3.5 w-3.5 text-amber-600" />
-              <span>Per-Student Commercial Impact Estimator</span>
-            </div>
-            <h2 className="font-serif text-2xl sm:text-4xl md:text-5xl font-bold text-stone-900 tracking-tight">
-              Transparent per-student pricing.
-            </h2>
-            <p className="mt-1.5 text-stone-600 text-xs sm:text-base font-light">
-              Slide to your total enrolled student population to preview platform subscription at ₦1,000–₦1,500 / student:
-            </p>
-          </div>
-
-          <Card3DTilt maxTilt={3} glow={true} className="max-w-4xl mx-auto">
-            <div className="rounded-3xl border border-stone-300 bg-white p-5 sm:p-10 shadow-xl">
-              {/* Slider Control */}
-              <div className="space-y-4 mb-6 sm:mb-8">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2">
-                  <label htmlFor="student-slider" className="text-[11px] sm:text-xs font-mono uppercase tracking-widest text-stone-500 font-semibold">
-                    Enrolled Student Count:
-                  </label>
-                  <div className="font-serif text-2xl sm:text-3xl font-bold text-stone-900">
-                    {estimatorStudents.toLocaleString()}{" "}
-                    <span className="text-xs sm:text-sm font-sans font-normal text-stone-500">Students</span>
-                  </div>
-                </div>
-
-                <input
-                  id="student-slider"
-                  type="range"
-                  min="50"
-                  max="1500"
-                  step="25"
-                  value={estimatorStudents}
-                  onChange={(e) => {
-                    setEstimatorStudents(parseInt(e.target.value));
-                    playTick("soft");
-                  }}
-                  className="w-full h-2.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
-                />
-
-                <div className="flex justify-between text-[10px] sm:text-[11px] font-mono text-stone-400">
-                  <span>50 (₦1,000/st)</span>
-                  <span>500 (₦1,200/st)</span>
-                  <span>1,000+ (₦1,500/st)</span>
-                </div>
-              </div>
-
-              {/* Dynamic Calculated Non-Redundant Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 pt-5 sm:pt-6 border-t border-stone-100">
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-stone-500 block">
-                      Term Platform Investment
-                    </span>
-                    <div className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-1">
-                      {recommendedTierInfo.cost}
-                    </div>
-                  </div>
-                  <span className="text-[10px] sm:text-[11px] text-stone-500 font-mono mt-2">
-                    @ ₦{ratePerStudent.toLocaleString()}/student/term
-                  </span>
-                </div>
-
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-amber-800 block">
-                      Term Tuition Run-Rate
-                    </span>
-                    <div className="font-serif text-2xl sm:text-3xl font-bold text-amber-900 mt-1">
-                      ₦{(calculatedTermTuition / 1000000).toFixed(1)}M
-                    </div>
-                  </div>
-                  <span className="text-[10px] sm:text-[11px] text-emerald-700 font-medium mt-2">
-                    100% reconciled • ~{hoursSavedPerTerm}h admin saved
-                  </span>
-                </div>
-
-                <div className="rounded-2xl border border-stone-800 bg-stone-900 text-white p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-widest text-amber-400 block">
-                      Recommended: {recommendedTierInfo.tier}
-                    </span>
-                    <p className="text-xs text-stone-300 font-light mt-1 leading-relaxed">
-                      {recommendedTierInfo.desc}
-                    </p>
-                  </div>
-                  <div className="pt-3 border-t border-stone-800 mt-2 flex items-center justify-between">
-                    <span className="text-[10px] text-stone-400 font-mono">
-                      {recommendedTierInfo.setup}
-                    </span>
-                    <Link
-                      href="/pricing"
-                      onClick={() => playTick("click")}
-                      className="text-[11px] text-amber-400 font-semibold underline hover:text-amber-300"
-                    >
-                      Details →
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card3DTilt>
-        </section>
-
-        {/* ─────────────────────────────────────────────────────────────
-            CARD 3: TRANSPARENT PRICING & FINAL CALL TO ACTION
-        ───────────────────────────────────────────────────────────── */}
-        <section className="deck-stack-card will-change-transform max-w-6xl mx-auto px-4 sm:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-14 px-2">
+          <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-12 px-2">
             <h2 className="font-serif text-3xl sm:text-5xl md:text-6xl font-normal text-stone-900 tracking-tight">
               Transparent pricing for Nigerian schools.
             </h2>
             <p className="mt-2 text-stone-600 text-xs sm:text-base font-light">
-              Simple per-student pricing starting at ₦1,000 per term. No hidden software lock-ins.
+              Simple per-student pricing starting at ₦1,000 per term. Slide to your student population to preview exact costs:
             </p>
           </div>
 
-          {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mb-12 sm:mb-16">
-            {pricingTiers.map((tier) => (
-              <Card3DTilt key={tier.name} maxTilt={4} className="h-full">
-                <div
-                  className={`rounded-3xl p-6 sm:p-8 border flex flex-col justify-between h-full transition-all duration-200 ${
-                    tier.highlighted
-                      ? "border-stone-900 bg-stone-900 text-white shadow-2xl relative"
-                      : "border-stone-200 bg-white text-stone-900 shadow-sm"
-                  }`}
-                >
-                  {tier.highlighted && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3.5 py-0.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-950">
-                      Most Popular
-                    </div>
-                  )}
+          {/* Interactive School Scale Bar */}
+          <div className="max-w-4xl mx-auto mb-10 rounded-3xl border border-stone-300 bg-white p-5 sm:p-8 shadow-lg">
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-amber-600 shrink-0" />
+                  <label htmlFor="student-slider" className="text-xs font-mono uppercase tracking-widest text-stone-600 font-semibold">
+                    Enrolled Student Count:
+                  </label>
+                </div>
+                <div className="font-serif text-2xl sm:text-3xl font-bold text-stone-900">
+                  {estimatorStudents.toLocaleString()}{" "}
+                  <span className="text-xs sm:text-sm font-sans font-normal text-stone-500">Students</span>
+                </div>
+              </div>
 
-                  <div>
-                    <div
-                      className={`text-xs font-mono uppercase tracking-widest ${
-                        tier.highlighted ? "text-amber-400" : "text-stone-500"
-                      }`}
-                    >
-                      {tier.name}
-                    </div>
-                    <div className="mt-3 flex items-baseline gap-1">
-                      <span className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold">
-                        {tier.price}
-                      </span>
-                      <span
-                        className={`text-xs font-mono ${
-                          tier.highlighted ? "text-stone-400" : "text-stone-500"
+              <input
+                id="student-slider"
+                type="range"
+                min="50"
+                max="1500"
+                step="25"
+                value={estimatorStudents}
+                onChange={(e) => {
+                  setEstimatorStudents(parseInt(e.target.value));
+                  playTick("soft");
+                }}
+                className="w-full h-2.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
+              />
+
+              <div className="flex justify-between text-[10px] sm:text-[11px] font-mono text-stone-500">
+                <span>Core Tier (≤200 @ ₦1,000)</span>
+                <span>Standard Tier (201–800 @ ₦1,200)</span>
+                <span>Enterprise (800+ @ ₦1,500)</span>
+              </div>
+
+              {/* Dynamic Live Calculations Banner */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-stone-100 text-left">
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3.5">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 block">
+                    Calculated Term Investment
+                  </span>
+                  <div className="font-serif text-2xl font-bold text-stone-900 mt-0.5">
+                    ₦{estimatedPlatformFee.toLocaleString()}
+                  </div>
+                  <span className="text-[10px] text-stone-500 font-mono">@ ₦{ratePerStudent.toLocaleString()}/student/term</span>
+                </div>
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-3.5">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-amber-800 block">
+                    Tuition Run-Rate
+                  </span>
+                  <div className="font-serif text-2xl font-bold text-amber-900 mt-0.5">
+                    ₦{(calculatedTermTuition / 1000000).toFixed(1)}M
+                  </div>
+                  <span className="text-[10px] text-emerald-700 font-medium">100% reconciled</span>
+                </div>
+
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 text-white p-3.5">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400 block">
+                    Recommended Match
+                  </span>
+                  <div className="font-serif text-lg font-bold text-white mt-0.5 truncate">
+                    {activePlanName}
+                  </div>
+                  <span className="text-[10px] text-stone-400 font-mono">~{hoursSavedPerTerm}h admin saved</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pricing Cards (Synchronized with Scale Slider) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mb-12 sm:mb-16">
+            {pricingTiers.map((tier) => {
+              const isMatched =
+                (tier.name.includes("Core") && estimatorStudents <= 200) ||
+                (tier.name.includes("Standard") && estimatorStudents > 200 && estimatorStudents <= 800) ||
+                (tier.name.includes("Enterprise") && estimatorStudents > 800);
+
+              return (
+                <Card3DTilt key={tier.name} maxTilt={4} className="h-full">
+                  <div
+                    className={`rounded-3xl p-6 sm:p-8 border flex flex-col justify-between h-full transition-all duration-300 ${
+                      isMatched
+                        ? "border-stone-900 bg-stone-900 text-white shadow-2xl relative scale-[1.02] ring-2 ring-amber-500/50"
+                        : "border-stone-200 bg-white text-stone-900 shadow-sm opacity-90"
+                    }`}
+                  >
+                    {isMatched && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3.5 py-0.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-950 shadow-md">
+                        Recommended for Your Scale
+                      </div>
+                    )}
+
+                    <div>
+                      <div
+                        className={`text-xs font-mono uppercase tracking-widest ${
+                          isMatched ? "text-amber-400" : "text-stone-500"
                         }`}
                       >
-                        {tier.period}
-                      </span>
+                        {tier.name}
+                      </div>
+                      <div className="mt-3 flex items-baseline gap-1">
+                        <span className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold">
+                          {tier.price}
+                        </span>
+                        <span
+                          className={`text-xs font-mono ${
+                            isMatched ? "text-stone-400" : "text-stone-500"
+                          }`}
+                        >
+                          {tier.period}
+                        </span>
+                      </div>
+                      <div
+                        className={`text-xs font-mono mt-1 ${
+                          isMatched ? "text-stone-400" : "text-stone-500"
+                        }`}
+                      >
+                        {tier.setupFee}
+                      </div>
+
+                      <p
+                        className={`mt-3 text-xs sm:text-sm font-light leading-relaxed ${
+                          isMatched ? "text-stone-300" : "text-stone-600"
+                        }`}
+                      >
+                        {tier.description}
+                      </p>
+
+                      <div
+                        className={`my-5 sm:my-6 h-px w-full ${
+                          isMatched ? "bg-stone-800" : "bg-stone-100"
+                        }`}
+                      />
+
+                      <ul className="space-y-2.5 sm:space-y-3 text-xs font-light">
+                        {tier.features.map((f) => (
+                          <li key={f} className="flex items-center gap-2.5">
+                            <Check
+                              className={`h-4 w-4 shrink-0 ${
+                                isMatched ? "text-amber-400" : "text-emerald-600"
+                              }`}
+                            />
+                            <span className={isMatched ? "text-stone-200" : "text-stone-700"}>
+                              {f}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <div
-                      className={`text-xs font-mono mt-1 ${
-                        tier.highlighted ? "text-stone-400" : "text-stone-500"
-                      }`}
-                    >
-                      {tier.setupFee}
+
+                    <div className="mt-6 sm:mt-8 pt-4">
+                      <Link
+                        href="/contact"
+                        onClick={() => playTick("click")}
+                        className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                          isMatched
+                            ? "bg-amber-500 text-stone-950 hover:bg-amber-400 shadow-md"
+                            : "bg-stone-900 text-white hover:bg-stone-800"
+                        }`}
+                      >
+                        <span>{tier.cta}</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
-
-                    <p
-                      className={`mt-3 text-xs sm:text-sm font-light leading-relaxed ${
-                        tier.highlighted ? "text-stone-300" : "text-stone-600"
-                      }`}
-                    >
-                      {tier.description}
-                    </p>
-
-                    <div
-                      className={`my-5 sm:my-6 h-px w-full ${
-                        tier.highlighted ? "bg-stone-800" : "bg-stone-100"
-                      }`}
-                    />
-
-                    <ul className="space-y-2.5 sm:space-y-3 text-xs font-light">
-                      {tier.features.map((f) => (
-                        <li key={f} className="flex items-center gap-2.5">
-                          <Check
-                            className={`h-4 w-4 shrink-0 ${
-                              tier.highlighted ? "text-amber-400" : "text-emerald-600"
-                            }`}
-                          />
-                          <span className={tier.highlighted ? "text-stone-200" : "text-stone-700"}>
-                            {f}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
-
-                  <div className="mt-6 sm:mt-8 pt-4">
-                    <Link
-                      href="/contact"
-                      onClick={() => playTick("click")}
-                      className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
-                        tier.highlighted
-                          ? "bg-amber-500 text-stone-950 hover:bg-amber-400 shadow-md"
-                          : "bg-stone-900 text-white hover:bg-stone-800"
-                      }`}
-                    >
-                      <span>{tier.cta}</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              </Card3DTilt>
-            ))}
+                </Card3DTilt>
+              );
+            })}
           </div>
 
           {/* Optional Add-Ons Bar */}

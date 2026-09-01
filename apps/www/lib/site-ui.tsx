@@ -103,38 +103,17 @@ import { motion,useMotionValueEvent,useScroll } from "framer-motion";
 import { CreditCard,Home,Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AnimatedDock } from "../components/ui/animated-dock";
+import { MeloLogo } from "../components/ui/melo-logo";
 
 export function SiteHeader() {
   const { scrollY } = useScroll();
   const [hidden, setHidden] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [canAutoHide, setCanAutoHide] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 640px)");
-    const syncAutoHide = () => {
-      setCanAutoHide(query.matches);
-      if (!query.matches) {
-        setHidden(false);
-      }
-    };
-
-    syncAutoHide();
-    query.addEventListener("change", syncAutoHide);
-
-    return () => query.removeEventListener("change", syncAutoHide);
-  }, []);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const previous = scrollY.getPrevious() ?? 0;
-    setScrolled(latest > 20);
 
-    if (!canAutoHide) {
-      setHidden(false);
-      return;
-    }
-
-    if (latest > previous && latest > 150) {
+    // Auto-hide during rapid downward scrolls deep in the page, reveal on scroll up
+    if (latest > previous && latest > 200) {
       setHidden(true);
     } else {
       setHidden(false);
@@ -145,94 +124,90 @@ export function SiteHeader() {
     {
       link: "/",
       label: "Home",
-      Icon: <Home size={22} className="text-white drop-shadow-md" />,
+      Icon: <Home size={18} className="text-white drop-shadow-md" />,
     },
     {
       link: "/features",
       label: "Features",
-      Icon: <Zap size={22} className="text-white drop-shadow-md" />,
+      Icon: <Zap size={18} className="text-white drop-shadow-md" />,
     },
     {
       link: "/pricing",
       label: "Pricing",
-      Icon: <CreditCard size={22} className="text-white drop-shadow-md" />,
+      Icon: <CreditCard size={18} className="text-white drop-shadow-md" />,
     },
     {
       link: "/contact",
       label: "Contact",
-      Icon: <Mail size={22} className="text-white drop-shadow-md" />,
+      Icon: <Mail size={18} className="text-white drop-shadow-md" />,
     }
   ];
 
   return (
-    <motion.header
-      variants={{
-        visible: { y: 0, opacity: 1 },
-        hidden: { y: 120, opacity: 0 }
-      }}
-      animate={hidden ? "hidden" : "visible"}
-      transition={{ duration: 0.35, ease: "easeInOut" }}
-      className={cn(
-        "fixed left-0 right-0 z-50 transition-all duration-300 px-4 pointer-events-none flex justify-center",
-        "bottom-4 sm:bottom-auto",
-        scrolled ? "sm:top-6" : "sm:top-10"
-      )}
-    >
-      <div className="flex justify-center items-center relative w-full max-w-7xl pointer-events-auto">
-        <div className="absolute left-0 sm:left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center justify-center p-2 group hover:scale-105 transition-transform duration-300">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="relative flex bg-white text-melo-ink h-11 w-11 items-center justify-center rounded-2xl shadow-md border border-stone-200 overflow-hidden p-1">
-              <Image
-                src="/melo-brand/melo_logo_concept_1779545987898.png"
-                alt="Melo School OS"
-                width={40}
-                height={40}
-                className="object-contain w-full h-full"
-                priority
-              />
-            </div>
-            <span className="font-serif text-2xl font-bold tracking-tight text-stone-900 drop-shadow-sm">
-              Melo
-            </span>
-          </Link>
-        </div>
+    <>
+      {/* ─── DESKTOP HEADER (TOP) & MOBILE LOGO BAR ─── */}
+      <motion.header
+        variants={{
+          visible: { y: 0, opacity: 1 },
+          hidden: { y: -100, opacity: 0 }
+        }}
+        animate={hidden ? "hidden" : "visible"}
+        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        className="fixed top-3 sm:top-5 inset-x-0 z-50 px-4 sm:px-8 pointer-events-none flex justify-center"
+      >
+        <div className="flex items-center justify-between relative w-full max-w-7xl">
+          {/* Brand Logo */}
+          <div className="pointer-events-auto">
+            <Link href="/" className="group inline-flex items-center">
+              <MeloLogo size={34} showWordmark={true} />
+            </Link>
+          </div>
 
-        <AnimatedDock items={dockItems} className="sm:mx-auto" />
+          {/* Desktop Center Navigation Dock (Hidden on mobile) */}
+          <div className="hidden sm:block absolute left-1/2 -translate-x-1/2 pointer-events-auto">
+            <AnimatedDock items={dockItems} className="shadow-xl" />
+          </div>
 
-        <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2 pr-1">
-          <Link
-            href="/contact"
-            className="flex items-center justify-center h-12 px-6 rounded-full bg-melo-gold text-white text-sm font-medium hover:bg-amber-600 transition-colors shadow-[0_0_20px_rgba(202,138,4,0.15)] hover:shadow-[0_0_25px_rgba(202,138,4,0.3)]"
-          >
-            Demo
-          </Link>
+          {/* Right Action Button */}
+          <div className="pointer-events-auto flex items-center gap-2">
+            <Link
+              href="/contact"
+              className="flex items-center justify-center h-9 sm:h-10 px-4 sm:px-5 rounded-full bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold tracking-wide transition-all shadow-md active:scale-95 border border-stone-800"
+            >
+              Demo
+            </Link>
+          </div>
         </div>
-      </div>
-    </motion.header>
+      </motion.header>
+
+      {/* ─── MOBILE BOTTOM NAVIGATION DOCK (BOTTOM ON MOBILE ONLY) ─── */}
+      <motion.nav
+        variants={{
+          visible: { y: 0, opacity: 1 },
+          hidden: { y: 100, opacity: 0 }
+        }}
+        animate={hidden ? "hidden" : "visible"}
+        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        className="sm:hidden fixed bottom-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
+      >
+        <div className="pointer-events-auto">
+          <AnimatedDock items={dockItems} className="shadow-2xl" />
+        </div>
+      </motion.nav>
+    </>
   );
 }
 
 /* ─── Site Footer ─── */
 export function SiteFooter() {
   return (
-    <footer className="border-t border-melo-border bg-melo-ink text-white">
+    <footer className="border-t border-stone-800 bg-stone-950 text-white">
       <Container className="py-16 sm:py-20">
         <div className="grid gap-12 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr]">
           {/* Brand */}
           <div className="space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl overflow-hidden shadow-md border border-stone-800 bg-stone-900 p-1">
-                <Image
-                  src="/melo-brand/melo_logo_concept_1779545987898.png"
-                  alt="Melo School OS"
-                  width={36}
-                  height={36}
-                  className="object-contain w-full h-full"
-                />
-              </div>
-              <span className="font-serif text-2xl font-bold">Melo</span>
-            </div>
-            <p className="max-w-sm text-sm leading-relaxed text-stone-400">
+            <MeloLogo size={38} showWordmark={true} className="[&_span]:text-white" />
+            <p className="max-w-sm text-sm leading-relaxed text-stone-400 font-light">
               {siteBrand.description}
             </p>
           </div>
