@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 import {
   parseCSVToMatrix,
   parseSpreadsheetContent,
+  parseWorkbookBinary,
   matchHeaderToField,
   normalizeGender,
 } from "../spreadsheetParser";
@@ -61,5 +63,60 @@ Babatunde Adeyemi,JSS 1A,Mathematics,18,17,55`;
     expect(normalizeGender("Female")).toBe("Female");
     expect(normalizeGender("")).toBe("Unspecified");
     expect(normalizeGender("Other")).toBe("Unspecified");
+  });
+
+  it("parses binary Excel .xlsx files correctly via parseWorkbookBinary", () => {
+    const wsData = [
+      ["First Name", "Last Name", "Class", "Gender", "Admission No"],
+      ["Emeka", "Nnamdi", "SS 1A", "Male", "SCH/2026/0501"],
+      ["Zainab", "Bello", "SS 1B", "Female", "SCH/2026/0502"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Students");
+    const xlsxBuffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+
+    const result = parseWorkbookBinary(xlsxBuffer);
+    expect(result.totalRows).toBe(2);
+    expect(result.rows[0].parsedData.firstName).toBe("Emeka");
+    expect(result.rows[0].parsedData.lastName).toBe("Nnamdi");
+    expect(result.rows[0].parsedData.className).toBe("SS 1A");
+    expect(result.rows[0].parsedData.admissionNumber).toBe("SCH/2026/0501");
+    expect(result.rows[1].parsedData.firstName).toBe("Zainab");
+    expect(result.rows[1].parsedData.lastName).toBe("Bello");
+    expect(result.rows[1].parsedData.gender).toBe("Female");
+  });
+
+  it("handles empty and malformed CSV data gracefully", () => {
+    const emptyResult = parseSpreadsheetContent("");
+    expect(emptyResult.totalRows).toBe(0);
+    expect(emptyResult.headers).toEqual([]);
+    expect(emptyResult.rows).toEqual([]);
+
+    const whitespaceResult = parseSpreadsheetContent("   \n\n  \n");
+    expect(whitespaceResult.totalRows).toBe(0);
+  });
+
+  it("handles tab-separated TSV and semicolon CSV files", () => {
+    const tsv = "First Name\tLast Name\tClass\tGender\nChidi\tEze\tJSS 2\tMale";
+    const tsvResult = parseSpreadsheetContent(tsv);
+    expect(tsvResult.totalRows).toBe(1);
+    expect(tsvResult.rows[0].parsedData.firstName).toBe("Chidi");
+    expect(tsvResult.rows[0].parsedData.lastName).toBe("Eze");
+    expect(tsvResult.rows[0].parsedData.className).toBe("JSS 2");
+
+    const semiCsv = "First Name;Last Name;Class;Gender\nNgozi;Nwosu;SS 1;Female";
+    const semiResult = parseSpreadsheetContent(semiCsv);
+    expect(semiResult.totalRows).toBe(1);
+    expect(semiResult.rows[0].parsedData.firstName).toBe("Ngozi");
+    expect(semiResult.rows[0].parsedData.lastName).toBe("Nwosu");
+    expect(semiResult.rows[0].parsedData.className).toBe("SS 1");
+  });
+
+  it("handles malformed or empty binary when parsing workbook gracefully", () => {
+    const emptyBuffer = new Uint8Array([]);
+    const emptyResult = parseWorkbookBinary(emptyBuffer);
+    expect(emptyResult.totalRows).toBe(0);
+    expect(emptyResult.rows).toEqual([]);
   });
 });

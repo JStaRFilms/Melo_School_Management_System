@@ -1,5 +1,6 @@
 import { mutation, query } from "../../_generated/server";
-import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
+import { ConvexError, v } from "convex/values";
 import { assertMigrationAccess } from "./migrationAuth";
 
 /**
@@ -90,6 +91,7 @@ export const getWorkspaceSummary = query({
 
 /**
  * Gets staged records for a workspace with optional status / type filtering.
+ * Enforces strict workspace tenant ownership.
  */
 export const getWorkspaceRecords = query({
   args: {
@@ -100,11 +102,45 @@ export const getWorkspaceRecords = query({
     ),
     entityType: v.optional(v.union(v.literal("student"), v.literal("grade_record"))),
     limit: v.optional(v.number()),
+    paginationOpts: v.optional(paginationOptsValidator),
   },
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
-    const maxItems = Math.min(args.limit ?? 200, 500);
+    // Enforce workspace tenant ownership
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace || workspace.schoolId !== args.schoolId) {
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (args.paginationOpts) {
+      if (args.validationStatus) {
+        return await ctx.db
+          .query("stagedImportRecords")
+          .withIndex("by_workspaceId_and_validationStatus", (q) =>
+            q
+              .eq("workspaceId", args.workspaceId)
+              .eq("validationStatus", args.validationStatus!)
+          )
+          .paginate(args.paginationOpts);
+      }
+
+      if (args.entityType) {
+        return await ctx.db
+          .query("stagedImportRecords")
+          .withIndex("by_workspaceId_and_entityType", (q) =>
+            q.eq("workspaceId", args.workspaceId).eq("entityType", args.entityType!)
+          )
+          .paginate(args.paginationOpts);
+      }
+
+      return await ctx.db
+        .query("stagedImportRecords")
+        .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+        .paginate(args.paginationOpts);
+    }
+
+    const maxItems = Math.min(args.limit ?? 200, 1000);
 
     if (args.validationStatus) {
       const records = await ctx.db
@@ -148,6 +184,13 @@ export const getWorkspaceFeatureSignals = query({
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
+    if (args.workspaceId) {
+      const workspace = await ctx.db.get(args.workspaceId);
+      if (!workspace || workspace.schoolId !== args.schoolId) {
+        throw new ConvexError("Workspace not found");
+      }
+    }
+
     const signals = await ctx.db
       .query("migrationFeatureSignals")
       .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
@@ -170,7 +213,15 @@ export const cancelWorkspace = mutation({
 
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new Error("Workspace not found");
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (workspace.status === "merged") {
+      throw new ConvexError("Cannot cancel an already merged workspace");
+    }
+
+    if (workspace.status === "cancelled") {
+      return { success: true };
     }
 
     await ctx.db.patch(args.workspaceId, {

@@ -1,5 +1,7 @@
 import { mutation } from "../../_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import type { MutationCtx } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
 import { assertMigrationAccess } from "./migrationAuth";
 import {
   parseHumanName,
@@ -62,7 +64,11 @@ export const stageRecordsBatch = mutation({
 
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new Error("Workspace not found");
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (workspace.status === "cancelled" || workspace.status === "merged") {
+      throw new ConvexError(`Cannot stage records to a ${workspace.status} workspace`);
     }
 
     const now = Date.now();
@@ -78,11 +84,24 @@ export const stageRecordsBatch = mutation({
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
       .take(100);
 
-    // 2. Fetch existing students for clash evaluation (bounded snapshot)
+    // 2. Fetch existing students and their user profiles for clash evaluation
     const liveStudents = await ctx.db
       .query("students")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
       .take(500);
+
+    const studentUserIds = liveStudents.map((s) => s.userId);
+    const userMap = new Map<string, { firstName?: string; lastName?: string; name: string }>();
+    for (const uId of studentUserIds) {
+      const uDoc = await ctx.db.get(uId);
+      if (uDoc) {
+        userMap.set(String(uId), {
+          firstName: uDoc.firstName,
+          lastName: uDoc.lastName,
+          name: uDoc.name,
+        });
+      }
+    }
 
     // 3. Fetch already staged records in this workspace
     const existingStaged = await ctx.db
@@ -119,7 +138,12 @@ export const stageRecordsBatch = mutation({
     }
 
     // 5. Ingest each record in the batch
-    const newlyStaged: any[] = [];
+    const newlyStaged: Array<{
+      _id: Id<"stagedImportRecords">;
+      rowNumber: number;
+      parsedData: (typeof args.records)[0]["parsedData"];
+      validationStatus: "valid" | "warning" | "error";
+    }> = [];
 
     for (const rec of args.records) {
       const data = { ...rec.parsedData };
@@ -182,8 +206,8 @@ export const stageRecordsBatch = mutation({
       }
 
       // Clash Detection
-      let clashCandidateId: any = undefined;
-      let existingStudentId: any = undefined;
+      let clashCandidateId: Id<"stagedImportRecords"> | undefined = undefined;
+      let existingStudentId: Id<"students"> | undefined = undefined;
       let clashConfidence: number | undefined = undefined;
       let clashReason: string | undefined = undefined;
 
@@ -199,9 +223,10 @@ export const stageRecordsBatch = mutation({
 
       // Check against existing live students
       for (const live of liveStudents) {
+        const u = userMap.get(String(live.userId));
         const evalResult = evaluateClash(candidate, {
-          firstName: live.guardianName?.split(" ")[0] || "",
-          lastName: live.guardianName?.split(" ")[1] || "",
+          firstName: u?.firstName || u?.name.split(" ")[0] || "",
+          lastName: u?.lastName || u?.name.split(" ")[1] || "",
           className: liveClasses.find((c) => c._id === live.classId)?.name,
           guardianPhone: live.guardianPhone,
           gender: live.gender,
@@ -262,6 +287,7 @@ export const stageRecordsBatch = mutation({
         clashReason,
         familyClusterKey,
         isResolved: !clashConfidence || clashConfidence < 50,
+        isCommitted: false,
         updatedAt: now,
       });
 
@@ -273,31 +299,31 @@ export const stageRecordsBatch = mutation({
       });
     }
 
-    // 6. Recalculate workspace counters
-    const allStaged = await ctx.db
-      .query("stagedImportRecords")
-      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
-      .take(1000);
+    // 6. Recalculate workspace counters incrementally
+    const newValid = newlyStaged.filter((r) => r.validationStatus === "valid").length;
+    const newWarning = newlyStaged.filter((r) => r.validationStatus === "warning").length;
+    const newError = newlyStaged.filter((r) => r.validationStatus === "error").length;
 
-    const validCount = allStaged.filter((r) => r.validationStatus === "valid").length;
-    const warningCount = allStaged.filter((r) => r.validationStatus === "warning").length;
-    const errorCount = allStaged.filter((r) => r.validationStatus === "error").length;
+    const totalRecords = (workspace.totalRecords || 0) + args.records.length;
+    const validRecords = (workspace.validRecords || 0) + newValid;
+    const warningRecords = (workspace.warningRecords || 0) + newWarning;
+    const errorRecords = (workspace.errorRecords || 0) + newError;
 
     await ctx.db.patch(args.workspaceId, {
-      totalRecords: allStaged.length,
-      validRecords: validCount,
-      warningRecords: warningCount,
-      errorRecords: errorCount,
+      totalRecords,
+      validRecords,
+      warningRecords,
+      errorRecords,
       status: "reviewing",
       updatedAt: now,
     });
 
     return {
       stagedCount: args.records.length,
-      totalRecords: allStaged.length,
-      validRecords: validCount,
-      warningRecords: warningCount,
-      errorRecords: errorCount,
+      totalRecords,
+      validRecords,
+      warningRecords,
+      errorRecords,
     };
   },
 });

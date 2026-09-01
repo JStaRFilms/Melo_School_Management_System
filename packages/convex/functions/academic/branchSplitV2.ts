@@ -77,6 +77,18 @@ export const DUPLICATION_TIERS: string[][] = [
 // All tables in order
 export const ALL_DUPLICATION_TABLES = DUPLICATION_TIERS.flat();
 
+const USER_FK_REMAP_TABLES = [
+  "schoolAssessmentSettings",
+  "gradingBands",
+  "schoolBillingSettings",
+  "schoolEvents",
+  "classes",
+  "subjects",
+  "schoolApprovalEvidence",
+] as const;
+
+const userRemapStage = (table: string) => `__user_fk_remap__:${table}`;
+
 // Knowledge hub & AI tables to wipe clean
 export const KNOWLEDGE_AI_TABLES = [
   "knowledgeTopics",
@@ -257,6 +269,26 @@ export const TABLES_WITHOUT_BY_SCHOOL_INDEX = new Set([
 // Foreign key remapping definitions per table
 
 const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string; isArray?: boolean }>> = {
+  classes: [
+    { field: "formTeacherId", targetTable: "users" },
+    { field: "archivedBy", targetTable: "users" },
+  ],
+  subjects: [
+    { field: "archivedBy", targetTable: "users" },
+  ],
+  schoolEvents: [
+    { field: "updatedBy", targetTable: "users" },
+    { field: "archivedBy", targetTable: "users" },
+  ],
+  schoolAssessmentSettings: [
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  gradingBands: [
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  schoolBillingSettings: [
+    { field: "updatedBy", targetTable: "users" },
+  ],
   academicTerms: [{ field: "sessionId", targetTable: "academicSessions" }],
   users: [
     { field: "managerUserId", targetTable: "users" },
@@ -294,6 +326,7 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
   assessmentEditingPolicies: [
     { field: "sessionId", targetTable: "academicSessions" },
     { field: "termId", targetTable: "academicTerms" },
+    { field: "updatedBy", targetTable: "users" },
   ],
   classSubjectAggregations: [
     { field: "classId", targetTable: "classes" },
@@ -365,6 +398,7 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "subjectId", targetTable: "subjects" },
     { field: "studentId", targetTable: "students" },
     { field: "enteredBy", targetTable: "users" },
+    { field: "updatedBy", targetTable: "users" },
   ],
   historicalTermTotals: [
     { field: "sessionId", targetTable: "academicSessions" },
@@ -658,6 +692,72 @@ export const duplicateBatch = internalMutation({
       idMaps[currentTable] = {};
     }
 
+    if (currentTable.startsWith("__user_fk_remap__:")) {
+      const table = currentTable.slice("__user_fk_remap__:".length);
+      const userMap = idMaps.users || {};
+      const userDefs = (FK_DEFINITIONS[table] || []).filter(
+        (definition) => definition.targetTable === "users"
+      );
+
+      let remapQuery = ctx.db.query(table as any);
+      if (TABLES_WITHOUT_BY_SCHOOL_INDEX.has(table)) {
+        remapQuery = (remapQuery as any).filter((q: any) =>
+          q.eq(q.field("schoolId"), targetSchoolId)
+        );
+      } else {
+        remapQuery = (remapQuery as any).withIndex("by_school", (q: any) =>
+          q.eq("schoolId", targetSchoolId)
+        );
+      }
+
+      const remapPage = await (remapQuery as any).paginate({
+        numItems: 50,
+        cursor: state.cursor ?? null,
+      });
+      for (const row of remapPage.page) {
+        const patch: Record<string, string> = {};
+        for (const definition of userDefs) {
+          const value = row[definition.field];
+          if (typeof value === "string" && userMap[value]) {
+            patch[definition.field] = userMap[value];
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(row._id, patch);
+        }
+      }
+
+      if (!remapPage.isDone) {
+        await ctx.db.patch(state._id, {
+          cursor: remapPage.continueCursor,
+          updatedAt: Date.now(),
+        });
+        return { done: false, currentTable: table, progress: "remapping_user_fks" };
+      }
+
+      const remapIndex = USER_FK_REMAP_TABLES.indexOf(
+        table as (typeof USER_FK_REMAP_TABLES)[number]
+      );
+      const nextRemapTable = USER_FK_REMAP_TABLES[remapIndex + 1];
+      if (nextRemapTable) {
+        await ctx.db.patch(state._id, {
+          currentTable: userRemapStage(nextRemapTable),
+          cursor: undefined,
+          updatedAt: Date.now(),
+        });
+        return { done: false, currentTable: nextRemapTable, progress: "next_remap_table" };
+      }
+
+      await ctx.db.patch(state._id, {
+        phase: "duplication_completed",
+        status: "completed",
+        cursor: undefined,
+        idMaps: JSON.stringify(idMaps),
+        updatedAt: Date.now(),
+      });
+      return { done: true, tablesCompletedCount: state.tablesCompleted.length };
+    }
+
     // Fetch batch of up to 50 documents
     let query = ctx.db.query(currentTable);
     if (TABLES_WITHOUT_BY_SCHOOL_INDEX.has(currentTable)) {
@@ -740,17 +840,21 @@ export const duplicateBatch = internalMutation({
       return { done: false, currentTable: nextTable, progress: "next_table" };
     }
 
-    // All duplication finished!
+    // User-linked fields in early-tier tables can only be remapped after users have
+    // been duplicated. Continue through bounded, resumable remap stages.
     await ctx.db.patch(state._id, {
-      phase: "duplication_completed",
-      status: "completed",
+      currentTable: userRemapStage(USER_FK_REMAP_TABLES[0]),
       cursor: undefined,
       idMaps: JSON.stringify(idMaps),
       tablesCompleted: completed,
       updatedAt: Date.now(),
     });
 
-    return { done: true, tablesCompletedCount: completed.length };
+    return {
+      done: false,
+      currentTable: USER_FK_REMAP_TABLES[0],
+      progress: "remapping_user_fks",
+    };
   },
 });
 
@@ -1632,6 +1736,68 @@ export const runSplitIntegrityCheck = internalQuery({
       const s = await ctx.db.get(a.studentId);
       if (s && s.schoolId !== a.schoolId) {
         anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== student.schoolId (${s.schoolId})`);
+      }
+      if (a.enteredBy) {
+        const u = await ctx.db.get(a.enteredBy);
+        if (u && u.schoolId !== a.schoolId) {
+          anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== enteredBy user.schoolId (${u.schoolId})`);
+        }
+      }
+      if (a.updatedBy) {
+        const u = await ctx.db.get(a.updatedBy);
+        if (u && u.schoolId !== a.schoolId) {
+          anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== updatedBy user.schoolId (${u.schoolId})`);
+        }
+      }
+    }
+
+    const allAssessmentSettings = await ctx.db.query("schoolAssessmentSettings").collect();
+    for (const st of allAssessmentSettings) {
+      if (st.updatedBy) {
+        const u = await ctx.db.get(st.updatedBy);
+        if (u && u.schoolId !== st.schoolId) {
+          anomalies.push(`AssessmentSettings ${st._id} schoolId (${st.schoolId}) !== updatedBy user.schoolId (${u.schoolId})`);
+        }
+      }
+    }
+
+    const allGradingBands = await ctx.db.query("gradingBands").collect();
+    for (const gb of allGradingBands) {
+      if (gb.updatedBy) {
+        const u = await ctx.db.get(gb.updatedBy);
+        if (u && u.schoolId !== gb.schoolId) {
+          anomalies.push(`GradingBand ${gb._id} schoolId (${gb.schoolId}) !== updatedBy user.schoolId (${u.schoolId})`);
+        }
+      }
+    }
+
+    const allBillingSettings = await ctx.db.query("schoolBillingSettings").collect();
+    for (const bs of allBillingSettings) {
+      if (bs.updatedBy) {
+        const u = await ctx.db.get(bs.updatedBy);
+        if (u && u.schoolId !== bs.schoolId) {
+          anomalies.push(`BillingSettings ${bs._id} schoolId (${bs.schoolId}) !== updatedBy user.schoolId (${u.schoolId})`);
+        }
+      }
+    }
+
+    const allEvents = await ctx.db.query("schoolEvents").collect();
+    for (const ev of allEvents) {
+      if (ev.updatedBy) {
+        const u = await ctx.db.get(ev.updatedBy);
+        if (u && u.schoolId !== ev.schoolId) {
+          anomalies.push(`SchoolEvent ${ev._id} schoolId (${ev.schoolId}) !== updatedBy user.schoolId (${u.schoolId})`);
+        }
+      }
+    }
+
+    const allApprovalEvidence = await ctx.db.query("schoolApprovalEvidence").collect();
+    for (const ae of allApprovalEvidence) {
+      if (ae.approvedByUserId) {
+        const u = await ctx.db.get(ae.approvedByUserId);
+        if (u && u.schoolId !== ae.schoolId) {
+          anomalies.push(`ApprovalEvidence ${ae._id} schoolId (${ae.schoolId}) !== approvedByUserId user.schoolId (${u.schoolId})`);
+        }
       }
     }
 

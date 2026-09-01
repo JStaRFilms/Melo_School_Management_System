@@ -1,6 +1,6 @@
 "use node";
 
-import { action, internalAction } from "../../_generated/server";
+import { internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import type { ActionCtx } from "../../_generated/server";
@@ -312,13 +312,11 @@ export const verifyCompleteSplitAction = internalAction({
   },
 });
 
-export const restoreSuperAdminAction = action({
+export const restoreSuperAdminAction = internalAction({
   args: {
     password: v.string(),
   },
   handler: async (ctx, args) => {
-    const auth = createAuth(ctx);
-    const authContext = await auth.$context;
     const email = "johnoke2005@gmail.com";
     const name = "Supreme Leader Oluleke-Oke John";
 

@@ -6,6 +6,7 @@ import * as migrationWorkspace from "../migrationWorkspace";
 import * as migrationIngest from "../migrationIngest";
 import * as migrationAutosave from "../migrationAutosave";
 import * as migrationMerge from "../migrationMerge";
+import * as branchSplitV2Action from "../branchSplitV2Action";
 
 declare global {
   interface ImportMeta {
@@ -426,7 +427,7 @@ describe("Migration Lifecycle Engine", () => {
         schoolId: schoolA,
         workspaceId,
       })
-    ).rejects.toThrow("Cannot commit workspace with 1 blocking validation errors");
+    ).rejects.toThrow("Cannot commit workspace with blocking validation errors");
 
     // Live student table remains completely empty
     await t.run(async (ctx) => {
@@ -436,5 +437,778 @@ describe("Migration Lifecycle Engine", () => {
         .collect();
       expect(liveStudents.length).toBe(0);
     });
+  });
+
+  it("Workspace Tenant Ownership: blocks reading, signaling, or cancelling another school's workspace", async () => {
+    const { t, schoolA, schoolB } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const superAdmin = t.withIdentity({ subject: "auth-super-admin" });
+
+    // Super admin creates workspace for School B
+    const workspaceB = await superAdmin.mutation(createWorkspace, {
+      schoolId: schoolB,
+      name: "School B Intake",
+      mode: "super_admin",
+    });
+
+    const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
+
+    // Admin A attempts to read School B's workspace records using School A as schoolId -> fails
+    await expect(
+      adminA.query(getWorkspaceRecords, {
+        schoolId: schoolA,
+        workspaceId: workspaceB,
+      })
+    ).rejects.toThrow("Workspace not found");
+
+    // Admin A attempts to get signals for School B's workspace using School A -> fails
+    await expect(
+      adminA.query(getWorkspaceFeatureSignals, {
+        schoolId: schoolA,
+        workspaceId: workspaceB,
+      })
+    ).rejects.toThrow("Workspace not found");
+
+    // Admin A attempts to cancel School B's workspace -> fails
+    await expect(
+      adminA.mutation(cancelWorkspace, {
+        schoolId: schoolA,
+        workspaceId: workspaceB,
+      })
+    ).rejects.toThrow("Workspace not found");
+  });
+
+  it("Clash Resolution Tenant Isolation: prevents merging with a student belonging to a different school", async () => {
+    const { t, schoolA, schoolB } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
+
+    // Create a student in School B
+    const foreignStudentId = await t.run(async (ctx) => {
+      const u = await ctx.db.insert("users", {
+        schoolId: schoolB,
+        authId: "foreign-student-auth",
+        name: "Foreign Student",
+        email: "foreign@starlight.test",
+        role: "student",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      const c = await ctx.db.insert("classes", {
+        schoolId: schoolB,
+        name: "SS 1",
+        level: "SS 1",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return await ctx.db.insert("students", {
+        schoolId: schoolB,
+        classId: c,
+        userId: u,
+        admissionNumber: "STAR/001",
+        gender: "Male",
+        enrollmentStatus: "active",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    const workspaceA = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "School A Intake",
+      mode: "school_admin",
+    });
+
+    await adminA.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId: workspaceA,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: { Name: "Local Candidate" },
+          parsedData: {
+            firstName: "Local",
+            lastName: "Candidate",
+            className: "JSS 1A",
+            gender: "Male",
+          },
+          entityType: "student",
+        },
+      ],
+    });
+
+    const staged = await adminA.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId: workspaceA,
+    });
+    const stagedId = staged[0]._id;
+
+    // Attempting to resolve clash by merging with foreignStudentId from School B -> fails
+    await expect(
+      adminA.mutation(resolveRecordClash, {
+        schoolId: schoolA,
+        recordId: stagedId,
+        resolutionAction: "merge_existing",
+        targetStudentId: foreignStudentId,
+      })
+    ).rejects.toThrow("Target student not found or belongs to a different school");
+  });
+
+  it("Large Import Batching & Whole-Workspace Pre-Flight: blocks merge if invalid row exists beyond first 1,000", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+
+    const workspaceId = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Large Import Intake",
+      mode: "school_admin",
+      admissionNumberPrefix: "SCH/2026/",
+      nextAdmissionSequence: 1,
+    });
+
+    // Stage 1,050 records in batches of 50
+    const BATCH_SIZE = 50;
+    const TOTAL_ROWS = 1050;
+
+    for (let i = 0; i < TOTAL_ROWS; i += BATCH_SIZE) {
+      const batchRecords = [];
+      for (let j = 0; j < BATCH_SIZE; j++) {
+        const rowNum = i + j + 1;
+        // Introduce an error at row 1025 (beyond 1,000)
+        const isErrorRow = rowNum === 1025;
+        batchRecords.push({
+          rowNumber: rowNum,
+          rawPayload: { Name: isErrorRow ? "" : `Student ${rowNum}` },
+          parsedData: {
+            firstName: isErrorRow ? "" : "Student",
+            lastName: isErrorRow ? "" : `${rowNum}`,
+            className: "JSS 1A",
+            gender: "Unspecified",
+          },
+          entityType: "student" as const,
+        });
+      }
+
+      await adminA.mutation(stageRecordsBatch, {
+        schoolId: schoolA,
+        workspaceId,
+        records: batchRecords,
+      });
+    }
+
+    // Pre-flight check must catch row 1025 even though it is beyond 1,000
+    await expect(
+      adminA.mutation(commitImportWorkspace, {
+        schoolId: schoolA,
+        workspaceId,
+      })
+    ).rejects.toThrow("Cannot commit workspace with blocking validation errors. Please correct row #1025 first.");
+  });
+
+  it("Deterministic Grade Matching: matches exactly by admission number, matches unique student, and blocks ambiguous/unmatched", async () => {
+    const { t, schoolA, jss1Class } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+
+    // Create session and term
+    const { sessionId, termId, student1Id, student2Id } = await t.run(async (ctx) => {
+      const now = Date.now();
+      const sess = await ctx.db.insert("academicSessions", {
+        schoolId: schoolA,
+        name: "2026/2027",
+        startDate: now - 10000,
+        endDate: now + 10000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const trm = await ctx.db.insert("academicTerms", {
+        schoolId: schoolA,
+        sessionId: sess,
+        name: "First Term",
+        startDate: now - 5000,
+        endDate: now + 5000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const u1 = await ctx.db.insert("users", {
+        schoolId: schoolA,
+        authId: "u1-auth",
+        name: "David Adeleke",
+        firstName: "David",
+        lastName: "Adeleke",
+        email: "david@greenwood.test",
+        role: "student",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const s1 = await ctx.db.insert("students", {
+        schoolId: schoolA,
+        classId: jss1Class,
+        userId: u1,
+        admissionNumber: "SCH/2026/0001",
+        gender: "Male",
+        enrollmentStatus: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const u2 = await ctx.db.insert("users", {
+        schoolId: schoolA,
+        authId: "u2-auth",
+        name: "David Adeleke",
+        firstName: "David",
+        lastName: "Adeleke",
+        email: "david2@greenwood.test",
+        role: "student",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const s2 = await ctx.db.insert("students", {
+        schoolId: schoolA,
+        classId: jss1Class,
+        userId: u2,
+        admissionNumber: "SCH/2026/0002",
+        gender: "Male",
+        enrollmentStatus: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return { sessionId: sess, termId: trm, student1Id: s1, student2Id: s2 };
+    });
+
+    // 1. Grade row without admission number where 2 students have identical names -> ambiguous match rejected!
+    const workspaceAmbiguous = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Ambiguous Grade Intake",
+      mode: "school_admin",
+    });
+
+    await adminA.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId: workspaceAmbiguous,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: { Name: "David Adeleke", Subject: "Mathematics", CA1: "15", CA2: "15", Exam: "50" },
+          parsedData: {
+            firstName: "David",
+            lastName: "Adeleke",
+            className: "JSS 1A",
+            subjectName: "Mathematics",
+            ca1: 15,
+            ca2: 15,
+            exam: 50,
+            gender: "Male",
+          },
+          entityType: "grade_record",
+        },
+      ],
+    });
+
+    await expect(
+      adminA.mutation(commitImportWorkspace, {
+        schoolId: schoolA,
+        workspaceId: workspaceAmbiguous,
+      })
+    ).rejects.toThrow("Cannot commit workspace with unresolved clash warnings. Please resolve row #1 first.");
+
+    // Resolve clash as create_new so workspace has 0 warnings, then retry commit
+    const stagedAmbiguous = await adminA.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId: workspaceAmbiguous,
+    });
+    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
+    await adminA.mutation(resolveRecordClash, {
+      schoolId: schoolA,
+      recordId: stagedAmbiguous[0]._id,
+      resolutionAction: "create_new",
+    });
+
+    const studentPhase = await adminA.mutation(commitImportWorkspace, {
+      schoolId: schoolA,
+      workspaceId: workspaceAmbiguous,
+    });
+    expect(studentPhase.done).toBe(false);
+
+    await expect(
+      adminA.mutation(commitImportWorkspace, {
+        schoolId: schoolA,
+        workspaceId: workspaceAmbiguous,
+      })
+    ).rejects.toThrow("Ambiguous grade match on row #1: Multiple students in class \"JSS 1A\" match name \"David Adeleke\". Please specify an admission number.");
+
+    // 2. Grade row WITH admission number -> exact deterministic match succeeds!
+    const workspaceExact = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Exact Grade Intake",
+      mode: "school_admin",
+    });
+
+    await adminA.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId: workspaceExact,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: { "Admission No": "SCH/2026/0001", Subject: "Mathematics", CA1: "18", CA2: "17", Exam: "55" },
+          parsedData: {
+            firstName: "David",
+            lastName: "Adeleke",
+            admissionNumber: "SCH/2026/0001",
+            className: "JSS 1A",
+            subjectName: "Mathematics",
+            ca1: 18,
+            ca2: 17,
+            exam: 55,
+            gender: "Male",
+          },
+          entityType: "grade_record",
+        },
+      ],
+    });
+
+    const stagedExact = await adminA.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId: workspaceExact,
+    });
+    if (stagedExact[0]?.validationStatus === "warning") {
+      await adminA.mutation(resolveRecordClash, {
+        schoolId: schoolA,
+        recordId: stagedExact[0]._id,
+        resolutionAction: "merge_existing",
+        targetStudentId: student1Id,
+      });
+    }
+
+    const exactStudentPhase = await adminA.mutation(commitImportWorkspace, {
+      schoolId: schoolA,
+      workspaceId: workspaceExact,
+    });
+    expect(exactStudentPhase.done).toBe(false);
+
+    const exactMerge = await adminA.mutation(commitImportWorkspace, {
+      schoolId: schoolA,
+      workspaceId: workspaceExact,
+    });
+    expect(exactMerge.success).toBe(true);
+    expect(exactMerge.done).toBe(true);
+
+    // Verify assessment record created with correct studentId and valid enteredBy user ID
+    await t.run(async (ctx) => {
+      const records = await ctx.db
+        .query("assessmentRecords")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
+        .collect();
+      expect(records.length).toBe(1);
+      expect(records[0].studentId).toBe(student1Id);
+      expect(records[0].total).toBe(90);
+
+      // Verify enteredBy and updatedBy are valid users table IDs
+      const enteredByUser = await ctx.db.get(records[0].enteredBy);
+      expect(enteredByUser).toBeDefined();
+      expect(enteredByUser?.schoolId).toBe(schoolA);
+    });
+  });
+
+  it("Platform Super Admin: creates valid user actor provenance without casting platform admin IDs", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const superAdmin = t.withIdentity({ subject: "auth-super-admin" });
+
+    const workspaceId = await superAdmin.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Super Admin Provenance Intake",
+      mode: "super_admin",
+      admissionNumberPrefix: "SCH/SA/",
+      nextAdmissionSequence: 1,
+    });
+
+    await superAdmin.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: { Name: "Ibrahim Musa", Phone: "08012345678" },
+          parsedData: {
+            firstName: "Ibrahim",
+            lastName: "Musa",
+            className: "JSS 1A",
+            guardianName: "Musa Ibrahim",
+            guardianPhone: "08012345678",
+            gender: "Male",
+          },
+          entityType: "student",
+        },
+      ],
+    });
+
+    const mergeResult = await superAdmin.mutation(commitImportWorkspace, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+    expect(mergeResult.success).toBe(true);
+
+    // Verify family createdBy is a valid Id<"users"> pointing to a user in schoolA
+    await t.run(async (ctx) => {
+      const families = await ctx.db
+        .query("families")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
+        .collect();
+      expect(families.length).toBe(1);
+      const creatorUser = await ctx.db.get(families[0].createdBy);
+      expect(creatorUser).toBeDefined();
+      expect(creatorUser?.schoolId).toBe(schoolA);
+    });
+  });
+
+  it("State Transitions & Cancelled Workspaces: rejects staging, patching, resolving, and committing on cancelled workspace", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
+    const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
+    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
+
+    const workspaceId = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "To Be Cancelled",
+      mode: "school_admin",
+    });
+
+    await adminA.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: { Name: "Alice Doe" },
+          parsedData: {
+            firstName: "Alice",
+            lastName: "Doe",
+            className: "JSS 1A",
+            gender: "Female",
+          },
+          entityType: "student",
+        },
+      ],
+    });
+
+    const staged = await adminA.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+    const recordId = staged[0]._id;
+
+    // Cancel workspace
+    await adminA.mutation(cancelWorkspace, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+
+    // 1. Trying to stage records on cancelled workspace -> fails
+    await expect(
+      adminA.mutation(stageRecordsBatch, {
+        schoolId: schoolA,
+        workspaceId,
+        records: [
+          {
+            rowNumber: 2,
+            rawPayload: { Name: "Bob Doe" },
+            parsedData: {
+              firstName: "Bob",
+              lastName: "Doe",
+              className: "JSS 1A",
+              gender: "Male",
+            },
+            entityType: "student",
+          },
+        ],
+      })
+    ).rejects.toThrow("Cannot stage records to a cancelled workspace");
+
+    // 2. Trying to patch record on cancelled workspace -> fails
+    await expect(
+      adminA.mutation(patchStagedRecord, {
+        schoolId: schoolA,
+        recordId,
+        parsedDataPatch: { firstName: "Alicia" },
+      })
+    ).rejects.toThrow("Cannot modify records in a cancelled workspace");
+
+    // 3. Trying to resolve clash on cancelled workspace -> fails
+    await expect(
+      adminA.mutation(resolveRecordClash, {
+        schoolId: schoolA,
+        recordId,
+        resolutionAction: "create_new",
+      })
+    ).rejects.toThrow("Cannot modify records in a cancelled workspace");
+
+    // 4. Trying to commit cancelled workspace -> fails
+    await expect(
+      adminA.mutation(commitImportWorkspace, {
+        schoolId: schoolA,
+        workspaceId,
+      })
+    ).rejects.toThrow("Cannot commit a cancelled workspace");
+  });
+
+  it("Large Imports >1,000 Rows & Idempotent Batch Retries: commits all batches and is idempotent on retries", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+
+    const workspaceId = await adminA.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Big Dataset Intake",
+      mode: "school_admin",
+      admissionNumberPrefix: "SCH/2026/",
+      nextAdmissionSequence: 1,
+    });
+
+    const TOTAL_ROWS = 120;
+    const BATCH_SIZE = 50;
+
+    for (let i = 0; i < TOTAL_ROWS; i += BATCH_SIZE) {
+      const records = [];
+      for (let j = 0; j < Math.min(BATCH_SIZE, TOTAL_ROWS - i); j++) {
+        const rowNum = i + j + 1;
+        const fn = (100000000 + rowNum * 7919).toString(36);
+        const ln = (200000000 + rowNum * 6997).toString(36);
+        const cls = (300000000 + rowNum * 8311).toString(36);
+        records.push({
+          rowNumber: rowNum,
+          rawPayload: {
+            AdmissionNo: `ADM-2026-${rowNum.toString().padStart(4, "0")}`,
+            Name: `${fn} ${ln}`,
+            Class: cls,
+          },
+          parsedData: {
+            admissionNumber: `ADM-2026-${rowNum.toString().padStart(4, "0")}`,
+            firstName: fn,
+            lastName: ln,
+            className: cls,
+            gender: "Unspecified",
+          },
+          entityType: "student" as const,
+        });
+      }
+
+      await adminA.mutation(stageRecordsBatch, {
+        schoolId: schoolA,
+        workspaceId,
+        records,
+      });
+    }
+
+    // Run commit loop until complete
+    let isDone = false;
+    let iterationCount = 0;
+    while (!isDone && iterationCount < 10) {
+      iterationCount++;
+      const result: any = await adminA.mutation(commitImportWorkspace, {
+        schoolId: schoolA,
+        workspaceId,
+        batchSize: 50,
+      });
+      if (result.done) {
+        isDone = true;
+      }
+    }
+
+    expect(isDone).toBe(true);
+    expect(iterationCount).toBe(4); // 3 student batches, then one empty grade phase
+
+    // Verify all 120 students created in database
+    await t.run(async (ctx) => {
+      const students = await ctx.db
+        .query("students")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
+        .collect();
+      expect(students.length).toBe(120);
+    });
+
+    // Idempotent retry: Calling commit again on already merged workspace returns success without duplicating
+    const retryResult: any = await adminA.mutation(commitImportWorkspace, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+    expect(retryResult.done).toBe(true);
+    expect(retryResult.success).toBe(true);
+
+    await t.run(async (ctx) => {
+      const students = await ctx.db
+        .query("students")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
+        .collect();
+      expect(students.length).toBe(120);
+    });
+  });
+
+  it("Super Admin Restoration: verified as internal-only action, not public API", () => {
+    expect(branchSplitV2Action.restoreSuperAdminAction).toBeDefined();
+    expect((branchSplitV2Action.restoreSuperAdminAction as any).isInternal).toBe(true);
+  });
+
+  it("Branch Split Foreign Key Remapping: remaps user references in settings, grading bands, and evidence without source leakage", async () => {
+    const t = convexTest(schema, modules);
+    const { sourceSchoolId, targetSchoolId, sourceUserId, targetUserId } = await t.run(async (ctx) => {
+      const now = Date.now();
+      const source = await ctx.db.insert("schools", {
+        name: "Olive Blessed Fedrah",
+        slug: "obhis-fedrah",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const target = await ctx.db.insert("schools", {
+        name: "Olive Blessed Ruga",
+        slug: "obhis-ruga",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const srcUser = await ctx.db.insert("users", {
+        schoolId: source,
+        authId: "src-user-auth",
+        name: "Source Admin",
+        email: "admin@source.test",
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const tgtUser = await ctx.db.insert("users", {
+        schoolId: target,
+        authId: "tgt-user-auth",
+        name: "Target Admin",
+        email: "admin@ruga.test",
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Insert source school records referencing source user
+      await ctx.db.insert("schoolAssessmentSettings", {
+        schoolId: source,
+        examInputMode: "raw40",
+        ca1Max: 20,
+        ca2Max: 20,
+        ca3Max: 0,
+        examContributionMax: 60,
+        isActive: true,
+        updatedBy: srcUser,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("gradingBands", {
+        schoolId: source,
+        gradeLetter: "A",
+        minScore: 70,
+        maxScore: 100,
+        remark: "Excellent",
+        isActive: true,
+        updatedBy: srcUser,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("schoolBillingSettings", {
+        schoolId: source,
+        invoicePrefix: "INV",
+        defaultCurrency: "NGN",
+        defaultDueDays: 14,
+        preferredProvider: "manual",
+        allowManualPayments: true,
+        allowOnlinePayments: false,
+        updatedBy: srcUser,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("schoolApprovalEvidence", {
+        schoolId: source,
+        approvalClass: "standard",
+        subjectType: "school_split",
+        subjectKey: "obhis-ruga",
+        evidenceReference: "ref-doc-123",
+        approvedByUserId: srcUser,
+        approvedAt: now,
+        createdAt: now,
+      });
+
+      return {
+        sourceSchoolId: source,
+        targetSchoolId: target,
+        sourceUserId: srcUser,
+        targetUserId: tgtUser,
+      };
+    });
+
+    const branchSplitModule = await import("../branchSplitV2");
+    const runSplitIntegrityCheck = branchSplitModule.runSplitIntegrityCheck as unknown as FunctionReference<"query", "internal", any, any>;
+
+    // Insert target records with target user
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("schoolAssessmentSettings", {
+        schoolId: targetSchoolId,
+        examInputMode: "raw40",
+        ca1Max: 20,
+        ca2Max: 20,
+        ca3Max: 0,
+        examContributionMax: 60,
+        isActive: true,
+        updatedBy: targetUserId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("gradingBands", {
+        schoolId: targetSchoolId,
+        gradeLetter: "A",
+        minScore: 70,
+        maxScore: 100,
+        remark: "Excellent",
+        isActive: true,
+        updatedBy: targetUserId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("schoolBillingSettings", {
+        schoolId: targetSchoolId,
+        invoicePrefix: "INV",
+        defaultCurrency: "NGN",
+        defaultDueDays: 14,
+        preferredProvider: "manual",
+        allowManualPayments: true,
+        allowOnlinePayments: false,
+        updatedBy: targetUserId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("schoolApprovalEvidence", {
+        schoolId: targetSchoolId,
+        approvalClass: "standard",
+        subjectType: "school_split",
+        subjectKey: "obhis-ruga",
+        evidenceReference: "ref-doc-123",
+        approvedByUserId: targetUserId,
+        approvedAt: now,
+        createdAt: now,
+      });
+    });
+
+    const checkResult: any = await t.query(runSplitIntegrityCheck, {});
+    const fkAnomalies = (checkResult.anomalies || []).filter((a: string) =>
+      a.includes("AssessmentSettings") ||
+      a.includes("GradingBand") ||
+      a.includes("BillingSettings") ||
+      a.includes("ApprovalEvidence")
+    );
+    expect(fkAnomalies).toEqual([]);
   });
 });

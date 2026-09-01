@@ -214,6 +214,7 @@ export default defineSchema({
   // Platform super admin accounts (not school-scoped)
   platformAdmins: defineTable({
     authId: v.string(),
+    authTokenIdentifier: v.optional(v.string()),
     email: v.string(),
     name: v.string(),
     isActive: v.boolean(),
@@ -221,6 +222,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_auth", ["authId"])
+    .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_email", ["email"]),
 
   // Stub tables for prerequisite data (from prior FRs)
@@ -2787,13 +2789,18 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("analyzing"),
       v.literal("reviewing"),
+      v.literal("committing"),
       v.literal("merged"),
+      v.literal("failed"),
       v.literal("cancelled")
     ),
     totalRecords: v.number(),
     validRecords: v.number(),
     warningRecords: v.number(),
     errorRecords: v.number(),
+    processedRecords: v.optional(v.number()),
+    commitCursor: v.optional(v.string()),
+    commitPhase: v.optional(v.union(v.literal("students"), v.literal("grades"))),
     sourceFiles: v.array(
       v.object({
         storageId: v.id("_storage"),
@@ -2860,12 +2867,15 @@ export default defineSchema({
         v.literal("ignore")
       )
     ),
+    isCommitted: v.optional(v.boolean()),
+    committedStudentId: v.optional(v.id("students")),
     updatedAt: v.number(),
   })
     .index("by_workspaceId", ["workspaceId"])
     .index("by_workspaceId_and_validationStatus", ["workspaceId", "validationStatus"])
     .index("by_workspaceId_and_entityType", ["workspaceId", "entityType"])
-    .index("by_workspaceId_and_familyClusterKey", ["workspaceId", "familyClusterKey"]),
+    .index("by_workspaceId_and_familyClusterKey", ["workspaceId", "familyClusterKey"])
+    .index("by_workspaceId_and_isCommitted", ["workspaceId", "isCommitted"]),
 
   migrationFeatureSignals: defineTable({
     schoolId: v.id("schools"),

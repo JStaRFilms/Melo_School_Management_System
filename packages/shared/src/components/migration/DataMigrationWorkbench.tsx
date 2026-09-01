@@ -66,7 +66,7 @@ export function DataMigrationWorkbench({
   const stagedRecords = useQuery(
     "functions/academic/migrationWorkspace:getWorkspaceRecords" as never,
     activeWorkspaceId
-      ? ({ schoolId, workspaceId: activeWorkspaceId, limit: 500 } as never)
+      ? ({ schoolId, workspaceId: activeWorkspaceId, limit: 1000 } as never)
       : ("skip" as never)
   ) as StagedStudentRow[] | undefined;
 
@@ -185,11 +185,26 @@ export function DataMigrationWorkbench({
     if (!activeWorkspaceId) return;
     setIsMerging(true);
     try {
-      const res = (await commitImportWorkspace({
-        schoolId,
-        workspaceId: activeWorkspaceId,
-      } as never)) as { mergedStudents: number };
-      appToast.success(`Successfully merged ${res.mergedStudents} students to live school database!`);
+      let isDone = false;
+      let totalMerged = 0;
+      while (!isDone) {
+        const res = (await commitImportWorkspace({
+          schoolId,
+          workspaceId: activeWorkspaceId,
+        } as never)) as {
+          done?: boolean;
+          success?: boolean;
+          mergedStudents?: number;
+          processedRecords?: number;
+          totalRecords?: number;
+        };
+
+        if (res.done) {
+          isDone = true;
+          totalMerged = res.mergedStudents ?? res.processedRecords ?? 0;
+        }
+      }
+      appToast.success(`Successfully merged ${totalMerged} records to live school database!`);
       onSuccess?.();
     } catch (err) {
       appToast.error(getErrorMessage(err, "Merge failed"));

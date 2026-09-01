@@ -1,5 +1,7 @@
 import { mutation } from "../../_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import type { MutationCtx } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
 import { assertMigrationAccess } from "./migrationAuth";
 import { generateFamilyClusterKey, normalizePhoneNumber } from "@school/shared";
 
@@ -34,7 +36,16 @@ export const patchStagedRecord = mutation({
 
     const record = await ctx.db.get(args.recordId);
     if (!record || record.schoolId !== args.schoolId) {
-      throw new Error("Staged record not found");
+      throw new ConvexError("Staged record not found");
+    }
+
+    const workspace = await ctx.db.get(record.workspaceId);
+    if (!workspace || workspace.schoolId !== args.schoolId) {
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (workspace.status === "cancelled" || workspace.status === "merged") {
+      throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
     }
 
     const updatedParsed = {
@@ -79,7 +90,9 @@ export const patchStagedRecord = mutation({
 
     const familyClusterKey = generateFamilyClusterKey(updatedParsed.guardianPhone);
 
+    const oldStatus = record.validationStatus;
     const now = Date.now();
+
     await ctx.db.patch(args.recordId, {
       parsedData: updatedParsed,
       validationStatus,
@@ -88,8 +101,8 @@ export const patchStagedRecord = mutation({
       updatedAt: now,
     });
 
-    // Refresh workspace summary
-    await refreshWorkspaceCounters(ctx, record.workspaceId);
+    // Update workspace counters incrementally on status change
+    await updateCountersOnStatusChange(ctx, record.workspaceId, oldStatus, validationStatus);
 
     return { success: true, validationStatus, validationErrors };
   },
@@ -97,6 +110,7 @@ export const patchStagedRecord = mutation({
 
 /**
  * Resolves a detected clash between a staged row and another staged/live record.
+ * Strictly verifies target student tenant ownership and candidate eligibility.
  */
 export const resolveRecordClash = mutation({
   args: {
@@ -115,20 +129,62 @@ export const resolveRecordClash = mutation({
 
     const record = await ctx.db.get(args.recordId);
     if (!record || record.schoolId !== args.schoolId) {
-      throw new Error("Staged record not found");
+      throw new ConvexError("Staged record not found");
+    }
+
+    const workspace = await ctx.db.get(record.workspaceId);
+    if (!workspace || workspace.schoolId !== args.schoolId) {
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (workspace.status === "cancelled" || workspace.status === "merged") {
+      throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
+    }
+
+    let resolvedTargetStudentId: Id<"students"> | undefined = undefined;
+
+    if (args.resolutionAction === "merge_existing") {
+      const candidateStudentId = args.targetStudentId ?? record.existingStudentId;
+      if (!candidateStudentId) {
+        throw new ConvexError("A target student is required for merge_existing action");
+      }
+
+      // Verify student belongs to this school
+      const targetStudent = await ctx.db.get(candidateStudentId);
+      if (!targetStudent || targetStudent.schoolId !== args.schoolId) {
+        throw new ConvexError("Target student not found or belongs to a different school");
+      }
+
+      // Verify the target is an allowed candidate if candidate data exists
+      if (record.existingStudentId && record.existingStudentId !== candidateStudentId) {
+        throw new ConvexError("Target student is not an allowed candidate for this record");
+      }
+
+      resolvedTargetStudentId = candidateStudentId;
+    } else if (args.resolutionAction === "create_new" || args.resolutionAction === "ignore") {
+      resolvedTargetStudentId = undefined;
+    } else if (args.resolutionAction === "link_as_sibling") {
+      if (args.targetStudentId) {
+        const targetStudent = await ctx.db.get(args.targetStudentId);
+        if (!targetStudent || targetStudent.schoolId !== args.schoolId) {
+          throw new ConvexError("Target student not found or belongs to a different school");
+        }
+        resolvedTargetStudentId = args.targetStudentId;
+      }
     }
 
     const validationStatus = record.validationErrors.length > 0 ? "error" : "valid";
+    const oldStatus = record.validationStatus;
 
     await ctx.db.patch(args.recordId, {
       isResolved: true,
       resolutionAction: args.resolutionAction,
-      existingStudentId: args.targetStudentId ?? record.existingStudentId,
+      existingStudentId: resolvedTargetStudentId,
       validationStatus,
       updatedAt: Date.now(),
     });
 
-    await refreshWorkspaceCounters(ctx, record.workspaceId);
+    await updateCountersOnStatusChange(ctx, record.workspaceId, oldStatus, validationStatus);
 
     return { success: true };
   },
@@ -149,7 +205,11 @@ export const bulkResolveAdmissionNumbers = mutation({
 
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new Error("Workspace not found");
+      throw new ConvexError("Workspace not found");
+    }
+
+    if (workspace.status === "cancelled" || workspace.status === "merged") {
+      throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
     }
 
     const currentYear = new Date().getFullYear();
@@ -157,15 +217,15 @@ export const bulkResolveAdmissionNumbers = mutation({
       args.prefix?.trim() || workspace.admissionNumberPrefix || `SCH/${currentYear}/`;
     let seq = args.startingSequence ?? workspace.nextAdmissionSequence ?? 1;
 
+    let assignedCount = 0;
+    const now = Date.now();
+
     const stagedStudents = await ctx.db
       .query("stagedImportRecords")
       .withIndex("by_workspaceId_and_entityType", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("entityType", "student")
       )
       .take(1000);
-
-    let assignedCount = 0;
-    const now = Date.now();
 
     for (const rec of stagedStudents) {
       if (!rec.parsedData.admissionNumber || !rec.parsedData.admissionNumber.trim()) {
@@ -194,27 +254,36 @@ export const bulkResolveAdmissionNumbers = mutation({
       updatedAt: now,
     });
 
-    await refreshWorkspaceCounters(ctx, args.workspaceId);
-
     return { assignedCount, nextSequence: seq };
   },
 });
 
-async function refreshWorkspaceCounters(ctx: any, workspaceId: any) {
-  const allStaged = await ctx.db
-    .query("stagedImportRecords")
-    .withIndex("by_workspaceId", (q: any) => q.eq("workspaceId", workspaceId))
-    .take(1000);
+async function updateCountersOnStatusChange(
+  ctx: MutationCtx,
+  workspaceId: Id<"importWorkspaces">,
+  oldStatus: "valid" | "warning" | "error",
+  newStatus: "valid" | "warning" | "error"
+) {
+  if (oldStatus === newStatus) return;
+  const ws = await ctx.db.get(workspaceId);
+  if (!ws) return;
 
-  const validCount = allStaged.filter((r: any) => r.validationStatus === "valid").length;
-  const warningCount = allStaged.filter((r: any) => r.validationStatus === "warning").length;
-  const errorCount = allStaged.filter((r: any) => r.validationStatus === "error").length;
+  let validDiff = 0;
+  let warningDiff = 0;
+  let errorDiff = 0;
+
+  if (oldStatus === "valid") validDiff -= 1;
+  if (oldStatus === "warning") warningDiff -= 1;
+  if (oldStatus === "error") errorDiff -= 1;
+
+  if (newStatus === "valid") validDiff += 1;
+  if (newStatus === "warning") warningDiff += 1;
+  if (newStatus === "error") errorDiff += 1;
 
   await ctx.db.patch(workspaceId, {
-    totalRecords: allStaged.length,
-    validRecords: validCount,
-    warningRecords: warningCount,
-    errorRecords: errorCount,
+    validRecords: Math.max(0, (ws.validRecords || 0) + validDiff),
+    warningRecords: Math.max(0, (ws.warningRecords || 0) + warningDiff),
+    errorRecords: Math.max(0, (ws.errorRecords || 0) + errorDiff),
     updatedAt: Date.now(),
   });
 }

@@ -102,23 +102,25 @@ export function ClassEditForm({
     );
   }, [allSubjects, subjectSearch]);
 
-  const hasInitialized = useRef(false);
+  const hasInitializedScalars = useRef(false);
+  const hasInitializedSubjects = useRef(false);
 
   useEffect(() => {
-    if (hasInitialized.current) return;
+    if (hasInitializedScalars.current) return;
     if (initialGradeName || initialClassLabel || initialFormTeacherId || initialLevel) {
       setGradeName(initialGradeName);
       setClassLabel(initialClassLabel);
       setLevel(initialLevel);
       setFormTeacherId(initialFormTeacherId);
-      hasInitialized.current = true;
+      hasInitializedScalars.current = true;
     }
   }, [initialGradeName, initialClassLabel, initialFormTeacherId, initialLevel]);
 
   useEffect(() => {
-    if (hasInitialized.current) return;
+    if (hasInitializedSubjects.current) return;
     if (initialSubjectIds.length > 0) {
       setSubjectIds(initialSubjectIds);
+      hasInitializedSubjects.current = true;
     }
   }, [initialSubjectIds]);
 

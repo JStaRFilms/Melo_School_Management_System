@@ -4,6 +4,7 @@
  * normalizes rows into RawImportRecord structures, and preserves unmapped columns in the metadata attic.
  */
 
+import * as XLSX from "xlsx";
 import { parseHumanName } from "./nameParser";
 import { normalizePhoneNumber } from "./phoneNormalizer";
 
@@ -530,4 +531,30 @@ export function parseSpreadsheetContent(
     totalRows: parsedRows.length,
     unrecognizedHeaders: Array.from(unrecognizedHeadersMap.values()),
   };
+}
+
+/**
+ * Parses binary Excel (.xlsx, .xls) files into structured SpreadsheetParseResult.
+ */
+export function parseWorkbookBinary(data: ArrayBuffer | Uint8Array): SpreadsheetParseResult {
+  const workbook = XLSX.read(data, { type: "array" });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) {
+    return { headers: [], rows: [], totalRows: 0, unrecognizedHeaders: [] };
+  }
+  const sheet = workbook.Sheets[firstSheetName];
+  if (!sheet) {
+    return { headers: [], rows: [], totalRows: 0, unrecognizedHeaders: [] };
+  }
+  const rawMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+  const stringMatrix: string[][] = rawMatrix.map((row) =>
+    (Array.isArray(row) ? row : []).map((cell) =>
+      cell !== null && cell !== undefined ? String(cell) : ""
+    )
+  );
+  return parseSpreadsheetContent(stringMatrix);
 }

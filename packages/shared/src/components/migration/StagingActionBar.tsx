@@ -22,7 +22,17 @@ export function StagingActionBar({
   onAutoGenerateAdmission,
   onCommitMerge,
 }: StagingActionBarProps) {
-  const canCommit = totalRecords > 0 && errorRecords === 0 && !isMerging;
+  const canCommit = totalRecords > 0 && errorRecords === 0 && warningRecords === 0 && !isMerging;
+
+  const disabledReason = isMerging
+    ? "Commit currently in progress..."
+    : totalRecords === 0
+    ? "No staged records to commit"
+    : errorRecords > 0
+    ? `Resolve ${errorRecords} blocking ${errorRecords === 1 ? "error" : "errors"} before committing`
+    : warningRecords > 0
+    ? `Resolve ${warningRecords} clash ${warningRecords === 1 ? "warning" : "warnings"} before committing`
+    : undefined;
 
   return (
     <div className="sticky bottom-0 z-30 w-full border-t border-slate-200 bg-white/95 backdrop-blur-md px-6 py-4 shadow-lg">
@@ -48,7 +58,7 @@ export function StagingActionBar({
           {warningRecords > 0 && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200/80 px-3 py-1 text-xs font-bold text-amber-700">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-              <span>{warningRecords} {warningRecords === 1 ? "Warning" : "Warnings"}</span>
+              <span>{warningRecords} Unresolved {warningRecords === 1 ? "Warning" : "Warnings"}</span>
             </div>
           )}
 
@@ -59,6 +69,12 @@ export function StagingActionBar({
 
         {/* Action Controls */}
         <div className="flex items-center gap-3">
+          {disabledReason && !isMerging && (
+            <span className="text-xs font-medium text-amber-700 hidden lg:inline-block">
+              {disabledReason}
+            </span>
+          )}
+
           <button
             type="button"
             onClick={onAutoGenerateAdmission}
@@ -78,6 +94,7 @@ export function StagingActionBar({
             type="button"
             onClick={onCommitMerge}
             disabled={!canCommit}
+            title={disabledReason}
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold shadow-xs transition-all ${
               canCommit
                 ? "bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-md cursor-pointer"

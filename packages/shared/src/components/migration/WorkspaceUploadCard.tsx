@@ -1,6 +1,10 @@
 import React, { useState, useRef } from "react";
-import { UploadCloud, FileSpreadsheet, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
-import { parseSpreadsheetContent, type SpreadsheetParseResult } from "../../migration";
+import { UploadCloud, FileSpreadsheet, Sparkles, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  parseSpreadsheetContent,
+  parseWorkbookBinary,
+  type SpreadsheetParseResult,
+} from "../../migration";
 
 export interface WorkspaceUploadCardProps {
   onStartIngest: (params: {
@@ -19,44 +23,60 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
   const [nextSequence, setNextSequence] = useState(1);
   const [parseResult, setParseResult] = useState<SpreadsheetParseResult | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processFile = async (file: File) => {
+    setFileName(file.name);
+    setParseError(null);
+    setIsParsing(true);
+
+    try {
+      const lowerName = file.name.toLowerCase();
+      let result: SpreadsheetParseResult;
+
+      if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+        const buffer = await file.arrayBuffer();
+        result = parseWorkbookBinary(buffer);
+      } else if (
+        lowerName.endsWith(".csv") ||
+        lowerName.endsWith(".tsv") ||
+        lowerName.endsWith(".txt")
+      ) {
+        const text = await file.text();
+        result = parseSpreadsheetContent(text);
+      } else {
+        throw new Error(
+          "Unsupported file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv, .tsv) file."
+        );
+      }
+
+      if (result.totalRows === 0) {
+        throw new Error("The uploaded spreadsheet contains no data rows.");
+      }
+
+      setParseResult(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to parse file";
+      setParseError(msg);
+      setParseResult(null);
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setFileName(file.name);
-    setIsParsing(true);
-
-    try {
-      const text = await file.text();
-      const result = parseSpreadsheetContent(text);
-      setParseResult(result);
-    } catch (err) {
-      console.error("Failed to parse spreadsheet:", err);
-    } finally {
-      setIsParsing(false);
-    }
+    await processFile(file);
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-
-    setFileName(file.name);
-    setIsParsing(true);
-
-    try {
-      const text = await file.text();
-      const result = parseSpreadsheetContent(text);
-      setParseResult(result);
-    } catch (err) {
-      console.error("Failed to parse spreadsheet:", err);
-    } finally {
-      setIsParsing(false);
-    }
+    await processFile(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,7 +99,7 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
           Upload & Stage School Spreadsheet
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Import student rosters and historical scores from CSV or Excel files with zero direct database writes.
+          Import student rosters and historical scores from CSV or Excel (.xlsx, .xls) files with zero direct database writes.
         </p>
       </div>
 
@@ -130,11 +150,22 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
 
         {/* Dropzone */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Upload spreadsheet dropzone. Click or press Enter to browse files."
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all ${
-            fileName
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+            parseError
+              ? "border-rose-300 bg-rose-50/30"
+              : fileName
               ? "border-indigo-300 bg-indigo-50/20"
               : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50/70"
           }`}
@@ -143,20 +174,29 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept=".csv,.tsv,.txt"
+            accept=".csv,.tsv,.txt,.xlsx,.xls"
             className="hidden"
           />
 
           <div className="flex flex-col items-center justify-center space-y-2.5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+              parseError ? "bg-rose-100 text-rose-600" : "bg-indigo-50 text-indigo-600"
+            }`}>
               {isParsing ? (
                 <Loader2 className="h-6 w-6 animate-spin" />
+              ) : parseError ? (
+                <AlertCircle className="h-6 w-6" />
               ) : (
                 <UploadCloud className="h-6 w-6" />
               )}
             </div>
 
-            {fileName ? (
+            {parseError ? (
+              <div>
+                <p className="text-sm font-bold text-rose-800">{fileName || "Parsing error"}</p>
+                <p className="text-xs font-medium text-rose-600 mt-1">{parseError}</p>
+              </div>
+            ) : fileName ? (
               <div>
                 <p className="text-sm font-bold text-slate-900">{fileName}</p>
                 {parseResult && (
@@ -172,7 +212,7 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
                   Click to browse or drag and drop your spreadsheet here
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Supports .csv and text exports from Excel, Google Sheets, or legacy systems
+                  Supports Excel (.xlsx, .xls) and CSV (.csv, .tsv) files
                 </p>
               </div>
             )}

@@ -1,5 +1,8 @@
 import { ConvexError } from "convex/values";
-import { Id } from "../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+
+export type MigrationCtx = QueryCtx | MutationCtx;
 
 export interface MigrationAuthContext {
   callerId: Id<"users"> | Id<"platformAdmins">;
@@ -23,7 +26,7 @@ export interface MigrationAuthContext {
  * @throws ConvexError "Admin access required" if school user is not an admin
  */
 export async function assertMigrationAccess(
-  ctx: any,
+  ctx: MigrationCtx,
   schoolId: Id<"schools">
 ): Promise<MigrationAuthContext> {
   const identity = await ctx.auth.getUserIdentity();
@@ -31,13 +34,27 @@ export async function assertMigrationAccess(
     throw new ConvexError("Unauthorized");
   }
 
-  // 1. Check Platform Super Admin
-  const platformAdmin = await ctx.db
-    .query("platformAdmins")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .unique();
+  // 1. Check Platform Super Admin (canonical tokenIdentifier lookup with legacy subject fallback)
+  let platformAdmin = identity.tokenIdentifier
+    ? await ctx.db
+        .query("platformAdmins")
+        .withIndex("by_auth_token_identifier", (q) =>
+          q.eq("authTokenIdentifier", identity.tokenIdentifier)
+        )
+        .first()
+    : null;
 
-  if (platformAdmin && platformAdmin.isActive) {
+  if (!platformAdmin && identity.subject) {
+    platformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
+      .first();
+  }
+
+  if (platformAdmin) {
+    if (!platformAdmin.isActive) {
+      throw new ConvexError("Platform admin account is inactive");
+    }
     return {
       callerId: platformAdmin._id,
       platformAdminId: platformAdmin._id,
@@ -47,11 +64,22 @@ export async function assertMigrationAccess(
     };
   }
 
-  // 2. Check School Admin
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .unique();
+  // 2. Check School Admin (canonical tokenIdentifier lookup with legacy subject fallback)
+  let user = identity.tokenIdentifier
+    ? await ctx.db
+        .query("users")
+        .withIndex("by_auth_token_identifier", (q) =>
+          q.eq("authTokenIdentifier", identity.tokenIdentifier)
+        )
+        .first()
+    : null;
+
+  if (!user && identity.subject) {
+    user = await ctx.db
+      .query("users")
+      .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
+      .first();
+  }
 
   if (!user) {
     throw new ConvexError("Unauthorized");
@@ -77,4 +105,55 @@ export async function assertMigrationAccess(
     role: "school_admin",
     email: user.email,
   };
+}
+
+/**
+ * Resolves a schema-valid Id<"users"> actor for tables that require a user creator/updater
+ * (e.g. families, familyMembers, assessmentRecords).
+ * If caller is a school admin, returns their user ID.
+ * If caller is a platform super admin, resolves an active school admin or creates a system migration actor.
+ */
+export async function resolveSchoolAdminActorId(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  auth: MigrationAuthContext
+): Promise<Id<"users">> {
+  if (auth.userId) {
+    return auth.userId;
+  }
+
+  // Look for active school lead admin or any active admin in this school
+  const activeAdmins = await ctx.db
+    .query("users")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .take(50);
+
+  const existingAdmin = activeAdmins.find(
+    (u) => !u.isArchived && (u.role === "admin" || u.isSchoolAdmin === true)
+  );
+  if (existingAdmin) {
+    return existingAdmin._id;
+  }
+
+  const existingUser = activeAdmins.find((u) => !u.isArchived);
+  if (existingUser) {
+    return existingUser._id;
+  }
+
+  // Create a system migration actor for the target school if no users exist
+  const now = Date.now();
+  const school = await ctx.db.get(schoolId);
+  const schoolSlug = school?.slug ?? "school";
+  const systemActorId = await ctx.db.insert("users", {
+    schoolId,
+    authId: `system_migration_${schoolId}_${now}`,
+    name: "System Migration Admin",
+    email: `migration-system@${schoolSlug}.local`,
+    role: "admin",
+    isSchoolAdmin: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return systemActorId;
 }

@@ -96,6 +96,7 @@ export function StudentProfileEditor({
   const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!studentProfile) return;
@@ -186,8 +187,6 @@ export function StudentProfileEditor({
       setIsSaving(false);
     }
   };
-
-  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
 
   const handleArchive = () => {
     if (!studentProfile) return;

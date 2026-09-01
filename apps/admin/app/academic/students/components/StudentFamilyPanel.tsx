@@ -141,6 +141,8 @@ export function StudentFamilyPanel({
   const [editDraft, setEditDraft] = useState<ParentContactDraft | null>(null);
   const [pendingReview, setPendingReview] = useState<PendingReview | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUnlinkModalOpen, setIsUnlinkModalOpen] = useState(false);
+  const [parentToRemove, setParentToRemove] = useState<StudentFamilyProfile["parents"][number] | null>(null);
 
   useEffect(() => {
     setParentFirstName("");
@@ -439,9 +441,6 @@ export function StudentFamilyPanel({
   const handleCancelReview = () => {
     setPendingReview(null);
   };
-
-  const [isUnlinkModalOpen, setIsUnlinkModalOpen] = useState(false);
-  const [parentToRemove, setParentToRemove] = useState<StudentFamilyProfile["parents"][number] | null>(null);
 
   const handleUnlinkStudent = () => {
     setIsUnlinkModalOpen(true);

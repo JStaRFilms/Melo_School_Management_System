@@ -58,6 +58,18 @@ export function CinematicShutterTransition() {
     if (prefersReducedMotion) return;
 
     const handleLinkClick = (e: MouseEvent) => {
+      // Preserve modified clicks (Cmd/Ctrl/Shift/Alt), auxiliary clicks (middle-click), and already handled events
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+      ) {
+        return;
+      }
+
       const target = (e.target as HTMLElement).closest("a");
       if (!target) return;
 
@@ -68,6 +80,7 @@ export function CinematicShutterTransition() {
         href.startsWith("mailto:") ||
         href.startsWith("tel:") ||
         target.target === "_blank" ||
+        target.getAttribute("target") === "_blank" ||
         target.hasAttribute("download") ||
         href === window.location.pathname ||
         isNavigatingRef.current
