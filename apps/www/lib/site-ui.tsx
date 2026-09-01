@@ -33,17 +33,17 @@ export function ButtonLink({
     "inline-flex items-center justify-center gap-2 font-medium transition-all duration-300 cursor-pointer";
 
   const sizes = {
-    default: "px-6 py-3 text-sm rounded-full",
-    lg: "px-8 py-4 text-base rounded-full",
+    default: "px-5 py-2.5 text-sm rounded-xl",
+    lg: "px-7 py-3.5 text-base rounded-xl",
   };
 
   const variants = {
     solid:
-      "bg-melo-ink text-white hover:bg-melo-ash shadow-soft hover:shadow-lift hover:-translate-y-px active:translate-y-0",
+      "bg-melo-ink text-white hover:bg-stone-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 border border-stone-800",
     outline:
-      "border border-melo-border bg-transparent text-melo-stone hover:border-melo-stone hover:bg-melo-stone hover:text-white",
+      "border border-stone-300 bg-white text-stone-800 hover:border-stone-400 hover:bg-stone-50 shadow-sm",
     ghost:
-      "bg-transparent text-melo-muted hover:text-melo-stone hover:bg-stone-100",
+      "bg-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-100",
   };
 
   return (
@@ -67,16 +67,16 @@ export function GoldButton({
   size?: "default" | "lg";
 }) {
   const sizes = {
-    default: "px-6 py-3 text-sm",
-    lg: "px-8 py-4 text-base",
+    default: "px-5 py-2.5 text-sm",
+    lg: "px-7 py-3.5 text-base",
   };
 
   return (
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 cursor-pointer",
-        "bg-melo-gold text-white hover:bg-amber-600 shadow-glow hover:shadow-[0_0_64px_rgba(202,138,4,0.25)] hover:-translate-y-px active:translate-y-0",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-200 cursor-pointer",
+        "bg-amber-500 text-stone-950 hover:bg-amber-400 font-semibold shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 border border-amber-600/30",
         sizes[size],
         className,
       )}
