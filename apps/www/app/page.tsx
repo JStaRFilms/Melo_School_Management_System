@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
 import { buildPageMetadata, siteBrand, toJsonLd } from "@/site";
-
-import { WovenLightHero } from "../components/ui/woven-light-hero";
-import { FramedReveal } from "../components/public/landing/framed-reveal";
-import { ProofBand } from "../components/public/landing/proof-band";
-import { ExpansionStory } from "../components/public/landing/expansion-story";
-import { CapabilityComposition } from "../components/public/landing/capability-composition";
-import { FinalCta } from "../components/public/landing/final-cta";
+import { MeloCinemaExperience } from "../components/story/melo-cinema-experience";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: siteBrand.tagline,
-  description: siteBrand.description,
+  title: "Melo — One School. One System.",
+  description:
+    "A school is one institution. Its information should behave like one system. Stop spending 3 days compiling results and chasing unverified fee payments.",
   path: "/",
 });
 
@@ -18,7 +13,8 @@ const platformSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: siteBrand.name,
-  description: siteBrand.description,
+  description:
+    "Unified operating system connecting academics, broadsheets, Paystack fee collection, parent visibility, and admissions for Nigerian schools.",
   url: siteBrand.siteUrl,
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
@@ -31,12 +27,8 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: toJsonLd(platformSchema) }}
       />
-      <WovenLightHero />
-      <FramedReveal />
-      <ExpansionStory />
-      <ProofBand />
-      <CapabilityComposition />
-      <FinalCta />
+      <MeloCinemaExperience />
     </>
   );
 }
+
