@@ -3,8 +3,6 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/site-ui";
 import { siteBrand } from "@/site";
-import { SmoothScrollProvider } from "../components/ui/smooth-scroll-provider";
-import { CinematicShutterTransition } from "../components/ui/cinematic-shutter-transition";
 
 const socialImageUrl = new URL("/og-image.png", siteBrand.siteUrl).toString();
 
@@ -57,12 +55,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="bg-melo-paper text-melo-stone antialiased" suppressHydrationWarning>
-        <CinematicShutterTransition />
-        <SmoothScrollProvider>
-          <SiteHeader />
-          <main className="pb-24 sm:pb-0">{children}</main>
-          <SiteFooter />
-        </SmoothScrollProvider>
+        <SiteHeader />
+        <main className="pb-24 sm:pb-0">{children}</main>
+        <SiteFooter />
       </body>
     </html>
   );
