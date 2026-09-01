@@ -48,6 +48,7 @@ interface ClassEditFormProps {
   onUpdate: (data: {
     gradeName: string;
     classLabel?: string;
+    level: string;
     formTeacherId: string | null;
     subjectIds: string[];
   }) => Promise<void>;
@@ -77,12 +78,14 @@ export function ClassEditForm({
   const [activeTab, setActiveTab] = useState<"blueprint" | "faculty" | "aggregates">("blueprint");
   const [gradeName, setGradeName] = useState("");
   const [classLabel, setClassLabel] = useState("");
+  const [level, setLevel] = useState(classDoc.level || "Nursery");
   const [formTeacherId, setFormTeacherId] = useState("");
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [subjectSearch, setSubjectSearch] = useState("");
 
   const initialGradeName = classDoc.gradeName || classDoc.name || "";
   const initialClassLabel = classDoc.classLabel || "";
+  const initialLevel = classDoc.level || "Nursery";
   const initialFormTeacherId = classDoc.formTeacherId || "";
   const initialSubjectIds = useMemo(
     () => (currentOfferings?.map((offering) => offering.subjectId) ?? []).sort(),
@@ -103,13 +106,14 @@ export function ClassEditForm({
 
   useEffect(() => {
     if (hasInitialized.current) return;
-    if (initialGradeName || initialClassLabel || initialFormTeacherId) {
+    if (initialGradeName || initialClassLabel || initialFormTeacherId || initialLevel) {
       setGradeName(initialGradeName);
       setClassLabel(initialClassLabel);
+      setLevel(initialLevel);
       setFormTeacherId(initialFormTeacherId);
       hasInitialized.current = true;
     }
-  }, [initialGradeName, initialClassLabel, initialFormTeacherId]);
+  }, [initialGradeName, initialClassLabel, initialFormTeacherId, initialLevel]);
 
   useEffect(() => {
     if (hasInitialized.current) return;
@@ -121,13 +125,14 @@ export function ClassEditForm({
   const isDirty = useMemo(() => {
     const gradeChanged = gradeName.trim() !== initialGradeName.trim();
     const labelChanged = classLabel.trim() !== initialClassLabel.trim();
+    const levelChanged = level !== initialLevel;
     const teacherChanged = (formTeacherId || "") !== (initialFormTeacherId || "");
     const currentSorted = [...subjectIds].sort();
     const subjectsChanged =
       currentSorted.length !== initialSubjectIds.length ||
       currentSorted.some((id, i) => id !== initialSubjectIds[i]);
-    return gradeChanged || labelChanged || teacherChanged || subjectsChanged;
-  }, [gradeName, initialGradeName, classLabel, initialClassLabel, formTeacherId, initialFormTeacherId, subjectIds, initialSubjectIds]);
+    return gradeChanged || labelChanged || levelChanged || teacherChanged || subjectsChanged;
+  }, [gradeName, initialGradeName, classLabel, initialClassLabel, level, initialLevel, formTeacherId, initialFormTeacherId, subjectIds, initialSubjectIds]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -156,6 +161,7 @@ export function ClassEditForm({
   const handleDiscard = () => {
     setGradeName(initialGradeName);
     setClassLabel(initialClassLabel);
+    setLevel(initialLevel);
     setFormTeacherId(initialFormTeacherId);
     setSubjectIds(initialSubjectIds);
     setSubjectSearch("");
@@ -168,6 +174,7 @@ export function ClassEditForm({
     await onUpdate({
       gradeName: normalizedGradeName,
       classLabel: humanNameFinal(classLabel) || undefined,
+      level,
       formTeacherId: formTeacherId || null,
       subjectIds,
     });
@@ -270,27 +277,51 @@ export function ClassEditForm({
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight ml-0.5">Form Teacher</p>
-                    {sessionName && (
-                      <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 truncate max-w-[100px]">
-                        {sessionName}
-                      </span>
-                    )}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between h-4">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                        Section / Level
+                      </p>
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={level}
+                        onChange={(e) => setLevel(e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary cursor-pointer truncate pr-6"
+                      >
+                        <option value="Nursery">Nursery</option>
+                        <option value="Primary">Primary</option>
+                        <option value="Secondary">Secondary</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-300" />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <select
-                      value={formTeacherId}
-                      onChange={(e) => setFormTeacherId(e.target.value)}
-                      className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary pr-6 truncate"
-                    >
-                      <option value="">Unassigned</option>
-                      {allTeachers.map((t) => (
-                        <option key={t._id} value={t._id}>{t.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-300" />
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between h-4">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                        Form Teacher
+                      </p>
+                      {sessionName && (
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 truncate max-w-[70px]">
+                          {sessionName}
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={formTeacherId}
+                        onChange={(e) => setFormTeacherId(e.target.value)}
+                        className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary pr-6 truncate cursor-pointer"
+                      >
+                        <option value="">Unassigned</option>
+                        {allTeachers.map((t) => (
+                          <option key={t._id} value={t._id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-300" />
+                    </div>
                   </div>
                 </div>
               </div>

@@ -100,6 +100,16 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Safe Teacher Archiving Guardrails**
   - `listTeacherArchiveBlockers` in `archiveGuardrails.ts` now inspects only form teacher and subject assignments in the **currently active session**.
   - Teachers who concluded previous sessions and have no active duties can now be safely archived without triggering blocking validation errors.
+- [x] **Class Section / Academic Level (Nursery, Primary, Secondary) Modifiability (`ClassEditForm.tsx`, `page.tsx`)**
+  - Added Section / Academic Level selector in the Class Edit blueprint drawer (`/academic/classes`), allowing administrators to correct class level assignments directly without needing to recreate the class.
+  - Linked `level` updates through the existing Convex `updateClass` mutation with full cache revalidation.
+- [x] **Natural Alphanumeric & Alphabetical Class Sorting across Backend & Frontend**
+  - Updated `listClasses`, `getAllClasses`, `getTeacherAssignableClasses`, and class roster views to sort by resolved class display name using natural numeric collation (`{ numeric: true, sensitivity: "base" }`) so classes always list in logical order (e.g. *Grade 1, Grade 2... Grade 10, Grade 11*, *JSS 1... JSS 3*, *Primary 1... Primary 6*) regardless of creation order.
+- [x] **Student Roster Visibility for Classes with Zero Subjects Configured (`SubjectSelectionMatrix.tsx`, `SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
+  - Previously, if a class had students enrolled but 0 subjects configured in the curriculum, the entire student roster table was replaced by a single empty-state banner, causing newly admitted students to disappear from view.
+  - Now, enrolled students are always visible in both desktop and mobile roster views with full names, avatars, admission numbers, and quick profile actions, accompanied by a direct action link to configure class subjects.
+- [x] **Granular Toast & Error Message Extraction (`packages/shared/src/errors.ts`)**
+  - Enhanced `getUserFacingErrorMessage` to inspect `error.data` payloads and strip noisy WebSocket transport wrappers, ensuring exact server-side validation messages (e.g. duplicate admission IDs, missing permissions) are presented cleanly to the user in notifications.
 
 ### 5. Academic Sessions, Dynamic Term Partitioning & Modal Overlay Polish
 - [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
@@ -210,6 +220,17 @@ This document tracks all observations, issues, UX refinements, completed changes
 ## 🚀 Roadmap & Backlog
 
 ### High Priority / Next Up
+- [ ] **Granular Admin Role-Based Access Control (RBAC) & Scoped Staff Permissions**
+  - **Context & Need:** Currently, all school administrator accounts receive full universal access across the entire admin workspace. Schools need to designate departmental staff roles (e.g., Bursar/Accountant, Academic Director/Dean of Studies, Registrar/Admissions Officer, Exam Officer) who should only view and manage modules relevant to their job functions rather than giving all admins access to everything.
+  - **Proposed Role Scopes & Capability Matrix:**
+    - **Finance & Bursary (`bursar`):** Access restricted strictly to Billing, Invoices, Fee Plans, Statements of Account, Payment Receipts, and Bank Settings. Cannot view/edit exam configurations, student grades, or teacher assignments.
+    - **Academic Affairs (`academic_dean` / `exam_officer`):** Access to Sessions & Terms, Class Blueprints, Subject Catalogs, Exam Setup, Grading Bands, and Report Card generation. Restricted from billing ledgers, revenue analytics, and school banking settings.
+    - **Admissions & Student Affairs (`registrar`):** Access to Student Roster, Admissions, Enrollment Onboarding, and Attestation letters. Restricted from fee configuration and grading band policies.
+    - **School Super Admin / Proprietor (`super_admin`):** Full, unrestricted administrative privileges across all institutional modules, staff permissions, and workspace settings.
+  - **Implementation Strategy:**
+    - Add `adminRole` or `permissions: string[]` field on admin users / memberships.
+    - Add layout-level and route-level authorization guards on sidebar navigation items and page endpoints.
+    - Enforce backend mutation/query assertion helpers (`assertSchoolAdminPermission(ctx, "finance" | "academics" | "admissions")`).
 - [ ] **School Bank Account Details for Invoices & Statements (Billing Settings / Defect Later)**
   - Add configurable school bank account profile fields (Account Name, Bank Name, Account Number/IBAN, Sort Code/Branch) in Billing Settings (alongside the Paystack gateway configuration) or General Settings.
   - Automatically attach and render configured school bank account details on generated and printed student billing invoices and statements of account so parents remitting via direct bank transfer see verified school account numbers.
@@ -257,6 +278,12 @@ This document tracks all observations, issues, UX refinements, completed changes
   - **Why:** Vercel routes are tied to the HTTP request lifecycle — if the user closes the tab, network drops, or Vercel hits its timeout (10–300s), generation is aborted and tokens are wasted. Convex actions survive client disconnect, run up to ~10 min, retry automatically, and persist results directly to `ctx.db` for the client to pick up via `useQuery` on reconnect.
   - **Scope:** (1) Create Convex actions for `lesson_plan`, `student_note`, `assignment`, `question_bank_draft`, `cbt_draft` (use `openai/gpt-5.6-luna` for all). (2) Port `createDocumentModel`/`resolveDocumentModelId` + `OPENROUTER_HTTP_REFERER`/`X-Title` header handling from `models.ts:84-93` into `runtime.ts` (currently Convex ignores those headers). (3) Unify env to single `SCHOOL_AI_*` set in **Convex Dashboard** (`npx convex env set`) instead of split Vercel + Convex. (4) Replace teacher `fetch('/api/.../generate')` calls with `useAction` + reactive `useQuery` polling. (5) Keep streaming if needed via Convex action + `useQuery` incremental updates or accept non-streaming reliable completion.
   - **Acceptance:** All 6 models (`SCHOOL_AI_LESSON_PLAN_MODEL`, `SCHOOL_AI_STUDENT_NOTE_MODEL`, `SCHOOL_AI_ASSIGNMENT_MODEL`, `SCHOOL_AI_QUESTION_BANK_MODEL`, `SCHOOL_AI_CBT_MODEL`, `SCHOOL_AI_CURRICULUM_MODEL`) set to `openai/gpt-5.6-luna` in **one place (Convex)**; generation completes even if client disconnects mid-request; no `apps/teacher/app/api/**/generate` routes remain for AI.
+- [ ] **Multi-Arm Class Architecture & Grade-Level Hierarchy (Supporting Multiple Arms per Grade)**
+  - **Context & Need:** Many schools have multiple arms or streams per grade (e.g., *Grade 10 Cedar, Grade 10 Elm*, or *SS 1A, SS 1B, SS 1C*). Currently, the infrastructure models each arm as an individual distinct class record (`classes` table with `gradeName` + `classLabel`), which expects 1 class record per arm.
+  - **Future Architecture & Scope:**
+    - Model a first-class **Grade $\to$ Arms/Streams** hierarchy (e.g. `grades` representing the cohort level, and `classArms` or child `classes` representing individual classrooms/registers).
+    - Allow shared grade-level defaults (curriculum subject catalogs, grading policies, fee plans, assessment profiles) to be configured once at the Grade tier and automatically inherited by all constituent arms.
+    - Support cross-arm student rebalancing, joint subject timetable scheduling, grade-wide unified result ranking, and arm-specific vs grade-wide analytics.
 - [ ] **Multi-Parent Household & Guardian Linking Architecture**
   - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
   - Relationship and residential address inheritance toggles.

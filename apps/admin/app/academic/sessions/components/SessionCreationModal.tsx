@@ -29,7 +29,7 @@ export function SessionCreationModal({
   const createSession = useMutation("functions/academic/academicSetup:createSession" as never);
 
   const currentYear = new Date().getFullYear();
-  const defaultSessionName = `${currentYear}/${currentYear + 1} Academic Session`;
+  const defaultSessionName = `${currentYear}/${currentYear + 1}`;
 
   const [sessionName, setSessionName] = useState(defaultSessionName);
   const [startDate, setStartDate] = useState(`${currentYear}-09-08`);
@@ -62,7 +62,7 @@ export function SessionCreationModal({
 
   const handleApplyPreset = (yearOffset: number) => {
     const yr = currentYear + yearOffset;
-    setSessionName(`${yr}/${yr + 1} Academic Session`);
+    setSessionName(`${yr}/${yr + 1}`);
     setStartDate(`${yr}-09-08`);
     setEndDate(`${yr + 1}-07-24`);
   };
@@ -183,7 +183,7 @@ export function SessionCreationModal({
               value={sessionName}
               onChange={(e) => setSessionName(humanNameTyping(e.target.value))}
               onBlur={(e) => setSessionName(humanNameFinal(e.target.value))}
-              placeholder="e.g., 2025/2026 Academic Session"
+              placeholder="e.g., 2025/2026"
               className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
             />
           </div>

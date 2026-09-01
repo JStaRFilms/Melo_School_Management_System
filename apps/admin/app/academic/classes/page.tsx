@@ -148,8 +148,11 @@ export default function ClassesPage() {
   const filteredClasses = useMemo(() => {
     if (!classes) return [];
     const query = deferredSearch.trim().toLowerCase();
-    if (!query) return classes;
-    return classes.filter(
+    const sorted = [...classes].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    );
+    if (!query) return sorted;
+    return sorted.filter(
       (c) => 
         c.name.toLowerCase().includes(query) || 
         c.gradeName?.toLowerCase().includes(query) ||
@@ -268,6 +271,7 @@ export default function ClassesPage() {
   const handleUpdate = async (data: {
     gradeName: string;
     classLabel?: string;
+    level: string;
     formTeacherId: string | null;
     subjectIds: string[];
   }) => {
@@ -278,6 +282,7 @@ export default function ClassesPage() {
         classId: selectedClassId,
         gradeName: data.gradeName,
         classLabel: data.classLabel || null,
+        level: data.level,
         formTeacherId: data.formTeacherId || null,
         sessionId: selectedSessionId ? (selectedSessionId as never) : undefined,
       } as never);
@@ -409,6 +414,7 @@ export default function ClassesPage() {
       >
         {activeClass && (
            <ClassEditForm
+             key={activeClass._id}
              classDoc={activeClass}
              allSubjects={subjects}
              allTeachers={teachers}
@@ -432,6 +438,7 @@ export default function ClassesPage() {
             <div className="hidden lg:flex lg:flex-col h-full min-h-0">
               {selectedClassId && currentClass ? (
                 <ClassEditForm
+                  key={currentClass._id}
                   classDoc={currentClass}
                   allSubjects={subjects}
                   allTeachers={teachers}

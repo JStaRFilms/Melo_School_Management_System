@@ -1822,7 +1822,9 @@ export const listClasses = query({
         })
     );
 
-    return results;
+    return results.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    );
   },
 });
 

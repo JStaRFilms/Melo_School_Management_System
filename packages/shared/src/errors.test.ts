@@ -26,7 +26,24 @@ describe("getUserFacingErrorMessage", () => {
     );
   });
 
-  it("falls back for non-error values", () => {
+  it("extracts custom string or object from error.data on ConvexError", () => {
+    const errorWithData = Object.assign(
+      new Error("[CONVEX M(functions/academic/studentEnrollment:createStudent)] Server Error"),
+      { data: "A student with this admission number already exists" }
+    );
+    expect(getUserFacingErrorMessage(errorWithData, "Fallback")).toBe(
+      "A student with this admission number already exists"
+    );
+
+    const errorWithDataObj = Object.assign(
+      new Error("[CONVEX M(functions/academic/studentEnrollment:createStudent)] Server Error"),
+      { data: { message: "Class is full" } }
+    );
+    expect(getUserFacingErrorMessage(errorWithDataObj, "Fallback")).toBe("Class is full");
+  });
+
+  it("falls back for non-error values or plain Server Error", () => {
     expect(getUserFacingErrorMessage("Server Error", "Fallback")).toBe("Fallback");
+    expect(getUserFacingErrorMessage(new Error("Server Error"), "Fallback")).toBe("Fallback");
   });
 });

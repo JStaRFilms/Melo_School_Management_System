@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SubjectSelectionDesktopTable } from "./SubjectSelectionDesktopTable";
 import { SubjectSelectionMobileEditor } from "./SubjectSelectionMobileEditor";
 import type { EnrollmentMatrix } from "./types";
@@ -54,7 +55,19 @@ export function SubjectSelectionMatrix({
         </div>
       </div>
 
-      {isIssueVisible ? (
+      {totalSubjects === 0 && matrix && matrix.students.length > 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span>
+            No subjects are currently offered for this class. Add subject offerings in Classes to configure subject enrollments.
+          </span>
+          <Link
+            href="/academic/classes"
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
+          >
+            Configure Classes &rarr;
+          </Link>
+        </div>
+      ) : isIssueVisible && totalSubjects > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <span className="font-semibold">
             {studentsWithNoSubjects}{" "}
@@ -72,14 +85,11 @@ export function SubjectSelectionMatrix({
           <div className="p-8 text-center text-sm text-slate-500">
             Loading enrollment data...
           </div>
-        ) : matrix.subjects.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No subjects are offered for this class yet. Add subject offerings in
-            Classes first.
-          </div>
         ) : matrix.students.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
-            No students are in this class yet. Add one above to begin.
+            {totalSubjects === 0
+              ? "No students or subjects are in this class yet. Add a student above or configure subjects in Classes."
+              : "No students are in this class yet. Add one above to begin."}
           </div>
         ) : (
           <>

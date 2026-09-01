@@ -157,14 +157,16 @@ export function ClassCreationForm({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
-                Academic Level
-              </label>
+              <div className="flex items-center justify-between h-4">
+                <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 block">
+                  Academic Level
+                </label>
+              </div>
               <div className="relative">
                 <select
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
-                  className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary cursor-pointer"
+                  className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary cursor-pointer truncate pr-6"
                 >
                   <option value="Nursery">Nursery</option>
                   <option value="Primary">Primary</option>
@@ -175,8 +177,8 @@ export function ClassCreationForm({
             </div>
 
             <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+              <div className="flex items-center justify-between h-4">
+                <label className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 block">
                   Form Teacher
                 </label>
                 {sessionName && (

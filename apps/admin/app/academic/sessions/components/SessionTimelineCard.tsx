@@ -333,9 +333,15 @@ export function SessionTimelineCard({
                 </button>
               )}
 
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label={isExpanded ? "Collapse session" : "Expand session"}
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
+              </button>
             </div>
           </div>
 
@@ -363,7 +369,7 @@ export function SessionTimelineCard({
                     value={sessionName}
                     onChange={(e) => setSessionName(e.target.value)}
                     className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
-                    placeholder="e.g. 2026/2027 Academic Session"
+                    placeholder="e.g. 2026/2027"
                   />
                 </div>
                 <div>
@@ -437,9 +443,18 @@ export function SessionTimelineCard({
                 </h3>
               </div>
 
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExpanded(!isExpanded);
+                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label={isExpanded ? "Collapse session" : "Expand session"}
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
+              </button>
             </div>
 
             {/* Badges and Dates (Directly under the icon on the left, using full width) */}

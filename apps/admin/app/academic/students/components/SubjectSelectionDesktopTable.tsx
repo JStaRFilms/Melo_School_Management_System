@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { GraduationCap, X } from "lucide-react";
 
 import { humanNameFinalStrict } from "@/human-name";
@@ -43,16 +44,22 @@ export function SubjectSelectionDesktopTable({
             <th className="sticky left-0 z-30 min-w-[340px] w-[340px] border-b border-r-2 border-b-slate-200 border-r-slate-100 bg-slate-50 px-4 py-3 text-left text-[9px] font-black uppercase tracking-[0.15em] text-slate-950">
               Student Identity & Enrollment
             </th>
-            {matrix.subjects.map((subject) => (
-              <th
-                key={subject._id}
-                className="min-w-[64px] border-b border-b-slate-200 bg-slate-50 p-3 text-center text-[9px] font-extrabold uppercase tracking-[0.05em] text-slate-600"
-              >
-                <div className="truncate" title={subject.name}>
-                  {subject.code}
-                </div>
+            {matrix.subjects.length === 0 ? (
+              <th className="border-b border-b-slate-200 bg-slate-50 p-3 text-left text-[9px] font-extrabold uppercase tracking-[0.05em] text-slate-500">
+                Subject Enrollment Status
               </th>
-            ))}
+            ) : (
+              matrix.subjects.map((subject) => (
+                <th
+                  key={subject._id}
+                  className="min-w-[64px] border-b border-b-slate-200 bg-slate-50 p-3 text-center text-[9px] font-extrabold uppercase tracking-[0.05em] text-slate-600"
+                >
+                  <div className="truncate" title={subject.name}>
+                    {subject.code}
+                  </div>
+                </th>
+              ))
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -113,31 +120,33 @@ export function SubjectSelectionDesktopTable({
                         </button>
 
                         {/* Compact inline All / Clear subject pills */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onSetStudentSubjects(student._id, allSubjectIds)
-                            }
-                            disabled={
-                              student.selectedSubjectIds.length ===
-                              matrix.subjects.length
-                            }
-                            className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-600 transition hover:border-slate-300 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                            title={`Select all subjects for ${student.studentName}`}
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSetStudentSubjects(student._id, [])}
-                            disabled={student.selectedSubjectIds.length === 0}
-                            className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-400 transition hover:border-slate-300 hover:bg-white hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                            title={`Clear subjects for ${student.studentName}`}
-                          >
-                            Clear
-                          </button>
-                        </div>
+                        {matrix.subjects.length > 0 ? (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onSetStudentSubjects(student._id, allSubjectIds)
+                              }
+                              disabled={
+                                student.selectedSubjectIds.length ===
+                                matrix.subjects.length
+                              }
+                              className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-600 transition hover:border-slate-300 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              title={`Select all subjects for ${student.studentName}`}
+                            >
+                              All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onSetStudentSubjects(student._id, [])}
+                              disabled={student.selectedSubjectIds.length === 0}
+                              className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-400 transition hover:border-slate-300 hover:bg-white hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              title={`Clear subjects for ${student.studentName}`}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
 
                       {/* Bottom Row: Promotion Badge or Status */}
@@ -220,45 +229,59 @@ export function SubjectSelectionDesktopTable({
                     </div>
                   </div>
                 </td>
-                {matrix.subjects.map((subject) => {
-                  const isSelected = student.selectedSubjectIds.includes(subject._id);
-
-                  return (
-                    <td
-                      key={`${student._id}-${subject._id}`}
-                      className="border-b border-b-slate-100 p-3 text-center"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onToggle(student._id, subject._id)}
-                        className={`relative inline-flex h-5 w-5 rounded border-[2px] transition-all cursor-pointer ${
-                          isSelected
-                            ? "border-indigo-600 bg-indigo-600 shadow-xs"
-                            : "border-slate-200 hover:border-slate-400 bg-white"
-                        }`}
-                        aria-label={`${isSelected ? "Remove" : "Add"} ${subject.name} for ${student.studentName}`}
+                {matrix.subjects.length === 0 ? (
+                  <td className="border-b border-b-slate-100 p-3.5 text-xs text-slate-400 bg-white">
+                    <div className="flex items-center gap-2">
+                      <span>No subjects offered for this class yet.</span>
+                      <Link
+                        href="/academic/classes"
+                        className="inline-flex items-center font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
                       >
-                        {isSelected ? (
-                          <svg
-                            className="absolute inset-0 m-auto"
-                            width="10"
-                            height="5"
-                            viewBox="0 0 10 5"
-                            fill="none"
-                          >
-                            <path
-                              d="M1 1L4 4L9 1"
-                              stroke="white"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        ) : null}
-                      </button>
-                    </td>
-                  );
-                })}
+                        Assign subjects in Classes &rarr;
+                      </Link>
+                    </div>
+                  </td>
+                ) : (
+                  matrix.subjects.map((subject) => {
+                    const isSelected = student.selectedSubjectIds.includes(subject._id);
+
+                    return (
+                      <td
+                        key={`${student._id}-${subject._id}`}
+                        className="border-b border-b-slate-100 p-3 text-center"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onToggle(student._id, subject._id)}
+                          className={`relative inline-flex h-5 w-5 rounded border-[2px] transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-indigo-600 bg-indigo-600 shadow-xs"
+                              : "border-slate-200 hover:border-slate-400 bg-white"
+                          }`}
+                          aria-label={`${isSelected ? "Remove" : "Add"} ${subject.name} for ${student.studentName}`}
+                        >
+                          {isSelected ? (
+                            <svg
+                              className="absolute inset-0 m-auto"
+                              width="10"
+                              height="5"
+                              viewBox="0 0 10 5"
+                              fill="none"
+                            >
+                              <path
+                                d="M1 1L4 4L9 1"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          ) : null}
+                        </button>
+                      </td>
+                    );
+                  })
+                )}
               </tr>
             );
           })}

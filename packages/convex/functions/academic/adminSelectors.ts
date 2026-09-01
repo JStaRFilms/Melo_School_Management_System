@@ -71,7 +71,6 @@ export const getAllClasses = query({
 
     return classes
       .filter((classDoc: any) => !classDoc.isArchived)
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((classDoc: any) => ({
         id: classDoc._id,
         name: formatClassDisplayName({
@@ -79,7 +78,10 @@ export const getAllClasses = query({
           classLabel: classDoc.classLabel,
           name: classDoc.name,
         }),
-      }));
+      }))
+      .sort((a: any, b: any) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+      );
   },
 });
 

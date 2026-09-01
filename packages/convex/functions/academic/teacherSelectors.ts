@@ -97,7 +97,6 @@ export const getTeacherAssignableClasses = query({
 
       return classes
         .filter((classDoc: any) => !classDoc.isArchived)
-        .sort((a: any, b: any) => a.name.localeCompare(b.name))
         .map((classDoc: any) => ({
           _id: classDoc._id,
           name: formatClassDisplayName({
@@ -107,7 +106,10 @@ export const getTeacherAssignableClasses = query({
           }),
           gradeName: classDoc.gradeName ?? undefined,
           classLabel: classDoc.classLabel ?? undefined,
-        }));
+        }))
+        .sort((a: any, b: any) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+        );
     }
 
     if (role !== "teacher") {
@@ -126,7 +128,6 @@ export const getTeacherAssignableClasses = query({
           classDoc.schoolId === schoolId &&
           !classDoc.isArchived
       )
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((classDoc: any) => ({
         _id: classDoc._id,
         name: formatClassDisplayName({
@@ -136,7 +137,10 @@ export const getTeacherAssignableClasses = query({
         }),
         gradeName: classDoc.gradeName ?? undefined,
         classLabel: classDoc.classLabel ?? undefined,
-      }));
+      }))
+      .sort((a: any, b: any) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+      );
   },
 });
 

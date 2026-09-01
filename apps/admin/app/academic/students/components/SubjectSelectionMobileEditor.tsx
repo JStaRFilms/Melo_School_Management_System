@@ -194,15 +194,26 @@ export function SubjectSelectionMobileEditor({
                   >
                     {isSelectedForPromotion ? "Selected" : "Select"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => openUnifiedEditor(student._id, "subjects")}
-                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-lg shadow-slate-950/20 transition-all active:scale-[0.98]"
-                  >
-                    <BookOpen className="h-4 w-4" />
-                    <span>Subjects</span>
-                    <span className="ml-1 opacity-40 font-black">({selectedCount}/{totalSubjects})</span>
-                  </button>
+                  {totalSubjects > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => openUnifiedEditor(student._id, "subjects")}
+                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-lg shadow-slate-950/20 transition-all active:scale-[0.98]"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      <span>Subjects</span>
+                      <span className="ml-1 opacity-40 font-black">({selectedCount}/{totalSubjects})</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openUnifiedEditor(student._id, "profile")}
+                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-lg shadow-slate-950/20 transition-all active:scale-[0.98]"
+                    >
+                      <UserCog className="h-4 w-4" />
+                      <span>View Profile</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
