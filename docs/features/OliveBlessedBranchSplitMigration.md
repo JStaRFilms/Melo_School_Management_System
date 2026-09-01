@@ -155,3 +155,16 @@ Every operational step is validated against these mathematical invariants:
 1. Super Admin login test at `http://localhost:3006/sign-in` (`johnoke2005@gmail.com` / `StrongTempPass123!`).
 2. Fedrah Admin login test at `http://localhost:3002/sign-in` (`obhischool@gmail.com` / `TempAdminPass2026!`).
 3. Ruga Admin login test at `http://localhost:3002/sign-in` (`admin.ruga@oliveblessed.com` / `TempAdminPass2026!`).
+
+## 9. Production Execution Record (2026-09-01)
+
+- Target: `prod:outgoing-warbler-782`.
+- Rollback snapshot: `prod-snapshot-backup-initial.zip`, 12,624,855 bytes; verified `users/documents.jsonl`, `_storage/`, and `_components/betterAuth/` entries.
+- Deployment and duplication: schema/functions deployed successfully; `migrationState` completed with `phase: duplication_completed` and all 51 tables recorded.
+- Class partition: Ruga removed five Fedrah classes; Fedrah removed `Primary 4 - Olive Fountain` and `JSS 1 - Olive Blaze`; both cascade runs ended with `remainingClasses: 0`.
+- Fresh slate: 277 Knowledge Hub/AI rows deleted across 17 tables; follow-up count was 0. Legacy billing and non-retained school data were purged in bounded batches.
+- Purification totals: 4 non-retained schools, 3,940 rows, 74 unprotected storage files, and 8 non-retained Better Auth users removed; 8 unassigned subjects and 8 unassigned Ruga teachers pruned.
+- Student status normalization: 4 retained Fedrah rows and 1 retained Ruga row were explicitly restored to active status to match the authorized 36/10 active-student scope.
+- Final integrity: `passed: true`, `anomalies: []`, school count 2; Fedrah is 5 classes/36 active students/18 subjects/2 admins and Ruga is 2 classes/10 active students/20 subjects/1 admin. John remains in Better Auth with a credential account and in `platformAdmins`, with no school-scoped `users` row.
+- UI smoke test: John reached `/schools`; Fedrah and Ruga lead admins reached `/admin/dashboard`, each with an HTTP 200 auth response, active session, and no membership/console errors.
+- Verification support: production `TRUSTED_ORIGINS` was amended only to include the mandated `http://localhost:3006` platform origin; no credentials are stored in this record.
