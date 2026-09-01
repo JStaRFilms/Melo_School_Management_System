@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 class DustParticle {
   x: number;
@@ -12,31 +12,23 @@ class DustParticle {
   size: number;
   color: string;
   alpha: number;
-  baseAlpha: number;
   density: number;
   friction: number;
   springFactor: number;
 
-  constructor(
-    x: number,
-    y: number,
-    color: string = "#CA8A04",
-    size: number = 0.8,
-    alpha: number = 0.85
-  ) {
-    this.x = x + (Math.random() - 0.5) * 6;
-    this.y = y + (Math.random() - 0.5) * 6;
-    this.vx = (Math.random() - 0.5) * 0.4;
-    this.vy = (Math.random() - 0.5) * 0.4;
+  constructor(x: number, y: number, color: string = "#1C1917", size: number = 0.8) {
+    this.x = x + (Math.random() - 0.5) * 4;
+    this.y = y + (Math.random() - 0.5) * 4;
+    this.vx = 0;
+    this.vy = 0;
     this.baseX = x;
     this.baseY = y;
     this.size = size;
     this.color = color;
-    this.alpha = alpha;
-    this.baseAlpha = alpha;
-    this.density = Math.random() * 22 + 8;
-    this.friction = 0.89;
-    this.springFactor = 0.055;
+    this.alpha = Math.random() * 0.25 + 0.75;
+    this.density = Math.random() * 15 + 6;
+    this.friction = 0.86;
+    this.springFactor = 0.065;
   }
 
   update(mouse: { x: number; y: number; radius: number }) {
@@ -49,15 +41,8 @@ class DustParticle {
       const dist = Math.sqrt(distSq);
       const force = (mouse.radius - dist) / mouse.radius;
       const angle = Math.atan2(dy, dx);
-      const swirl = (Math.random() - 0.5) * 0.35;
-      const nx = Math.cos(angle + swirl);
-      const ny = Math.sin(angle + swirl);
-
-      this.vx -= nx * force * this.density * 1.3;
-      this.vy -= ny * force * this.density * 1.3;
-      this.alpha = Math.min(1.0, this.baseAlpha + force * 0.35);
-    } else {
-      this.alpha += (this.baseAlpha - this.alpha) * 0.05;
+      this.vx -= Math.cos(angle) * force * this.density * 1.2;
+      this.vy -= Math.sin(angle) * force * this.density * 1.2;
     }
 
     const springDx = this.baseX - this.x;
@@ -91,8 +76,21 @@ export function SandFeatureHero() {
   });
   const animRef = useRef<number | null>(null);
   const particlesRef = useRef<DustParticle[]>([]);
+  const isVisibleRef = useRef<boolean>(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile) return;
+
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
@@ -100,33 +98,26 @@ export function SandFeatureHero() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const initParticles = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2.0);
-      const rect = container.getBoundingClientRect();
-      const width = rect.width || window.innerWidth;
-      const isMobile = width < 640;
+    // IntersectionObserver to pause RAF when scrolled offscreen
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting;
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(container);
 
-      // Two-line editorial layout
+    const initParticles = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const rect = container.getBoundingClientRect();
+      const width = rect.width || 900;
+
       const line1 = "Built for every part";
       const line2 = "of your school.";
 
-      // Responsive font sizing ensuring text fits comfortably within 85% width
-      let fontSize = isMobile
-        ? Math.min(42, Math.max(26, Math.floor(width * 0.08)))
-        : Math.min(68, Math.max(44, Math.floor(width * 0.055)));
-
-      ctx.font = `600 ${fontSize}px "Instrument Serif", Georgia, serif`;
-      while (
-        (ctx.measureText(line1).width > width * 0.85 ||
-          ctx.measureText(line2).width > width * 0.85) &&
-        fontSize > 20
-      ) {
-        fontSize -= 2;
-        ctx.font = `600 ${fontSize}px "Instrument Serif", Georgia, serif`;
-      }
-
+      const fontSize = Math.min(72, Math.max(48, Math.floor(width * 0.07)));
       const lineHeight = fontSize * 1.15;
-      const height = Math.floor(lineHeight * 2 + (isMobile ? 30 : 50));
+      const height = Math.floor(lineHeight * 2 + 30);
 
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
@@ -134,7 +125,6 @@ export function SandFeatureHero() {
       canvas.style.height = `${height}px`;
       ctx.scale(dpr, dpr);
 
-      // Render offscreen text
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = "#1C1917";
       ctx.font = `600 ${fontSize}px "Instrument Serif", Georgia, serif`;
@@ -145,35 +135,22 @@ export function SandFeatureHero() {
       ctx.fillText(line1, width / 2, centerY - lineHeight / 2);
       ctx.fillText(line2, width / 2, centerY + lineHeight / 2);
 
-      // Extract pixel buffer
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imgData.data;
       const particles: DustParticle[] = [];
 
-      // Fine dust sampling stride
-      const step = isMobile ? Math.floor(3.5 * dpr) : Math.floor(2.2 * dpr);
+      // Lightweight stride ~500 particles max for silky 60fps
+      const step = Math.floor(2.8 * dpr);
 
       for (let y = 0; y < canvas.height; y += step) {
         for (let x = 0; x < canvas.width; x += step) {
-          const index = (y * 4 * canvas.width) + (x * 4);
+          const index = y * 4 * canvas.width + x * 4;
           const alpha = data[index + 3];
 
           if (alpha > 70) {
-            const rand = Math.random();
-            let color = "#1C1917";
-            if (rand < 0.22) color = "#CA8A04"; // Warm gold dust
-            else if (rand < 0.38) color = "#D97706"; // Amber grain
-            else if (rand < 0.52) color = "#44403C"; // Ash stone
-            else color = "#1C1917"; // Obsidian core
-
-            const grainSize = isMobile
-              ? Math.random() * 1.0 + 0.55
-              : Math.random() * 0.85 + 0.45;
-            const grainAlpha = Math.random() * 0.35 + 0.65;
-
-            particles.push(
-              new DustParticle(x / dpr, y / dpr, color, grainSize, grainAlpha)
-            );
+            const color = Math.random() > 0.4 ? "#1C1917" : "#44403C";
+            const size = Math.random() * 0.5 + 0.5;
+            particles.push(new DustParticle(x / dpr, y / dpr, color, size));
           }
         }
       }
@@ -193,28 +170,21 @@ export function SandFeatureHero() {
       mouseRef.current.y = -1000;
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        const rect = canvas.getBoundingClientRect();
-        mouseRef.current.x = e.touches[0].clientX - rect.left;
-        mouseRef.current.y = e.touches[0].clientY - rect.top;
-      }
-    };
-
     document.fonts.ready.then(() => {
       initParticles();
     });
 
     const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const mouse = mouseRef.current;
-      const particles = particlesRef.current;
+      if (isVisibleRef.current) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const mouse = mouseRef.current;
+        const particles = particlesRef.current;
 
-      for (let i = 0; i < particles.length; i++) {
-        particles[i].update(mouse);
-        particles[i].draw(ctx);
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].update(mouse);
+          particles[i].draw(ctx);
+        }
       }
-
       animRef.current = requestAnimationFrame(render);
     };
 
@@ -227,28 +197,34 @@ export function SandFeatureHero() {
     window.addEventListener("resize", handleResize);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("mouseleave", handleMouseLeave);
-    canvas.addEventListener("touchmove", handleTouchMove);
 
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("mouseleave", handleMouseLeave);
-      canvas.removeEventListener("touchmove", handleTouchMove);
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full flex flex-col items-center justify-center my-2 select-none min-h-[160px] sm:min-h-[200px]"
+      className="relative w-full flex flex-col items-center justify-center my-2 select-none min-h-[120px] sm:min-h-[200px]"
     >
-      <h1 className="sr-only">Built for every part of your school.</h1>
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        className="w-full max-w-4xl cursor-default"
-      />
+      <h1 className="md:hidden font-serif text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 leading-[1.1] text-center">
+        Built for every part <br />
+        <span className="text-stone-700 font-normal italic">of your school.</span>
+      </h1>
+
+      <div className="hidden md:block w-full">
+        <h1 className="sr-only">Built for every part of your school.</h1>
+        <canvas
+          ref={canvasRef}
+          aria-hidden="true"
+          className="w-full max-w-4xl mx-auto cursor-default"
+        />
+      </div>
     </div>
   );
 }

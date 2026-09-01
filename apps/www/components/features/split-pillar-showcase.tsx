@@ -8,12 +8,73 @@ import {
   Coins,
   Smartphone,
   CheckCircle2,
-  Layers,
-  ArrowRight,
-  ShieldCheck,
-  Zap,
 } from "lucide-react";
-import { playTick } from "../../lib/audio-feedback";
+
+interface PillarData {
+  id: string;
+  number: string;
+  title: string;
+  summary: string;
+  bullet1: string;
+  bullet2: string;
+  backTitle: string;
+  backSummary: string;
+  specs: { label: string; value: string }[];
+}
+
+const PILLARS: PillarData[] = [
+  {
+    id: "academic",
+    number: "01",
+    title: "Academic Command",
+    summary:
+      "Teachers enter scores once. Continuous assessments, cumulative term averages, and WAEC 9-point grades calculate instantly without Excel formulas.",
+    bullet1: "0.38s Full Broadsheet Compilation",
+    bullet2: "Automatic Rank & Grade Band Assignment",
+    backTitle: "Broadsheet Grade Matrix",
+    backSummary:
+      "Automated compilation engine adhering strictly to national secondary curriculum and promotion standards.",
+    specs: [
+      { label: "Grading Scale", value: "WAEC Standard (A1–F9)" },
+      { label: "Assessment Weighting", value: "CA (40%) + Exam (60%)" },
+      { label: "Position Tiebreak", value: "Cumulative Term Average" },
+    ],
+  },
+  {
+    id: "bursary",
+    number: "02",
+    title: "Bursary & Fee Terminal",
+    summary:
+      "Paystack cards and Providus dedicated virtual accounts clear directly into student ledgers with automated receipts and zero manual reconciliation gaps.",
+    bullet1: "₦0 Unmatched Bank Alert Gaps",
+    bullet2: "Automated Fee Aging & Debt Ledger",
+    backTitle: "Automated Fee Settlement",
+    backSummary:
+      "Direct banking integrations reconcile invoice collections in real time with instant ledger synchronization.",
+    specs: [
+      { label: "Virtual Bank Feed", value: "Providus Bank Accounts" },
+      { label: "Card Gateway", value: "Paystack Instant Webhooks" },
+      { label: "Payment Verification", value: "Cryptographic Receipt Slips" },
+    ],
+  },
+  {
+    id: "portal",
+    number: "03",
+    title: "Parent Visibility",
+    summary:
+      "Parents view verified report cards, attendance, and fee status directly from mobile browsers with secure student token PIN authentication.",
+    bullet1: "Direct Mobile Browser Report Slips",
+    bullet2: "Zero Physical App Downloads Required",
+    backTitle: "Direct Family Portal",
+    backSummary:
+      "Frictionless mobile access for parents to view academic progress and tuition statements securely.",
+    specs: [
+      { label: "Authentication", value: "Encrypted Student PIN / Token" },
+      { label: "Document Format", value: "Official PDF Term Reports" },
+      { label: "Financial Clearance", value: "Configurable Fee Access Lock" },
+    ],
+  },
+];
 
 export function SplitPillarShowcase() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -23,362 +84,221 @@ export function SplitPillarShowcase() {
     const container = containerRef.current;
     if (!container) return;
 
-    let isSplit = false;
-    let isFlipped = false;
-
     const ctx = gsap.context(() => {
-      ScrollTrigger.create({
-        trigger: container,
-        start: "top top",
-        end: "+=2200",
-        pin: true,
-        pinSpacing: true,
-        scrub: 1,
-        anticipatePin: 1,
-        invalidateOnRefresh: true,
-        onUpdate: (self) => {
-          const p = self.progress;
+      const isMobile = window.innerWidth < 768;
 
-          // Stage 1: Card Scale (0.00 -> 0.28)
-          if (p <= 0.28) {
-            const scale = gsap.utils.mapRange(0, 0.28, 0.9, 1.0, p);
-            gsap.set(".pillar-cards-wrapper", { scale });
-          }
+      if (!isMobile) {
+        // Desktop: Pinned 3-Card Staggered Flip
+        ScrollTrigger.create({
+          trigger: container,
+          start: "top top",
+          end: "+=1800",
+          pin: true,
+          pinSpacing: true,
+          scrub: 1,
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+          onUpdate: (self) => {
+            const p = self.progress;
 
-          // Stage 2: Gap Expansion & Split (0.32 threshold)
-          if (p >= 0.32 && !isSplit) {
-            gsap.to(".pillar-cards-wrapper", { gap: "24px", duration: 0.6, ease: "power3.out" });
-            gsap.to(".pillar-split-card", { borderRadius: "24px", duration: 0.6, ease: "power3.out" });
-            isSplit = true;
-          } else if (p < 0.32 && isSplit) {
-            gsap.to(".pillar-cards-wrapper", { gap: "0px", duration: 0.6, ease: "power3.out" });
-            gsap.to("#card-academic", { borderRadius: "24px 0 0 24px", duration: 0.6 });
-            gsap.to("#card-bursary", { borderRadius: "0px", duration: 0.6 });
-            gsap.to("#card-portal", { borderRadius: "0 24px 24px 0", duration: 0.6 });
-            isSplit = false;
-          }
-
-          // Stage 3: 3D Spatial Flip (0.62 threshold)
-          if (p >= 0.62 && !isFlipped) {
-            gsap.to(".pillar-split-card", {
-              rotationY: 180,
-              duration: 0.8,
-              stagger: 0.1,
-              ease: "power3.inOut",
-            });
-            gsap.to("#card-academic", { rotationZ: -5, y: 12, duration: 0.8, ease: "power3.out" });
-            gsap.to("#card-portal", { rotationZ: 5, y: 12, duration: 0.8, ease: "power3.out" });
-            isFlipped = true;
-          } else if (p < 0.62 && isFlipped) {
-            gsap.to(".pillar-split-card", {
-              rotationY: 0,
-              duration: 0.8,
-              stagger: -0.1,
-              ease: "power3.inOut",
-            });
-            gsap.to(["#card-academic", "#card-portal"], {
-              rotationZ: 0,
-              y: 0,
-              duration: 0.8,
-              ease: "power3.out",
-            });
-            isFlipped = false;
-          }
-        },
-      });
+            if (p >= 0.32) {
+              const flipProgress = gsap.utils.clamp(0, 1, (p - 0.32) / 0.45);
+              gsap.to("#inner-card-academic", {
+                rotationY: flipProgress >= 0.25 ? 180 : 0,
+                duration: 0.6,
+                ease: "power2.out",
+                overwrite: "auto",
+              });
+              gsap.to("#inner-card-bursary", {
+                rotationY: flipProgress >= 0.55 ? 180 : 0,
+                duration: 0.6,
+                ease: "power2.out",
+                overwrite: "auto",
+              });
+              gsap.to("#inner-card-portal", {
+                rotationY: flipProgress >= 0.85 ? 180 : 0,
+                duration: 0.6,
+                ease: "power2.out",
+                overwrite: "auto",
+              });
+            } else {
+              gsap.to([
+                "#inner-card-academic",
+                "#inner-card-bursary",
+                "#inner-card-portal",
+              ], {
+                rotationY: 0,
+                duration: 0.5,
+                ease: "power2.out",
+                overwrite: "auto",
+              });
+            }
+          },
+        });
+      } else {
+        // Mobile: One card at a time.
+        // As you scroll: card enters in FRONT view so you read it,
+        // then as you scroll through the middle focus zone, it flips to BACK view so you can read the back!
+        PILLARS.forEach((pillar) => {
+          ScrollTrigger.create({
+            trigger: `#card-container-${pillar.id}`,
+            start: "top 65%",
+            end: "bottom 20%",
+            onUpdate: (self) => {
+              const p = self.progress;
+              // 0.0 -> 0.42: Front face (0 deg)
+              // 0.42 -> 1.0: Back face (180 deg)
+              if (p >= 0.42) {
+                gsap.to(`#inner-card-${pillar.id}`, {
+                  rotationY: 180,
+                  duration: 0.6,
+                  ease: "power2.out",
+                  overwrite: "auto",
+                });
+              } else {
+                gsap.to(`#inner-card-${pillar.id}`, {
+                  rotationY: 0,
+                  duration: 0.5,
+                  ease: "power2.out",
+                  overwrite: "auto",
+                });
+              }
+            },
+          });
+        });
+      }
     }, container);
 
     return () => ctx.revert();
   }, []);
 
   return (
-    <div
+    <section
       ref={containerRef}
-      className="w-full min-h-screen flex flex-col items-center justify-center bg-[#FAF9F5] py-16 px-4 sm:px-8 relative overflow-hidden"
+      className="w-full min-h-screen flex flex-col items-center justify-center bg-[#FAF9F5] py-20 px-4 sm:px-8 relative overflow-hidden"
     >
-      {/* Header */}
-      <div className="text-center max-w-3xl mx-auto mb-10">
-        <div className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-3.5 py-1 text-xs font-mono font-medium text-stone-700 mb-3 shadow-sm">
-          <Layers className="h-3.5 w-3.5 text-amber-600 animate-pulse" />
-          <span>3 SYNCHRONIZED PILLARS • 1 UNIFIED INSTITUTION</span>
-        </div>
-        <h2 className="font-serif text-3xl sm:text-5xl font-bold text-stone-900 tracking-tight">
-          How the 3 operational cores connect.
-        </h2>
-        <p className="mt-2 text-stone-600 text-xs sm:text-sm font-light">
-          Scroll down to watch the unified institution deconstruct and reveal its internal operational safeguards:
-        </p>
-      </div>
-
-      {/* 3D Cards Wrapper */}
-      <div
-        className="pillar-cards-wrapper flex flex-col md:flex-row gap-0 w-full max-w-5xl transition-all duration-300"
-        style={{ perspective: "1400px", transformStyle: "preserve-3d" }}
-      >
-        {/* CARD 1: ACADEMICS */}
-        <div
-          id="card-academic"
-          className="pillar-split-card flex-1 min-h-[380px] sm:min-h-[420px] relative rounded-t-3xl md:rounded-t-none md:rounded-l-3xl overflow-hidden border border-stone-300 shadow-xl bg-white"
-          style={{
-            transformStyle: "preserve-3d",
-            WebkitTransformStyle: "preserve-3d",
-          }}
-        >
-          {/* Front Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 flex flex-col justify-between bg-gradient-to-b from-white to-amber-50/20"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="h-12 w-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center border border-amber-300/80 shadow-sm">
-                  <GraduationCap className="h-6 w-6 text-amber-700" />
-                </div>
-                <span className="text-[10px] font-mono font-bold bg-amber-100/70 text-amber-900 px-2.5 py-1 rounded-full border border-amber-200">
-                  PILLAR 01
-                </span>
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-stone-900 mt-6">
-                Academic Command
-              </h3>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed font-light">
-                Teachers input marks once. Continuous assessments, cumulative term averages, and WAEC 9-point grades calculate instantly without Excel formulas.
-              </p>
-            </div>
-
-            <div className="border-t border-stone-200/80 pt-4 space-y-2 text-xs font-mono text-stone-700">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                <span>0.38s Full Broadsheet Compilation</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                <span>Automatic Rank & Grade Band Assignment</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Back Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 bg-stone-950 text-white flex flex-col justify-between"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "rotateY(180deg) translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-                <span className="text-[10px] font-mono text-amber-400 uppercase font-semibold">
-                  Under The Hood
-                </span>
-                <span className="text-[10px] font-mono text-stone-400">Engine Telemetry</span>
-              </div>
-              <h4 className="font-serif text-xl font-bold text-white mt-4">
-                Automated WAEC Matrix
-              </h4>
-              <p className="text-xs text-stone-300 font-light mt-1 leading-relaxed">
-                Replaces error-prone spreadsheets with verified institutional grading rules and automatic promotion criteria.
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-stone-900 border border-stone-800 p-3 space-y-1.5 font-mono text-[11px] text-stone-300">
-              <div className="flex justify-between">
-                <span className="text-stone-500">Grading Scale:</span>
-                <span className="text-amber-400 font-bold">WAEC A1–F9 Certified</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">CA Weighting:</span>
-                <span>CA1 (20) + CA2 (20) + Exam (60)</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Auto-Tiebreak:</span>
-                <span>Cumulative Average Metric</span>
-              </div>
-            </div>
-          </div>
+      <div className="max-w-6xl w-full mx-auto">
+        {/* Header */}
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <h2 className="font-serif text-3xl sm:text-5xl font-bold text-stone-900 tracking-tight">
+            How the 3 operational cores connect.
+          </h2>
+          <p className="mt-3 text-stone-600 text-sm sm:text-base font-light leading-relaxed">
+            Scroll down to watch each core reveal its internal operational safeguards:
+          </p>
         </div>
 
-        {/* CARD 2: BURSARY */}
-        <div
-          id="card-bursary"
-          className="pillar-split-card flex-1 min-h-[380px] sm:min-h-[420px] relative overflow-hidden border-y md:border-y-0 md:border-x border-stone-300 shadow-xl bg-white"
-          style={{
-            transformStyle: "preserve-3d",
-            WebkitTransformStyle: "preserve-3d",
-          }}
-        >
-          {/* Front Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 flex flex-col justify-between bg-gradient-to-b from-white to-emerald-50/20"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center border border-emerald-300/80 shadow-sm">
-                  <Coins className="h-6 w-6 text-emerald-700" />
+        {/* 3D Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6">
+          {PILLARS.map((pillar) => (
+            <div
+              key={pillar.id}
+              id={`card-container-${pillar.id}`}
+              className="relative h-[430px] w-full my-2 md:my-0"
+              style={{ perspective: "1400px" }}
+            >
+              {/* Flipping Container */}
+              <div
+                id={`inner-card-${pillar.id}`}
+                className="relative w-full h-full rounded-3xl shadow-sm will-change-transform"
+                style={{
+                  transformStyle: "preserve-3d",
+                  WebkitTransformStyle: "preserve-3d",
+                  transform: "rotateY(0deg)",
+                }}
+              >
+                {/* ──────────────── FRONT FACE ──────────────── */}
+                <div
+                  className="absolute inset-0 w-full h-full rounded-3xl border border-stone-300 bg-white p-7 sm:p-8 flex flex-col justify-between shadow-sm"
+                  style={{
+                    backfaceVisibility: "hidden",
+                    WebkitBackfaceVisibility: "hidden",
+                    transform: "rotateY(0deg) translateZ(2px)",
+                  }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-amber-700 tracking-wider">
+                        CORE {pillar.number}
+                      </span>
+                      {pillar.id === "academic" && (
+                        <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center border border-amber-200">
+                          <GraduationCap className="h-4 w-4" />
+                        </div>
+                      )}
+                      {pillar.id === "bursary" && (
+                        <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-800 flex items-center justify-center border border-emerald-200">
+                          <Coins className="h-4 w-4" />
+                        </div>
+                      )}
+                      {pillar.id === "portal" && (
+                        <div className="h-9 w-9 rounded-xl bg-sky-50 text-sky-800 flex items-center justify-center border border-sky-200">
+                          <Smartphone className="h-4 w-4" />
+                        </div>
+                      )}
+                    </div>
+
+                    <h3 className="font-serif text-2xl font-bold text-stone-900 mt-5">
+                      {pillar.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-stone-600 font-light mt-2 leading-relaxed">
+                      {pillar.summary}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-4 border-t border-stone-100 text-xs font-mono text-stone-700">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span>{pillar.bullet1}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span>{pillar.bullet2}</span>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-[10px] font-mono font-bold bg-emerald-100/70 text-emerald-900 px-2.5 py-1 rounded-full border border-emerald-200">
-                  PILLAR 02
-                </span>
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-stone-900 mt-6">
-                Bursary & Fee Terminal
-              </h3>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed font-light">
-                Paystack cards and Providus dedicated virtual accounts clear directly into student ledgers with automated receipt dispatch and zero manual reconciliation gaps.
-              </p>
-            </div>
 
-            <div className="border-t border-stone-200/80 pt-4 space-y-2 text-xs font-mono text-stone-700">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                <span>₦0 Unmatched Bank Alert Gaps</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                <span>Automated Fee Aging & Debt Ledger</span>
-              </div>
-            </div>
-          </div>
+                {/* ──────────────── BACK FACE ──────────────── */}
+                <div
+                  className="absolute inset-0 w-full h-full rounded-3xl border border-stone-800 bg-[#161514] p-7 sm:p-8 text-stone-100 flex flex-col justify-between shadow-xl"
+                  style={{
+                    backfaceVisibility: "hidden",
+                    WebkitBackfaceVisibility: "hidden",
+                    transform: "rotateY(180deg) translateZ(2px)",
+                  }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                      <span className="text-[11px] font-mono text-stone-400 uppercase tracking-wider">
+                        Operational Specs
+                      </span>
+                      <span className="text-[11px] font-mono text-stone-400">
+                        CORE {pillar.number}
+                      </span>
+                    </div>
 
-          {/* Back Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 bg-stone-950 text-white flex flex-col justify-between"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "rotateY(180deg) translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-                <span className="text-[10px] font-mono text-emerald-400 uppercase font-semibold">
-                  Multi-Channel Settle
-                </span>
-                <span className="text-[10px] font-mono text-stone-400">Direct Invoicing</span>
-              </div>
-              <h4 className="font-serif text-xl font-bold text-white mt-4">
-                Real-Time Settlement
-              </h4>
-              <p className="text-xs text-stone-300 font-light mt-1 leading-relaxed">
-                Parents pay through dedicated accounts or Paystack links; tuition updates instantly without paper teller slips.
-              </p>
-            </div>
+                    <h4 className="font-serif text-2xl font-bold text-[#FAF9F5] mt-4">
+                      {pillar.backTitle}
+                    </h4>
+                    <p className="text-xs sm:text-sm text-stone-300 font-light mt-2 leading-relaxed">
+                      {pillar.backSummary}
+                    </p>
+                  </div>
 
-            <div className="rounded-xl bg-stone-900 border border-stone-800 p-3 space-y-1.5 font-mono text-[11px] text-stone-300">
-              <div className="flex justify-between">
-                <span className="text-stone-500">Virtual Bank:</span>
-                <span className="text-emerald-400 font-bold">Providus Dynamic Account</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Gateway:</span>
-                <span>Paystack Instant Webhook</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Receipts:</span>
-                <span>Cryptographically Timestamped</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CARD 3: PARENT PORTAL */}
-        <div
-          id="card-portal"
-          className="pillar-split-card flex-1 min-h-[380px] sm:min-h-[420px] relative rounded-b-3xl md:rounded-b-none md:rounded-r-3xl overflow-hidden border border-stone-300 shadow-xl bg-white"
-          style={{
-            transformStyle: "preserve-3d",
-            WebkitTransformStyle: "preserve-3d",
-          }}
-        >
-          {/* Front Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 flex flex-col justify-between bg-gradient-to-b from-white to-sky-50/20"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="h-12 w-12 rounded-2xl bg-sky-100 text-sky-800 flex items-center justify-center border border-sky-300/80 shadow-sm">
-                  <Smartphone className="h-6 w-6 text-sky-700" />
+                  <div className="rounded-2xl bg-stone-900/90 border border-stone-800 p-4 space-y-2.5 font-mono text-xs text-stone-300">
+                    {pillar.specs.map((spec, i) => (
+                      <div key={i} className="flex justify-between items-center py-0.5 border-b border-stone-800/60 last:border-b-0 pb-1.5 last:pb-0">
+                        <span className="text-stone-400 text-[11px]">{spec.label}:</span>
+                        <span className="text-stone-100 font-medium text-[11px]">{spec.value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <span className="text-[10px] font-mono font-bold bg-sky-100/70 text-sky-900 px-2.5 py-1 rounded-full border border-sky-200">
-                  PILLAR 03
-                </span>
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-stone-900 mt-6">
-                Parent Visibility
-              </h3>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed font-light">
-                Parents view verified report cards, attendance, and fee status directly from mobile browsers, with secure student token PIN authentication.
-              </p>
-            </div>
-
-            <div className="border-t border-stone-200/80 pt-4 space-y-2 text-xs font-mono text-stone-700">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                <span>Direct Mobile Browser Report Slips</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                <span>Zero Physical App Downloads Required</span>
               </div>
             </div>
-          </div>
-
-          {/* Back Face */}
-          <div
-            className="absolute inset-0 p-6 sm:p-8 bg-stone-950 text-white flex flex-col justify-between"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              transform: "rotateY(180deg) translateZ(2px)",
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-                <span className="text-[10px] font-mono text-sky-400 uppercase font-semibold">
-                  Family Connectivity
-                </span>
-                <span className="text-[10px] font-mono text-stone-400">Mobile First</span>
-              </div>
-              <h4 className="font-serif text-xl font-bold text-white mt-4">
-                Direct Family Portals
-              </h4>
-              <p className="text-xs text-stone-300 font-light mt-1 leading-relaxed">
-                Parents securely access student report cards and historical transcripts with secure one-time PIN authentication.
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-stone-900 border border-stone-800 p-3 space-y-1.5 font-mono text-[11px] text-stone-300">
-              <div className="flex justify-between">
-                <span className="text-stone-500">Security:</span>
-                <span className="text-sky-400 font-bold">Encrypted Student Token</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Delivery:</span>
-                <span>Direct PDF Slip Portal</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Fee Access Gate:</span>
-                <span>Configurable Clearance Lock</span>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
