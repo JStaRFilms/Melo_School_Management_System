@@ -4,18 +4,10 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeftRight,
-  BookOpen,
-  Check,
   CheckCircle2,
-  Coins,
-  FileSpreadsheet,
-  FileText,
-  Phone,
-  Receipt,
-  Sparkles,
-  User,
 } from "lucide-react";
 import React, { useState } from "react";
+import { playTick } from "../../lib/audio-feedback";
 
 export function FractureCoherenceLens() {
   const [sliderPosition, setSliderPosition] = useState(50); // percentage 0 to 100
@@ -46,7 +38,10 @@ export function FractureCoherenceLens() {
 
         <div className="flex gap-2">
           <button
-            onClick={() => setSliderPosition(15)}
+            onClick={() => {
+              setSliderPosition(15);
+              playTick("soft");
+            }}
             className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
               sliderPosition < 40
                 ? "bg-rose-100 border-rose-300 text-rose-900"
@@ -56,7 +51,10 @@ export function FractureCoherenceLens() {
             Disconnected Status Quo
           </button>
           <button
-            onClick={() => setSliderPosition(85)}
+            onClick={() => {
+              setSliderPosition(85);
+              playTick("soft");
+            }}
             className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
               sliderPosition > 60
                 ? "bg-emerald-100 border-emerald-300 text-emerald-900"
@@ -71,9 +69,17 @@ export function FractureCoherenceLens() {
       {/* Main Interactive Split Stage */}
       <div
         onMouseMove={handleMouseMove}
-        onMouseDown={() => setIsDragging(true)}
+        onMouseDown={() => {
+          setIsDragging(true);
+          playTick("soft");
+        }}
         onMouseUp={() => setIsDragging(false)}
         onTouchMove={handleTouchMove}
+        onTouchStart={() => {
+          setIsDragging(true);
+          playTick("soft");
+        }}
+        onTouchEnd={() => setIsDragging(false)}
         className="relative w-full h-[400px] sm:h-[440px] rounded-3xl border border-stone-300 bg-white overflow-hidden shadow-xl cursor-ew-resize select-none"
       >
         {/* RIGHT LAYER: UNIFIED MELO SYSTEM (UNDERNEATH) */}

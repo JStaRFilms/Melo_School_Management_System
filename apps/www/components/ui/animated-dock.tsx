@@ -15,7 +15,7 @@ import { twMerge } from "tailwind-merge";
 
 import Link from "next/link";
  
-const cn = (...args: any[]) => twMerge(clsx(args));
+const cn = (...args: Array<string | false | null | undefined>) => twMerge(clsx(args));
  
 export interface AnimatedDockProps {
   className?: string;

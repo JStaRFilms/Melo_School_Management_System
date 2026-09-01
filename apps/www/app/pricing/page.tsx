@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { Check } from "lucide-react";
+import { Check, Layers } from "lucide-react";
 import { ButtonLink, Container, GoldButton, SectionLabel } from "@/site-ui";
-import { buildPageMetadata, pricingTiers } from "@/site";
+import { buildPageMetadata, pricingTiers, platformAddOns } from "@/site";
+import { Card3DTilt } from "../../components/ui/card-3d-tilt";
 
 export const metadata: Metadata = buildPageMetadata({
   title: "Pricing",
@@ -27,7 +28,7 @@ export default function PricingPage() {
               Simple plans. Real value.
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-melo-muted animate-fade-up">
-              Every plan includes the core platform. Pick the size that matches your school and upgrade as you grow.
+              Structured setup with term-based recurring access. Pick the package that fits your institution and add services as you grow.
             </p>
           </div>
         </Container>
@@ -38,58 +39,132 @@ export default function PricingPage() {
         <Container>
           <div className="mx-auto -mt-1 grid max-w-5xl gap-6 pt-16 sm:pt-20 lg:grid-cols-3">
             {pricingTiers.map((tier) => (
-              <div
-                key={tier.name}
-                className={`relative flex flex-col rounded-2xl border p-8 transition-all duration-300 hover:shadow-lift cursor-pointer ${
-                  tier.highlighted
-                    ? "border-melo-gold bg-white shadow-glow"
-                    : "border-melo-border bg-white hover:border-stone-300"
-                }`}
-              >
-                {/* Badge */}
-                {tier.highlighted && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-melo-gold px-4 py-1 text-xs font-semibold text-white">
-                    Most popular
-                  </div>
-                )}
-
-                {/* Header */}
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-melo-muted">{tier.name}</p>
-                  <div className="mt-4 flex items-baseline gap-1">
-                    <span className="font-serif text-4xl text-melo-ink sm:text-5xl">{tier.price}</span>
-                    {tier.period && <span className="text-sm text-melo-muted">{tier.period}</span>}
-                  </div>
-                  <p className="mt-3 text-sm leading-relaxed text-melo-muted">{tier.description}</p>
-                </div>
-
-                {/* Divider */}
-                <div className="my-6 h-px bg-melo-border" />
-
-                {/* Features */}
-                <ul className="flex-1 space-y-3">
-                  {tier.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-3 text-sm text-melo-stone">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-melo-gold" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-
-                {/* CTA */}
-                <div className="mt-8">
-                  {tier.highlighted ? (
-                    <GoldButton href="/contact" className="w-full justify-center">
-                      {tier.cta}
-                    </GoldButton>
-                  ) : (
-                    <ButtonLink href="/contact" variant="outline" className="w-full justify-center">
-                      {tier.cta}
-                    </ButtonLink>
+              <Card3DTilt key={tier.name} maxTilt={4} className="h-full">
+                <div
+                  className={`relative flex flex-col rounded-3xl border p-8 transition-all duration-300 h-full justify-between ${
+                    tier.highlighted
+                      ? "border-stone-900 bg-stone-900 text-white shadow-2xl scale-[1.02]"
+                      : "border-stone-200 bg-white hover:border-stone-300 shadow-sm"
+                  }`}
+                >
+                  {/* Badge */}
+                  {tier.highlighted && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-1 text-xs font-bold uppercase tracking-wider text-stone-950">
+                      Most popular
+                    </div>
                   )}
+
+                  {/* Header */}
+                  <div>
+                    <p
+                      className={`text-xs font-mono uppercase tracking-[0.2em] ${
+                        tier.highlighted ? "text-amber-400" : "text-stone-500"
+                      }`}
+                    >
+                      {tier.name}
+                    </p>
+                    <div className="mt-4 flex items-baseline gap-1">
+                      <span className="font-serif text-4xl sm:text-5xl font-bold">
+                        {tier.price}
+                      </span>
+                      {tier.period && (
+                        <span
+                          className={`text-xs font-mono ${
+                            tier.highlighted ? "text-stone-400" : "text-stone-500"
+                          }`}
+                        >
+                          {tier.period}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`text-xs font-mono mt-1 ${
+                        tier.highlighted ? "text-stone-400" : "text-stone-500"
+                      }`}
+                    >
+                      {tier.setupFee}
+                    </div>
+                    <p
+                      className={`mt-3 text-sm leading-relaxed ${
+                        tier.highlighted ? "text-stone-300" : "text-stone-600"
+                      }`}
+                    >
+                      {tier.description}
+                    </p>
+                  </div>
+
+                  {/* Divider */}
+                  <div
+                    className={`my-6 h-px ${
+                      tier.highlighted ? "bg-stone-800" : "bg-stone-100"
+                    }`}
+                  />
+
+                  {/* Features */}
+                  <ul className="flex-1 space-y-3">
+                    {tier.features.map((feature) => (
+                      <li
+                        key={feature}
+                        className={`flex items-start gap-3 text-sm ${
+                          tier.highlighted ? "text-stone-200" : "text-stone-700"
+                        }`}
+                      >
+                        <Check
+                          className={`mt-0.5 h-4 w-4 shrink-0 ${
+                            tier.highlighted ? "text-amber-400" : "text-emerald-600"
+                          }`}
+                        />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* CTA */}
+                  <div className="mt-8 pt-4">
+                    {tier.highlighted ? (
+                      <GoldButton href="/contact" className="w-full justify-center">
+                        {tier.cta}
+                      </GoldButton>
+                    ) : (
+                      <ButtonLink href="/contact" variant="outline" className="w-full justify-center">
+                        {tier.cta}
+                      </ButtonLink>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </Card3DTilt>
             ))}
+          </div>
+
+          {/* ═══════════════ OPTIONAL ADD-ONS SECTION ═══════════════ */}
+          <div className="mx-auto max-w-5xl mt-16 rounded-3xl border border-stone-200 bg-stone-50/80 p-8 sm:p-10">
+            <div className="flex items-center gap-2 mb-4">
+              <Layers className="h-5 w-5 text-amber-600" />
+              <h3 className="font-serif text-2xl font-bold text-stone-900">
+                Commercial Add-On Services
+              </h3>
+            </div>
+            <p className="text-stone-600 text-sm font-light mb-6">
+              Attach specialized service modules to any plan tier as your school requires:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {platformAddOns.map((addon) => (
+                <div
+                  key={addon.name}
+                  className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
+                >
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
+                    {addon.tag}
+                  </span>
+                  <h4 className="font-sans font-bold text-stone-900 text-sm mt-2">
+                    {addon.name}
+                  </h4>
+                  <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
+                    {addon.description}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </Container>
       </section>
@@ -108,24 +183,24 @@ export default function PricingPage() {
             <div className="mt-14 space-y-0">
               {[
                 {
-                  q: "What's included in the setup?",
-                  a: "We configure your school's sessions, terms, classes, subjects, and student data. Staff accounts are created and your team gets onboarding support.",
+                  q: "What's included in the setup fee?",
+                  a: "We configure your school's sessions, terms, classes, subjects, grading rules, and student data. Staff accounts are created and your team receives hands-on onboarding support.",
                 },
                 {
                   q: "Can I switch plans later?",
-                  a: "Yes. You can upgrade or downgrade at any time. We'll pro-rate the difference.",
+                  a: "Yes. You can upgrade or downgrade at the start of any term cycle. We'll pro-rate any differences smoothly.",
                 },
                 {
-                  q: "Is my school's data secure?",
-                  a: "Every school's data is fully isolated. We use 256-bit encryption, regular backups, and role-based access control.",
+                  q: "Is my school's data isolated and secure?",
+                  a: "Every school's database is fully tenant-isolated. We use 256-bit encryption, continuous backups, and strict role-based permissions.",
                 },
                 {
-                  q: "Do parents need to install an app?",
-                  a: "No. The parent portal works in any browser — phone or desktop. No app download required.",
+                  q: "Do parents need to download an app?",
+                  a: "No. The parent portal works natively in any smartphone or desktop web browser with zero app store installations.",
                 },
                 {
-                  q: "How do online payments work?",
-                  a: "We integrate with Paystack. Parents pay via card, bank transfer, or USSD. Payments are automatically reconciled and receipts are generated.",
+                  q: "How does Paystack fee collection work?",
+                  a: "Parents pay directly via card, bank transfer, or USSD into your school's dedicated merchant account. Payments auto-reconcile with invoices instantly.",
                 },
               ].map((faq) => (
                 <details
@@ -157,7 +232,7 @@ export default function PricingPage() {
               Still deciding? <span className="text-melo-gold">Let&apos;s talk.</span>
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-melo-muted">
-              We&apos;ll walk you through the platform, answer your questions, and help you pick the right plan — no pressure.
+              We&apos;ll walk you through the platform, answer your questions, and help you pick the right plan for your school structure.
             </p>
             <div className="mt-10">
               <GoldButton href="/contact" size="lg">

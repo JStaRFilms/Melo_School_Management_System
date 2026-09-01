@@ -5,12 +5,12 @@ import React, { useEffect, useRef } from "react";
 export function ArchitecturalDraftingCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mouseRef = useRef<{ x: number; y: number; vx: number; vy: number }>({
-    x: 0,
-    y: 0,
+    x: -1000,
+    y: -1000,
     vx: 0,
     vy: 0,
   });
-  const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const prevMouseRef = useRef<{ x: number; y: number }>({ x: -1000, y: -1000 });
   const animRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -19,11 +19,11 @@ export function ArchitecturalDraftingCanvas() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    let width = window.innerWidth;
+    let height = window.innerHeight;
 
     const handleResize = () => {
-      if (!canvas) return;
+      if (!canvas || !ctx) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
@@ -41,29 +41,42 @@ export function ArchitecturalDraftingCanvas() {
       mouseRef.current = { x: e.clientX, y: e.clientY, vx, vy };
     };
 
+    const handleMouseLeave = () => {
+      mouseRef.current = { x: -1000, y: -1000, vx: 0, vy: 0 };
+    };
+
     handleResize();
     window.addEventListener("resize", handleResize);
     window.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseleave", handleMouseLeave);
 
-    // Micro-particles
-    const particles = Array.from({ length: 28 }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      size: Math.random() * 2 + 1,
-    }));
+    // Anchored micro-particles with Hooke's Law spring physics
+    const particleCount = 32;
+    const particles = Array.from({ length: particleCount }, () => {
+      const baseX = Math.random() * width;
+      const baseY = Math.random() * height;
+      return {
+        x: baseX,
+        y: baseY,
+        baseX,
+        baseY,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        size: Math.random() * 1.6 + 0.9,
+        alpha: Math.random() * 0.25 + 0.15,
+      };
+    });
 
     let time = 0;
 
     const render = () => {
-      time += 0.01;
+      time += 0.008;
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Subtle Architectural Grid
-      ctx.strokeStyle = "rgba(28, 25, 23, 0.035)";
+      // 1. Subtle Precision Grid
+      ctx.strokeStyle = "rgba(28, 25, 23, 0.03)";
       ctx.lineWidth = 1;
-      const gridSize = 80;
+      const gridSize = 90;
 
       for (let x = 0; x < width; x += gridSize) {
         ctx.beginPath();
@@ -79,44 +92,52 @@ export function ArchitecturalDraftingCanvas() {
         ctx.stroke();
       }
 
-      // 2. Drafting Crosshairs (+) at select grid intersections
-      ctx.strokeStyle = "rgba(217, 119, 6, 0.15)";
+      // 2. Drafting Crosshairs (+) at select intersections
+      ctx.strokeStyle = "rgba(202, 138, 4, 0.16)";
       ctx.lineWidth = 1;
       const crosshairStep = gridSize * 3;
 
       for (let x = crosshairStep; x < width; x += crosshairStep) {
         for (let y = crosshairStep; y < height; y += crosshairStep) {
           ctx.beginPath();
-          ctx.moveTo(x - 5, y);
-          ctx.lineTo(x + 5, y);
-          ctx.moveTo(x, y - 5);
-          ctx.lineTo(x, y + 5);
+          ctx.moveTo(x - 4, y);
+          ctx.lineTo(x + 4, y);
+          ctx.moveTo(x, y - 4);
+          ctx.lineTo(x, y + 4);
           ctx.stroke();
         }
       }
 
-      // 3. Floating Micro-particles
+      // 3. Floating Micro-particles with Anchor Springs
       const mouse = mouseRef.current;
       for (const p of particles) {
-        p.x += p.vx;
-        p.y += p.vy;
+        // Natural gentle drift
+        p.baseX += p.vx;
+        p.baseY += p.vy;
 
-        if (p.x < 0) p.x = width;
-        if (p.x > width) p.x = 0;
-        if (p.y < 0) p.y = height;
-        if (p.y > height) p.y = 0;
+        if (p.baseX < 0) p.baseX = width;
+        if (p.baseX > width) p.baseX = 0;
+        if (p.baseY < 0) p.baseY = height;
+        if (p.baseY > height) p.baseY = 0;
 
-        // Subtle mouse repulsion
+        // Cursor proximity repulsion
         const dx = mouse.x - p.x;
         const dy = mouse.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 100 && dist > 0) {
-          const force = (100 - dist) / 100;
-          p.x -= (dx / dist) * force * 3;
-          p.y -= (dy / dist) * force * 3;
+        const radius = 130;
+
+        if (dist < radius && dist > 0) {
+          const force = (radius - dist) / radius;
+          p.x -= (dx / dist) * force * 5;
+          p.y -= (dy / dist) * force * 5;
         }
 
-        ctx.fillStyle = "rgba(217, 119, 6, 0.25)";
+        // Return to anchor via Hooke's Law spring damping
+        p.x += (p.baseX - p.x) * 0.05;
+        p.y += (p.baseY - p.y) * 0.05;
+
+        // Render particle
+        ctx.fillStyle = `rgba(202, 138, 4, ${p.alpha})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
@@ -130,6 +151,7 @@ export function ArchitecturalDraftingCanvas() {
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseleave", handleMouseLeave);
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, []);

@@ -2,7 +2,9 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, Printer, Share2, X, CheckCircle2, Award } from "lucide-react";
+import Image from "next/image";
 import React from "react";
+import { playTick } from "../../lib/audio-feedback";
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -44,14 +46,20 @@ export function InteractiveReportModal({
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => window.print()}
+                onClick={() => {
+                  playTick("click");
+                  window.print();
+                }}
                 className="flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer"
               >
                 <Printer className="h-3.5 w-3.5" />
                 <span>Print</span>
               </button>
               <button
-                onClick={onClose}
+                onClick={() => {
+                  playTick("soft");
+                  onClose();
+                }}
                 className="rounded-xl p-1.5 text-stone-400 hover:bg-stone-200/60 hover:text-stone-700 transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
@@ -63,8 +71,14 @@ export function InteractiveReportModal({
           <div className="p-6 sm:p-8 space-y-6 max-h-[80vh] overflow-y-auto">
             {/* School Crest & Header */}
             <div className="text-center border-b border-stone-200 pb-5">
-              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white font-serif text-2xl font-bold shadow-md">
-                M
+              <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-white border border-stone-200 shadow-md overflow-hidden p-1">
+                <Image
+                  src="/melo-brand/melo_logo_concept_1779545987898.png"
+                  alt="Melo School Crest"
+                  width={52}
+                  height={52}
+                  className="object-contain w-full h-full"
+                />
               </div>
               <h3 className="font-serif text-2xl font-bold text-stone-900">
                 MELO DEMO ACADEMY

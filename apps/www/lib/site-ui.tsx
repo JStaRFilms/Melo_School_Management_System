@@ -2,6 +2,7 @@
 
 import { siteBrand,siteNavigation } from "@/site";
 import { ArrowRight,Mail,MapPin,Phone } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -179,10 +180,20 @@ export function SiteHeader() {
     >
       <div className="flex justify-center items-center relative w-full max-w-7xl pointer-events-auto">
         <div className="absolute left-0 sm:left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center justify-center p-2 group hover:scale-105 transition-transform duration-300">
-          <Link href="/">
-            <div className="flex bg-white text-melo-ink h-10 w-10 items-center justify-center rounded-full text-base font-bold shadow-lg border border-melo-border/20">
-              M
+          <Link href="/" className="flex items-center gap-3">
+            <div className="relative flex bg-white text-melo-ink h-11 w-11 items-center justify-center rounded-2xl shadow-md border border-stone-200 overflow-hidden p-1">
+              <Image
+                src="/melo-brand/melo_logo_concept_1779545987898.png"
+                alt="Melo School OS"
+                width={40}
+                height={40}
+                className="object-contain w-full h-full"
+                priority
+              />
             </div>
+            <span className="font-serif text-2xl font-bold tracking-tight text-stone-900 drop-shadow-sm">
+              Melo
+            </span>
           </Link>
         </div>
 
@@ -209,11 +220,17 @@ export function SiteFooter() {
         <div className="grid gap-12 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr]">
           {/* Brand */}
           <div className="space-y-5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-melo-gold text-white text-sm font-bold">
-                M
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl overflow-hidden shadow-md border border-stone-800 bg-stone-900 p-1">
+                <Image
+                  src="/melo-brand/melo_logo_concept_1779545987898.png"
+                  alt="Melo School OS"
+                  width={36}
+                  height={36}
+                  className="object-contain w-full h-full"
+                />
               </div>
-              <span className="font-serif text-2xl">Melo</span>
+              <span className="font-serif text-2xl font-bold">Melo</span>
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-stone-400">
               {siteBrand.description}
