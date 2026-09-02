@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { mockClasses } from "@/mock-data";
@@ -22,6 +22,7 @@ import { buildAssignmentMap } from "./utils";
 const mockScaleTemplates: ScaleTemplateRecord[] = [
   {
     _id: "scale-conduct",
+    updatedAt: 1,
     name: "Conduct scale",
     description: "Reusable behavior rubric",
     options: [
@@ -35,6 +36,7 @@ const mockScaleTemplates: ScaleTemplateRecord[] = [
 const mockBundles: BundleRecord[] = [
   {
     _id: "bundle-lower-primary",
+    updatedAt: 1,
     name: "Lower Primary Extras",
     description: "Conduct and narrative fields for lower primary.",
     sections: [
@@ -105,52 +107,72 @@ function LiveReportCardBundlesPage() {
     "functions/academic/reportCardExtras:setClassReportCardExtraBundles" as never
   );
 
+  const handleSaveBundle = useCallback(
+    async (draft: BundleDraft) =>
+      (await saveBundle({
+        bundleId: draft.bundleId,
+        expectedUpdatedAt: draft.sourceUpdatedAt ?? undefined,
+        name: draft.name,
+        description: draft.description || null,
+        sections: draft.sections.map((section) => ({
+          id: section.id,
+          label: section.label,
+          fields: section.fields.map((field) => ({
+            id: field.id,
+            label: field.label,
+            type: field.type,
+            scaleTemplateId: field.type === "scale" ? field.scaleTemplateId : null,
+            printable: field.printable,
+            source: field.source,
+            systemKey: field.systemKey,
+          })),
+        })),
+      } as never)) as string,
+    [saveBundle]
+  );
+
+  const handleSaveScaleTemplate = useCallback(
+    async (draft: ScaleTemplateDraft) =>
+      (await saveScaleTemplate({
+        templateId: draft.templateId,
+        expectedUpdatedAt: draft.sourceUpdatedAt ?? undefined,
+        name: draft.name,
+        description: draft.description || null,
+        options: draft.options.map((option) => ({
+          id: option.id,
+          label: option.label,
+          shortLabel: option.shortLabel || null,
+        })),
+      } as never)) as string,
+    [saveScaleTemplate]
+  );
+
+  const handleSetClassBundles = useCallback(
+    async (classId: string, bundleIds: string[]) => {
+      await setClassBundles({ classId, bundleIds } as never);
+    },
+    [setClassBundles]
+  );
+
+  const renderAssignmentPanel = useCallback(
+    (selectedBundleId: string | null) => (
+      <LiveClassAssignmentPanel
+        bundles={bundles}
+        classes={classes}
+        initialAssignments={initialAssignments}
+        onSetClassBundles={handleSetClassBundles}
+        selectedBundleId={selectedBundleId}
+      />
+    ),
+    [bundles, classes, handleSetClassBundles, initialAssignments]
+  );
+
   return (
     <ReportCardBundlesScreen
       bundles={bundles}
-      onSaveBundle={async (draft) =>
-        (await saveBundle({
-          bundleId: draft.bundleId,
-          name: draft.name,
-          description: draft.description || null,
-          sections: draft.sections.map((section) => ({
-            id: section.id,
-            label: section.label,
-            fields: section.fields.map((field) => ({
-              id: field.id,
-              label: field.label,
-              type: field.type,
-              scaleTemplateId: field.type === "scale" ? field.scaleTemplateId : null,
-              printable: field.printable,
-              source: field.source,
-              systemKey: field.systemKey,
-            })),
-          })),
-        } as never)) as string
-      }
-      onSaveScaleTemplate={async (draft) =>
-        (await saveScaleTemplate({
-          templateId: draft.templateId,
-          name: draft.name,
-          description: draft.description || null,
-          options: draft.options.map((option) => ({
-            id: option.id,
-            label: option.label,
-            shortLabel: option.shortLabel || null,
-          })),
-        } as never)) as string
-      }
-      renderAssignmentPanel={(selectedBundleId) => (
-        <LiveClassAssignmentPanel
-          bundles={bundles}
-          classes={classes}
-          initialAssignments={initialAssignments}
-          onSetClassBundles={(classId, bundleIds) =>
-            setClassBundles({ classId, bundleIds } as never)
-          }
-          selectedBundleId={selectedBundleId}
-        />
-      )}
+      onSaveBundle={handleSaveBundle}
+      onSaveScaleTemplate={handleSaveScaleTemplate}
+      renderAssignmentPanel={renderAssignmentPanel}
       scaleTemplates={scaleTemplates}
     />
   );
@@ -169,6 +191,7 @@ function MockReportCardBundlesPage() {
         const nextId = draft.bundleId ?? `bundle-${Date.now()}`;
         const nextBundle: BundleRecord = {
           _id: nextId,
+          updatedAt: Date.now(),
           name: draft.name.trim(),
           description: draft.description.trim() || null,
           sections: draft.sections.map((section, sectionIndex) => ({
@@ -194,6 +217,7 @@ function MockReportCardBundlesPage() {
         const nextId = draft.templateId ?? `scale-${Date.now()}`;
         const nextTemplate: ScaleTemplateRecord = {
           _id: nextId,
+          updatedAt: Date.now(),
           name: draft.name.trim(),
           description: draft.description.trim() || null,
           options: draft.options.map((option, index) => ({

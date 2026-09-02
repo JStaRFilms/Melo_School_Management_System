@@ -190,7 +190,20 @@ function normalizeOptionalPhone(value: string | null | undefined) {
   }
 
   const trimmed = value.trim();
-  return trimmed || undefined;
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.includes("@") || /[a-zA-Z]/.test(trimmed)) {
+    throw new ConvexError("Contact phone number cannot contain letters or email addresses.");
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) {
+    throw new ConvexError("Contact phone number must contain between 7 and 15 digits.");
+  }
+
+  return trimmed;
 }
 
 function buildFamilyName(args: { studentName: string; parentName?: string; familyName?: string | null | undefined; }) {
@@ -409,6 +422,18 @@ export const createStudent = mutation({
     photoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     photoFileName: v.optional(v.union(v.string(), v.null())),
     photoContentType: v.optional(v.union(v.string(), v.null())),
+    parentLink: v.optional(
+      v.object({
+        firstName: v.string(),
+        lastName: v.string(),
+        email: v.string(),
+        phone: v.optional(v.union(v.string(), v.null())),
+        relationship: v.optional(v.union(v.string(), v.null())),
+        familyName: v.optional(v.union(v.string(), v.null())),
+        isPrimaryContact: v.optional(v.boolean()),
+      })
+    ),
+    confirmDuplicateLink: v.optional(v.boolean()),
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
@@ -515,7 +540,17 @@ export const createStudent = mutation({
       studentRecord.photoUpdatedAt = now;
     }
 
-    return await ctx.db.insert("students", studentRecord as any);
+    const studentId = await ctx.db.insert("students", studentRecord as any);
+
+    if (args.parentLink) {
+      await ctx.runMutation(api.functions.academic.studentEnrollment.upsertStudentFamilyLink, {
+        studentId,
+        ...args.parentLink,
+        confirmDuplicateLink: args.confirmDuplicateLink,
+      });
+    }
+
+    return studentId;
   },
 });
 
@@ -2033,7 +2068,7 @@ async function loadStudentFamilyProfile(
         !parentUser ||
         parentUser.schoolId !== schoolId ||
         parentUser.isArchived ||
-        parentUser.role !== "parent"
+        parentUser.role === "student"
       ) {
         return null;
       }
@@ -2047,6 +2082,7 @@ async function loadStudentFamilyProfile(
         lastName: parentName.lastName,
         email: parentUser.email,
         phone: parentUser.phone ?? null,
+        role: parentUser.role,
         relationship: familyMember.relationship ?? null,
         isPrimaryContact: familyMember.isPrimaryContact,
       };
@@ -2126,6 +2162,7 @@ export const getStudentFamilyProfile = query({
         lastName: v.union(v.string(), v.null()),
         email: v.string(),
         phone: v.union(v.string(), v.null()),
+        role: v.union(v.literal("parent"), v.literal("teacher"), v.literal("admin")),
         relationship: v.union(v.string(), v.null()),
         isPrimaryContact: v.boolean(),
       })
@@ -2195,7 +2232,7 @@ export const getParentEmailReview = query({
     const matches = await Promise.all(
       users.map(async (user: any) => {
         const families =
-          user.role === "parent" && !user.isArchived
+          user.role !== "student" && !user.isArchived
             ? await summarizeFamiliesForParentUser(ctx, schoolId, user._id)
             : [];
 
@@ -2272,20 +2309,20 @@ export const upsertStudentFamilyLink = mutation({
     }
 
     const activeUsers = matchingUsers.filter((candidate: any) => !candidate.isArchived);
-    const activeParentUsers = activeUsers.filter((candidate: any) => candidate.role === "parent");
-    const activeOtherUsers = activeUsers.filter((candidate: any) => candidate.role !== "parent");
+    const activeStudentUsers = activeUsers.filter((candidate: any) => candidate.role === "student");
+    const eligibleParentUsers = activeUsers.filter((candidate: any) => candidate.role !== "student");
 
-    if (activeOtherUsers.length > 0) {
-      throw new ConvexError("A user with this email already exists");
+    if (activeStudentUsers.length > 0) {
+      throw new ConvexError("A student account cannot be linked as a parent");
     }
 
-    if (activeParentUsers.length > 1) {
+    if (eligibleParentUsers.length > 1) {
       throw new ConvexError(
-        "Multiple parent records share this email. Resolve the duplicate parent account first."
+        "Multiple school accounts share this email. Resolve the duplicate account first."
       );
     }
 
-    const matchedExistingParentUser = activeParentUsers[0] ?? null;
+    const matchedExistingParentUser = eligibleParentUsers[0] ?? null;
     const reusedExistingParent = matchedExistingParentUser !== null;
     let parentUser = matchedExistingParentUser;
 
@@ -2303,7 +2340,7 @@ export const upsertStudentFamilyLink = mutation({
         updatedAt: now,
       });
       parentUser = await ctx.db.get(parentUserId);
-    } else {
+    } else if (parentUser.role === "parent") {
       const nextParentRecord: Record<string, unknown> = {
         updatedAt: now,
         name: parentName.name,
@@ -2498,9 +2535,47 @@ export const updateStudentFamilyParentContact = mutation({
       !parentUser ||
       parentUser.schoolId !== schoolId ||
       parentUser.isArchived ||
-      parentUser.role !== "parent"
+      parentUser.role === "student"
     ) {
       throw new ConvexError("Parent not found");
+    }
+
+    const relationship = normalizeOptionalText(args.relationship)
+      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
+      : undefined;
+    const now = Date.now();
+
+    // Staff may be family contacts, but their identity belongs to staff management.
+    // Family edits may only change their relationship and primary-contact status.
+    if (parentUser.role !== "parent") {
+      const familyMembers = await getFamilyMembers(ctx, family._id);
+      const nextIsPrimaryContact =
+        args.isPrimaryContact ?? familyMember.isPrimaryContact;
+
+      if (nextIsPrimaryContact) {
+        for (const member of familyMembers) {
+          if (String(member._id) !== String(familyMember._id) && member.isPrimaryContact) {
+            await ctx.db.patch(member._id, {
+              isPrimaryContact: false,
+              updatedAt: now,
+              updatedBy: userId,
+            });
+          }
+        }
+      }
+
+      await ctx.db.patch(familyMember._id, {
+        relationship,
+        isPrimaryContact: nextIsPrimaryContact,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+
+      return {
+        familyId: family._id,
+        parentUserId: parentUser._id,
+        familyMemberId: familyMember._id,
+      };
     }
 
     const normalizedEmail = normalizeOptionalEmail(args.email);
@@ -2515,25 +2590,25 @@ export const updateStudentFamilyParentContact = mutation({
     }
 
     const activeUsers = matchingUsers.filter((candidate: any) => !candidate.isArchived);
-    const activeParentUsers = activeUsers.filter((candidate: any) => candidate.role === "parent");
-    const activeOtherUsers = activeUsers.filter((candidate: any) => candidate.role !== "parent");
+    const activeStudentUsers = activeUsers.filter((candidate: any) => candidate.role === "student");
+    const eligibleParentUsers = activeUsers.filter((candidate: any) => candidate.role !== "student");
 
-    if (activeOtherUsers.length > 0) {
-      throw new ConvexError("A user with this email already exists");
+    if (activeStudentUsers.length > 0) {
+      throw new ConvexError("A student account cannot be linked as a parent");
     }
 
-    if (activeParentUsers.length > 1) {
+    if (eligibleParentUsers.length > 1) {
       throw new ConvexError(
-        "Multiple parent records share this email. Resolve the duplicate parent account first."
+        "Multiple school accounts share this email. Resolve the duplicate account first."
       );
     }
 
-    const duplicateParentUser = activeParentUsers.find(
+    const duplicateParentUser = eligibleParentUsers.find(
       (candidate: any) => String(candidate._id) !== String(parentUser._id)
     );
     if (duplicateParentUser && !args.confirmDuplicateEmail) {
       throw new ConvexError(
-        "This email already belongs to an existing parent. Review the duplicate-link details and confirm to continue."
+        "This email already belongs to an existing parent or staff member. Review the duplicate-link details and confirm to continue."
       );
     }
 
@@ -2543,11 +2618,6 @@ export const updateStudentFamilyParentContact = mutation({
       lastName: args.lastName,
       requiredMessage: "Parent first and last name are required",
     });
-    const relationship = normalizeOptionalText(args.relationship)
-      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
-      : undefined;
-    const now = Date.now();
-
     const familyMembers = await getFamilyMembers(ctx, family._id);
     const nextIsPrimaryContact =
       args.isPrimaryContact ?? familyMember.isPrimaryContact;

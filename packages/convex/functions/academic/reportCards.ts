@@ -26,7 +26,11 @@ import {
   buildExtrasCollectionView,
   reportCardExtraPrintableValidator,
 } from "./reportCardExtrasModel";
-import { resolveEffectiveReportCardTermSettings } from "./reportCardTermSettings";
+import {
+  assertNextTermBeginsFitsAdjacentTerm,
+  resolveAdjacentNextTermInSession,
+  resolveEffectiveReportCardTermSettings,
+} from "./reportCardTermSettings";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 import {
   deriveEffectiveSubjectSelectionIds,
@@ -1271,6 +1275,14 @@ export const saveTermNextTermBegins = mutation({
     ) {
       throw new ConvexError("Next term start date must be after this term ends");
     }
+
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+    assertNextTermBeginsFitsAdjacentTerm(args.nextTermBegins, adjacentNextTerm);
 
     const replacement: {
       schoolId: typeof term.schoolId;

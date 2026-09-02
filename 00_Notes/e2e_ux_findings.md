@@ -108,8 +108,13 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Student Roster Visibility for Classes with Zero Subjects Configured (`SubjectSelectionMatrix.tsx`, `SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
   - Previously, if a class had students enrolled but 0 subjects configured in the curriculum, the entire student roster table was replaced by a single empty-state banner, causing newly admitted students to disappear from view.
   - Now, enrolled students are always visible in both desktop and mobile roster views with full names, avatars, admission numbers, and quick profile actions, accompanied by a direct action link to configure class subjects.
-- [x] **Granular Toast & Error Message Extraction (`packages/shared/src/errors.ts`)**
-  - Enhanced `getUserFacingErrorMessage` to inspect `error.data` payloads and strip noisy WebSocket transport wrappers, ensuring exact server-side validation messages (e.g. duplicate admission IDs, missing permissions) are presented cleanly to the user in notifications.
+- [x] **Global Phone & Email Input Sanitation and Strict Validation (`@school/shared`, `studentEnrollment.ts`, Form Fields)**
+  - Built `cleanPhoneInput`, `isValidPhoneNumber`, `cleanEmailInput`, and `isValidEmailAddress` in `@school/shared`.
+  - Added real-time character filtering on all phone input fields (`type="tel"`, `inputMode="tel"`) across the application, preventing letters, `@`, or email domains from ever being typed or pasted into phone fields.
+  - Added strict backend validation in Convex mutations (`normalizeOptionalPhone`), rejecting invalid strings or email payloads with clear error messages.
+- [x] **Stateful URL Query Synchronization & Deep Linking on `/academic/students` (`apps/admin/app/academic/students/page.tsx`)**
+  - Integrated `useSearchParams` and shallow URL history replacement so that selecting a Class (`?classId=...`), Academic Session (`?sessionId=...`), Student Record (`?studentId=...`), or Sheet Tab (`?tab=...`) automatically updates the browser URL.
+  - Refreshing the browser or sharing/bookmarking the URL preserves the exact class context, active session, and currently inspected student drawer without resetting to defaults.
 
 ### 5. Academic Sessions, Dynamic Term Partitioning & Modal Overlay Polish
 - [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
@@ -169,6 +174,53 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Deleted legacy client-side canvas renderer `apps/teacher/features/planning-library/utils/browserPdfOcr.ts`.
   - Deleted dead backend action `packages/convex/functions/academic/lessonKnowledgeBrowserOcrActions.ts` and pruned `requestKnowledgeMaterialBrowserOcrImageUploadUrls` and `startKnowledgeMaterialBrowserOcrRetryInternal` from `lessonKnowledgeIngestion.ts`.
 
+### 8. Staff Roles, Parent-Staff Identity & Administrator Lifecycle
+- [x] **Staff-as-Parent & Family Link Identity Unification**
+  - Updated `updateStudentFamilyParentContact` and `upsertStudentFamilyLink` in `studentEnrollment.ts` to allow teachers and administrators to be linked into Family Link as parents/guardians without colliding on active accounts.
+  - Preserved security check preventing enrolled students (`role === "student"`) from being linked as parent contacts.
+  - Refactored Student Family contact UI in `StudentFamilyPanel.tsx`: flattened nested 3-level card-in-card hierarchy into a single clean alert, fixed 3-line wrapped buttons, scaled typography and inputs down to clean responsive sizes (`h-9 text-xs font-medium`), and added `Staff: <role>` badges.
+- [x] **Administrator Archiving & Multi-Role Parity in Archive Audit**
+  - Added `role === "admin"` records into `archiveRecords.ts` (`listArchivedRecords`) with manager hierarchy metadata, email details, and total summary counts.
+  - Added `restoreSchoolAdmin` mutation to `adminLeadership.ts` with active email duplicate protection.
+  - Updated `/academic/archived-records` with Administrator filter tab, purple chip badges, and one-click restore action.
+  - Added `Archived` status badge and direct `Restore` action to the `/admin` Users Directory grid so archived admins can be restored from either surface.
+- [x] **Staff Role Demotion / Downgrade to Teacher**
+  - Added `demoteAdminToTeacher` mutation in `adminLeadership.ts` allowing non-lead admins to be safely downgraded to standard teachers while automatically re-parenting any direct sub-admins to the Lead Admin.
+  - Added `To Teacher` action button with `UserMinus` icon in `AdminCard.tsx` and `AdminDirectorySection.tsx`.
+
+### 9. Grading Bands Policy, Report Card Resumption Sync & Navigation
+- [x] **Grading Bands Multi-Issue Validation & Range Highlighting (`/assessments/setup/grading-bands`)**
+  - Added checks for duplicate grade labels (e.g. two "A" grades) and duplicate score ranges across tiers in `packages/shared/src/exam-recording/validation.ts`.
+  - Updated `BandValidationBanner.tsx` with clear error count badge and bulleted breakdown of all validation issues.
+  - Added targeted border highlighting in `BandTable.tsx` / `BandRow.tsx` (highlights letter input for grade label duplicates and min/max inputs for score range duplicates/overlaps).
+- [x] **Grading Bands Layout, Standard Default Preset & Auto-Arrange**
+  - Added bottom container padding (`pb-36`) so floating action bar never obscures table rows or the bottom Add Tier button.
+  - Upgraded action bar with status indicators ("Unsaved changes" vs "Resolve errors to save"), "Save Changes" and "Discard" actions.
+  - Added standard default grading scale (`A: 75–100`, `B: 65–74`, `C: 50–64`, `D: 40–49`, `F: 0–39`) and `Load Standard Scale` preset button (`Sparkles` icon).
+  - Added `Auto-Arrange` button and automated ascending sort on save (`0 → 100`).
+- [x] **Report Card Class Groups Override Form Toggle & Cancel Handler (`/assessments/report-cards`)**
+  - Fixed issue in `ReportCardAdminPanel.tsx` where clicking `+` failed to open the class group override form due to missing creation state.
+  - Added `isCreatingGroup` state, clear "Add Group" / "Close" toggle, and a direct "+ Create Override" button when no overrides exist.
+- [x] **Strict Adjacent-Term Resumption Auto-Lookup & Calendar Sync Warning**
+  - Updated `packages/convex/functions/academic/reportCardTermSettings.ts` to query all terms in the active session sorted by `startDate` ascending and strictly look up the immediate next adjacent term (`terms[currentIndex + 1]`).
+  - Pre-fills resumption date with adjacent next term's start date if global resumption is unset.
+  - When admin edits the resumption date on Report Cards and saves, it updates the linked term's `startDate` in `academicTerms`, keeping `/academic/sessions` and report cards in sync.
+  - Displayed a `Calendar Sync Notice` warning callout in `ReportCardAdminPanel.tsx` when changing resumption dates.
+- [x] **Automated 2-Week Resumption Calendar Event (`/academic/events`)**
+  - Added `syncNextTermResumptionCalendarEvent` in `reportCardTermSettings.ts` to automatically create or update a `"Next Term Resumption — [Term Name]"` event in `schoolEvents` when `term.endDate - Date.now() <= 14 days`.
+- [x] **Report Cards Self-Contained Launcher & Sidebar Direct Navigation**
+  - Added `ReportCardLauncher.tsx` to `/assessments/report-cards` providing a full interactive selector (Session, Term, Class, Student Search, Batch Print) when direct URL parameters are missing.
+  - Updated workspace navigation sidebar so "Report Cards" routes directly to `/assessments/report-cards`.
+- [x] **Report Add-ons & Bundles Educational UI Polish (`/assessments/setup/report-card-bundles`)**
+  - Completely de-robotized and un-slopped terminology across all bundle designer components (replaced sci-fi jargon like *"Void Catalog"*, *"Blueprint Designer"*, *"Virtual Monitor"*, *"Distribution Engine"*, *"Nodes"*, *"Internal Buffer"* with clear school terminology like *"Report Add-ons"*, *"Design Bundle"*, *"Live Preview"*, *"Class Assignment"*, *"Fields"*, *"Printed on Report Card"*, *"Internal Only"*).
+  - Added 1-click **Starter Bundle Presets** (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Health Summary`) with preconfigured sections, fields, and sources.
+  - Added 1-click **Standard Rating Scale Presets** (`5-Point Rating Scale (1–5)`, `Letter Grade Scale (A–E)`, `Behavioral Frequency Scale`).
+  - Streamlined bundle and scale creation workflows for admins with instant draft loading and clean preview cards.
+- [x] **Setup Pages Performance & Stutter Resolution (`/assessments/setup/report-card-bundles` & `grading-bands`)**
+  - Eliminated keystroke input lag by memoizing sub-components (`BundleEditor`, `FieldEditor`, `ScaleTemplateEditor`, `BundleList`, `TemplateList`, `ClassAssignmentCard`).
+  - Fixed re-render cascade: moved `ClassAssignmentPanel` from eager evaluation to lazy evaluation (only instantiated when visiting the *"Assign Classes"* tab instead of re-evaluating 300+ class/bundle buttons on every character typed).
+  - Protected local editing drafts against reactive query re-evaluations using ref-anchored selection locks (`loadedBundleIdRef` / `loadedScaleIdRef` / `isLoadedRef`), preventing Convex background query refetches from wiping user inputs or causing UI jitter.
+
 ---
 
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
@@ -220,6 +272,16 @@ This document tracks all observations, issues, UX refinements, completed changes
 ## 🚀 Roadmap & Backlog
 
 ### High Priority / Next Up
+- [ ] **Pre-Populated Default Grading Bands & Custom Color Coding per Grade Tier / Level (`/assessments/setup/grading-bands`)**
+  - **Context & Need:** Currently, navigating to `/assessments/setup/grading-bands` presents a blank matrix requiring school administrators to define every single grade score tier (`0-100`) from scratch. Furthermore, grade levels / tiers currently lack visual color accents, making score entry and report cards monotonous.
+  - **Pre-Populated Default Policy:**
+    - When a new school registers or sets up grading for the first time, automatically initialize a standard default grading band policy (e.g., `A: 75–100 (Excellent)`, `B: 65–74 (Very Good)`, `C: 50–64 (Credit/Pass)`, `D: 40–49 (Pass)`, `F: 0–39 (Fail)`).
+    - Provide a prominent **"Load Standard Default"** preset button to reset or prefill standard bands at any time with 1 click.
+  - **Custom Color Palette per Grade Tier / Level:**
+    - Enable schools to assign custom color tags/badges to each grade band (e.g. Emerald `#10B981` for `A`, Sky/Blue `#0284C7` for `B`, Amber `#F59E0B` for `C`, Orange `#F97316` for `D`, Rose/Red `#EF4444` for `F`).
+    - These color accents flow dynamically into score recording sheets, student progress bars, class distribution analytics, and report card badge styling.
+  - **Full Customization Control:**
+    - Schools retain complete freedom to edit min/max ranges, delete tiers, add more tiers (e.g., `A+`, `A`, `B+`, `B`, `C+`, `C`, `D`, `E`, `F`), customize verbal remarks, and modify colors as they wish.
 - [ ] **Granular Admin Role-Based Access Control (RBAC) & Scoped Staff Permissions**
   - **Context & Need:** Currently, all school administrator accounts receive full universal access across the entire admin workspace. Schools need to designate departmental staff roles (e.g., Bursar/Accountant, Academic Director/Dean of Studies, Registrar/Admissions Officer, Exam Officer) who should only view and manage modules relevant to their job functions rather than giving all admins access to everything.
   - **Proposed Role Scopes & Capability Matrix:**

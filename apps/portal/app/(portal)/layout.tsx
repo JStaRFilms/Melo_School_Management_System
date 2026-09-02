@@ -18,6 +18,10 @@ export default function PortalLayout({
   const { session, signOut, isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const canAccessPortal = useQuery(
+    "functions/portal:canAccessPortal" as never,
+    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
+  ) as boolean | undefined;
   const schoolBranding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
     isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
@@ -42,10 +46,10 @@ export default function PortalLayout({
       return;
     }
 
-    if (session?.user?.role !== "parent" && session?.user?.role !== "student") {
+    if (canAccessPortal === false) {
       router.replace("/sign-in?error=unauthorized");
     }
-  }, [isAuthenticated, isLoading, pathname, router, session]);
+  }, [canAccessPortal, isAuthenticated, isLoading, pathname, router]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -56,7 +60,8 @@ export default function PortalLayout({
     isConvexConfigured() &&
     (isLoading ||
       !isAuthenticated ||
-      (session?.user?.role !== "parent" && session?.user?.role !== "student") ||
+      canAccessPortal === undefined ||
+      !canAccessPortal ||
       schoolBranding === undefined)
   ) {
     return (

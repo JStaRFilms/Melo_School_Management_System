@@ -1,4 +1,4 @@
-import { Archive, ArrowRightLeft, Crown, Sparkles } from "lucide-react";
+import { Archive, ArrowRightLeft, Crown, RotateCcw, Sparkles, UserMinus } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
 type AdminRecord = {
@@ -19,7 +19,9 @@ export function AdminCard({
   leadAdminId,
   busyAdminId,
   onPromote,
+  onDemote,
   onArchive,
+  onRestore,
   onTransferLeadership,
 }: {
   admin: AdminRecord;
@@ -28,11 +30,14 @@ export function AdminCard({
   leadAdminId: string | null;
   busyAdminId: string | null;
   onPromote: () => void;
+  onDemote?: () => void;
   onArchive: () => void;
+  onRestore?: () => void;
   onTransferLeadership: () => void;
 }) {
   const isViewerSelf = admin._id === viewerUserId;
   const canPromote = !admin.isArchived && !isViewerSelf;
+  const canDemote = !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
   const canArchive = !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
   const canTransfer =
     viewerIsLead &&
@@ -60,6 +65,11 @@ export function AdminCard({
               <span className="inline-flex items-center gap-1 rounded-md bg-slate-950 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-widest text-white ring-1 ring-slate-950/20">
                 <Crown className="h-2 w-2" />
                 Lead
+              </span>
+            )}
+            {admin.isArchived && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-widest text-rose-700 ring-1 ring-rose-600/20">
+                Archived
               </span>
             )}
           </div>
@@ -90,6 +100,18 @@ export function AdminCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          {admin.isArchived && onRestore && (
+            <button
+              type="button"
+              onClick={onRestore}
+              disabled={busyAdminId === admin._id}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[9px] font-bold uppercase tracking-widest text-emerald-700 transition-all hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <RotateCcw className="h-2.5 w-2.5" />
+              Restore
+            </button>
+          )}
+
           {canPromote && (
             <button
               type="button"
@@ -111,6 +133,19 @@ export function AdminCard({
             >
               <ArrowRightLeft className="h-2.5 w-2.5 text-white/50" />
               Transfer
+            </button>
+          )}
+
+          {canDemote && onDemote && (
+            <button
+              type="button"
+              onClick={onDemote}
+              disabled={busyAdminId === admin._id}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[9px] font-bold uppercase tracking-widest text-slate-600 transition-all hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50"
+              title="Downgrade admin to teacher"
+            >
+              <UserMinus className="h-2.5 w-2.5 text-slate-400 group-hover:text-amber-600 transition-colors" />
+              To Teacher
             </button>
           )}
 

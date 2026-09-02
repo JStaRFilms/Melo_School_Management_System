@@ -973,7 +973,8 @@ export default defineSchema({
     .index("by_school_and_email", ["schoolId", "email"])
     .index("by_auth", ["authId"])
     .index("by_auth_token_identifier", ["authTokenIdentifier"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_school_and_manager_user", ["schoolId", "managerUserId"]),
 
   families: defineTable({
     schoolId: v.id("schools"),
@@ -1013,6 +1014,18 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_lead_admin", ["leadAdminUserId"]),
+
+  adminLeadershipAuditEvents: defineTable({
+    schoolId: v.id("schools"),
+    actorUserId: v.id("users"),
+    targetUserId: v.id("users"),
+    eventType: v.literal("admin_demoted"),
+    reassignedDirectReportIds: v.array(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_created_at", ["schoolId", "createdAt"])
+    .index("by_target_user_and_created_at", ["targetUserId", "createdAt"]),
 
   students: defineTable({
     schoolId: v.id("schools"),
@@ -1095,6 +1108,8 @@ export default defineSchema({
 
   schoolEvents: defineTable({
     schoolId: v.id("schools"),
+    source: v.optional(v.literal("report_card_next_term_resumption")),
+    sourceTermId: v.optional(v.id("academicTerms")),
     title: v.string(),
     description: v.optional(v.string()),
     location: v.optional(v.string()),
@@ -1109,7 +1124,9 @@ export default defineSchema({
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
-    .index("by_school_and_start", ["schoolId", "startDate"]),
+    .index("by_school_and_start", ["schoolId", "startDate"])
+    .index("by_school_and_title", ["schoolId", "title"])
+    .index("by_school_and_source_and_source_term", ["schoolId", "source", "sourceTermId"]),
 
   teacherAssignments: defineTable({
     schoolId: v.id("schools"),

@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { AlertTriangle, BadgeCheck, Link2, PencilLine, PlusCircle, ShieldAlert, Trash2, Unlink2, Users } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Check, Link2, Mail, PencilLine, Phone, PlusCircle, ShieldAlert, Trash2, Unlink2, Users, X } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import { isValidEmailAddress } from "@school/auth";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { cleanEmailInput, cleanPhoneInput, getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
@@ -26,6 +26,7 @@ interface StudentFamilyProfile {
     lastName: string | null;
     email: string;
     phone: string | null;
+    role: "parent" | "teacher" | "admin";
     relationship: string | null;
     isPrimaryContact: boolean;
   }>;
@@ -200,9 +201,9 @@ export function StudentFamilyPanel({
 
     const activeMatches = review.matches.filter((match) => !match.isArchived);
     const archivedMatches = review.matches.filter((match) => match.isArchived);
-    const activeParentMatches = activeMatches.filter((match) => match.role === "parent");
-    const activeOtherMatches = activeMatches.filter((match) => match.role !== "parent");
-    const reviewParentMatches = activeParentMatches.filter(
+    const activeStudentMatches = activeMatches.filter((match) => match.role === "student");
+    const eligibleParentMatches = activeMatches.filter((match) => match.role !== "student");
+    const reviewParentMatches = eligibleParentMatches.filter(
       (match) => !currentFamilyParentUserIds.has(match.userId)
     );
 
@@ -214,18 +215,18 @@ export function StudentFamilyPanel({
       return false;
     }
 
-    if (activeOtherMatches.length > 0) {
+    if (activeStudentMatches.length > 0) {
       onNotice({
         tone: "error",
-        message: "This email already belongs to a non-parent school account.",
+        message: "A student account cannot be linked as a parent.",
       });
       return false;
     }
 
-    if (activeParentMatches.length > 1) {
+    if (eligibleParentMatches.length > 1) {
       onNotice({
         tone: "error",
-        message: "Multiple parent records share this email. Resolve the duplicate parent account first.",
+        message: "Multiple school accounts share this email. Resolve the duplicate account first.",
       });
       return false;
     }
@@ -534,90 +535,79 @@ export function StudentFamilyPanel({
       )}
 
       {pendingReview ? (
-        <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-          <div className="flex items-start gap-3">
-            <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-700" />
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">
-                Duplicate email review
+        <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="mt-0.5 h-4 w-4 text-amber-700 shrink-0" />
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-bold text-amber-950">
+                {pendingReview.kind === "link"
+                  ? "Existing Account Found"
+                  : `Existing Account for ${pendingReview.parentName}`}
               </p>
-              <h4 className="text-sm font-black text-amber-950">
+              <p className="text-[11px] leading-normal text-amber-800/90">
                 {pendingReview.kind === "link"
-                  ? "This email already belongs to an existing parent record."
-                  : `This email already belongs to another parent record for ${pendingReview.parentName}.`}
-              </h4>
-              <p className="text-xs font-medium leading-relaxed text-amber-900/80">
-                {pendingReview.kind === "link"
-                  ? "Review the existing household(s) below before linking this parent to the student family."
-                  : "Review the existing household(s) below before updating the saved parent contact email."}
+                  ? "This email already belongs to a registered user. Confirm to link this student to their household."
+                  : "This email belongs to another registered user. Confirm to update the contact details."}
               </p>
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2 border-t border-amber-200/70 pt-2.5">
             {pendingReview.review.matches.map((match) => (
-              <div key={match.userId} className="rounded-2xl border border-amber-200 bg-white p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-black text-slate-950">{match.name}</p>
-                  <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-white">
-                    {match.role}
-                  </span>
-                  {match.isArchived ? (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-rose-700">
-                      archived
+              <div key={match.userId} className="space-y-1.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-900">{match.name}</span>
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800">
+                      {match.role}
                     </span>
-                  ) : null}
+                    {match.isArchived && (
+                      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                        archived
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-600">{match.email}</span>
                 </div>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  {match.email}
-                  {match.phone ? ` · ${match.phone}` : ""}
-                </p>
+
                 {match.families.length > 0 ? (
-                  <div className="mt-3 space-y-2">
+                  <div className="space-y-1 pl-2 border-l-2 border-amber-300">
                     {match.families.map((family) => (
-                      <div
-                        key={family._id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-900">{family.name}</p>
-                          <p className="text-[11px] font-medium text-slate-500">
-                            {family.parentCount} parent{family.parentCount === 1 ? "" : "s"} · {family.studentCount} student{family.studentCount === 1 ? "" : "s"}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                          Household link
+                      <div key={family._id} className="flex items-center justify-between text-[11px] text-slate-600">
+                        <span className="font-medium text-slate-800">{family.name}</span>
+                        <span className="text-slate-500">
+                          {family.parentCount} parent{family.parentCount === 1 ? "" : "s"} · {family.studentCount} student{family.studentCount === 1 ? "" : "s"}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                    No household links yet.
-                  </div>
+                  <p className="text-[11px] text-slate-400 italic">No existing household links.</p>
                 )}
               </div>
             ))}
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex items-center gap-2 pt-1 border-t border-amber-200/70">
             <button
               type="button"
               onClick={handleCancelReview}
               disabled={isSubmitting}
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-amber-800 transition hover:bg-amber-50 disabled:opacity-50"
+              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-100/50 disabled:opacity-50"
             >
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Cancel review
+              <X className="h-3.5 w-3.5 text-amber-700" />
+              <span>Cancel</span>
             </button>
             <button
               type="button"
               onClick={() => void handleConfirmReview()}
               disabled={isSubmitting}
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-amber-500 disabled:opacity-50"
+              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50 shadow-sm"
             >
-              <BadgeCheck className="h-3.5 w-3.5" />
-              {isSubmitting ? "Saving..." : pendingReview.kind === "link" ? "Confirm link" : "Confirm email update"}
+              <Check className="h-3.5 w-3.5" />
+              <span className="whitespace-nowrap">
+                {isSubmitting ? "Saving..." : pendingReview.kind === "link" ? "Confirm Link" : "Confirm Update"}
+              </span>
             </button>
           </div>
         </div>
@@ -640,39 +630,49 @@ export function StudentFamilyPanel({
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-black text-slate-950">{parent.name}</p>
                         {parent.isPrimaryContact ? (
                           <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600">
                             Primary
                           </span>
                         ) : null}
+                        {parent.role !== "parent" ? (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-amber-700">
+                            Staff: {parent.role}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-0.5 text-[11px] font-bold text-slate-400 uppercase tracking-wide">
                         {parent.relationship || "Guardian"}
                       </p>
-                      <div className="mt-3 flex items-center gap-3 text-xs font-medium text-slate-500">
-                        <span className="truncate">{parent.email}</span>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
+                        <span className="inline-flex items-center gap-1.5 text-slate-600">
+                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                          <span className="break-all">{parent.email}</span>
+                        </span>
                         {parent.phone && (
-                          <>
-                            <span className="h-1 w-1 rounded-full bg-slate-300" />
+                          <span className="inline-flex items-center gap-1.5 text-slate-600">
+                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
                             <span>{parent.phone}</span>
-                          </>
+                          </span>
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingParentId(parent.parentUserId);
-                        setEditDraft(draftFromParent(parent));
-                        setPendingReview(null);
-                      }}
-                      disabled={isSubmitting}
-                      className="shrink-0 h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
-                    >
-                      Edit
-                    </button>
+                    {parent.role === "parent" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingParentId(parent.parentUserId);
+                          setEditDraft(draftFromParent(parent));
+                          setPendingReview(null);
+                        }}
+                        disabled={isSubmitting}
+                        className="shrink-0 h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
 
                   {isEditing ? (
@@ -786,14 +786,17 @@ export function StudentFamilyPanel({
                             Phone
                           </span>
                           <input
+                            type="tel"
+                            inputMode="tel"
                             value={currentDraft.phone}
                             onChange={(event) =>
                               setEditDraft((previous) => ({
                                 ...(previous ?? currentDraft),
-                                phone: event.target.value,
+                                phone: cleanPhoneInput(event.target.value),
                               }))
                             }
                             className={fieldInputClassName}
+                            placeholder="+234..."
                           />
                         </label>
                         <label className="space-y-1.5 sm:col-span-2">
@@ -828,7 +831,7 @@ export function StudentFamilyPanel({
                         <span>Mark this parent as the primary contact for the family.</span>
                       </label>
 
-                      <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => {
@@ -836,24 +839,24 @@ export function StudentFamilyPanel({
                             setEditDraft(null);
                           }}
                           disabled={isSubmitting}
-                          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                         >
-                          <Users className="h-3.5 w-3.5" />
-                          Cancel edit
+                          <X className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Cancel</span>
                         </button>
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-slate-800 disabled:opacity-50"
+                          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-50 shadow-sm"
                         >
-                          <BadgeCheck className="h-3.5 w-3.5" />
-                          {isSubmitting ? "Saving..." : "Save parent contact"}
+                          <Check className="h-3.5 w-3.5" />
+                          <span className="whitespace-nowrap">{isSubmitting ? "Saving..." : "Save Changes"}</span>
                         </button>
                       </div>
                     </form>
                   ) : null}
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  {parent.role === "parent" ? (
                     <PortalCredentialPanel
                       title="Portal Access"
                       userId={parent.parentUserId}
@@ -862,7 +865,7 @@ export function StudentFamilyPanel({
                       defaultPassword="Parent123!Pass"
                       onNotice={onNotice}
                     />
-                  </div>
+                  ) : null}
 
                   <div className="pt-4 border-t border-slate-100">
                     <button
@@ -941,11 +944,24 @@ export function StudentFamilyPanel({
           </div>
           <div className="space-y-1.5">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Email</span>
-            <input type="email" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} className={fieldInputClassName} placeholder="parent@example.com" />
+            <input
+              type="email"
+              value={parentEmail}
+              onChange={(e) => setParentEmail(cleanEmailInput(e.target.value))}
+              className={fieldInputClassName}
+              placeholder="parent@example.com"
+            />
           </div>
           <div className="space-y-1.5">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</span>
-            <input value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} className={fieldInputClassName} placeholder="+234..." />
+            <input
+              type="tel"
+              inputMode="tel"
+              value={parentPhone}
+              onChange={(e) => setParentPhone(cleanPhoneInput(e.target.value))}
+              className={fieldInputClassName}
+              placeholder="+234..."
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Relationship</span>
@@ -964,10 +980,10 @@ export function StudentFamilyPanel({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="h-10 w-full flex items-center justify-center gap-2 rounded-lg bg-slate-950 text-white text-xs font-black uppercase tracking-[0.12em] hover:bg-slate-800 transition-all disabled:opacity-50 shadow-lg shadow-slate-950/20"
+          className="h-9 w-full flex items-center justify-center gap-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-all disabled:opacity-50 shadow-sm"
         >
           <Link2 className="h-3.5 w-3.5" />
-          <span>{isSubmitting ? "Linking..." : "Link to household"}</span>
+          <span>{isSubmitting ? "Linking..." : "Link to Household"}</span>
         </button>
       </form>
 
@@ -999,5 +1015,5 @@ export function StudentFamilyPanel({
 }
 
 const fieldInputClassName =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white/80 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300";
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 outline-none transition-all focus:border-slate-950 focus:ring-2 focus:ring-slate-950/5 placeholder:text-slate-300";
 

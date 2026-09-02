@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
@@ -673,8 +674,10 @@ export function StudentFirstOnboardingForm({
                   </Field>
                   <Field label="Guardian Phone">
                     <input
+                      type="tel"
+                      inputMode="tel"
                       value={guardianPhone}
-                      onChange={(e) => onGuardianPhoneChange(e.target.value)}
+                      onChange={(e) => onGuardianPhoneChange(cleanPhoneInput(e.target.value))}
                       className={fieldInputClassName}
                       placeholder="+234..."
                     />
@@ -717,15 +720,17 @@ export function StudentFirstOnboardingForm({
                     <input
                       type="email"
                       value={parentEmail}
-                      onChange={(e) => onParentEmailChange(e.target.value)}
+                      onChange={(e) => onParentEmailChange(cleanEmailInput(e.target.value))}
                       className={fieldInputClassName}
                       placeholder="parent@example.com"
                     />
                   </Field>
                   <Field label="Parent Mobile Number">
                     <input
+                      type="tel"
+                      inputMode="tel"
                       value={parentPhone}
-                      onChange={(e) => onParentPhoneChange(e.target.value)}
+                      onChange={(e) => onParentPhoneChange(cleanPhoneInput(e.target.value))}
                       className={fieldInputClassName}
                       placeholder="+234..."
                     />

@@ -1,6 +1,6 @@
 "use client";
 
-import { getUserFacingErrorMessage } from "@school/shared";
+import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect,useMemo,useState } from "react";
@@ -143,6 +143,14 @@ export function StudentProfileEditor({
   }
 
   const handleSave = async () => {
+    if (guardianPhone.trim() && !isValidPhoneNumber(guardianPhone)) {
+      onNotice({
+        tone: "error",
+        message: "Enter a valid contact phone number (e.g. +234...).",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const uploadedPhotoMetadata = photoFile

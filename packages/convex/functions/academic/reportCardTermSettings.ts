@@ -30,6 +30,125 @@ const termSettingGroupValidator = v.object({
   timesSchoolOpened: v.union(v.number(), v.null()),
 });
 
+export async function resolveAdjacentNextTermInSession(
+  ctx: any,
+  schoolId: Id<"schools">,
+  sessionId: Id<"academicSessions">,
+  currentTermId: Id<"academicTerms">
+) {
+  const allTermsInSession = await ctx.db
+    .query("academicTerms")
+    .withIndex("by_session", (q: any) => q.eq("sessionId", sessionId))
+    .collect();
+
+  const scopedTerms = allTermsInSession
+    .filter((t: any) => t.schoolId === schoolId)
+    .sort((a: any, b: any) => a.startDate - b.startDate);
+
+  const currentIndex = scopedTerms.findIndex(
+    (t: any) => String(t._id) === String(currentTermId)
+  );
+
+  if (currentIndex === -1 || currentIndex === scopedTerms.length - 1) {
+    return null;
+  }
+
+  return scopedTerms[currentIndex + 1];
+}
+
+export function assertNextTermBeginsFitsAdjacentTerm(
+  nextTermBegins: number | null,
+  adjacentNextTerm: { endDate: number } | null
+) {
+  if (
+    adjacentNextTerm &&
+    nextTermBegins !== null &&
+    nextTermBegins >= adjacentNextTerm.endDate
+  ) {
+    throw new ConvexError("Next term start date must be before the adjacent term ends");
+  }
+}
+
+export async function syncNextTermResumptionCalendarEvent(
+  ctx: any,
+  args: {
+    schoolId: Id<"schools">;
+    userId: Id<"users">;
+    term: any;
+    nextTermBegins: number | null;
+    linkedNextTermName?: string | null;
+  }
+) {
+  const { schoolId, userId, term, nextTermBegins, linkedNextTermName } = args;
+  if (!nextTermBegins) return;
+
+  const now = Date.now();
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+  const timeUntilTermEnd = term.endDate - now;
+
+  // Auto-sync when term is within 2 weeks of ending or during break
+  if (timeUntilTermEnd <= TWO_WEEKS_MS) {
+    const eventTitle = `Next Term Resumption${linkedNextTermName ? ` — ${linkedNextTermName}` : ""}`;
+    const description = `Official resumption date for ${linkedNextTermName || "the upcoming academic term"} as set in the school calendar.`;
+
+    const sourcedEvent = await ctx.db
+      .query("schoolEvents")
+      .withIndex("by_school_and_source_and_source_term", (q: any) =>
+        q
+          .eq("schoolId", schoolId)
+          .eq("source", "report_card_next_term_resumption")
+          .eq("sourceTermId", term._id)
+      )
+      .unique();
+    const legacyCandidate = sourcedEvent
+      ? null
+      : await ctx.db
+          .query("schoolEvents")
+          .withIndex("by_school_and_title", (q: any) =>
+            q.eq("schoolId", schoolId).eq("title", eventTitle)
+          )
+          .unique();
+    const legacyEvent = legacyCandidate?.source === undefined ? legacyCandidate : null;
+    const matchedEvent = sourcedEvent ?? legacyEvent;
+
+    if (matchedEvent) {
+      if (
+        legacyEvent !== null ||
+        matchedEvent.startDate !== nextTermBegins ||
+        matchedEvent.endDate !== nextTermBegins ||
+        matchedEvent.title !== eventTitle
+      ) {
+        await ctx.db.patch(matchedEvent._id, {
+          source: "report_card_next_term_resumption",
+          sourceTermId: term._id,
+          title: eventTitle,
+          description,
+          startDate: nextTermBegins,
+          endDate: nextTermBegins,
+          isAllDay: true,
+          updatedAt: now,
+          updatedBy: userId,
+        });
+      }
+    } else {
+      await ctx.db.insert("schoolEvents", {
+        schoolId,
+        source: "report_card_next_term_resumption",
+        sourceTermId: term._id,
+        title: eventTitle,
+        description,
+        location: "School Campus",
+        startDate: nextTermBegins,
+        endDate: nextTermBegins,
+        isAllDay: true,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+    }
+  }
+}
+
 export async function resolveEffectiveReportCardTermSettings(
   ctx: any,
   args: {
@@ -44,7 +163,7 @@ export async function resolveEffectiveReportCardTermSettings(
     throw new ConvexError("Term not found");
   }
 
-  const [groupDocs, legacyClassAttendanceDocs] = await Promise.all([
+  const [groupDocs, legacyClassAttendanceDocs, adjacentNextTerm] = await Promise.all([
     ctx.db
       .query("reportCardTermSettingGroups")
       .withIndex("by_term", (q: any) => q.eq("termId", args.termId))
@@ -58,6 +177,7 @@ export async function resolveEffectiveReportCardTermSettings(
           .eq("termId", args.termId)
       )
       .collect(),
+    resolveAdjacentNextTermInSession(ctx, args.schoolId, term.sessionId, args.termId),
   ]);
 
   const scopedGroups = groupDocs.filter(
@@ -82,7 +202,10 @@ export async function resolveEffectiveReportCardTermSettings(
 
   return {
     nextTermBegins:
-      matchingGroup?.nextTermBegins ?? term.nextTermBegins ?? null,
+      matchingGroup?.nextTermBegins ??
+      term.nextTermBegins ??
+      adjacentNextTerm?.startDate ??
+      null,
     timesSchoolOpened:
       matchingGroup?.timesSchoolOpened ??
       legacyClassAttendance?.timesSchoolOpened ??
@@ -109,6 +232,7 @@ export const getTermReportCardSettings = query({
     termId: v.id("academicTerms"),
     termEndDate: v.number(),
     nextTermBegins: v.union(v.number(), v.null()),
+    linkedNextTermName: v.union(v.string(), v.null()),
     defaultTimesSchoolOpened: v.union(v.number(), v.null()),
     resultCalculationMode: v.union(
       v.literal("standalone"),
@@ -133,10 +257,18 @@ export const getTermReportCardSettings = query({
       throw new ConvexError("Term not found");
     }
 
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+
     return {
       termId: args.termId,
       termEndDate: term.endDate,
-      nextTermBegins: term.nextTermBegins ?? null,
+      nextTermBegins: term.nextTermBegins ?? adjacentNextTerm?.startDate ?? null,
+      linkedNextTermName: adjacentNextTerm ? normalizeHumanName(adjacentNextTerm.name) : null,
       defaultTimesSchoolOpened: term.defaultTimesSchoolOpened ?? null,
       resultCalculationMode: term.reportCardCalculationMode ?? "standalone",
       groups: groups
@@ -177,6 +309,14 @@ export const saveTermReportCardDefaults = mutation({
     if (args.nextTermBegins !== null && args.nextTermBegins <= term.endDate) {
       throw new ConvexError("Next term start date must be after this term ends");
     }
+
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+    assertNextTermBeginsFitsAdjacentTerm(args.nextTermBegins, adjacentNextTerm);
     if (
       args.defaultTimesSchoolOpened !== null &&
       (!Number.isInteger(args.defaultTimesSchoolOpened) ||
@@ -207,6 +347,24 @@ export const saveTermReportCardDefaults = mutation({
     }
 
     await ctx.db.replace(args.termId, replacement as any);
+
+    // Synchronize the already-validated adjacent term start date.
+    if (adjacentNextTerm && args.nextTermBegins !== null) {
+      await ctx.db.patch(adjacentNextTerm._id, {
+        startDate: args.nextTermBegins,
+        updatedAt: Date.now(),
+      });
+    }
+
+    // Auto-sync calendar event if within 2 weeks of term end
+    await syncNextTermResumptionCalendarEvent(ctx, {
+      schoolId,
+      userId,
+      term,
+      nextTermBegins: args.nextTermBegins ?? adjacentNextTerm?.startDate ?? null,
+      linkedNextTermName: adjacentNextTerm ? normalizeHumanName(adjacentNextTerm.name) : null,
+    });
+
     return null;
   },
 });
@@ -251,6 +409,13 @@ export const saveTermReportCardSettingGroup = mutation({
     if (args.nextTermBegins !== null && args.nextTermBegins <= term.endDate) {
       throw new ConvexError("Next term start date must be after this term ends");
     }
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+    assertNextTermBeginsFitsAdjacentTerm(args.nextTermBegins, adjacentNextTerm);
     if (
       args.timesSchoolOpened !== null &&
       (!Number.isInteger(args.timesSchoolOpened) || args.timesSchoolOpened < 0)

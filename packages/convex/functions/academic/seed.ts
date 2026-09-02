@@ -39,7 +39,7 @@ const DEMO_SCHOOL_TABLES = [
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",
-  "familyMembers", "students", "schoolAdminLeadership", "classes", "families", "users", "subjects",
+  "familyMembers", "students", "schoolAdminLeadership", "adminLeadershipAuditEvents", "classes", "families", "users", "subjects",
 ] as const satisfies readonly TableNames[];
 
 function gradeFor(total: number) {

@@ -8,6 +8,8 @@ interface BandRowProps {
   band: GradingBandDraft;
   index: number;
   hasError: boolean;
+  hasNameError?: boolean;
+  hasRangeError?: boolean;
   onChange: (
     index: number,
     field: keyof GradingBandDraft,
@@ -20,6 +22,8 @@ export function BandRow({
   band,
   index,
   hasError,
+  hasNameError,
+  hasRangeError,
   onChange,
   onDelete,
 }: BandRowProps) {
@@ -40,7 +44,12 @@ export function BandRow({
           placeholder="?"
           maxLength={4}
           spellCheck={false}
-          className={`w-12 h-9 px-0 text-center uppercase font-bold tracking-widest rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${badgeClass} ${hasError ? "border-rose-500 bg-rose-50" : ""}`}
+          className={`w-12 h-9 px-0 text-center uppercase font-bold tracking-widest rounded-lg border bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${badgeClass} ${
+            hasNameError
+              ? "border-rose-500 bg-rose-50/90 text-rose-800 ring-1 ring-rose-500/20"
+              : "border-slate-200"
+          }`}
+          title={hasNameError ? "Duplicate or missing grade label" : undefined}
         />
       </td>
       <td className="p-2.5">
@@ -55,7 +64,12 @@ export function BandRow({
             min={0}
             max={100}
             placeholder="0"
-            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${hasError ? "border-rose-500" : ""}`}
+            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${
+              hasRangeError
+                ? "border-rose-500 bg-rose-50/90 text-rose-800 ring-1 ring-rose-500/20"
+                : "border-slate-200"
+            }`}
+            title={hasRangeError ? "Invalid, duplicate, or overlapping score range" : undefined}
           />
           <span className="text-slate-200 font-bold px-0.5">&ndash;</span>
           <input
@@ -68,7 +82,12 @@ export function BandRow({
             min={0}
             max={100}
             placeholder="100"
-            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border border-slate-200 bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${hasError ? "border-rose-500" : ""}`}
+            className={`w-14 h-9 text-center font-mono font-bold text-[11px] rounded-lg border bg-white transition-all focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none ${
+              hasRangeError
+                ? "border-rose-500 bg-rose-50/90 text-rose-800 ring-1 ring-rose-500/20"
+                : "border-slate-200"
+            }`}
+            title={hasRangeError ? "Invalid, duplicate, or overlapping score range" : undefined}
           />
         </div>
       </td>

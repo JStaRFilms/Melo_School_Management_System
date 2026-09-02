@@ -13,6 +13,7 @@ Filter,
 FolderArchive,
 GraduationCap,
 Search,
+ShieldCheck,
 Users,
 X
 } from "lucide-react";
@@ -46,6 +47,7 @@ export default function ArchivedRecordsPage() {
     "functions/academic/archiveRecords:listArchivedRecords" as never
   ) as ArchivedRecordsQueryResult | undefined;
   
+  const restoreSchoolAdmin = useMutation("functions/academic/adminLeadership:restoreSchoolAdmin" as never);
   const restoreTeacher = useMutation("functions/academic/academicSetup:restoreTeacher" as never);
   const restoreSession = useMutation("functions/academic/academicSetup:restoreSession" as never);
   const restoreClass = useMutation("functions/academic/academicSetup:restoreClass" as never);
@@ -101,6 +103,7 @@ export default function ArchivedRecordsPage() {
 
     try {
       switch (selectedRecord.type) {
+        case "admin": await restoreSchoolAdmin({ adminId: selectedRecord.recordId as never }); break;
         case "teacher": await restoreTeacher({ teacherId: selectedRecord.recordId as never }); break;
         case "session": await restoreSession({ sessionId: selectedRecord.recordId as never }); break;
         case "class": await restoreClass({ classId: selectedRecord.recordId as never }); break;
@@ -177,10 +180,11 @@ export default function ArchivedRecordsPage() {
             variant="double-row"
             stats={[
               { label: "Total", value: archiveData.summary.totalArchived, icon: <Archive /> },
+              { label: "Admins", value: archiveData.summary.archivedAdmins, icon: <ShieldCheck /> },
+              { label: "Teachers", value: archiveData.summary.archivedTeachers, icon: <Users /> },
+              { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
               { label: "Classes", value: archiveData.summary.archivedClasses, icon: <FolderArchive /> },
               { label: "Subjects", value: archiveData.summary.archivedSubjects, icon: <BookMarked /> },
-              { label: "Staff", value: archiveData.summary.archivedTeachers, icon: <Users /> },
-              { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
               { label: "Sessions", value: archiveData.summary.archivedSessions, icon: <CalendarDays /> },
               { label: "Events", value: archiveData.summary.archivedEvents, icon: <CalendarRange /> },
               { label: "Knowledge", value: archiveData.summary.archivedKnowledgeMaterials, icon: <BookOpenText /> },
@@ -263,10 +267,11 @@ export default function ArchivedRecordsPage() {
                   variant="wrap"
                   stats={[
                     { label: "Total", value: archiveData.summary.totalArchived, icon: <Archive /> },
+                    { label: "Admins", value: archiveData.summary.archivedAdmins, icon: <ShieldCheck /> },
+                    { label: "Teachers", value: archiveData.summary.archivedTeachers, icon: <Users /> },
+                    { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
                     { label: "Classes", value: archiveData.summary.archivedClasses, icon: <FolderArchive /> },
                     { label: "Subjects", value: archiveData.summary.archivedSubjects, icon: <BookMarked /> },
-                    { label: "Staff", value: archiveData.summary.archivedTeachers, icon: <Users /> },
-                    { label: "Students", value: archiveData.summary.archivedStudents, icon: <GraduationCap /> },
                     { label: "Sessions", value: archiveData.summary.archivedSessions, icon: <CalendarDays /> },
                     { label: "Events", value: archiveData.summary.archivedEvents, icon: <CalendarRange /> },
                     { label: "Knowledge", value: archiveData.summary.archivedKnowledgeMaterials, icon: <BookOpenText /> },

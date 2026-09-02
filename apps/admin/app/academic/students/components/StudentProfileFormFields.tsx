@@ -1,5 +1,6 @@
 "use client";
 
+import { cleanPhoneInput } from "@school/shared";
 import type { ReactNode } from "react";
 import type { ClassSummary } from "./types";
 
@@ -127,8 +128,10 @@ export function StudentProfileFormFields({
       </Field>
       <Field label="Contact Phone">
         <input
+          type="tel"
+          inputMode="tel"
           value={guardianPhone}
-          onChange={(event) => onGuardianPhoneChange(event.target.value)}
+          onChange={(event) => onGuardianPhoneChange(cleanPhoneInput(event.target.value))}
           className={fieldInputClassName}
           placeholder="+234..."
         />

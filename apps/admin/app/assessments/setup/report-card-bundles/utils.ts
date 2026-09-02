@@ -51,6 +51,7 @@ const canonicalFieldConfig: Record<SystemKey, { label: string; type: FieldType }
 export function createEmptyScaleDraft(): ScaleTemplateDraft {
   return {
     templateId: null,
+    sourceUpdatedAt: null,
     name: "",
     description: "",
     options: [createEmptyScaleOption()],
@@ -64,6 +65,7 @@ export function createScaleDraft(template?: ScaleTemplateRecord | null): ScaleTe
 
   return {
     templateId: template._id,
+    sourceUpdatedAt: template.updatedAt,
     name: template.name,
     description: template.description ?? "",
     options: template.options
@@ -81,6 +83,7 @@ export function createScaleDraft(template?: ScaleTemplateRecord | null): ScaleTe
 export function createEmptyBundleDraft(): BundleDraft {
   return {
     bundleId: null,
+    sourceUpdatedAt: null,
     name: "",
     description: "",
     sections: [createEmptySection()],
@@ -94,6 +97,7 @@ export function createBundleDraft(bundle?: BundleRecord | null): BundleDraft {
 
   return {
     bundleId: bundle._id,
+    sourceUpdatedAt: bundle.updatedAt,
     name: bundle.name,
     description: bundle.description ?? "",
     sections: bundle.sections
@@ -117,6 +121,153 @@ export function createBundleDraft(bundle?: BundleRecord | null): BundleDraft {
             systemKey: field.systemKey ?? null,
           })),
       })),
+  };
+}
+
+export const STARTER_SCALE_TEMPLATES: Array<{
+  name: string;
+  description: string;
+  options: Array<{ label: string; shortLabel: string }>;
+}> = [
+  {
+    name: "5-Point Rating Scale (1–5)",
+    description: "Standard numeric scale for behavioral ratings",
+    options: [
+      { label: "5 - Excellent", shortLabel: "5" },
+      { label: "4 - Very Good", shortLabel: "4" },
+      { label: "3 - Good", shortLabel: "3" },
+      { label: "2 - Fair", shortLabel: "2" },
+      { label: "1 - Poor", shortLabel: "1" },
+    ],
+  },
+  {
+    name: "Letter Grade Scale (A–E)",
+    description: "Standard letter ratings for non-academic evaluation",
+    options: [
+      { label: "A - Distinction", shortLabel: "A" },
+      { label: "B - Very Good", shortLabel: "B" },
+      { label: "C - Good", shortLabel: "C" },
+      { label: "D - Pass", shortLabel: "D" },
+      { label: "E - Poor", shortLabel: "E" },
+    ],
+  },
+  {
+    name: "Behavioral Frequency Scale",
+    description: "Observation frequency for developmental traits",
+    options: [
+      { label: "Observed Consistently", shortLabel: "Always" },
+      { label: "Developing / Occasional", shortLabel: "Sometimes" },
+      { label: "Needs Improvement", shortLabel: "Rarely" },
+    ],
+  },
+];
+
+export const STARTER_BUNDLE_PRESETS: Array<{
+  name: string;
+  description: string;
+  sections: Array<{
+    label: string;
+    fields: Array<{
+      label: string;
+      type: FieldType;
+      source: FieldSource;
+      systemKey?: SystemKey;
+      printable: boolean;
+    }>;
+  }>;
+}> = [
+  {
+    name: "Affective & Behavioral Traits",
+    description: "Character, conduct, and personal discipline development",
+    sections: [
+      {
+        label: "Affective Development",
+        fields: [
+          { label: "Attentiveness in Class", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Punctuality & Attendance", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Neatness & Personal Hygiene", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Honesty & Reliability", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Relationship with Peers", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Self-Control & Discipline", type: "scale", source: "teacher_manual", printable: true },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Psychomotor & Practical Skills",
+    description: "Motor skills, physical activities, and creative arts",
+    sections: [
+      {
+        label: "Psychomotor Skills",
+        fields: [
+          { label: "Handwriting & Legibility", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Sports & Physical Fitness", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Verbal Fluency & Communication", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Musical & Creative Expression", type: "scale", source: "teacher_manual", printable: true },
+          { label: "Manual Dexterity & Craft", type: "scale", source: "teacher_manual", printable: true },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Attendance & Physical Measurements",
+    description: "Term attendance summary and growth tracking",
+    sections: [
+      {
+        label: "Attendance & Health",
+        fields: [
+          { label: "Times School Opened", type: "number", source: "system_attendance", systemKey: "times_school_opened", printable: true },
+          { label: "Times Present", type: "number", source: "system_attendance", systemKey: "times_present", printable: true },
+          { label: "Times Absent", type: "number", source: "system_attendance", systemKey: "times_absent", printable: true },
+          { label: "Height (cm)", type: "number", source: "teacher_manual", printable: true },
+          { label: "Weight (kg)", type: "number", source: "teacher_manual", printable: true },
+        ],
+      },
+    ],
+  },
+];
+
+export function createBundleDraftFromPreset(
+  preset: (typeof STARTER_BUNDLE_PRESETS)[number],
+  defaultScaleId?: string | null
+): BundleDraft {
+  return {
+    bundleId: null,
+    sourceUpdatedAt: null,
+    name: preset.name,
+    description: preset.description,
+    sections: preset.sections.map((section) => ({
+      key: nextLocalId("bundle-section"),
+      id: null,
+      label: section.label,
+      fields: section.fields.map((field) => ({
+        key: nextLocalId("bundle-field"),
+        id: null,
+        label: field.label,
+        type: field.type,
+        scaleTemplateId: field.type === "scale" ? (defaultScaleId ?? null) : null,
+        printable: field.printable,
+        source: field.source,
+        systemKey: field.systemKey ?? null,
+      })),
+    })),
+  };
+}
+
+export function createScaleDraftFromPreset(
+  preset: (typeof STARTER_SCALE_TEMPLATES)[number]
+): ScaleTemplateDraft {
+  return {
+    templateId: null,
+    sourceUpdatedAt: null,
+    name: preset.name,
+    description: preset.description,
+    options: preset.options.map((opt) => ({
+      key: nextLocalId("scale-option"),
+      id: null,
+      label: opt.label,
+      shortLabel: opt.shortLabel,
+    })),
   };
 }
 

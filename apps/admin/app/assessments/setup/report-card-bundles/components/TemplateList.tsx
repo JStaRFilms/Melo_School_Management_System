@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Layers, Plus, Search, ChevronRight } from "lucide-react";
 import type { ScaleTemplateRecord } from "../types";
 
@@ -9,16 +10,18 @@ interface TemplateListProps {
   onSelect: (id: string | "new") => void;
 }
 
-export function TemplateList({ templates, selectedId, onSelect }: TemplateListProps) {
+export const TemplateList = memo(function TemplateList({ templates, selectedId, onSelect }: TemplateListProps) {
   return (
     <div className="flex flex-col h-full bg-slate-50/20">
       <div className="flex items-start justify-between gap-4 p-4 lg:p-6 border-b border-white/10 bg-slate-900/5 backdrop-blur-md sticky top-0 z-10 transition-all">
         <div className="space-y-1">
           <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
             <Layers className="w-3.5 h-3.5" />
-            Evaluation Scales
+            Rating Scales
           </h2>
-          <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">{templates.length} Active Templates</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+            {templates.length} {templates.length === 1 ? "Scale" : "Scales"}
+          </p>
         </div>
         <button
           onClick={() => onSelect("new")}
@@ -56,7 +59,7 @@ export function TemplateList({ templates, selectedId, onSelect }: TemplateListPr
                 <div className={`text-xs font-bold uppercase tracking-widest transition-colors ${
                   isSelected ? "text-white/40" : "text-slate-400"
                 }`}>
-                  {template.options.length} Levels Defined • Static Node
+                  {template.options.length} rating levels
                 </div>
               </div>
 
@@ -72,11 +75,13 @@ export function TemplateList({ templates, selectedId, onSelect }: TemplateListPr
             <div className="rounded-2xl bg-white p-4 text-slate-200 shadow-xl ring-1 ring-slate-900/5">
               <Search className="h-8 w-8" />
             </div>
-            <p className="mt-8 text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">No Matrix Data</p>
-            <p className="mt-2 text-xs font-medium text-slate-300 max-w-[200px]">Evaluation scales haven&apos;t been configured.</p>
+            <p className="mt-8 text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">No Rating Scales</p>
+            <p className="mt-2 text-xs font-medium text-slate-400 max-w-[220px]">
+              Create reusable rating scales like 1–5 ratings or A–E grades to use across bundles.
+            </p>
           </div>
         )}
       </div>
     </div>
   );
-}
+});

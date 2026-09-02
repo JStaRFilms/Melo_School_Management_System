@@ -82,6 +82,22 @@ export function validateGradingBands(bands: GradingBand[]): ValidationError[] {
     return errors;
   }
 
+  // Check for duplicate grade letters/labels
+  const seenLetters = new Map<string, string>();
+  for (const band of bands) {
+    const trimmed = band.gradeLetter.trim().toUpperCase();
+    if (trimmed.length > 0) {
+      if (seenLetters.has(trimmed)) {
+        errors.push({
+          field: "record",
+          message: `Duplicate grade label "${band.gradeLetter.trim()}": each grading band must have a unique grade label.`,
+        });
+      } else {
+        seenLetters.set(trimmed, band.gradeLetter.trim());
+      }
+    }
+  }
+
   // Rule 1 & 2: Validate individual bands
   for (const band of bands) {
     if (band.gradeLetter.trim().length === 0) {
@@ -118,18 +134,25 @@ export function validateGradingBands(bands: GradingBand[]): ValidationError[] {
   // Sort bands by minScore for overlap and coverage checks
   const sortedBands = [...bands].sort((a, b) => a.minScore - b.minScore);
 
-  // Rule 3: Check for overlaps
+  // Rule 3: Check for overlaps and duplicate ranges
   for (let i = 0; i < sortedBands.length - 1; i++) {
     const current = sortedBands[i];
     const next = sortedBands[i + 1];
 
     if (current.maxScore >= next.minScore) {
-      const overlapStart = next.minScore;
-      const overlapEnd = Math.min(current.maxScore, next.maxScore);
-      errors.push({
-        field: "record",
-        message: `Bands overlap: range ${overlapStart}-${overlapEnd} is covered by multiple bands`,
-      });
+      if (current.minScore === next.minScore && current.maxScore === next.maxScore) {
+        errors.push({
+          field: "record",
+          message: `Duplicate score range ${current.minScore}–${current.maxScore} found for Grade "${current.gradeLetter}" and "${next.gradeLetter}".`,
+        });
+      } else {
+        const overlapStart = next.minScore;
+        const overlapEnd = Math.min(current.maxScore, next.maxScore);
+        errors.push({
+          field: "record",
+          message: `Bands overlap: range ${overlapStart}–${overlapEnd} is covered by multiple bands (Grade "${current.gradeLetter}" and "${next.gradeLetter}").`,
+        });
+      }
     }
   }
 

@@ -45,9 +45,9 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       // 3. Academic & Grading
       { href: "/assessments/results/entry", label: "Score Entry", matchers: ["/assessments/results/entry"] },
       {
-        href: "/assessments/report-card-extras",
+        href: "/assessments/report-cards",
         label: "Report Cards",
-        matchers: ["/assessments/report-card-extras", "/assessments/report-cards$"],
+        matchers: ["/assessments/report-cards", "/assessments/report-card-extras"],
       },
       {
         href: "/assessments/setup/exam-recording",

@@ -298,6 +298,85 @@ export const promoteSchoolAdmin = mutation({
   },
 });
 
+export const demoteAdminToTeacher = mutation({
+  args: {
+    adminId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    await ensureResolvedSchoolLeadAdminRecord(ctx, {
+      schoolId,
+      updatedBy: userId,
+    });
+
+    const target = await ctx.db.get(args.adminId);
+    if (
+      !target ||
+      target.schoolId !== schoolId ||
+      (target.role !== "admin" && target.isSchoolAdmin !== true)
+    ) {
+      throw new ConvexError("Admin not found");
+    }
+
+    if (String(target._id) === String(userId)) {
+      throw new ConvexError("You cannot downgrade your own administrator account.");
+    }
+
+    const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
+      ctx,
+      schoolId
+    );
+    if (String(resolvedLeadAdminUserId ?? "") === String(target._id)) {
+      throw new ConvexError("Lead admin cannot be downgraded. Transfer leadership first.");
+    }
+
+    // Re-parent direct reports through the school/manager index.
+    const managedAdmins = await ctx.db
+      .query("users")
+      .withIndex("by_school_and_manager_user", (q) =>
+        q.eq("schoolId", schoolId).eq("managerUserId", target._id)
+      )
+      .collect();
+
+    const fallbackManagerId =
+      resolvedLeadAdminUserId && String(resolvedLeadAdminUserId) !== String(target._id)
+        ? resolvedLeadAdminUserId
+        : userId;
+
+    const now = Date.now();
+    for (const subAdmin of managedAdmins) {
+      await ctx.db.patch(subAdmin._id, {
+        managerUserId: fallbackManagerId,
+        updatedAt: now,
+      });
+    }
+
+    // Downgrade user to active teacher
+    await ctx.db.patch(target._id, {
+      role: "teacher",
+      isSchoolAdmin: false,
+      managerUserId: undefined,
+      isArchived: false,
+      archivedAt: undefined,
+      archivedBy: undefined,
+      updatedAt: now,
+    });
+    await ctx.db.insert("adminLeadershipAuditEvents", {
+      schoolId,
+      actorUserId: userId,
+      targetUserId: target._id,
+      eventType: "admin_demoted",
+      reassignedDirectReportIds: managedAdmins.map((admin) => admin._id),
+      createdAt: now,
+    });
+
+    return null;
+  },
+});
+
 export const archiveSchoolAdmin = mutation({
   args: {
     adminId: v.id("users"),
@@ -398,6 +477,55 @@ export const transferSchoolAdminLeadership = mutation({
       leadAdminUserId: target._id,
       updatedAt: Date.now(),
       updatedBy: userId,
+    });
+
+    return null;
+  },
+});
+
+export const restoreSchoolAdmin = mutation({
+  args: {
+    adminId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const target = await ctx.db.get(args.adminId);
+    if (
+      !target ||
+      target.schoolId !== schoolId ||
+      (target.role !== "admin" && target.isSchoolAdmin !== true)
+    ) {
+      throw new ConvexError("Admin not found");
+    }
+
+    if (!target.isArchived) {
+      throw new ConvexError("Admin is not archived");
+    }
+
+    const existingUsers = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+
+    const activeDuplicate = existingUsers.find(
+      (u) =>
+        !u.isArchived &&
+        String(u._id) !== String(target._id) &&
+        u.email?.toLowerCase() === target.email?.toLowerCase() &&
+        (u.role === "admin" || u.isSchoolAdmin === true)
+    );
+    if (activeDuplicate) {
+      throw new ConvexError("An active administrator with this email already exists");
+    }
+
+    await ctx.db.patch(target._id, {
+      isArchived: false,
+      archivedAt: undefined,
+      archivedBy: undefined,
+      updatedAt: Date.now(),
     });
 
     return null;

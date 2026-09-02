@@ -88,7 +88,7 @@ export function EditorActionBar({ dirty, saveLabel, successLabel, onSave, onDisc
           {dirty && (
             <div className="hidden lg:flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              <span className="text-xs font-black uppercase tracking-[0.2em]">Uncommitted Changes</span>
+              <span className="text-xs font-black uppercase tracking-[0.2em]">Unsaved Changes</span>
             </div>
           )}
 
