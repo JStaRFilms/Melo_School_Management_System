@@ -56,6 +56,19 @@ export async function resolveAdjacentNextTermInSession(
   return scopedTerms[currentIndex + 1];
 }
 
+export function assertNextTermBeginsFitsAdjacentTerm(
+  nextTermBegins: number | null,
+  adjacentNextTerm: { endDate: number } | null
+) {
+  if (
+    adjacentNextTerm &&
+    nextTermBegins !== null &&
+    nextTermBegins >= adjacentNextTerm.endDate
+  ) {
+    throw new ConvexError("Next term start date must be before the adjacent term ends");
+  }
+}
+
 export async function syncNextTermResumptionCalendarEvent(
   ctx: any,
   args: {
@@ -78,25 +91,36 @@ export async function syncNextTermResumptionCalendarEvent(
     const eventTitle = `Next Term Resumption${linkedNextTermName ? ` — ${linkedNextTermName}` : ""}`;
     const description = `Official resumption date for ${linkedNextTermName || "the upcoming academic term"} as set in the school calendar.`;
 
-    const existingEvents = await ctx.db
+    const sourcedEvent = await ctx.db
       .query("schoolEvents")
-      .withIndex("by_school_and_start", (q: any) => q.eq("schoolId", schoolId))
-      .collect();
-
-    const matchedEvent = existingEvents.find(
-      (e: any) =>
-        !e.isArchived &&
-        (e.title.startsWith("Next Term Resumption") ||
-          (linkedNextTermName && e.title.includes(linkedNextTermName)))
-    );
+      .withIndex("by_school_and_source_and_source_term", (q: any) =>
+        q
+          .eq("schoolId", schoolId)
+          .eq("source", "report_card_next_term_resumption")
+          .eq("sourceTermId", term._id)
+      )
+      .unique();
+    const legacyCandidate = sourcedEvent
+      ? null
+      : await ctx.db
+          .query("schoolEvents")
+          .withIndex("by_school_and_title", (q: any) =>
+            q.eq("schoolId", schoolId).eq("title", eventTitle)
+          )
+          .unique();
+    const legacyEvent = legacyCandidate?.source === undefined ? legacyCandidate : null;
+    const matchedEvent = sourcedEvent ?? legacyEvent;
 
     if (matchedEvent) {
       if (
+        legacyEvent !== null ||
         matchedEvent.startDate !== nextTermBegins ||
         matchedEvent.endDate !== nextTermBegins ||
         matchedEvent.title !== eventTitle
       ) {
         await ctx.db.patch(matchedEvent._id, {
+          source: "report_card_next_term_resumption",
+          sourceTermId: term._id,
           title: eventTitle,
           description,
           startDate: nextTermBegins,
@@ -109,6 +133,8 @@ export async function syncNextTermResumptionCalendarEvent(
     } else {
       await ctx.db.insert("schoolEvents", {
         schoolId,
+        source: "report_card_next_term_resumption",
+        sourceTermId: term._id,
         title: eventTitle,
         description,
         location: "School Campus",
@@ -283,6 +309,14 @@ export const saveTermReportCardDefaults = mutation({
     if (args.nextTermBegins !== null && args.nextTermBegins <= term.endDate) {
       throw new ConvexError("Next term start date must be after this term ends");
     }
+
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+    assertNextTermBeginsFitsAdjacentTerm(args.nextTermBegins, adjacentNextTerm);
     if (
       args.defaultTimesSchoolOpened !== null &&
       (!Number.isInteger(args.defaultTimesSchoolOpened) ||
@@ -314,21 +348,12 @@ export const saveTermReportCardDefaults = mutation({
 
     await ctx.db.replace(args.termId, replacement as any);
 
-    // Synchronize adjacent next term's calendar start date if linked
-    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
-      ctx,
-      schoolId,
-      term.sessionId,
-      args.termId
-    );
-
+    // Synchronize the already-validated adjacent term start date.
     if (adjacentNextTerm && args.nextTermBegins !== null) {
-      if (args.nextTermBegins < adjacentNextTerm.endDate) {
-        await ctx.db.patch(adjacentNextTerm._id, {
-          startDate: args.nextTermBegins,
-          updatedAt: Date.now(),
-        });
-      }
+      await ctx.db.patch(adjacentNextTerm._id, {
+        startDate: args.nextTermBegins,
+        updatedAt: Date.now(),
+      });
     }
 
     // Auto-sync calendar event if within 2 weeks of term end
@@ -384,6 +409,13 @@ export const saveTermReportCardSettingGroup = mutation({
     if (args.nextTermBegins !== null && args.nextTermBegins <= term.endDate) {
       throw new ConvexError("Next term start date must be after this term ends");
     }
+    const adjacentNextTerm = await resolveAdjacentNextTermInSession(
+      ctx,
+      schoolId,
+      term.sessionId,
+      args.termId
+    );
+    assertNextTermBeginsFitsAdjacentTerm(args.nextTermBegins, adjacentNextTerm);
     if (
       args.timesSchoolOpened !== null &&
       (!Number.isInteger(args.timesSchoolOpened) || args.timesSchoolOpened < 0)

@@ -333,11 +333,12 @@ export const demoteAdminToTeacher = mutation({
       throw new ConvexError("Lead admin cannot be downgraded. Transfer leadership first.");
     }
 
-    // Re-parent any sub-admins who reported to this admin
+    // Re-parent direct reports through the school/manager index.
     const managedAdmins = await ctx.db
       .query("users")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.eq(q.field("managerUserId"), target._id))
+      .withIndex("by_school_and_manager_user", (q) =>
+        q.eq("schoolId", schoolId).eq("managerUserId", target._id)
+      )
       .collect();
 
     const fallbackManagerId =
@@ -345,10 +346,11 @@ export const demoteAdminToTeacher = mutation({
         ? resolvedLeadAdminUserId
         : userId;
 
+    const now = Date.now();
     for (const subAdmin of managedAdmins) {
       await ctx.db.patch(subAdmin._id, {
         managerUserId: fallbackManagerId,
-        updatedAt: Date.now(),
+        updatedAt: now,
       });
     }
 
@@ -360,7 +362,15 @@ export const demoteAdminToTeacher = mutation({
       isArchived: false,
       archivedAt: undefined,
       archivedBy: undefined,
-      updatedAt: Date.now(),
+      updatedAt: now,
+    });
+    await ctx.db.insert("adminLeadershipAuditEvents", {
+      schoolId,
+      actorUserId: userId,
+      targetUserId: target._id,
+      eventType: "admin_demoted",
+      reassignedDirectReportIds: managedAdmins.map((admin) => admin._id),
+      createdAt: now,
     });
 
     return null;

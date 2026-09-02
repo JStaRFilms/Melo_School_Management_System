@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback } from "react";
+import { memo, useCallback, type Dispatch, type SetStateAction } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BundleDraft, BundleFieldDraft, ScaleTemplateRecord } from "../types";
@@ -16,7 +16,7 @@ import { FieldEditor } from "./FieldEditor";
 interface BundleEditorProps {
   draft: BundleDraft;
   scaleTemplates: ScaleTemplateRecord[];
-  onChange: (draft: BundleDraft) => void;
+  onChange: Dispatch<SetStateAction<BundleDraft>>;
 }
 
 export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {
@@ -27,44 +27,61 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
     onChange(createBundleDraftFromPreset(preset, defaultScale));
   }, [onChange, scaleTemplates]);
 
+  const presetRequiresScale = useCallback(
+    (presetIndex: number) =>
+      STARTER_BUNDLE_PRESETS[presetIndex]?.sections.some((section) =>
+        section.fields.some((field) => field.type === "scale")
+      ) ?? false,
+    []
+  );
+
   const handleUpdateField = useCallback(
     (sectionIndex: number, fieldIndex: number, updatedField: BundleFieldDraft) => {
-      const nextSections = draft.sections.map((section, sIdx) => {
-        if (sIdx !== sectionIndex) return section;
-        const nextFields = section.fields.map((field, fIdx) => {
-          if (fIdx !== fieldIndex) return field;
-          return updatedField;
-        });
-        return { ...section, fields: nextFields };
-      });
-      onChange({ ...draft, sections: nextSections });
+      onChange((current) => ({
+        ...current,
+        sections: current.sections.map((section, sIdx) => {
+          if (sIdx !== sectionIndex) return section;
+          return {
+            ...section,
+            fields: section.fields.map((field, fIdx) =>
+              fIdx === fieldIndex ? updatedField : field
+            ),
+          };
+        }),
+      }));
     },
-    [draft, onChange]
+    [onChange]
   );
 
   const handleMoveField = useCallback(
     (sectionIndex: number, fieldIndex: number, direction: -1 | 1) => {
-      const nextSections = draft.sections.map((section, sIdx) => {
-        if (sIdx !== sectionIndex) return section;
-        return { ...section, fields: moveItem(section.fields, fieldIndex, direction) };
-      });
-      onChange({ ...draft, sections: nextSections });
+      onChange((current) => ({
+        ...current,
+        sections: current.sections.map((section, sIdx) =>
+          sIdx === sectionIndex
+            ? { ...section, fields: moveItem(section.fields, fieldIndex, direction) }
+            : section
+        ),
+      }));
     },
-    [draft, onChange]
+    [onChange]
   );
 
   const handleDeleteField = useCallback(
     (sectionIndex: number, fieldIndex: number) => {
-      const nextSections = draft.sections.map((section, sIdx) => {
-        if (sIdx !== sectionIndex) return section;
-        return {
-          ...section,
-          fields: section.fields.filter((_, fIdx) => fIdx !== fieldIndex),
-        };
-      });
-      onChange({ ...draft, sections: nextSections });
+      onChange((current) => ({
+        ...current,
+        sections: current.sections.map((section, sIdx) =>
+          sIdx === sectionIndex
+            ? {
+                ...section,
+                fields: section.fields.filter((_, fIdx) => fIdx !== fieldIndex),
+              }
+            : section
+        ),
+      }));
     },
-    [draft, onChange]
+    [onChange]
   );
 
   return (
@@ -79,17 +96,26 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
           <span className="text-[10px] font-semibold text-indigo-500">1-Click Setup</span>
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
-          {STARTER_BUNDLE_PRESETS.map((preset, idx) => (
-            <button
-              key={preset.name}
-              type="button"
-              onClick={() => handleLoadPreset(idx)}
-              className="px-3 py-1.5 rounded-xl border border-indigo-200/80 bg-white hover:bg-indigo-50 text-[11px] font-bold text-indigo-900 transition-all shadow-sm hover:shadow"
-            >
-              + {preset.name}
-            </button>
-          ))}
+          {STARTER_BUNDLE_PRESETS.map((preset, idx) => {
+            const requiresScale = presetRequiresScale(idx);
+            const isUnavailable = requiresScale && scaleTemplates.length === 0;
+            return (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => handleLoadPreset(idx)}
+                disabled={isUnavailable}
+                title={isUnavailable ? "Create a reusable scale before using this preset." : undefined}
+                className="px-3 py-1.5 rounded-xl border border-indigo-200/80 bg-white hover:bg-indigo-50 text-[11px] font-bold text-indigo-900 transition-all shadow-sm hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + {preset.name}
+              </button>
+            );
+          })}
         </div>
+        {scaleTemplates.length === 0 ? (
+          <p className="text-[11px] font-medium text-indigo-700">Create a reusable scale before using presets with rating fields.</p>
+        ) : null}
       </div>
 
       <AdminSurface intensity="low" className="p-4 sm:p-6 space-y-6">

@@ -11,7 +11,6 @@ export const DUPLICATION_TIERS: string[][] = [
     "academicSessions",
     "classes",
     "subjects",
-    "schoolEvents",
     "schoolAssessmentSettings",
     "gradingBands",
     "schoolBillingSettings",
@@ -41,6 +40,8 @@ export const DUPLICATION_TIERS: string[][] = [
     "schoolPaymentProviderSecrets",
     "schoolPaymentProviders",
     "academicTimelineAuditEvents",
+    "schoolEvents",
+    "adminLeadershipAuditEvents",
     "rateLimitCounters",
   ],
   // Tier 3: Depends on Tier 2
@@ -81,7 +82,6 @@ const USER_FK_REMAP_TABLES = [
   "schoolAssessmentSettings",
   "gradingBands",
   "schoolBillingSettings",
-  "schoolEvents",
   "classes",
   "subjects",
   "schoolApprovalEvidence",
@@ -225,6 +225,7 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolPaymentProviderSecrets",
   "familyMembers",
   "schoolAdminLeadership",
+  "adminLeadershipAuditEvents",
   "students",
   "classes",
   "families",
@@ -269,6 +270,11 @@ export const TABLES_WITHOUT_BY_SCHOOL_INDEX = new Set([
 // Foreign key remapping definitions per table
 
 const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string; isArray?: boolean }>> = {
+  adminLeadershipAuditEvents: [
+    { field: "actorUserId", targetTable: "users" },
+    { field: "targetUserId", targetTable: "users" },
+    { field: "reassignedDirectReportIds", targetTable: "users", isArray: true },
+  ],
   classes: [
     { field: "formTeacherId", targetTable: "users" },
     { field: "archivedBy", targetTable: "users" },
@@ -277,6 +283,7 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "archivedBy", targetTable: "users" },
   ],
   schoolEvents: [
+    { field: "sourceTermId", targetTable: "academicTerms" },
     { field: "updatedBy", targetTable: "users" },
     { field: "archivedBy", targetTable: "users" },
   ],

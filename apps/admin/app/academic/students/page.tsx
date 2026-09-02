@@ -160,6 +160,7 @@ function StudentsPageContent() {
   const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
   const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
+  const [isDuplicateParentLinkConfirmOpen, setIsDuplicateParentLinkConfirmOpen] = useState(false);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -290,7 +291,12 @@ function StudentsPageContent() {
 
   // Synchronize selected student with matrix data
   useEffect(() => {
-    if (!matrix?.students.length) {
+    // Keep a deep-link intact while its selected matrix is still loading.
+    if (matrix === undefined) {
+      return;
+    }
+
+    if (!matrix.students.length) {
       if (selectedStudentId) {
         setSelectedStudentId(null);
         updateUrlParams({ studentId: null, tab: null });
@@ -318,7 +324,7 @@ function StudentsPageContent() {
     setPromotionStudentIds((current) =>
       current.filter((studentId) => visibleStudentIds.has(studentId))
     );
-  }, [matrix, urlStudentId, urlTab, updateUrlParams]);
+  }, [matrix, selectedStudentId, urlStudentId, urlTab, updateUrlParams]);
 
   const cancelStudentPromotion = useMutation(
     "functions/academic/studentEnrollment:cancelStudentPromotion" as never
@@ -546,8 +552,7 @@ function StudentsPageContent() {
     setStudentPhotoResetKey((key) => key + 1);
   }, []);
 
-  const handleCreateStudent = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitStudent = async (confirmDuplicateLink = false) => {
     const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
     const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
     const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
@@ -649,6 +654,7 @@ function StudentsPageContent() {
                 isPrimaryContact: isParentPrimaryContact,
               }
             : undefined,
+        confirmDuplicateLink: confirmDuplicateLink || undefined,
       } as never)) as string;
 
       resetStudentCreationForm();
@@ -666,16 +672,23 @@ function StudentsPageContent() {
         studentNameInputRef.current?.focus();
       }
     } catch (err) {
+      const message = getUserFacingErrorMessage(err, "Account creation failed.");
+      if (message.includes("Review the duplicate-link details and confirm")) {
+        setIsDuplicateParentLinkConfirmOpen(true);
+        return;
+      }
       showNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(
-          err,
-          "Account creation failed."
-        ),
+        message,
       });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCreateStudent = async (event: FormEvent) => {
+    event.preventDefault();
+    await submitStudent();
   };
 
   const handleToggleSubject = useCallback(
@@ -1373,6 +1386,19 @@ function StudentsPageContent() {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={isDuplicateParentLinkConfirmOpen}
+        onClose={() => setIsDuplicateParentLinkConfirmOpen(false)}
+        onConfirm={async () => {
+          setIsDuplicateParentLinkConfirmOpen(false);
+          await submitStudent(true);
+        }}
+        title="Confirm Existing Parent Link"
+        description="This email belongs to an existing parent or staff account. Confirm only if this is the intended household contact."
+        confirmLabel="Confirm Link"
+        isLoading={isSubmitting}
+      />
 
       {/* Cohort Promotion Confirmation Modal */}
       <PromotionConfirmationModal

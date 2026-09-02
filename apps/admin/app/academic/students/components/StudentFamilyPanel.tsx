@@ -856,14 +856,16 @@ export function StudentFamilyPanel({
                     </form>
                   ) : null}
 
-                  <PortalCredentialPanel
-                    title="Portal Access"
-                    userId={parent.parentUserId}
-                    userName={parent.name}
-                    email={parent.email}
-                    defaultPassword="Parent123!Pass"
-                    onNotice={onNotice}
-                  />
+                  {parent.role === "parent" ? (
+                    <PortalCredentialPanel
+                      title="Portal Access"
+                      userId={parent.parentUserId}
+                      userName={parent.name}
+                      email={parent.email}
+                      defaultPassword="Parent123!Pass"
+                      onNotice={onNotice}
+                    />
+                  ) : null}
 
                   <div className="pt-4 border-t border-slate-100">
                     <button

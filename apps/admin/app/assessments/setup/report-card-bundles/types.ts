@@ -22,6 +22,7 @@ export interface ScaleOptionRecord {
 
 export interface ScaleTemplateRecord {
   _id: string;
+  updatedAt: number;
   name: string;
   description: string | null;
   options: ScaleOptionRecord[];
@@ -47,6 +48,7 @@ export interface BundleSectionRecord {
 
 export interface BundleRecord {
   _id: string;
+  updatedAt: number;
   name: string;
   description: string | null;
   sections: BundleSectionRecord[];
@@ -75,6 +77,7 @@ export interface ScaleOptionDraft {
 
 export interface ScaleTemplateDraft {
   templateId: string | null;
+  sourceUpdatedAt: number | null;
   name: string;
   description: string;
   options: ScaleOptionDraft[];
@@ -100,6 +103,7 @@ export interface BundleSectionDraft {
 
 export interface BundleDraft {
   bundleId: string | null;
+  sourceUpdatedAt: number | null;
   name: string;
   description: string;
   sections: BundleSectionDraft[];

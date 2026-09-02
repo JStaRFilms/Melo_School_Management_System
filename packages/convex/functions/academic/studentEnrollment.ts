@@ -433,6 +433,7 @@ export const createStudent = mutation({
         isPrimaryContact: v.optional(v.boolean()),
       })
     ),
+    confirmDuplicateLink: v.optional(v.boolean()),
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
@@ -545,7 +546,7 @@ export const createStudent = mutation({
       await ctx.runMutation(api.functions.academic.studentEnrollment.upsertStudentFamilyLink, {
         studentId,
         ...args.parentLink,
-        confirmDuplicateLink: true,
+        confirmDuplicateLink: args.confirmDuplicateLink,
       });
     }
 
@@ -2539,6 +2540,44 @@ export const updateStudentFamilyParentContact = mutation({
       throw new ConvexError("Parent not found");
     }
 
+    const relationship = normalizeOptionalText(args.relationship)
+      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
+      : undefined;
+    const now = Date.now();
+
+    // Staff may be family contacts, but their identity belongs to staff management.
+    // Family edits may only change their relationship and primary-contact status.
+    if (parentUser.role !== "parent") {
+      const familyMembers = await getFamilyMembers(ctx, family._id);
+      const nextIsPrimaryContact =
+        args.isPrimaryContact ?? familyMember.isPrimaryContact;
+
+      if (nextIsPrimaryContact) {
+        for (const member of familyMembers) {
+          if (String(member._id) !== String(familyMember._id) && member.isPrimaryContact) {
+            await ctx.db.patch(member._id, {
+              isPrimaryContact: false,
+              updatedAt: now,
+              updatedBy: userId,
+            });
+          }
+        }
+      }
+
+      await ctx.db.patch(familyMember._id, {
+        relationship,
+        isPrimaryContact: nextIsPrimaryContact,
+        updatedAt: now,
+        updatedBy: userId,
+      });
+
+      return {
+        familyId: family._id,
+        parentUserId: parentUser._id,
+        familyMemberId: familyMember._id,
+      };
+    }
+
     const normalizedEmail = normalizeOptionalEmail(args.email);
     if (!normalizedEmail) {
       throw new ConvexError("Parent email is required");
@@ -2579,11 +2618,6 @@ export const updateStudentFamilyParentContact = mutation({
       lastName: args.lastName,
       requiredMessage: "Parent first and last name are required",
     });
-    const relationship = normalizeOptionalText(args.relationship)
-      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
-      : undefined;
-    const now = Date.now();
-
     const familyMembers = await getFamilyMembers(ctx, family._id);
     const nextIsPrimaryContact =
       args.isPrimaryContact ?? familyMember.isPrimaryContact;

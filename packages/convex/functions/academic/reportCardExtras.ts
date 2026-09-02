@@ -27,6 +27,7 @@ import { getReadableUserName } from "./studentNameCompat";
 
 const scaleTemplateValidator = v.object({
   _id: v.id("reportCardExtraScaleTemplates"),
+  updatedAt: v.number(),
   name: v.string(),
   description: v.union(v.string(), v.null()),
   options: v.array(
@@ -41,6 +42,7 @@ const scaleTemplateValidator = v.object({
 
 const bundleValidator = v.object({
   _id: v.id("reportCardExtraBundles"),
+  updatedAt: v.number(),
   name: v.string(),
   description: v.union(v.string(), v.null()),
   sections: v.array(
@@ -212,6 +214,7 @@ export const listReportCardExtraScaleTemplates = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((template) => ({
         _id: template._id,
+        updatedAt: template.updatedAt,
         name: template.name,
         description: template.description ?? null,
         options: template.options.slice().sort((a, b) => a.order - b.order).map((option) => ({
@@ -230,6 +233,7 @@ export const saveReportCardExtraScaleTemplate = mutation({
     name: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
     options: v.array(reportCardExtraScaleOptionInputValidator),
+    expectedUpdatedAt: v.optional(v.number()),
   },
   returns: v.id("reportCardExtraScaleTemplates"),
   handler: async (ctx, args) => {
@@ -246,6 +250,12 @@ export const saveReportCardExtraScaleTemplate = mutation({
       const existing = await ctx.db.get(args.templateId);
       if (!existing || existing.schoolId !== schoolId) {
         throw new ConvexError("Scale template not found");
+      }
+      if (
+        args.expectedUpdatedAt !== undefined &&
+        args.expectedUpdatedAt !== existing.updatedAt
+      ) {
+        throw new ConvexError("This scale changed after you opened it. Refresh and review the latest version before saving.");
       }
       await ctx.db.replace(args.templateId, {
         schoolId,
@@ -289,6 +299,7 @@ export const listReportCardExtraBundles = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((bundle) => ({
         _id: bundle._id,
+        updatedAt: bundle.updatedAt,
         name: bundle.name,
         description: bundle.description ?? null,
         sections: bundle.sections.slice().sort((a, b) => a.order - b.order).map((section) => ({
@@ -324,6 +335,7 @@ export const saveReportCardExtraBundle = mutation({
     name: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
     sections: v.array(reportCardExtraBundleSectionInputValidator),
+    expectedUpdatedAt: v.optional(v.number()),
   },
   returns: v.id("reportCardExtraBundles"),
   handler: async (ctx, args) => {
@@ -340,6 +352,12 @@ export const saveReportCardExtraBundle = mutation({
       const existing = await ctx.db.get(args.bundleId);
       if (!existing || existing.schoolId !== schoolId) {
         throw new ConvexError("Bundle not found");
+      }
+      if (
+        args.expectedUpdatedAt !== undefined &&
+        args.expectedUpdatedAt !== existing.updatedAt
+      ) {
+        throw new ConvexError("This bundle changed after you opened it. Refresh and review the latest version before saving.");
       }
       await ctx.db.replace(args.bundleId, {
         schoolId,

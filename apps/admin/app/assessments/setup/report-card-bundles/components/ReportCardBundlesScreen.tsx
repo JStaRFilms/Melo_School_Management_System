@@ -6,7 +6,7 @@ import {
   Library,
   Plus
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ScreenProps } from "../types";
 import {
   createBundleDraft,
@@ -42,6 +42,10 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
 
   const loadedScaleIdRef = useRef<string | null>(null);
   const loadedBundleIdRef = useRef<string | null>(null);
+  const loadedScaleSerializedRef = useRef(serializeScaleDraft(createEmptyScaleDraft()));
+  const loadedBundleSerializedRef = useRef(serializeBundleDraft(createEmptyBundleDraft()));
+  const loadedScaleUpdatedAtRef = useRef<number | null>(null);
+  const loadedBundleUpdatedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -63,85 +67,66 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
   }, [bundles, selectedBundleId]);
 
-  // Sync draft only when selection changes or is first loaded
+  // Refresh from reactive data only when the local draft is clean. Dirty drafts
+  // retain their base version so a save can reject a concurrent remote change.
   useEffect(() => {
     if (!selectedScaleId) return;
 
-    if (selectedScaleId === "new") {
-      if (loadedScaleIdRef.current !== "new") {
-        setScaleDraft(createEmptyScaleDraft());
-        loadedScaleIdRef.current = "new";
-      }
-      return;
+    const nextDraft = selectedScaleId === "new"
+      ? createEmptyScaleDraft()
+      : createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null);
+    const selectionChanged = loadedScaleIdRef.current !== selectedScaleId;
+    const isClean = serializeScaleDraft(scaleDraft) === loadedScaleSerializedRef.current;
+    const sourceChanged = loadedScaleUpdatedAtRef.current !== nextDraft.sourceUpdatedAt;
+    if (selectionChanged || (isClean && sourceChanged)) {
+      setScaleDraft(nextDraft);
+      loadedScaleIdRef.current = selectedScaleId;
+      loadedScaleUpdatedAtRef.current = nextDraft.sourceUpdatedAt;
+      loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
     }
-
-    if (loadedScaleIdRef.current !== selectedScaleId) {
-      const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
-      if (selected) {
-        setScaleDraft(createScaleDraft(selected));
-        loadedScaleIdRef.current = selectedScaleId;
-      }
-    }
-  }, [scaleTemplates, selectedScaleId]);
+  }, [scaleDraft, scaleTemplates, selectedScaleId]);
 
   useEffect(() => {
     if (!selectedBundleId) return;
 
-    if (selectedBundleId === "new") {
-      if (loadedBundleIdRef.current !== "new") {
-        setBundleDraft(createEmptyBundleDraft());
-        loadedBundleIdRef.current = "new";
-      }
-      return;
+    const nextDraft = selectedBundleId === "new"
+      ? createEmptyBundleDraft()
+      : createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null);
+    const selectionChanged = loadedBundleIdRef.current !== selectedBundleId;
+    const isClean = serializeBundleDraft(bundleDraft) === loadedBundleSerializedRef.current;
+    const sourceChanged = loadedBundleUpdatedAtRef.current !== nextDraft.sourceUpdatedAt;
+    if (selectionChanged || (isClean && sourceChanged)) {
+      setBundleDraft(nextDraft);
+      loadedBundleIdRef.current = selectedBundleId;
+      loadedBundleUpdatedAtRef.current = nextDraft.sourceUpdatedAt;
+      loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
     }
-
-    if (loadedBundleIdRef.current !== selectedBundleId) {
-      const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
-      if (selected) {
-        setBundleDraft(createBundleDraft(selected));
-        loadedBundleIdRef.current = selectedBundleId;
-      }
-    }
-  }, [bundles, selectedBundleId]);
+  }, [bundleDraft, bundles, selectedBundleId]);
 
   const handleSelectBundle = useCallback((value: string | "new") => {
     setSelectedBundleId(value);
     if (value === "new") {
-      setBundleDraft(createEmptyBundleDraft());
+      const nextDraft = createEmptyBundleDraft();
+      setBundleDraft(nextDraft);
       loadedBundleIdRef.current = "new";
+      loadedBundleUpdatedAtRef.current = null;
+      loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
     }
   }, []);
 
   const handleSelectScale = useCallback((value: string | "new") => {
     setSelectedScaleId(value);
     if (value === "new") {
-      setScaleDraft(createEmptyScaleDraft());
+      const nextDraft = createEmptyScaleDraft();
+      setScaleDraft(nextDraft);
       loadedScaleIdRef.current = "new";
+      loadedScaleUpdatedAtRef.current = null;
+      loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
     }
   }, []);
 
-  const activeScaleSource = useMemo(() => {
-    if (!selectedScaleId || selectedScaleId === "new") {
-      return createEmptyScaleDraft();
-    }
-    return createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null);
-  }, [scaleTemplates, selectedScaleId]);
-
-  const activeBundleSource = useMemo(() => {
-    if (!selectedBundleId || selectedBundleId === "new") {
-      return createEmptyBundleDraft();
-    }
-    return createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null);
-  }, [bundles, selectedBundleId]);
-
-  const scaleDirty = useMemo(
-    () => serializeScaleDraft(scaleDraft) !== serializeScaleDraft(activeScaleSource),
-    [activeScaleSource, scaleDraft]
-  );
-  const bundleDirty = useMemo(
-    () => serializeBundleDraft(bundleDraft) !== serializeBundleDraft(activeBundleSource),
-    [activeBundleSource, bundleDraft]
-  );
+  const scaleDirty = serializeScaleDraft(scaleDraft) !== loadedScaleSerializedRef.current;
+  const bundleDirty = serializeBundleDraft(bundleDraft) !== loadedBundleSerializedRef.current;
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -163,9 +148,11 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
 
     const nextId = await onSaveScaleTemplate(scaleDraft);
+    const nextDraft = { ...scaleDraft, templateId: nextId };
     loadedScaleIdRef.current = nextId;
+    loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
     setSelectedScaleId(nextId);
-    setScaleDraft((current) => ({ ...current, templateId: nextId }));
+    setScaleDraft(nextDraft);
   }, [onSaveScaleTemplate, scaleDraft]);
 
   const handleSaveBundle = useCallback(async () => {
@@ -175,25 +162,27 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
 
     const nextId = await onSaveBundle(bundleDraft);
+    const nextDraft = { ...bundleDraft, bundleId: nextId };
     loadedBundleIdRef.current = nextId;
+    loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
     setSelectedBundleId(nextId);
-    setBundleDraft((current) => ({ ...current, bundleId: nextId }));
+    setBundleDraft(nextDraft);
   }, [bundleDraft, onSaveBundle, scaleTemplates]);
 
   const handleDiscardScale = useCallback(() => {
-    setScaleDraft(
-      selectedScaleId && selectedScaleId !== "new"
-        ? createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null)
-        : createEmptyScaleDraft()
-    );
+    const nextDraft = selectedScaleId && selectedScaleId !== "new"
+      ? createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null)
+      : createEmptyScaleDraft();
+    loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
+    setScaleDraft(nextDraft);
   }, [scaleTemplates, selectedScaleId]);
 
   const handleDiscardBundle = useCallback(() => {
-    setBundleDraft(
-      selectedBundleId && selectedBundleId !== "new"
-        ? createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null)
-        : createEmptyBundleDraft()
-    );
+    const nextDraft = selectedBundleId && selectedBundleId !== "new"
+      ? createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null)
+      : createEmptyBundleDraft();
+    loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
+    setBundleDraft(nextDraft);
   }, [bundles, selectedBundleId]);
 
   return (

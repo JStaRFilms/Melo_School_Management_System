@@ -22,6 +22,7 @@ import { buildAssignmentMap } from "./utils";
 const mockScaleTemplates: ScaleTemplateRecord[] = [
   {
     _id: "scale-conduct",
+    updatedAt: 1,
     name: "Conduct scale",
     description: "Reusable behavior rubric",
     options: [
@@ -35,6 +36,7 @@ const mockScaleTemplates: ScaleTemplateRecord[] = [
 const mockBundles: BundleRecord[] = [
   {
     _id: "bundle-lower-primary",
+    updatedAt: 1,
     name: "Lower Primary Extras",
     description: "Conduct and narrative fields for lower primary.",
     sections: [
@@ -109,6 +111,7 @@ function LiveReportCardBundlesPage() {
     async (draft: BundleDraft) =>
       (await saveBundle({
         bundleId: draft.bundleId,
+        expectedUpdatedAt: draft.sourceUpdatedAt ?? undefined,
         name: draft.name,
         description: draft.description || null,
         sections: draft.sections.map((section) => ({
@@ -132,6 +135,7 @@ function LiveReportCardBundlesPage() {
     async (draft: ScaleTemplateDraft) =>
       (await saveScaleTemplate({
         templateId: draft.templateId,
+        expectedUpdatedAt: draft.sourceUpdatedAt ?? undefined,
         name: draft.name,
         description: draft.description || null,
         options: draft.options.map((option) => ({
@@ -187,6 +191,7 @@ function MockReportCardBundlesPage() {
         const nextId = draft.bundleId ?? `bundle-${Date.now()}`;
         const nextBundle: BundleRecord = {
           _id: nextId,
+          updatedAt: Date.now(),
           name: draft.name.trim(),
           description: draft.description.trim() || null,
           sections: draft.sections.map((section, sectionIndex) => ({
@@ -212,6 +217,7 @@ function MockReportCardBundlesPage() {
         const nextId = draft.templateId ?? `scale-${Date.now()}`;
         const nextTemplate: ScaleTemplateRecord = {
           _id: nextId,
+          updatedAt: Date.now(),
           name: draft.name.trim(),
           description: draft.description.trim() || null,
           options: draft.options.map((option, index) => ({

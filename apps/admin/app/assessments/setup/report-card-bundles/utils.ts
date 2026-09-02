@@ -51,6 +51,7 @@ const canonicalFieldConfig: Record<SystemKey, { label: string; type: FieldType }
 export function createEmptyScaleDraft(): ScaleTemplateDraft {
   return {
     templateId: null,
+    sourceUpdatedAt: null,
     name: "",
     description: "",
     options: [createEmptyScaleOption()],
@@ -64,6 +65,7 @@ export function createScaleDraft(template?: ScaleTemplateRecord | null): ScaleTe
 
   return {
     templateId: template._id,
+    sourceUpdatedAt: template.updatedAt,
     name: template.name,
     description: template.description ?? "",
     options: template.options
@@ -81,6 +83,7 @@ export function createScaleDraft(template?: ScaleTemplateRecord | null): ScaleTe
 export function createEmptyBundleDraft(): BundleDraft {
   return {
     bundleId: null,
+    sourceUpdatedAt: null,
     name: "",
     description: "",
     sections: [createEmptySection()],
@@ -94,6 +97,7 @@ export function createBundleDraft(bundle?: BundleRecord | null): BundleDraft {
 
   return {
     bundleId: bundle._id,
+    sourceUpdatedAt: bundle.updatedAt,
     name: bundle.name,
     description: bundle.description ?? "",
     sections: bundle.sections
@@ -229,6 +233,7 @@ export function createBundleDraftFromPreset(
 ): BundleDraft {
   return {
     bundleId: null,
+    sourceUpdatedAt: null,
     name: preset.name,
     description: preset.description,
     sections: preset.sections.map((section) => ({
@@ -254,6 +259,7 @@ export function createScaleDraftFromPreset(
 ): ScaleTemplateDraft {
   return {
     templateId: null,
+    sourceUpdatedAt: null,
     name: preset.name,
     description: preset.description,
     options: preset.options.map((opt) => ({

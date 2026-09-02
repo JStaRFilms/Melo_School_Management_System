@@ -56,9 +56,7 @@ function LiveGradingBandsPage() {
           }))
         );
       } else {
-        // Pre-populate with standard defaults for schools with no configured bands
-        setDraftBands(STANDARD_DEFAULT_GRADING_BANDS);
-        setHasUnsavedChanges(true);
+        setDraftBands([]);
       }
     }
   }, [bands]);
@@ -108,7 +106,7 @@ function LiveGradingBandsPage() {
         }))
       );
     } else {
-      setDraftBands(STANDARD_DEFAULT_GRADING_BANDS);
+      setDraftBands([]);
     }
     setHasUnsavedChanges(false);
     setValidationErrors([]);
@@ -133,6 +131,7 @@ function LiveGradingBandsPage() {
       bands={draftBands}
       validationErrors={validationErrors}
       hasUnsavedChanges={hasUnsavedChanges}
+      hasActivePolicy={bands.length > 0}
       showErrors={showErrors}
       onBandsChange={handleBandsChange}
       onValidationChange={handleValidationChange}
@@ -153,7 +152,7 @@ function MockGradingBandsPage() {
           gradeLetter: b.gradeLetter,
           remark: b.remark,
         }))
-      : STANDARD_DEFAULT_GRADING_BANDS
+      : []
   );
   const [validationErrors, setValidationErrors] = useState<BandValidationError[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -193,7 +192,7 @@ function MockGradingBandsPage() {
             gradeLetter: b.gradeLetter,
             remark: b.remark,
           }))
-        : STANDARD_DEFAULT_GRADING_BANDS
+        : []
     );
     setHasUnsavedChanges(false);
     setValidationErrors([]);
@@ -204,6 +203,7 @@ function MockGradingBandsPage() {
       bands={draftBands}
       validationErrors={validationErrors}
       hasUnsavedChanges={hasUnsavedChanges}
+      hasActivePolicy={mockBands.length > 0}
       showErrors={showErrors}
       onBandsChange={handleBandsChange}
       onValidationChange={handleValidationChange}
@@ -218,6 +218,7 @@ function GradingBandsContent({
   bands,
   validationErrors,
   hasUnsavedChanges,
+  hasActivePolicy,
   showErrors,
   onBandsChange,
   onValidationChange,
@@ -277,10 +278,14 @@ function GradingBandsContent({
                   <Clock size={11} className="text-amber-600" />
                   Unsaved Changes
                 </span>
-              ) : (
+              ) : hasActivePolicy ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
                   <CheckCircle2 size={11} className="text-emerald-600" />
                   Active Policy
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+                  No Active Policy
                 </span>
               )}
             </div>
@@ -367,6 +372,7 @@ interface GradingBandsContentProps {
   bands: GradingBandDraft[];
   validationErrors: BandValidationError[];
   hasUnsavedChanges: boolean;
+  hasActivePolicy: boolean;
   showErrors: boolean;
   onBandsChange: (bands: GradingBandDraft[]) => void;
   onValidationChange: (errors: BandValidationError[]) => void;
