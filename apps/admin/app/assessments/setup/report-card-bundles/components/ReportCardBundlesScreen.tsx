@@ -1,22 +1,22 @@
 "use client";
 
 import {
-ChevronRight,
-Layers,
-Library,
-Plus
+  ChevronRight,
+  Layers,
+  Library,
+  Plus
 } from "lucide-react";
-import { useEffect,useMemo,useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ScreenProps } from "../types";
 import {
-createBundleDraft,
-createEmptyBundleDraft,
-createEmptyScaleDraft,
-createScaleDraft,
-serializeBundleDraft,
-serializeScaleDraft,
-validateBundleDraft,
-validateScaleDraft,
+  createBundleDraft,
+  createEmptyBundleDraft,
+  createEmptyScaleDraft,
+  createScaleDraft,
+  serializeBundleDraft,
+  serializeScaleDraft,
+  validateBundleDraft,
+  validateScaleDraft,
 } from "../utils";
 import { BundleEditor } from "./BundleEditor";
 import { BundleList } from "./BundleList";
@@ -25,7 +25,7 @@ import { EditorActionBar } from "./EditorActionBar";
 import { ScaleTemplateEditor } from "./ScaleTemplateEditor";
 import { TemplateList } from "./TemplateList";
 
-export function ReportCardBundlesScreen({
+export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   scaleTemplates,
   bundles,
   onSaveScaleTemplate,
@@ -40,6 +40,9 @@ export function ReportCardBundlesScreen({
   const [bundleSubTab, setBundleSubTab] = useState<"designer" | "monitor" | "distribution">("designer");
   const [isMobile, setIsMobile] = useState(false);
 
+  const loadedScaleIdRef = useRef<string | null>(null);
+  const loadedBundleIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
     checkMobile();
@@ -47,39 +50,75 @@ export function ReportCardBundlesScreen({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // Initial selection setup
   useEffect(() => {
-    if (!selectedScaleId || selectedScaleId === "new") {
-      return;
-    }
-
-    const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
-    if (selected) {
-      setScaleDraft(createScaleDraft(selected));
+    if (selectedScaleId === null && scaleTemplates.length > 0) {
+      setSelectedScaleId(scaleTemplates[0]._id);
     }
   }, [scaleTemplates, selectedScaleId]);
 
   useEffect(() => {
-    if (!selectedBundleId || selectedBundleId === "new") {
-      return;
-    }
-
-    const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
-    if (selected) {
-      setBundleDraft(createBundleDraft(selected));
+    if (selectedBundleId === null && bundles.length > 0) {
+      setSelectedBundleId(bundles[0]._id);
     }
   }, [bundles, selectedBundleId]);
 
+  // Sync draft only when selection changes or is first loaded
   useEffect(() => {
-    if (selectedScaleId === null) {
-      setSelectedScaleId(scaleTemplates[0]?._id ?? "new");
+    if (!selectedScaleId) return;
+
+    if (selectedScaleId === "new") {
+      if (loadedScaleIdRef.current !== "new") {
+        setScaleDraft(createEmptyScaleDraft());
+        loadedScaleIdRef.current = "new";
+      }
+      return;
+    }
+
+    if (loadedScaleIdRef.current !== selectedScaleId) {
+      const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
+      if (selected) {
+        setScaleDraft(createScaleDraft(selected));
+        loadedScaleIdRef.current = selectedScaleId;
+      }
     }
   }, [scaleTemplates, selectedScaleId]);
 
   useEffect(() => {
-    if (selectedBundleId === null) {
-      setSelectedBundleId(bundles[0]?._id ?? "new");
+    if (!selectedBundleId) return;
+
+    if (selectedBundleId === "new") {
+      if (loadedBundleIdRef.current !== "new") {
+        setBundleDraft(createEmptyBundleDraft());
+        loadedBundleIdRef.current = "new";
+      }
+      return;
+    }
+
+    if (loadedBundleIdRef.current !== selectedBundleId) {
+      const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
+      if (selected) {
+        setBundleDraft(createBundleDraft(selected));
+        loadedBundleIdRef.current = selectedBundleId;
+      }
     }
   }, [bundles, selectedBundleId]);
+
+  const handleSelectBundle = useCallback((value: string | "new") => {
+    setSelectedBundleId(value);
+    if (value === "new") {
+      setBundleDraft(createEmptyBundleDraft());
+      loadedBundleIdRef.current = "new";
+    }
+  }, []);
+
+  const handleSelectScale = useCallback((value: string | "new") => {
+    setSelectedScaleId(value);
+    if (value === "new") {
+      setScaleDraft(createEmptyScaleDraft());
+      loadedScaleIdRef.current = "new";
+    }
+  }, []);
 
   const activeScaleSource = useMemo(() => {
     if (!selectedScaleId || selectedScaleId === "new") {
@@ -103,10 +142,6 @@ export function ReportCardBundlesScreen({
     () => serializeBundleDraft(bundleDraft) !== serializeBundleDraft(activeBundleSource),
     [activeBundleSource, bundleDraft]
   );
-  const assignmentPanel = useMemo(
-    () => renderAssignmentPanel(bundleDraft.bundleId),
-    [bundleDraft.bundleId, renderAssignmentPanel]
-  );
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -121,27 +156,45 @@ export function ReportCardBundlesScreen({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [bundleDirty, scaleDirty]);
 
-  const handleSaveScale = async () => {
+  const handleSaveScale = useCallback(async () => {
     const issue = validateScaleDraft(scaleDraft);
     if (issue) {
       throw new Error(issue);
     }
 
     const nextId = await onSaveScaleTemplate(scaleDraft);
+    loadedScaleIdRef.current = nextId;
     setSelectedScaleId(nextId);
     setScaleDraft((current) => ({ ...current, templateId: nextId }));
-  };
+  }, [onSaveScaleTemplate, scaleDraft]);
 
-  const handleSaveBundle = async () => {
+  const handleSaveBundle = useCallback(async () => {
     const issue = validateBundleDraft(bundleDraft, scaleTemplates);
     if (issue) {
       throw new Error(issue);
     }
 
     const nextId = await onSaveBundle(bundleDraft);
+    loadedBundleIdRef.current = nextId;
     setSelectedBundleId(nextId);
     setBundleDraft((current) => ({ ...current, bundleId: nextId }));
-  };
+  }, [bundleDraft, onSaveBundle, scaleTemplates]);
+
+  const handleDiscardScale = useCallback(() => {
+    setScaleDraft(
+      selectedScaleId && selectedScaleId !== "new"
+        ? createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null)
+        : createEmptyScaleDraft()
+    );
+  }, [scaleTemplates, selectedScaleId]);
+
+  const handleDiscardBundle = useCallback(() => {
+    setBundleDraft(
+      selectedBundleId && selectedBundleId !== "new"
+        ? createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null)
+        : createEmptyBundleDraft()
+    );
+  }, [bundles, selectedBundleId]);
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
@@ -158,19 +211,13 @@ export function ReportCardBundlesScreen({
           {tab === "bundles" ? (
             <BundleList
               bundles={bundles}
-              onSelect={(value) => {
-                setSelectedBundleId(value);
-                setBundleDraft(value === "new" ? createEmptyBundleDraft() : bundleDraft);
-              }}
+              onSelect={handleSelectBundle}
               selectedId={selectedBundleId ?? "new"}
             />
           ) : (
             <TemplateList
               templates={scaleTemplates}
-              onSelect={(value) => {
-                setSelectedScaleId(value);
-                setScaleDraft(value === "new" ? createEmptyScaleDraft() : scaleDraft);
-              }}
+              onSelect={handleSelectScale}
               selectedId={selectedScaleId ?? "new"}
             />
           )}
@@ -222,7 +269,7 @@ export function ReportCardBundlesScreen({
               {/* Mobile Trigger for new items */}
               {isMobile && (
                 <button
-                  onClick={() => tab === "bundles" ? setSelectedBundleId("new") : setSelectedScaleId("new")}
+                  onClick={() => tab === "bundles" ? handleSelectBundle("new") : handleSelectScale("new")}
                   className="w-full h-12 flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10 active:scale-95 transition-all"
                 >
                   <Plus className="w-4 h-4" />
@@ -266,7 +313,7 @@ export function ReportCardBundlesScreen({
                       )}
                       {bundleSubTab === "distribution" && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          {assignmentPanel}
+                          {renderAssignmentPanel(bundleDraft.bundleId)}
                         </div>
                       )}
                     </div>
@@ -283,13 +330,7 @@ export function ReportCardBundlesScreen({
       {tab === "scales" ? (
         <EditorActionBar
           dirty={scaleDirty}
-          onDiscard={() =>
-            setScaleDraft(
-              selectedScaleId && selectedScaleId !== "new"
-                ? createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null)
-                : createEmptyScaleDraft()
-            )
-          }
+          onDiscard={handleDiscardScale}
           onSave={handleSaveScale}
           saveLabel="Save Scale"
           successLabel="Scale template saved"
@@ -297,13 +338,7 @@ export function ReportCardBundlesScreen({
       ) : (
         <EditorActionBar
           dirty={bundleDirty}
-          onDiscard={() =>
-            setBundleDraft(
-              selectedBundleId && selectedBundleId !== "new"
-                ? createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null)
-                : createEmptyBundleDraft()
-            )
-          }
+          onDiscard={handleDiscardBundle}
           onSave={handleSaveBundle}
           saveLabel="Save Bundle"
           successLabel="Bundle saved"
@@ -311,4 +346,4 @@ export function ReportCardBundlesScreen({
       )}
     </div>
   );
-}
+});

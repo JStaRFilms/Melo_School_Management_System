@@ -16,7 +16,7 @@ import {
   Sparkles,
   Trophy,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BandTable } from "./components/BandTable";
 import { BandValidationBanner } from "./components/BandValidationBanner";
 import { BandsActionBar } from "./components/BandsActionBar";
@@ -41,9 +41,11 @@ function LiveGradingBandsPage() {
   const [validationErrors, setValidationErrors] = useState<BandValidationError[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showErrors, setShowErrors] = useState(true);
+  const isLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (bands) {
+    if (bands && !isLoadedRef.current) {
+      isLoadedRef.current = true;
       if (bands.length > 0) {
         setDraftBands(
           bands.map((b) => ({

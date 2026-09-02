@@ -216,6 +216,10 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Added 1-click **Starter Bundle Presets** (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Health Summary`) with preconfigured sections, fields, and sources.
   - Added 1-click **Standard Rating Scale Presets** (`5-Point Rating Scale (1–5)`, `Letter Grade Scale (A–E)`, `Behavioral Frequency Scale`).
   - Streamlined bundle and scale creation workflows for admins with instant draft loading and clean preview cards.
+- [x] **Setup Pages Performance & Stutter Resolution (`/assessments/setup/report-card-bundles` & `grading-bands`)**
+  - Eliminated keystroke input lag by memoizing sub-components (`BundleEditor`, `FieldEditor`, `ScaleTemplateEditor`, `BundleList`, `TemplateList`, `ClassAssignmentCard`).
+  - Fixed re-render cascade: moved `ClassAssignmentPanel` from eager evaluation to lazy evaluation (only instantiated when visiting the *"Assign Classes"* tab instead of re-evaluating 300+ class/bundle buttons on every character typed).
+  - Protected local editing drafts against reactive query re-evaluations using ref-anchored selection locks (`loadedBundleIdRef` / `loadedScaleIdRef` / `isLoadedRef`), preventing Convex background query refetches from wiping user inputs or causing UI jitter.
 
 ---
 

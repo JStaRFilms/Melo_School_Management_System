@@ -2,9 +2,9 @@
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { CheckCircle2,Circle,Link2,Loader2,Search } from "lucide-react";
-import { memo,useCallback,useEffect,useMemo,useState } from "react";
-import type { BundleRecord,ClassAssignmentRecord,ClassSummary } from "../types";
+import { CheckCircle2, Circle, Link2, Loader2, Search } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import type { BundleRecord, ClassAssignmentRecord, ClassSummary } from "../types";
 import { buildNextAssignedBundleIds } from "../utils";
 
 interface ClassAssignmentPanelProps {
@@ -31,6 +31,89 @@ export function LiveClassAssignmentPanel(props: ClassAssignmentPanelProps) {
   return <ClassAssignmentPanelContent {...props} />;
 }
 
+interface ClassAssignmentCardProps {
+  classItem: ClassSummary;
+  assignment: ClassAssignmentRecord | undefined;
+  bundles: BundleRecord[];
+  isSelected: boolean;
+  isWorking: boolean;
+  onToggleSelect: (classId: string) => void;
+  onToggleBundle: (classId: string, bundleId: string, isChecked: boolean) => void;
+}
+
+const ClassAssignmentCard = memo(function ClassAssignmentCard({
+  classItem,
+  assignment,
+  bundles,
+  isSelected,
+  isWorking,
+  onToggleSelect,
+  onToggleBundle,
+}: ClassAssignmentCardProps) {
+  const assignedBundleIds = useMemo(
+    () => assignment?.bundleAssignments.map((entry) => entry.bundleId) ?? [],
+    [assignment]
+  );
+  const assignedBundleNames = useMemo(
+    () =>
+      assignment?.bundleAssignments
+        .slice()
+        .sort((left, right) => left.order - right.order)
+        .map((entry) => entry.bundleName) ?? [],
+    [assignment]
+  );
+
+  return (
+    <div
+      className={`group relative flex flex-col gap-3 p-4 rounded-xl border transition-all ${
+        isSelected ? "border-indigo-200 bg-indigo-50/30" : "border-slate-50 bg-slate-50/10 hover:border-slate-200"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => onToggleSelect(classItem.id)}
+          className="flex items-center gap-3 text-left"
+          type="button"
+        >
+          {isSelected ? (
+            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+          ) : (
+            <Circle className="w-4 h-4 text-slate-200 group-hover:text-slate-400 transition-colors" />
+          )}
+          <div className="space-y-0.5">
+            <div className="text-xs font-black uppercase tracking-widest text-slate-900">{classItem.name}</div>
+            <div className="text-xs font-bold text-slate-400 truncate max-w-[200px]">
+              {assignedBundleNames.length > 0 ? assignedBundleNames.join(" • ") : "No add-ons assigned"}
+            </div>
+          </div>
+        </button>
+        {isWorking && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300" />}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100/50">
+        {bundles.map((bundle) => {
+          const isChecked = assignedBundleIds.includes(bundle._id);
+          return (
+            <button
+              key={bundle._id}
+              disabled={isWorking}
+              type="button"
+              onClick={() => onToggleBundle(classItem.id, bundle._id, isChecked)}
+              className={`px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded transition-all ${
+                isChecked
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-400 border border-slate-100 hover:border-slate-200 hover:text-slate-600"
+              }`}
+            >
+              {bundle.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
 const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   bundles,
   classes,
@@ -45,14 +128,12 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
   const [workingClassIds, setWorkingClassIds] = useState<string[]>([]);
   const [, setError] = useState<string | null>(null);
 
-
   useEffect(() => {
     setAssignmentMap(initialAssignments);
   }, [initialAssignments]);
 
   const applyAssignment = useCallback(
     async (classId: string, bundleIds: string[]) => {
-
       setWorkingClassIds((current) => Array.from(new Set([...current, classId])));
       const previous = assignmentMap[classId] ?? { classId, bundleAssignments: [] };
       const nextAssignment = {
@@ -80,6 +161,23 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
     },
     [assignmentMap, bundles, onSetClassBundles]
   );
+
+  const handleToggleBundle = useCallback(
+    (classId: string, bundleId: string, isChecked: boolean) => {
+      const currentIds = assignmentMap[classId]?.bundleAssignments.map((e) => e.bundleId) ?? [];
+      const nextIds = isChecked
+        ? currentIds.filter((id) => id !== bundleId)
+        : [...currentIds, bundleId];
+      void applyAssignment(classId, Array.from(new Set(nextIds)));
+    },
+    [applyAssignment, assignmentMap]
+  );
+
+  const handleToggleSelect = useCallback((classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
+    );
+  }, []);
 
   const filteredClasses = useMemo(() => {
     return classes.filter((classItem) => {
@@ -143,6 +241,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
               className={`px-3 py-1.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${
                 filter === value ? "bg-slate-900 text-white shadow-lg" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
               }`}
+              type="button"
             >
               {label}
             </button>
@@ -159,12 +258,14 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
             <button
               onClick={() => setSelectedClassIds([])}
               className="px-2 py-1 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600"
+              type="button"
             >
               Cancel
             </button>
             <button
               onClick={() => handleBulkApply(true)}
               className="px-3 py-1 bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+              type="button"
             >
               Assign to Selected
             </button>
@@ -173,71 +274,22 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
       )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[700px] overflow-y-auto custom-scrollbar pr-2 pb-10">
-        {filteredClasses.map((classItem) => {
-          const assignment = assignmentMap[classItem.id];
-          const assignedBundleIds = assignment?.bundleAssignments.map((entry) => entry.bundleId) ?? [];
-          const assignedBundleNames =
-            assignment?.bundleAssignments
-              .slice()
-              .sort((left, right) => left.order - right.order)
-              .map((entry) => entry.bundleName) ?? [];
-          const isWorking = workingClassIds.includes(classItem.id);
-          const isSelected = selectedClassIds.includes(classItem.id);
-
-          return (
-            <div
-              key={classItem.id}
-              className={`group relative flex flex-col gap-3 p-4 rounded-xl border transition-all ${
-                isSelected ? "border-indigo-200 bg-indigo-50/30" : "border-slate-50 bg-slate-50/10 hover:border-slate-200"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => setSelectedClassIds(prev => isSelected ? prev.filter(id => id !== classItem.id) : [...prev, classItem.id])}
-                  className="flex items-center gap-3 text-left"
-                >
-                  {isSelected ? <CheckCircle2 className="w-4 h-4 text-indigo-600" /> : <Circle className="w-4 h-4 text-slate-200 group-hover:text-slate-400 transition-colors" />}
-                  <div className="space-y-0.5">
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900">{classItem.name}</div>
-                    <div className="text-xs font-bold text-slate-400 truncate max-w-[200px]">
-                      {assignedBundleNames.length > 0 ? assignedBundleNames.join(" • ") : "Void Stack"}
-                    </div>
-                  </div>
-                </button>
-                {isWorking && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300" />}
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100/50">
-                {bundles.map((bundle) => {
-                  const isChecked = assignedBundleIds.includes(bundle._id);
-                  return (
-                    <button
-                      key={bundle._id}
-                      disabled={isWorking}
-                      onClick={() => {
-                        const nextIds = isChecked
-                          ? assignedBundleIds.filter(id => id !== bundle._id)
-                          : [...assignedBundleIds, bundle._id];
-                        void applyAssignment(classItem.id, Array.from(new Set(nextIds)));
-                      }}
-                      className={`px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded transition-all ${
-                        isChecked
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-400 border border-slate-100 hover:border-slate-200 hover:text-slate-600"
-                      }`}
-                    >
-                      {bundle.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+        {filteredClasses.map((classItem) => (
+          <ClassAssignmentCard
+            key={classItem.id}
+            classItem={classItem}
+            assignment={assignmentMap[classItem.id]}
+            bundles={bundles}
+            isSelected={selectedClassIds.includes(classItem.id)}
+            isWorking={workingClassIds.includes(classItem.id)}
+            onToggleSelect={handleToggleSelect}
+            onToggleBundle={handleToggleBundle}
+          />
+        ))}
 
         {filteredClasses.length === 0 && (
-          <div className="py-10 text-center border border-dashed border-slate-100 rounded-2xl">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No instances found</p>
+          <div className="py-10 text-center border border-dashed border-slate-100 rounded-2xl col-span-full">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No classes found</p>
           </div>
         )}
       </div>

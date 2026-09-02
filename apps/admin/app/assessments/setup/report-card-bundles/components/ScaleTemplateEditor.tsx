@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useCallback } from "react";
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -16,19 +17,118 @@ import {
   STARTER_SCALE_TEMPLATES, 
   createScaleDraftFromPreset 
 } from "../utils";
-import type { ScaleTemplateDraft } from "../types";
+import type { ScaleOptionDraft, ScaleTemplateDraft } from "../types";
 
 interface ScaleTemplateEditorProps {
   draft: ScaleTemplateDraft;
   onChange: (draft: ScaleTemplateDraft) => void;
 }
 
-export function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProps) {
-  const handleLoadPreset = (presetIndex: number) => {
+interface ScaleOptionRowProps {
+  option: ScaleOptionDraft;
+  index: number;
+  isFirst: boolean;
+  isLast: boolean;
+  canDelete: boolean;
+  onUpdate: (index: number, label: string, shortLabel: string) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onDelete: (index: number) => void;
+}
+
+const ScaleOptionRow = memo(function ScaleOptionRow({
+  option,
+  index,
+  isFirst,
+  isLast,
+  canDelete,
+  onUpdate,
+  onMove,
+  onDelete,
+}: ScaleOptionRowProps) {
+  return (
+    <div className="group animate-in fade-in slide-in-from-top-1 duration-200">
+      <AdminSurface intensity="none" className="flex items-center gap-4 border border-slate-100 bg-white p-3 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all">
+        <div className="text-xs font-black text-slate-300 tabular-nums w-4">
+          {index + 1}
+        </div>
+        
+        <div className="flex-1 grid gap-4 grid-cols-2">
+          <input
+            className="h-9 w-full bg-transparent text-xs font-bold text-slate-700 outline-none placeholder:text-slate-200 focus:text-slate-900"
+            onChange={(event) => onUpdate(index, event.target.value, option.shortLabel)}
+            placeholder="Option Label (e.g. Excellent)"
+            value={option.label}
+          />
+          <input
+            className="h-9 w-full bg-transparent text-xs font-medium text-slate-400 outline-none border-l border-slate-50 pl-4 placeholder:text-slate-200 focus:text-slate-600"
+            onChange={(event) => onUpdate(index, option.label, event.target.value)}
+            placeholder="Short Display (e.g. 5 or A)"
+            value={option.shortLabel}
+          />
+        </div>
+
+        <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <button
+            className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20 transition-colors"
+            disabled={isFirst}
+            onClick={() => onMove(index, -1)}
+            type="button"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button
+            className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20 transition-colors"
+            disabled={isLast}
+            onClick={() => onMove(index, 1)}
+            type="button"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button
+            className="ml-1 p-1 text-slate-200 hover:text-rose-600 disabled:opacity-20 transition-colors"
+            disabled={!canDelete}
+            onClick={() => onDelete(index)}
+            type="button"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </AdminSurface>
+    </div>
+  );
+});
+
+export const ScaleTemplateEditor = memo(function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProps) {
+  const handleLoadPreset = useCallback((presetIndex: number) => {
     const preset = STARTER_SCALE_TEMPLATES[presetIndex];
     if (!preset) return;
     onChange(createScaleDraftFromPreset(preset));
-  };
+  }, [onChange]);
+
+  const handleUpdateOption = useCallback(
+    (index: number, label: string, shortLabel: string) => {
+      const nextOptions = draft.options.map((opt, i) => {
+        if (i !== index) return opt;
+        return { ...opt, label, shortLabel };
+      });
+      onChange({ ...draft, options: nextOptions });
+    },
+    [draft, onChange]
+  );
+
+  const handleMoveOption = useCallback(
+    (index: number, direction: -1 | 1) => {
+      onChange({ ...draft, options: moveItem(draft.options, index, direction) });
+    },
+    [draft, onChange]
+  );
+
+  const handleDeleteOption = useCallback(
+    (index: number) => {
+      onChange({ ...draft, options: draft.options.filter((_, i) => i !== index) });
+    },
+    [draft, onChange]
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -106,63 +206,17 @@ export function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProp
 
         <div className="space-y-2">
           {draft.options.map((option, index) => (
-            <div key={option.key} className="group animate-in fade-in slide-in-from-top-1 duration-200">
-              <AdminSurface intensity="none" className="flex items-center gap-4 border border-slate-100 bg-white p-3 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all">
-                <div className="text-xs font-black text-slate-300 tabular-nums w-4">
-                  {index + 1}
-                </div>
-                
-                <div className="flex-1 grid gap-4 grid-cols-2">
-                  <input
-                    className="h-9 w-full bg-transparent text-xs font-bold text-slate-700 outline-none placeholder:text-slate-200 focus:text-slate-900"
-                    onChange={(event) => {
-                      const options = draft.options.slice();
-                      options[index] = { ...option, label: event.target.value };
-                      onChange({ ...draft, options });
-                    }}
-                    placeholder="Option Label (e.g. Excellent)"
-                    value={option.label}
-                  />
-                  <input
-                    className="h-9 w-full bg-transparent text-xs font-medium text-slate-400 outline-none border-l border-slate-50 pl-4 placeholder:text-slate-200 focus:text-slate-600"
-                    onChange={(event) => {
-                      const options = draft.options.slice();
-                      options[index] = { ...option, shortLabel: event.target.value };
-                      onChange({ ...draft, options });
-                    }}
-                    placeholder="Short Display (e.g. 5 or A)"
-                    value={option.shortLabel}
-                  />
-                </div>
-
-                <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                  <button
-                    className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20 transition-colors"
-                    disabled={index === 0}
-                    onClick={() => onChange({ ...draft, options: moveItem(draft.options, index, -1) })}
-                    type="button"
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20 transition-colors"
-                    disabled={index === draft.options.length - 1}
-                    onClick={() => onChange({ ...draft, options: moveItem(draft.options, index, 1) })}
-                    type="button"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                  <button
-                    className="ml-1 p-1 text-slate-200 hover:text-rose-600 disabled:opacity-20 transition-colors"
-                    disabled={draft.options.length === 1}
-                    onClick={() => onChange({ ...draft, options: draft.options.filter((_, row) => row !== index) })}
-                    type="button"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </AdminSurface>
-            </div>
+            <ScaleOptionRow
+              key={option.key}
+              option={option}
+              index={index}
+              isFirst={index === 0}
+              isLast={index === draft.options.length - 1}
+              canDelete={draft.options.length > 1}
+              onUpdate={handleUpdateOption}
+              onMove={handleMoveOption}
+              onDelete={handleDeleteOption}
+            />
           ))}
         </div>
 
@@ -180,4 +234,4 @@ export function ScaleTemplateEditor({ draft, onChange }: ScaleTemplateEditorProp
       </div>
     </div>
   );
-}
+});

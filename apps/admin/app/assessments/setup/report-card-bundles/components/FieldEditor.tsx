@@ -1,12 +1,12 @@
 "use client";
 
+import { memo } from "react";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import type { BundleDraft, BundleFieldDraft, BundleSectionDraft, ScaleTemplateRecord } from "../types";
+import type { BundleFieldDraft, ScaleTemplateRecord } from "../types";
 import {
   fieldSourceOptions,
   fieldTypeOptions,
   getCanonicalFieldConfig,
-  moveItem,
   systemAttendanceFieldOptions,
   systemTermFieldOptions,
 } from "../utils";
@@ -15,20 +15,26 @@ interface FieldEditorProps {
   field: BundleFieldDraft;
   fieldIndex: number;
   sectionIndex: number;
-  section: BundleSectionDraft;
-  draft: BundleDraft;
   scaleTemplates: ScaleTemplateRecord[];
-  onChange: (draft: BundleDraft) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  canDelete: boolean;
+  onUpdateField: (sectionIndex: number, fieldIndex: number, updatedField: BundleFieldDraft) => void;
+  onMoveField: (sectionIndex: number, fieldIndex: number, direction: -1 | 1) => void;
+  onDeleteField: (sectionIndex: number, fieldIndex: number) => void;
 }
 
-export function FieldEditor({
+export const FieldEditor = memo(function FieldEditor({
   field,
   fieldIndex,
   sectionIndex,
-  section,
-  draft,
   scaleTemplates,
-  onChange,
+  isFirst,
+  isLast,
+  canDelete,
+  onUpdateField,
+  onMoveField,
+  onDeleteField,
 }: FieldEditorProps) {
   const canonicalOptions =
     field.source === "system_term"
@@ -36,12 +42,6 @@ export function FieldEditor({
       : field.source === "system_attendance"
         ? systemAttendanceFieldOptions
         : [];
-
-  const updateSection = (nextFields: BundleFieldDraft[]) => {
-    const sections = draft.sections.slice();
-    sections[sectionIndex] = { ...section, fields: nextFields };
-    onChange({ ...draft, sections });
-  };
 
   return (
     <div
@@ -61,30 +61,24 @@ export function FieldEditor({
           <div className="flex items-center gap-1 opacity-0 group-hover/field:opacity-100 transition-opacity">
             <button
               className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20"
-              disabled={fieldIndex === 0}
-              onClick={() => {
-                updateSection(moveItem(section.fields, fieldIndex, -1));
-              }}
+              disabled={isFirst}
+              onClick={() => onMoveField(sectionIndex, fieldIndex, -1)}
               type="button"
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
             <button
               className="p-1 text-slate-300 hover:text-slate-900 disabled:opacity-20"
-              disabled={fieldIndex === section.fields.length - 1}
-              onClick={() => {
-                updateSection(moveItem(section.fields, fieldIndex, 1));
-              }}
+              disabled={isLast}
+              onClick={() => onMoveField(sectionIndex, fieldIndex, 1)}
               type="button"
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <button
               className="p-1 text-slate-200 hover:text-rose-600 disabled:opacity-20"
-              disabled={section.fields.length === 1}
-              onClick={() => {
-                updateSection(section.fields.filter((_, row) => row !== fieldIndex));
-              }}
+              disabled={!canDelete}
+              onClick={() => onDeleteField(sectionIndex, fieldIndex)}
               type="button"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -98,9 +92,7 @@ export function FieldEditor({
             <input
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold outline-none focus:border-slate-400 disabled:opacity-50"
               onChange={(event) => {
-                const fields = section.fields.slice();
-                fields[fieldIndex] = { ...field, label: event.target.value };
-                updateSection(fields);
+                onUpdateField(sectionIndex, fieldIndex, { ...field, label: event.target.value });
               }}
               placeholder="e.g. Attentiveness"
               value={field.label}
@@ -113,40 +105,37 @@ export function FieldEditor({
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold outline-none focus:border-slate-400"
               onChange={(event) => {
-                const nextSource = event.target.value as BundleDraft["sections"][number]["fields"][number]["source"];
-                const fields = section.fields.slice();
+                const nextSource = event.target.value as BundleFieldDraft["source"];
                 const nextField = { ...field, source: nextSource };
 
                 if (nextSource === "system_term") {
                   const nextSystemKey = "next_term_begins";
                   const canonical = getCanonicalFieldConfig(nextSystemKey);
-                  fields[fieldIndex] = {
+                  onUpdateField(sectionIndex, fieldIndex, {
                     ...nextField,
                     systemKey: nextSystemKey,
                     label: canonical?.label ?? field.label,
                     type: canonical?.type ?? "text",
                     scaleTemplateId: null,
-                  };
+                  });
                 } else if (nextSource === "system_attendance") {
                   const nextSystemKey = field.systemKey && field.systemKey !== "next_term_begins"
                     ? field.systemKey
                     : "times_present";
                   const canonical = getCanonicalFieldConfig(nextSystemKey);
-                  fields[fieldIndex] = {
+                  onUpdateField(sectionIndex, fieldIndex, {
                     ...nextField,
                     systemKey: nextSystemKey,
                     label: canonical?.label ?? field.label,
                     type: canonical?.type ?? "number",
                     scaleTemplateId: null,
-                  };
+                  });
                 } else {
-                  fields[fieldIndex] = {
+                  onUpdateField(sectionIndex, fieldIndex, {
                     ...nextField,
                     systemKey: null,
-                  };
+                  });
                 }
-
-                updateSection(fields);
               }}
               value={field.source}
             >
@@ -163,14 +152,12 @@ export function FieldEditor({
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold outline-none focus:border-slate-400 disabled:opacity-50"
               onChange={(event) => {
-                const nextType = event.target.value as BundleDraft["sections"][number]["fields"][number]["type"];
-                const fields = section.fields.slice();
-                fields[fieldIndex] = {
+                const nextType = event.target.value as BundleFieldDraft["type"];
+                onUpdateField(sectionIndex, fieldIndex, {
                   ...field,
                   type: nextType,
                   scaleTemplateId: nextType === "scale" ? field.scaleTemplateId : null,
-                };
-                updateSection(fields);
+                });
               }}
               value={field.type}
               disabled={field.source === "system_term" || field.source === "system_attendance"}
@@ -188,12 +175,10 @@ export function FieldEditor({
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold outline-none focus:border-slate-400"
               onChange={(event) => {
-                const fields = section.fields.slice();
-                fields[fieldIndex] = {
+                onUpdateField(sectionIndex, fieldIndex, {
                   ...field,
                   printable: event.target.value === "printable",
-                };
-                updateSection(fields);
+                });
               }}
               value={field.printable ? "printable" : "internal"}
             >
@@ -211,15 +196,13 @@ export function FieldEditor({
               onChange={(event) => {
                 const nextSystemKey = event.target.value as NonNullable<typeof field.systemKey>;
                 const canonical = getCanonicalFieldConfig(nextSystemKey);
-                const fields = section.fields.slice();
-                fields[fieldIndex] = {
+                onUpdateField(sectionIndex, fieldIndex, {
                   ...field,
                   systemKey: nextSystemKey,
                   label: canonical?.label ?? field.label,
                   type: canonical?.type ?? field.type,
                   scaleTemplateId: null,
-                };
-                updateSection(fields);
+                });
               }}
               value={field.systemKey ?? ""}
             >
@@ -239,9 +222,10 @@ export function FieldEditor({
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:border-slate-400"
               onChange={(event) => {
-                const fields = section.fields.slice();
-                fields[fieldIndex] = { ...field, scaleTemplateId: event.target.value || null };
-                updateSection(fields);
+                onUpdateField(sectionIndex, fieldIndex, {
+                  ...field,
+                  scaleTemplateId: event.target.value || null,
+                });
               }}
               value={field.scaleTemplateId ?? ""}
             >
@@ -257,4 +241,4 @@ export function FieldEditor({
       </div>
     </div>
   );
-}
+});

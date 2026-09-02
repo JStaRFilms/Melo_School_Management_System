@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Layers, Plus, Search, ChevronRight } from "lucide-react";
 import type { ScaleTemplateRecord } from "../types";
 
@@ -9,7 +10,7 @@ interface TemplateListProps {
   onSelect: (id: string | "new") => void;
 }
 
-export function TemplateList({ templates, selectedId, onSelect }: TemplateListProps) {
+export const TemplateList = memo(function TemplateList({ templates, selectedId, onSelect }: TemplateListProps) {
   return (
     <div className="flex flex-col h-full bg-slate-50/20">
       <div className="flex items-start justify-between gap-4 p-4 lg:p-6 border-b border-white/10 bg-slate-900/5 backdrop-blur-md sticky top-0 z-10 transition-all">
@@ -83,4 +84,4 @@ export function TemplateList({ templates, selectedId, onSelect }: TemplateListPr
       </div>
     </div>
   );
-}
+});

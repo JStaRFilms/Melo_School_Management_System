@@ -1,8 +1,9 @@
 "use client";
 
+import { memo, useCallback } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import type { BundleDraft, ScaleTemplateRecord } from "../types";
+import type { BundleDraft, BundleFieldDraft, ScaleTemplateRecord } from "../types";
 import { 
   createEmptyField, 
   createEmptySection, 
@@ -18,13 +19,53 @@ interface BundleEditorProps {
   onChange: (draft: BundleDraft) => void;
 }
 
-export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {
-  const handleLoadPreset = (presetIndex: number) => {
+export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {
+  const handleLoadPreset = useCallback((presetIndex: number) => {
     const preset = STARTER_BUNDLE_PRESETS[presetIndex];
     if (!preset) return;
     const defaultScale = scaleTemplates[0]?._id ?? null;
     onChange(createBundleDraftFromPreset(preset, defaultScale));
-  };
+  }, [onChange, scaleTemplates]);
+
+  const handleUpdateField = useCallback(
+    (sectionIndex: number, fieldIndex: number, updatedField: BundleFieldDraft) => {
+      const nextSections = draft.sections.map((section, sIdx) => {
+        if (sIdx !== sectionIndex) return section;
+        const nextFields = section.fields.map((field, fIdx) => {
+          if (fIdx !== fieldIndex) return field;
+          return updatedField;
+        });
+        return { ...section, fields: nextFields };
+      });
+      onChange({ ...draft, sections: nextSections });
+    },
+    [draft, onChange]
+  );
+
+  const handleMoveField = useCallback(
+    (sectionIndex: number, fieldIndex: number, direction: -1 | 1) => {
+      const nextSections = draft.sections.map((section, sIdx) => {
+        if (sIdx !== sectionIndex) return section;
+        return { ...section, fields: moveItem(section.fields, fieldIndex, direction) };
+      });
+      onChange({ ...draft, sections: nextSections });
+    },
+    [draft, onChange]
+  );
+
+  const handleDeleteField = useCallback(
+    (sectionIndex: number, fieldIndex: number) => {
+      const nextSections = draft.sections.map((section, sIdx) => {
+        if (sIdx !== sectionIndex) return section;
+        return {
+          ...section,
+          fields: section.fields.filter((_, fIdx) => fIdx !== fieldIndex),
+        };
+      });
+      onChange({ ...draft, sections: nextSections });
+    },
+    [draft, onChange]
+  );
 
   return (
     <div className="space-y-6">
@@ -155,13 +196,16 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                 {section.fields.map((field, fieldIndex) => (
                   <FieldEditor
                     key={field.key}
-                    draft={draft}
                     field={field}
                     fieldIndex={fieldIndex}
-                    onChange={onChange}
-                    scaleTemplates={scaleTemplates}
-                    section={section}
                     sectionIndex={sectionIndex}
+                    scaleTemplates={scaleTemplates}
+                    isFirst={fieldIndex === 0}
+                    isLast={fieldIndex === section.fields.length - 1}
+                    canDelete={section.fields.length > 1}
+                    onUpdateField={handleUpdateField}
+                    onMoveField={handleMoveField}
+                    onDeleteField={handleDeleteField}
                   />
                 ))}
 
@@ -187,4 +231,4 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
       </div>
     </div>
   );
-}
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Boxes, Plus, Search, ChevronRight } from "lucide-react";
 import type { BundleRecord } from "../types";
 import { countBundleFields } from "../utils";
@@ -10,7 +11,7 @@ interface BundleListProps {
   onSelect: (id: string | "new") => void;
 }
 
-export function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
+export const BundleList = memo(function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-start justify-between gap-4 p-4 lg:p-6 border-b border-white/10 bg-slate-900/5 backdrop-blur-md sticky top-0 z-10">
@@ -63,7 +64,7 @@ export function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
               <div className="flex-1 text-left min-w-0">
                 <div className={titleClasses}>{bundle.name}</div>
                 <div className={subtitleClasses}>
-                  {bundle.sections.length} {bundle.sections.length === 1 ? "Section" : "Sections"} • {countBundleFields(bundle)} {countBundleFields(bundle)} Fields
+                  {bundle.sections.length} {bundle.sections.length === 1 ? "Section" : "Sections"} • {countBundleFields(bundle)} {countBundleFields(bundle) === 1 ? "Field" : "Fields"}
                 </div>
               </div>
 
@@ -86,4 +87,4 @@ export function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
       </div>
     </div>
   );
-}
+});
