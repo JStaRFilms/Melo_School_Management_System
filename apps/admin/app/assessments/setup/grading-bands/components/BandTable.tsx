@@ -19,17 +19,40 @@ export function BandTable({
   validationErrors,
   onValidationChange,
 }: BandTableProps) {
-  // Track which bands have errors
-  const errorBandIndices = useMemo(() => {
-    const indices = new Set<number>();
+  // Track detailed error types for specific field highlighting
+  const errorDetails = useMemo(() => {
+    const nameErrorIndices = new Set<number>();
+    const rangeErrorIndices = new Set<number>();
+    const allErrorIndices = new Set<number>();
+
     for (const error of validationErrors) {
       if (error.bandIndices) {
         for (const idx of error.bandIndices) {
-          indices.add(idx);
+          allErrorIndices.add(idx);
+          if (
+            error.type === "duplicate_name" ||
+            error.field === "gradeLetter" ||
+            error.message.toLowerCase().includes("grade label") ||
+            error.message.toLowerCase().includes("grade letter")
+          ) {
+            nameErrorIndices.add(idx);
+          }
+          if (
+            error.type === "duplicate_range" ||
+            error.type === "overlap" ||
+            error.type === "gap" ||
+            error.type === "out_of_range" ||
+            error.field === "scoreRange" ||
+            (error.type === "ordering" &&
+              !error.message.toLowerCase().includes("grade label") &&
+              !error.message.toLowerCase().includes("grade letter"))
+          ) {
+            rangeErrorIndices.add(idx);
+          }
         }
       }
     }
-    return indices;
+    return { nameErrorIndices, rangeErrorIndices, allErrorIndices };
   }, [validationErrors]);
 
   const handleChange = useCallback(
@@ -84,7 +107,9 @@ export function BandTable({
                 key={index}
                 band={band}
                 index={index}
-                hasError={errorBandIndices.has(index)}
+                hasError={errorDetails.allErrorIndices.has(index)}
+                hasNameError={errorDetails.nameErrorIndices.has(index)}
+                hasRangeError={errorDetails.rangeErrorIndices.has(index)}
                 onChange={handleChange}
                 onDelete={handleDelete}
               />

@@ -195,7 +195,15 @@ export interface GradingBandDraft {
 
 // Band validation error types
 export interface BandValidationError {
-  type: "overlap" | "gap" | "ordering" | "out_of_range" | "empty";
+  type:
+    | "overlap"
+    | "gap"
+    | "ordering"
+    | "out_of_range"
+    | "empty"
+    | "duplicate_name"
+    | "duplicate_range";
   message: string;
   bandIndices?: number[];
+  field?: "gradeLetter" | "scoreRange" | "all";
 }

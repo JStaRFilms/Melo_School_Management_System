@@ -128,13 +128,34 @@ describe("validateGradingBands", () => {
     expect(errors.some((e) => e.message.includes("minScore"))).toBe(true);
   });
 
+  it("should fail when duplicate grade letters/labels exist", () => {
+    const bands = [
+      createBand(0, 39, "F", "Fail"),
+      createBand(40, 69, "C", "Pass"),
+      createBand(70, 100, "C", "Credit"), // Duplicate "C"
+    ];
+    const errors = validateGradingBands(bands);
+    expect(errors.some((e) => e.message.includes('Duplicate grade label "C"'))).toBe(true);
+  });
+
+  it("should fail when duplicate score ranges exist", () => {
+    const bands = [
+      createBand(0, 39, "F", "Fail"),
+      createBand(40, 70, "D", "Pass"),
+      createBand(40, 70, "C", "Credit"), // Duplicate range 40-70
+      createBand(71, 100, "A", "Excellent"),
+    ];
+    const errors = validateGradingBands(bands);
+    expect(errors.some((e) => e.message.includes("Duplicate score range 40–70"))).toBe(true);
+  });
+
   it("should fail for overlapping bands", () => {
     const bands = [
       createBand(0, 50, "C", "Average"),
       createBand(45, 100, "A", "Excellent"), // Overlaps with previous
     ];
     const errors = validateGradingBands(bands);
-    expect(errors.some((e) => e.message.includes("overlap"))).toBe(true);
+    expect(errors.some((e) => e.message.includes("overlap") && e.message.includes("Grade \"C\""))).toBe(true);
   });
 
   it("should fail when bands don't start at 0", () => {

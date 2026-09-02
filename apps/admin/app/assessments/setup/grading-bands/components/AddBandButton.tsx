@@ -11,22 +11,24 @@ export function AddBandButton({ onAdd, position }: AddBandButtonProps) {
   if (position === "top") {
     return (
       <button
+        type="button"
         onClick={onAdd}
-        className="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-bold shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+        className="h-9 px-4 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm hover:bg-slate-800 active:scale-95 transition-all flex items-center justify-center gap-1.5"
       >
-        <Plus className="w-4 h-4 text-white/50" />
+        <Plus className="w-3.5 h-3.5 text-white/80" />
         Add Tier
       </button>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 bg-slate-50 flex justify-center border-t border-slate-100">
+    <div className="p-3 bg-slate-50/70 border-t border-slate-100 flex justify-center">
       <button
+        type="button"
         onClick={onAdd}
-        className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors flex items-center gap-2"
+        className="w-full py-2.5 rounded-xl border border-dashed border-slate-200 hover:border-slate-300 hover:bg-white text-xs font-bold text-slate-600 hover:text-slate-900 transition-all flex items-center justify-center gap-2 shadow-none active:scale-[0.99]"
       >
-        <Plus className="w-3 h-3 text-slate-300 transition-colors" />
+        <Plus className="w-3.5 h-3.5 text-slate-400" />
         Add New Tier
       </button>
     </div>

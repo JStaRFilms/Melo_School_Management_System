@@ -19,10 +19,11 @@ const FILTER_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "all", label: "All Records" },
+  { value: "admin", label: "Administrators" },
+  { value: "teacher", label: "Teachers" },
+  { value: "student", label: "Students" },
   { value: "class", label: "Classes" },
   { value: "subject", label: "Subjects" },
-  { value: "teacher", label: "Staff & Teachers" },
-  { value: "student", label: "Students" },
   { value: "session", label: "Academic Sessions" },
   { value: "event", label: "Calendar Events" },
   { value: "knowledgeMaterial", label: "Knowledge Materials" },

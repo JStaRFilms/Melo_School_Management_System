@@ -43,8 +43,14 @@ export function AdminDirectorySection({
   const promoteSchoolAdmin = useMutation(
     api.functions.academic.adminLeadership.promoteSchoolAdmin
   );
+  const demoteAdminToTeacher = useMutation(
+    api.functions.academic.adminLeadership.demoteAdminToTeacher
+  );
   const archiveSchoolAdmin = useMutation(
     api.functions.academic.adminLeadership.archiveSchoolAdmin
+  );
+  const restoreSchoolAdmin = useMutation(
+    api.functions.academic.adminLeadership.restoreSchoolAdmin
   );
   const transferSchoolAdminLeadership = useMutation(
     api.functions.academic.adminLeadership.transferSchoolAdminLeadership
@@ -83,27 +89,29 @@ export function AdminDirectorySection({
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-slate-950/5 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-0.5">
-          <h3 className="font-display text-lg font-bold tracking-tight text-slate-950">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-display text-lg font-bold tracking-tight text-slate-950">
             Directory
-          </h3>
-          <p className="text-[10px] font-medium text-slate-500">
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-slate-400">
             {admins.length} registered administrative accounts.
           </p>
         </div>
-        <div className="relative w-full sm:max-w-xs group">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-300 transition-colors group-focus-within:text-slate-950" />
+
+        <div className="relative w-full sm:w-64">
           <input
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or email..."
-            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
+            className="w-full h-9 rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-slate-950 focus:outline-none transition-all shadow-none"
           />
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {filteredAdmins.map((admin) => (
           <AdminCard
             key={admin._id}
@@ -121,6 +129,15 @@ export function AdminDirectorySection({
                 "We could not re-parent this admin right now."
               )
             }
+            onDemote={() =>
+              void handleAction(
+                admin._id,
+                () => demoteAdminToTeacher({ adminId: admin._id as Id<"users"> }),
+                "Admin downgraded to Teacher",
+                "Downgrade failed",
+                "We could not downgrade this admin right now."
+              )
+            }
             onArchive={() =>
               void handleAction(
                 admin._id,
@@ -128,6 +145,15 @@ export function AdminDirectorySection({
                 "Admin archived",
                 "Archive failed",
                 "We could not archive this admin right now."
+              )
+            }
+            onRestore={() =>
+              void handleAction(
+                admin._id,
+                () => restoreSchoolAdmin({ adminId: admin._id as Id<"users"> }),
+                "Admin restored",
+                "Restore failed",
+                "We could not restore this admin right now."
               )
             }
             onTransferLeadership={() =>

@@ -1,4 +1,5 @@
 export type ArchiveRecordType =
+  | "admin"
   | "session"
   | "class"
   | "teacher"
@@ -30,6 +31,7 @@ export interface ArchivedRecordItem {
 
 export interface ArchivedRecordsSummary {
   totalArchived: number;
+  archivedAdmins: number;
   archivedSessions: number;
   archivedClasses: number;
   archivedTeachers: number;

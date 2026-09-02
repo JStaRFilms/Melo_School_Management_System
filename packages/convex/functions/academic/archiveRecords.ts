@@ -8,6 +8,7 @@ import {
 } from "@school/shared/name-format";
 
 const archiveRecordTypeValidator = v.union(
+  v.literal("admin"),
   v.literal("session"),
   v.literal("class"),
   v.literal("teacher"),
@@ -63,6 +64,7 @@ export const listArchivedRecords = query({
   returns: v.object({
     summary: v.object({
       totalArchived: v.number(),
+      archivedAdmins: v.number(),
       archivedSessions: v.number(),
       archivedClasses: v.number(),
       archivedTeachers: v.number(),
@@ -242,6 +244,43 @@ export const listArchivedRecords = query({
         };
       });
 
+    const adminRecords = users
+      .filter(
+        (user) =>
+          (user.role === "admin" || user.isSchoolAdmin === true) &&
+          user.isArchived
+      )
+      .map((admin) => {
+        const manager = admin.managerUserId
+          ? userLookup.get(String(admin.managerUserId))
+          : null;
+        return {
+          id: `admin:${String(admin._id)}`,
+          type: "admin" as const,
+          typeLabel: "Administrator",
+          recordId: String(admin._id),
+          name: normalizePersonName(admin.name),
+          subtitle: admin.email,
+          archivedAt: admin.archivedAt ?? admin.updatedAt,
+          createdAt: admin.createdAt,
+          archivedById: admin.archivedBy ?? null,
+          archivedByName: archivedByName(admin.archivedBy),
+          statusNote:
+            "Administrative access is revoked. Account details preserved for audit.",
+          linkedHistory: `Managed under ${manager ? normalizePersonName(manager.name) : "Lead Admin"}. Historical administrative actions preserved.`,
+          detailFields: [
+            { label: "Email", value: admin.email },
+            ...(admin.phone ? [{ label: "Phone", value: admin.phone }] : []),
+            {
+              label: "Manager",
+              value: manager
+                ? normalizePersonName(manager.name)
+                : "Direct to Lead Admin",
+            },
+          ],
+        };
+      });
+
     const teacherRecords = users
       .filter((user) => user.role === "teacher" && user.isArchived)
       .map((teacher) => ({
@@ -382,6 +421,7 @@ export const listArchivedRecords = query({
       });
 
     const records = [
+      ...adminRecords,
       ...sessionRecords,
       ...classRecords,
       ...teacherRecords,
@@ -394,6 +434,7 @@ export const listArchivedRecords = query({
     return {
       summary: {
         totalArchived: records.length,
+        archivedAdmins: adminRecords.length,
         archivedSessions: sessionRecords.length,
         archivedClasses: classRecords.length,
         archivedTeachers: teacherRecords.length,

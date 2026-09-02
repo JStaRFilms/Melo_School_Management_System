@@ -104,4 +104,28 @@ describe("validateBandsClient", () => {
     const errors = validateBandsClient(bands);
     expect(errors.some((e) => e.type === "ordering")).toBe(true);
   });
+
+  it("detects duplicate grade letters/labels", () => {
+    const bands: GradingBandDraft[] = [
+      { minScore: 0, maxScore: 39, gradeLetter: "F", remark: "Fail" },
+      { minScore: 40, maxScore: 69, gradeLetter: "C", remark: "Pass" },
+      { minScore: 70, maxScore: 100, gradeLetter: "C", remark: "Credit" }, // Duplicate "C"
+    ];
+
+    const errors = validateBandsClient(bands);
+    expect(errors.some((e) => e.type === "duplicate_name" && e.message.includes('Duplicate grade label "C"'))).toBe(true);
+    expect(errors.find((e) => e.type === "duplicate_name")?.bandIndices).toEqual([1, 2]);
+  });
+
+  it("detects duplicate score ranges across tiers", () => {
+    const bands: GradingBandDraft[] = [
+      { minScore: 0, maxScore: 39, gradeLetter: "F9", remark: "Unsatisfactory" },
+      { minScore: 45, maxScore: 49, gradeLetter: "D7", remark: "Marginal" },
+      { minScore: 45, maxScore: 49, gradeLetter: "C6", remark: "Marginal" }, // Duplicate range 45-49
+      { minScore: 75, maxScore: 100, gradeLetter: "A1", remark: "Distinction" },
+    ];
+
+    const errors = validateBandsClient(bands);
+    expect(errors.some((e) => e.type === "duplicate_range" && e.message.includes("45–49"))).toBe(true);
+  });
 });

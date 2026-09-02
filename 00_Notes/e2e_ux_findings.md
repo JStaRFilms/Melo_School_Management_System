@@ -174,6 +174,20 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Deleted legacy client-side canvas renderer `apps/teacher/features/planning-library/utils/browserPdfOcr.ts`.
   - Deleted dead backend action `packages/convex/functions/academic/lessonKnowledgeBrowserOcrActions.ts` and pruned `requestKnowledgeMaterialBrowserOcrImageUploadUrls` and `startKnowledgeMaterialBrowserOcrRetryInternal` from `lessonKnowledgeIngestion.ts`.
 
+### 8. Staff Roles, Parent-Staff Identity & Administrator Lifecycle
+- [x] **Staff-as-Parent & Family Link Identity Unification**
+  - Updated `updateStudentFamilyParentContact` and `upsertStudentFamilyLink` in `studentEnrollment.ts` to allow teachers and administrators to be linked into Family Link as parents/guardians without colliding on active accounts.
+  - Preserved security check preventing enrolled students (`role === "student"`) from being linked as parent contacts.
+  - Refactored Student Family contact UI in `StudentFamilyPanel.tsx`: flattened nested 3-level card-in-card hierarchy into a single clean alert, fixed 3-line wrapped buttons, scaled typography and inputs down to clean responsive sizes (`h-9 text-xs font-medium`), and added `Staff: <role>` badges.
+- [x] **Administrator Archiving & Multi-Role Parity in Archive Audit**
+  - Added `role === "admin"` records into `archiveRecords.ts` (`listArchivedRecords`) with manager hierarchy metadata, email details, and total summary counts.
+  - Added `restoreSchoolAdmin` mutation to `adminLeadership.ts` with active email duplicate protection.
+  - Updated `/academic/archived-records` with Administrator filter tab, purple chip badges, and one-click restore action.
+  - Added `Archived` status badge and direct `Restore` action to the `/admin` Users Directory grid so archived admins can be restored from either surface.
+- [x] **Staff Role Demotion / Downgrade to Teacher**
+  - Added `demoteAdminToTeacher` mutation in `adminLeadership.ts` allowing non-lead admins to be safely downgraded to standard teachers while automatically re-parenting any direct sub-admins to the Lead Admin.
+  - Added `To Teacher` action button with `UserMinus` icon in `AdminCard.tsx` and `AdminDirectorySection.tsx`.
+
 ---
 
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
@@ -225,6 +239,16 @@ This document tracks all observations, issues, UX refinements, completed changes
 ## 🚀 Roadmap & Backlog
 
 ### High Priority / Next Up
+- [ ] **Pre-Populated Default Grading Bands & Custom Color Coding per Grade Tier / Level (`/assessments/setup/grading-bands`)**
+  - **Context & Need:** Currently, navigating to `/assessments/setup/grading-bands` presents a blank matrix requiring school administrators to define every single grade score tier (`0-100`) from scratch. Furthermore, grade levels / tiers currently lack visual color accents, making score entry and report cards monotonous.
+  - **Pre-Populated Default Policy:**
+    - When a new school registers or sets up grading for the first time, automatically initialize a standard default grading band policy (e.g., `A: 75–100 (Excellent)`, `B: 65–74 (Very Good)`, `C: 50–64 (Credit/Pass)`, `D: 40–49 (Pass)`, `F: 0–39 (Fail)`).
+    - Provide a prominent **"Load Standard Default"** preset button to reset or prefill standard bands at any time with 1 click.
+  - **Custom Color Palette per Grade Tier / Level:**
+    - Enable schools to assign custom color tags/badges to each grade band (e.g. Emerald `#10B981` for `A`, Sky/Blue `#0284C7` for `B`, Amber `#F59E0B` for `C`, Orange `#F97316` for `D`, Rose/Red `#EF4444` for `F`).
+    - These color accents flow dynamically into score recording sheets, student progress bars, class distribution analytics, and report card badge styling.
+  - **Full Customization Control:**
+    - Schools retain complete freedom to edit min/max ranges, delete tiers, add more tiers (e.g., `A+`, `A`, `B+`, `B`, `C+`, `C`, `D`, `E`, `F`), customize verbal remarks, and modify colors as they wish.
 - [ ] **Granular Admin Role-Based Access Control (RBAC) & Scoped Staff Permissions**
   - **Context & Need:** Currently, all school administrator accounts receive full universal access across the entire admin workspace. Schools need to designate departmental staff roles (e.g., Bursar/Accountant, Academic Director/Dean of Studies, Registrar/Admissions Officer, Exam Officer) who should only view and manage modules relevant to their job functions rather than giving all admins access to everything.
   - **Proposed Role Scopes & Capability Matrix:**

@@ -19,6 +19,7 @@ function formatDate(timestamp: number) {
 function chipClasses(recordType: ArchivedRecordItem["type"]) {
   const base = "inline-flex items-center rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ring-1 ring-inset";
   const typeClasses: Record<ArchivedRecordItem["type"], string> = {
+    admin: `${base} bg-purple-50 text-purple-700 ring-purple-600/10`,
     class: `${base} bg-emerald-50 text-emerald-700 ring-emerald-600/10`,
     subject: `${base} bg-amber-50 text-amber-700 ring-amber-600/10`,
     teacher: `${base} bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/10`,
