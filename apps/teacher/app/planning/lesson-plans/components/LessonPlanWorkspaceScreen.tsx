@@ -24,6 +24,7 @@ import {
   Clock,
   Menu,
   X,
+  FileText,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -240,6 +241,26 @@ export function LessonPlanWorkspaceScreen({
   const canGenerate = workspace.canGenerate && !isGenerating;
   const canAutosave = workspace.canAutosave;
   const generationStatusMessage = generationStatusMessages[generationStatusIndex] ?? generationStatusMessages[0];
+
+  const generationBlockedReason = useMemo(() => {
+    if (canGenerate || isGenerating) return null;
+    if (!workspace.template) {
+      return "No lesson template is configured for this subject and level. An administrator can configure templates under Setup > Lesson Templates.";
+    }
+    const minSources = workspace.template.objectiveMinimums.minimumSourceMaterials ?? 1;
+    if (workspace.selectedSources.length < minSources) {
+      return `This template requires at least ${minSources} source material${minSources === 1 ? "" : "s"} attached from the library before generating. Click "+ Library" on the left to attach materials.`;
+    }
+    if (workspace.warnings.length > 0) {
+      return workspace.warnings[0];
+    }
+    const subjectId = workspace.planningContext?.subjectId ?? workspace.sourceContext.subjectId;
+    const level = workspace.planningContext?.level ?? workspace.sourceContext.level;
+    if (!subjectId || !level) {
+      return "Resolve a valid subject and level context before generating a draft.";
+    }
+    return "Generation is currently unavailable for this context.";
+  }, [canGenerate, isGenerating, workspace.template, workspace.selectedSources.length, workspace.warnings, workspace.planningContext, workspace.sourceContext]);
 
   const pushNotice = useCallback((type: "success" | "error", message: string) => {
     if (type === "success") {
@@ -610,6 +631,16 @@ export function LessonPlanWorkspaceScreen({
                 </div>
               ) : null}
 
+              {generationBlockedReason && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-200/90 bg-amber-50/80 px-3.5 py-2.5 text-xs text-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="font-bold text-[11px] text-amber-950">Draft Generation Notice</p>
+                    <p className="text-[11px] leading-relaxed text-amber-800">{generationBlockedReason}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-1.5">
                   <button
@@ -625,9 +656,10 @@ export function LessonPlanWorkspaceScreen({
                     type="button"
                     onClick={handleGenerate}
                     disabled={!canGenerate}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-sm disabled:opacity-30 cursor-pointer"
+                    title={generationBlockedReason ?? "Generate draft from sources"}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-sm disabled:opacity-40 disabled:hover:bg-slate-950 cursor-pointer"
                   >
-                    {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                     Generate Draft
                   </button>
                 </div>
@@ -660,8 +692,14 @@ export function LessonPlanWorkspaceScreen({
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-[10px] font-medium text-amber-800 italic">
-              No template resolved.
+            <div className="mt-3 rounded-lg border border-amber-200/90 bg-amber-50/70 p-2.5 text-xs space-y-1 text-amber-900">
+              <p className="font-bold text-[10px] text-amber-950 flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3 text-amber-600" />
+                No Template Active
+              </p>
+              <p className="text-[9px] leading-relaxed text-amber-800">
+                An administrator must configure a lesson template in Setup &gt; Lesson Templates.
+              </p>
             </div>
           )}
         </section>

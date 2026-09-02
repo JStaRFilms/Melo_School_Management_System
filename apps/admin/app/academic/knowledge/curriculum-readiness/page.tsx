@@ -56,33 +56,35 @@ export default function CurriculumReadinessPage() {
   const contextReady = Boolean(subjectId && level && termId);
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5 p-4 sm:p-6 lg:p-8">
-      <AdminHeader
-        label="Curriculum intelligence"
-        title="Readiness map"
-        description="See preparation evidence for approved curriculum topics in any term of the active session."
-      />
-      <ReadinessContextBar
-        subjects={subjectOptions}
-        levels={levelOptions}
-        terms={termOptions}
-        subjectId={subjectId}
-        level={level}
-        termId={termId}
-        onSubjectChange={setSubjectId}
-        onLevelChange={setLevel}
-        onTermChange={setTermId}
-      />
-      {!activeSession || !termOptions.length ? <ContextNotice message="Set an active session with at least one term before reviewing curriculum readiness." /> : null}
-      {termOptions.length && (!subjectOptions.length || !levelOptions.length) ? <ContextNotice message="Add at least one subject and class before viewing a readiness map." /> : null}
-      {isLoading ? <LoadingState /> : null}
-      {contextReady && readiness ? <ReadinessContent data={readiness} /> : null}
+    <div className="h-full w-full overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-[1400px] space-y-6 pb-20">
+        <AdminHeader
+          label="Curriculum Intelligence"
+          title="Readiness Map"
+          description="See preparation evidence for approved curriculum topics in any term of the active session."
+        />
+        <ReadinessContextBar
+          subjects={subjectOptions}
+          levels={levelOptions}
+          terms={termOptions}
+          subjectId={subjectId}
+          level={level}
+          termId={termId}
+          onSubjectChange={setSubjectId}
+          onLevelChange={setLevel}
+          onTermChange={setTermId}
+        />
+        {!activeSession || !termOptions.length ? <ContextNotice message="Set an active session with at least one term before reviewing curriculum readiness." /> : null}
+        {termOptions.length && (!subjectOptions.length || !levelOptions.length) ? <ContextNotice message="Add at least one subject and class before viewing a readiness map." /> : null}
+        {isLoading ? <LoadingState /> : null}
+        {contextReady && readiness ? <ReadinessContent data={readiness} /> : null}
+      </div>
     </div>
   );
 }
 
 function ContextNotice({ message }: { message: string }) {
-  return <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{message}</div>;
+  return <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{message}</div>;
 }
 
 function LoadingState() {
@@ -91,10 +93,15 @@ function LoadingState() {
 
 function ReadinessContent({ data }: { data: CurriculumReadinessResponse }) {
   const icons: Record<ReadinessSummaryIcon, JSX.Element> = {
-    topics: <BookOpenCheck />, sources: <FileCheck2 />, plans: <ListChecks />, notes: <NotebookPen />,
-    assignments: <ClipboardCheck />, assessments: <Sparkles />, published: <FileText />,
+    topics: <BookOpenCheck className="h-4 w-4" />,
+    sources: <FileCheck2 className="h-4 w-4" />,
+    plans: <ListChecks className="h-4 w-4" />,
+    notes: <NotebookPen className="h-4 w-4" />,
+    assignments: <ClipboardCheck className="h-4 w-4" />,
+    assessments: <ListChecks className="h-4 w-4" />,
+    published: <FileText className="h-4 w-4" />,
   };
   const stats = buildReadinessSummary(data.counts).map((item) => ({ ...item, icon: icons[item.icon] }));
-  if (!data.rows.length) return <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center"><h2 className="font-display text-lg font-bold text-slate-900">No approved topics in this context</h2><p className="mt-2 text-sm text-slate-500">Approve curriculum units or create topics for this subject, class, and term first.</p></div>;
-  return <div className="space-y-4"><StatGroup stats={stats} variant="grid" /><div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm font-medium text-sky-950">{data.evidenceNotice}</div><ReadinessEvidenceTable rows={data.rows} /></div>;
+  if (!data.rows.length) return <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center"><h2 className="font-display text-base font-bold text-slate-900">No approved topics in this context</h2><p className="mt-1 text-xs text-slate-500">Approve curriculum units or create topics for this subject, class, and term first.</p></div>;
+  return <div className="space-y-4"><StatGroup stats={stats} variant="grid" /><div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-xs font-medium text-sky-950">{data.evidenceNotice}</div><ReadinessEvidenceTable rows={data.rows} /></div>;
 }

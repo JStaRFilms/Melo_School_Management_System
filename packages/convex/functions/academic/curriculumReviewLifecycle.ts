@@ -92,3 +92,162 @@ export const approveCurriculumUnit = mutation({
     return topicId;
   },
 });
+
+export const bulkApproveCurriculumUnits = mutation({
+  args: {
+    unitIds: v.array(v.id("curriculumUnits")),
+  },
+  returns: v.object({
+    approvedCount: v.number(),
+    topicIds: v.array(v.id("knowledgeTopics")),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const approvedTopicIds: Id<"knowledgeTopics">[] = [];
+    const affectedImportIds = new Set<Id<"curriculumImports">>();
+    const now = Date.now();
+
+    for (const unitId of args.unitIds) {
+      const unit = await ctx.db.get(unitId);
+      if (!unit || unit.schoolId !== schoolId) continue;
+      assertCurriculumAdminScope({ actorSchoolId: String(schoolId), targetSchoolId: String(unit.schoolId), isAdmin: true });
+
+      affectedImportIds.add(unit.importId);
+
+      const existingApproval = resolveCurriculumApproval({ currentTopicId: unit.knowledgeTopicId ? String(unit.knowledgeTopicId) : undefined });
+      if (existingApproval.kind === "already_approved") {
+        if (unit.knowledgeTopicId) approvedTopicIds.push(unit.knowledgeTopicId);
+        continue;
+      }
+
+      const importRecord = await ctx.db.get(unit.importId);
+      if (!importRecord || importRecord.schoolId !== schoolId) continue;
+      const subject = await ctx.db.get(importRecord.subjectId);
+      if (!subject || subject.schoolId !== schoolId || subject.isArchived) continue;
+
+      const normalizedTitle = normalizeKnowledgeTopicTitleIdentity(unit.title);
+      let existing = await ctx.db.query("knowledgeTopics").withIndex(
+        "by_scope_normalized_title_and_status",
+        (q) => q.eq("schoolId", schoolId).eq("subjectId", importRecord.subjectId).eq("level", importRecord.level).eq("termId", importRecord.termId).eq("normalizedTitle", normalizedTitle).eq("status", "active"),
+      ).unique();
+
+      if (!existing) {
+        for await (const candidate of ctx.db.query("knowledgeTopics").withIndex(
+          "by_school_and_subject_and_level_and_term_and_status",
+          (q) => q.eq("schoolId", schoolId).eq("subjectId", importRecord.subjectId).eq("level", importRecord.level).eq("termId", importRecord.termId).eq("status", "active"),
+        )) {
+          if (normalizeKnowledgeTopicTitleIdentity(candidate.title) !== normalizedTitle) continue;
+          existing = candidate;
+          if (candidate.normalizedTitle !== normalizedTitle) await ctx.db.patch(candidate._id, { normalizedTitle });
+          break;
+        }
+      }
+
+      const decision = resolveCurriculumApproval({ matchingTopicId: existing ? String(existing._id) : undefined });
+      const topicId = decision.kind === "link_existing" ? existing!._id : await ctx.db.insert("knowledgeTopics", {
+        schoolId,
+        subjectId: importRecord.subjectId,
+        level: importRecord.level,
+        termId: importRecord.termId,
+        title: unit.title,
+        normalizedTitle,
+        slug: await uniqueTopicSlug(ctx, schoolId, `${subject.name}-${importRecord.level}-${unit.title}`),
+        summary: unit.learningObjectives.join(" ").slice(0, 600),
+        searchText: `${unit.title} ${subject.name} ${importRecord.level} ${unit.subtopics.join(" ")}`,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+
+      await ctx.db.patch(unitId, {
+        reviewStatus: "approved",
+        knowledgeTopicId: topicId,
+        reviewedBy: userId,
+        reviewedAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("contentAuditEvents", {
+        schoolId,
+        actorUserId: userId,
+        actorRole: "admin",
+        eventType: "approved",
+        entityType: "curriculumUnit",
+        curriculumUnitId: unitId,
+        curriculumImportId: unit.importId,
+        topicId,
+        afterTopicId: topicId,
+        changeSummary: "Bulk approved curriculum unit and linked active knowledge topic.",
+        createdAt: now,
+      });
+
+      approvedTopicIds.push(topicId);
+    }
+
+    for (const importId of affectedImportIds) {
+      await refreshImportCounts(ctx, importId, schoolId, userId);
+    }
+
+    return {
+      approvedCount: approvedTopicIds.length,
+      topicIds: approvedTopicIds,
+    };
+  },
+});
+
+export const bulkRejectCurriculumUnits = mutation({
+  args: {
+    unitIds: v.array(v.id("curriculumUnits")),
+  },
+  returns: v.object({
+    rejectedCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const affectedImportIds = new Set<Id<"curriculumImports">>();
+    const now = Date.now();
+    let rejectedCount = 0;
+
+    for (const unitId of args.unitIds) {
+      const unit = await ctx.db.get(unitId);
+      if (!unit || unit.schoolId !== schoolId) continue;
+      assertCurriculumAdminScope({ actorSchoolId: String(schoolId), targetSchoolId: String(unit.schoolId), isAdmin: true });
+      if (unit.reviewStatus === "approved") continue;
+
+      affectedImportIds.add(unit.importId);
+      await ctx.db.patch(unitId, {
+        reviewStatus: "rejected",
+        editedBy: userId,
+        reviewedBy: userId,
+        reviewedAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("contentAuditEvents", {
+        schoolId,
+        actorUserId: userId,
+        actorRole: "admin",
+        eventType: "rejected",
+        entityType: "curriculumUnit",
+        curriculumUnitId: unitId,
+        curriculumImportId: unit.importId,
+        changeSummary: "Bulk marked curriculum unit rejected.",
+        createdAt: now,
+      });
+
+      rejectedCount += 1;
+    }
+
+    for (const importId of affectedImportIds) {
+      await refreshImportCounts(ctx, importId, schoolId, userId);
+    }
+
+    return { rejectedCount };
+  },
+});

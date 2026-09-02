@@ -265,6 +265,18 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Made `<aside>` and `<main>` responsive on mobile across `report-cards` and `report-card-extras` to avoid 100vh lockouts.
 - [x] **Navigation Structure Reorganization**
   - Moved `Import Students` (`/students/import`) from *People & Operations* to *Setup & Settings* in both [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts) and [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx).
+- [x] **Planning Studio Intelligent Subject Filter & Workspace Search (`/planning`)**
+  - Added dynamic subject filter pills (`All Subjects (X)`, `[Subject] (X)`) on the Planning Studio index, derived automatically from the teacher's active workspace topics and available assignments.
+  - Enhanced backend `listTeacherPlanningTopicWork` in `lessonKnowledgeTeacher.ts` and client-side workspace filtering to match topic titles, topic summaries, subject names, subject codes, class levels, and term names seamlessly.
+- [x] **Planning Library Real-Time Search & Zero-Unmount Query Caching (`/planning/library`)**
+  - Eliminated full-page unmounting on search input keystrokes by caching reactive query data during in-flight network queries.
+  - Added instant client-side multi-field search filtering (title, description, topic, subject name/code, level) for uninterrupted, zero-lag typing.
+- [x] **Planning Workspace Actionable Draft Generation Feedback (`/planning/lesson-plans`)**
+  - Added clear contextual warning notices explaining exactly why `[ Generate Draft ]` is disabled (e.g., missing template configuration in Setup > Lesson Templates, or requiring additional library source attachments).
+  - Replaced decorative AI sparkle icons with clean native workspace icons.
+- [x] **Curriculum Readiness Map Layout Overhaul & Vertical Scrolling (`/academic/knowledge/curriculum-readiness`)**
+  - Unlocked full vertical scrolling across the readiness map by establishing a scrollable viewport container (`h-full overflow-y-auto custom-scrollbar`) inside the full-bleed navbar wrapper.
+  - Modernized the 7 readiness statistic cards and transformed the evidence grid into a clean high-contrast matrix with rounded pill indicators.
 
 ---
 

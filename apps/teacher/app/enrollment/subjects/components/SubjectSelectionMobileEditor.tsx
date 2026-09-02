@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { ChevronRight } from "lucide-react";
 
 import { humanNameFinalStrict } from "@/lib/human-name";
@@ -62,9 +63,20 @@ export function SubjectSelectionMobileEditor({
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-xs font-black uppercase tracking-[0.08em] text-slate-500">
-                  {studentInitials(humanNameFinalStrict(student.studentName))}
-                </div>
+                {student.photoUrl ? (
+                  <Image
+                    src={student.photoUrl}
+                    alt={humanNameFinalStrict(student.studentName)}
+                    width={44}
+                    height={44}
+                    unoptimized
+                    className="h-11 w-11 shrink-0 rounded-2xl border border-slate-200 object-cover shadow-2xs"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-xs font-black uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-950/5">
+                    {studentInitials(humanNameFinalStrict(student.studentName))}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
