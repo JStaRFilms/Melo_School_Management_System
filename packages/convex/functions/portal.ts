@@ -212,16 +212,8 @@ async function getPortalMemberships(ctx: any) {
     .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
     .collect();
 
-  const activePortalMemberships = memberships.filter(
-    (user: any) =>
-      !user.isArchived && (user.role === "parent" || user.role === "student")
-  );
-
-  if (activePortalMemberships.length === 0) {
-    throw new ConvexError("Unauthorized");
-  }
-
-  const studentMembership = activePortalMemberships.find(
+  const activeMemberships = memberships.filter((user: any) => !user.isArchived);
+  const studentMembership = activeMemberships.find(
     (user: any) => user.role === "student"
   );
   if (studentMembership) {
@@ -232,12 +224,44 @@ async function getPortalMemberships(ctx: any) {
     };
   }
 
+  const parentMemberships = [];
+  for (const user of activeMemberships) {
+    if (user.role === "student") {
+      continue;
+    }
+
+    const familyLink = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", user._id))
+      .first();
+    if (familyLink && familyLink.schoolId === user.schoolId) {
+      parentMemberships.push({ ...user, role: "parent" as const });
+    }
+  }
+
+  if (parentMemberships.length === 0) {
+    throw new ConvexError("Unauthorized");
+  }
+
   return {
     role: "parent" as const,
-    memberships: activePortalMemberships.filter((user: any) => user.role === "parent"),
-    viewer: activePortalMemberships[0],
+    memberships: parentMemberships,
+    viewer: parentMemberships[0],
   };
 }
+
+export const canAccessPortal = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    try {
+      await getPortalMemberships(ctx);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+});
 
 async function getAccessibleStudentsAcrossPortalMemberships(ctx: any, portalAuth: Awaited<ReturnType<typeof getPortalMemberships>>) {
   const entries: Array<{

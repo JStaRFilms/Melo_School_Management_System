@@ -194,10 +194,10 @@ export function PortalCredentialPanel({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-9.5 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
         >
           <KeyRound className="h-3.5 w-3.5" />
-          {isSubmitting ? "Saving..." : "Provision / Reset Access"}
+          <span>{isSubmitting ? "Updating..." : "Provision / Reset Access"}</span>
         </button>
       </form>
     </section>
@@ -205,4 +205,4 @@ export function PortalCredentialPanel({
 }
 
 const fieldInputClassName =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white/90 px-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300";
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 outline-none transition-all focus:border-slate-950 focus:ring-2 focus:ring-slate-950/5 placeholder:text-slate-300";

@@ -96,10 +96,6 @@ function StudentsPageContent() {
   const cancelStudentGraduation = useMutation(
     "functions/academic/studentEnrollment:cancelStudentGraduation" as never
   );
-  const upsertStudentFamilyLink = useMutation(
-    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
-  );
-
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -642,18 +638,18 @@ function StudentsPageContent() {
         photoStorageId: uploadedPhotoMetadata?.storageId ?? undefined,
         photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
         photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
+        parentLink:
+          shouldLinkParent && normalizedParentFirstName && normalizedParentLastName
+            ? {
+                firstName: normalizedParentFirstName,
+                lastName: normalizedParentLastName,
+                email: normalizedParentEmail,
+                phone: parentPhone.trim() || null,
+                relationship: parentRelationship.trim() || null,
+                isPrimaryContact: isParentPrimaryContact,
+              }
+            : undefined,
       } as never)) as string;
-      if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
-        await upsertStudentFamilyLink({
-          studentId: createdStudentId,
-          firstName: normalizedParentFirstName,
-          lastName: normalizedParentLastName,
-          email: normalizedParentEmail,
-          phone: parentPhone.trim() || null,
-          relationship: parentRelationship.trim() || null,
-          isPrimaryContact: isParentPrimaryContact,
-        } as never);
-      }
 
       resetStudentCreationForm();
       setCreationTab("quick");
