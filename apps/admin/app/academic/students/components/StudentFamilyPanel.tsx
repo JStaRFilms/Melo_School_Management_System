@@ -5,7 +5,7 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import { AlertTriangle, BadgeCheck, Link2, PencilLine, PlusCircle, ShieldAlert, Trash2, Unlink2, Users } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import { isValidEmailAddress } from "@school/auth";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { cleanEmailInput, cleanPhoneInput, getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
@@ -786,14 +786,17 @@ export function StudentFamilyPanel({
                             Phone
                           </span>
                           <input
+                            type="tel"
+                            inputMode="tel"
                             value={currentDraft.phone}
                             onChange={(event) =>
                               setEditDraft((previous) => ({
                                 ...(previous ?? currentDraft),
-                                phone: event.target.value,
+                                phone: cleanPhoneInput(event.target.value),
                               }))
                             }
                             className={fieldInputClassName}
+                            placeholder="+234..."
                           />
                         </label>
                         <label className="space-y-1.5 sm:col-span-2">
@@ -941,11 +944,24 @@ export function StudentFamilyPanel({
           </div>
           <div className="space-y-1.5">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Email</span>
-            <input type="email" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} className={fieldInputClassName} placeholder="parent@example.com" />
+            <input
+              type="email"
+              value={parentEmail}
+              onChange={(e) => setParentEmail(cleanEmailInput(e.target.value))}
+              className={fieldInputClassName}
+              placeholder="parent@example.com"
+            />
           </div>
           <div className="space-y-1.5">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</span>
-            <input value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} className={fieldInputClassName} placeholder="+234..." />
+            <input
+              type="tel"
+              inputMode="tel"
+              value={parentPhone}
+              onChange={(e) => setParentPhone(cleanPhoneInput(e.target.value))}
+              className={fieldInputClassName}
+              placeholder="+234..."
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Relationship</span>

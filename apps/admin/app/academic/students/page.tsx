@@ -1,32 +1,32 @@
 "use client";
 
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMutation, useQuery } from "convex/react";
 import { isValidEmailAddress } from "@school/auth";
-import { getUserFacingErrorMessage } from "@school/shared";
-import { appToast } from "@school/shared/toast";
-import { useMutation,useQuery } from "convex/react";
 import {
-ArrowRight,
-BookOpen,
-FileSpreadsheet,
-Plus,
-Search,
-Sparkles,
-Users,
-X,
+  cleanEmailInput,
+  cleanPhoneInput,
+  getUserFacingErrorMessage,
+  isValidPhoneNumber,
+  MeloLoader,
+} from "@school/shared";
+import { appToast } from "@school/shared/toast";
+import {
+  ArrowRight,
+  BookOpen,
+  FileSpreadsheet,
+  Plus,
+  Search,
+  Sparkles,
+  Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import {
-useCallback,
-useEffect,
-useMemo,
-useRef,
-useState,
-type FormEvent,
-} from "react";
 
 import {
-humanNameFinalStrict,
-humanNameTypingStrict,
+  humanNameFinalStrict,
+  humanNameTypingStrict,
 } from "@/human-name";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -55,6 +55,22 @@ import type {
 const MAX_PROMOTION_BATCH = 100;
 
 export default function StudentsPage() {
+  return (
+    <Suspense fallback={<StudentsPageFallback />}>
+      <StudentsPageContent />
+    </Suspense>
+  );
+}
+
+function StudentsPageFallback() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-surface-100">
+      <MeloLoader message="Loading student records..." />
+    </div>
+  );
+}
+
+function StudentsPageContent() {
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
@@ -84,8 +100,17 @@ export default function StudentsPage() {
     "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
 
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const urlClassId = searchParams.get("classId");
+  const urlSessionId = searchParams.get("sessionId");
+  const urlStudentId = searchParams.get("studentId");
+  const urlTab = searchParams.get("tab");
+
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(urlClassId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(urlSessionId);
   const [studentFirstName, setStudentFirstName] = useState("");
   const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
@@ -103,7 +128,7 @@ export default function StudentsPage() {
   const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(urlStudentId);
   const [isMobile, setIsMobile] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
@@ -133,13 +158,49 @@ export default function StudentsPage() {
 
   // New states for Unified Editor
   const [isUnifiedSheetOpen, setIsUnifiedSheetOpen] = useState(false);
-  const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">("subjects");
+  const [unifiedInitialTab, setUnifiedInitialTab] = useState<"subjects" | "profile">(
+    urlTab === "profile" ? "profile" : "subjects"
+  );
   const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
   const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
+
+  const updateUrlParams = useCallback(
+    (updates: {
+      classId?: string | null;
+      sessionId?: string | null;
+      studentId?: string | null;
+      tab?: string | null;
+    }) => {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(window.location.search);
+
+      if (updates.classId !== undefined) {
+        if (updates.classId) params.set("classId", updates.classId);
+        else params.delete("classId");
+      }
+      if (updates.sessionId !== undefined) {
+        if (updates.sessionId) params.set("sessionId", updates.sessionId);
+        else params.delete("sessionId");
+      }
+      if (updates.studentId !== undefined) {
+        if (updates.studentId) params.set("studentId", updates.studentId);
+        else params.delete("studentId");
+      }
+      if (updates.tab !== undefined) {
+        if (updates.tab) params.set("tab", updates.tab);
+        else params.delete("tab");
+      }
+
+      const queryString = params.toString();
+      const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      window.history.replaceState(null, "", newUrl);
+    },
+    [pathname]
+  );
 
   const showNotice = useCallback((nextNotice: EnrollmentNotice) => {
     if (nextNotice.tone === "success") {
@@ -187,16 +248,38 @@ export default function StudentsPage() {
     return activeTerm?.reportCardCalculationMode === "cumulative_annual";
   }, [selectedSessionTerms]);
 
+  // Synchronize initial session selection
   useEffect(() => {
-    if (!sessions || selectedSessionId) {
+    if (!sessions || sessions.length === 0) {
       return;
     }
 
-    const activeSession = sessions.find((session) => session.isActive);
-    if (activeSession) {
-      setSelectedSessionId(activeSession._id);
+    if (!selectedSessionId || !sessions.some((s) => s._id === selectedSessionId)) {
+      const urlSession = urlSessionId && sessions.find((s) => s._id === urlSessionId);
+      const activeSession = sessions.find((session) => session.isActive) ?? sessions[0];
+      const targetSessionId = urlSession ? urlSession._id : activeSession?._id;
+      if (targetSessionId) {
+        setSelectedSessionId(targetSessionId);
+        updateUrlParams({ sessionId: targetSessionId });
+      }
     }
-  }, [selectedSessionId, sessions]);
+  }, [selectedSessionId, sessions, urlSessionId, updateUrlParams]);
+
+  // Synchronize initial class selection
+  useEffect(() => {
+    if (!classes || classes.length === 0) {
+      return;
+    }
+
+    if (!selectedClassId || !classes.some((c) => c._id === selectedClassId)) {
+      const urlClass = urlClassId && classes.find((c) => c._id === urlClassId);
+      const defaultClass = urlClass ? urlClass : classes[0];
+      if (defaultClass) {
+        setSelectedClassId(defaultClass._id);
+        updateUrlParams({ classId: defaultClass._id });
+      }
+    }
+  }, [classes, selectedClassId, urlClassId, updateUrlParams]);
 
   useEffect(() => {
     if (!sessions || promotionTargetSessionId) {
@@ -209,24 +292,37 @@ export default function StudentsPage() {
     }
   }, [promotionTargetSessionId, sessions]);
 
-
+  // Synchronize selected student with matrix data
   useEffect(() => {
     if (!matrix?.students.length) {
-      setSelectedStudentId(null);
+      if (selectedStudentId) {
+        setSelectedStudentId(null);
+        updateUrlParams({ studentId: null, tab: null });
+      }
       setPromotionStudentIds([]);
       return;
     }
 
     const visibleStudentIds = new Set(matrix.students.map((student) => student._id));
-    setSelectedStudentId((current) =>
-      current && visibleStudentIds.has(current)
-        ? current
-        : null
-    );
+    if (urlStudentId && visibleStudentIds.has(urlStudentId)) {
+      setSelectedStudentId(urlStudentId);
+      if (urlTab === "profile" || urlTab === "subjects") {
+        setUnifiedInitialTab(urlTab);
+        setIsUnifiedSheetOpen(true);
+      }
+    } else {
+      setSelectedStudentId((current) => {
+        if (current && visibleStudentIds.has(current)) {
+          return current;
+        }
+        return null;
+      });
+    }
+
     setPromotionStudentIds((current) =>
       current.filter((studentId) => visibleStudentIds.has(studentId))
     );
-  }, [matrix]);
+  }, [matrix, urlStudentId, urlTab, updateUrlParams]);
 
   const cancelStudentPromotion = useMutation(
     "functions/academic/studentEnrollment:cancelStudentPromotion" as never
@@ -491,6 +587,14 @@ export default function StudentsPage() {
       return;
     }
 
+    if (trimmedGuardianPhone && !isValidPhoneNumber(trimmedGuardianPhone)) {
+      showNotice({
+        tone: "error",
+        message: "Enter a valid guardian contact phone number (e.g. +234...).",
+      });
+      return;
+    }
+
     if (shouldLinkParent) {
       if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
         showNotice({
@@ -504,6 +608,14 @@ export default function StudentsPage() {
         showNotice({
           tone: "error",
           message: "Enter a valid parent email address before linking family details.",
+        });
+        return;
+      }
+
+      if (parentPhone.trim() && !isValidPhoneNumber(parentPhone)) {
+        showNotice({
+          tone: "error",
+          message: "Enter a valid parent phone number (e.g. +234...).",
         });
         return;
       }
@@ -546,6 +658,7 @@ export default function StudentsPage() {
       resetStudentCreationForm();
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
+      updateUrlParams({ studentId: createdStudentId });
       showNotice({
         tone: missingOptionalFields.length > 0 ? "warning" : "success",
         message:
@@ -748,19 +861,54 @@ export default function StudentsPage() {
     showNotice,
   ]);
 
-  const openUnifiedEditor = useCallback((studentId: string, tab: "subjects" | "profile" = "subjects") => {
-    setSelectedStudentId(studentId);
-    setUnifiedInitialTab(tab);
-    setIsUnifiedSheetOpen(true);
-  }, []);
+  const handleClassChange = useCallback(
+    (nextClassId: string | null) => {
+      setSelectedClassId(nextClassId);
+      setSelectedStudentId(null);
+      updateUrlParams({ classId: nextClassId, studentId: null, tab: null });
+    },
+    [updateUrlParams]
+  );
 
-  const handleNewAdmission = () => {
+  const handleSessionChange = useCallback(
+    (nextSessionId: string | null) => {
+      setSelectedSessionId(nextSessionId);
+      updateUrlParams({ sessionId: nextSessionId });
+    },
+    [updateUrlParams]
+  );
+
+  const handleSelectStudent = useCallback(
+    (studentId: string | null) => {
+      setSelectedStudentId(studentId);
+      updateUrlParams({ studentId: studentId || null, tab: null });
+    },
+    [updateUrlParams]
+  );
+
+  const openUnifiedEditor = useCallback(
+    (studentId: string, tab: "subjects" | "profile" = "subjects") => {
+      setSelectedStudentId(studentId);
+      setUnifiedInitialTab(tab);
+      setIsUnifiedSheetOpen(true);
+      updateUrlParams({ studentId, tab });
+    },
+    [updateUrlParams]
+  );
+
+  const handleCloseUnifiedEditor = useCallback(() => {
+    setIsUnifiedSheetOpen(false);
+    updateUrlParams({ tab: null });
+  }, [updateUrlParams]);
+
+  const handleNewAdmission = useCallback(() => {
     setSelectedStudentId(null);
     setIsCreationSheetOpen(true);
+    updateUrlParams({ studentId: null, tab: null });
     setTimeout(() => {
       studentNameInputRef.current?.focus();
     }, 300);
-  };
+  }, [updateUrlParams]);
 
   const promotionSourceClassName =
     classes?.find((c) => c._id === selectedClassId)?.name ?? "Current Class";
@@ -814,14 +962,14 @@ export default function StudentsPage() {
         subjects={matrix?.subjects ?? []}
         totalSubjects={matrixSummary.totalSubjects}
         isOpen={isUnifiedSheetOpen && isMobile}
-        onClose={() => setIsUnifiedSheetOpen(false)}
+        onClose={handleCloseUnifiedEditor}
         onToggle={handleToggleSubject}
         onSetStudentSubjects={handleSetStudentSubjects}
         classes={classes}
         onNotice={showNotice}
         onViewAttestation={handleOpenAttestation}
         initialTab={unifiedInitialTab}
-        onStudentArchived={() => setIsUnifiedSheetOpen(false)}
+        onStudentArchived={() => handleSelectStudent(null)}
       />
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
@@ -878,8 +1026,8 @@ export default function StudentsPage() {
                 sessions={sessions}
                 selectedClassId={selectedClassId}
                 selectedSessionId={selectedSessionId}
-                onClassChange={setSelectedClassId}
-                onSessionChange={setSelectedSessionId}
+                onClassChange={handleClassChange}
+                onSessionChange={handleSessionChange}
               />
             </div>
 
@@ -920,7 +1068,7 @@ export default function StudentsPage() {
                     selectedStudentId={selectedStudentId}
                     promotionStudentIds={promotionStudentIds}
                     isPromotionMode={shouldShowPromotionPanel}
-                    onSelectStudent={setSelectedStudentId}
+                    onSelectStudent={handleSelectStudent}
                     onTogglePromotionStudent={handleTogglePromotionStudent}
                     onCancelPromotion={handleCancelPromotion}
                     onCancelGraduation={handleCancelGraduation}
@@ -972,7 +1120,7 @@ export default function StudentsPage() {
                 studentId={selectedStudentId}
                 classes={classes}
                 onNotice={showNotice}
-                onStudentArchived={() => setSelectedStudentId(null)}
+                onStudentArchived={() => handleSelectStudent(null)}
                 onViewAttestation={handleOpenAttestation}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -1038,14 +1186,14 @@ export default function StudentsPage() {
                     onSubmit={handleCreateStudent}
                     classes={classes}
                     selectedClassId={selectedClassId}
-                    onClassIdChange={setSelectedClassId}
+                    onClassIdChange={handleClassChange}
                   />
                 ) : (
                   <FamilyOnboardingForm
                     selectedClassName={selectedClassName}
                     classes={classes}
                     selectedClassId={selectedClassId}
-                    onClassIdChange={setSelectedClassId}
+                    onClassIdChange={handleClassChange}
                     studentFirstName={studentFirstName}
                     onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
                     onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
@@ -1185,14 +1333,14 @@ export default function StudentsPage() {
                   }}
                   classes={classes}
                   selectedClassId={selectedClassId}
-                  onClassIdChange={setSelectedClassId}
+                  onClassIdChange={handleClassChange}
                 />
               ) : (
                 <FamilyOnboardingForm
                   selectedClassName={selectedClassName}
                   classes={classes}
                   selectedClassId={selectedClassId}
-                  onClassIdChange={setSelectedClassId}
+                  onClassIdChange={handleClassChange}
                   studentFirstName={studentFirstName}
                   onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
                   onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}

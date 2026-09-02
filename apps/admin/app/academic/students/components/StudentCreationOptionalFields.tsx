@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Info } from "lucide-react";
+import { cleanPhoneInput } from "@school/shared";
 
 interface StudentCreationOptionalFieldsProps {
   houseName: string;
@@ -72,9 +73,10 @@ export function StudentCreationOptionalFields({
         </Field>
         <Field label="Phone">
           <input
-            type="text"
+            type="tel"
+            inputMode="tel"
             value={guardianPhone}
-            onChange={(event) => onGuardianPhoneChange(event.target.value)}
+            onChange={(event) => onGuardianPhoneChange(cleanPhoneInput(event.target.value))}
             className={fieldInputClassName}
             placeholder="+234..."
           />

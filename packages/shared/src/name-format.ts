@@ -139,3 +139,53 @@ function isAsciiLetter(char: string): boolean {
   const code = char.charCodeAt(0);
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
+
+/**
+ * Filter out invalid phone characters during user typing or pasting.
+ * Keeps only digits, at most one leading '+', spaces, hyphens, and parentheses.
+ * Eliminates letters, email domains, '@', and other punctuation immediately.
+ */
+export function cleanPhoneInput(input: string): string {
+  if (!input) return "";
+
+  const trimmedStart = input.trimStart();
+  const startsWithPlus = trimmedStart.startsWith("+");
+  // Keep only digits, spaces, hyphens, parentheses
+  const cleaned = input.replace(/[^\d\s\-()]/g, "");
+
+  return startsWithPlus ? `+${cleaned}` : cleaned;
+}
+
+/**
+ * Validates whether a given contact phone is valid.
+ * An empty string is considered valid (if optional).
+ * When non-empty, requires between 7 and 15 digits and strictly no letters or '@'.
+ */
+export function isValidPhoneNumber(input: string | null | undefined): boolean {
+  if (!input || !input.trim()) return true;
+
+  const trimmed = input.trim();
+  if (trimmed.includes("@") || /[a-zA-Z]/.test(trimmed)) {
+    return false;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+/**
+ * Validate email format with standard email regex.
+ * An empty string is considered valid (if optional).
+ */
+export function isValidEmailAddress(input: string | null | undefined): boolean {
+  if (!input || !input.trim()) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.trim());
+}
+
+/**
+ * Clean email typing by stripping spaces and lowercasing.
+ */
+export function cleanEmailInput(input: string): string {
+  return input.trim().toLowerCase();
+}
+

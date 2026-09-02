@@ -2,6 +2,7 @@
 
 import { Sparkles, Users } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
+import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
 import type { ClassSummary } from "./types";
 
 interface FamilyOnboardingFormProps {
@@ -207,7 +208,7 @@ export function FamilyOnboardingForm({
           <input
             type="email"
             value={parentEmail}
-            onChange={(event) => onParentEmailChange(event.target.value)}
+            onChange={(event) => onParentEmailChange(cleanEmailInput(event.target.value))}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
             placeholder="parent@example.com"
           />
@@ -217,8 +218,9 @@ export function FamilyOnboardingForm({
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</label>
             <input
               type="tel"
+              inputMode="tel"
               value={parentPhone}
-              onChange={(event) => onParentPhoneChange(event.target.value)}
+              onChange={(event) => onParentPhoneChange(cleanPhoneInput(event.target.value))}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
               placeholder="+234..."
             />

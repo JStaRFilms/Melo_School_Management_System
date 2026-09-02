@@ -108,8 +108,13 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Student Roster Visibility for Classes with Zero Subjects Configured (`SubjectSelectionMatrix.tsx`, `SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
   - Previously, if a class had students enrolled but 0 subjects configured in the curriculum, the entire student roster table was replaced by a single empty-state banner, causing newly admitted students to disappear from view.
   - Now, enrolled students are always visible in both desktop and mobile roster views with full names, avatars, admission numbers, and quick profile actions, accompanied by a direct action link to configure class subjects.
-- [x] **Granular Toast & Error Message Extraction (`packages/shared/src/errors.ts`)**
-  - Enhanced `getUserFacingErrorMessage` to inspect `error.data` payloads and strip noisy WebSocket transport wrappers, ensuring exact server-side validation messages (e.g. duplicate admission IDs, missing permissions) are presented cleanly to the user in notifications.
+- [x] **Global Phone & Email Input Sanitation and Strict Validation (`@school/shared`, `studentEnrollment.ts`, Form Fields)**
+  - Built `cleanPhoneInput`, `isValidPhoneNumber`, `cleanEmailInput`, and `isValidEmailAddress` in `@school/shared`.
+  - Added real-time character filtering on all phone input fields (`type="tel"`, `inputMode="tel"`) across the application, preventing letters, `@`, or email domains from ever being typed or pasted into phone fields.
+  - Added strict backend validation in Convex mutations (`normalizeOptionalPhone`), rejecting invalid strings or email payloads with clear error messages.
+- [x] **Stateful URL Query Synchronization & Deep Linking on `/academic/students` (`apps/admin/app/academic/students/page.tsx`)**
+  - Integrated `useSearchParams` and shallow URL history replacement so that selecting a Class (`?classId=...`), Academic Session (`?sessionId=...`), Student Record (`?studentId=...`), or Sheet Tab (`?tab=...`) automatically updates the browser URL.
+  - Refreshing the browser or sharing/bookmarking the URL preserves the exact class context, active session, and currently inspected student drawer without resetting to defaults.
 
 ### 5. Academic Sessions, Dynamic Term Partitioning & Modal Overlay Polish
 - [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
