@@ -15,6 +15,7 @@ import {
   type ReportCardSheetData,
 } from "@school/shared";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
+import { ReportCardLauncher } from "./components/ReportCardLauncher";
 
 export default function AdminReportCardPage() {
   return (
@@ -149,13 +150,7 @@ function AdminReportCardPageContent() {
   }, [isPrintClassMode, exitFullClassPrint]);
 
   if (!studentId || !sessionId || !termId) {
-    return (
-      <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Select a student, session, and term before opening a report card.
-        </div>
-      </div>
-    );
+    return <ReportCardLauncher />;
   }
 
   if (reportCard === undefined) {

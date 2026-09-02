@@ -17,10 +17,10 @@ interface ClassAssignmentPanelProps {
 
 const EMPTY_ASSIGNMENTS: Record<string, ClassAssignmentRecord> = {};
 const FILTER_OPTIONS = [
-  ["all", "All"],
+  ["all", "All Classes"],
   ["assigned", "Assigned"],
-  ["unassigned", "Empty"],
-  ["selected-bundle", "Selected"],
+  ["unassigned", "Unassigned"],
+  ["selected-bundle", "This Bundle"],
 ] as const;
 
 export function StaticClassAssignmentPanel(props: ClassAssignmentPanelProps) {
@@ -118,8 +118,8 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
             <Link2 className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="space-y-0.5">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900">Distribution Engine</h2>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-tight">Deploy blueprints to class instances</p>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900">Class Assignment</h2>
+            <p className="text-xs font-medium text-slate-400">Assign this report add-on bundle to specific classes</p>
           </div>
         </div>
       </div>
@@ -130,7 +130,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
           <input
             className="w-full h-10 rounded-xl border border-slate-100 bg-slate-50/50 pl-10 pr-4 text-xs font-bold uppercase tracking-widest outline-none transition focus:border-slate-300 focus:bg-white"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter Classes..."
+            placeholder="Search classes..."
             value={search}
           />
         </div>
@@ -153,7 +153,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
       {selectedClassIds.length > 0 && (
         <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between animate-in slide-in-from-top-2 duration-300">
           <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">
-            {selectedClassIds.length} Nodes Locked
+            {selectedClassIds.length} {selectedClassIds.length === 1 ? "Class Selected" : "Classes Selected"}
           </div>
           <div className="flex gap-2">
             <button
@@ -166,7 +166,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
               onClick={() => handleBulkApply(true)}
               className="px-3 py-1 bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
             >
-              Deploy Selected
+              Assign to Selected
             </button>
           </div>
         </div>

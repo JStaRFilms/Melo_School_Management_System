@@ -188,6 +188,35 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Added `demoteAdminToTeacher` mutation in `adminLeadership.ts` allowing non-lead admins to be safely downgraded to standard teachers while automatically re-parenting any direct sub-admins to the Lead Admin.
   - Added `To Teacher` action button with `UserMinus` icon in `AdminCard.tsx` and `AdminDirectorySection.tsx`.
 
+### 9. Grading Bands Policy, Report Card Resumption Sync & Navigation
+- [x] **Grading Bands Multi-Issue Validation & Range Highlighting (`/assessments/setup/grading-bands`)**
+  - Added checks for duplicate grade labels (e.g. two "A" grades) and duplicate score ranges across tiers in `packages/shared/src/exam-recording/validation.ts`.
+  - Updated `BandValidationBanner.tsx` with clear error count badge and bulleted breakdown of all validation issues.
+  - Added targeted border highlighting in `BandTable.tsx` / `BandRow.tsx` (highlights letter input for grade label duplicates and min/max inputs for score range duplicates/overlaps).
+- [x] **Grading Bands Layout, Standard Default Preset & Auto-Arrange**
+  - Added bottom container padding (`pb-36`) so floating action bar never obscures table rows or the bottom Add Tier button.
+  - Upgraded action bar with status indicators ("Unsaved changes" vs "Resolve errors to save"), "Save Changes" and "Discard" actions.
+  - Added standard default grading scale (`A: 75–100`, `B: 65–74`, `C: 50–64`, `D: 40–49`, `F: 0–39`) and `Load Standard Scale` preset button (`Sparkles` icon).
+  - Added `Auto-Arrange` button and automated ascending sort on save (`0 → 100`).
+- [x] **Report Card Class Groups Override Form Toggle & Cancel Handler (`/assessments/report-cards`)**
+  - Fixed issue in `ReportCardAdminPanel.tsx` where clicking `+` failed to open the class group override form due to missing creation state.
+  - Added `isCreatingGroup` state, clear "Add Group" / "Close" toggle, and a direct "+ Create Override" button when no overrides exist.
+- [x] **Strict Adjacent-Term Resumption Auto-Lookup & Calendar Sync Warning**
+  - Updated `packages/convex/functions/academic/reportCardTermSettings.ts` to query all terms in the active session sorted by `startDate` ascending and strictly look up the immediate next adjacent term (`terms[currentIndex + 1]`).
+  - Pre-fills resumption date with adjacent next term's start date if global resumption is unset.
+  - When admin edits the resumption date on Report Cards and saves, it updates the linked term's `startDate` in `academicTerms`, keeping `/academic/sessions` and report cards in sync.
+  - Displayed a `Calendar Sync Notice` warning callout in `ReportCardAdminPanel.tsx` when changing resumption dates.
+- [x] **Automated 2-Week Resumption Calendar Event (`/academic/events`)**
+  - Added `syncNextTermResumptionCalendarEvent` in `reportCardTermSettings.ts` to automatically create or update a `"Next Term Resumption — [Term Name]"` event in `schoolEvents` when `term.endDate - Date.now() <= 14 days`.
+- [x] **Report Cards Self-Contained Launcher & Sidebar Direct Navigation**
+  - Added `ReportCardLauncher.tsx` to `/assessments/report-cards` providing a full interactive selector (Session, Term, Class, Student Search, Batch Print) when direct URL parameters are missing.
+  - Updated workspace navigation sidebar so "Report Cards" routes directly to `/assessments/report-cards`.
+- [x] **Report Add-ons & Bundles Educational UI Polish (`/assessments/setup/report-card-bundles`)**
+  - Completely de-robotized and un-slopped terminology across all bundle designer components (replaced sci-fi jargon like *"Void Catalog"*, *"Blueprint Designer"*, *"Virtual Monitor"*, *"Distribution Engine"*, *"Nodes"*, *"Internal Buffer"* with clear school terminology like *"Report Add-ons"*, *"Design Bundle"*, *"Live Preview"*, *"Class Assignment"*, *"Fields"*, *"Printed on Report Card"*, *"Internal Only"*).
+  - Added 1-click **Starter Bundle Presets** (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Health Summary`) with preconfigured sections, fields, and sources.
+  - Added 1-click **Standard Rating Scale Presets** (`5-Point Rating Scale (1–5)`, `Letter Grade Scale (A–E)`, `Behavioral Frequency Scale`).
+  - Streamlined bundle and scale creation workflows for admins with instant draft loading and clean preview cards.
+
 ---
 
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints

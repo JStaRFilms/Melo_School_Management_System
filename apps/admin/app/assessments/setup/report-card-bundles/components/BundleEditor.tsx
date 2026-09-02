@@ -1,9 +1,15 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText, Sparkles } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BundleDraft, ScaleTemplateRecord } from "../types";
-import { createEmptyField, createEmptySection, moveItem } from "../utils";
+import { 
+  createEmptyField, 
+  createEmptySection, 
+  moveItem,
+  STARTER_BUNDLE_PRESETS,
+  createBundleDraftFromPreset 
+} from "../utils";
 import { FieldEditor } from "./FieldEditor";
 
 interface BundleEditorProps {
@@ -13,31 +19,61 @@ interface BundleEditorProps {
 }
 
 export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {
+  const handleLoadPreset = (presetIndex: number) => {
+    const preset = STARTER_BUNDLE_PRESETS[presetIndex];
+    if (!preset) return;
+    const defaultScale = scaleTemplates[0]?._id ?? null;
+    onChange(createBundleDraftFromPreset(preset, defaultScale));
+  };
+
   return (
     <div className="space-y-6">
+      {/* Starter Template Presets */}
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+            <span className="text-xs font-bold text-indigo-950">Quick Starter Templates</span>
+          </div>
+          <span className="text-[10px] font-semibold text-indigo-500">1-Click Setup</span>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {STARTER_BUNDLE_PRESETS.map((preset, idx) => (
+            <button
+              key={preset.name}
+              type="button"
+              onClick={() => handleLoadPreset(idx)}
+              className="px-3 py-1.5 rounded-xl border border-indigo-200/80 bg-white hover:bg-indigo-50 text-[11px] font-bold text-indigo-900 transition-all shadow-sm hover:shadow"
+            >
+              + {preset.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <AdminSurface intensity="low" className="p-4 sm:p-6 space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
           <div className="p-2 bg-slate-100 rounded-lg">
             <LayoutGrid className="w-4 h-4 text-slate-600" />
           </div>
           <div className="space-y-0.5">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900">Blueprint Authoring</h2>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-tight">Configure report card structure and logic</p>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-900">Bundle Details</h2>
+            <p className="text-xs font-medium text-slate-400">Name and describe this report card add-on bundle</p>
           </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
           <label className="group space-y-1.5">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 group-focus-within:text-slate-600 transition-colors">Bundle Identity</span>
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 group-focus-within:text-slate-600 transition-colors">Bundle Name</span>
             <input
               className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/30 px-4 text-sm font-medium outline-none transition focus:border-slate-400 focus:bg-white"
               onChange={(event) => onChange({ ...draft, name: event.target.value })}
-              placeholder="e.g. Lower Primary Conduct"
+              placeholder="e.g. Affective & Behavioral Domain"
               value={draft.name}
             />
           </label>
           <label className="group space-y-1.5">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 group-focus-within:text-slate-600 transition-colors">Description / Purpose</span>
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 group-focus-within:text-slate-600 transition-colors">Description (Optional)</span>
             <input
               className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/30 px-4 text-sm font-medium outline-none transition focus:border-slate-400 focus:bg-white"
               onChange={(event) => onChange({ ...draft, description: event.target.value })}
@@ -52,7 +88,7 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
             <FileText className="w-3 h-3 opacity-50" />
-            Structural Sections
+            Sections
           </h3>
           <button
             className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95"
@@ -142,7 +178,7 @@ export function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorPr
                   type="button"
                 >
                   <Plus className="h-3 w-3" />
-                  Append New Field
+                  Add Field
                 </button>
               </div>
             </AdminSurface>

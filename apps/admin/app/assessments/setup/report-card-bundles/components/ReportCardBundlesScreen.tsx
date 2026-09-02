@@ -236,9 +236,9 @@ export function ReportCardBundlesScreen({
                     {/* Sub-Tab Navigation for Bundles */}
                     <div className="flex items-center gap-6 border-b border-slate-200/60 pb-px overflow-x-auto scrollbar-hide">
                       {[
-                        { id: "designer", label: "Blueprint Designer" },
-                        { id: "monitor", label: "Virtual Monitor" },
-                        { id: "distribution", label: "Distribution Engine" },
+                        { id: "designer", label: "Design Bundle" },
+                        { id: "monitor", label: "Live Preview" },
+                        { id: "distribution", label: "Assign Classes" },
                       ].map((sub) => (
                         <button
                           key={sub.id}

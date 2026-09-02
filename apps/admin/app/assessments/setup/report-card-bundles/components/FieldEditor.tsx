@@ -1,14 +1,14 @@
 "use client";
 
-import { ChevronDown,ChevronUp,Trash2 } from "lucide-react";
-import type { BundleDraft,BundleFieldDraft,BundleSectionDraft,ScaleTemplateRecord } from "../types";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import type { BundleDraft, BundleFieldDraft, BundleSectionDraft, ScaleTemplateRecord } from "../types";
 import {
-fieldSourceOptions,
-fieldTypeOptions,
-getCanonicalFieldConfig,
-moveItem,
-systemAttendanceFieldOptions,
-systemTermFieldOptions,
+  fieldSourceOptions,
+  fieldTypeOptions,
+  getCanonicalFieldConfig,
+  moveItem,
+  systemAttendanceFieldOptions,
+  systemTermFieldOptions,
 } from "../utils";
 
 interface FieldEditorProps {
@@ -29,7 +29,7 @@ export function FieldEditor({
   draft,
   scaleTemplates,
   onChange,
-}: FieldEditorProps) {
+}: FieldEditorProps) {
   const canonicalOptions =
     field.source === "system_term"
       ? systemTermFieldOptions
@@ -52,10 +52,10 @@ export function FieldEditor({
         <div className="flex items-center justify-between border-b border-slate-100/50 pb-3">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/field:bg-slate-900 transition-colors" />
-            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Node {fieldIndex + 1}</span>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Field {fieldIndex + 1}</span>
             <span className="text-xs font-bold text-slate-200">•</span>
-            <span className={`text-[11px] font-black uppercase tracking-widest ${field.printable ? "text-emerald-500" : "text-amber-500"}`}>
-              {field.printable ? "Exported" : "Internal Buffer"}
+            <span className={`text-[11px] font-black uppercase tracking-widest ${field.printable ? "text-emerald-600" : "text-amber-600"}`}>
+              {field.printable ? "Printed on Report Card" : "Internal Only"}
             </span>
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover/field:opacity-100 transition-opacity">
@@ -102,7 +102,7 @@ export function FieldEditor({
                 fields[fieldIndex] = { ...field, label: event.target.value };
                 updateSection(fields);
               }}
-              placeholder="Punctuality"
+              placeholder="e.g. Attentiveness"
               value={field.label}
               disabled={field.source === "system_term" || field.source === "system_attendance"}
             />
@@ -205,7 +205,7 @@ export function FieldEditor({
 
         {(field.source === "system_term" || field.source === "system_attendance") && (
           <label className="block space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">System Linkage</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">System Field</span>
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:border-slate-400"
               onChange={(event) => {
@@ -223,7 +223,7 @@ export function FieldEditor({
               }}
               value={field.systemKey ?? ""}
             >
-              <option value="">Select Reference...</option>
+              <option value="">Select System Field...</option>
               {canonicalOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -235,7 +235,7 @@ export function FieldEditor({
 
         {field.type === "scale" && (
           <label className="block space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Evaluation Matrix</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Rating Scale Template</span>
             <select
               className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:border-slate-400"
               onChange={(event) => {
@@ -245,7 +245,7 @@ export function FieldEditor({
               }}
               value={field.scaleTemplateId ?? ""}
             >
-              <option value="">Attach Scale...</option>
+              <option value="">Select Rating Scale...</option>
               {scaleTemplates.map((template) => (
                 <option key={template._id} value={template._id}>
                   {template.name}

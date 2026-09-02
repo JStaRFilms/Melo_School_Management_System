@@ -11,7 +11,9 @@ import {
   Image as ImageIcon, 
   Save, 
   Trash2, 
-  Plus 
+  Plus,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 function formatDateInputValue(value: number | null) {
@@ -70,6 +72,7 @@ export function ReportCardAdminPanel({
         termId: string;
         termEndDate: number;
         nextTermBegins: number | null;
+        linkedNextTermName: string | null;
         defaultTimesSchoolOpened: number | null;
         resultCalculationMode: "standalone" | "cumulative_annual";
         groups: Array<{
@@ -118,6 +121,7 @@ export function ReportCardAdminPanel({
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [termSettingsReady, setTermSettingsReady] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isSavingTermDefaults, setIsSavingTermDefaults] = useState(false);
   const [termDefaultsError, setTermDefaultsError] = useState<string | null>(null);
   const [termDefaultsSuccess, setTermDefaultsSuccess] = useState<string | null>(null);
@@ -156,11 +160,13 @@ export function ReportCardAdminPanel({
 
   useEffect(() => {
     if (!selectedGroup) {
-      setGroupId(null);
-      setGroupName("");
-      setGroupClassIds([]);
-      setGroupNextTermBegins("");
-      setGroupTimesOpened("");
+      if (!isCreatingGroup) {
+        setGroupId(null);
+        setGroupName("");
+        setGroupClassIds([]);
+        setGroupNextTermBegins("");
+        setGroupTimesOpened("");
+      }
       return;
     }
     setGroupId(selectedGroup._id);
@@ -172,7 +178,7 @@ export function ReportCardAdminPanel({
         ? ""
         : String(selectedGroup.timesSchoolOpened)
     );
-  }, [selectedGroup]);
+  }, [selectedGroup, isCreatingGroup]);
 
   const handleSaveComments = async () => {
     setIsSavingComments(true);
@@ -263,6 +269,7 @@ export function ReportCardAdminPanel({
         timesSchoolOpened: parseIntegerInputValue(groupTimesOpened),
       } as never)) as string;
       setSelectedGroupId(nextGroupId);
+      setIsCreatingGroup(false);
       setGroupSuccess("Class group saved.");
     } catch (error) {
       setGroupError(
@@ -283,6 +290,7 @@ export function ReportCardAdminPanel({
     try {
       await deleteTermGroup({ groupId } as never);
       setSelectedGroupId(null);
+      setIsCreatingGroup(false);
       setGroupSuccess("Group removed.");
     } catch (error) {
       setGroupError(
@@ -295,8 +303,21 @@ export function ReportCardAdminPanel({
     }
   };
 
-  const resetGroupEditor = () => {
+  const handleStartCreateGroup = () => {
     setSelectedGroupId(null);
+    setGroupId(null);
+    setGroupName("");
+    setGroupClassIds([]);
+    setGroupNextTermBegins("");
+    setGroupTimesOpened("");
+    setGroupError(null);
+    setGroupSuccess(null);
+    setIsCreatingGroup(true);
+  };
+
+  const handleCancelGroupEditor = () => {
+    setSelectedGroupId(null);
+    setIsCreatingGroup(false);
     setGroupId(null);
     setGroupName("");
     setGroupClassIds([]);
@@ -414,7 +435,14 @@ export function ReportCardAdminPanel({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <span className="text-[11px] font-bold text-slate-900 ml-1">Resumption</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-900 ml-1">Resumption</span>
+              {termSettings?.linkedNextTermName && (
+                <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                  {termSettings.linkedNextTermName}
+                </span>
+              )}
+            </div>
             <input
               type="date"
               value={defaultNextTermBegins}
@@ -438,6 +466,19 @@ export function ReportCardAdminPanel({
             />
           </div>
         </div>
+
+        {termSettings?.linkedNextTermName &&
+          defaultNextTermBegins &&
+          defaultNextTermBegins !==
+            formatDateInputValue(termSettings.nextTermBegins) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-2.5 text-[11px] font-medium text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Calendar Sync:</strong> Saving this date will update the start date of{" "}
+                <strong>{termSettings.linkedNextTermName}</strong> across your school calendar.
+              </span>
+            </div>
+          )}
 
         {(termDefaultsError || termDefaultsSuccess) && (
           <div className={`text-[11px] font-bold px-1 animate-in fade-in slide-in-from-top-1 ${termDefaultsError ? "text-rose-500" : "text-emerald-500"}`}>
@@ -465,8 +506,31 @@ export function ReportCardAdminPanel({
               Class Groups
             </h3>
           </div>
-          <button onClick={resetGroupEditor} className="p-1 hover:bg-slate-100 rounded-lg transition-colors group">
-            <Plus className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-900" />
+          <button
+            type="button"
+            onClick={
+              isCreatingGroup || selectedGroupId
+                ? handleCancelGroupEditor
+                : handleStartCreateGroup
+            }
+            className="px-2 py-1 hover:bg-slate-100 rounded-lg transition-colors group flex items-center gap-1 text-[11px] font-bold text-slate-500"
+            title={
+              isCreatingGroup || selectedGroupId
+                ? "Close form"
+                : "Create new class group override"
+            }
+          >
+            {isCreatingGroup || selectedGroupId ? (
+              <>
+                <X className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-900" />
+                <span className="text-[10px] font-semibold">Close</span>
+              </>
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-900" />
+                <span className="text-[10px] font-semibold">Add Group</span>
+              </>
+            )}
           </button>
         </div>
 
@@ -475,23 +539,53 @@ export function ReportCardAdminPanel({
             <button
               key={group._id}
               type="button"
-              onClick={() => setSelectedGroupId(group._id)}
+              onClick={() => {
+                if (selectedGroupId === group._id) {
+                  handleCancelGroupEditor();
+                } else {
+                  setIsCreatingGroup(false);
+                  setSelectedGroupId(group._id);
+                }
+              }}
               className={`flex-none px-4 py-2 rounded-xl text-[11px] font-bold border transition-all ${
                 selectedGroupId === group._id
                   ? "bg-slate-950 border-slate-950 text-white shadow-lg shadow-slate-950/20"
-                  : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
               {group.name}
             </button>
           ))}
-          {(termSettings?.groups ?? []).length === 0 && (
-            <div className="text-[11px] font-medium text-slate-300 px-1 py-1 italic">No overrides set.</div>
+          {(termSettings?.groups ?? []).length === 0 && !isCreatingGroup && (
+            <div className="flex items-center justify-between w-full p-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
+              <span className="text-[11px] font-medium text-slate-400 italic">No overrides set</span>
+              <button
+                type="button"
+                onClick={handleStartCreateGroup}
+                className="text-[11px] font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2"
+              >
+                + Create Override
+              </button>
+            </div>
           )}
         </div>
 
-        {(selectedGroupId || groupName) && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-slate-100 bg-slate-50/30 p-3">
+        {(isCreatingGroup || selectedGroupId !== null) && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                {selectedGroupId
+                  ? `Edit "${groupName || "Group"}"`
+                  : "New Class Group Override"}
+              </h4>
+              <button
+                type="button"
+                onClick={handleCancelGroupEditor}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
              <div className="space-y-1.5">
               <span className="text-[11px] font-bold text-slate-900 ml-1">Group Name</span>
               <input
