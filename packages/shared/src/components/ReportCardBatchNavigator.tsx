@@ -7,6 +7,7 @@ export type ReportCardBatchStudent = {
   studentId: string;
   studentName: string;
   admissionNumber: string;
+  passportUrl?: string | null;
 };
 
 export function ReportCardBatchNavigator({

@@ -39,6 +39,7 @@ export type ExtrasField = {
   };
 };
 
+
 export type ExtrasSection = {
   id: string;
   label: string;
@@ -58,6 +59,7 @@ export type ExtrasEntry = {
   classId: string;
   sessionId: string;
   termId: string;
+  passportUrl?: string | null;
   canEdit: boolean;
   bundles: ExtrasBundle[];
 };

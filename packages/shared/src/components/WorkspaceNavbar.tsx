@@ -222,6 +222,7 @@ export function WorkspaceNavbar({
                 if (
                   [
                     "/assessments/results/entry",
+                    "/assessments/report-cards",
                     "/assessments/report-card-extras",
                     "/assessments/setup/exam-recording",
                     "/assessments/setup/grading-bands",
@@ -264,6 +265,7 @@ export function WorkspaceNavbar({
                   "/academic/sessions",
                   "/academic/classes",
                   "/academic/subjects",
+                  "/students/import",
                   "/admin/settings",
                   "/admin",
                   "/academic/archived-records",
@@ -701,7 +703,7 @@ export function WorkspaceNavbar({
         <main
           className={`flex-1 min-h-0 w-full relative custom-scrollbar scrollbar-hide ${
             fullBleed
-              ? "overflow-y-auto lg:overflow-hidden"
+              ? "overflow-y-auto lg:overflow-hidden h-full"
               : "overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8"
           }`}
         >
@@ -987,6 +989,9 @@ function getSectionIcon(href: string) {
       return <LayoutDashboard className="h-4 w-4 shrink-0" />;
     case "/academic/students":
       return <Users className="h-4 w-4 shrink-0" />;
+    case "/students/import":
+    case "/academic/students/import":
+      return <Upload className="h-4 w-4 shrink-0" />;
     case "/academic/teachers":
       return <UserCheck className="h-4 w-4 shrink-0" />;
     case "/academic/events":

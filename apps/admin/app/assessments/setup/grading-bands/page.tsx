@@ -240,118 +240,129 @@ function GradingBandsContent({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/30">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-36 space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 px-1">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
-              <a href="/admin" className="hover:text-slate-900 transition-colors">
-                Admin
-              </a>
-              <ChevronRight size={10} className="opacity-50" />
-              <span>Assessment Policy</span>
-              <ChevronRight size={10} className="opacity-50" />
-              <span className="text-slate-900">Grading Bands</span>
+    <div className="flex flex-col h-full min-h-0 w-full bg-slate-50/30">
+      {/* 1. Guaranteed Pinned Top Bar on Mobile & Desktop */}
+      <div className="shrink-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3.5 space-y-3">
+          {/* Top Line: Breadcrumb + Title + Badges */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                <a href="/admin" className="hover:text-slate-900 transition-colors">
+                  Admin
+                </a>
+                <ChevronRight size={10} className="opacity-50" />
+                <span>Assessment Policy</span>
+                <ChevronRight size={10} className="opacity-50" />
+                <span className="text-slate-900">Grading Bands</span>
+              </div>
+              <div className="flex items-center gap-2.5 mt-0.5">
+                <h1 className="text-lg sm:text-2xl font-black tracking-tight text-slate-950">
+                  Grading Bands
+                </h1>
+                {hasUnsavedChanges ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black uppercase tracking-wider">
+                    <Clock size={10} className="text-amber-600" />
+                    <span>Unsaved</span>
+                  </span>
+                ) : hasActivePolicy ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black uppercase tracking-wider">
+                    <CheckCircle2 size={10} className="text-emerald-600" />
+                    <span>Active</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-black uppercase tracking-wider">
+                    <span>No Policy</span>
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-950">
-                Grading Bands
-              </h1>
-              <p className="text-xs sm:text-sm font-medium text-slate-500 max-w-xl">
-                Define the official score cutoffs (0–100%), letter grades, and transcript remarks applied to student results across the school.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 pt-1 text-[10px] font-bold uppercase tracking-widest">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] font-bold uppercase tracking-wider shrink-0">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-slate-100 text-slate-700">
                 <Trophy size={11} className="text-slate-500" />
-                {bands.length} {bands.length === 1 ? "Tier" : "Tiers"} Configured
+                <span>{bands.length} {bands.length === 1 ? "Tier" : "Tiers"}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-slate-100 text-slate-700">
                 <ShieldCheck size={11} className="text-slate-500" />
-                Score Coverage: 0 – 100%
+                <span>0 – 100% Coverage</span>
               </span>
-              {hasUnsavedChanges ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
-                  <Clock size={11} className="text-amber-600" />
-                  Unsaved Changes
-                </span>
-              ) : hasActivePolicy ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  <CheckCircle2 size={11} className="text-emerald-600" />
-                  Active Policy
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
-                  No Active Policy
-                </span>
-              )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleSortBands}
-              disabled={bands.length <= 1}
-              className="h-9 px-3 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 disabled:opacity-40"
-              title="Sort tiers numerically by minimum score (0 to 100)"
-            >
-              <ArrowUpDown size={13} className="text-slate-500" />
-              Auto-Arrange
-            </button>
-            <button
-              type="button"
-              onClick={handleLoadDefaults}
-              className="h-9 px-3.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
-              title="Reset to standard A (75-100) through F (0-39) grading bands"
-            >
-              <Sparkles size={13} className="text-amber-500" />
-              Load Standard Scale
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onBandsChange([
-                  ...bands,
-                  { minScore: null, maxScore: null, gradeLetter: "", remark: "" },
-                ])
-              }
-              className="h-9 px-4 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
-            >
-              <Plus size={14} className="opacity-80" />
-              Add Tier
-            </button>
+          {/* Bottom Line: Action Buttons */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+            <p className="hidden md:block text-xs font-medium text-slate-500 truncate">
+              Define the official score cutoffs (0–100%), letter grades, and transcript remarks.
+            </p>
+
+            <div className="grid grid-cols-3 sm:flex sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleSortBands}
+                disabled={bands.length <= 1}
+                className="h-10 sm:h-11 px-4 sm:px-5 bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-2xs hover:shadow-xs flex items-center justify-center gap-2 active:scale-95 disabled:opacity-40"
+                title="Sort tiers numerically by minimum score (0 to 100)"
+              >
+                <ArrowUpDown size={15} className="text-slate-500 shrink-0" />
+                <span>Arrange</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadDefaults}
+                className="h-10 sm:h-11 px-4 sm:px-5 bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-2xs hover:shadow-xs flex items-center justify-center gap-2 active:scale-95"
+                title="Reset to standard A (75-100) through F (0-39) grading bands"
+              >
+                <Sparkles size={15} className="text-amber-500 shrink-0" />
+                <span>Standard</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onBandsChange([
+                    ...bands,
+                    { minScore: null, maxScore: null, gradeLetter: "", remark: "" },
+                  ])
+                }
+                className="h-10 sm:h-11 px-5 sm:px-6 bg-slate-950 text-white hover:bg-slate-800 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md shadow-slate-950/10 flex items-center justify-center gap-2 active:scale-95"
+              >
+                <Plus size={16} className="opacity-90 shrink-0" />
+                <span>Add Tier</span>
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {showErrors && validationErrors.length > 0 && (
-          <BandValidationBanner
-            errors={validationErrors}
-            onDismiss={onDismissErrors}
+      {/* 2. Scrollable Body */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-40 space-y-6">
+          {showErrors && validationErrors.length > 0 && (
+            <BandValidationBanner
+              errors={validationErrors}
+              onDismiss={onDismissErrors}
+            />
+          )}
+
+          <AdminSurface
+            intensity="low"
+            className="p-0 bg-white overflow-hidden border border-slate-200/80 shadow-sm rounded-2xl"
+          >
+            <BandTable
+              bands={bands}
+              onBandsChange={onBandsChange}
+              validationErrors={validationErrors}
+              onValidationChange={onValidationChange}
+            />
+          </AdminSurface>
+
+          <BandsActionBar
+            hasUnsavedChanges={hasUnsavedChanges}
+            hasValidationErrors={validationErrors.length > 0}
+            onSave={onSave}
+            onDiscard={onDiscard}
           />
-        )}
-
-        <AdminSurface
-          intensity="low"
-          className="p-0 bg-white overflow-hidden border border-slate-200/80 shadow-sm rounded-2xl"
-        >
-          <BandTable
-            bands={bands}
-            onBandsChange={onBandsChange}
-            validationErrors={validationErrors}
-            onValidationChange={onValidationChange}
-          />
-        </AdminSurface>
-
-        <BandsActionBar
-          hasUnsavedChanges={hasUnsavedChanges}
-          hasValidationErrors={validationErrors.length > 0}
-          onSave={onSave}
-          onDiscard={onDiscard}
-        />
+        </div>
       </div>
     </div>
   );

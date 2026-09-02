@@ -220,6 +220,51 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Eliminated keystroke input lag by memoizing sub-components (`BundleEditor`, `FieldEditor`, `ScaleTemplateEditor`, `BundleList`, `TemplateList`, `ClassAssignmentCard`).
   - Fixed re-render cascade: moved `ClassAssignmentPanel` from eager evaluation to lazy evaluation (only instantiated when visiting the *"Assign Classes"* tab instead of re-evaluating 300+ class/bundle buttons on every character typed).
   - Protected local editing drafts against reactive query re-evaluations using ref-anchored selection locks (`loadedBundleIdRef` / `loadedScaleIdRef` / `isLoadedRef`), preventing Convex background query refetches from wiping user inputs or causing UI jitter.
+- [x] **Option 2: True WYSIWYG Interactive Sheet Designer & 3-Step Guided Workflow (`/assessments/setup/report-card-bundles`)**
+  - Created [`InteractiveSheetEditor.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/report-card-bundles/components/InteractiveSheetEditor.tsx) transforming the builder into an authentic direct-manipulation A4 report card document.
+  - Implemented the intuitive **3-Step Guided Workflow Stepper** (`Step 1: Rating Scales` $\to$ `Step 2: Design Add-on Sheet` $\to$ `Step 3: Assign to Classes`) with clear forward/back transitions.
+  - Allows school admins to click directly into table cells to rename traits (*Punctuality*, *Attentiveness*), switch evaluation scale headers in-place, click `+ Add Trait Row`, and configure written remarks & attendance metrics directly on the paper canvas.
+- [x] **Workspace Navigation Sidebar Sync for Report Cards**
+  - Added `/assessments/report-cards` to the academics filter in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx), restoring direct sidebar access to the Report Cards launcher.
+- [x] **Independent Scroll Fix on Full-Bleed Pages (`grading-bands` & `report-cards`)**
+  - Added `h-full min-h-0 w-full overflow-y-auto custom-scrollbar` to [`grading-bands/page.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/page.tsx) and [`ReportCardLauncher.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/report-cards/components/ReportCardLauncher.tsx), fixing scroll lock caused by desktop `fullBleed` container bounds.
+- [x] **Grading Bands Responsive Mobile Tier Cards & In-Flow Validation (`/assessments/setup/grading-bands`)**
+  - Created dedicated mobile tier cards (`md:hidden`) inside [`BandTable.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/components/BandTable.tsx) with large touch inputs, explicit labels (*Grade*, *Min Score %*, *Max Score %*, *Transcript Remark*), and instant validation coloring, eliminating mobile table cutoffs.
+  - Refactored `BandValidationBanner` to an in-flow alert card rendered above the tiers instead of a floating fixed-bottom toast, ensuring error messages never obstruct user typing or block lower form rows.
+  - Refactored the pinned sticky toolbar into a clean, 2-row responsive mobile grid with full-width action buttons (*Arrange*, *Standard*, *Add Tier*).
+- [x] **Report Cards Layout, In-Canvas Zoom & Deep Links (`/assessments/report-cards`)**
+  - Added dedicated **In-Canvas Zoom Controls** (`[ - ] [ 75% ] [ + ] [ Fit ] [ 100% ]`) scaling only the A4 preview canvas (`previewScale` from `0.4` to `1.25`) without zooming the browser window.
+  - Pinned initial layout towards the top (`justify-start` and top alignment) so report card sheets start immediately in view.
+  - Extended left sidebar scroll clearance (`pb-44`) so bottom admin settings and buttons are never clipped.
+  - Implemented dynamic context-aware `backHref` returning admins to their exact launcher session/class or origin instead of hardcoding score entry.
+- [x] **Direct "Import Students" Link in Navigation Sidebar**
+  - Added `/students/import` under `People & Operations` in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx) and updated label to *"Import Students"* in [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts).
+- [x] **Report Add-ons Workbench Synergy & Non-Jumping 2-Pane Architecture (`/assessments/setup/report-card-bundles`)**
+  - Eliminated the dynamic 3rd preview aside column that squished the center canvas and caused layout jumps on tab changes. The Rating Scale Live Preview is now integrated cleanly into the Rating Scale step.
+  - Harmonized the catalog sidebar items (`BundleList.tsx` and `TemplateList.tsx`) with elevated white cards, crisp typography, and active indigo border/ring states matching `AssessmentProfiles`.
+  - Upgraded input legibility and placeholder contrast (`placeholder:text-slate-400 placeholder:font-normal`) in `ScaleTemplateEditor.tsx`.
+  - Added seamless `Save & Next` / `Save & Create Another Scale` inter-step transitions so admins never lose unsaved changes when moving between steps or setting up multiple evaluation scales.
+  - Replaced purple AI-aesthetic presets and heavy dark banners with clean, native white starter templates cards (`bg-white border border-slate-200/80 rounded-2xl`) with `+` action chips (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Physical Measurements`), fitting seamlessly into the app's design system.
+- [x] **Redesigned Class Allocation Workbench (`ClassAssignmentPanel.tsx`)**
+  - Replaced clumsy nested cards with a clean modern class allocation grid.
+  - Features real-time stats pills (`All`, `This Add-on`, `Other Add-ons`, `Unassigned`), search filtering, batch selection toolbar (`Assign to Selected`, `Remove from Selected`), and 1-click `Assign to Class` / `Assigned ✓` direct actions.
+- [x] **Grading Bands Responsive Mobile Polish & In-Flow Policy Navigation (`/assessments/setup/grading-bands`)**
+  - Enlarged toolbar buttons (`Arrange`, `Standard`, `+ Add Tier`) to `h-10 sm:h-11 px-4 sm:px-6` with bold typography for comfortable touch targets.
+  - Locked the `⏰ UNSAVED` / `Active` status badge directly onto the title row beside `Grading Bands` so it never wraps down onto an orphan line on mobile.
+  - Added an inline `⚠️ Show error` action button on mobile tier cards that smoothly scrolls up to `BandValidationBanner` when validation errors occur.
+- [x] **Report Cards Pinned Header & Dedicated Zoom / Pan Viewport (`/assessments/report-cards`)**
+  - Pinned the top toolbar (`REPORT CARD`, Student Name, `Back`, `Export / Print`, and Zoom controls) to `shrink-0 z-20` so it **never** scrolls off screen.
+  - Placed the report card canvas into an isolated scrollable viewport (`flex-1 min-h-0 overflow-auto`) supporting 2-axis panning and zooming.
+  - Implemented dynamic 2-axis `calculateFitScale()` measuring viewport width & height so clicking **Fit** fits the complete 794x1123 A4 sheet on screen at one glance without cutoff.
+  - Supported mobile two-finger pinch-to-zoom and drag panning.
+- [x] **Report Card Extras Scroll Depth, Flush Bottom Docking & Navigation (`/assessments/report-card-extras`)**
+  - Docked the global action bar (`Reset`, `Commit Override`) to `sticky bottom-0 -mx-4 md:-mx-8 -mb-6 md:-mb-8 z-30` so it stays flush against the bottom edge and never floats up into empty space.
+  - Updated "View Report Card" to navigate in the same tab, preserving browsing history so the "Back" button returns seamlessly to Report Extras.
+- [x] **Universal Mobile Vertical Scrolling Across the Entire App (`WorkspaceNavbar.tsx`)**
+  - Updated `<main>` in `WorkspaceNavbar.tsx` to `overflow-y-auto lg:overflow-hidden` when `fullBleed={true}`, unlocking natural vertical scrolling on all mobile screens across the entire application while preserving multi-panel desktop layouts.
+  - Made `<aside>` and `<main>` responsive on mobile across `report-cards` and `report-card-extras` to avoid 100vh lockouts.
+- [x] **Navigation Structure Reorganization**
+  - Moved `Import Students` (`/students/import`) from *People & Operations* to *Setup & Settings* in both [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts) and [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx).
 
 ---
 

@@ -16,7 +16,7 @@ import { FieldEditor } from "./FieldEditor";
 interface BundleEditorProps {
   draft: BundleDraft;
   scaleTemplates: ScaleTemplateRecord[];
-  onChange: Dispatch<SetStateAction<BundleDraft>>;
+  onChange: (draft: BundleDraft | ((prev: BundleDraft) => BundleDraft)) => void;
 }
 
 export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, onChange }: BundleEditorProps) {

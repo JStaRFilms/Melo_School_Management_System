@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { 
   RotateCcw, 
   Save, 
-  ExternalLink, 
   ShieldAlert, 
   Info,
   Loader2,
@@ -135,27 +135,41 @@ export function ExtrasWorkspace({
       {/* Active Context Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-1">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 ring-1 ring-indigo-200/50">
-            <FileText size={18} />
-          </div>
+          {entry?.passportUrl ? (
+            <img
+              src={entry.passportUrl}
+              alt={entry.studentName}
+              className="h-11 w-11 rounded-xl object-cover border border-slate-200 shadow-xs"
+            />
+          ) : (
+            <div className="h-11 w-11 rounded-xl bg-indigo-50 border border-indigo-100/80 text-indigo-700 font-black text-xs flex items-center justify-center shadow-xs">
+              {entry?.studentName
+                ? entry.studentName
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p) => p.charAt(0).toUpperCase())
+                    .join("")
+                : "ST"}
+            </div>
+          )}
           <div>
             <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">{entry?.studentName}</h2>
             <div className="mt-1 flex items-center gap-2">
-              <span className="flex h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Override Active</p>
             </div>
           </div>
         </div>
 
         {reportCardHref && (
-          <a 
+          <Link 
             href={reportCardHref} 
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all duration-300"
+            className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-2xs active:scale-95"
           >
-            Report <ExternalLink size={11} className="opacity-40" />
-          </a>
+            <span>View Report Card</span>
+            <span className="text-slate-400 group-hover:translate-x-0.5 transition-transform text-xs">→</span>
+          </Link>
         )}
       </div>
 
@@ -206,36 +220,38 @@ export function ExtrasWorkspace({
         ))}
       </div>
 
-      {/* Global Actions Banner */}
-      <div className="sticky bottom-6 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6 rounded-2xl border border-slate-200/60 bg-white/95 backdrop-blur-md p-3 md:p-3.5 shadow-2xl shadow-slate-200/40">
-        <div className="flex-1 min-w-0 overflow-hidden">
-          {error ? <Banner tone="error" message={error} /> : 
-           success ? <Banner tone="success" message={success} /> : 
-           !hasEditableFields ? <Banner tone="info" message="Read-only workspace." /> :
-           <p className="px-3 text-[9px] font-black uppercase tracking-wider text-slate-400 leading-tight">
-             Review and commit override data to persist changes
-           </p>
-          }
-        </div>
-        
-        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-          <button 
-            type="button" 
-            onClick={() => { if(window.confirm("Discard draft changes?")) setDraft(buildDraft(entry)); }} 
-            disabled={isSaving} 
-            className="flex h-9 md:h-10 flex-1 md:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 md:px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
-          >
-            <RotateCcw size={13} className="opacity-40" /> Reset
-          </button>
-          <button 
-            type="button" 
-            onClick={handleSave} 
-            disabled={!hasEditableFields || isSaving} 
-            className="flex h-9 md:h-10 flex-[2] md:flex-none items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 md:px-6 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800 transition-all disabled:opacity-30 shadow-lg shadow-slate-900/20"
-          >
-            {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 
-            {isSaving ? "Saving..." : "Commit Override"}
-          </button>
+      {/* Global Actions Banner - Truly Docked Bottom Footer */}
+      <div className="sticky bottom-0 z-30 -mx-4 md:-mx-8 -mb-6 md:-mb-8 border-t border-slate-200/90 bg-white/95 backdrop-blur-md p-3.5 sm:px-8 shadow-lg shadow-slate-900/5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {error ? <Banner tone="error" message={error} /> : 
+             success ? <Banner tone="success" message={success} /> : 
+             !hasEditableFields ? <Banner tone="info" message="Read-only workspace." /> :
+             <p className="px-1 text-[10px] font-black uppercase tracking-wider text-slate-400 leading-tight">
+               Review and commit override data to persist changes
+             </p>
+            }
+          </div>
+          
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            <button 
+              type="button" 
+              onClick={() => { if(window.confirm("Discard draft changes?")) setDraft(buildDraft(entry)); }} 
+              disabled={isSaving} 
+              className="flex h-9 md:h-10 flex-1 md:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 md:px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              <RotateCcw size={13} className="opacity-40" /> Reset
+            </button>
+            <button 
+              type="button" 
+              onClick={handleSave} 
+              disabled={!hasEditableFields || isSaving} 
+              className="flex h-9 md:h-10 flex-[2] md:flex-none items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 md:px-6 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800 transition-all disabled:opacity-30 shadow-lg shadow-slate-900/20"
+            >
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 
+              {isSaving ? "Saving..." : "Commit Override"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
