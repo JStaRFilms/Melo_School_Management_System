@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Check, X } from "lucide-react";
 
 import { humanNameFinalStrict } from "@/lib/human-name";
@@ -14,6 +15,12 @@ interface StudentSubjectEditorSheetProps {
   onClose: () => void;
   onToggle: (studentId: string, subjectId: string) => void;
   onSetStudentSubjects: (studentId: string, subjectIds: string[]) => void;
+}
+
+function studentInitials(name: string) {
+  const parts = humanNameFinalStrict(name).split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "ST";
+  return parts.slice(0, 2).map((part: string) => part[0]?.toUpperCase() ?? "").join("");
 }
 
 export function StudentSubjectEditorSheet({
@@ -42,21 +49,37 @@ export function StudentSubjectEditorSheet({
           <div className="border-b border-slate-200 bg-white px-4 pb-4 pt-3">
             <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200" />
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Subject Editor
-                </p>
-                <h3 className="mt-1 truncate text-lg font-semibold text-slate-950">
-                  {humanNameFinalStrict(activeStudent.studentName)}
-                </h3>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-                  {activeStudent.admissionNumber}
-                </p>
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                {activeStudent.photoUrl ? (
+                  <Image
+                    src={activeStudent.photoUrl}
+                    alt={humanNameFinalStrict(activeStudent.studentName)}
+                    width={48}
+                    height={48}
+                    unoptimized
+                    className="h-12 w-12 shrink-0 rounded-2xl border border-slate-200 object-cover shadow-2xs"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-xs font-black uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-950/5">
+                    {studentInitials(humanNameFinalStrict(activeStudent.studentName))}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Subject Editor
+                  </p>
+                  <h3 className="mt-0.5 truncate text-base font-bold text-slate-950">
+                    {humanNameFinalStrict(activeStudent.studentName)}
+                  </h3>
+                  <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                    {activeStudent.admissionNumber}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500"
                 aria-label="Close subject editor"
               >
                 <X className="h-4 w-4" />

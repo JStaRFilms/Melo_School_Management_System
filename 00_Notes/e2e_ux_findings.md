@@ -265,6 +265,12 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Made `<aside>` and `<main>` responsive on mobile across `report-cards` and `report-card-extras` to avoid 100vh lockouts.
 - [x] **Navigation Structure Reorganization**
   - Moved `Import Students` (`/students/import`) from *People & Operations* to *Setup & Settings* in both [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts) and [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx).
+- [x] **Curriculum Intelligence Layout Streamlining & Bulk Actions (`/academic/knowledge/curriculum-import`)**
+  - Consolidated the header: moved proposal context chip, filter tabs (`All`, `Proposed`, `Approved`, `Rejected`), real-time search input, and **`Approve All (X)`** primary CTA directly into the top action bar to reclaim vertical space.
+  - Removed decorative AI sparkle icons across the extraction buttons, confidence pills, and cards.
+  - Refactored `CurriculumUnitCard` into a dense, space-efficient card layout (`p-4 space-y-3`, clean subtopic strings, compact bulleted objectives, compact source evidence quotes, and low-profile action buttons).
+  - Added multi-unit selection checkboxes with a sleek floating batch action bar (`[X] selected · [Approve (X)] · [Reject] · [Clear]`).
+  - Added atomic backend mutations `bulkApproveCurriculumUnits` and `bulkRejectCurriculumUnits` for fast single-transaction approvals.
 - [x] **Planning Studio Intelligent Subject Filter & Workspace Search (`/planning`)**
   - Added dynamic subject filter pills (`All Subjects (X)`, `[Subject] (X)`) on the Planning Studio index, derived automatically from the teacher's active workspace topics and available assignments.
   - Enhanced backend `listTeacherPlanningTopicWork` in `lessonKnowledgeTeacher.ts` and client-side workspace filtering to match topic titles, topic summaries, subject names, subject codes, class levels, and term names seamlessly.
@@ -277,6 +283,8 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Curriculum Readiness Map Layout Overhaul & Vertical Scrolling (`/academic/knowledge/curriculum-readiness`)**
   - Unlocked full vertical scrolling across the readiness map by establishing a scrollable viewport container (`h-full overflow-y-auto custom-scrollbar`) inside the full-bleed navbar wrapper.
   - Modernized the 7 readiness statistic cards and transformed the evidence grid into a clean high-contrast matrix with rounded pill indicators.
+- [x] **Teacher Subject Selection Student Profile Picture Avatars (`/enrollment/subjects`)**
+  - Integrated student profile photos (`photoUrl`) in the subject selection desktop roster matrix (`SubjectSelectionDesktopTable.tsx`), mobile editor cards (`SubjectSelectionMobileEditor.tsx`), and bottom sheet editor (`StudentSubjectEditorSheet.tsx`) with seamless fallback to initials.
 
 ---
 
