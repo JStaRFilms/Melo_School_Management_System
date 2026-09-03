@@ -43,9 +43,9 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 | M2 / PR-C | RBAC and audit kernel | **complete** | Role templates, evaluator math, delegation ceilings, append-only redacted audit |
 | M3 / PR-D | Group operation/inheritance | **complete** | Group operations, branch switcher, dirty-form modal, authoritative 403 screen |
 | M4 / PR-E | Grade/admission/bank verticals | **complete** | Grade band settings, sequential admission allocator, bank snapshots & masking |
-| M5 / PR-F | Theme/draft/progress foundation | ready to begin | M2/M3, D-04 |
+| M5 / PR-F | Theme/draft/progress foundation | **complete** | 2-input theme tokens, draft recovery modal, compact mobile progress bar |
 | M6 / PR-G | Email/import pipeline | ready to begin | M1/M2/M4, D-01/D-03/D-04 |
-| M7 / PR-H | Commercial/metering/assets | blocked on M2/M3 | M2/M3, D-01/D-03/D-04 |
+| M7 / PR-H | Commercial/metering/assets | ready to begin | M2/M3, D-01/D-03/D-04 |
 | M8 / PR-I | Within-group transfer foundation | blocked on M1–M4 | M1–M4, D-01/D-03 |
 | M9 / later | Melo-to-Melo transfer network | gated later phase | M8, legal/security/provider approvals, new Genesis approval |
 

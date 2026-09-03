@@ -3161,5 +3161,24 @@ export default defineSchema({
   })
     .index("by_rawHeader", ["rawHeader"])
     .index("by_schoolId", ["schoolId"]),
+
+  formDrafts: defineTable({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    formKey: v.string(),
+    entityId: v.optional(v.string()),
+    payload: v.any(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("committed"),
+      v.literal("discarded")
+    ),
+    revision: v.optional(v.number()),
+    lastSavedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_and_form", ["userId", "formKey"])
+    .index("by_school_and_form", ["schoolId", "formKey"]),
 });
 

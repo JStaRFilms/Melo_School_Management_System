@@ -30,7 +30,19 @@ export { BranchSwitcher } from "./components/BranchSwitcher";
 export type { BranchSwitcherProps, BranchSummary } from "./components/BranchSwitcher";
 export { UnsavedBranchSwitchModal } from "./components/UnsavedBranchSwitchModal";
 export type { UnsavedBranchSwitchModalProps } from "./components/UnsavedBranchSwitchModal";
+export { MobileProgressIndicator } from "./components/MobileProgressIndicator";
+export type {
+  MobileProgressIndicatorProps,
+  MobileProgressMode,
+  WizardSection,
+} from "./components/MobileProgressIndicator";
 export { useAutoAnimate } from "@formkit/auto-animate/react";
+
+// Theme & Branding Primitives (F6 / MX-05)
+export * from "./theme";
+
+// Draft Persistence & Recovery (H6 / MX-10)
+export * from "./drafts";
 
 // Exam Recording Domain
 export * from "./exam-recording";
@@ -40,5 +52,6 @@ export * from "./admissions-foundation";
 export * from "./academic-timeline";
 export * from "./migration";
 export * from "./components/migration";
+
 
 
