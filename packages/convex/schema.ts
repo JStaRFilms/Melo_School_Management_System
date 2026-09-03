@@ -3180,5 +3180,99 @@ export default defineSchema({
   })
     .index("by_user_and_form", ["userId", "formKey"])
     .index("by_school_and_form", ["schoolId", "formKey"]),
+
+  // --- Institutional Email & Directory Provisioning (H5) ---
+  schoolEmailDomains: defineTable({
+    schoolId: v.id("schools"),
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending_verification"),
+      v.literal("verified"),
+      v.literal("failed")
+    ),
+    dnsTxtRecord: v.string(),
+    provider: v.union(
+      v.literal("google"),
+      v.literal("microsoft"),
+      v.literal("zoho"),
+      v.literal("none")
+    ),
+    isDefault: v.boolean(),
+    verifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_domain", ["schoolId", "domain"])
+    .index("by_school_and_default", ["schoolId", "isDefault"])
+    .index("by_domain", ["domain"]),
+
+  institutionalMailboxes: defineTable({
+    personId: v.id("persons"),
+    schoolId: v.id("schools"),
+    email: v.string(),
+    address: v.optional(v.string()),
+    state: v.union(
+      v.literal("login_only"),
+      v.literal("external_verified"),
+      v.literal("provider_provisioned")
+    ),
+    providerType: v.union(
+      v.literal("google"),
+      v.literal("microsoft"),
+      v.literal("zoho"),
+      v.literal("none")
+    ),
+    providerAccountId: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    isMinor: v.optional(v.boolean()),
+    minorPrivacyRequested: v.optional(v.boolean()),
+    lastSyncError: v.optional(v.string()),
+    suspendedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_person_and_school", ["personId", "schoolId"])
+    .index("by_school_and_email", ["schoolId", "email"])
+    .index("by_email", ["email"]),
+
+  // --- AI Import Review Pipeline (F3 / MX-11) ---
+  aiImportWorkspaces: defineTable({
+    schoolId: v.id("schools"),
+    importer: v.string(),
+    importerUserId: v.optional(v.id("users")),
+    entityType: v.union(
+      v.literal("students"),
+      v.literal("teachers"),
+      v.literal("curriculum"),
+      v.literal("grades")
+    ),
+    status: v.union(
+      v.literal("staged"),
+      v.literal("reviewed"),
+      v.literal("committed"),
+      v.literal("rejected")
+    ),
+    rawTokenCount: v.optional(v.number()),
+    stagedRows: v.array(v.any()),
+    validationErrors: v.array(v.any()),
+    commitResult: v.optional(
+      v.object({
+        committedCount: v.number(),
+        timestamp: v.number(),
+      })
+    ),
+    reviewedAt: v.optional(v.number()),
+    committedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_importer", ["importer"]),
 });
+
 
