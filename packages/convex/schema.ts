@@ -1582,13 +1582,37 @@ export default defineSchema({
     maxScore: v.number(),
     gradeLetter: v.string(),
     remark: v.string(),
+    gradePoints: v.optional(v.number()),
+    colorHex: v.optional(v.string()),
+    color: v.optional(v.string()),
+    luminanceContrast: v.optional(v.number()),
     isActive: v.boolean(),
+    version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
+
+  admissionNumberPolicies: defineTable({
+    schoolId: v.id("schools"),
+    pattern: v.string(),
+    schoolCode: v.string(),
+    campusCode: v.string(),
+    currentSequence: v.number(),
+    resetFrequency: v.optional(
+      v.union(
+        v.literal("continuous"),
+        v.literal("session"),
+        v.literal("calendar")
+      )
+    ),
+    lastResetYear: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.union(v.id("users"), v.id("persons"))),
+  }).index("by_school", ["schoolId"]),
 
   assessmentRecords: defineTable({
     schoolId: v.id("schools"),
@@ -2035,6 +2059,18 @@ export default defineSchema({
     lastPaymentAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    paymentInstructionsSnapshot: v.optional(
+      v.object({
+        bankAccountId: v.optional(v.id("schoolBankAccounts")),
+        bankName: v.string(),
+        accountName: v.string(),
+        accountNumber: v.string(),
+        sortCode: v.optional(v.string()),
+        currency: v.string(),
+        transferNote: v.optional(v.string()),
+        snapshottedAt: v.number(),
+      })
+    ),
   })
     .index("by_school", ["schoolId"])
     .index("by_school_and_class", ["schoolId", "classId"])
@@ -2042,6 +2078,24 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
     .index("by_school_and_number", ["schoolId", "invoiceNumber"]),
+
+  schoolBankAccounts: defineTable({
+    schoolId: v.id("schools"),
+    bankName: v.string(),
+    accountNumber: v.string(),
+    accountName: v.string(),
+    sortCode: v.optional(v.string()),
+    currency: v.string(),
+    isDefault: v.boolean(),
+    status: v.union(v.literal("active"), v.literal("archived"), v.literal("suspended")),
+    transferNote: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.union(v.id("users"), v.id("persons"))),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_default", ["schoolId", "isDefault"]),
 
   billingPaymentAttempts: defineTable({
     schoolId: v.id("schools"),

@@ -69,6 +69,8 @@ export const CAPABILITY_CATALOG = [
   "staff.manage",
   "permissions.manage",
   "bank.manage",
+  "finance.bank.manage",
+  "academic.grading.manage",
   "export.financial",
 ] as const;
 
@@ -82,6 +84,7 @@ export const SENSITIVE_CAPABILITIES: ReadonlySet<string> = new Set([
   "permissions.manage",
   "finance.bank_details.manage",
   "bank.manage",
+  "finance.bank.manage",
   "academic.report_cards.publish_final",
   "enrollment.admissions.override_number",
   "audit.group.view",
@@ -107,7 +110,10 @@ export function normalizeCapability(cap: string): string {
     case "permissions.manage":
       return "staff.permissions.manage";
     case "bank.manage":
+    case "finance.bank.manage":
       return "finance.bank_details.manage";
+    case "academic.grading.manage":
+      return "academic.grading_bands.manage";
     case "staff.manage":
       return "staff.onboard";
     case "export.financial":
