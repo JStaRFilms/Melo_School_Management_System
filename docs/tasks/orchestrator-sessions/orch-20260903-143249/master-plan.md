@@ -37,7 +37,7 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 | D-03 | Provider/runtime/settlement spikes | authorized/pending D-01 | Required before email/assets/commercial/independent transfer commitments |
 | D-04 | Cross-app interaction/visual contract | authorized/pending D-02/D-03 | Required before affected UX verticals |
 | D-05 | Migration rehearsal/data-refresh runbook | authorized/pending D-02 | Required before backfills/refresh |
-| M0 / PR-A | Baseline quality and environment gate | blocked | Fresh branch plus D-05 approval for refresh activity |
+| M0 / PR-A | Baseline quality and environment gate | blocked | Prepared branch exists; D-05 approval is required before refresh activity |
 | M1 / PR-B | Identity and tenancy kernel | blocked | M0, D-02, D-05 |
 | M2 / PR-C | RBAC and audit kernel | blocked | M1, D-02 |
 | M3 / PR-D | Group operation/inheritance | blocked | M1/M2, D-04 |

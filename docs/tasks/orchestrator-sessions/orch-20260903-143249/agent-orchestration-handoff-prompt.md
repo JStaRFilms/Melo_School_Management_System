@@ -11,7 +11,7 @@ You are the lead orchestrator for the Melo School Management System expansion pr
 - Repository: `C:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System`
 - Reuse Takomi session: `orch-20260903-143249`
 - Do not create a competing orchestration session unless this session is irrecoverably unavailable.
-- Current lifecycle: Genesis is complete. Design is next. Build is blocked until the gates below pass.
+- Current lifecycle: Genesis is complete and approved. Design D-01 through D-05 is authorized. Build remains gated on completed/reviewed Design artifacts and each milestone's stated prerequisites.
 
 ## Read first, in this order
 
@@ -37,26 +37,18 @@ You are the lead orchestrator for the Melo School Management System expansion pr
 - Preserve cross-tenant and cross-branch isolation, proprietor delegation ceilings, backend permission enforcement, append-only/redacted audit semantics, immutable financial and issued-document snapshots, deterministic validation before AI-assisted commits, and truthful connectivity/offline language.
 - Future independent Melo-to-Melo transfers remain a later gated initiative after within-group transfers and legal/privacy approval.
 
-## Phase 0 — Safely establish the implementation branch
+## Prepared handoff state — verify, do not redo
 
-As of the handoff preparation:
+The previous orchestrator completed the setup gate:
 
-- PR #21 is still open: `https://github.com/JStaRFilms/Melo_School_Management_System/pull/21`.
-- Its reported checks were green, but you must query the current status, mergeability, review decision, and required checks again.
-- The current local branch was `feat/e2e-backlog-safe-improvements` at `d55f67d`.
-- The orchestration-session documents were staged additions in that worktree. Reinspect; do not assume the state is unchanged.
+- PR #21 was revalidated as mergeable with all reported checks successful and no blocking review request, then merged into `master` at merge commit `0c3eb9f6d2e1374d1a67d9805bd2ebcc6a942f5e`.
+- Local `master` was fast-forwarded from `origin/master` and verified to contain that merge.
+- The orchestration artifacts were preserved separately and restored onto a fresh branch created from updated `master`.
+- Prepared branch: `feat/melo-expansion-design`.
+- Initial planning commit on that branch: `a56fcbc` (`docs: plan platform expansion program`).
+- The user approved the synthesized program and authorized Design execution.
 
-Proceed safely:
-
-1. Inspect `git status`, current branch, remotes, and PR #21. Do not discard or overwrite local changes.
-2. Verify that the staged/uncommitted changes are only the orchestration artifacts under `docs/tasks/orchestrator-sessions/orch-20260903-143249/`. If anything else is present, stop and report it.
-3. Preserve the orchestration artifacts on a temporary local planning branch/commit or another reversible Git mechanism before switching branches. Keep this preservation commit separate from PR #21; do not silently push extra scope into PR #21.
-4. The user has already chosen to merge PR #21 after checks pass. You are authorized to merge PR #21 only when all required checks pass, GitHub reports it mergeable, there is no blocking review/change request, and the diff still matches its stated scope. If any condition fails, stop and report the exact blocker; do not bypass protections.
-5. After merge, update local `master` using a safe fast-forward pull and verify it contains PR #21’s merge commit.
-6. Create a fresh working branch from updated `master`. Use a clear program/milestone name such as `feat/melo-expansion-design` for Design artifacts. Restore or cherry-pick only the preserved orchestration-document commit.
-7. Confirm the worktree and staged diff before continuing. Never use destructive reset/clean commands to solve branch-state problems.
-
-Do not begin Build merely because the branch exists. Design approval is still required.
+Begin by verifying the current branch, HEAD ancestry, and worktree status. If the state differs, preserve changes and report the discrepancy; do not merge PR #21 again, recreate the branch destructively, or discard work. Do not push or merge any subsequent milestone without the authorization rules below.
 
 ## Phase 1 — Execute Design D-01 through D-05
 
@@ -165,6 +157,6 @@ The program is complete only when:
 - every milestone review and release gate is satisfied;
 - no production mutation, public deployment, or M9 transfer launch occurred without explicit authorization.
 
-Begin by reporting the live PR #21 and worktree state, your preservation/branch plan, and the proposed D-01–D-05 delegation sequence. Then execute according to the authorization and stop conditions above.
+Begin by verifying the prepared branch and merge ancestry, then report the D-01–D-05 delegation sequence and start Design orchestration. Do not repeat Genesis, PR #21 merge, or branch creation.
 
 ---

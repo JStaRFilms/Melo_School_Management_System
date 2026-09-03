@@ -5,6 +5,8 @@
 - Genesis synthesis: complete and user-approved
 - Design: authorized; D-01 through D-05 pending execution
 - Build: gated on completed/reviewed Design artifacts and the M0 quality gate
+- PR #21: merged into `master` as `0c3eb9f6d2e1374d1a67d9805bd2ebcc6a942f5e`
+- Prepared handoff branch: `feat/melo-expansion-design`
 
 ## Authored Artifacts
 
