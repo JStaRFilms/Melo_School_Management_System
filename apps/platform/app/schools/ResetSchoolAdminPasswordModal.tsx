@@ -171,7 +171,7 @@ export function ResetSchoolAdminPasswordModal({
         aria-labelledby="reset-school-admin-password-title"
         aria-describedby="reset-school-admin-password-description"
         tabIndex={-1}
-        className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200"
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div className="flex items-center gap-2.5">

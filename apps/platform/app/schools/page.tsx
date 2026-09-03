@@ -448,9 +448,7 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
             {suspended}
           </span>
           <span className={`text-[11px] font-medium ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`}>
-            {suspended === 0
-              ? "No schools suspended"
-              : `${suspended} ${suspended === 1 ? "school" : "schools"} suspended`}
+            {suspended === 1 ? "School suspended" : "Schools suspended"}
           </span>
         </div>
       </div>
