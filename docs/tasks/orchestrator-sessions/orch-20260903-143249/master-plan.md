@@ -45,7 +45,7 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 | M4 / PR-E | Grade/admission/bank verticals | **complete** | Grade band settings, sequential admission allocator, bank snapshots & masking |
 | M5 / PR-F | Theme/draft/progress foundation | **complete** | 2-input theme tokens, draft recovery modal, compact mobile progress bar |
 | M6 / PR-G | Email/import pipeline | **complete** | Zero mail server directory sync, 4-stage collision resolver, AI staging pipeline |
-| M7 / PR-H | Commercial/metering/assets | ready to begin | M2/M3, D-01/D-03/D-04 |
+| M7 / PR-H | Commercial/metering/assets | **complete** | Core catalog (₦1,000/term+₦30k), quota reservation, quarantine gate, navigable Trash |
 | M8 / PR-I | Within-group transfer foundation | ready to begin | M1–M4, D-01/D-03 |
 | M9 / later | Melo-to-Melo transfer network | gated later phase | M8, legal/security/provider approvals, new Genesis approval |
 

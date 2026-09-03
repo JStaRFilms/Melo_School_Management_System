@@ -3273,6 +3273,193 @@ export default defineSchema({
   })
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_importer", ["importer"]),
+
+  // --- Commercial Catalog & Settlement Ledgers (F7 / MX-12) ---
+  subscriptionPlans: defineTable({
+    code: v.string(), // e.g. "core_basic"
+    name: v.string(),
+    description: v.optional(v.string()),
+    perStudentFeeKobo: v.number(), // ₦1,000 = 100,000 kobo
+    termSetupFeeKobo: v.number(), // ₦30,000 = 3,000,000 kobo
+    currency: v.string(), // "NGN"
+    billingCadence: v.union(v.literal("termly"), v.literal("annually")),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_code", ["code"]),
+
+  schoolSubscriptions: defineTable({
+    schoolId: v.id("schools"),
+    planId: v.id("subscriptionPlans"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("trial"),
+      v.literal("past_due"),
+      v.literal("suspended"),
+      v.literal("cancelled")
+    ),
+    activeStudentCount: v.number(),
+    currentTermFeeKobo: v.number(),
+    setupFeePaid: v.boolean(),
+    paymentRoutingMode: v.union(
+      v.literal("mode_a_direct"),
+      v.literal("mode_b_split")
+    ),
+    subaccountId: v.optional(v.string()),
+    lastBilledAt: v.optional(v.number()),
+    nextBillingDate: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
+  settlementLedgers: defineTable({
+    schoolId: v.id("schools"),
+    transactionRef: v.string(),
+    routingMode: v.union(
+      v.literal("mode_a_direct"),
+      v.literal("mode_b_split")
+    ),
+    grossAmountKobo: v.number(),
+    paystackFeeKobo: v.number(),
+    platformFeeKobo: v.number(),
+    netPayoutKobo: v.number(),
+    currency: v.string(),
+    clearingCycle: v.literal("NIBSS_T_PLUS_1"),
+    estimatedSettlementDate: v.number(),
+    settlementNotice: v.string(),
+    destinationAccount: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending_clearing"),
+      v.literal("settled"),
+      v.literal("held_dispute"),
+      v.literal("failed")
+    ),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    settledAt: v.optional(v.number()),
+  })
+    .index("by_school_and_ref", ["schoolId", "transactionRef"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school", ["schoolId"]),
+
+  paymentMandates: defineTable({
+    schoolId: v.id("schools"),
+    customerEmail: v.string(),
+    authorizationCode: v.string(),
+    last4: v.string(),
+    expMonth: v.string(),
+    expYear: v.string(),
+    cardBrand: v.string(),
+    bankName: v.string(),
+    consentGiven: v.boolean(),
+    consentTimestamp: v.number(),
+    consentIpHash: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("revoked")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_email", ["schoolId", "customerEmail"]),
+
+  // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
+  usageMeterAllocations: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    allocatedUnits: v.number(),
+    consumedUnits: v.number(),
+    reservedUnits: v.number(),
+    warningThresholdPercent: v.optional(v.number()),
+    criticalThresholdPercent: v.optional(v.number()),
+    hardStopThresholdPercent: v.optional(v.number()),
+    resetCadence: v.union(
+      v.literal("monthly"),
+      v.literal("termly"),
+      v.literal("prepaid_pack")
+    ),
+    lastResetAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school_and_meter", ["schoolId", "meterType"]),
+
+  usageEvents: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    unitsDelta: v.number(),
+    reservationId: v.optional(v.string()),
+    actorUserId: v.optional(v.id("users")),
+    actorPersonId: v.optional(v.id("persons")),
+    operationName: v.string(),
+    description: v.string(),
+    timestamp: v.number(),
+  })
+    .index("by_school_and_timestamp", ["schoolId", "timestamp"])
+    .index("by_school_and_meter", ["schoolId", "meterType"]),
+
+  // --- School Asset Security, Navigable Trash, and PDF Compression (H9 / MX-14) ---
+  schoolAssets: defineTable({
+    schoolId: v.id("schools"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    mimeType: v.string(),
+    byteSize: v.number(),
+    sha256: v.string(),
+    category: v.string(),
+    scanStatus: v.union(
+      v.literal("quarantined"),
+      v.literal("scanning"),
+      v.literal("clean"),
+      v.literal("infected")
+    ),
+    threatName: v.optional(v.string()),
+    scannedAt: v.optional(v.number()),
+    isTrashed: v.boolean(),
+    trashedAt: v.optional(v.number()),
+    trashedByUserId: v.optional(v.id("users")),
+    purgeScheduledAt: v.optional(v.number()),
+    rollbackStorageId: v.optional(v.id("_storage")),
+    rollbackExpiryAt: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+    isOptimized: v.optional(v.boolean()),
+    uploadedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_trashed", ["schoolId", "isTrashed"])
+    .index("by_school_and_scan", ["schoolId", "scanStatus"])
+    .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
+    .index("by_school", ["schoolId"]),
+
+  assetRetentionHolds: defineTable({
+    assetId: v.id("schoolAssets"),
+    schoolId: v.id("schools"),
+    holdReason: v.string(),
+    appliedByUserId: v.optional(v.id("users")),
+    appliedAt: v.number(),
+    notes: v.optional(v.string()),
+  })
+    .index("by_asset", ["assetId"])
+    .index("by_school", ["schoolId"]),
+
+  assetQuarantineLogs: defineTable({
+    assetId: v.id("schoolAssets"),
+    schoolId: v.id("schools"),
+    scanResult: v.union(v.literal("clean"), v.literal("infected")),
+    threatName: v.optional(v.string()),
+    scannerEngine: v.string(),
+    scannedAt: v.number(),
+    metadata: v.optional(v.string()),
+  }).index("by_asset", ["assetId"]),
 });
 
 
