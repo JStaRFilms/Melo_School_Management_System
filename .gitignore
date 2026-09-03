@@ -57,6 +57,9 @@ pi-session-*.html
 tmp/
 *.zip
 
+# Generated student sponsorship handoff artifacts
+deliverables/sponsorship-profiles-*/
+
 .jstar/
 .pi/
 .kilo
@@ -64,4 +67,4 @@ tmp/
 .kilocode/
 .windsurf/
 .agents/
-skills/
+skills/

@@ -582,22 +582,27 @@ export const listStudentsByClass = query({
       )
       .collect();
 
-    const results = await Promise.all(
-      students
-        .filter((student) => !student.isArchived)
-        .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
-        .map(async (student) => {
-          const studentUser = await ctx.db.get(student.userId);
-          const studentName = getReadableUserName(studentUser);
-          return {
-            _id: student._id,
-            studentName: studentName.displayName || "Unnamed Student",
-            admissionNumber: student.admissionNumber,
-            classId: student.classId,
-            createdAt: student.createdAt,
-          };
-        })
-    );
+    const results = (
+      await Promise.all(
+        students
+          .filter((student) => !student.isArchived)
+          .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
+          .map(async (student) => {
+            const studentUser = await ctx.db.get(student.userId);
+            if (!studentUser || studentUser.isArchived) {
+              return null;
+            }
+            const studentName = getReadableUserName(studentUser);
+            return {
+              _id: student._id,
+              studentName: studentName.displayName || "Unnamed Student",
+              admissionNumber: student.admissionNumber,
+              classId: student.classId,
+              createdAt: student.createdAt,
+            };
+          })
+      )
+    ).filter((s): s is NonNullable<typeof s> => s !== null);
 
     return results;
   },
@@ -1041,6 +1046,103 @@ export const restoreStudent = mutation({
     return null;
   },
 });
+
+export const reconcileArchivedStudents = mutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    dryRun: v.boolean(),
+    reconciledCount: v.number(),
+    reconciledStudents: v.array(
+      v.object({
+        studentId: v.id("students"),
+        userId: v.id("users"),
+        admissionNumber: v.string(),
+        studentName: v.string(),
+        reason: v.string(),
+      })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const dryRun = args.dryRun ?? false;
+    const now = Date.now();
+
+    const allStudents = await ctx.db
+      .query("students")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+
+    const reconciledStudents = [];
+
+    for (const student of allStudents) {
+      const studentUser = await ctx.db.get(student.userId);
+      if (!studentUser || studentUser.schoolId !== schoolId) {
+        continue;
+      }
+
+      // Case 1: User account is archived, but student record is NOT archived
+      if (studentUser.isArchived && !student.isArchived) {
+        const studentName = getReadableUserName(studentUser).displayName || "Unnamed Student";
+        reconciledStudents.push({
+          studentId: student._id,
+          userId: student.userId,
+          admissionNumber: student.admissionNumber,
+          studentName,
+          reason: "User account is archived but student document was active. Synchronized student to archived.",
+        });
+
+        if (!dryRun) {
+          await ctx.db.patch(student._id, {
+            isArchived: true,
+            archivedAt: studentUser.archivedAt ?? now,
+            archivedBy: (studentUser.archivedBy as Id<"users">) ?? userId,
+            updatedAt: now,
+          });
+
+          // Clean up any pending staged outgoing promotions
+          const pendingPromotions = await ctx.db
+            .query("studentPromotions")
+            .withIndex("by_student", (q) => q.eq("studentId", student._id))
+            .collect();
+          for (const promo of pendingPromotions) {
+            await ctx.db.delete(promo._id);
+          }
+        }
+      }
+      // Case 2: Student document is archived, but user account is NOT archived
+      else if (student.isArchived && !studentUser.isArchived) {
+        const studentName = getReadableUserName(studentUser).displayName || "Unnamed Student";
+        reconciledStudents.push({
+          studentId: student._id,
+          userId: student.userId,
+          admissionNumber: student.admissionNumber,
+          studentName,
+          reason: "Student document is archived but user account was active. Synchronized user to archived.",
+        });
+
+        if (!dryRun) {
+          await ctx.db.patch(studentUser._id, {
+            isArchived: true,
+            archivedAt: student.archivedAt ?? now,
+            archivedBy: (student.archivedBy as Id<"users">) ?? userId,
+            updatedAt: now,
+          });
+        }
+      }
+    }
+
+    return {
+      dryRun,
+      reconciledCount: reconciledStudents.length,
+      reconciledStudents,
+    };
+  },
+});
+
 
 
 const promotionSubjectEnrollmentModeValidator = v.union(
@@ -1973,6 +2075,9 @@ export const getClassStudentSubjectMatrix = query({
           ctx.db.get(student.userId),
           student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
         ]);
+        if (!studentUser || studentUser.isArchived) {
+          return null;
+        }
         const studentName = getReadableUserName(studentUser);
         const effectiveSubjectIds = deriveEffectiveSubjectSelectionIds({
           explicitSubjectIds: selectionMap.get(String(student._id)) ?? [],
@@ -2026,9 +2131,13 @@ export const getClassStudentSubjectMatrix = query({
         };
       });
 
+    const resolvedStudents = (await Promise.all(studentResults)).filter(
+      (s): s is NonNullable<typeof s> => s !== null
+    );
+
     return {
       subjects: subjects.sort((a, b) => a.name.localeCompare(b.name)),
-      students: await Promise.all(studentResults),
+      students: resolvedStudents,
     };
   },
 });
@@ -2112,22 +2221,27 @@ async function loadStudentFamilyProfile(
     classNameById.set(String(classDoc._id), normalizeHumanName(classDoc.name));
   }
 
-  const students = await Promise.all(
-    activeStudents
-      .sort((a: any, b: any) => a.admissionNumber.localeCompare(b.admissionNumber))
-      .map(async (familyStudent: any) => {
-        const familyStudentUser = await ctx.db.get(familyStudent.userId);
-        const studentName = getReadableUserName(familyStudentUser);
-        return {
-          _id: familyStudent._id,
-          studentName: studentName.displayName || "Unnamed Student",
-          admissionNumber: familyStudent.admissionNumber,
-          classId: familyStudent.classId,
-          className:
-            classNameById.get(String(familyStudent.classId)) ?? "Unknown class",
-        };
-      })
-  );
+  const students = (
+    await Promise.all(
+      activeStudents
+        .sort((a: any, b: any) => a.admissionNumber.localeCompare(b.admissionNumber))
+        .map(async (familyStudent: any) => {
+          const familyStudentUser = await ctx.db.get(familyStudent.userId);
+          if (!familyStudentUser || familyStudentUser.isArchived) {
+            return null;
+          }
+          const studentName = getReadableUserName(familyStudentUser);
+          return {
+            _id: familyStudent._id,
+            studentName: studentName.displayName || "Unnamed Student",
+            admissionNumber: familyStudent.admissionNumber,
+            classId: familyStudent.classId,
+            className:
+              classNameById.get(String(familyStudent.classId)) ?? "Unassigned Class",
+          };
+        })
+    )
+  ).filter((s): s is NonNullable<typeof s> => s !== null);
 
   return {
     family: {

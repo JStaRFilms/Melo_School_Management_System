@@ -485,3 +485,27 @@ This document tracks all observations, issues, UX refinements, completed changes
 ### Scope Creep (land separately)
 - [ ] Navigation chrome (3 nav variants + preference switcher, WorkspaceNavbar +841 lines) — not in spec Done list. Land in a separate branch.
 - [ ] Future-spec docs (`StudentLifecycleAndEnrollmentHistory.md`, `EduClearanceTransferNetwork.md`, `KiddyTrackerAndGateOperations.md`, `ParentWhatsAppAndTransactionalComms.md`) added under `de88dbe`. Move to follow-up.
+
+---
+
+### 10. E2E Polish: Receipt Generator, Session Sheet Modal, Archived Student Sync & Universal Fee Plans (Sept 2026)
+- [x] **Billing Manual Payment Reference Generator Overhaul (`BillingSidebar.tsx`, `useBillingActions.ts`)**
+  - Replaced the disconnected header link containing `✨ Auto-Generate` and amber `Sparkles` with an integrated inside-input button: `[ # Generate ]` utilizing `Hash` icon and neutral institutional slate styling (`bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700`).
+  - Adjusted input container padding (`pr-24 font-mono`) and updated helper text: *"Enter the bank transfer session ID, cash receipt number, or click Generate."*
+  - Fixed `runAction` error toast handling in `useBillingActions.ts` so errors no longer use `successTitle` (which previously produced misleading red toasts titled *"Fee Plan Created"* on failure).
+- [x] **Academic Session & Term Creation Responsive Bottom Sheet (`SessionCreationModal.tsx`, `TermCreationModal.tsx`)**
+  - Replaced invalid Tailwind CSS utility `p-4.5` (which rendered with 0px horizontal padding on touch/tablet screens < 640px) with generous `px-6 py-4 sm:py-5` padding.
+  - Refactored both modals into responsive bottom sheets matching `AdminSheet`:
+    - **Mobile/Tablet Viewports:** Animated slide-up drawer from the bottom with cubic-bezier transition, grab handle (`h-1.5 w-12 bg-slate-200`), rounded top (`rounded-t-[2.5rem]`), and full viewport blur backdrop.
+    - **Desktop (`sm:`):** Centered modal with `rounded-2xl sm:max-w-lg`.
+    - Integrated ESC key listener and scroll locking with restoration.
+- [x] **Archived Student Desynchronization Fix & Active Roster Hardening (`studentEnrollment.ts`)**
+  - Audited production Convex database for Olive Blessed Crest Academy and identified 5 students (`OBHIS/21/0214`, `OBHIS/21/207`, `OBCA/25/280`, `OBCA/17/`, `OBCA/25/0016`) whose user accounts were archived (`users.isArchived = true`) while their student enrollment documents had `isArchived = false`.
+  - Because `students.isArchived` was false, `getClassStudentSubjectMatrix` loaded them into active class rosters with 0 subjects, and clicking them triggered `ConvexError("Student account not found")` while promoting them triggered `ConvexError("One selected student account is not available")`.
+  - Hardened `getClassStudentSubjectMatrix`, `getStudentsByClass`, and `loadStudentFamilyProfile` to strictly omit any student whose corresponding user record is missing or has `isArchived: true`.
+  - Implemented `reconcileArchivedStudents` mutation in `studentEnrollment.ts` to idempotently synchronize `isArchived = true` onto `students` documents where the user account was archived, and prune pending promotions.
+- [x] **Universal "All Classes" Fee Plan Enablement (`billing.ts`, `FeePlanForm.tsx`)**
+  - Removed artificial validation check in `createFeePlan` (`packages/convex/functions/billing.ts`) that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
+  - Downstream invoicing (`createInvoiceFromFeePlan`) and bulk distribution (`applyFeePlanToClassStudents`) already support `targetClassIds.length === 0` as universal templates.
+  - Added an informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*
+
