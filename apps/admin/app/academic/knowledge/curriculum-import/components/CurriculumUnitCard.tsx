@@ -182,5 +182,3 @@ export function CurriculumUnitCard({
     </article>
   );
 }
-
-

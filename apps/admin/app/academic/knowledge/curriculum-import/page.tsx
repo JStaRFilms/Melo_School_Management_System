@@ -27,6 +27,15 @@ type Review = { status: string; errorMessage?: string; units: CurriculumUnit[] }
 type FilterTab = "all" | "proposed" | "approved" | "rejected";
 
 const EMPTY_FORM: CurriculumImportForm = { materialId: "", subjectId: "", level: "", termId: "" };
+const BULK_REVIEW_BATCH_SIZE = 20;
+
+function chunkUnits(units: CurriculumUnit[]) {
+  const batches: CurriculumUnit[][] = [];
+  for (let index = 0; index < units.length; index += BULK_REVIEW_BATCH_SIZE) {
+    batches.push(units.slice(index, index + BULK_REVIEW_BATCH_SIZE));
+  }
+  return batches;
+}
 
 export default function CurriculumImportPage() {
   const context = useQuery("functions/academic/curriculumAdminRead:listCurriculumImportContext" as never) as Context | undefined;
@@ -207,10 +216,14 @@ export default function CurriculumImportPage() {
     if (unitsToApprove.length === 0 || busy) return;
     setBusy(true);
     try {
-      const result = (await bulkApproveUnits({
-        unitIds: unitsToApprove.map((u) => u._id),
-      } as never)) as { approvedCount: number };
-      appToast.success(`Approved ${result.approvedCount} topics`, {
+      let approvedCount = 0;
+      for (const batch of chunkUnits(unitsToApprove)) {
+        const result = (await bulkApproveUnits({
+          unitIds: batch.map((unit) => unit._id),
+        } as never)) as { approvedCount: number };
+        approvedCount += result.approvedCount;
+      }
+      appToast.success(`Approved ${approvedCount} topics`, {
         description: "All approved topics are now active in the academic knowledge library.",
       });
       setBulkApprovalUnits(null);
@@ -226,10 +239,14 @@ export default function CurriculumImportPage() {
     if (unitsToReject.length === 0 || busy) return;
     setBusy(true);
     try {
-      const result = (await bulkRejectUnits({
-        unitIds: unitsToReject.map((u) => u._id),
-      } as never)) as { rejectedCount: number };
-      appToast.success(`Rejected ${result.rejectedCount} units`);
+      let rejectedCount = 0;
+      for (const batch of chunkUnits(unitsToReject)) {
+        const result = (await bulkRejectUnits({
+          unitIds: batch.map((unit) => unit._id),
+        } as never)) as { rejectedCount: number };
+        rejectedCount += result.rejectedCount;
+      }
+      appToast.success(`Rejected ${rejectedCount} units`);
       setCheckedUnitIds(new Set());
     } catch (error) {
       appToast.error("Bulk reject failed", { description: getCurriculumErrorMessage(error, "Try again.") });

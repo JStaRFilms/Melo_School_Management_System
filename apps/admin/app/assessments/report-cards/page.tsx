@@ -141,7 +141,7 @@ function AdminReportCardPageContent() {
       : ("skip" as never)
   ) as ReportCardSheetData | undefined | null;
   const resolvedClassId = classIdParam ?? (reportCard && typeof reportCard === 'object' ? reportCard.classId : null) ?? null;
-  
+
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     sessionId && termId && resolvedClassId
@@ -150,11 +150,14 @@ function AdminReportCardPageContent() {
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
-    "functions/academic/reportCards:getStudentsForClassReportCardBatch" as never,
+    "functions/academic/reportCards:getClassReportCards" as never,
     isPrintClassMode && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
+  const blockedClassPrintCount =
+    classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
+  const isClassPrintBlocked = blockedClassPrintCount > 0;
 
   const handleSelectStudent = (nextStudentId: string) => {
     const params = new URLSearchParams(searchParamsString);
@@ -168,19 +171,30 @@ function AdminReportCardPageContent() {
     router.replace(`${pathname}?${params.toString()}`);
   };
 
-  const exitFullClassPrint = () => {
+  const exitFullClassPrint = useCallback(() => {
     const params = new URLSearchParams(searchParamsString);
     params.delete("printClass");
-    router.replace(`${pathname}?${params.toString()}`);
-  };
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  }, [pathname, router, searchParamsString]);
 
-  const handleBatchReady = () => {
-    if (hasTriggeredClassPrintRef.current) return;
+  const handleBatchReady = useCallback(() => {
+    if (isClassPrintBlocked || hasTriggeredClassPrintRef.current) return;
     hasTriggeredClassPrintRef.current = true;
     window.setTimeout(() => {
       window.print();
     }, 250);
-  };
+  }, [isClassPrintBlocked]);
+
+  useEffect(() => {
+    hasTriggeredClassPrintRef.current = false;
+  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
+
+  useEffect(() => {
+    if (!isPrintClassMode) return;
+    window.addEventListener("afterprint", exitFullClassPrint);
+    return () => window.removeEventListener("afterprint", exitFullClassPrint);
+  }, [exitFullClassPrint, isPrintClassMode]);
 
   if (!studentId || !sessionId || !termId) {
     return <ReportCardLauncher />;
@@ -219,7 +233,12 @@ function AdminReportCardPageContent() {
 
   const baseReturnTo = searchParams.get("returnTo");
   const fallbackBackHref = `/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${resolvedClassId ?? ""}`;
-  const backHref = baseReturnTo ? decodeURIComponent(baseReturnTo) : fallbackBackHref;
+  const backHref =
+    baseReturnTo?.startsWith("/") &&
+    !baseReturnTo.startsWith("//") &&
+    !baseReturnTo.includes("\\")
+      ? baseReturnTo
+      : fallbackBackHref;
 
   if (isPrintClassMode) {
     return (
@@ -240,6 +259,20 @@ function AdminReportCardPageContent() {
               >
                 Go back
               </button>
+            </div>
+          </div>
+        ) : isClassPrintBlocked ? (
+          <div className="rc-no-print mx-auto px-4 py-8 md:px-6" style={{ maxWidth: "210mm" }}>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-900">
+              <p>
+                Full-class print is blocked for {blockedClassPrintCount} report card{blockedClassPrintCount === 1 ? "" : "s"} until missing prior-term totals are backfilled.
+              </p>
+              <Link
+                href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${resolvedClassId}`}
+                className="mt-4 inline-flex rounded-lg bg-rose-950 px-4 py-2 text-xs font-semibold text-white"
+              >
+                Open historical backfill
+              </Link>
             </div>
           </div>
         ) : (
@@ -273,7 +306,7 @@ function AdminReportCardPageContent() {
                 onPrintFullClass={handlePrintFullClass}
               />
             </div>
-            
+
             <div className="pt-6 border-t border-slate-100">
               <ReportCardAdminPanel
                 studentId={studentId}

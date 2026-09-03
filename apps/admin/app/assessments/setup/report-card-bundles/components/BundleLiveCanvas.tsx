@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useMemo } from "react";
-import { 
-  CheckCircle2, 
-  Eye, 
-  ShieldCheck, 
-  GraduationCap, 
-  Calendar, 
+import {
+  CheckCircle2,
+  Eye,
+  ShieldCheck,
+  GraduationCap,
+  Calendar,
   Clock,
   Sparkles
 } from "lucide-react";

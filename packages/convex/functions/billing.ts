@@ -1777,7 +1777,20 @@ export const applyFeePlanToClassStudents = mutation({
         .unique(),
     ]);
 
-    const activeStudents = students.filter((student: any) => !student.isArchived);
+    const studentsWithUsers = await Promise.all(
+      students.map(async (student: any) => ({
+        student,
+        user: await ctx.db.get(student.userId),
+      }))
+    );
+    const activeStudents = studentsWithUsers
+      .filter(({ student, user }: any) =>
+        !student.isArchived &&
+        user !== null &&
+        user.schoolId === viewer.schoolId &&
+        !user.isArchived
+      )
+      .map(({ student }: any) => student);
     const existingInvoiceStudentIds = new Set(
       existingInvoices
         .filter(

@@ -34,7 +34,11 @@ const TERM_PRESETS: Array<{
 ];
 
 function formatInputDate(timestamp: number) {
-  return new Date(timestamp).toISOString().split("T")[0];
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function TermCreationModal({
@@ -276,8 +280,8 @@ export function TermCreationModal({
                   type="date"
                   required
                   value={startDate}
-                  min={sessionStartDate ? new Date(sessionStartDate).toISOString().split("T")[0] : undefined}
-                  max={sessionEndDate ? new Date(sessionEndDate).toISOString().split("T")[0] : undefined}
+                  min={sessionStartDate ? formatInputDate(sessionStartDate) : undefined}
+                  max={sessionEndDate ? formatInputDate(sessionEndDate) : undefined}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
                 />
@@ -290,8 +294,8 @@ export function TermCreationModal({
                   type="date"
                   required
                   value={endDate}
-                  min={startDate || (sessionStartDate ? new Date(sessionStartDate).toISOString().split("T")[0] : undefined)}
-                  max={sessionEndDate ? new Date(sessionEndDate).toISOString().split("T")[0] : undefined}
+                  min={startDate || (sessionStartDate ? formatInputDate(sessionStartDate) : undefined)}
+                  max={sessionEndDate ? formatInputDate(sessionEndDate) : undefined}
                   onChange={(e) => setEndDate(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-medium text-slate-900 outline-none transition focus:border-slate-900 focus:bg-white"
                 />

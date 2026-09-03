@@ -1,34 +1,34 @@
 "use client";
 
 import { memo, useCallback, useMemo } from "react";
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  Plus, 
-  Trash2, 
-  GripVertical, 
-  GraduationCap, 
-  Sparkles, 
-  CheckCircle2, 
-  Eye, 
-  Calendar, 
-  Clock, 
+import {
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Trash2,
+  GripVertical,
+  GraduationCap,
+  Sparkles,
+  CheckCircle2,
+  Eye,
+  Calendar,
+  Clock,
   FileText,
   Layers,
   Settings2,
   ShieldCheck
 } from "lucide-react";
-import type { 
-  BundleDraft, 
-  BundleFieldDraft, 
-  BundleSectionDraft, 
-  ScaleTemplateRecord 
+import type {
+  BundleDraft,
+  BundleFieldDraft,
+  BundleSectionDraft,
+  ScaleTemplateRecord
 } from "../types";
-import { 
-  createEmptyField, 
-  createEmptySection, 
-  moveItem, 
-  STARTER_BUNDLE_PRESETS, 
+import {
+  createEmptyField,
+  createEmptySection,
+  moveItem,
+  STARTER_BUNDLE_PRESETS,
   createBundleDraftFromPreset,
   getCanonicalFieldConfig,
   systemAttendanceFieldOptions,
@@ -539,6 +539,7 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
                   field={field}
                   fieldIndex={originalIdx}
                   onUpdate={(updated) => onUpdateField(originalIdx, updated)}
+                  onMove={(direction) => onMoveField(originalIdx, direction)}
                   onDelete={() => onDeleteField(originalIdx)}
                 />
               ))}
@@ -641,6 +642,22 @@ const InteractiveTableRow = memo(function InteractiveTableRow({
         <div className="flex items-center justify-end gap-1.5">
           <button
             type="button"
+            onClick={() => onMove(-1)}
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            title="Move trait up"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(1)}
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            title="Move trait down"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
             onClick={() => onUpdate({ ...field, printable: !field.printable })}
             className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-colors ${
               field.printable
@@ -670,12 +687,14 @@ interface InteractiveCardFieldProps {
   field: BundleFieldDraft;
   fieldIndex: number;
   onUpdate: (updated: BundleFieldDraft) => void;
+  onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
 }
 
 const InteractiveCardField = memo(function InteractiveCardField({
   field,
   onUpdate,
+  onMove,
   onDelete,
 }: InteractiveCardFieldProps) {
   const canonicalOptions =
@@ -702,6 +721,22 @@ const InteractiveCardField = memo(function InteractiveCardField({
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onMove(-1)}
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            title="Move field up"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(1)}
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            title="Move field down"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             onClick={() => onUpdate({ ...field, printable: !field.printable })}

@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { 
-  RotateCcw, 
-  Save, 
-  ShieldAlert, 
+import {
+  RotateCcw,
+  Save,
+  ShieldAlert,
   Info,
   Loader2,
   FileText,
@@ -99,34 +99,34 @@ export function ExtrasWorkspace({
   };
 
   if (!hasSelection) {
-    return <StateCard 
-      icon={<Info className="text-slate-400" size={32} />} 
-      title="Entry Protocol Required" 
-      message="Choose a session, term, class, and student from the sidebar to begin administrative override." 
+    return <StateCard
+      icon={<Info className="text-slate-400" size={32} />}
+      title="Entry Protocol Required"
+      message="Choose a session, term, class, and student from the sidebar to begin administrative override."
     />;
   }
 
   if (isLoading) {
-    return <StateCard 
-      icon={<Loader2 className="text-indigo-500 animate-spin" size={32} />} 
-      title="Loading Records" 
-      message="Retrieving report extras and bundle configurations from the database..." 
+    return <StateCard
+      icon={<Loader2 className="text-indigo-500 animate-spin" size={32} />}
+      title="Loading Records"
+      message="Retrieving report extras and bundle configurations from the database..."
     />;
   }
 
   if (!hasStudents) {
-    return <StateCard 
-      icon={<Users size={32} className="text-slate-400" />} 
-      title="No Students Found" 
-      message="The selected class has no active students for this academic period." 
+    return <StateCard
+      icon={<Users size={32} className="text-slate-400" />}
+      title="No Students Found"
+      message="The selected class has no active students for this academic period."
     />;
   }
 
   if (bundles.length === 0) {
-    return <StateCard 
-      icon={<ShieldAlert size={32} className="text-rose-500" />} 
-      title="No Configuration Found" 
-      message="No report-card extras bundle is assigned to this class. Setup the bundle in Exam Setup first." 
+    return <StateCard
+      icon={<ShieldAlert size={32} className="text-rose-500" />}
+      title="No Configuration Found"
+      message="No report-card extras bundle is assigned to this class. Setup the bundle in Exam Setup first."
     />;
   }
 
@@ -163,8 +163,8 @@ export function ExtrasWorkspace({
         </div>
 
         {reportCardHref && (
-          <Link 
-            href={reportCardHref} 
+          <Link
+            href={reportCardHref}
             className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-2xs active:scale-95"
           >
             <span>View Report Card</span>
@@ -188,7 +188,7 @@ export function ExtrasWorkspace({
                     <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-300 whitespace-nowrap">{section.label}</h4>
                     <span className="h-px flex-1 bg-slate-100/60" />
                   </div>
-                  
+
                   <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 lg:grid-cols-2">
                     {section.fields.map((field) => (
                       <div key={field.id} className="group flex flex-col gap-2">
@@ -200,15 +200,15 @@ export function ExtrasWorkspace({
                             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-400">Printable</span>
                           )}
                         </div>
-                        <ExtrasInput 
-                          field={field} 
-                          draft={draft[bundle._id]?.[field.id]} 
-                          disabled={!field.canEdit || isSaving} 
-                          onChange={(value) => { 
-                            setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } })); 
-                            setError(null); 
-                            setSuccess(null); 
-                          }} 
+                        <ExtrasInput
+                          field={field}
+                          draft={draft[bundle._id]?.[field.id]}
+                          disabled={!field.canEdit || isSaving}
+                          onChange={(value) => {
+                            setDraft((current) => ({ ...current, [bundle._id]: { ...current[bundle._id], [field.id]: { ...current[bundle._id]?.[field.id], ...value } } }));
+                            setError(null);
+                            setSuccess(null);
+                          }}
                         />
                       </div>
                     ))}
@@ -224,31 +224,31 @@ export function ExtrasWorkspace({
       <div className="sticky bottom-0 z-30 -mx-4 md:-mx-8 -mb-6 md:-mb-8 border-t border-slate-200/90 bg-white/95 backdrop-blur-md p-3.5 sm:px-8 shadow-lg shadow-slate-900/5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
           <div className="flex-1 min-w-0 overflow-hidden">
-            {error ? <Banner tone="error" message={error} /> : 
-             success ? <Banner tone="success" message={success} /> : 
+            {error ? <Banner tone="error" message={error} /> :
+             success ? <Banner tone="success" message={success} /> :
              !hasEditableFields ? <Banner tone="info" message="Read-only workspace." /> :
              <p className="px-1 text-[10px] font-black uppercase tracking-wider text-slate-400 leading-tight">
                Review and commit override data to persist changes
              </p>
             }
           </div>
-          
+
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <button 
-              type="button" 
-              onClick={() => { if(window.confirm("Discard draft changes?")) setDraft(buildDraft(entry)); }} 
-              disabled={isSaving} 
+            <button
+              type="button"
+              onClick={() => { if(window.confirm("Discard draft changes?")) setDraft(buildDraft(entry)); }}
+              disabled={isSaving}
               className="flex h-9 md:h-10 flex-1 md:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 md:px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               <RotateCcw size={13} className="opacity-40" /> Reset
             </button>
-            <button 
-              type="button" 
-              onClick={handleSave} 
-              disabled={!hasEditableFields || isSaving} 
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!hasEditableFields || isSaving}
               className="flex h-9 md:h-10 flex-[2] md:flex-none items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 md:px-6 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800 transition-all disabled:opacity-30 shadow-lg shadow-slate-900/20"
             >
-              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} 
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               {isSaving ? "Saving..." : "Commit Override"}
             </button>
           </div>
@@ -260,19 +260,19 @@ export function ExtrasWorkspace({
 
 function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField; draft?: DraftValue; disabled: boolean; onChange: (value: Partial<DraftValue>) => void }) {
   const baseClassName = "w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-bold text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 placeholder:font-medium placeholder:text-slate-300";
-  
+
   if (!field.canEdit) {
     return <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-400 cursor-not-allowed">{field.value.printValue ?? "---"}</div>;
   }
-  
+
   if (field.type === "text") {
     return (
       <div className="space-y-1.5">
-        <textarea 
-          rows={2} 
-          value={draft?.textValue ?? ""} 
-          onChange={(event) => onChange({ textValue: event.target.value })} 
-          disabled={disabled} 
+        <textarea
+          rows={2}
+          value={draft?.textValue ?? ""}
+          onChange={(event) => onChange({ textValue: event.target.value })}
+          disabled={disabled}
           className={`${baseClassName} min-h-[60px] resize-none font-medium leading-relaxed`}
           placeholder={field.helperText ? "" : "Enter record..."}
         />
@@ -280,11 +280,11 @@ function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField;
       </div>
     );
   }
-  
+
   if (field.type === "number") {
     return <input type="number" value={draft?.numberValue ?? ""} onChange={(event) => onChange({ numberValue: event.target.value })} disabled={disabled} className={baseClassName} placeholder="0.00" />;
   }
-  
+
   if (field.type === "boolean") {
     const options = [
       { label: "Yes", value: "true" },
@@ -302,8 +302,8 @@ function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField;
               onClick={() => onChange({ booleanValue: (isSelected ? "" : opt.value) as DraftValue["booleanValue"] })}
               className={`
                 h-9 flex-1 min-w-[80px] rounded-lg border px-4 text-[11px] font-black uppercase tracking-widest transition-all
-                ${isSelected 
-                  ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" 
+                ${isSelected
+                  ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200"
                   : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300"
                 }
                 disabled:opacity-40 disabled:cursor-not-allowed
@@ -316,7 +316,7 @@ function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField;
       </div>
     );
   }
-  
+
   return (
     <div className="flex flex-wrap gap-2">
       {field.scaleOptions.map((option) => {
@@ -329,8 +329,8 @@ function ExtrasInput({ field, draft, disabled, onChange }: { field: ExtrasField;
             onClick={() => onChange({ scaleOptionId: isSelected ? "" : option.id })}
             className={`
               h-9 px-4 rounded-lg border text-[11px] font-black uppercase tracking-widest transition-all
-              ${isSelected 
-                ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" 
+              ${isSelected
+                ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200"
                 : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 group-hover:border-slate-300"
               }
               disabled:opacity-40 disabled:cursor-not-allowed
@@ -360,7 +360,7 @@ function Banner({ tone, message }: { tone: "error" | "success" | "info"; message
     success: "text-emerald-600 bg-emerald-50 border-emerald-100",
     info: "text-indigo-600 bg-indigo-50 border-indigo-100"
   };
-  
+
   return (
     <div className={`rounded-xl border px-3 py-2 flex items-center gap-2 font-bold text-[10px] uppercase tracking-widest ${styles[tone]}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${tone === "error" ? "bg-rose-500" : tone === "success" ? "bg-emerald-500" : "bg-indigo-500"}`} />

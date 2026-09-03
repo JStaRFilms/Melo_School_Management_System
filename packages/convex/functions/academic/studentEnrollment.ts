@@ -1050,6 +1050,8 @@ export const restoreStudent = mutation({
 export const reconcileArchivedStudents = mutation({
   args: {
     dryRun: v.optional(v.boolean()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
   },
   returns: v.object({
     dryRun: v.boolean(),
@@ -1063,6 +1065,8 @@ export const reconcileArchivedStudents = mutation({
         reason: v.string(),
       })
     ),
+    continueCursor: v.string(),
+    isDone: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
@@ -1071,14 +1075,16 @@ export const reconcileArchivedStudents = mutation({
     const dryRun = args.dryRun ?? false;
     const now = Date.now();
 
-    const allStudents = await ctx.db
+    const requestedItems = Math.floor(args.numItems ?? 50);
+    const numItems = Math.max(1, Math.min(requestedItems, 100));
+    const studentPage = await ctx.db
       .query("students")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .collect();
+      .paginate({ cursor: args.cursor ?? null, numItems });
 
     const reconciledStudents = [];
 
-    for (const student of allStudents) {
+    for (const student of studentPage.page) {
       const studentUser = await ctx.db.get(student.userId);
       if (!studentUser || studentUser.schoolId !== schoolId) {
         continue;
@@ -1139,6 +1145,8 @@ export const reconcileArchivedStudents = mutation({
       dryRun,
       reconciledCount: reconciledStudents.length,
       reconciledStudents,
+      continueCursor: studentPage.continueCursor,
+      isDone: studentPage.isDone,
     };
   },
 });

@@ -508,4 +508,3 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Removed artificial validation check in `createFeePlan` (`packages/convex/functions/billing.ts`) that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
   - Downstream invoicing (`createInvoiceFromFeePlan`) and bulk distribution (`applyFeePlanToClassStudents`) already support `targetClassIds.length === 0` as universal templates.
   - Added an informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*
-

@@ -4,6 +4,8 @@ import { mutation, type MutationCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
 import { assertCurriculumAdminScope, calculateCurriculumImportStatus, normalizeCurriculumText, normalizeKnowledgeTopicTitleIdentity, resolveCurriculumApproval } from "./curriculumHelpers";
 
+const MAX_BULK_REVIEW_UNITS = 20;
+
 async function refreshImportCounts(ctx: MutationCtx, importId: Id<"curriculumImports">, schoolId: Id<"schools">, reviewedBy: Id<"users">) {
   const units = await ctx.db.query("curriculumUnits").withIndex("by_import_and_review_status", (q) => q.eq("importId", importId)).take(100);
   const counts = { proposed: 0, approved: 0, rejected: 0 };
@@ -104,6 +106,9 @@ export const bulkApproveCurriculumUnits = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    if (args.unitIds.length > MAX_BULK_REVIEW_UNITS) {
+      throw new ConvexError(`Bulk approval is limited to ${MAX_BULK_REVIEW_UNITS} units per request`);
+    }
 
     const approvedTopicIds: Id<"knowledgeTopics">[] = [];
     const affectedImportIds = new Set<Id<"curriculumImports">>();
@@ -209,6 +214,9 @@ export const bulkRejectCurriculumUnits = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    if (args.unitIds.length > MAX_BULK_REVIEW_UNITS) {
+      throw new ConvexError(`Bulk rejection is limited to ${MAX_BULK_REVIEW_UNITS} units per request`);
+    }
 
     const affectedImportIds = new Set<Id<"curriculumImports">>();
     const now = Date.now();

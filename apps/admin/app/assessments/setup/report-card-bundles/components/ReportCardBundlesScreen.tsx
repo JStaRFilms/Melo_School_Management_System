@@ -84,17 +84,19 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       return;
     }
 
-    if (loadedScaleIdRef.current !== selectedScaleId) {
-      const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
-      if (selected) {
-        const initial = createScaleDraft(selected);
-        setScaleDraft(initial);
-        loadedScaleSerializedRef.current = serializeScaleDraft(initial);
-        setScaleDirty(false);
-        loadedScaleIdRef.current = selectedScaleId;
-      }
+    const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
+    if (
+      selected &&
+      (loadedScaleIdRef.current !== selectedScaleId ||
+        (!scaleDirty && scaleDraft.sourceUpdatedAt !== selected.updatedAt))
+    ) {
+      const initial = createScaleDraft(selected);
+      setScaleDraft(initial);
+      loadedScaleSerializedRef.current = serializeScaleDraft(initial);
+      setScaleDirty(false);
+      loadedScaleIdRef.current = selectedScaleId;
     }
-  }, [scaleTemplates, selectedScaleId]);
+  }, [scaleDraft.sourceUpdatedAt, scaleDirty, scaleTemplates, selectedScaleId]);
 
   useEffect(() => {
     if (!selectedBundleId) return;
@@ -110,17 +112,19 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       return;
     }
 
-    if (loadedBundleIdRef.current !== selectedBundleId) {
-      const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
-      if (selected) {
-        const initial = createBundleDraft(selected);
-        setBundleDraft(initial);
-        loadedBundleSerializedRef.current = serializeBundleDraft(initial);
-        setBundleDirty(false);
-        loadedBundleIdRef.current = selectedBundleId;
-      }
+    const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
+    if (
+      selected &&
+      (loadedBundleIdRef.current !== selectedBundleId ||
+        (!bundleDirty && bundleDraft.sourceUpdatedAt !== selected.updatedAt))
+    ) {
+      const initial = createBundleDraft(selected);
+      setBundleDraft(initial);
+      loadedBundleSerializedRef.current = serializeBundleDraft(initial);
+      setBundleDirty(false);
+      loadedBundleIdRef.current = selectedBundleId;
     }
-  }, [bundles, selectedBundleId]);
+  }, [bundleDraft.sourceUpdatedAt, bundleDirty, bundles, selectedBundleId]);
 
   const handleSelectBundle = useCallback((value: string | "new") => {
     setSelectedBundleId(value);
@@ -287,7 +291,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
                 <ChevronRight size={10} className="opacity-50" />
                 <span className="text-slate-900">Setup</span>
               </div>
-              
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">

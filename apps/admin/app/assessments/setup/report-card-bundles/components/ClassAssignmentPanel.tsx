@@ -2,13 +2,13 @@
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { 
-  CheckCircle2, 
-  Circle, 
-  GraduationCap, 
-  Loader2, 
-  Search, 
-  ShieldCheck, 
+import {
+  CheckCircle2,
+  Circle,
+  GraduationCap,
+  Loader2,
+  Search,
+  ShieldCheck,
   Sparkles,
   Check,
   X,
