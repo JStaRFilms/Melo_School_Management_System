@@ -441,14 +441,16 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Suspended Schools</span>
-          <Ban className={`h-4 w-4 ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`} />
+          <Ban className={`h-4 w-4 shrink-0 ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`} />
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`text-2xl font-bold tracking-tight ${suspended > 0 ? "text-rose-600" : "text-slate-950"}`}>
             {suspended}
           </span>
           <span className={`text-[11px] font-medium ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`}>
-            {suspended === 0 ? "None suspended" : suspended === 1 ? "Needs review" : "Need review"}
+            {suspended === 0
+              ? "No schools suspended"
+              : `${suspended} ${suspended === 1 ? "school" : "schools"} suspended`}
           </span>
         </div>
       </div>

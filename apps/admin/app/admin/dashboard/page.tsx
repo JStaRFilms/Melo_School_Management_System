@@ -121,13 +121,19 @@ function formatRelativeTime(timestamp: number) {
   return `${days}d ago`;
 }
 
-function formatEventDate(timestamp: number) {
-  return new Intl.DateTimeFormat("en-GB", {
+function formatEventDate(timestamp: number, isAllDay: boolean) {
+  const date = new Date(timestamp);
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
+  }).format(date);
+
+  if (isAllDay) return `${dateLabel} · All day`;
+
+  return `${dateLabel}, ${new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(timestamp));
+  }).format(date)}`;
 }
 
 export default function AdminDashboardPage() {
@@ -746,10 +752,10 @@ export default function AdminDashboardPage() {
                       key={ev._id}
                       className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60"
                     >
-                      <CalendarDays className="h-4 w-4 text-brand-primary shrink-0 mt-0.5" />
+                      <CalendarDays aria-hidden="true" className="h-4 w-4 text-brand-primary shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-950 truncate">{ev.title}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate)}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate, ev.isAllDay)}</p>
                       </div>
                     </div>
                   ))

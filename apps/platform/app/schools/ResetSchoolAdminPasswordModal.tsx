@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAction } from "convex/react";
 import { X, Eye, EyeOff, KeyRound, Loader2, Check } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
@@ -21,6 +22,7 @@ export function ResetSchoolAdminPasswordModal({
   onClose,
   school,
 }: ResetSchoolAdminPasswordModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,11 +50,15 @@ export function ResetSchoolAdminPasswordModal({
   };
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     resetForm();
   }, [isOpen, resetForm, schoolId]);
 
   useEffect(() => {
-    if (!isOpen || !schoolId) return;
+    if (!isOpen || !mounted || !schoolId) return;
 
     previousFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -66,10 +72,10 @@ export function ResetSchoolAdminPasswordModal({
       previousFocusRef.current?.focus();
       previousFocusRef.current = null;
     };
-  }, [isOpen, schoolId]);
+  }, [isOpen, mounted, schoolId]);
 
   useEffect(() => {
-    if (!isOpen || !schoolId) return;
+    if (!isOpen || !mounted || !schoolId) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSubmitting) {
@@ -107,9 +113,19 @@ export function ResetSchoolAdminPasswordModal({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [closeAndReset, isOpen, isSubmitting, schoolId]);
+  }, [closeAndReset, isOpen, isSubmitting, mounted, schoolId]);
 
-  if (!isOpen || !school) return null;
+  useEffect(() => {
+    if (!isOpen || !mounted || !schoolId) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, mounted, schoolId]);
+
+  if (!isOpen || !school || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,7 +157,7 @@ export function ResetSchoolAdminPasswordModal({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
@@ -199,6 +215,8 @@ export function ResetSchoolAdminPasswordModal({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                  aria-describedby="reset-school-admin-password-requirements"
                   disabled={isSubmitting}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50"
                 />
@@ -213,25 +231,25 @@ export function ResetSchoolAdminPasswordModal({
                   {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Setting a new password will revoke any active sessions for this admin user.
+              <p id="reset-school-admin-password-requirements" className="text-[11px] text-slate-400">
+                Use at least 8 characters. Setting a new password will revoke any active sessions for this admin user.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-slate-50/50">
+          <div className="flex flex-col-reverse items-stretch gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={handleDismiss}
               disabled={isSubmitting}
-              className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center rounded-xl px-4 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || newPassword.length < 8}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-md transition-all hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
             >
               {isSubmitting ? (
                 <>
@@ -248,6 +266,7 @@ export function ResetSchoolAdminPasswordModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

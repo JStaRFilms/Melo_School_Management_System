@@ -399,15 +399,22 @@ export default function SchoolSettingsPage() {
               </div>
 
               <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                <label className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-xs sm:w-auto">
+                <label
+                  aria-disabled={isSaving}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors shadow-xs focus-within:outline-none focus-within:ring-2 focus-within:ring-slate-900 focus-within:ring-offset-2 sm:w-auto ${
+                    isSaving ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-slate-800"
+                  }`}
+                >
                   <Upload className="h-3.5 w-3.5" />
                   <span>Choose Image</span>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    className="hidden"
+                    disabled={isSaving}
+                    className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
+                      e.target.value = "";
                       if (file) {
                         setLogoFile(file);
                       }
@@ -419,7 +426,8 @@ export default function SchoolSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setLogoFile(null)}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors sm:w-auto"
+                    disabled={isSaving}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Discard selected image
@@ -430,7 +438,8 @@ export default function SchoolSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setIsLogoRemovalOpen(true)}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition-colors sm:w-auto"
+                    disabled={isSaving}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Remove current logo
