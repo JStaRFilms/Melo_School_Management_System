@@ -1,8 +1,8 @@
 # Melo School Platform Expansion Program
 
 Session: `orch-20260903-143249`
-**Current phase: Genesis synthesis approved — Design execution authorized.**
-**Build status: gated on completion and review of the approved Design packets.** PR #21 merge and fresh-branch preparation are handled before handoff.
+**Current phase: Design complete & approved — Build Phase 2 authorized.**
+**Build status: Milestone M0 / PR-A ready to begin.** PR #21 is merged, branch `feat/melo-expansion-design` verified, and all D-01–D-05 contracts are frozen.
 
 ## Purpose
 
@@ -32,20 +32,21 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 |---|---|---|---|
 | G1 | Requirements interview | complete | `product-decisions.md` |
 | G2 | Genesis program synthesis | **complete and approved** | Program, matrix, packets, coverage matrix listed above |
-| D-01 | Compliance control dossier | authorized/pending execution | Required before sensitive launch paths |
-| D-02 | Identity/group/RBAC/audit architecture | authorized/pending D-01 | Required before M1/M2 |
-| D-03 | Provider/runtime/settlement spikes | authorized/pending D-01 | Required before email/assets/commercial/independent transfer commitments |
-| D-04 | Cross-app interaction/visual contract | authorized/pending D-02/D-03 | Required before affected UX verticals |
-| D-05 | Migration rehearsal/data-refresh runbook | authorized/pending D-02 | Required before backfills/refresh |
-| M0 / PR-A | Baseline quality and environment gate | blocked | Prepared branch exists; D-05 approval is required before refresh activity |
-| M1 / PR-B | Identity and tenancy kernel | blocked | M0, D-02, D-05 |
-| M2 / PR-C | RBAC and audit kernel | blocked | M1, D-02 |
-| M3 / PR-D | Group operation/inheritance | blocked | M1/M2, D-04 |
-| M4 / PR-E | Grade/admission/bank verticals | blocked | M2/M3, D-04/D-05 |
-| M5 / PR-F | Theme/draft/progress foundation | blocked | M2/M3, D-04 |
-| M6 / PR-G | Email/import pipeline | blocked | M1/M2/M4, D-01/D-03/D-04 |
-| M7 / PR-H | Commercial/metering/assets | blocked | M2/M3, D-01/D-03/D-04 |
-| M8 / PR-I | Within-group transfer foundation | blocked | M1–M4, D-01/D-03 |
+| D-01 | Compliance control dossier | **complete** | `docs/features/D01_ComplianceControlDossier.md` |
+| D-02 | Identity/group/RBAC/audit architecture | **complete** | `docs/features/D02_IdentityGroupRBACAndAuditArchitecture.md` |
+| D-03 | Provider/runtime/settlement spikes | **complete** | `docs/features/D03_ProviderRuntimeAndSettlementSpikes.md` |
+| D-04 | Cross-app interaction/visual contract | **complete** | `docs/features/D04_CrossApplicationInteractionAndVisualContract.md` |
+| D-05 | Migration rehearsal/data-refresh runbook | **complete** | `docs/features/D05_MigrationRehearsalAndDataRefreshRunbook.md` |
+| Review | Expansion Design Milestone Review | **complete & approved** | `docs/features/ExpansionDesignMilestoneReview.md` |
+| M0 / PR-A | Baseline quality and environment gate | ready to begin | Teacher lint, parallel test timeout root cause, dev refresh rehearsal |
+| M1 / PR-B | Identity and tenancy kernel | blocked on M0 | M0, D-02, D-05 |
+| M2 / PR-C | RBAC and audit kernel | blocked on M1 | M1, D-02 |
+| M3 / PR-D | Group operation/inheritance | blocked on M2 | M1/M2, D-04 |
+| M4 / PR-E | Grade/admission/bank verticals | blocked on M2/M3 | M2/M3, D-04/D-05 |
+| M5 / PR-F | Theme/draft/progress foundation | blocked on M2/M3 | M2/M3, D-04 |
+| M6 / PR-G | Email/import pipeline | blocked on M1/M2/M4 | M1/M2/M4, D-01/D-03/D-04 |
+| M7 / PR-H | Commercial/metering/assets | blocked on M2/M3 | M2/M3, D-01/D-03/D-04 |
+| M8 / PR-I | Within-group transfer foundation | blocked on M1–M4 | M1–M4, D-01/D-03 |
 | M9 / later | Melo-to-Melo transfer network | gated later phase | M8, legal/security/provider approvals, new Genesis approval |
 
 ## Lifecycle
@@ -56,11 +57,16 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 - [x] Dependency-aware program, migration matrix, task packets, and requirements traceability written.
 - [x] User approved the synthesized program and authorized Design execution.
 
-### Design — authorized, pending execution
+### Design — complete and approved
 
-Execute D-01 through D-05 in the order/dependency constraints in `task-packets.md`. These artifacts resolve implementation assumptions; they do not reopen approved product decisions.
+- [x] D-01 Compliance control dossier completed (`docs/features/D01_ComplianceControlDossier.md`).
+- [x] D-02 Identity, group, RBAC, and audit architecture completed (`docs/features/D02_IdentityGroupRBACAndAuditArchitecture.md`).
+- [x] D-03 Provider, runtime, and settlement spikes completed (`docs/features/D03_ProviderRuntimeAndSettlementSpikes.md`).
+- [x] D-04 Cross-application interaction and visual contract completed (`docs/features/D04_CrossApplicationInteractionAndVisualContract.md`).
+- [x] D-05 Migration rehearsal and data refresh runbook completed (`docs/features/D05_MigrationRehearsalAndDataRefreshRunbook.md`).
+- [x] Independent Milestone Review completed with unconditional approval for Build handoff (`docs/features/ExpansionDesignMilestoneReview.md`).
 
-### Build — gated on Design completion and review
+### Build — ready to begin
 
 Milestone-sized PRs begin at M0 and use integration reviews at M0–M8. Every release gate requires migration evidence, security/tenant negative tests, relevant a11y/print/provider checks, and clean reviewable scope.
 
