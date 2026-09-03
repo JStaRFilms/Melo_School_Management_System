@@ -19,7 +19,6 @@ import {
   AlertCircle,
   Clock,
   X,
-  ExternalLink,
 } from "lucide-react";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -137,7 +136,11 @@ export default function AdminDashboardPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as SessionRecord[] | undefined;
   const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
-  const events = useQuery("functions/academic/events:listEvents" as never) as SchoolEvent[] | undefined;
+  const [eventsFromTimestamp] = useState(() => Date.now());
+  const events = useQuery(
+    "functions/academic/events:listEvents" as never,
+    { fromTimestamp: eventsFromTimestamp } as never
+  ) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
     "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
   ) as TimelineAuditEvent[] | undefined;
@@ -255,7 +258,8 @@ export default function AdminDashboardPage() {
     classes !== undefined &&
     subjects !== undefined &&
     sessions !== undefined &&
-    billing !== undefined;
+    billing !== undefined &&
+    events !== undefined;
 
   if (!isLoaded) {
     return <DashboardSkeleton />;
@@ -732,12 +736,12 @@ export default function AdminDashboardPage() {
             {/* Combined Timeline & Event Stream */}
             <div className="space-y-3">
               {/* Upcoming Events */}
-              {events && events.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Upcoming Events
-                  </span>
-                  {events.slice(0, 2).map((ev) => (
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Upcoming Events
+                </span>
+                {events.length > 0 ? (
+                  events.slice(0, 2).map((ev) => (
                     <div
                       key={ev._id}
                       className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60"
@@ -748,9 +752,11 @@ export default function AdminDashboardPage() {
                         <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate)}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400">No upcoming events.</p>
+                )}
+              </div>
 
               {/* Real Academic Audit Stream */}
               <div className="space-y-2">

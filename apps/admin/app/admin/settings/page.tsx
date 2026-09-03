@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import {
   Building2,
   Upload,
@@ -19,7 +20,6 @@ import {
   Copy,
   Check,
   Loader2,
-  ShieldCheck,
   LayoutGrid,
   FolderTree,
   Columns3,
@@ -88,6 +88,7 @@ export default function SchoolSettingsPage() {
 
   // Logo upload state
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [isLogoRemovalOpen, setIsLogoRemovalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState(false);
 
@@ -213,12 +214,11 @@ export default function SchoolSettingsPage() {
     }
   };
 
-  const handleRemoveLogo = async () => {
-    if (!confirm("Are you sure you want to remove the school logo?")) return;
+  const handleRemoveCurrentLogo = async () => {
     setIsSaving(true);
     try {
       await removeSchoolLogo({} as never);
-      setLogoFile(null);
+      setIsLogoRemovalOpen(false);
       appToast.success("Logo removed");
     } catch (err) {
       appToast.error("Failed to remove logo", {
@@ -398,8 +398,8 @@ export default function SchoolSettingsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 pt-1">
-                <label className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-xs">
+              <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                <label className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-xs sm:w-auto">
                   <Upload className="h-3.5 w-3.5" />
                   <span>Choose Image</span>
                   <input
@@ -415,14 +415,25 @@ export default function SchoolSettingsPage() {
                   />
                 </label>
 
-                {(branding.logoUrl || logoFile) && (
+                {logoFile && (
                   <button
                     type="button"
-                    onClick={handleRemoveLogo}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition-colors"
+                    onClick={() => setLogoFile(null)}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors sm:w-auto"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Remove
+                    Discard selected image
+                  </button>
+                )}
+
+                {branding.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLogoRemovalOpen(true)}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition-colors sm:w-auto"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove current logo
                   </button>
                 )}
               </div>
@@ -430,7 +441,7 @@ export default function SchoolSettingsPage() {
               {logoFile && (
                 <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5">
                   <Check className="h-3.5 w-3.5" />
-                  Ready to upload: {logoFile.name} (Click "Save All Changes" to confirm)
+                  Ready to upload: {logoFile.name} (Click &quot;Save All Changes&quot; to confirm)
                 </p>
               )}
             </div>
@@ -683,6 +694,17 @@ export default function SchoolSettingsPage() {
           </div>
         </div>
       </form>
+
+      <ConfirmationModal
+        isOpen={isLogoRemovalOpen}
+        onClose={() => setIsLogoRemovalOpen(false)}
+        onConfirm={handleRemoveCurrentLogo}
+        title="Remove current logo?"
+        description="This removes the saved school logo. A selected replacement image will remain available until you save or discard it."
+        confirmLabel="Remove current logo"
+        confirmVariant="danger"
+        isLoading={isSaving}
+      />
     </div>
   );
 }
