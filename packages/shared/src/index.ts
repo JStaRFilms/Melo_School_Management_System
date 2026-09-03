@@ -24,6 +24,12 @@ export { ChangePasswordModal } from "./components/ChangePasswordModal";
 export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
 export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";
 export type { SuspendedSchoolDetails } from "./components/SchoolSuspendedLockScreen";
+export { AuthoritativeForbiddenView } from "./components/AuthoritativeForbiddenView";
+export type { AuthoritativeForbiddenViewProps } from "./components/AuthoritativeForbiddenView";
+export { BranchSwitcher } from "./components/BranchSwitcher";
+export type { BranchSwitcherProps, BranchSummary } from "./components/BranchSwitcher";
+export { UnsavedBranchSwitchModal } from "./components/UnsavedBranchSwitchModal";
+export type { UnsavedBranchSwitchModalProps } from "./components/UnsavedBranchSwitchModal";
 export { useAutoAnimate } from "@formkit/auto-animate/react";
 
 // Exam Recording Domain

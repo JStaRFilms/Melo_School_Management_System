@@ -76,6 +76,7 @@ export interface WorkspaceNavbarProps {
   userName?: string | null;
   userRole?: string | null;
   schoolBranding?: WorkspaceSchoolBranding | null;
+  branchSwitcher?: ReactNode;
   onSignOut?: () => void;
   onChangePassword?: (args: {
     currentPassword: string;
@@ -110,6 +111,7 @@ export function WorkspaceNavbar({
   userName,
   userRole,
   schoolBranding,
+  branchSwitcher,
   onSignOut,
   onChangePassword,
   renderLink,
@@ -608,6 +610,11 @@ export function WorkspaceNavbar({
                 </span>
               )}
             </div>
+            {branchSwitcher && (
+              <div className="shrink-0">
+                {branchSwitcher}
+              </div>
+            )}
           </div>
 
           {/* ── TOP DOMAIN SWITCHER TABS (Rendered only when navLayout === 'domain_tabs') ── */}

@@ -970,6 +970,7 @@ export default defineSchema({
       v.literal("suspended"),
       v.literal("archived")
     ),
+    displayTitle: v.optional(v.string()),
     isDefaultBranch: v.boolean(),
     legacyUserId: v.optional(v.id("users")),
     joinedAt: v.number(),
