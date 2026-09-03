@@ -19,7 +19,6 @@ import {
   AlertCircle,
   Clock,
   X,
-  ExternalLink,
 } from "lucide-react";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
@@ -122,13 +121,19 @@ function formatRelativeTime(timestamp: number) {
   return `${days}d ago`;
 }
 
-function formatEventDate(timestamp: number) {
-  return new Intl.DateTimeFormat("en-GB", {
+function formatEventDate(timestamp: number, isAllDay: boolean) {
+  const date = new Date(timestamp);
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
+  }).format(date);
+
+  if (isAllDay) return `${dateLabel} · All day`;
+
+  return `${dateLabel}, ${new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(timestamp));
+  }).format(date)}`;
 }
 
 export default function AdminDashboardPage() {
@@ -137,7 +142,11 @@ export default function AdminDashboardPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as SessionRecord[] | undefined;
   const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
-  const events = useQuery("functions/academic/events:listEvents" as never) as SchoolEvent[] | undefined;
+  const [eventsFromTimestamp] = useState(() => Date.now());
+  const events = useQuery(
+    "functions/academic/events:listEvents" as never,
+    { fromTimestamp: eventsFromTimestamp } as never
+  ) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
     "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
   ) as TimelineAuditEvent[] | undefined;
@@ -255,7 +264,8 @@ export default function AdminDashboardPage() {
     classes !== undefined &&
     subjects !== undefined &&
     sessions !== undefined &&
-    billing !== undefined;
+    billing !== undefined &&
+    events !== undefined;
 
   if (!isLoaded) {
     return <DashboardSkeleton />;
@@ -732,25 +742,27 @@ export default function AdminDashboardPage() {
             {/* Combined Timeline & Event Stream */}
             <div className="space-y-3">
               {/* Upcoming Events */}
-              {events && events.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Upcoming Events
-                  </span>
-                  {events.slice(0, 2).map((ev) => (
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Upcoming Events
+                </span>
+                {events.length > 0 ? (
+                  events.slice(0, 2).map((ev) => (
                     <div
                       key={ev._id}
                       className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60"
                     >
-                      <CalendarDays className="h-4 w-4 text-brand-primary shrink-0 mt-0.5" />
+                      <CalendarDays aria-hidden="true" className="h-4 w-4 text-brand-primary shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-950 truncate">{ev.title}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate)}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{formatEventDate(ev.startDate, ev.isAllDay)}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400">No upcoming events.</p>
+                )}
+              </div>
 
               {/* Real Academic Audit Stream */}
               <div className="space-y-2">

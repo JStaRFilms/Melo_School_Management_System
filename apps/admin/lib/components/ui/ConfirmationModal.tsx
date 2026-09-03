@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Info, Loader2 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface ConfirmationModalProps {
@@ -26,20 +26,81 @@ export function ConfirmationModal({
   isLoading = false,
 }: ConfirmationModalProps) {
   const [mounted, setMounted] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
+    if (!isOpen || !mounted) return;
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const frame = requestAnimationFrame(() => cancelButtonRef.current?.focus());
+
+    return () => {
+      cancelAnimationFrame(frame);
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [isOpen, mounted]);
+
+  useEffect(() => {
+    if (!isOpen || !mounted) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, mounted]);
+
+  useEffect(() => {
+    if (!isOpen || !mounted) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isLoading) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusableElements?.length) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      const isFocusOutsideDialog =
+        activeElement === dialogRef.current ||
+        !dialogRef.current?.contains(activeElement);
+
+      if (event.shiftKey && (activeElement === firstElement || isFocusOutsideDialog)) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && (activeElement === lastElement || isFocusOutsideDialog)) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isLoading, isOpen, mounted, onClose]);
 
   if (!isOpen || !mounted) return null;
 
@@ -88,19 +149,27 @@ export function ConfirmationModal({
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={() => {
+        if (!isLoading) onClose();
+      }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
         className="w-full max-w-md rounded-2xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          {getIcon()}
+          <div aria-hidden="true">{getIcon()}</div>
           <div className="space-y-1 min-w-0 flex-1">
-            <h3 className="font-display text-sm sm:text-base font-bold text-slate-950 leading-snug">
+            <h3 id={titleId} className="font-display text-sm sm:text-base font-bold text-slate-950 leading-snug">
               {title}
             </h3>
-            <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-line">
+            <p id={descriptionId} className="text-xs text-slate-500 leading-relaxed whitespace-pre-line">
               {description}
             </p>
           </div>
@@ -108,10 +177,11 @@ export function ConfirmationModal({
 
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-2 border-t border-slate-100">
           <button
+            ref={cancelButtonRef}
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50 text-center"
+            className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 cursor-pointer disabled:opacity-50 text-center"
           >
             Cancel
           </button>
@@ -119,7 +189,7 @@ export function ConfirmationModal({
             type="button"
             onClick={onConfirm}
             disabled={isLoading}
-            className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 sm:py-2 text-xs font-bold transition cursor-pointer disabled:opacity-50 text-center ${getButtonStyles()}`}
+            className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 sm:py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 cursor-pointer disabled:opacity-50 text-center ${getButtonStyles()}`}
           >
             {isLoading ? (
               <>

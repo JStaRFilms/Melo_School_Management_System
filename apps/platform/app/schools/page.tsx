@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import {
@@ -11,7 +11,6 @@ import {
   Building2,
   CheckCircle2,
   Clock,
-  Radio,
   Search,
   Plus,
   Ban,
@@ -441,30 +440,16 @@ function MetricStrip({ schools }: { schools: SchoolItem[] }) {
 
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            {suspended > 0 ? "Suspended" : "Cloud Engine"}
-          </span>
-          {suspended > 0 ? (
-            <Ban className="h-4 w-4 text-rose-500" />
-          ) : (
-            <Radio className="h-4 w-4 text-indigo-500" />
-          )}
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Suspended Schools</span>
+          <Ban className={`h-4 w-4 shrink-0 ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`} />
         </div>
         <div className="mt-2 flex items-baseline gap-2">
-          {suspended > 0 ? (
-            <>
-              <span className="text-2xl font-bold text-rose-600 tracking-tight">{suspended}</span>
-              <span className="text-[11px] font-medium text-rose-500">Disabled</span>
-            </>
-          ) : (
-            <>
-              <span className="text-sm font-bold text-slate-900">Convex Dev</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                100% Online
-              </span>
-            </>
-          )}
+          <span className={`text-2xl font-bold tracking-tight ${suspended > 0 ? "text-rose-600" : "text-slate-950"}`}>
+            {suspended}
+          </span>
+          <span className={`text-[11px] font-medium ${suspended > 0 ? "text-rose-500" : "text-slate-400"}`}>
+            {suspended === 1 ? "School suspended" : "Schools suspended"}
+          </span>
         </div>
       </div>
     </div>

@@ -18,6 +18,8 @@ function AssignAdminForm() {
   const [adminPassword, setAdminPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showFeaturesModal, setShowFeaturesModal] = useState(false);
 
   // Fetch school details
   const schools = useQuery(
@@ -78,7 +80,6 @@ function AssignAdminForm() {
         adminName: trimmedName,
         adminEmail: trimmedEmail,
         adminPassword,
-        origin: window.location.origin,
       } as never);
 
       setSuccess(true);
@@ -127,9 +128,6 @@ function AssignAdminForm() {
       </div>
     );
   }
-
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [showFeaturesModal, setShowFeaturesModal] = useState(false);
 
   // Already has admin
   if (school.status === "active" && !success) {

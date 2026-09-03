@@ -1243,7 +1243,7 @@ export const promoteStudents = mutation({
       throw new ConvexError("Target session is not available");
     }
 
-    if (toSession.startDate < fromSession.startDate) {
+    if (toSession.startDate <= fromSession.startDate) {
       throw new ConvexError(
         `Cannot promote students backwards to a previous academic session (${toSession.name}). Annual promotions must advance forward to an upcoming academic session.`
       );

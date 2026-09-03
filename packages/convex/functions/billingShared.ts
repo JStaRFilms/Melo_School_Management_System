@@ -262,8 +262,6 @@ export const billingGatewayEventValidator = v.object({
     v.literal("rejected"),
     v.literal("ignored")
   ),
-  rawBody: v.string(),
-  payload: v.any(),
   processedAt: v.union(v.number(), v.null()),
   verificationMessage: v.union(v.string(), v.null()),
   receivedAt: v.number(),
