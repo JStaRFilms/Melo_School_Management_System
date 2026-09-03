@@ -1281,6 +1281,48 @@ export default defineSchema({
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
     .index("by_source_application", ["sourceApplicationId"]),
 
+  // --- Within-Group Branch-to-Branch Student Transfers (F4 / MX-15) ---
+  studentTransfers: defineTable({
+    groupId: v.id("schoolGroups"),
+    sourceSchoolId: v.id("schools"),
+    destinationSchoolId: v.id("schools"),
+    studentId: v.id("students"),
+    studentName: v.string(),
+    guardianConsentRecorded: v.boolean(),
+    guardianConsentMethod: v.string(),
+    status: v.union(
+      v.literal("initiated"),
+      v.literal("source_released"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("rejected")
+    ),
+    sourceReleaseNote: v.optional(v.string()),
+    sourceReleasedByUserId: v.optional(v.id("users")),
+    sourceReleasedAt: v.optional(v.number()),
+    destinationClassId: v.optional(v.id("classes")),
+    destinationAdmissionNumber: v.optional(v.string()),
+    destinationAcceptedByUserId: v.optional(v.id("users")),
+    destinationAcceptedAt: v.optional(v.number()),
+    portableRecordPackage: v.optional(
+      v.object({
+        studentName: v.string(),
+        dateOfBirth: v.optional(v.string()),
+        gender: v.optional(v.string()),
+        academicHistorySummary: v.string(),
+        attendanceSummaryPct: v.number(),
+        medicalNotes: v.optional(v.string()),
+      })
+    ),
+    cancellationReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_group_and_status", ["groupId", "status"])
+    .index("by_source_school", ["sourceSchoolId"])
+    .index("by_destination_school", ["destinationSchoolId"])
+    .index("by_student", ["studentId"]),
+
   classes: defineTable({
     schoolId: v.id("schools"),
     name: v.string(),

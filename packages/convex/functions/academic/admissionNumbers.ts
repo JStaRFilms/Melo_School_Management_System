@@ -1,5 +1,6 @@
-import { mutation, query } from "../../_generated/server";
+import { mutation, query, type MutationCtx } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 
@@ -196,6 +197,74 @@ export const updateAdmissionNumberPolicy = mutation({
 });
 
 /**
+ * Core helper to allocate the next admission number.
+ * Callable directly within mutations to maintain atomic transactions.
+ */
+export async function allocateNextAdmissionNumberHelper(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    level?: string;
+    year?: number;
+    campusCodeOverride?: string;
+    schoolCodeOverride?: string;
+  }
+): Promise<{
+  allocatedNumber: string;
+  sequenceNumber: number;
+}> {
+  let policy = await ctx.db
+    .query("admissionNumberPolicies")
+    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    .first();
+
+  const now = Date.now();
+  if (!policy) {
+    const school = await ctx.db.get(args.schoolId);
+    const schoolCode = school?.slug
+      ? school.slug.toUpperCase().slice(0, 3)
+      : "OBC";
+    const campusCode = "LAG";
+    const policyId = await ctx.db.insert("admissionNumberPolicies", {
+      schoolId: args.schoolId,
+      pattern: "{SCHOOL}-{CAMPUS}-{LEVEL}-{YEAR}-{SEQ:4}",
+      schoolCode,
+      campusCode,
+      currentSequence: 1,
+      resetFrequency: "continuous",
+      createdAt: now,
+      updatedAt: now,
+    });
+    policy = (await ctx.db.get(policyId))!;
+  }
+
+  const currentSeq = policy.currentSequence;
+  const year = args.year ?? new Date().getFullYear();
+  const level = args.level ?? "JSS1";
+  const schoolCode = args.schoolCodeOverride ?? policy.schoolCode;
+  const campusCode = args.campusCodeOverride ?? policy.campusCode;
+
+  const allocatedNumber = formatAdmissionNumber(policy.pattern, {
+    school: schoolCode,
+    campus: campusCode,
+    level,
+    year,
+    seq: currentSeq,
+  });
+
+  // Advance sequence atomically
+  await ctx.db.patch(policy._id, {
+    currentSequence: currentSeq + 1,
+    updatedAt: now,
+  });
+
+  return {
+    allocatedNumber,
+    sequenceNumber: currentSeq,
+  };
+}
+
+/**
  * Atomic counter allocator evaluated during enrollment intake.
  * Increments currentSequence strictly without gaps or race conditions.
  */
@@ -208,54 +277,6 @@ export const allocateNextAdmissionNumberInternal = mutation({
     schoolCodeOverride: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let policy = await ctx.db
-      .query("admissionNumberPolicies")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .first();
-
-    const now = Date.now();
-    if (!policy) {
-      const school = await ctx.db.get(args.schoolId);
-      const schoolCode = school?.slug
-        ? school.slug.toUpperCase().slice(0, 3)
-        : "OBC";
-      const campusCode = "LAG";
-      const policyId = await ctx.db.insert("admissionNumberPolicies", {
-        schoolId: args.schoolId,
-        pattern: "{SCHOOL}-{CAMPUS}-{LEVEL}-{YEAR}-{SEQ:4}",
-        schoolCode,
-        campusCode,
-        currentSequence: 1,
-        resetFrequency: "continuous",
-        createdAt: now,
-        updatedAt: now,
-      });
-      policy = (await ctx.db.get(policyId))!;
-    }
-
-    const currentSeq = policy.currentSequence;
-    const year = args.year ?? new Date().getFullYear();
-    const level = args.level ?? "JSS1";
-    const schoolCode = args.schoolCodeOverride ?? policy.schoolCode;
-    const campusCode = args.campusCodeOverride ?? policy.campusCode;
-
-    const allocatedNumber = formatAdmissionNumber(policy.pattern, {
-      school: schoolCode,
-      campus: campusCode,
-      level,
-      year,
-      seq: currentSeq,
-    });
-
-    // Advance sequence atomically
-    await ctx.db.patch(policy._id, {
-      currentSequence: currentSeq + 1,
-      updatedAt: now,
-    });
-
-    return {
-      allocatedNumber,
-      sequenceNumber: currentSeq,
-    };
+    return await allocateNextAdmissionNumberHelper(ctx, args);
   },
 });
