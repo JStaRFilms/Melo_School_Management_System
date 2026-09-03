@@ -78,7 +78,6 @@ function AssignAdminForm() {
         adminName: trimmedName,
         adminEmail: trimmedEmail,
         adminPassword,
-        origin: window.location.origin,
       } as never);
 
       setSuccess(true);

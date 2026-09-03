@@ -28,7 +28,9 @@ function assertEventDateRange(startDate: number, endDate: number) {
 }
 
 export const listEvents = query({
-  args: {},
+  args: {
+    fromTimestamp: v.optional(v.number()),
+  },
   returns: v.array(
     v.object({
       _id: v.id("schoolEvents"),
@@ -41,7 +43,7 @@ export const listEvents = query({
       createdAt: v.number(),
     })
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
@@ -52,7 +54,11 @@ export const listEvents = query({
       .collect();
 
     return events
-      .filter((event) => !event.isArchived)
+      .filter(
+        (event) =>
+          !event.isArchived &&
+          (args.fromTimestamp === undefined || event.endDate >= args.fromTimestamp)
+      )
       .sort((a, b) => a.startDate - b.startDate)
       .map((event) => ({
         _id: event._id,

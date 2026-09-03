@@ -516,8 +516,6 @@ function gatewayEventDocToReturn(event: any) {
     providerMode: event.providerMode ?? null,
     signatureValid: event.signatureValid,
     verificationStatus: event.verificationStatus,
-    rawBody: event.rawBody,
-    payload: event.payload,
     processedAt: event.processedAt ?? null,
     verificationMessage: event.verificationMessage ?? null,
     receivedAt: event.receivedAt,
@@ -1213,15 +1211,17 @@ export const getBillingDashboard = query({
     });
 
     const visibleInvoiceIds = new Set(filteredInvoices.map((invoice: any) => String(invoice._id)));
+    const hasEffectiveInvoiceFilter = Boolean(
+      args.classId || args.sessionId || args.termId || args.status || args.search?.trim()
+    );
     const visiblePayments = allPayments.filter((payment: any) =>
       visibleInvoiceIds.has(String(payment.invoiceId))
     );
-    const visibleEvents = allEvents.filter((event: any) => {
-      if (!event.invoiceId) {
-        return visibleInvoiceIds.has(String(event.invoiceId ?? ""));
-      }
-      return visibleInvoiceIds.has(String(event.invoiceId));
-    });
+    const visibleEvents = allEvents.filter((event: any) =>
+      event.invoiceId
+        ? visibleInvoiceIds.has(String(event.invoiceId))
+        : !hasEffectiveInvoiceFilter
+    );
 
     const invoiceById = new Map(filteredInvoices.map((invoice: any) => [String(invoice._id), invoice]));
     const visibleAttempts = allAttempts.filter((attempt: any) =>

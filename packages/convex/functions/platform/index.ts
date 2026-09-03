@@ -263,7 +263,8 @@ export const provisionSchoolAdmin = action({
     adminName: v.string(),
     adminEmail: v.string(),
     adminPassword: v.string(),
-    origin: v.string(),
+    // Kept for older clients; provisioning does not use caller-supplied origins.
+    origin: v.optional(v.string()),
   },
   returns: v.object({
     success: v.boolean(),
