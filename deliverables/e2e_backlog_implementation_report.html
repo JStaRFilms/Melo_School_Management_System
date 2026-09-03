@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>E2E Backlog Implementation Report · Melo School Management System</title>
+  <style>
+    :root{--ink:#172033;--muted:#667085;--line:#e4e7ec;--paper:#fff;--wash:#f5f7fb;--navy:#16213e;--indigo:#4f46e5;--green:#067647;--amber:#b54708;--red:#b42318;--blue:#175cd3}
+    *{box-sizing:border-box} body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.62 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    a{color:var(--blue);text-decoration:none} a:hover{text-decoration:underline}.wrap{max-width:1120px;margin:auto;padding:32px 20px 72px}
+    .hero{background:linear-gradient(135deg,#111a32,#27346a);color:#fff;border-radius:24px;padding:44px;box-shadow:0 18px 50px rgba(22,33,62,.2)}
+    .eyebrow{text-transform:uppercase;letter-spacing:.15em;font-size:11px;font-weight:800;color:#c7d2fe}.hero h1{font-size:clamp(30px,5vw,54px);line-height:1.05;margin:12px 0 16px;max-width:850px}.hero p{color:#dbe2ff;max-width:820px;font-size:17px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.pill{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);padding:7px 11px;border-radius:999px;font-size:12px;font-weight:700}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:22px 0}.stat,.card{background:var(--paper);border:1px solid var(--line);border-radius:18px}.stat{padding:20px}.stat b{display:block;font-size:31px;line-height:1}.stat span{display:block;color:var(--muted);font-size:12px;margin-top:8px}.a{border-top:4px solid var(--green)}.b{border-top:4px solid var(--blue)}.c{border-top:4px solid var(--amber)}.d{border-top:4px solid var(--red)}
+    .card{padding:28px;margin-top:18px}.card h2{margin:0 0 10px;font-size:23px}.card h3{font-size:16px;margin:24px 0 6px}.lead{font-size:17px;color:#344054}.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}.callout{border-left:4px solid var(--indigo);background:#f4f3ff;padding:14px 16px;border-radius:8px}.ok{color:var(--green);font-weight:750}.warn{color:var(--amber);font-weight:750}.quiet{color:var(--muted)}
+    ul{padding-left:20px}li{margin:5px 0}.check{list-style:none;padding:0}.check li{position:relative;padding-left:28px}.check li:before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:900}.code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#101828;color:#e4e7ec;border-radius:12px;padding:14px 16px;overflow:auto;font-size:13px}.tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;margin:2px}.footer{text-align:center;color:var(--muted);font-size:12px;margin-top:30px}
+    @media(max-width:800px){.grid,.cols{grid-template-columns:1fr 1fr}.hero{padding:30px}.card{padding:22px}}@media(max-width:520px){.grid,.cols{grid-template-columns:1fr}.wrap{padding:16px 12px 48px}.hero{border-radius:18px}.card{border-radius:14px}}
+    @media print{body{background:#fff}.wrap{max-width:none;padding:0}.hero{box-shadow:none}.card,.stat{break-inside:avoid}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <header class="hero">
+    <div class="eyebrow">Autonomous engineering completion report</div>
+    <h1>E2E backlog analysis & safe follow-up delivery</h1>
+    <p>A repository-grounded review of every recorded feature backlog item, followed by a deliberately bounded implementation of the highest-confidence tests, correctness fixes, and UI accessibility improvements.</p>
+    <div class="meta"><span class="pill">53 items assessed</span><span class="pill">14 implemented</span><span class="pill">39 deferred intentionally</span><span class="pill">Final review: APPROVE</span><span class="pill">No production mutation</span></div>
+  </header>
+
+  <section class="grid" aria-label="Backlog classification">
+    <div class="stat a"><b>9</b><span>A · Safe autonomous</span></div>
+    <div class="stat b"><b>9</b><span>B · Bounded with review</span></div>
+    <div class="stat c"><b>22</b><span>C · Human-in-loop recommended</span></div>
+    <div class="stat d"><b>13</b><span>D · Defer / separate program</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Executive outcome</h2>
+    <p class="lead">The backlog was not treated as an implementation checklist. Each item was checked against current code, tests, data models, authentication boundaries, and existing product patterns. Several descriptions were stale or only partially true. The final batch selected 14 items that could be implemented and verified without inventing major product behavior.</p>
+    <div class="callout"><strong>Pull request:</strong> <a href="https://github.com/JStaRFilms/Melo_School_Management_System/pull/21">#21 · E2E backlog assessment and safe follow-up fixes</a><br><strong>Assessment:</strong> <code>00_Notes/e2e_backlog_implementation_assessment.md</code></div>
+  </section>
+
+  <section class="card">
+    <h2>What was implemented</h2>
+    <div class="cols">
+      <div><h3>Academic regression coverage</h3><ul class="check">
+        <li>Promotion isolation across source/current, target/current, and target/future rosters</li><li>Historical report-card form-teacher attribution</li><li>Session-scoped class form-teacher switching</li><li>Same, earlier, and equal-start-date promotion rejection</li><li>Real graduation mutation and cleanup</li><li>Real session-date clamping and validation</li><li>Archive-blocker branch coverage</li><li>Parent-email normalization, plus-address, malformed, and tenant cases</li>
+      </ul></div>
+      <div><h3>Backend correctness & security</h3><ul class="check">
+        <li>Invoice-less gateway-event filtering corrected</li><li>Tenant and invoice visibility retained</li><li>Raw gateway bodies/payloads removed from dashboard responses</li><li>Optional event lower bound includes ongoing events</li><li>Provisioning origin retained as an optional compatibility shim</li><li>Equal-start-date promotions now rejected</li>
+      </ul></div>
+      <div><h3>Admin UI & accessibility</h3><ul class="check">
+        <li>Unsaved logo discard separated from persisted-logo removal</li><li>Accessible confirmation dialog and focus containment</li><li>Reset-password state clears on every dismissal/target change</li><li>Reset modal portal, scroll lock, helper text, autocomplete, and viewport-safe layout</li><li>Keyboard-accessible and reselectable logo file input</li></ul></div>
+      <div><h3>Truthful dashboard states</h3><ul class="check">
+        <li>Removed hard-coded development/uptime claim</li><li>Displayed derived suspended-school facts</li><li>Dashboard shows ongoing and future events only</li><li>All-day events no longer display false midnight times</li><li>Concise empty upcoming-events state retained</li></ul></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Verification</h2>
+    <div class="grid">
+      <div class="stat a"><b>115</b><span>Convex tests passed · 22 files</span></div><div class="stat a"><b>32</b><span>Admin tests passed · 7 files</span></div><div class="stat a"><b>16/16</b><span>Typecheck tasks passed</span></div><div class="stat a"><b>6/6</b><span>Application builds passed</span></div>
+    </div>
+    <ul>
+      <li><span class="ok">Passed:</span> focused B0 suite (4 files, 11 tests), changed-file/package lint, and repeated <code>git diff --check</code>.</li>
+      <li><span class="warn">Known root-test limitation:</span> the aggregate parallel command times out in pre-existing <code>foundationContracts.test.ts</code>; standalone Convex passes 115/115.</li>
+      <li><span class="warn">Known root-lint limitation:</span> unrelated pre-existing teacher conditional-hook errors/warnings remain; affected files and packages pass scoped lint.</li>
+      <li><span class="ok">Review cadence:</span> Design, B0, combined backend/UI, and final integration reviews. Every blocker was corrected; final verdict was APPROVE.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>UI review & evidence</h2>
+    <p>Admin and platform servers started successfully on <code>0.0.0.0</code>; both sign-in routes returned HTTP 200. Authenticated screenshots were not claimed because the documented demo credentials no longer matched the current development dataset. The destructive root Playwright reset was intentionally avoided.</p>
+    <h3>Antigravity</h3>
+    <p>Antigravity performed a strictly bounded, read-only review of five changed UI surfaces and made no direct edits. Accepted findings covered keyboard file selection, same-file reselection, save-state controls, focus indicators, reset-modal portal and scroll safety, password-manager semantics, responsive actions, truthful metric copy, and all-day events. Every resulting code change was subsequently audited. One generalized detached-trigger fallback suggestion was deferred because it required inventing a focus target outside the bounded contract.</p>
+    <p class="quiet">No fabricated screenshots, sensitive tenant screenshots, or raw gateway payload evidence are included.</p>
+  </section>
+
+  <section class="card">
+    <h2>Development data safety</h2>
+    <ul class="check"><li>Existing documented production-to-development refresh and rollback backup were reused as historical preparation evidence.</li><li>Environment metadata was checked without printing values; the configured Convex target class is development.</li><li>No export, import, restore, seed, schema migration, database mutation, deployment, or production query was run.</li><li>Production remained strictly read-only.</li><li>No credentials, snapshots, private records, or sensitive screenshots were committed.</li></ul>
+    <p>Olive Blessed Crest Academy was selected as the richest representative tenant, but shared data was not reset merely to recover stale credentials.</p>
+  </section>
+
+  <section class="card">
+    <h2>Why 39 items were deferred</h2>
+    <p>Deferred work was not rejected as unimportant. It was separated because it requires explicit product, finance, privacy, security, migration, or architecture decisions.</p>
+    <div><span class="tag">RBAC</span><span class="tag">bank details</span><span class="tag">admission numbering</span><span class="tag">institutional email</span><span class="tag">PII draft storage</span><span class="tag">AI quotas</span><span class="tag">school assets</span><span class="tag">multi-arm hierarchy</span><span class="tag">multi-tenant identity</span><span class="tag">notifications</span><span class="tag">AI SDK migration</span><span class="tag">broad refactors</span></div>
+    <p>Each deferred item has a clarified feature definition, scope, likely files/systems, complexity, ambiguity, A–D class, relocation cost, tests, risks, dependencies, and recommendation in the Markdown assessment.</p>
+  </section>
+
+  <section class="card">
+    <h2>Commits & review focus</h2>
+    <div class="code">e77b786  test(convex): cover academic lifecycle regressions
+a8e2c8b  fix(convex): tighten dashboard event contracts
+9f02153  fix(ui): harden admin modal and dashboard states
+5ee74b2  fix(ui): refine accessible admin states
+3fae8a7  test: stabilize final regression checks
+f264041  fix(platform): keep admin dialogs viewport-safe
+ca9aa44  docs: assess e2e backlog implementation scope</div>
+    <h3>Recommended human review focus</h3>
+    <ol><li>Billing dashboard response contraction for raw gateway fields.</li><li>Optional compatibility behavior for <code>provisionSchoolAdmin.origin</code>.</li><li>Equal-start-date promotion rejection.</li><li>Modal keyboard behavior and constrained-height mobile scrolling.</li><li>Deferral reasoning for security, finance, and identity architecture items.</li></ol>
+  </section>
+
+  <footer class="footer">Generated 3 September 2026 · Melo School Management System · Autonomous backlog implementation report</footer>
+</main>
+</body>
+</html>
