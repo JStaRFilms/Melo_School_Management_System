@@ -3,10 +3,10 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
+  Hash,
   Link2,
   Plus,
   ReceiptText,
-  Sparkles,
   Users,
 } from "lucide-react";
 import React, { useMemo, useState } from "react";
@@ -205,26 +205,27 @@ export function BillingSidebar({
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className={labelCx}>Reference / Receipt # *</label>
+              <label className={labelCx}>Reference / Receipt # *</label>
+              <div className="relative flex items-center">
+                <input
+                  value={paymentDraft.reference}
+                  onChange={(e) => onPaymentDraftChange({ ...paymentDraft, reference: e.target.value })}
+                  className={`${inputCx} pr-24 font-mono`}
+                  placeholder="e.g. Bank Session ID, Teller #"
+                  required
+                />
                 <button
                   type="button"
                   onClick={generateAutoReference}
-                  className="text-[10px] font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center gap-1"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[11px] font-bold text-slate-700 hover:text-slate-900 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                  title="Generate unique receipt identifier"
                 >
-                  <Sparkles className="h-3 w-3 text-amber-500" />
-                  <span>Auto-Generate</span>
+                  <Hash className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Generate</span>
                 </button>
               </div>
-              <input
-                value={paymentDraft.reference}
-                onChange={(e) => onPaymentDraftChange({ ...paymentDraft, reference: e.target.value })}
-                className={inputCx}
-                placeholder="e.g. Bank Session ID, Teller #, or auto-generate"
-                required
-              />
               <p className="text-[10px] text-slate-400">
-                Enter the bank transfer session ID, cash receipt number, or click Auto-Generate.
+                Enter the bank transfer session ID, cash receipt number, or click Generate.
               </p>
             </div>
 

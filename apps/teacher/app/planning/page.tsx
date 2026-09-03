@@ -112,6 +112,7 @@ export default function PlanningIndexPage() {
   const [examScopeKind, setExamScopeKind] = useState<"full_subject_term" | "topic_subset">("full_subject_term");
   const [examTopicIds, setExamTopicIds] = useState<string[]>([]);
   const [workSearchQuery, setWorkSearchQuery] = useState("");
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState("all");
   
   const [isMobile, setIsMobile] = useState(false);
   const [activeForm, setActiveForm] = useState<"topic" | "exam" | null>(null);
@@ -483,6 +484,44 @@ export default function PlanningIndexPage() {
     </div>
   );
 
+  const availableSubjects = useMemo(() => {
+    const subjectMap = new Map<string, { id: string; name: string; count: number }>();
+    (planningWork ?? []).forEach((item) => {
+      const existing = subjectMap.get(item.subjectId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        subjectMap.set(item.subjectId, {
+          id: item.subjectId,
+          name: item.subjectName,
+          count: 1,
+        });
+      }
+    });
+    return Array.from(subjectMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [planningWork]);
+
+  const filteredPlanningWork = useMemo(() => {
+    return (planningWork ?? []).filter((item) => {
+      if (selectedSubjectFilter !== "all" && item.subjectId !== selectedSubjectFilter) {
+        return false;
+      }
+      if (workSearchQuery.trim()) {
+        const q = workSearchQuery.toLowerCase().trim();
+        const matchTitle = item.topicTitle.toLowerCase().includes(q);
+        const matchSummary = (item.topicSummary ?? "").toLowerCase().includes(q);
+        const matchSubject = item.subjectName.toLowerCase().includes(q) || item.subjectCode.toLowerCase().includes(q);
+        const matchLevel = item.level.toLowerCase().includes(q);
+        const matchTerm = item.termName.toLowerCase().includes(q);
+        const matchOutputs = item.outputs.some((o) => o.title.toLowerCase().includes(q));
+        if (!matchTitle && !matchSummary && !matchSubject && !matchLevel && !matchTerm && !matchOutputs) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [planningWork, selectedSubjectFilter, workSearchQuery]);
+
   return (
     <div className="relative min-h-screen lg:h-[calc(100vh-64px)] lg:overflow-hidden flex flex-col bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
@@ -499,7 +538,7 @@ export default function PlanningIndexPage() {
       <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 lg:overflow-hidden">
         {/* Main Content Area */}
         <main className="flex-1 min-w-0 w-full lg:h-full lg:overflow-y-auto px-4 py-6 md:px-6 md:py-8 custom-scrollbar">
-          <div className="w-full max-w-[1200px] mx-auto space-y-8">
+          <div className="w-full max-w-[1200px] mx-auto space-y-6">
             <TeacherHeader
               title="Planning Studio"
               label="Academic Engine"
@@ -521,31 +560,79 @@ export default function PlanningIndexPage() {
               }
             />
 
-            {/* Work Grid Header */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-950/5 pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Workspace</h3>
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950 text-white text-[9px] font-bold tracking-widest uppercase italic">LIVE</div>
+            {/* Work Grid Header & Filters */}
+            <div className="space-y-3 border-b border-slate-950/5 pb-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display text-xl font-bold tracking-tight text-slate-950 uppercase">Active Workspace</h3>
+                    <div className="px-2 py-0.5 rounded-full bg-slate-950 text-white text-[9px] font-bold tracking-widest uppercase italic">LIVE</div>
+                  </div>
+                  <p className="text-xs font-medium text-slate-400">
+                    Jump back into your recent teaching contexts and drafts.
+                  </p>
                 </div>
-                <p className="text-xs font-medium text-slate-400">
-                  Jump back into your recent teaching contexts and drafts.
-                </p>
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    value={workSearchQuery}
+                    onChange={(e) => setWorkSearchQuery(e.target.value)}
+                    placeholder="Search topics, subjects, classes..."
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-400 shadow-2xs"
+                  />
+                  {workSearchQuery && (
+                    <button
+                      onClick={() => setWorkSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                <input
-                  value={workSearchQuery}
-                  onChange={(e) => setWorkSearchQuery(e.target.value)}
-                  placeholder="Filter workspace..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-[13px] font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300 shadow-sm"
-                />
-              </div>
+
+              {/* Subject Filter Tabs */}
+              {availableSubjects.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubjectFilter("all")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      selectedSubjectFilter === "all"
+                        ? "bg-slate-950 text-white shadow-2xs font-extrabold"
+                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>All Subjects</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
+                      {planningWork?.length ?? 0}
+                    </span>
+                  </button>
+
+                  {availableSubjects.map((sub) => (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => setSelectedSubjectFilter(sub.id)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        selectedSubjectFilter === sub.id
+                          ? "bg-slate-950 text-white shadow-2xs font-extrabold"
+                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
+                    >
+                      <span>{sub.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === sub.id ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
+                        {sub.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Work Grid */}
             <div className="grid w-full min-w-0 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {(planningWork ?? []).map((item) => {
+              {filteredPlanningWork.map((item) => {
                 const itemContext = item.preferredClassId
                   ? {
                       kind: "topic" as const,
@@ -573,15 +660,19 @@ export default function PlanningIndexPage() {
                 );
               })}
               
-              {planningWork && planningWork.length === 0 && (
-                <div className="col-span-full py-20 flex flex-col items-center justify-center text-center space-y-4 rounded-[2rem] border-2 border-dashed border-slate-200 bg-slate-50/50">
-                  <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm border border-slate-100">
-                    <History className="h-6 w-6 text-slate-300" />
+              {filteredPlanningWork.length === 0 && (
+                <div className="col-span-full py-16 flex flex-col items-center justify-center text-center space-y-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                  <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-100">
+                    <History className="h-5 w-5 text-slate-300" />
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[13px] font-black text-slate-950 uppercase tracking-wider">Empty Workspace</p>
-                    <p className="text-[12px] font-medium text-slate-400 max-w-[240px]">
-                      Select a context in the sidebar to initialize your first teaching topic.
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                      {workSearchQuery || selectedSubjectFilter !== "all" ? "No matching workspace items" : "Empty Workspace"}
+                    </p>
+                    <p className="text-xs font-medium text-slate-400 max-w-[280px]">
+                      {workSearchQuery || selectedSubjectFilter !== "all"
+                        ? "Try changing your search term or subject filter."
+                        : "Select a context in the sidebar to initialize your first teaching topic."}
                     </p>
                   </div>
                 </div>

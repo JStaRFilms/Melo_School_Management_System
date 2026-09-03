@@ -76,8 +76,27 @@ export function ReportCardLauncher() {
         } as never)
       : ("skip" as never)
   ) as
-    | Array<{ studentId: string; studentName: string; admissionNumber: string }>
+    | Array<{
+        studentId: string;
+        studentName: string;
+        admissionNumber: string;
+        passportUrl?: string | null;
+      }>
     | undefined;
+
+  // Live URL sync as user changes dropdowns
+  useEffect(() => {
+    if (!selectedSessionId) return;
+    const params = new URLSearchParams();
+    params.set("sessionId", selectedSessionId);
+    if (selectedTermId) params.set("termId", selectedTermId);
+    if (selectedClassId) params.set("classId", selectedClassId);
+    const newQuery = params.toString();
+    const currentQuery = searchParams.toString();
+    if (newQuery !== currentQuery) {
+      window.history.replaceState(null, "", `${window.location.pathname}?${newQuery}`);
+    }
+  }, [selectedSessionId, selectedTermId, selectedClassId, searchParams]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -106,8 +125,8 @@ export function ReportCardLauncher() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/40 p-4 sm:p-8 lg:p-12">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="h-full min-h-0 w-full overflow-y-auto bg-slate-50/40 p-4 sm:p-8 lg:p-12 custom-scrollbar">
+      <div className="max-w-5xl mx-auto space-y-8 pb-32">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="space-y-2">
@@ -136,7 +155,7 @@ export function ReportCardLauncher() {
               className="h-10 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
             >
               <SlidersHorizontal size={14} className="text-slate-400" />
-              Logistics & Comments
+              Term Defaults & Remarks
             </Link>
           </div>
         </div>
@@ -259,30 +278,50 @@ export function ReportCardLauncher() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredStudents.map((student) => (
-                <button
-                  key={student.studentId}
-                  type="button"
-                  onClick={() => handleOpenStudent(student.studentId)}
-                  className="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-md transition-all text-left flex items-center justify-between group active:scale-[0.99]"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <User size={13} className="text-slate-400" />
-                      <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                        {student.studentName}
-                      </span>
+              {filteredStudents.map((student) => {
+                const initials =
+                  student.studentName
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p) => p.charAt(0).toUpperCase())
+                    .join("") || "ST";
+
+                return (
+                  <button
+                    key={student.studentId}
+                    type="button"
+                    onClick={() => handleOpenStudent(student.studentId)}
+                    className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-md transition-all text-left flex items-center justify-between group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {student.passportUrl ? (
+                        <img
+                          src={student.passportUrl}
+                          alt={student.studentName}
+                          className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100/80 text-indigo-700 text-xs font-black flex items-center justify-center shrink-0 shadow-xs">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="space-y-0.5 min-w-0">
+                        <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate block">
+                          {student.studentName}
+                        </span>
+                        <span className="text-[10px] font-mono font-medium text-slate-400 block">
+                          {student.admissionNumber}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono font-medium text-slate-400 block ml-5">
-                      {student.admissionNumber}
-                    </span>
-                  </div>
-                  <div className="h-8 px-3 rounded-lg bg-slate-50 group-hover:bg-slate-900 group-hover:text-white text-slate-600 text-[11px] font-bold flex items-center gap-1 transition-all">
-                    <FileText size={12} />
-                    <span>View</span>
-                  </div>
-                </button>
-              ))}
+                    <div className="h-8 px-3 rounded-lg bg-slate-50 group-hover:bg-slate-900 group-hover:text-white text-slate-600 text-[11px] font-bold flex items-center gap-1 transition-all shrink-0 ml-2">
+                      <FileText size={12} />
+                      <span>View</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

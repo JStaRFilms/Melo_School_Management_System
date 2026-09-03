@@ -220,6 +220,71 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Eliminated keystroke input lag by memoizing sub-components (`BundleEditor`, `FieldEditor`, `ScaleTemplateEditor`, `BundleList`, `TemplateList`, `ClassAssignmentCard`).
   - Fixed re-render cascade: moved `ClassAssignmentPanel` from eager evaluation to lazy evaluation (only instantiated when visiting the *"Assign Classes"* tab instead of re-evaluating 300+ class/bundle buttons on every character typed).
   - Protected local editing drafts against reactive query re-evaluations using ref-anchored selection locks (`loadedBundleIdRef` / `loadedScaleIdRef` / `isLoadedRef`), preventing Convex background query refetches from wiping user inputs or causing UI jitter.
+- [x] **Option 2: True WYSIWYG Interactive Sheet Designer & 3-Step Guided Workflow (`/assessments/setup/report-card-bundles`)**
+  - Created [`InteractiveSheetEditor.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/report-card-bundles/components/InteractiveSheetEditor.tsx) transforming the builder into an authentic direct-manipulation A4 report card document.
+  - Implemented the intuitive **3-Step Guided Workflow Stepper** (`Step 1: Rating Scales` $\to$ `Step 2: Design Add-on Sheet` $\to$ `Step 3: Assign to Classes`) with clear forward/back transitions.
+  - Allows school admins to click directly into table cells to rename traits (*Punctuality*, *Attentiveness*), switch evaluation scale headers in-place, click `+ Add Trait Row`, and configure written remarks & attendance metrics directly on the paper canvas.
+- [x] **Workspace Navigation Sidebar Sync for Report Cards**
+  - Added `/assessments/report-cards` to the academics filter in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx), restoring direct sidebar access to the Report Cards launcher.
+- [x] **Independent Scroll Fix on Full-Bleed Pages (`grading-bands` & `report-cards`)**
+  - Added `h-full min-h-0 w-full overflow-y-auto custom-scrollbar` to [`grading-bands/page.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/page.tsx) and [`ReportCardLauncher.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/report-cards/components/ReportCardLauncher.tsx), fixing scroll lock caused by desktop `fullBleed` container bounds.
+- [x] **Grading Bands Responsive Mobile Tier Cards & In-Flow Validation (`/assessments/setup/grading-bands`)**
+  - Created dedicated mobile tier cards (`md:hidden`) inside [`BandTable.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/components/BandTable.tsx) with large touch inputs, explicit labels (*Grade*, *Min Score %*, *Max Score %*, *Transcript Remark*), and instant validation coloring, eliminating mobile table cutoffs.
+  - Refactored `BandValidationBanner` to an in-flow alert card rendered above the tiers instead of a floating fixed-bottom toast, ensuring error messages never obstruct user typing or block lower form rows.
+  - Refactored the pinned sticky toolbar into a clean, 2-row responsive mobile grid with full-width action buttons (*Arrange*, *Standard*, *Add Tier*).
+- [x] **Report Cards Layout, In-Canvas Zoom & Deep Links (`/assessments/report-cards`)**
+  - Added dedicated **In-Canvas Zoom Controls** (`[ - ] [ 75% ] [ + ] [ Fit ] [ 100% ]`) scaling only the A4 preview canvas (`previewScale` from `0.4` to `1.25`) without zooming the browser window.
+  - Pinned initial layout towards the top (`justify-start` and top alignment) so report card sheets start immediately in view.
+  - Extended left sidebar scroll clearance (`pb-44`) so bottom admin settings and buttons are never clipped.
+  - Implemented dynamic context-aware `backHref` returning admins to their exact launcher session/class or origin instead of hardcoding score entry.
+- [x] **Direct "Import Students" Link in Navigation Sidebar**
+  - Added `/students/import` under `People & Operations` in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx) and updated label to *"Import Students"* in [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts).
+- [x] **Report Add-ons Workbench Synergy & Non-Jumping 2-Pane Architecture (`/assessments/setup/report-card-bundles`)**
+  - Eliminated the dynamic 3rd preview aside column that squished the center canvas and caused layout jumps on tab changes. The Rating Scale Live Preview is now integrated cleanly into the Rating Scale step.
+  - Harmonized the catalog sidebar items (`BundleList.tsx` and `TemplateList.tsx`) with elevated white cards, crisp typography, and active indigo border/ring states matching `AssessmentProfiles`.
+  - Upgraded input legibility and placeholder contrast (`placeholder:text-slate-400 placeholder:font-normal`) in `ScaleTemplateEditor.tsx`.
+  - Added seamless `Save & Next` / `Save & Create Another Scale` inter-step transitions so admins never lose unsaved changes when moving between steps or setting up multiple evaluation scales.
+  - Replaced purple AI-aesthetic presets and heavy dark banners with clean, native white starter templates cards (`bg-white border border-slate-200/80 rounded-2xl`) with `+` action chips (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Physical Measurements`), fitting seamlessly into the app's design system.
+- [x] **Redesigned Class Allocation Workbench (`ClassAssignmentPanel.tsx`)**
+  - Replaced clumsy nested cards with a clean modern class allocation grid.
+  - Features real-time stats pills (`All`, `This Add-on`, `Other Add-ons`, `Unassigned`), search filtering, batch selection toolbar (`Assign to Selected`, `Remove from Selected`), and 1-click `Assign to Class` / `Assigned ✓` direct actions.
+- [x] **Grading Bands Responsive Mobile Polish & In-Flow Policy Navigation (`/assessments/setup/grading-bands`)**
+  - Enlarged toolbar buttons (`Arrange`, `Standard`, `+ Add Tier`) to `h-10 sm:h-11 px-4 sm:px-6` with bold typography for comfortable touch targets.
+  - Locked the `⏰ UNSAVED` / `Active` status badge directly onto the title row beside `Grading Bands` so it never wraps down onto an orphan line on mobile.
+  - Added an inline `⚠️ Show error` action button on mobile tier cards that smoothly scrolls up to `BandValidationBanner` when validation errors occur.
+- [x] **Report Cards Pinned Header & Dedicated Zoom / Pan Viewport (`/assessments/report-cards`)**
+  - Pinned the top toolbar (`REPORT CARD`, Student Name, `Back`, `Export / Print`, and Zoom controls) to `shrink-0 z-20` so it **never** scrolls off screen.
+  - Placed the report card canvas into an isolated scrollable viewport (`flex-1 min-h-0 overflow-auto`) supporting 2-axis panning and zooming.
+  - Implemented dynamic 2-axis `calculateFitScale()` measuring viewport width & height so clicking **Fit** fits the complete 794x1123 A4 sheet on screen at one glance without cutoff.
+  - Supported mobile two-finger pinch-to-zoom and drag panning.
+- [x] **Report Card Extras Scroll Depth, Flush Bottom Docking & Navigation (`/assessments/report-card-extras`)**
+  - Docked the global action bar (`Reset`, `Commit Override`) to `sticky bottom-0 -mx-4 md:-mx-8 -mb-6 md:-mb-8 z-30` so it stays flush against the bottom edge and never floats up into empty space.
+  - Updated "View Report Card" to navigate in the same tab, preserving browsing history so the "Back" button returns seamlessly to Report Extras.
+- [x] **Universal Mobile Vertical Scrolling Across the Entire App (`WorkspaceNavbar.tsx`)**
+  - Updated `<main>` in `WorkspaceNavbar.tsx` to `overflow-y-auto lg:overflow-hidden` when `fullBleed={true}`, unlocking natural vertical scrolling on all mobile screens across the entire application while preserving multi-panel desktop layouts.
+  - Made `<aside>` and `<main>` responsive on mobile across `report-cards` and `report-card-extras` to avoid 100vh lockouts.
+- [x] **Navigation Structure Reorganization**
+  - Moved `Import Students` (`/students/import`) from *People & Operations* to *Setup & Settings* in both [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts) and [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx).
+- [x] **Curriculum Intelligence Layout Streamlining & Bulk Actions (`/academic/knowledge/curriculum-import`)**
+  - Consolidated the header: moved proposal context chip, filter tabs (`All`, `Proposed`, `Approved`, `Rejected`), real-time search input, and **`Approve All (X)`** primary CTA directly into the top action bar to reclaim vertical space.
+  - Removed decorative AI sparkle icons across the extraction buttons, confidence pills, and cards.
+  - Refactored `CurriculumUnitCard` into a dense, space-efficient card layout (`p-4 space-y-3`, clean subtopic strings, compact bulleted objectives, compact source evidence quotes, and low-profile action buttons).
+  - Added multi-unit selection checkboxes with a sleek floating batch action bar (`[X] selected · [Approve (X)] · [Reject] · [Clear]`).
+  - Added atomic backend mutations `bulkApproveCurriculumUnits` and `bulkRejectCurriculumUnits` for fast single-transaction approvals.
+- [x] **Planning Studio Intelligent Subject Filter & Workspace Search (`/planning`)**
+  - Added dynamic subject filter pills (`All Subjects (X)`, `[Subject] (X)`) on the Planning Studio index, derived automatically from the teacher's active workspace topics and available assignments.
+  - Enhanced backend `listTeacherPlanningTopicWork` in `lessonKnowledgeTeacher.ts` and client-side workspace filtering to match topic titles, topic summaries, subject names, subject codes, class levels, and term names seamlessly.
+- [x] **Planning Library Real-Time Search & Zero-Unmount Query Caching (`/planning/library`)**
+  - Eliminated full-page unmounting on search input keystrokes by caching reactive query data during in-flight network queries.
+  - Added instant client-side multi-field search filtering (title, description, topic, subject name/code, level) for uninterrupted, zero-lag typing.
+- [x] **Planning Workspace Actionable Draft Generation Feedback (`/planning/lesson-plans`)**
+  - Added clear contextual warning notices explaining exactly why `[ Generate Draft ]` is disabled (e.g., missing template configuration in Setup > Lesson Templates, or requiring additional library source attachments).
+  - Replaced decorative AI sparkle icons with clean native workspace icons.
+- [x] **Curriculum Readiness Map Layout Overhaul & Vertical Scrolling (`/academic/knowledge/curriculum-readiness`)**
+  - Unlocked full vertical scrolling across the readiness map by establishing a scrollable viewport container (`h-full overflow-y-auto custom-scrollbar`) inside the full-bleed navbar wrapper.
+  - Modernized the 7 readiness statistic cards and transformed the evidence grid into a clean high-contrast matrix with rounded pill indicators.
+- [x] **Teacher Subject Selection Student Profile Picture Avatars (`/enrollment/subjects`)**
+  - Integrated student profile photos (`photoUrl`) in the subject selection desktop roster matrix (`SubjectSelectionDesktopTable.tsx`), mobile editor cards (`SubjectSelectionMobileEditor.tsx`), and bottom sheet editor (`StudentSubjectEditorSheet.tsx`) with seamless fallback to initials.
 
 ---
 
@@ -420,3 +485,26 @@ This document tracks all observations, issues, UX refinements, completed changes
 ### Scope Creep (land separately)
 - [ ] Navigation chrome (3 nav variants + preference switcher, WorkspaceNavbar +841 lines) — not in spec Done list. Land in a separate branch.
 - [ ] Future-spec docs (`StudentLifecycleAndEnrollmentHistory.md`, `EduClearanceTransferNetwork.md`, `KiddyTrackerAndGateOperations.md`, `ParentWhatsAppAndTransactionalComms.md`) added under `de88dbe`. Move to follow-up.
+
+---
+
+### 10. E2E Polish: Receipt Generator, Session Sheet Modal, Archived Student Sync & Universal Fee Plans (Sept 2026)
+- [x] **Billing Manual Payment Reference Generator Overhaul (`BillingSidebar.tsx`, `useBillingActions.ts`)**
+  - Replaced the disconnected header link containing `✨ Auto-Generate` and amber `Sparkles` with an integrated inside-input button: `[ # Generate ]` utilizing `Hash` icon and neutral institutional slate styling (`bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700`).
+  - Adjusted input container padding (`pr-24 font-mono`) and updated helper text: *"Enter the bank transfer session ID, cash receipt number, or click Generate."*
+  - Fixed `runAction` error toast handling in `useBillingActions.ts` so errors no longer use `successTitle` (which previously produced misleading red toasts titled *"Fee Plan Created"* on failure).
+- [x] **Academic Session & Term Creation Responsive Bottom Sheet (`SessionCreationModal.tsx`, `TermCreationModal.tsx`)**
+  - Replaced invalid Tailwind CSS utility `p-4.5` (which rendered with 0px horizontal padding on touch/tablet screens < 640px) with generous `px-6 py-4 sm:py-5` padding.
+  - Refactored both modals into responsive bottom sheets matching `AdminSheet`:
+    - **Mobile/Tablet Viewports:** Animated slide-up drawer from the bottom with cubic-bezier transition, grab handle (`h-1.5 w-12 bg-slate-200`), rounded top (`rounded-t-[2.5rem]`), and full viewport blur backdrop.
+    - **Desktop (`sm:`):** Centered modal with `rounded-2xl sm:max-w-lg`.
+    - Integrated ESC key listener and scroll locking with restoration.
+- [x] **Archived Student Desynchronization Fix & Active Roster Hardening (`studentEnrollment.ts`)**
+  - Audited production Convex database for Olive Blessed Crest Academy and identified 5 students (`OBHIS/21/0214`, `OBHIS/21/207`, `OBCA/25/280`, `OBCA/17/`, `OBCA/25/0016`) whose user accounts were archived (`users.isArchived = true`) while their student enrollment documents had `isArchived = false`.
+  - Because `students.isArchived` was false, `getClassStudentSubjectMatrix` loaded them into active class rosters with 0 subjects, and clicking them triggered `ConvexError("Student account not found")` while promoting them triggered `ConvexError("One selected student account is not available")`.
+  - Hardened `getClassStudentSubjectMatrix`, `getStudentsByClass`, and `loadStudentFamilyProfile` to strictly omit any student whose corresponding user record is missing or has `isArchived: true`.
+  - Implemented `reconcileArchivedStudents` mutation in `studentEnrollment.ts` to idempotently synchronize `isArchived = true` onto `students` documents where the user account was archived, and prune pending promotions.
+- [x] **Universal "All Classes" Fee Plan Enablement (`billing.ts`, `FeePlanForm.tsx`)**
+  - Removed artificial validation check in `createFeePlan` (`packages/convex/functions/billing.ts`) that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
+  - Downstream invoicing (`createInvoiceFromFeePlan`) and bulk distribution (`applyFeePlanToClassStudents`) already support `targetClassIds.length === 0` as universal templates.
+  - Added an informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*

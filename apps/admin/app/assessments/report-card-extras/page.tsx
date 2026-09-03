@@ -35,19 +35,23 @@ export default function AdminReportCardExtrasPage() {
     selection.sessionId && selection.termId && selection.classId && classIsValid
       ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
       : ("skip" as never)
-  ) as Array<{ studentId: string; studentName: string; admissionNumber: string }> | undefined;
+  ) as Array<{ studentId: string; studentName: string; admissionNumber: string; passportUrl?: string | null }> | undefined;
   const students = rawStudents?.map((student) => ({ id: student.studentId, name: `${student.studentName} (${student.admissionNumber})` })) ?? [];
   const studentIsValid = !selection.studentId || students.some((option) => option.id === selection.studentId);
 
   const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
   const saveEntry = useMutation("functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never);
 
-  const reportCardHref = buildReportCardHref({
+  const currentExtrasUrl = `/assessments/report-card-extras?sessionId=${selection.sessionId}&termId=${selection.termId}&classId=${selection.classId}&studentId=${selection.studentId}`;
+  const baseReportCardHref = buildReportCardHref({
     studentId: selection.studentId,
     sessionId: selection.sessionId,
     termId: selection.termId,
     classId: selection.classId,
   });
+  const reportCardHref = baseReportCardHref
+    ? `${baseReportCardHref}&returnTo=${encodeURIComponent(currentExtrasUrl)}`
+    : undefined;
   const hasSelection = Boolean(selection.sessionId && selection.termId && selection.classId && selection.studentId);
 
   const selectedSessionName = sessions.find(s => s.id === selection.sessionId)?.name;
@@ -55,10 +59,10 @@ export default function AdminReportCardExtrasPage() {
   const selectedClassName = classes.find(c => c.id === selection.classId)?.name;
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
-      <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
+    <div className="min-h-full lg:h-full lg:min-h-0 flex flex-col bg-slate-50/50">
+      <div className="relative flex-1 flex flex-col lg:flex-row-reverse lg:min-h-0 lg:overflow-hidden">
         {/* Sidebar Bucket */}
-        <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
+        <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-b lg:border-b-0 lg:border-l bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
           <div className="p-4 py-6 md:p-8 space-y-6">
             <ExtrasSelectionBar
               selection={selection}
@@ -84,8 +88,8 @@ export default function AdminReportCardExtrasPage() {
         </aside>
 
         {/* Main Bucket */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar">
-          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-10 space-y-6 md:space-y-8">
+        <main className="flex-1 lg:min-h-0 lg:h-full lg:overflow-y-auto custom-scrollbar">
+          <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8 pb-8">
             <AdminHeader
               label="Academic Engine"
               title="Report Extras"

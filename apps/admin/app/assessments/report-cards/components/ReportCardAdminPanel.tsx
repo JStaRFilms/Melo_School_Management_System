@@ -429,7 +429,7 @@ export function ReportCardAdminPanel({
         <div className="flex items-center gap-2 px-1">
           <Calendar className="h-4 w-4 text-slate-400" />
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Term Logistics
+            Term Defaults & Resumption
           </h3>
         </div>
 

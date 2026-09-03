@@ -185,6 +185,7 @@ const reportCardBatchStudentValidator = v.object({
   studentId: v.id("students"),
   studentName: v.string(),
   admissionNumber: v.string(),
+  passportUrl: v.optional(v.union(v.string(), v.null())),
 });
 
 export const reportCardResultValidator = v.object({
@@ -472,10 +473,14 @@ async function getStudentsForClassReportCardBatch(
         }
 
         const studentName = getReadableUserName(studentUser);
+        const passportUrl = student.photoStorageId
+          ? await ctx.storage.getUrl(student.photoStorageId)
+          : null;
         return {
           studentId: student._id,
           studentName: studentName.displayName || "Unnamed Student",
           admissionNumber: student.admissionNumber,
+          passportUrl,
         };
       })
     )

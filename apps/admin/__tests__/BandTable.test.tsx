@@ -25,8 +25,8 @@ describe("BandTable", () => {
     expect(screen.getByText("Grade")).toBeInTheDocument();
     expect(screen.getByText("Range")).toBeInTheDocument();
     expect(screen.getByText("Remark")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("F")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("A")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("F")[0]).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("A")[0]).toBeInTheDocument();
   });
 
   it("renders the add-tier button", () => {
@@ -80,7 +80,7 @@ describe("BandTable", () => {
       />
     );
 
-    fireEvent.change(screen.getByDisplayValue("F"), {
+    fireEvent.change(screen.getAllByDisplayValue("F")[0], {
       target: { value: "g" },
     });
 

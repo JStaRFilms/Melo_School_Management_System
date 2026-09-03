@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { humanNameFinalStrict } from "@/lib/human-name";
 
 import type { EnrollmentMatrix } from "./types";
@@ -44,9 +45,20 @@ export function SubjectSelectionDesktopTable({
             >
               <td className="sticky left-0 z-20 border-r border-r-slate-100 bg-white p-4 transition-colors group-hover:bg-slate-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[11px] font-bold text-slate-400 ring-1 ring-slate-950/5">
-                    {studentInitials(humanNameFinalStrict(student.studentName))}
-                  </div>
+                  {student.photoUrl ? (
+                    <Image
+                      src={student.photoUrl}
+                      alt={humanNameFinalStrict(student.studentName)}
+                      width={36}
+                      height={36}
+                      unoptimized
+                      className="h-9 w-9 shrink-0 rounded-xl border border-slate-200 object-cover shadow-2xs"
+                    />
+                  ) : (
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[11px] font-bold text-slate-400 ring-1 ring-slate-950/5">
+                      {studentInitials(humanNameFinalStrict(student.studentName))}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-bold tracking-tight text-slate-950">
                       {humanNameFinalStrict(student.studentName)}

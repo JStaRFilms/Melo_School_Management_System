@@ -38,7 +38,6 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 2. People & Operations
       { href: "/academic/students", label: "Students", matchers: ["/academic/students$"] },
-      { href: "/students/import", label: "Data Migration", matchers: ["/students/import", "/academic/students/import"] },
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
       { href: "/academic/events", label: "Events & Calendar", matchers: ["/academic/events"] },
 
@@ -102,6 +101,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       { href: "/academic/sessions", label: "Sessions & Terms", matchers: ["/academic/sessions"] },
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
+      { href: "/students/import", label: "Import Students", matchers: ["/students/import", "/academic/students/import"] },
       { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {

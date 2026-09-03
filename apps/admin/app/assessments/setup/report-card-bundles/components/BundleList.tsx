@@ -14,61 +14,64 @@ interface BundleListProps {
 export const BundleList = memo(function BundleList({ bundles, selectedId, onSelect }: BundleListProps) {
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-start justify-between gap-4 p-4 lg:p-6 border-b border-white/10 bg-slate-900/5 backdrop-blur-md sticky top-0 z-10">
-        <div className="space-y-1">
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-            <Boxes className="w-3.5 h-3.5" />
+      <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-200/80 bg-white sticky top-0 z-10">
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+            <Boxes className="w-3.5 h-3.5 text-indigo-600" />
             Report Add-ons
           </h2>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-            {bundles.length} {bundles.length === 1 ? "Bundle" : "Bundles"}
+          <p className="text-[11px] font-medium text-slate-500">
+            {bundles.length} {bundles.length === 1 ? "Add-on" : "Add-ons"} configured
           </p>
         </div>
         <button
           aria-label="Create new bundle"
-          className="p-2 bg-slate-900 text-white rounded-lg shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95 group"
+          className="h-8 px-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-1 text-xs font-bold shadow-xs"
           onClick={() => onSelect("new")}
           type="button"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
+          <span>New</span>
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
         {bundles.map((bundle) => {
           const isSelected = selectedId === bundle._id;
-          const rowClasses = `w-full group relative flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 ${
-            isSelected
-              ? "bg-slate-900 shadow-2xl shadow-slate-900/20 translate-x-1"
-              : "hover:bg-white hover:shadow-lg hover:shadow-slate-200/50"
-          }`;
-          const iconClasses = `p-2 rounded-lg transition-colors ${
-            isSelected ? "bg-white/10 text-white" : "bg-slate-100 text-slate-400 group-hover:bg-slate-900 group-hover:text-white"
-          }`;
-          const titleClasses = `text-xs font-black uppercase tracking-widest truncate transition-colors ${
-            isSelected ? "text-white" : "text-slate-700"
-          }`;
-          const subtitleClasses = `text-xs font-bold uppercase tracking-widest transition-colors ${
-            isSelected ? "text-white/40" : "text-slate-400"
-          }`;
-          const chevronClasses = `w-4 h-4 transition-all ${
-            isSelected ? "text-white translate-x-0" : "text-slate-200 -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
-          }`;
-
           return (
-            <button key={bundle._id} className={rowClasses} onClick={() => onSelect(bundle._id)} type="button">
-              <div className={iconClasses}>
-                <Boxes className="w-4 h-4" />
-              </div>
-
-              <div className="flex-1 text-left min-w-0">
-                <div className={titleClasses}>{bundle.name}</div>
-                <div className={subtitleClasses}>
-                  {bundle.sections.length} {bundle.sections.length === 1 ? "Section" : "Sections"} • {countBundleFields(bundle)} {countBundleFields(bundle) === 1 ? "Field" : "Fields"}
+            <button
+              key={bundle._id}
+              onClick={() => onSelect(bundle._id)}
+              className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                isSelected
+                  ? "bg-white border-indigo-600 shadow-sm ring-2 ring-indigo-500/10"
+                  : "bg-white/70 border-slate-200 hover:border-slate-300 hover:bg-white text-slate-700 shadow-2xs"
+              }`}
+              type="button"
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-bold truncate ${
+                      isSelected ? "text-indigo-950" : "text-slate-900"
+                    }`}
+                  >
+                    {bundle.name || "Untitled Add-on"}
+                  </span>
+                  {isSelected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />
+                  )}
+                </div>
+                <div className="text-[11px] font-medium text-slate-500">
+                  {bundle.sections.length} {bundle.sections.length === 1 ? "Section" : "Sections"} &bull; {countBundleFields(bundle)} {countBundleFields(bundle) === 1 ? "Field" : "Fields"}
                 </div>
               </div>
 
-              <ChevronRight className={chevronClasses} />
+              <ChevronRight
+                className={`w-4 h-4 shrink-0 transition-transform ${
+                  isSelected ? "text-indigo-600 translate-x-0.5" : "text-slate-300"
+                }`}
+              />
             </button>
           );
         })}

@@ -128,24 +128,31 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
           </div>
 
           {!showMultiClass ? (
-            <select
-              value={draft.targetClassIds[0] ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                onChange({
-                  ...draft,
-                  targetClassIds: val ? [val] : [],
-                });
-              }}
-              className={inputCx}
-            >
-              <option value="">All Classes (Universal Template)</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-1.5">
+              <select
+                value={draft.targetClassIds[0] ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange({
+                    ...draft,
+                    targetClassIds: val ? [val] : [],
+                  });
+                }}
+                className={inputCx}
+              >
+                <option value="">All Classes (Universal Template)</option>
+                {classes.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {draft.targetClassIds.length === 0 && (
+                <p className="text-[11px] text-brand-primary bg-brand-primary/5 border border-brand-primary/15 rounded-lg px-2.5 py-1.5 font-medium">
+                  Universal Template: This fee plan can be billed to students in any class across the school.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-2 pt-1 animate-in fade-in duration-200">
               {/* Quick Group Presets */}

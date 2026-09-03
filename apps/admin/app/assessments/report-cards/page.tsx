@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -14,6 +14,7 @@ import {
   type ReportCardBatchStudent,
   type ReportCardSheetData,
 } from "@school/shared";
+import { ZoomIn, ZoomOut } from "lucide-react";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
 
@@ -47,6 +48,86 @@ function AdminReportCardPageContent() {
   const isPrintClassMode = searchParams.get("printClass") === "1";
   const searchParamsString = searchParams.toString();
   const hasTriggeredClassPrintRef = useRef(false);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const touchStartDistanceRef = useRef<number | null>(null);
+  const initialTouchScaleRef = useRef<number>(0.75);
+
+  const [previewScale, setPreviewScale] = useState<number>(0.75);
+
+  const calculateFitScale = useCallback(() => {
+    if (typeof window === "undefined") return 0.65;
+    const A4_WIDTH_PX = 794;
+    const A4_HEIGHT_PX = 1123;
+
+    if (!mainContainerRef.current) {
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      const scaleW = (screenW - 32) / A4_WIDTH_PX;
+      const scaleH = (screenH - 120) / A4_HEIGHT_PX;
+      return Math.max(0.3, Math.min(1.2, Number(Math.min(scaleW, scaleH).toFixed(2))));
+    }
+
+    const containerWidth = mainContainerRef.current.clientWidth;
+    const containerHeight = mainContainerRef.current.clientHeight;
+
+    const paddingX = window.innerWidth < 640 ? 16 : 48;
+    const paddingY = window.innerWidth < 640 ? 24 : 48;
+
+    const availableWidth = Math.max(240, containerWidth - paddingX);
+    const availableHeight = Math.max(300, containerHeight - paddingY);
+
+    const scaleW = availableWidth / A4_WIDTH_PX;
+    const scaleH = availableHeight / A4_HEIGHT_PX;
+
+    // True "Fit to Screen": fits the complete sheet inside the viewport
+    const fit = Math.min(scaleW, scaleH);
+    return Math.max(0.3, Math.min(1.2, Number(fit.toFixed(2))));
+  }, []);
+
+  // Auto-fit on mount and screen resize
+  useEffect(() => {
+    const handleResize = () => {
+      setPreviewScale(calculateFitScale());
+    };
+    const timer = window.setTimeout(() => {
+      setPreviewScale(calculateFitScale());
+    }, 60);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [calculateFitScale]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      touchStartDistanceRef.current = dist;
+      initialTouchScaleRef.current = previewScale;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartDistanceRef.current !== null) {
+      const currentDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const ratio = currentDist / touchStartDistanceRef.current;
+      const nextScale = Math.min(
+        1.5,
+        Math.max(0.3, Number((initialTouchScaleRef.current * ratio).toFixed(2)))
+      );
+      setPreviewScale(nextScale);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartDistanceRef.current = null;
+  };
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
@@ -58,20 +139,16 @@ function AdminReportCardPageContent() {
           ...(classIdParam ? { classId: classIdParam } : {}),
         } as never)
       : ("skip" as never)
-  ) as ReportCardSheetData | undefined;
-  const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
-  const extrasHref = buildReportCardExtrasHref({
-    studentId,
-    sessionId,
-    termId,
-    classId: resolvedClassId,
-  });
+  ) as ReportCardSheetData | undefined | null;
+  const resolvedClassId = classIdParam ?? (reportCard && typeof reportCard === 'object' ? reportCard.classId : null) ?? null;
+
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
     sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
+
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
     isPrintClassMode && sessionId && termId && resolvedClassId
@@ -82,6 +159,18 @@ function AdminReportCardPageContent() {
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
   const isClassPrintBlocked = blockedClassPrintCount > 0;
 
+  const handleSelectStudent = (nextStudentId: string) => {
+    const params = new URLSearchParams(searchParamsString);
+    params.set("studentId", nextStudentId);
+    router.replace(`${pathname}?${params.toString()}`);
+  };
+
+  const handlePrintFullClass = () => {
+    const params = new URLSearchParams(searchParamsString);
+    params.set("printClass", "1");
+    router.replace(`${pathname}?${params.toString()}`);
+  };
+
   const exitFullClassPrint = useCallback(() => {
     const params = new URLSearchParams(searchParamsString);
     params.delete("printClass");
@@ -89,114 +178,98 @@ function AdminReportCardPageContent() {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
   }, [pathname, router, searchParamsString]);
 
-  const handleSelectStudent = useCallback(
-    (nextStudentId: string) => {
-      const params = new URLSearchParams(searchParamsString);
-      params.set("studentId", nextStudentId);
-      if (resolvedClassId) {
-        params.set("classId", resolvedClassId);
-      }
-      params.delete("printClass");
-      router.push(`${pathname}?${params.toString()}`);
-      if (typeof window !== "undefined") {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    },
-    [pathname, resolvedClassId, router, searchParamsString]
-  );
-
-  const handlePrintFullClass = useCallback(() => {
-    const params = new URLSearchParams(searchParamsString);
-    if (resolvedClassId) {
-      params.set("classId", resolvedClassId);
-    }
-    params.set("printClass", "1");
-    router.push(`${pathname}?${params.toString()}`);
-  }, [pathname, resolvedClassId, router, searchParamsString]);
-
   const handleBatchReady = useCallback(() => {
-    if (
-      !isPrintClassMode ||
-      isClassPrintBlocked ||
-      hasTriggeredClassPrintRef.current
-    ) {
-      return;
-    }
-
+    if (isClassPrintBlocked || hasTriggeredClassPrintRef.current) return;
     hasTriggeredClassPrintRef.current = true;
-    // requestAnimationFrame ensures layout has fully settled
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {
       window.print();
-    });
-  }, [isPrintClassMode, isClassPrintBlocked]);
+    }, 250);
+  }, [isClassPrintBlocked]);
 
-  // Reset the print trigger guard when context changes
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
   }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
 
-  // Handle afterprint to exit batch mode
   useEffect(() => {
     if (!isPrintClassMode) return;
-
-    const handleAfterPrint = () => {
-      exitFullClassPrint();
-    };
-
-    window.addEventListener("afterprint", handleAfterPrint);
-    return () => {
-      window.removeEventListener("afterprint", handleAfterPrint);
-    };
-  }, [isPrintClassMode, exitFullClassPrint]);
+    window.addEventListener("afterprint", exitFullClassPrint);
+    return () => window.removeEventListener("afterprint", exitFullClassPrint);
+  }, [exitFullClassPrint, isPrintClassMode]);
 
   if (!studentId || !sessionId || !termId) {
     return <ReportCardLauncher />;
   }
 
   if (reportCard === undefined) {
+    return <ReportCardPageFallback message="Loading student report card..." />;
+  }
+
+  if (reportCard === null) {
     return (
-      <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
-        <div className="text-slate-500">Loading report card...</div>
+      <div className="mx-auto px-4 py-8 md:px-6" style={{ maxWidth: "210mm" }}>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <h2 className="text-lg font-bold text-amber-900">Report Card Not Found</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            No published results or enrollment record was found for this student.
+          </p>
+          <div className="mt-4 flex gap-3">
+            <a
+              href="/assessments/report-cards"
+              className="rounded-lg bg-amber-900 px-4 py-2 text-xs font-semibold text-white"
+            >
+              Select another student
+            </a>
+            <Link
+              href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${resolvedClassId}`}
+              className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-950"
+            >
+              Run historical backfill
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const baseReturnTo = searchParams.get("returnTo");
+  const fallbackBackHref = `/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${resolvedClassId ?? ""}`;
+  const backHref =
+    baseReturnTo?.startsWith("/") &&
+    !baseReturnTo.startsWith("//") &&
+    !baseReturnTo.includes("\\")
+      ? baseReturnTo
+      : fallbackBackHref;
+
   if (isPrintClassMode) {
     return (
       <>
-        <div className="rc-no-print mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
-          <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
-                Full Class Print
+        {classReportCards === undefined ? (
+          <ReportCardPageFallback message="Preparing full class batch print..." />
+        ) : classReportCards.length === 0 ? (
+          <div className="mx-auto px-4 py-8 md:px-6" style={{ maxWidth: "210mm" }}>
+            <div className="rounded-lg border border-slate-200 bg-white p-6">
+              <h2 className="text-lg font-bold text-slate-900">No students available to print</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                This class does not contain students with generated report cards for this term.
               </p>
-              <h1 className="mt-1 text-lg font-extrabold text-slate-900">
-                {reportCard.className}
-              </h1>
-              <p className="mt-1 text-sm text-slate-600">
-                {classReportCards === undefined
-                  ? "Preparing every student report card for print..."
-                  : isClassPrintBlocked
-                    ? `Printing is blocked for ${blockedClassPrintCount} student report card${blockedClassPrintCount === 1 ? "" : "s"} with incomplete cumulative annual data.`
-                    : `Opening print for ${classReportCards.length} student${classReportCards.length === 1 ? "" : "s"}.`}
-              </p>
+              <button
+                type="button"
+                onClick={exitFullClassPrint}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+              >
+                Go back
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={exitFullClassPrint}
-              className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800"
-            >
-              Cancel
-            </button>
           </div>
-        </div>
-        {classReportCards === undefined ? null : isClassPrintBlocked ? (
-          <div className="rc-no-print mx-auto px-4 pb-6 md:px-6" style={{ maxWidth: "210mm" }}>
-            <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
-              <p>Full-class print is blocked until the missing prior-term totals are backfilled for every cumulative report card in this class.</p>
+        ) : isClassPrintBlocked ? (
+          <div className="rc-no-print mx-auto px-4 py-8 md:px-6" style={{ maxWidth: "210mm" }}>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-900">
+              <p>
+                Full-class print is blocked for {blockedClassPrintCount} report card{blockedClassPrintCount === 1 ? "" : "s"} until missing prior-term totals are backfilled.
+              </p>
               <Link
                 href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${resolvedClassId}`}
-                className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-rose-950 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-rose-800"
+                className="mt-4 inline-flex rounded-lg bg-rose-950 px-4 py-2 text-xs font-semibold text-white"
               >
                 Open historical backfill
               </Link>
@@ -205,7 +278,7 @@ function AdminReportCardPageContent() {
         ) : (
           <ReportCardBatchPrintStackV2
             reportCards={classReportCards}
-            backHref="/assessments/results/entry"
+            backHref={backHref}
             onReady={handleBatchReady}
           />
         )}
@@ -214,12 +287,12 @@ function AdminReportCardPageContent() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200">
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+    <div className="min-h-full lg:h-full lg:min-h-0 flex flex-col bg-slate-100/60">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden lg:min-h-0">
         {/* Sidebar Bucket - Management & Navigation */}
-        <aside className="lg:w-[460px] lg:h-full lg:overflow-y-auto border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-6 pb-10">
-          <div className="space-y-8">
-            <div className="space-y-4 px-5">
+        <aside className="w-full lg:w-[460px] lg:h-full lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-4 sm:pt-6 pb-6 lg:pb-24 shrink-0">
+          <div className="space-y-6 lg:space-y-8 px-4 sm:px-5 pb-6 lg:pb-44">
+            <div className="space-y-4">
               <ReportCardBatchNavigator
                 students={batchStudents ?? []}
                 activeStudentId={studentId}
@@ -228,13 +301,13 @@ function AdminReportCardPageContent() {
                 termName={reportCard.termName}
                 isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
                 isPrintingFullClass={isPrintClassMode}
-                extrasHref={extrasHref}
+                extrasHref={buildReportCardExtrasHref({ studentId, sessionId, termId, classId: resolvedClassId })}
                 onSelectStudent={handleSelectStudent}
                 onPrintFullClass={handlePrintFullClass}
               />
             </div>
 
-            <div className="pt-6 border-t border-slate-100 px-5">
+            <div className="pt-6 border-t border-slate-100">
               <ReportCardAdminPanel
                 studentId={studentId}
                 sessionId={sessionId}
@@ -245,21 +318,82 @@ function AdminReportCardPageContent() {
           </div>
         </aside>
 
-        {/* Main Content Bucket - The Report Card Sheet */}
-        <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
-          <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            <ReportCardToolbar
-              studentName={reportCard.student.name}
-              backHref="/assessments/results/entry"
-            />
-            {hasIncompleteCumulativeResults(reportCard) && (
-              <ReportCardPrintBlockedNotice />
-            )}
-            <ReportCardPreview
-              reportCard={reportCard}
-              backHref="/assessments/results/entry"
-              hideToolbar
-            />
+        {/* Main Content Area - Locked Top Header + Separate Canvas Viewport */}
+        <main className="flex-1 min-h-[500px] lg:min-h-0 lg:h-full flex flex-col overflow-hidden lg:order-2 bg-slate-100/70">
+          {/* Pinned Top Toolbar */}
+          <div className="shrink-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-2.5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-[1400px] mx-auto w-full">
+              <div className="flex-1 min-w-0">
+                <ReportCardToolbar
+                  studentName={reportCard.student.name}
+                  backHref={backHref}
+                />
+              </div>
+
+              {/* In-Canvas Zoom Bar */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-xl p-1 shadow-2xs text-xs font-bold text-slate-700 self-end sm:self-auto shrink-0 rc-no-print">
+                <button
+                  type="button"
+                  onClick={() => setPreviewScale((prev) => Math.max(0.3, Number((prev - 0.1).toFixed(2))))}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200/80 flex items-center justify-center text-slate-600 transition-colors active:scale-95"
+                  title="Zoom out"
+                >
+                  <ZoomOut size={14} />
+                </button>
+                <span className="w-12 text-center text-[11px] tabular-nums font-black text-slate-800">
+                  {Math.round(previewScale * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewScale((prev) => Math.min(1.5, Number((prev + 0.1).toFixed(2))))}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200/80 flex items-center justify-center text-slate-600 transition-colors active:scale-95"
+                  title="Zoom in"
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <div className="h-4 w-px bg-slate-200 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={() => setPreviewScale(calculateFitScale())}
+                  className="px-2.5 py-1 rounded-lg hover:bg-slate-200/80 text-[10px] uppercase font-black tracking-wider text-slate-700 transition-colors active:scale-95"
+                  title="Fit full page to viewport"
+                >
+                  Fit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewScale(1.0)}
+                  className="px-2.5 py-1 rounded-lg hover:bg-slate-200/80 text-[10px] uppercase font-black tracking-wider text-slate-700 transition-colors active:scale-95"
+                  title="100% original size"
+                >
+                  100%
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Dedicated Canvas Viewport (Scrollable in all directions when zoomed in) */}
+          <div
+            ref={mainContainerRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className="flex-1 min-h-0 overflow-auto custom-scrollbar p-4 sm:p-6 lg:p-8 flex items-start justify-center touch-pan-x touch-pan-y"
+          >
+            <div className="my-auto py-4 flex flex-col items-center max-w-full">
+              {hasIncompleteCumulativeResults(reportCard) && (
+                <div className="mb-4 w-full max-w-[794px]">
+                  <ReportCardPrintBlockedNotice />
+                </div>
+              )}
+
+              <ReportCardPreview
+                reportCard={reportCard}
+                backHref={backHref}
+                previewScale={previewScale}
+                hideToolbar
+              />
+            </div>
           </div>
         </main>
       </div>

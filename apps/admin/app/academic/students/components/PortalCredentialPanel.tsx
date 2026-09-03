@@ -194,9 +194,9 @@ export function PortalCredentialPanel({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex h-9.5 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200/80 bg-indigo-50/70 hover:bg-indigo-100/80 px-4 text-xs font-bold text-indigo-900 transition-all disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
         >
-          <KeyRound className="h-3.5 w-3.5" />
+          <KeyRound className="h-3.5 w-3.5 text-indigo-600" />
           <span>{isSubmitting ? "Updating..." : "Provision / Reset Access"}</span>
         </button>
       </form>

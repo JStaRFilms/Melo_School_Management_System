@@ -871,11 +871,28 @@ export const listTeacherPlanningTopicWork = query({
           (q) => q.eq("schoolId", schoolId).eq("status", "active"),
         ).take(300);
 
+    const allSubjectIds = [...new Set(topics.map((t) => String(t.subjectId)))];
+    const allTermIds = [...new Set(topics.map((t) => String(t.termId)))];
+    const [preSubjects, preTerms] = await Promise.all([
+      Promise.all(allSubjectIds.map((id) => ctx.db.get(id as Id<"subjects">))),
+      Promise.all(allTermIds.map((id) => ctx.db.get(id as Id<"academicTerms">))),
+    ]);
+    const subjectMap = new Map<string, Doc<"subjects"> | null>();
+    allSubjectIds.forEach((id, index) => subjectMap.set(id, preSubjects[index] as Doc<"subjects"> | null));
+    const termMap = new Map<string, Doc<"academicTerms"> | null>();
+    allTermIds.forEach((id, index) => termMap.set(id, preTerms[index] as Doc<"academicTerms"> | null));
+
     const filteredTopics = topics.filter((topic) => {
       if (args.subjectId && String(topic.subjectId) !== String(args.subjectId)) return false;
       if (args.termId && String(topic.termId) !== String(args.termId)) return false;
       if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
-      if (search && !normalizeKnowledgeSearchQuery(`${topic.title} ${topic.summary ?? ""}`).includes(search)) return false;
+
+      if (search) {
+        const subjectDoc = subjectMap.get(String(topic.subjectId));
+        const termDoc = termMap.get(String(topic.termId));
+        const searchable = `${topic.title} ${topic.summary ?? ""} ${subjectDoc?.name ?? ""} ${subjectDoc?.code ?? ""} ${topic.level} ${termDoc?.name ?? ""}`;
+        if (!normalizeKnowledgeSearchQuery(searchable).includes(search)) return false;
+      }
 
       if (actor.isSchoolAdmin || actor.role === "admin") return true;
       const classForLevel = levelToClass.get(normalizeLevelKey(topic.level));
@@ -883,17 +900,6 @@ export const listTeacherPlanningTopicWork = query({
       const subjectsForClass = assignableSubjectIdsByClass.get(String(classForLevel._id));
       return subjectsForClass?.has(String(topic.subjectId)) ?? false;
     });
-
-    const subjectIds = [...new Set(filteredTopics.map((topic) => String(topic.subjectId)))];
-    const termIds = [...new Set(filteredTopics.map((topic) => String(topic.termId)))];
-    const [subjects, terms] = await Promise.all([
-      Promise.all(subjectIds.map((id) => ctx.db.get(id as Id<"subjects">))),
-      Promise.all(termIds.map((id) => ctx.db.get(id as Id<"academicTerms">))),
-    ]);
-    const subjectMap = new Map<string, Doc<"subjects"> | null>();
-    subjectIds.forEach((id, index) => subjectMap.set(id, subjects[index] as Doc<"subjects"> | null));
-    const termMap = new Map<string, Doc<"academicTerms"> | null>();
-    termIds.forEach((id, index) => termMap.set(id, terms[index] as Doc<"academicTerms"> | null));
 
     const rows = await Promise.all(filteredTopics.map(async (topic) => {
       const [directMaterials, artifacts, banks, approvedCurriculumUnits] = await Promise.all([

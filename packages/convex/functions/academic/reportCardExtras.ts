@@ -548,6 +548,7 @@ export const getStudentReportCardExtrasEntry = query({
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
+    passportUrl: v.optional(v.union(v.string(), v.null())),
     canEdit: v.boolean(),
     bundles: v.array(reportCardExtraEditorBundleValidator),
   }),
@@ -572,6 +573,9 @@ export const getStudentReportCardExtrasEntry = query({
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) throw new ConvexError("Term not found");
 
     const studentUser = await ctx.db.get(student.userId);
+    const passportUrl = student.photoStorageId
+      ? await ctx.storage.getUrl(student.photoStorageId)
+      : null;
     const { bundles } = await buildExtrasCollectionView(ctx, {
       schoolId,
       classId: args.classId,
@@ -586,6 +590,7 @@ export const getStudentReportCardExtrasEntry = query({
       classId: args.classId,
       sessionId: args.sessionId,
       termId: args.termId,
+      passportUrl,
       canEdit: access.canEdit,
       bundles: bundles.map((bundle) => ({
         ...bundle,

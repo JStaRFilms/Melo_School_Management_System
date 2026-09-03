@@ -22,7 +22,9 @@ export function useBillingActions() {
       appToast.success("Success", { description: successTitle });
       return true;
     } catch (error) {
-      appToast.error(successTitle, { description: getUserFacingErrorMessage(error, fallbackMessage) });
+      appToast.error(fallbackMessage || "Action Failed", {
+        description: getUserFacingErrorMessage(error, fallbackMessage),
+      });
       return false;
     }
   };

@@ -102,6 +102,15 @@ export default function TeacherLibraryPage() {
     queryArgs as never
   ) as TeacherLibraryResponse | undefined;
 
+  const [cachedMaterialsData, setCachedMaterialsData] = useState<TeacherLibraryResponse | null>(null);
+  useEffect(() => {
+    if (materialsData !== undefined) {
+      setCachedMaterialsData(materialsData);
+    }
+  }, [materialsData]);
+
+  const activeMaterialsData = materialsData ?? cachedMaterialsData;
+
   const subjects = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherLibrarySubjects" as never
   ) as TeacherLibrarySubject[] | undefined;
@@ -125,7 +134,7 @@ export default function TeacherLibraryPage() {
   const requestProviderOcr = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialProviderOcr" as never);
 
   // Derived Data
-  const materials = useMemo(() => materialsData?.materials ?? [], [materialsData]);
+  const materials = useMemo(() => activeMaterialsData?.materials ?? [], [activeMaterialsData]);
   const previewMaterial = useMemo(
     () => materials.find((material) => material._id === previewMaterialId) ?? null,
     [materials, previewMaterialId]
@@ -150,10 +159,21 @@ export default function TeacherLibraryPage() {
   const filteredMaterials = useMemo(() => materials.filter((m) => {
     if (subjectFilter !== "all" && m.subjectId !== subjectFilter) return false;
     if (levelFilter !== "all" && m.level !== levelFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchTitle = m.title.toLowerCase().includes(q);
+      const matchDesc = (m.description ?? "").toLowerCase().includes(q);
+      const matchTopic = (m.topicLabel ?? "").toLowerCase().includes(q);
+      const matchSubject = (m.subjectName ?? "").toLowerCase().includes(q) || (m.subjectCode ?? "").toLowerCase().includes(q);
+      const matchLevel = (m.level ?? "").toLowerCase().includes(q);
+      if (!matchTitle && !matchDesc && !matchTopic && !matchSubject && !matchLevel) {
+        return false;
+      }
+    }
     return true;
-  }), [materials, subjectFilter, levelFilter]);
+  }), [materials, subjectFilter, levelFilter, searchQuery]);
 
-  const summary = materialsData?.summary ?? {
+  const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
     privateOwner: 0,
     staffVisible: 0,
@@ -300,7 +320,7 @@ export default function TeacherLibraryPage() {
      console.log("Archive material:", id);
   };
 
-  if (materialsData === undefined) {
+  if (!activeMaterialsData && materialsData === undefined) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface-200">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />

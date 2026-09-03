@@ -18,10 +18,10 @@ import {
   validateBundleDraft,
   validateScaleDraft,
 } from "../utils";
-import { BundleEditor } from "./BundleEditor";
 import { BundleList } from "./BundleList";
-import { BundlePreview } from "./BundlePreview";
 import { EditorActionBar } from "./EditorActionBar";
+import { InteractiveSheetEditor } from "./InteractiveSheetEditor";
+import { ScaleLiveCanvas } from "./ScaleLiveCanvas";
 import { ScaleTemplateEditor } from "./ScaleTemplateEditor";
 import { TemplateList } from "./TemplateList";
 
@@ -37,15 +37,17 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   const [selectedBundleId, setSelectedBundleId] = useState<string | "new" | null>(null);
   const [scaleDraft, setScaleDraft] = useState(createEmptyScaleDraft);
   const [bundleDraft, setBundleDraft] = useState(createEmptyBundleDraft);
-  const [bundleSubTab, setBundleSubTab] = useState<"designer" | "monitor" | "distribution">("designer");
+  const [bundleSubTab, setBundleSubTab] = useState<"designer" | "distribution">("designer");
   const [isMobile, setIsMobile] = useState(false);
 
   const loadedScaleIdRef = useRef<string | null>(null);
   const loadedBundleIdRef = useRef<string | null>(null);
-  const loadedScaleSerializedRef = useRef(serializeScaleDraft(createEmptyScaleDraft()));
-  const loadedBundleSerializedRef = useRef(serializeBundleDraft(createEmptyBundleDraft()));
-  const loadedScaleUpdatedAtRef = useRef<number | null>(null);
-  const loadedBundleUpdatedAtRef = useRef<number | null>(null);
+
+  // Serialized snapshots of the clean server state
+  const loadedScaleSerializedRef = useRef<string>("");
+  const loadedBundleSerializedRef = useRef<string>("");
+  const [scaleDirty, setScaleDirty] = useState(false);
+  const [bundleDirty, setBundleDirty] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -67,66 +69,106 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
   }, [bundles, selectedBundleId]);
 
-  // Refresh from reactive data only when the local draft is clean. Dirty drafts
-  // retain their base version so a save can reject a concurrent remote change.
+  // Sync draft only when selection changes or is first loaded
   useEffect(() => {
     if (!selectedScaleId) return;
 
-    const nextDraft = selectedScaleId === "new"
-      ? createEmptyScaleDraft()
-      : createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null);
-    const selectionChanged = loadedScaleIdRef.current !== selectedScaleId;
-    const isClean = serializeScaleDraft(scaleDraft) === loadedScaleSerializedRef.current;
-    const sourceChanged = loadedScaleUpdatedAtRef.current !== nextDraft.sourceUpdatedAt;
-    if (selectionChanged || (isClean && sourceChanged)) {
-      setScaleDraft(nextDraft);
-      loadedScaleIdRef.current = selectedScaleId;
-      loadedScaleUpdatedAtRef.current = nextDraft.sourceUpdatedAt;
-      loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
+    if (selectedScaleId === "new") {
+      if (loadedScaleIdRef.current !== "new") {
+        const empty = createEmptyScaleDraft();
+        setScaleDraft(empty);
+        loadedScaleSerializedRef.current = serializeScaleDraft(empty);
+        setScaleDirty(false);
+        loadedScaleIdRef.current = "new";
+      }
+      return;
     }
-  }, [scaleDraft, scaleTemplates, selectedScaleId]);
+
+    const selected = scaleTemplates.find((template) => template._id === selectedScaleId);
+    if (
+      selected &&
+      (loadedScaleIdRef.current !== selectedScaleId ||
+        (!scaleDirty && scaleDraft.sourceUpdatedAt !== selected.updatedAt))
+    ) {
+      const initial = createScaleDraft(selected);
+      setScaleDraft(initial);
+      loadedScaleSerializedRef.current = serializeScaleDraft(initial);
+      setScaleDirty(false);
+      loadedScaleIdRef.current = selectedScaleId;
+    }
+  }, [scaleDraft.sourceUpdatedAt, scaleDirty, scaleTemplates, selectedScaleId]);
 
   useEffect(() => {
     if (!selectedBundleId) return;
 
-    const nextDraft = selectedBundleId === "new"
-      ? createEmptyBundleDraft()
-      : createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null);
-    const selectionChanged = loadedBundleIdRef.current !== selectedBundleId;
-    const isClean = serializeBundleDraft(bundleDraft) === loadedBundleSerializedRef.current;
-    const sourceChanged = loadedBundleUpdatedAtRef.current !== nextDraft.sourceUpdatedAt;
-    if (selectionChanged || (isClean && sourceChanged)) {
-      setBundleDraft(nextDraft);
-      loadedBundleIdRef.current = selectedBundleId;
-      loadedBundleUpdatedAtRef.current = nextDraft.sourceUpdatedAt;
-      loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
+    if (selectedBundleId === "new") {
+      if (loadedBundleIdRef.current !== "new") {
+        const empty = createEmptyBundleDraft();
+        setBundleDraft(empty);
+        loadedBundleSerializedRef.current = serializeBundleDraft(empty);
+        setBundleDirty(false);
+        loadedBundleIdRef.current = "new";
+      }
+      return;
     }
-  }, [bundleDraft, bundles, selectedBundleId]);
+
+    const selected = bundles.find((bundle) => bundle._id === selectedBundleId);
+    if (
+      selected &&
+      (loadedBundleIdRef.current !== selectedBundleId ||
+        (!bundleDirty && bundleDraft.sourceUpdatedAt !== selected.updatedAt))
+    ) {
+      const initial = createBundleDraft(selected);
+      setBundleDraft(initial);
+      loadedBundleSerializedRef.current = serializeBundleDraft(initial);
+      setBundleDirty(false);
+      loadedBundleIdRef.current = selectedBundleId;
+    }
+  }, [bundleDraft.sourceUpdatedAt, bundleDirty, bundles, selectedBundleId]);
 
   const handleSelectBundle = useCallback((value: string | "new") => {
     setSelectedBundleId(value);
     if (value === "new") {
-      const nextDraft = createEmptyBundleDraft();
-      setBundleDraft(nextDraft);
+      const empty = createEmptyBundleDraft();
+      setBundleDraft(empty);
+      loadedBundleSerializedRef.current = serializeBundleDraft(empty);
+      setBundleDirty(false);
       loadedBundleIdRef.current = "new";
-      loadedBundleUpdatedAtRef.current = null;
-      loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
     }
   }, []);
 
   const handleSelectScale = useCallback((value: string | "new") => {
     setSelectedScaleId(value);
     if (value === "new") {
-      const nextDraft = createEmptyScaleDraft();
-      setScaleDraft(nextDraft);
+      const empty = createEmptyScaleDraft();
+      setScaleDraft(empty);
+      loadedScaleSerializedRef.current = serializeScaleDraft(empty);
+      setScaleDirty(false);
       loadedScaleIdRef.current = "new";
-      loadedScaleUpdatedAtRef.current = null;
-      loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
     }
   }, []);
 
-  const scaleDirty = serializeScaleDraft(scaleDraft) !== loadedScaleSerializedRef.current;
-  const bundleDirty = serializeBundleDraft(bundleDraft) !== loadedBundleSerializedRef.current;
+  const handleBundleChange = useCallback(
+    (nextDraft: typeof bundleDraft | ((prev: typeof bundleDraft) => typeof bundleDraft)) => {
+      setBundleDraft((prev) => {
+        const resolved = typeof nextDraft === "function" ? nextDraft(prev) : nextDraft;
+        setBundleDirty(true);
+        return resolved;
+      });
+    },
+    []
+  );
+
+  const handleScaleChange = useCallback(
+    (nextDraft: typeof scaleDraft | ((prev: typeof scaleDraft) => typeof scaleDraft)) => {
+      setScaleDraft((prev) => {
+        const resolved = typeof nextDraft === "function" ? nextDraft(prev) : nextDraft;
+        setScaleDirty(true);
+        return resolved;
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -148,11 +190,11 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
 
     const nextId = await onSaveScaleTemplate(scaleDraft);
-    const nextDraft = { ...scaleDraft, templateId: nextId };
     loadedScaleIdRef.current = nextId;
-    loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
+    loadedScaleSerializedRef.current = serializeScaleDraft(scaleDraft);
+    setScaleDirty(false);
     setSelectedScaleId(nextId);
-    setScaleDraft(nextDraft);
+    setScaleDraft((current) => ({ ...current, templateId: nextId }));
   }, [onSaveScaleTemplate, scaleDraft]);
 
   const handleSaveBundle = useCallback(async () => {
@@ -162,11 +204,11 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
 
     const nextId = await onSaveBundle(bundleDraft);
-    const nextDraft = { ...bundleDraft, bundleId: nextId };
     loadedBundleIdRef.current = nextId;
-    loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
+    loadedBundleSerializedRef.current = serializeBundleDraft(bundleDraft);
+    setBundleDirty(false);
     setSelectedBundleId(nextId);
-    setBundleDraft(nextDraft);
+    setBundleDraft((current) => ({ ...current, bundleId: nextId }));
   }, [bundleDraft, onSaveBundle, scaleTemplates]);
 
   const handleDiscardScale = useCallback(() => {
@@ -175,6 +217,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       : createEmptyScaleDraft();
     loadedScaleSerializedRef.current = serializeScaleDraft(nextDraft);
     setScaleDraft(nextDraft);
+    setScaleDirty(false);
   }, [scaleTemplates, selectedScaleId]);
 
   const handleDiscardBundle = useCallback(() => {
@@ -183,10 +226,33 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       : createEmptyBundleDraft();
     loadedBundleSerializedRef.current = serializeBundleDraft(nextDraft);
     setBundleDraft(nextDraft);
+    setBundleDirty(false);
   }, [bundles, selectedBundleId]);
 
+  const handleSaveScaleAndNext = useCallback(async () => {
+    if (scaleDirty) {
+      await handleSaveScale();
+    }
+    setTab("bundles");
+    setBundleSubTab("designer");
+  }, [handleSaveScale, scaleDirty]);
+
+  const handleSaveScaleAndCreateNew = useCallback(async () => {
+    if (scaleDirty) {
+      await handleSaveScale();
+    }
+    handleSelectScale("new");
+  }, [handleSaveScale, handleSelectScale, scaleDirty]);
+
+  const handleSaveBundleAndNext = useCallback(async () => {
+    if (bundleDirty) {
+      await handleSaveBundle();
+    }
+    setBundleSubTab("distribution");
+  }, [bundleDirty, handleSaveBundle]);
+
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
+    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-slate-50/50">
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -194,126 +260,240 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.15); }
       `}} />
 
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        {/* Sidebar Bucket - Catalog */}
-        <aside className="lg:w-[400px] lg:h-full lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white/4 backdrop-blur-sm custom-scrollbar order-2 lg:order-1">
-          {tab === "bundles" ? (
-            <BundleList
-              bundles={bundles}
-              onSelect={handleSelectBundle}
-              selectedId={selectedBundleId ?? "new"}
-            />
-          ) : (
-            <TemplateList
-              templates={scaleTemplates}
-              onSelect={handleSelectScale}
-              selectedId={selectedScaleId ?? "new"}
-            />
-          )}
+      {/* 2-PANE OR 3-PANE WORKBENCH SPLIT */}
+      <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 lg:h-full lg:overflow-hidden">
+
+        {/* PANE 1: Left Catalog Sidebar (300px - 320px) */}
+        <aside className="w-full lg:w-[280px] xl:w-[300px] lg:h-full lg:overflow-hidden flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white/40 backdrop-blur-xl shrink-0 order-2 lg:order-1">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+            {tab === "bundles" ? (
+              <BundleList
+                bundles={bundles}
+                onSelect={handleSelectBundle}
+                selectedId={selectedBundleId ?? "new"}
+              />
+            ) : (
+              <TemplateList
+                templates={scaleTemplates}
+                onSelect={handleSelectScale}
+                selectedId={selectedScaleId ?? "new"}
+              />
+            )}
+          </div>
         </aside>
 
-        {/* Main Content Bucket */}
-        <main className="flex-1 flex flex-col lg:h-full lg:overflow-y-auto custom-scrollbar px-2 py-4 lg:p-6 order-1 lg:order-2">
-          <div className="max-w-[1500px] mx-auto w-full space-y-6">
-            <div className="space-y-6 pb-20">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                  <span className="hover:text-slate-900 transition-colors cursor-default">Assessments</span>
-                  <ChevronRight size={10} className="opacity-50" />
-                  <span className="text-slate-900">Setup</span>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <h1 className="text-3xl font-black tracking-tight text-slate-900">Report Card Bundles</h1>
-                    <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-slate-400">
-                      <span className="flex items-center gap-1.5"><Library size={12} className="text-slate-300" /> {bundles.length} Bundles</span>
-                      <span className="w-1 h-1 rounded-full bg-slate-200" />
-                      <span className="flex items-center gap-1.5"><Layers size={12} className="text-slate-300" /> {scaleTemplates.length} Scales</span>
-                    </div>
-                  </div>
+        {/* PANE 2: Center Workspace */}
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto custom-scrollbar p-6 lg:p-8 order-1 lg:order-2">
+          <div className={`${tab === "scales" ? "max-w-3xl" : "max-w-[960px]"} mx-auto space-y-6 pb-28`}>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                <span className="hover:text-slate-900 transition-colors cursor-default">Assessments</span>
+                <ChevronRight size={10} className="opacity-50" />
+                <span className="text-slate-900">Setup</span>
+              </div>
 
-                  <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-xl">
-                    {[
-                      { id: "bundles", label: "Bundles", icon: <Library className="w-3.5 h-3.5" /> },
-                      { id: "scales", label: "Scales", icon: <Layers className="w-3.5 h-3.5" /> },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => setTab(item.id as typeof tab)}
-                        className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded-lg ${
-                          tab === item.id 
-                            ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5" 
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
-                        {item.icon}
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                    Report Card Add-ons & Traits
+                  </h1>
+                  <p className="text-xs font-medium text-slate-500 max-w-xl">
+                    Configure affective domain traits, psychomotor ratings, and custom remarks directly on the report card sheet.
+                  </p>
                 </div>
               </div>
 
-              {/* Mobile Trigger for new items */}
-              {isMobile && (
+              {/* 3-STEP GUIDED WORKFLOW STEPPER */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-1.5 bg-slate-200/50 rounded-2xl">
+                {/* Step 1 */}
                 <button
-                  onClick={() => tab === "bundles" ? handleSelectBundle("new") : handleSelectScale("new")}
-                  className="w-full h-12 flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10 active:scale-95 transition-all"
+                  type="button"
+                  onClick={() => setTab("scales")}
+                  className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
+                    tab === "scales"
+                      ? "bg-white shadow-sm ring-1 ring-slate-900/5 text-slate-900"
+                      : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  New {tab === "bundles" ? "Bundle" : "Scale"}
-                </button>
-              )}
-
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {tab === "bundles" ? (
-                  <div className="space-y-6">
-                    {/* Sub-Tab Navigation for Bundles */}
-                    <div className="flex items-center gap-6 border-b border-slate-200/60 pb-px overflow-x-auto scrollbar-hide">
-                      {[
-                        { id: "designer", label: "Design Bundle" },
-                        { id: "monitor", label: "Live Preview" },
-                        { id: "distribution", label: "Assign Classes" },
-                      ].map((sub) => (
-                        <button
-                          key={sub.id}
-                          onClick={() => setBundleSubTab(sub.id as typeof bundleSubTab)}
-                          className={`relative pb-3 text-xs font-black uppercase tracking-[0.2em] transition-all ${
-                            bundleSubTab === sub.id 
-                              ? "text-slate-900" 
-                              : "text-slate-400 hover:text-slate-600"
-                          }`}
-                        >
-                          {sub.label}
-                          {bundleSubTab === sub.id && (
-                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-900 rounded-full animate-in fade-in zoom-in-95 duration-300" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="pt-2">
-                      {bundleSubTab === "designer" && (
-                        <BundleEditor draft={bundleDraft} onChange={setBundleDraft} scaleTemplates={scaleTemplates} />
-                      )}
-                      {bundleSubTab === "monitor" && (
-                        <BundlePreview draft={bundleDraft} scaleTemplates={scaleTemplates} />
-                      )}
-                      {bundleSubTab === "distribution" && (
-                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          {renderAssignmentPanel(bundleDraft.bundleId)}
-                        </div>
-                      )}
-                    </div>
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                      tab === "scales"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    1
                   </div>
-                ) : (
-                  <ScaleTemplateEditor draft={scaleDraft} onChange={setScaleDraft} />
-                )}
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-wider">Rating Scales</div>
+                    <div className="text-[10px] text-slate-400 font-medium truncate">1–5, Letter grades (A–E)</div>
+                  </div>
+                </button>
+
+                {/* Step 2 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("bundles");
+                    setBundleSubTab("designer");
+                  }}
+                  className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
+                    tab === "bundles" && bundleSubTab === "designer"
+                      ? "bg-white shadow-sm ring-1 ring-slate-900/5 text-slate-900"
+                      : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                      tab === "bundles" && bundleSubTab === "designer"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    2
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-wider">Design Add-on Sheet</div>
+                    <div className="text-[10px] text-slate-400 font-medium truncate">Traits, remarks & metrics</div>
+                  </div>
+                </button>
+
+                {/* Step 3 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("bundles");
+                    setBundleSubTab("distribution");
+                  }}
+                  className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
+                    tab === "bundles" && bundleSubTab === "distribution"
+                      ? "bg-white shadow-sm ring-1 ring-slate-900/5 text-slate-900"
+                      : "text-slate-500 hover:text-slate-900 hover:bg-white/50"
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                      tab === "bundles" && bundleSubTab === "distribution"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    3
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-wider">Assign to Classes</div>
+                    <div className="text-[10px] text-slate-400 font-medium truncate">Link to Primary / Secondary</div>
+                  </div>
+                </button>
               </div>
+            </div>
+
+            {/* Mobile Trigger for new items */}
+            {isMobile && (
+              <button
+                onClick={() => (tab === "bundles" ? handleSelectBundle("new") : handleSelectScale("new"))}
+                className="w-full h-12 flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10 active:scale-95 transition-all"
+                type="button"
+              >
+                <Plus className="w-4 h-4" />
+                New {tab === "bundles" ? "Add-on" : "Rating Scale"}
+              </button>
+            )}
+
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {tab === "bundles" ? (
+                <div className="space-y-6">
+                  <div className="pt-2">
+                    {bundleSubTab === "designer" && (
+                      <InteractiveSheetEditor
+                        draft={bundleDraft}
+                        onChange={handleBundleChange}
+                        scaleTemplates={scaleTemplates}
+                        onProceedToDistribution={handleSaveBundleAndNext}
+                        onNavigateToScales={() => setTab("scales")}
+                      />
+                    )}
+                    {bundleSubTab === "distribution" && (
+                      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
+                        <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
+                              Step 3 &bull; Class Distribution
+                            </span>
+                            <h3 className="text-xs font-bold text-slate-900">
+                              Assigning: {bundleDraft.name || "Untitled Add-on"}
+                            </h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setBundleSubTab("designer")}
+                            className="text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
+                          >
+                            ← Back to Sheet Designer
+                          </button>
+                        </div>
+                        {renderAssignmentPanel(bundleDraft.bundleId)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <ScaleTemplateEditor
+                    draft={scaleDraft}
+                    onChange={handleScaleChange}
+                    hidePreview={true}
+                  />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-white border border-slate-200 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={handleSaveScaleAndCreateNew}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>{scaleDirty ? "Save & Create Another Scale" : "+ Create Another Scale"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveScaleAndNext}
+                      className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-xs active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>{scaleDirty ? "Save & Next: Design Add-on Sheet" : "Next: Design Add-on Sheet"}</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </main>
+
+        {/* PANE 3: Pinned Right Live Scale Preview (Only on Rating Scales tab) */}
+        {tab === "scales" && (
+          <aside className="hidden xl:flex xl:w-[380px] 2xl:w-[420px] flex-col h-full overflow-y-auto custom-scrollbar border-l border-slate-200/80 bg-white/60 backdrop-blur-md p-6 shrink-0 order-3 space-y-4">
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md pb-3 border-b border-slate-100 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Step 1 &bull; Live Visualizer
+                </span>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                  Report Card Preview
+                </h3>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                PINNED
+              </span>
+            </div>
+
+            <ScaleLiveCanvas draft={scaleDraft} />
+
+            <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+              <p className="font-bold text-slate-800 mb-1">Live Table Key & Grid Preview</p>
+              Shows how this scale&apos;s symbol keys (e.g. 5–1 or A–E) and rating markers will render in trait assessment matrices on official student report sheets.
+            </div>
+          </aside>
+        )}
+
       </div>
 
       {tab === "scales" ? (
@@ -329,8 +509,8 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
           dirty={bundleDirty}
           onDiscard={handleDiscardBundle}
           onSave={handleSaveBundle}
-          saveLabel="Save Bundle"
-          successLabel="Bundle saved"
+          saveLabel="Save Add-on"
+          successLabel="Add-on bundle saved"
         />
       )}
     </div>
