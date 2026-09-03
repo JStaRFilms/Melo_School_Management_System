@@ -944,12 +944,91 @@ export default defineSchema({
     .index("by_school_and_created_at", ["schoolId", "createdAt"])
     .index("by_actor_user_and_created_at", ["actorUserId", "createdAt"]),
 
+  // --- Canonical Identity & Multi-Branch Tenancy Kernel (F2) ---
+  persons: defineTable({
+    authTokenIdentifier: v.string(),
+    email: v.string(),
+    name: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    primarySchoolId: v.optional(v.id("schools")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_token_identifier", ["authTokenIdentifier"])
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  branchMemberships: defineTable({
+    personId: v.id("persons"),
+    schoolId: v.id("schools"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    isDefaultBranch: v.boolean(),
+    legacyUserId: v.optional(v.id("users")),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_person_and_school", ["personId", "schoolId"])
+    .index("by_school_and_person", ["schoolId", "personId"])
+    .index("by_person_and_status", ["personId", "status"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_legacy_user", ["legacyUserId"]),
+
+  schoolGroups: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    proprietorPersonId: v.id("persons"),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    settingsVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_proprietor", ["proprietorPersonId"]),
+
+  schoolGroupBranches: defineTable({
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    isHeadquarters: v.boolean(),
+    linkedAt: v.number(),
+  })
+    .index("by_group_and_school", ["groupId", "schoolId"])
+    .index("by_school", ["schoolId"])
+    .index("by_group", ["groupId"]),
+
+  migrationRuns: defineTable({
+    sliceId: v.string(),
+    batchNumber: v.number(),
+    cursor: v.union(v.string(), v.null()),
+    processedCount: v.number(),
+    failedCount: v.number(),
+    status: v.union(
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+  })
+    .index("by_slice_and_status", ["sliceId", "status"])
+    .index("by_slice_and_batch", ["sliceId", "batchNumber"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),
     // New writes use the canonical Convex token identifier. authId remains the
     // Better Auth bridge for existing memberships until a reviewed backfill.
     authTokenIdentifier: v.optional(v.string()),
+    personId: v.optional(v.id("persons")),
     name: v.string(),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -974,7 +1053,8 @@ export default defineSchema({
     .index("by_auth", ["authId"])
     .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_email", ["email"])
-    .index("by_school_and_manager_user", ["schoolId", "managerUserId"]),
+    .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
+    .index("by_person", ["personId"]),
 
   families: defineTable({
     schoolId: v.id("schools"),

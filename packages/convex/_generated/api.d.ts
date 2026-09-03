@@ -35,6 +35,7 @@ import type * as functions_academic_documentGeneration from "../functions/academ
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
+import type * as functions_academic_identityMigration from "../functions/academic/identityMigration.js";
 import type * as functions_academic_judgeCurriculumSeed from "../functions/academic/judgeCurriculumSeed.js";
 import type * as functions_academic_judgeLessonSeed from "../functions/academic/judgeLessonSeed.js";
 import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
@@ -130,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
+  "functions/academic/identityMigration": typeof functions_academic_identityMigration;
   "functions/academic/judgeCurriculumSeed": typeof functions_academic_judgeCurriculumSeed;
   "functions/academic/judgeLessonSeed": typeof functions_academic_judgeLessonSeed;
   "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;

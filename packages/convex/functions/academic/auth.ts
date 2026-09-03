@@ -1,4 +1,5 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { query } from "../../_generated/server";
 import { Id } from "../../_generated/dataModel";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
 
@@ -373,3 +374,173 @@ export async function assertSchoolBoundary(
     throw new ConvexError("Cross-school access denied");
   }
 }
+
+export interface ActiveMembershipContext {
+  personId?: Id<"persons">;
+  membershipId?: Id<"branchMemberships">;
+  schoolId: Id<"schools">;
+  userId?: Id<"users">;
+  role: string;
+  isPlatformAdmin: boolean;
+}
+
+/**
+ * Resolves the authenticated user's active membership in the target school branch.
+ * Enforces strict branch tenancy isolation with super admin bypass and legacy bridge fallback.
+ *
+ * @param ctx - Convex QueryCtx or MutationCtx
+ * @param schoolId - Target school branch ID
+ * @returns ActiveMembershipContext with personId, membershipId, schoolId, userId, role, isPlatformAdmin
+ * @throws ConvexError("Not authorized: User does not have an active membership in this branch")
+ */
+export async function resolveActiveMembership(
+  ctx: any,
+  schoolId: Id<"schools">
+): Promise<ActiveMembershipContext> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new ConvexError(
+      "Not authorized: User does not have an active membership in this branch"
+    );
+  }
+
+  const tokenIdentifier: string | undefined = identity.tokenIdentifier;
+  const authId: string | undefined = identity.subject;
+
+  // 1. Check platformAdmins for Super Admin bypass
+  let platformAdmin = tokenIdentifier
+    ? await ctx.db
+        .query("platformAdmins")
+        .withIndex("by_auth_token_identifier", (q: any) =>
+          q.eq("authTokenIdentifier", tokenIdentifier)
+        )
+        .first()
+    : null;
+
+  if (!platformAdmin && authId) {
+    platformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q: any) => q.eq("authId", authId))
+      .first();
+  }
+
+  if (!platformAdmin && identity.email) {
+    platformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_email", (q: any) => q.eq("email", identity.email))
+      .first();
+  }
+
+  if (platformAdmin) {
+    if (!platformAdmin.isActive) {
+      throw new ConvexError(
+        "Not authorized: User does not have an active membership in this branch"
+      );
+    }
+    return {
+      schoolId,
+      role: "super_admin",
+      isPlatformAdmin: true,
+    };
+  }
+
+  // 2. Resolve Canonical Person via authTokenIdentifier (or email fallback)
+  let person = tokenIdentifier
+    ? await ctx.db
+        .query("persons")
+        .withIndex("by_token_identifier", (q: any) =>
+          q.eq("authTokenIdentifier", tokenIdentifier)
+        )
+        .first()
+    : null;
+
+  if (!person && identity.email) {
+    person = await ctx.db
+      .query("persons")
+      .withIndex("by_email", (q: any) => q.eq("email", identity.email))
+      .first();
+  }
+
+  // 3. If person exists, query branchMemberships for requested schoolId
+  if (person && person.status === "active") {
+    const membership = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q: any) =>
+        q.eq("personId", person._id).eq("schoolId", schoolId)
+      )
+      .first();
+
+    if (membership && membership.status === "active") {
+      let legacyUser = membership.legacyUserId
+        ? await ctx.db.get(membership.legacyUserId)
+        : null;
+
+      if (!legacyUser) {
+        const schoolUsers = await ctx.db
+          .query("users")
+          .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+          .collect();
+
+        legacyUser =
+          schoolUsers.find(
+            (u: any) =>
+              !u.isArchived &&
+              (u.personId === person._id ||
+                (tokenIdentifier && u.authTokenIdentifier === tokenIdentifier) ||
+                (authId && u.authId === authId) ||
+                (person.email && u.email?.toLowerCase() === person.email.toLowerCase()))
+          ) ?? null;
+      }
+
+      return {
+        personId: person._id,
+        membershipId: membership._id,
+        schoolId,
+        userId: legacyUser?._id,
+        role: legacyUser?.role ?? "member",
+        isPlatformAdmin: false,
+      };
+    }
+  }
+
+  // 4. Compatibility fallback during bridge:
+  // If no person or membership exists yet, query existing users by (schoolId, authTokenIdentifier) or (schoolId, authId)
+  const schoolUsers = await ctx.db
+    .query("users")
+    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .collect();
+
+  const legacyUser = schoolUsers.find(
+    (u: any) =>
+      !u.isArchived &&
+      ((tokenIdentifier && u.authTokenIdentifier === tokenIdentifier) ||
+        (authId && u.authId === authId) ||
+        (identity.email && u.email?.toLowerCase() === identity.email.toLowerCase()))
+  );
+
+  if (legacyUser) {
+    return {
+      personId: legacyUser.personId ?? person?._id,
+      membershipId: undefined,
+      schoolId,
+      userId: legacyUser._id,
+      role: legacyUser.role,
+      isPlatformAdmin: false,
+    };
+  }
+
+  // 5. If not authorized, throw clear error
+  throw new ConvexError(
+    "Not authorized: User does not have an active membership in this branch"
+  );
+}
+
+export const getActiveMembership = query({
+  args: {
+    schoolId: v.id("schools"),
+  },
+  handler: async (ctx, args) => {
+    return await resolveActiveMembership(ctx, args.schoolId);
+  },
+});
+

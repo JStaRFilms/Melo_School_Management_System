@@ -39,8 +39,8 @@ Capture the approved H1–H9/F1–F7 decision frontier and turn it into a safe, 
 | D-05 | Migration rehearsal/data-refresh runbook | **complete** | `docs/features/D05_MigrationRehearsalAndDataRefreshRunbook.md` |
 | Review | Expansion Design Milestone Review | **complete & approved** | `docs/features/ExpansionDesignMilestoneReview.md` |
 | M0 / PR-A | Baseline quality and environment gate | **complete** | Teacher lint clean, parallel timeout root-cause solved (-70% duration) |
-| M1 / PR-B | Identity and tenancy kernel | ready to begin | M0, D-02, D-05 |
-| M2 / PR-C | RBAC and audit kernel | blocked on M1 | M1, D-02 |
+| M1 / PR-B | Identity and tenancy kernel | **complete** | Canonical persons, branchMemberships, schoolGroups, bridge resolvers, migration runner |
+| M2 / PR-C | RBAC and audit kernel | ready to begin | M1, D-02 |
 | M3 / PR-D | Group operation/inheritance | blocked on M2 | M1/M2, D-04 |
 | M4 / PR-E | Grade/admission/bank verticals | blocked on M2/M3 | M2/M3, D-04/D-05 |
 | M5 / PR-F | Theme/draft/progress foundation | blocked on M2/M3 | M2/M3, D-04 |
