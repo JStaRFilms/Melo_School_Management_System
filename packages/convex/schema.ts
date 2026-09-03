@@ -1022,6 +1022,127 @@ export default defineSchema({
     .index("by_slice_and_status", ["sliceId", "status"])
     .index("by_slice_and_batch", ["sliceId", "batchNumber"]),
 
+  // --- Granular Capability RBAC & Authority Ceilings (H2) ---
+  roleTemplates: defineTable({
+    code: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    scope: v.union(v.literal("global"), v.literal("group"), v.literal("branch")),
+    schoolId: v.optional(v.id("schools")),
+    groupId: v.optional(v.id("schoolGroups")),
+    capabilities: v.array(v.string()),
+    isSystem: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_code", ["code"])
+    .index("by_scope_and_school", ["scope", "schoolId"])
+    .index("by_group", ["groupId"]),
+
+  membershipRoleAssignments: defineTable({
+    membershipId: v.id("branchMemberships"),
+    roleTemplateId: v.id("roleTemplates"),
+    roleTemplateKey: v.optional(v.string()),
+    assignedBy: v.optional(v.id("persons")),
+    assignedAt: v.number(),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_role", ["roleTemplateId"])
+    .index("by_membership_and_role", ["membershipId", "roleTemplateId"]),
+
+  membershipDirectGrants: defineTable({
+    membershipId: v.id("branchMemberships"),
+    capability: v.string(),
+    grantedBy: v.optional(v.id("persons")),
+    grantedAt: v.number(),
+    reason: v.optional(v.string()),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_membership_and_cap", ["membershipId", "capability"]),
+
+  membershipDirectRestrictions: defineTable({
+    membershipId: v.id("branchMemberships"),
+    capability: v.string(),
+    restrictedBy: v.optional(v.id("persons")),
+    restrictedAt: v.number(),
+    reason: v.optional(v.string()),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_membership_and_cap", ["membershipId", "capability"]),
+
+  delegationCeilings: defineTable({
+    membershipId: v.id("branchMemberships"),
+    allowedCapabilities: v.array(v.string()),
+    updatedBy: v.optional(v.id("persons")),
+    updatedAt: v.number(),
+  }).index("by_membership", ["membershipId"]),
+
+  // --- Append-Only Redacted Audit Kernel (F1) ---
+  auditEvents: defineTable({
+    eventId: v.string(),
+    timestamp: v.number(),
+    actorKind: v.union(
+      v.literal("user"),
+      v.literal("platform_admin"),
+      v.literal("system")
+    ),
+    actorPersonId: v.optional(v.id("persons")),
+    actorMembershipId: v.optional(v.id("branchMemberships")),
+    actorEmailSnapshot: v.string(),
+    actorIpHash: v.optional(v.string()),
+    schoolId: v.id("schools"),
+    groupId: v.optional(v.id("schoolGroups")),
+    module: v.string(),
+    action: v.string(),
+    targetType: v.string(),
+    targetId: v.string(),
+    outcome: v.union(
+      v.literal("success"),
+      v.literal("denied"),
+      v.literal("failed")
+    ),
+    safeSummary: v.string(),
+    beforeSummary: v.optional(v.string()),
+    afterSummary: v.optional(v.string()),
+    correlationId: v.string(),
+    retentionClass: v.union(
+      v.literal("operational_7yr"),
+      v.literal("permanent_statutory")
+    ),
+    alertTier: v.optional(
+      v.union(
+        v.literal("tier1_critical"),
+        v.literal("tier2_warn"),
+        v.literal("tier3_info")
+      )
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_timestamp", ["schoolId", "timestamp"])
+    .index("by_group_and_timestamp", ["groupId", "timestamp"])
+    .index("by_module_and_action", ["module", "action"])
+    .index("by_actor_and_timestamp", ["actorPersonId", "timestamp"]),
+
+  auditAlerts: defineTable({
+    alertId: v.string(),
+    schoolId: v.id("schools"),
+    eventId: v.id("auditEvents"),
+    tier: v.union(
+      v.literal("tier1_critical"),
+      v.literal("tier2_warn"),
+      v.literal("tier3_info")
+    ),
+    title: v.string(),
+    message: v.string(),
+    targetRecipientPersonIds: v.optional(v.array(v.id("persons"))),
+    isDismissed: v.boolean(),
+    dismissedAt: v.optional(v.number()),
+    dismissedBy: v.optional(v.id("persons")),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_dismissed", ["schoolId", "isDismissed"])
+    .index("by_event", ["eventId"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),

@@ -18,6 +18,7 @@ import type * as functions_academic_archiveRecords from "../functions/academic/a
 import type * as functions_academic_assessmentEditingPolicies from "../functions/academic/assessmentEditingPolicies.js";
 import type * as functions_academic_assessmentEditingPolicyHelpers from "../functions/academic/assessmentEditingPolicyHelpers.js";
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
+import type * as functions_academic_audit from "../functions/academic/audit.js";
 import type * as functions_academic_auth from "../functions/academic/auth.js";
 import type * as functions_academic_bootstrap from "../functions/academic/bootstrap.js";
 import type * as functions_academic_branchSplitV2 from "../functions/academic/branchSplitV2.js";
@@ -68,6 +69,8 @@ import type * as functions_academic_reportCardExtrasModel from "../functions/aca
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
 import type * as functions_academic_reportCards from "../functions/academic/reportCards.js";
+import type * as functions_academic_rbac from "../functions/academic/rbac.js";
+import type * as functions_academic_rbacMigration from "../functions/academic/rbacMigration.js";
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
@@ -114,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentEditingPolicies": typeof functions_academic_assessmentEditingPolicies;
   "functions/academic/assessmentEditingPolicyHelpers": typeof functions_academic_assessmentEditingPolicyHelpers;
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
+  "functions/academic/audit": typeof functions_academic_audit;
   "functions/academic/auth": typeof functions_academic_auth;
   "functions/academic/bootstrap": typeof functions_academic_bootstrap;
   "functions/academic/branchSplitV2": typeof functions_academic_branchSplitV2;
@@ -164,6 +168,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
   "functions/academic/reportCards": typeof functions_academic_reportCards;
+  "functions/academic/rbac": typeof functions_academic_rbac;
+  "functions/academic/rbacMigration": typeof functions_academic_rbacMigration;
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
