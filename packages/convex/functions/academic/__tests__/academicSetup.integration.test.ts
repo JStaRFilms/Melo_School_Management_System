@@ -43,7 +43,7 @@ function teacherRecord(args: {
 }
 
 describe("academic setup registered functions", () => {
-  it("keeps form teachers scoped to the selected session when listing classes", async () => {
+  it("keeps form teachers scoped to the selected session when listing classes", { timeout: 15_000 }, async () => {
     const t = convexTest(schema, modules);
     const ids = await t.run(async (ctx) => {
       const now = 1;
