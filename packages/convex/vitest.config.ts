@@ -8,5 +8,11 @@ export default defineConfig({
   },
   test: {
     environment: "edge-runtime",
+    // Convex-test uses an in-process isolate; serial files avoid fixture setup
+    // contention and keep the contract suite deterministic.
+    fileParallelism: false,
+    env: {
+      LEGACY_SUBJECT_TRUSTED_ISSUER: "https://legacy-auth.test",
+    },
   },
 });

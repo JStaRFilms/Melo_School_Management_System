@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
+import { requireCapability } from "./rbac";
 
 /**
  * Strict Invariant (H5 / MX-09):
@@ -9,6 +10,23 @@ import { recordAuditEventHelper } from "./audit";
  * All institutional addressing integrates via external directory APIs
  * (Google Workspace, Microsoft 365, Zoho Mail) or DNS verification.
  */
+
+async function assertPersonBelongsToSchool(
+  ctx: QueryCtx | MutationCtx,
+  personId: Id<"persons">,
+  schoolId: Id<"schools">
+): Promise<void> {
+  const membership = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_school", (q) =>
+      q.eq("personId", personId).eq("schoolId", schoolId)
+    )
+    .first();
+
+  if (!membership || membership.status !== "active") {
+    throw new ConvexError("Person does not have an active membership in this school");
+  }
+}
 
 function sanitizeNameSegment(name: string): string {
   return name
@@ -86,6 +104,7 @@ export const registerEmailDomain = mutation({
     isDefault: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "settings.domains.manage");
     const school = await ctx.db.get(args.schoolId);
     if (!school) {
       throw new ConvexError("School not found");
@@ -167,72 +186,45 @@ export const registerEmailDomain = mutation({
 });
 
 /**
- * Simulates or executes DNS TXT verification challenge.
+ * Records a DNS verification result from a trusted verifier. Public callers can
+ * request a domain but cannot transition its authoritative verification state.
  */
-export const verifyDomain = mutation({
+export const verifyDomain = internalMutation({
   args: {
     domainId: v.id("schoolEmailDomains"),
-    simulateSuccess: v.optional(v.boolean()),
+    observedDnsTxtRecord: v.string(),
+    providerOperationId: v.string(),
   },
   handler: async (ctx, args) => {
     const domain = await ctx.db.get(args.domainId);
-    if (!domain) {
-      throw new ConvexError("Domain not found");
-    }
+    if (!domain) throw new ConvexError("Domain not found");
 
     const now = Date.now();
-    const isSuccess = args.simulateSuccess ?? true;
+    const verified = args.observedDnsTxtRecord === domain.dnsTxtRecord;
+    await ctx.db.patch(domain._id, {
+      status: verified ? "verified" : "failed",
+      verifiedAt: verified ? now : undefined,
+      updatedAt: now,
+    });
 
-    if (isSuccess) {
-      await ctx.db.patch(domain._id, {
-        status: "verified",
-        verifiedAt: now,
-        updatedAt: now,
-      });
+    await recordAuditEventHelper(ctx, {
+      schoolId: domain.schoolId,
+      actorKind: "system",
+      actorEmailSnapshot: "system@melo.school",
+      module: "institutional_email",
+      action: "verify_domain",
+      targetType: "schoolEmailDomains",
+      targetId: String(domain._id),
+      outcome: verified ? "success" : "failed",
+      safeSummary: `DNS verification operation ${args.providerOperationId} ${verified ? "validated" : "failed"} for ${domain.domain}`,
+    });
 
-      await recordAuditEventHelper(ctx, {
-        schoolId: domain.schoolId,
-        actorKind: "system",
-        actorEmailSnapshot: "system@melo.school",
-        module: "institutional_email",
-        action: "verify_domain",
-        targetType: "schoolEmailDomains",
-        targetId: String(domain._id),
-        outcome: "success",
-        safeSummary: `Verified domain ${domain.domain} ownership via DNS challenge`,
-      });
-
-      return {
-        domainId: domain._id,
-        domain: domain.domain,
-        status: "verified" as const,
-        verified: true,
-      };
-    } else {
-      await ctx.db.patch(domain._id, {
-        status: "failed",
-        updatedAt: now,
-      });
-
-      await recordAuditEventHelper(ctx, {
-        schoolId: domain.schoolId,
-        actorKind: "system",
-        actorEmailSnapshot: "system@melo.school",
-        module: "institutional_email",
-        action: "verify_domain",
-        targetType: "schoolEmailDomains",
-        targetId: String(domain._id),
-        outcome: "failed",
-        safeSummary: `DNS challenge verification failed for domain ${domain.domain}`,
-      });
-
-      return {
-        domainId: domain._id,
-        domain: domain.domain,
-        status: "failed" as const,
-        verified: false,
-      };
-    }
+    return {
+      domainId: domain._id,
+      domain: domain.domain,
+      status: verified ? ("verified" as const) : ("failed" as const),
+      verified,
+    };
   },
 });
 
@@ -286,8 +278,16 @@ export const proposeEmailAddresses = query({
     customDomain: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<AddressProposalResult[]> => {
+    await requireCapability(ctx, args.schoolId, "staff.onboard");
+    for (const person of args.persons) {
+      await assertPersonBelongsToSchool(ctx, person.personId, args.schoolId);
+    }
+
     // 1. Resolve domain
     let domainRecord = args.domainId ? await ctx.db.get(args.domainId) : null;
+    if (domainRecord && domainRecord.schoolId !== args.schoolId) {
+      throw new ConvexError("Email domain does not belong to this school");
+    }
     if (!domainRecord) {
       domainRecord = await ctx.db
         .query("schoolEmailDomains")
@@ -300,21 +300,9 @@ export const proposeEmailAddresses = query({
     const domainName =
       domainRecord?.domain ?? args.customDomain ?? "school.edu.ng";
 
-    // 2. Resolve capability state based on domain status & provider
-    let mailboxState: "login_only" | "external_verified" | "provider_provisioned" =
-      "login_only";
-
-    if (domainRecord && domainRecord.status === "verified") {
-      if (domainRecord.provider === "none") {
-        mailboxState = "external_verified";
-      } else if (
-        domainRecord.provider === "google" ||
-        domainRecord.provider === "microsoft" ||
-        domainRecord.provider === "zoho"
-      ) {
-        mailboxState = "provider_provisioned";
-      }
-    }
+    // Public proposals are not provider evidence and therefore never imply a
+    // verified or provisioned mailbox state.
+    const mailboxState = "login_only" as const;
 
     // 3. Track in-batch reserved addresses and query DB for collisions
     const batchReservedEmails = new Set<string>();
@@ -420,138 +408,54 @@ export const proposeEmailAddresses = query({
 });
 
 /**
- * Assigns an institutional mailbox to a person with fault isolation.
- * If external provider fails, internal person and branch memberships remain intact.
+ * Records a mailbox request. Provider state and provider identifiers are never
+ * accepted from public callers.
  */
 export const assignInstitutionalMailbox = mutation({
   args: {
     schoolId: v.id("schools"),
     personId: v.id("persons"),
     email: v.string(),
-    state: v.union(
-      v.literal("login_only"),
-      v.literal("external_verified"),
-      v.literal("provider_provisioned")
-    ),
-    providerType: v.optional(
-      v.union(
-        v.literal("google"),
-        v.literal("microsoft"),
-        v.literal("zoho"),
-        v.literal("none")
-      )
-    ),
-    providerAccountId: v.optional(v.string()),
     isMinor: v.optional(v.boolean()),
     minorPrivacyRequested: v.optional(v.boolean()),
-    simulateProviderFailure: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const person = await ctx.db.get(args.personId);
-    if (!person) {
-      throw new ConvexError("Person not found");
-    }
-
-    const school = await ctx.db.get(args.schoolId);
-    if (!school) {
-      throw new ConvexError("School not found");
-    }
+    await requireCapability(ctx, args.schoolId, "staff.onboard");
+    await assertPersonBelongsToSchool(ctx, args.personId, args.schoolId);
+    if (!(await ctx.db.get(args.personId))) throw new ConvexError("Person not found");
+    if (!(await ctx.db.get(args.schoolId))) throw new ConvexError("School not found");
 
     const normalizedEmail = args.email.toLowerCase().trim();
-
-    // Permanent Re-allocation Freeze Check:
-    // If the address exists and belongs to someone else, reject
     const existing = await ctx.db
       .query("institutionalMailboxes")
       .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
       .first();
-
     if (existing && existing.personId !== args.personId) {
-      throw new ConvexError(
-        "Address already allocated and frozen for another person"
-      );
+      throw new ConvexError("Address already allocated and frozen for another person");
     }
 
-    // Provider Fault Isolation Seam:
-    // If provider API fails, internal person/membership MUST remain intact
-    if (args.simulateProviderFailure) {
-      // Record failure without corrupting or modifying person/membership
-      const now = Date.now();
-      let mailboxId: Id<"institutionalMailboxes">;
-
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          lastSyncError: "Provider API failure (HTTP 503): Service Unavailable",
-          updatedAt: now,
-        });
-        mailboxId = existing._id;
-      } else {
-        mailboxId = await ctx.db.insert("institutionalMailboxes", {
+    const now = Date.now();
+    const mailboxId = existing
+      ? existing._id
+      : await ctx.db.insert("institutionalMailboxes", {
           personId: args.personId,
           schoolId: args.schoolId,
           email: normalizedEmail,
           address: normalizedEmail,
-          state: "login_only", // Safe fallback state upon provider failure
-          providerType: args.providerType ?? "none",
-          providerAccountId: args.providerAccountId,
+          state: "login_only",
+          providerType: "none",
           status: "active",
           isMinor: args.isMinor,
           minorPrivacyRequested: args.minorPrivacyRequested,
-          lastSyncError: "Provider API failure (HTTP 503): Service Unavailable",
           createdAt: now,
           updatedAt: now,
         });
-      }
-
-      await recordAuditEventHelper(ctx, {
-        schoolId: args.schoolId,
-        actorKind: "system",
-        actorEmailSnapshot: "system@melo.school",
-        module: "institutional_email",
-        action: "assign_mailbox_provider_failure",
-        targetType: "institutionalMailboxes",
-        targetId: String(mailboxId),
-        outcome: "failed",
-        safeSummary: `External directory sync failed for ${normalizedEmail}; internal identity preserved`,
-      });
-
-      return {
-        success: false,
-        error: "Provider API failure (HTTP 503): Service Unavailable",
-        mailboxId,
-        internalStateIntact: true,
-      };
-    }
-
-    const now = Date.now();
-    let mailboxId: Id<"institutionalMailboxes">;
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        state: args.state,
-        providerType: args.providerType ?? existing.providerType,
-        providerAccountId: args.providerAccountId ?? existing.providerAccountId,
+      await ctx.db.patch(mailboxId, {
         status: "active",
         isMinor: args.isMinor ?? existing.isMinor,
-        minorPrivacyRequested:
-          args.minorPrivacyRequested ?? existing.minorPrivacyRequested,
-        lastSyncError: undefined,
-        updatedAt: now,
-      });
-      mailboxId = existing._id;
-    } else {
-      mailboxId = await ctx.db.insert("institutionalMailboxes", {
-        personId: args.personId,
-        schoolId: args.schoolId,
-        email: normalizedEmail,
-        address: normalizedEmail,
-        state: args.state,
-        providerType: args.providerType ?? "none",
-        providerAccountId: args.providerAccountId,
-        status: "active",
-        isMinor: args.isMinor,
-        minorPrivacyRequested: args.minorPrivacyRequested,
-        createdAt: now,
+        minorPrivacyRequested: args.minorPrivacyRequested ?? existing.minorPrivacyRequested,
         updatedAt: now,
       });
     }
@@ -561,20 +465,74 @@ export const assignInstitutionalMailbox = mutation({
       actorKind: "system",
       actorEmailSnapshot: "system@melo.school",
       module: "institutional_email",
-      action: "assign_institutional_mailbox",
+      action: "request_institutional_mailbox",
       targetType: "institutionalMailboxes",
       targetId: String(mailboxId),
       outcome: "success",
-      safeSummary: `Assigned institutional mailbox ${normalizedEmail} with capability ${args.state}`,
+      safeSummary: `Requested institutional mailbox ${normalizedEmail}`,
     });
 
-    return {
-      success: true,
-      mailboxId,
-      email: normalizedEmail,
-      state: args.state,
-      internalStateIntact: true,
-    };
+    return { success: true, mailboxId, email: normalizedEmail, state: "login_only" as const };
+  },
+});
+
+/**
+ * Applies a provider operation result after validating the registered domain
+ * and provider. This is intentionally internal: provider IDs are authoritative
+ * only when supplied by the trusted provider integration.
+ */
+export const applyProviderMailboxResult = internalMutation({
+  args: {
+    mailboxId: v.id("institutionalMailboxes"),
+    providerType: v.union(
+      v.literal("google"),
+      v.literal("microsoft"),
+      v.literal("zoho"),
+      v.literal("none")
+    ),
+    providerAccountId: v.optional(v.string()),
+    providerOperationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const mailbox = await ctx.db.get(args.mailboxId);
+    if (!mailbox) throw new ConvexError("Mailbox not found");
+    const [, domainName] = mailbox.email.split("@");
+    if (!domainName) throw new ConvexError("Mailbox address has no domain");
+
+    const domain = await ctx.db
+      .query("schoolEmailDomains")
+      .withIndex("by_school_and_domain", (q) =>
+        q.eq("schoolId", mailbox.schoolId).eq("domain", domainName)
+      )
+      .first();
+    if (!domain || domain.status !== "verified" || domain.provider !== args.providerType) {
+      throw new ConvexError("Provider operation does not match a verified school domain");
+    }
+    if (args.providerType !== "none" && !args.providerAccountId) {
+      throw new ConvexError("Provider account identifier is required for provisioning");
+    }
+
+    const state = args.providerType === "none" ? "external_verified" : "provider_provisioned";
+    await ctx.db.patch(mailbox._id, {
+      state,
+      providerType: args.providerType,
+      providerAccountId: args.providerAccountId,
+      lastSyncError: undefined,
+      updatedAt: Date.now(),
+    });
+    await recordAuditEventHelper(ctx, {
+      schoolId: mailbox.schoolId,
+      actorKind: "system",
+      actorEmailSnapshot: "system@melo.school",
+      module: "institutional_email",
+      action: "apply_provider_mailbox_result",
+      targetType: "institutionalMailboxes",
+      targetId: String(mailbox._id),
+      outcome: "success",
+      safeSummary: `Applied validated ${args.providerType} operation ${args.providerOperationId} to ${mailbox.email}`,
+    });
+
+    return { mailboxId: mailbox._id, state, providerOperationId: args.providerOperationId };
   },
 });
 
@@ -593,6 +551,7 @@ export const suspendOrArchiveMailbox = mutation({
     if (!mailbox) {
       throw new ConvexError("Mailbox not found");
     }
+    await requireCapability(ctx, mailbox.schoolId, "staff.account.suspend");
 
     const now = Date.now();
     const newStatus = args.action === "suspend" ? "suspended" : "archived";
@@ -633,6 +592,7 @@ export const getInstitutionalMailboxes = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "staff.list.view");
     return await ctx.db
       .query("institutionalMailboxes")
       .withIndex("by_school_and_email", (q) => q.eq("schoolId", args.schoolId))
@@ -648,6 +608,7 @@ export const getSchoolEmailDomains = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "settings.domains.request");
     return await ctx.db
       .query("schoolEmailDomains")
       .withIndex("by_school_and_domain", (q) => q.eq("schoolId", args.schoolId))

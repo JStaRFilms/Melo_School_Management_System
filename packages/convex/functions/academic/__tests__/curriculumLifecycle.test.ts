@@ -13,7 +13,7 @@ declare global {
 }
 
 const modules = import.meta.glob("../../../**/*.ts");
-const admin = { subject: "admin-auth" };
+const admin = { subject: "admin-auth", issuer: "https://legacy-auth.test" };
 type MutationReference<Export> = Export extends RegisteredMutation<infer Visibility, infer Args, infer Result> ? FunctionReference<"mutation", Visibility, Args, Awaited<Result>> : never;
 const createCurriculumImport = curriculumImportLifecycle.createCurriculumImport as unknown as MutationReference<typeof curriculumImportLifecycle.createCurriculumImport>;
 const saveCurriculumProposals = curriculumImportLifecycle.saveCurriculumProposals as unknown as MutationReference<typeof curriculumImportLifecycle.saveCurriculumProposals>;
@@ -56,8 +56,8 @@ const proposalFor = (sourceChunkHash: string) => ({ weekNumber: 1, title: "Fract
 describe("curriculum lifecycle", () => {
   it("enforces admin ownership and cross-school source boundaries", async () => {
     const { t, ids } = await fixture();
-    await expect(t.withIdentity({ subject: "teacher-auth" }).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId })).rejects.toThrow("Admin access required");
-    await expect(t.withIdentity({ subject: "other-auth" }).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId })).rejects.toThrow("ready school curriculum source");
+    await expect(t.withIdentity({ subject: "teacher-auth", issuer: "https://legacy-auth.test" }).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId })).rejects.toThrow("Admin access required");
+    await expect(t.withIdentity({ subject: "other-auth", issuer: "https://legacy-auth.test" }).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId })).rejects.toThrow("ready school curriculum source");
     await expect(t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.otherSubjectId, level: "JSS 1", termId: ids.termId })).rejects.toThrow("selected subject");
     await expect(t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 2", termId: ids.termId })).rejects.toThrow("selected level");
   });

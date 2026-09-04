@@ -23,7 +23,7 @@ const modules = Object.fromEntries(
   ]),
 );
 
-const groupsApi = (api as any).functions.academic.groups;
+const groupsApi = api.functions.academic.groups;
 const listUserBranchesRef = groupsApi.listUserBranches;
 const getGroupOverviewRef = groupsApi.getGroupOverview;
 const listGroupBranchesRef = groupsApi.listGroupBranches;

@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
+import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
 
 export type MigrationCtx = QueryCtx | MutationCtx;
 
@@ -34,22 +35,22 @@ export async function assertMigrationAccess(
     throw new ConvexError("Unauthorized");
   }
 
-  // 1. Check Platform Super Admin (canonical tokenIdentifier lookup with legacy subject fallback)
-  let platformAdmin = identity.tokenIdentifier
-    ? await ctx.db
+  // 1. Check the platform super-admin row through the shared fail-closed
+  // token-first resolver. Subject compatibility is trusted-issuer only.
+  const platformAdmin = await resolveTokenFirstTrustedLegacyRow(identity, {
+    byTokenIdentifier: (tokenIdentifier) =>
+      ctx.db
         .query("platformAdmins")
         .withIndex("by_auth_token_identifier", (q) =>
-          q.eq("authTokenIdentifier", identity.tokenIdentifier)
+          q.eq("authTokenIdentifier", tokenIdentifier)
         )
-        .first()
-    : null;
-
-  if (!platformAdmin && identity.subject) {
-    platformAdmin = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
-      .first();
-  }
+        .take(2),
+    bySubject: (subject) =>
+      ctx.db
+        .query("platformAdmins")
+        .withIndex("by_auth", (q) => q.eq("authId", subject))
+        .take(2),
+  });
 
   if (platformAdmin) {
     if (!platformAdmin.isActive) {
@@ -64,22 +65,21 @@ export async function assertMigrationAccess(
     };
   }
 
-  // 2. Check School Admin (canonical tokenIdentifier lookup with legacy subject fallback)
-  let user = identity.tokenIdentifier
-    ? await ctx.db
+  // 2. Resolve school users with the exact same identity rules.
+  const user = await resolveTokenFirstTrustedLegacyRow(identity, {
+    byTokenIdentifier: (tokenIdentifier) =>
+      ctx.db
         .query("users")
         .withIndex("by_auth_token_identifier", (q) =>
-          q.eq("authTokenIdentifier", identity.tokenIdentifier)
+          q.eq("authTokenIdentifier", tokenIdentifier)
         )
-        .first()
-    : null;
-
-  if (!user && identity.subject) {
-    user = await ctx.db
-      .query("users")
-      .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
-      .first();
-  }
+        .take(2),
+    bySubject: (subject) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_auth", (q) => q.eq("authId", subject))
+        .take(2),
+  });
 
   if (!user) {
     throw new ConvexError("Unauthorized");

@@ -7,7 +7,7 @@ Deploy transparent monetization, deterministic usage metering, asset quarantine/
 - **Commercial Catalog & Settlement Ledger (F7 / MX-12)**:
   - Seed catalog: Core/Basic seeded at ₦1,000 per active student per term + ₦30,000 setup fee.
   - Paystack routing: Mode A (Direct School Merchant - 100% direct settlement) vs Mode B (Melo-Routed Split Subaccount).
-  - Settlement transparency: Internal double-entry ledgering disclosing NIBSS T+1 clearing reality (no false next-day settlement promises).
+  - Settlement transparency: Internal double-entry ledgering disclosing provider-derived settlement evidence (no false next-day settlement promises).
   - Recurring tokenized mandates (`authorization_code`), customer consent flow, idempotency keys.
   - Schema additions in `packages/convex/schema.ts`: `subscriptionPlans`, `schoolSubscriptions`, `settlementLedgers`, `paymentMandates`.
 - **Usage Metering & Threshold Protection (H8 / MX-13)**:

@@ -21,7 +21,7 @@ const modules = Object.fromEntries(
   ]),
 );
 
-const draftsApi = (api as any).functions.academic.drafts;
+const draftsApi = api.functions.academic.drafts;
 
 const userAIdentity = {
   subject: "user-a-auth-id",

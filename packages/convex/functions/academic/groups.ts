@@ -30,21 +30,16 @@ async function resolveCurrentPerson(
 
   const tokenIdentifier = identity.tokenIdentifier;
   if (tokenIdentifier) {
-    const person = await ctx.db
+    const people = await ctx.db
       .query("persons")
       .withIndex("by_token_identifier", (q) =>
         q.eq("authTokenIdentifier", tokenIdentifier)
       )
-      .first();
-    if (person) return person;
-  }
-
-  if (identity.email) {
-    const person = await ctx.db
-      .query("persons")
-      .withIndex("by_email", (q) => q.eq("email", identity.email!))
-      .first();
-    if (person) return person;
+      .take(2);
+    if (people.length > 1) {
+      throw new ConvexError("Unauthorized: ambiguous canonical identity");
+    }
+    if (people[0]) return people[0];
   }
 
   return null;
@@ -108,8 +103,6 @@ export const listUserBranches = query({
     }
 
     const tokenIdentifier = identity.tokenIdentifier;
-    const authId = identity.subject;
-
     // 1. Resolve canonical person
     const person = await resolveCurrentPerson(ctx);
 
@@ -130,11 +123,16 @@ export const listUserBranches = query({
       const matchingUsers = allUsers.filter(
         (u) =>
           !u.isArchived &&
-          ((tokenIdentifier && u.authTokenIdentifier === tokenIdentifier) ||
-            (authId && u.authId === authId) ||
-            (identity.email &&
-              u.email?.toLowerCase() === identity.email.toLowerCase()))
+          tokenIdentifier && u.authTokenIdentifier === tokenIdentifier
       );
+      const duplicateSchools = new Set<string>();
+      for (const user of matchingUsers) {
+        const schoolKey = String(user.schoolId);
+        if (duplicateSchools.has(schoolKey)) {
+          throw new ConvexError("Unauthorized: ambiguous canonical identity link");
+        }
+        duplicateSchools.add(schoolKey);
+      }
 
       const results: UserBranchSummary[] = [];
       for (const u of matchingUsers) {
@@ -226,8 +224,6 @@ export async function getGroupOverviewHelper(
 
   // Check platform admin bypass
   const tokenIdentifier = identity.tokenIdentifier;
-  const authId = identity.subject;
-
   let isPlatformAdmin = false;
   if (tokenIdentifier) {
     const pa = await ctx.db
@@ -238,14 +234,6 @@ export async function getGroupOverviewHelper(
       .first();
     if (pa?.isActive) isPlatformAdmin = true;
   }
-  if (!isPlatformAdmin && authId) {
-    const pa = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_auth", (q) => q.eq("authId", authId))
-      .first();
-    if (pa?.isActive) isPlatformAdmin = true;
-  }
-
   const person = await resolveCurrentPerson(ctx);
 
   // Verify caller is proprietor or platform admin or has active membership in a group branch
@@ -476,8 +464,6 @@ export const linkBranchToGroup = mutation({
 
     // Authorize caller: must be platform admin OR group proprietor
     const tokenIdentifier = identity.tokenIdentifier;
-    const authId = identity.subject;
-
     let isPlatformAdmin = false;
     if (tokenIdentifier) {
       const pa = await ctx.db
@@ -488,14 +474,6 @@ export const linkBranchToGroup = mutation({
         .first();
       if (pa?.isActive) isPlatformAdmin = true;
     }
-    if (!isPlatformAdmin && authId) {
-      const pa = await ctx.db
-        .query("platformAdmins")
-        .withIndex("by_auth", (q) => q.eq("authId", authId))
-        .first();
-      if (pa?.isActive) isPlatformAdmin = true;
-    }
-
     const person = await resolveCurrentPerson(ctx);
     const isProprietor = person && group.proprietorPersonId === person._id;
 

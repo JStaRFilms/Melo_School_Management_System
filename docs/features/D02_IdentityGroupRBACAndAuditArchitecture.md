@@ -8,8 +8,8 @@
   - `F2`: School Groups and Multi-Branch Tenancy
   - `H2`: Granular Administrative RBAC and Authority Ceiling
   - `F1`: Application-Wide Append-Only Audit Log
-- **Version**: `1.0.0`
-- **Status**: Authoritative Technical & Architectural Specification
+- **Version**: `1.0.1`
+- **Status**: Corrected target architecture — implementation inventories and security review remain gates
 - **Effective Date**: 2026-09-03
 - **Parent Orchestrator Session**: `orch-20260903-143249`
 - **Authors**: Security Architect & Data Systems Modeler
@@ -18,7 +18,7 @@
 ---
 
 ### 1.2 Architectural Problem Statement
-The historical Melo data model anchored user identity directly to a single school tenant via `users.schoolId`, relying on a coarse binary role flag (`users.role = "admin" || users.isSchoolAdmin === true`) and resolving sessions via `ctx.auth.getUserIdentity().subject` against Better Auth.
+The historical identity and authorization assumptions below are design inputs that require a code inventory before migration. They must not be read as proof that every current resolver uses a particular identifier or role predicate.
 
 This single-school identity topology introduces severe architectural blockers for institutional multi-branch expansion:
 1. **Multi-Branch Staff & Proprietor Duplication**: A proprietor or teacher operating across multiple campuses (e.g., Olive Blessed Crest Ikoyi and Lekki) was forced to maintain separate user accounts, juggle multiple credentials, or suffer cross-branch record corruption when `schoolId` was ambiguously resolved.
@@ -31,7 +31,7 @@ This specification freezes the data model, API contracts, authority engine, and 
 - **Canonical Person Identity & Explicit Branch Memberships (`persons`, `branchMemberships`)**: Decouples the human identity from branch employment.
 - **School Groups & Multi-Branch Linking (`schoolGroups`, `schoolGroupBranches`)**: Establishes multi-branch umbrella governance without merging or rekeying operational tenant records.
 - **Legacy `users` Bridge**: Guarantees zero downtime, zero lockout, and backward compatibility for existing functions during the migration window.
-- **Granular Capability RBAC (`permissionCatalog`, `roleTemplates`, `delegationCeilings`)**: Replaces binary roles with 47 typed capabilities across 8 domains, governed by mathematical evaluation and proprietor delegation ceilings.
+- **Granular Capability RBAC (`permissionCatalog`, `roleTemplates`, `delegationCeilings`)**: Defines a proposed closed capability vocabulary; its count and all consumers must be generated from the implementation inventory before enforcement, governed by mathematical evaluation and proprietor delegation ceilings.
 - **Centralized Append-Only Redacted Audit Engine (`auditEvents`, `auditAlerts`)**: Enforces cryptographic and pattern-based redaction, multi-tier alerting, and 7-year/indefinite statutory retention.
 
 ---
@@ -69,9 +69,9 @@ erDiagram
     schools ||--o{ auditEvents : "scoped to"
 
     persons {
-        string authTokenIdentifier PK "Unique JWT tokenIdentifier from Better Auth"
-        string primaryEmail "Normalized canonical email"
-        string displayName "Full legal name"
+        string authTokenIdentifier "Canonical JWT tokenIdentifier when reconciliation is resolved"
+        string email "Contact value only; never an identity-matching key"
+        string name "Display/contact name"
         string status "active | suspended | archived"
         int createdAt "Epoch timestamp"
     }
@@ -131,7 +131,7 @@ erDiagram
 
 ### 2.2 Convex Schema Definition (`schema.ts` Additions)
 
-To maintain backward compatibility while introducing the multi-branch kernel, the following tables and indexes are added additively to `packages/convex/schema.ts`:
+The implemented additive tables and indexes in `packages/convex/schema.ts` are shown below. This is a schema reference, not authority to infer identity from contact data or legacy roles:
 
 ```typescript
 // --- Multi-Branch Tenancy & Canonical Identity Kernel (F2 / H2) ---
@@ -154,63 +154,58 @@ export const schoolGroupStatusValidator = v.union(
   v.literal("suspended")
 );
 
-// Canonical Global Identity
+// Implemented canonical identity schema. Email is contact data only.
 export const personsTable = defineTable({
-  authTokenIdentifier: v.string(), // Guaranteed stable Convex tokenIdentifier
-  betterAuthUserId: v.optional(v.string()), // Legacy Better Auth subject UUID
-  primaryEmail: v.string(),
-  phone: v.optional(v.string()),
-  displayName: v.string(),
-  firstName: v.optional(v.string()),
-  lastName: v.optional(v.string()),
-  avatarStorageId: v.optional(v.id("_storage")),
+  authTokenIdentifier: v.optional(v.string()),
+  identityReconciliationState: v.optional(
+    v.union(v.literal("resolved"), v.literal("reconciliation_required"))
+  ),
+  email: v.string(),
+  name: v.string(),
   status: personStatusValidator,
+  primarySchoolId: v.optional(v.id("schools")),
   createdAt: v.number(),
   updatedAt: v.number(),
 })
-  .index("by_auth_token_identifier", ["authTokenIdentifier"])
-  .index("by_primary_email", ["primaryEmail"])
+  .index("by_token_identifier", ["authTokenIdentifier"])
+  .index("by_email", ["email"]) // contact lookup only; never an auth/reconciliation key
   .index("by_status", ["status"]);
 
-// Explicit Branch Membership Boundary
+// Implemented explicit branch-membership boundary.
 export const branchMembershipsTable = defineTable({
   personId: v.id("persons"),
   schoolId: v.id("schools"),
   status: membershipStatusValidator,
-  displayTitle: v.optional(v.string()), // e.g. "Vice Principal - Academics"
+  displayTitle: v.optional(v.string()),
   isDefaultBranch: v.boolean(),
+  legacyUserId: v.optional(v.id("users")),
   joinedAt: v.number(),
-  archivedAt: v.optional(v.number()),
-  archivedBy: v.optional(v.id("persons")),
-  createdAt: v.number(),
   updatedAt: v.number(),
 })
-  .index("by_person", ["personId"])
-  .index("by_school", ["schoolId"])
   .index("by_person_and_school", ["personId", "schoolId"])
-  .index("by_school_and_status", ["schoolId", "status"]);
+  .index("by_school_and_person", ["schoolId", "personId"])
+  .index("by_person_and_status", ["personId", "status"])
+  .index("by_school_and_status", ["schoolId", "status"])
+  .index("by_legacy_user", ["legacyUserId"]);
 
-// School Groups (Multi-Branch Umbrella)
+// Implemented school-group and branch-link records.
 export const schoolGroupsTable = defineTable({
   name: v.string(),
   slug: v.string(),
   proprietorPersonId: v.id("persons"),
-  settingsVersion: v.number(),
-  status: schoolGroupStatusValidator,
+  status: v.union(v.literal("active"), v.literal("archived")),
+  settingsVersion: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.number(),
 })
   .index("by_slug", ["slug"])
-  .index("by_proprietor", ["proprietorPersonId"])
-  .index("by_status", ["status"]);
+  .index("by_proprietor", ["proprietorPersonId"]);
 
-// Group-to-Branch Association
 export const schoolGroupBranchesTable = defineTable({
   groupId: v.id("schoolGroups"),
   schoolId: v.id("schools"),
   isHeadquarters: v.boolean(),
   linkedAt: v.number(),
-  linkedBy: v.id("persons"),
 })
   .index("by_group", ["groupId"])
   .index("by_school", ["schoolId"])
@@ -221,98 +216,18 @@ export const schoolGroupBranchesTable = defineTable({
 
 ### 2.3 Legacy `users` Bridge & Backward Compatibility Layer
 
-The existing codebase contains over 50 functions and queries dependent on `ctx.db.query("users")` and `user._id`. A breaking rewrite would introduce immediate regressions. Melo implements an **Additive Expand-and-Bridge Pattern** across three distinct phases:
+The implemented identity bridge is deliberately narrower than the historical target design. `tokenIdentifier` is the sole canonical ownership key. A legacy provider subject is compatible only as an exact, trusted-issuer match against `users.authId`, and only while the legacy row has no `authTokenIdentifier`. Email is contact data, not an identity key; no resolver, backfill, or reconciliation may match, merge, or repair identities by email.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client as Web App / Client
-    participant AuthResolver as resolveActiveMembership()
-    participant Bridge as Legacy Users Bridge
-    participant Persons as persons Table
-    participant Memberships as branchMemberships Table
-    participant LegacyUsers as users Table
+| Situation | Allowed behavior | Prohibited behavior |
+|---|---|---|
+| Canonical identity present | Resolve by exact `authTokenIdentifier`. | Fall back to email. |
+| Legacy-only user | Resolve exact `identity.subject` to `users.authId` only when the row has no canonical token prelink. | Treat a subject match as a new canonical ownership write without reconciliation. |
+| Missing/ambiguous canonical token | Create/retain a reconciliation-required record and open an identity migration issue. | Guess from email, name, title, or legacy role. |
+| Reviewed repair | The internal `reconcileLegacyUserIdentity(userId, authTokenIdentifier)` operation may link one reviewed legacy user to one canonical token after its mismatch/duplicate checks. | Auto-link a person or membership from email or automatically assign a role/template. |
 
-    Note over Client,LegacyUsers: PHASE 1: DUAL-READ / SYNCHRONOUS WRITE BRIDGE
-    Client->>AuthResolver: Call Mutation with active schoolId
-    AuthResolver->>Persons: Lookup by authTokenIdentifier
-    alt Person Exists
-        AuthResolver->>Memberships: Lookup (personId, schoolId)
-    else First Login of Legacy User
-        AuthResolver->>LegacyUsers: Lookup by legacy authId / email
-        LegacyUsers-->>AuthResolver: Return user doc
-        AuthResolver->>Persons: Upsert persons record
-        AuthResolver->>Memberships: Create branchMemberships record
-    end
-    Note over Bridge: Legacy mutations write to BOTH persons+memberships AND users table
-    AuthResolver-->>Client: Return Authorized Active Context
-```
+`persons.authTokenIdentifier` is optional only to retain a legacy record awaiting this explicit reconciliation; such a record is not a canonical login owner. The current schema uses `persons.by_token_identifier`, `users.by_auth_token_identifier`, and `users.by_auth`. It does not provide the email-based compatibility projection described in earlier revisions of this document.
 
-#### Bridge Operation Rules
-1. **Canonical Primary Write**: All new user onboarding, staff creation, and branch assignment mutations write primarily to `persons` and `branchMemberships`.
-2. **Synchronous `users` Projection**: Whenever a `branchMemberships` row is created or modified, an internal database trigger/helper synchronously updates or inserts the corresponding `users` row:
-   ```typescript
-   // Synchronous compatibility projection into legacy `users` table
-   export async function syncLegacyUserProjection(
-     ctx: MutationCtx,
-     personId: Id<"persons">,
-     schoolId: Id<"schools">
-   ): Promise<Id<"users">> {
-     const person = await ctx.db.get(personId);
-     const membership = await ctx.db
-       .query("branchMemberships")
-       .withIndex("by_person_and_school", (q) =>
-         q.eq("personId", personId).eq("schoolId", schoolId)
-       )
-       .unique();
-
-     if (!person || !membership) {
-       throw new ConvexError("Cannot project non-existent membership");
-     }
-
-     const existingUser = await ctx.db
-       .query("users")
-       .withIndex("by_school_and_email", (q) =>
-         q.eq("schoolId", schoolId).eq("email", person.primaryEmail)
-       )
-       .first();
-
-     const now = Date.now();
-     if (existingUser) {
-       await ctx.db.patch(existingUser._id, {
-         authTokenIdentifier: person.authTokenIdentifier,
-         name: person.displayName,
-         firstName: person.firstName,
-         lastName: person.lastName,
-         phone: person.phone,
-         isArchived: membership.status === "archived",
-         updatedAt: now,
-       });
-       return existingUser._id;
-     }
-
-     return await ctx.db.insert("users", {
-       schoolId,
-       authId: person.betterAuthUserId ?? person.authTokenIdentifier,
-       authTokenIdentifier: person.authTokenIdentifier,
-       name: person.displayName,
-       firstName: person.firstName,
-       lastName: person.lastName,
-       email: person.primaryEmail,
-       phone: person.phone,
-       role: "admin", // default safe compatibility role
-       isSchoolAdmin: true,
-       isArchived: membership.status === "archived",
-       createdAt: now,
-       updatedAt: now,
-     });
-   }
-   ```
-3. **Migration Phasing**:
-   - **Phase 1 (Dual-Write Bridge)**: `branchMemberships` created alongside `users`. Resolvers check `authTokenIdentifier` on `persons` first, falling back to `users.authId`.
-   - **Phase 2 (Function Migration)**: Core subsystems (Academics, Billing, Admissions) migrated to accept `membershipId` and `personId`.
-   - **Phase 3 (Legacy Read-Only)**: `users` table converted into a read-only historical view.
-   - **Phase 4 (Deprecation & Archive)**: `users` table archived after verification matrix passes 100%.
+No synchronous `users` projection, automatic person creation at interactive login, or role/template seeding contract is established by this document. Existing legacy authorization values remain a compatibility concern for the relevant resolver until a separately reviewed authorization migration is approved. A role title, `users.role`, or `isSchoolAdmin` value must not be used to infer or seed a new canonical RBAC assignment.
 
 ---
 
@@ -325,7 +240,10 @@ In a multi-branch environment, a user (e.g., Proprietor or Traveling Teacher) po
 > **ZERO CLIENT TRUST**:
 > The client-supplied `activeSchoolId` is treated strictly as an **untrusted request argument**. The backend NEVER accepts assertions such as `role`, `isSchoolAdmin`, or `permissions` from the client. Every incoming query and mutation must resolve authority through `resolveActiveMembership(ctx, requestedSchoolId)`.
 
-#### Authoritative Backend Resolution Flow
+#### Proposed Backend Resolution Shape (not an implementation inventory)
+
+The code below is a target shape for future membership-capability enforcement, not the current resolver. Until that enforcement migration is separately approved, the implemented identity lookup is exactly the token-first/trusted-subject compatibility model in §2.3: canonical `tokenIdentifier` first; exact trusted-issuer `subject` only for an unlinked `users.authId` legacy row; no email fallback or role-derived canonical assignment.
+
 ```typescript
 export interface ActiveMembershipContext {
   person: Doc<"persons">;
@@ -405,13 +323,9 @@ export async function resolveActiveMembership(
     )
     .first();
 
-  // Fallback: Resolve via legacy user email during migration
-  if (!person && identity.email) {
-    person = await ctx.db
-      .query("persons")
-      .withIndex("by_primary_email", (q) => q.eq("primaryEmail", identity.email!))
-      .first();
-  }
+  // Do not authenticate by email. Migration may use an audited, one-time
+  // legacy-to-canonical link keyed by the authenticated token identifier.
+  // Ambiguous or absent links fail closed and enter a reconciliation queue.
 
   if (!person) {
     throw new ConvexError({ code: "IDENTITY_NOT_FOUND", message: "No registered person found for credentials." });
@@ -491,7 +405,7 @@ In traditional school management systems, a job title (e.g. "Vice Principal") is
 
 ### 3.2 Standard Base Role Templates
 
-Melo defines seven (7) standardized, factory-seeded base role templates. A user's baseline capability set is the **Union** of all templates assigned to their membership.
+Melo proposes seven standardized base role templates. Their creation or assignment is not an identity migration contract; a user's effective set is the **Union** of explicitly assigned templates.
 
 | Role Template Key | Template Name | Strategic Organizational Scope | Default Capabilities Included |
 |---|---|---|---|
@@ -834,9 +748,9 @@ flowchart TD
 
 ---
 
-## 5. Complete Endpoint Enforcement Inventory
+## 5. Proposed Endpoint Enforcement Inventory (implementation inventory gate)
 
-Every Convex function, HTTP action, and storage route is cataloged with its authoritative capability check, tenant scoping boundary, and emitted audit event:
+The rows below are intended enforcement seams, not a claim that every current Convex function, HTTP action, or storage route has been inventoried. Before enforcement, generate the authoritative repository inventory and map each entry point to one row or an explicit exclusion. with its authoritative capability check, tenant scoping boundary, and emitted audit event:
 
 | Module / Route | Endpoint Name & Type | Required Capability | Scope & Tenant Check | Emitted Audit Action | Alert Tier |
 |---|---|---|---|---|---|
@@ -903,7 +817,7 @@ flowchart TD
 | **SEC-NEG-05** | **Delegation Beyond Proprietor Ceiling** | Principal Carol possesses `staff.permissions.manage`. Her delegation ceiling contains only Academic capabilities. | Carol attempts to grant `finance.invoices.issue` to teacher Dave. | **REJECT with 403 Forbidden**: System checks Carol's `delegationCeilings.allowedCapabilities`. Since `finance.invoices.issue` is absent, the mutation aborts immediately. |
 | **SEC-NEG-06** | **Audit Log Immutability & Deletion Tampering** | Malicious administrator Eve attempts to cover her tracks after unauthorized data modifications. | Eve calls an internal mutation or CLI command attempting `ctx.db.delete(auditEventId)` or `ctx.db.patch(auditEventId, ...)`. | **REJECT at Engine Level**: The Convex API exposes NO update or delete mutations for `auditEvents`. Schema definitions omit modification endpoints. Attempt logged as anomaly. |
 | **SEC-NEG-07** | **Group Umbrella Leakage via Unlinked Branch** | Olive Blessed Crest Group contains Branch 1 and Branch 2. Branch 3 belongs to an unrelated school group. | Administrator Frank of Branch 1 attempts to query aggregate statistics passing `schoolId = Branch_3_ID`. | **REJECT with 403 Forbidden**: Group linkage lookup verifies that Branch 3 is not associated with Frank's group. Frank's active membership in Branch 1 confers zero access. |
-| **SEC-NEG-08** | **Lockout Prevention During Migration Transition** | Existing admin George is registered only in the legacy `users` table with `isSchoolAdmin = true`. | George logs in for the first time during Phase 1 migration before explicit `branchMemberships` backfill runs. | **SUCCESSFUL FALLBACK RESOLUTION**: Migration auth bridge intercepts the request, identifies George's active legacy `users` row, provisions his canonical `persons` and `branchMemberships` rows, and grants full baseline admin access without disruption. |
+| **SEC-NEG-08** | **Lockout Prevention During Migration Transition** | Existing admin George is registered only in the legacy `users` table with `isSchoolAdmin = true`. | George logs in for the first time during Phase 1 migration before explicit `branchMemberships` backfill runs. | **EXPECTED, TEST-GATED RESOLUTION**: An authenticated legacy identity may be linked only through an audited migration mapping. It must preserve the existing authority projection, never grant an admin role by default, and fail closed if the mapping is ambiguous. |
 | **SEC-NEG-09** | **Masked Bank Account Leakage in Audit Exports** | Authorized auditor Helen requests a full CSV export of school audit logs (`audit.export:exportCsv`). | Helen downloads the generated CSV file containing recent bank detail modifications. | **ASSERT REDACTION**: The CSV output displays bank account numbers strictly as `***-****-1234`. Full NUBAN digits are absent from the export stream. |
 | **SEC-NEG-10** | **Suspended School Tenant Access Block** | School Branch Lekki is suspended by Platform Super Admin due to non-payment or compliance investigation. | School Principal attempts to log in and query student rosters. | **REJECT with 403 Forbidden**: `resolveActiveMembership` evaluates `school.status === "suspended"` and rejects all operational access with clear advisory message. |
 
@@ -926,10 +840,8 @@ flowchart LR
    - Add new indexes (`by_auth_token_identifier`, `by_person_and_school`) alongside existing `users` indexes.
 2. **Stage 2: Development Rehearsal & Backfill (M1 / D-05)**:
    - Execute read-only production snapshot restore into backed-up development environment.
-   - Run idempotent migration runner `backfillCanonicalIdentityFromUsers`:
-     - Creates `persons` from unique `users.email` and `users.authTokenIdentifier`.
-     - Creates `branchMemberships` for each `(userId, schoolId)` pair.
-     - Seeds default `proprietor` and `principal` role assignments for existing school administrators.
+   - Run the implemented internal batch `backfillCanonicalIdentityBatch` only under the D-05 procedure. It pages legacy `users`, uses an existing `authTokenIdentifier` only, creates/links `persons` and `branchMemberships`, and records unresolved or conflicting rows as migration issues.
+   - Exact trusted-issuer legacy-subject compatibility and explicit `reconcileLegacyUserIdentity` review are the only bridge repairs. Email matching and automatic role/template seeding are prohibited.
 3. **Stage 3: Verification Matrix & Parity Audit (M1 / M2)**:
    - Verify that 100% of existing school users map to exactly one `persons` record and their corresponding `branchMemberships`.
    - Confirm that dual-read resolvers produce identical authentication outcomes.

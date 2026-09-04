@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx } from "../../_generated/server";
+import { internalMutation, query, type MutationCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
+import { requireCapability } from "./rbac";
 
 /**
  * Deterministic Usage Metering & Quota Threshold Protection Engine (H8 / MX-13)
@@ -48,10 +49,24 @@ export function calculateThresholdAlert(
   return "normal";
 }
 
+function reservationResult(reservation: Doc<"usageQuotaReservations">): QuotaReservationResult {
+  return {
+    allowed: reservation.allowed,
+    reservationId: reservation.idempotencyKey,
+    shortfall: reservation.shortfall,
+    thresholdAlert: reservation.allowed ? calculateThresholdAlert(reservation.utilizationPercent) : "hard_stop",
+    allocatedUnits: reservation.allocatedUnits,
+    consumedUnits: reservation.consumedUnits,
+    reservedUnits: reservation.reservedUnits,
+    availableUnits: reservation.availableUnits,
+    currentUtilizationPercent: reservation.utilizationPercent,
+  };
+}
+
 /**
  * Allocates or tops up usage quota for a school meter.
  */
-export const allocateQuota = mutation({
+export const allocateQuota = internalMutation({
   args: {
     schoolId: v.id("schools"),
     meterType: v.union(
@@ -102,6 +117,9 @@ export const allocateQuota = mutation({
         meterType: args.meterType,
         allocatedUnits: args.allocatedUnits,
         consumedUnits: 0,
+        activeStorageBytes: 0,
+        trashStorageBytes: 0,
+        tempStorageBytes: 0,
         reservedUnits: 0,
         warningThresholdPercent: args.warningThresholdPercent ?? 75,
         criticalThresholdPercent: args.criticalThresholdPercent ?? 90,
@@ -121,7 +139,7 @@ export const allocateQuota = mutation({
  * Returns { allowed: false, shortfall, thresholdAlert: "hard_stop" } if balance exceeded.
  * Atomically increments reservedUnits if quota is sufficient.
  */
-export const reserveUsageQuota = mutation({
+export const reserveUsageQuota = internalMutation({
   args: {
     schoolId: v.id("schools"),
     meterType: v.union(
@@ -130,95 +148,66 @@ export const reserveUsageQuota = mutation({
       v.literal("storage_bytes")
     ),
     unitsRequested: v.number(),
-    reservationId: v.optional(v.string()),
+    idempotencyKey: v.string(),
     operationName: v.string(),
   },
   handler: async (ctx, args): Promise<QuotaReservationResult> => {
-    if (args.unitsRequested <= 0) {
-      throw new ConvexError("Units requested must be greater than zero");
+    if (args.unitsRequested <= 0) throw new ConvexError("Units requested must be greater than zero");
+
+    const existing = await ctx.db
+      .query("usageQuotaReservations")
+      .withIndex("by_school_and_meter_and_idempotency_key", (q) =>
+        q.eq("schoolId", args.schoolId).eq("meterType", args.meterType).eq("idempotencyKey", args.idempotencyKey)
+      )
+      .unique();
+    if (existing) {
+      if (existing.unitsReserved !== args.unitsRequested || existing.operationName !== args.operationName) {
+        throw new ConvexError("Idempotency key is already bound to a different usage reservation");
+      }
+      return reservationResult(existing);
     }
 
     const now = Date.now();
-    const reservationId =
-      args.reservationId ??
-      `res_${now}_${Math.random().toString(36).slice(2, 10)}`;
-
     const allocation = await ctx.db
       .query("usageMeterAllocations")
       .withIndex("by_school_and_meter", (q) =>
         q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)
       )
       .first();
+    const allocatedUnits = allocation?.allocatedUnits ?? 0;
+    const consumedUnits = allocation?.consumedUnits ?? 0;
+    const currentReservedUnits = allocation?.reservedUnits ?? 0;
+    const availableUnits = Math.max(0, allocatedUnits - consumedUnits - currentReservedUnits);
+    const allowed = args.unitsRequested <= availableUnits;
+    const reservedUnits = allowed ? currentReservedUnits + args.unitsRequested : currentReservedUnits;
+    const utilizationPercent = allocatedUnits === 0
+      ? 100
+      : Math.min(100, Math.round(((consumedUnits + reservedUnits) / allocatedUnits) * 100));
+    const shortfall = allowed ? undefined : args.unitsRequested - availableUnits;
 
-    if (!allocation) {
-      // Zero allocation -> immediate hard-stop shortfall
-      return {
-        allowed: false,
-        reservationId,
-        shortfall: args.unitsRequested,
-        thresholdAlert: "hard_stop",
-        allocatedUnits: 0,
-        consumedUnits: 0,
-        reservedUnits: 0,
-        availableUnits: 0,
-        currentUtilizationPercent: 100,
-      };
+    if (allowed && allocation) {
+      await ctx.db.patch(allocation._id, { reservedUnits, updatedAt: now });
     }
-
-    const availableUnits = Math.max(
-      0,
-      allocation.allocatedUnits - allocation.consumedUnits - allocation.reservedUnits
-    );
-
-    // Hard Stop Check: Insufficient balance
-    if (args.unitsRequested > availableUnits) {
-      const shortfall = args.unitsRequested - availableUnits;
-      const currentUtilizationPercent = Math.min(
-        100,
-        Math.round(
-          ((allocation.consumedUnits + allocation.reservedUnits) /
-            allocation.allocatedUnits) *
-            100
-        )
-      );
-
-      return {
-        allowed: false,
-        reservationId,
-        shortfall,
-        thresholdAlert: "hard_stop",
-        allocatedUnits: allocation.allocatedUnits,
-        consumedUnits: allocation.consumedUnits,
-        reservedUnits: allocation.reservedUnits,
-        availableUnits,
-        currentUtilizationPercent,
-      };
-    }
-
-    // Atomically reserve quota units
-    const newReservedUnits = allocation.reservedUnits + args.unitsRequested;
-    await ctx.db.patch(allocation._id, {
-      reservedUnits: newReservedUnits,
+    const reservationId = await ctx.db.insert("usageQuotaReservations", {
+      schoolId: args.schoolId,
+      meterType: args.meterType,
+      idempotencyKey: args.idempotencyKey,
+      operationName: args.operationName,
+      unitsReserved: args.unitsRequested,
+      status: allowed ? "reserved" : "rejected",
+      allowed,
+      shortfall,
+      allocatedUnits,
+      consumedUnits,
+      reservedUnits,
+      availableUnits: allowed ? availableUnits - args.unitsRequested : availableUnits,
+      utilizationPercent,
+      createdAt: now,
       updatedAt: now,
     });
-
-    const projectedConsumption = allocation.consumedUnits + newReservedUnits;
-    const currentUtilizationPercent = Math.min(
-      100,
-      Math.round((projectedConsumption / allocation.allocatedUnits) * 100)
-    );
-    const thresholdAlert = calculateThresholdAlert(currentUtilizationPercent);
-
-    return {
-      allowed: true,
-      reservationId,
-      thresholdAlert,
-      allocatedUnits: allocation.allocatedUnits,
-      consumedUnits: allocation.consumedUnits,
-      reservedUnits: newReservedUnits,
-      availableUnits: availableUnits - args.unitsRequested,
-      currentUtilizationPercent,
-    };
+    const reservation = await ctx.db.get(reservationId);
+    if (!reservation) throw new ConvexError("Usage reservation was not persisted");
+    return reservationResult(reservation);
   },
 });
 
@@ -227,128 +216,79 @@ export const reserveUsageQuota = mutation({
  * Decrements reservedUnits, increments consumedUnits, and records pseudonymized usage event.
  * Invariant: ZERO raw document/prompt payloads in billing tables!
  */
-export const commitUsageQuota = mutation({
+export const commitUsageQuota = internalMutation({
   args: {
     schoolId: v.id("schools"),
-    meterType: v.union(
-      v.literal("ai_tokens"),
-      v.literal("ocr_pages"),
-      v.literal("storage_bytes")
-    ),
-    unitsCommitted: v.number(),
-    reservationId: v.optional(v.string()),
+    meterType: v.union(v.literal("ai_tokens"), v.literal("ocr_pages"), v.literal("storage_bytes")),
+    idempotencyKey: v.string(),
     operationName: v.string(),
     description: v.string(),
+    actualUnits: v.number(),
+    measurementMetadata: v.object({
+      source: v.string(),
+      measuredAt: v.number(),
+      reference: v.optional(v.string()),
+    }),
     actorUserId: v.optional(v.id("users")),
     actorPersonId: v.optional(v.id("persons")),
   },
   handler: async (ctx, args) => {
-    if (args.unitsCommitted <= 0) {
-      throw new ConvexError("Units committed must be greater than zero");
+    if (!Number.isFinite(args.actualUnits) || args.actualUnits < 0) {
+      throw new ConvexError("Actual usage must be a non-negative finite number");
     }
+    const reservation = await ctx.db.query("usageQuotaReservations")
+      .withIndex("by_school_and_meter_and_idempotency_key", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType).eq("idempotencyKey", args.idempotencyKey))
+      .unique();
+    if (!reservation || !reservation.allowed) throw new ConvexError("Usage reservation was not accepted");
+    if (reservation.operationName !== args.operationName) throw new ConvexError("Reservation operation does not match");
+    if (args.actualUnits > reservation.unitsReserved) throw new ConvexError("Actual usage exceeds the validated reservation");
+    if (reservation.status === "committed") {
+      if (reservation.actualUnits !== args.actualUnits) throw new ConvexError("Committed actual usage does not match this idempotency key");
+      return { success: true, totalConsumed: reservation.consumedUnits, reservedUnits: reservation.reservedUnits, remainingUnits: reservation.availableUnits, allocatedUnits: reservation.allocatedUnits, utilizationPercent: reservation.utilizationPercent };
+    }
+    if (reservation.status !== "reserved") throw new ConvexError("Only reserved usage can be committed");
 
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)).first();
+    if (!allocation || allocation.reservedUnits < reservation.unitsReserved) throw new ConvexError("Usage reservation is no longer available");
     const now = Date.now();
-    const allocation = await ctx.db
-      .query("usageMeterAllocations")
-      .withIndex("by_school_and_meter", (q) =>
-        q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)
-      )
-      .first();
-
-    if (!allocation) {
-      throw new ConvexError("No meter allocation found for school");
-    }
-
-    const newReserved = Math.max(0, allocation.reservedUnits - args.unitsCommitted);
-    const newConsumed = allocation.consumedUnits + args.unitsCommitted;
-
-    await ctx.db.patch(allocation._id, {
-      reservedUnits: newReserved,
-      consumedUnits: newConsumed,
-      updatedAt: now,
-    });
-
-    // Append-only usage event (Pseudonymized accounting: NO raw prompts or document text)
-    await ctx.db.insert("usageEvents", {
-      schoolId: args.schoolId,
-      meterType: args.meterType,
-      unitsDelta: args.unitsCommitted,
-      reservationId: args.reservationId,
-      actorUserId: args.actorUserId,
-      actorPersonId: args.actorPersonId,
-      operationName: args.operationName,
-      description: args.description,
-      timestamp: now,
-    });
-
-    const remainingUnits = Math.max(
-      0,
-      allocation.allocatedUnits - newConsumed - newReserved
-    );
-
-    return {
-      success: true,
-      totalConsumed: newConsumed,
-      reservedUnits: newReserved,
-      remainingUnits,
-      allocatedUnits: allocation.allocatedUnits,
-      utilizationPercent: Math.min(
-        100,
-        Math.round(((newConsumed + newReserved) / allocation.allocatedUnits) * 100)
-      ),
-    };
+    // Settle the exact measured amount and release the entire held amount in the
+    // same transaction; the unused portion never becomes consumed quota.
+    const reservedUnits = allocation.reservedUnits - reservation.unitsReserved;
+    const consumedUnits = allocation.consumedUnits + args.actualUnits;
+    const availableUnits = Math.max(0, allocation.allocatedUnits - consumedUnits - reservedUnits);
+    const utilizationPercent = allocation.allocatedUnits === 0 ? 100 : Math.min(100, Math.round(((consumedUnits + reservedUnits) / allocation.allocatedUnits) * 100));
+    await ctx.db.patch(allocation._id, { reservedUnits, consumedUnits, updatedAt: now });
+    await ctx.db.insert("usageEvents", { schoolId: args.schoolId, meterType: args.meterType, unitsDelta: args.actualUnits, reservationId: args.idempotencyKey, measurementMetadata: args.measurementMetadata, actorUserId: args.actorUserId, actorPersonId: args.actorPersonId, operationName: args.operationName, description: args.description, timestamp: now });
+    await ctx.db.patch(reservation._id, { status: "committed", actualUnits: args.actualUnits, measurementMetadata: args.measurementMetadata, consumedUnits, reservedUnits, availableUnits, utilizationPercent, committedAt: now, updatedAt: now });
+    return { success: true, totalConsumed: consumedUnits, reservedUnits, remainingUnits: availableUnits, allocatedUnits: allocation.allocatedUnits, utilizationPercent };
   },
 });
 
 /**
  * Releases reserved units if an operation fails or is aborted.
  */
-export const releaseUsageQuota = mutation({
+export const releaseUsageQuota = internalMutation({
   args: {
     schoolId: v.id("schools"),
-    meterType: v.union(
-      v.literal("ai_tokens"),
-      v.literal("ocr_pages"),
-      v.literal("storage_bytes")
-    ),
-    unitsToRelease: v.number(),
-    reservationId: v.optional(v.string()),
+    meterType: v.union(v.literal("ai_tokens"), v.literal("ocr_pages"), v.literal("storage_bytes")),
+    idempotencyKey: v.string(),
   },
   handler: async (ctx, args) => {
-    if (args.unitsToRelease <= 0) {
-      throw new ConvexError("Units to release must be greater than zero");
-    }
+    const reservation = await ctx.db.query("usageQuotaReservations")
+      .withIndex("by_school_and_meter_and_idempotency_key", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType).eq("idempotencyKey", args.idempotencyKey))
+      .unique();
+    if (!reservation || !reservation.allowed) throw new ConvexError("Usage reservation was not accepted");
+    if (reservation.status === "released") return { success: true, reservedUnits: reservation.reservedUnits, remainingUnits: reservation.availableUnits, allocatedUnits: reservation.allocatedUnits };
+    if (reservation.status !== "reserved") throw new ConvexError("Only reserved usage can be released");
 
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)).first();
+    if (!allocation || allocation.reservedUnits < reservation.unitsReserved) throw new ConvexError("Usage reservation is no longer available");
     const now = Date.now();
-    const allocation = await ctx.db
-      .query("usageMeterAllocations")
-      .withIndex("by_school_and_meter", (q) =>
-        q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)
-      )
-      .first();
-
-    if (!allocation) {
-      throw new ConvexError("No meter allocation found for school");
-    }
-
-    const newReserved = Math.max(0, allocation.reservedUnits - args.unitsToRelease);
-
-    await ctx.db.patch(allocation._id, {
-      reservedUnits: newReserved,
-      updatedAt: now,
-    });
-
-    const remainingUnits = Math.max(
-      0,
-      allocation.allocatedUnits - allocation.consumedUnits - newReserved
-    );
-
-    return {
-      success: true,
-      reservedUnits: newReserved,
-      remainingUnits,
-      allocatedUnits: allocation.allocatedUnits,
-    };
+    const reservedUnits = allocation.reservedUnits - reservation.unitsReserved;
+    const availableUnits = Math.max(0, allocation.allocatedUnits - allocation.consumedUnits - reservedUnits);
+    await ctx.db.patch(allocation._id, { reservedUnits, updatedAt: now });
+    await ctx.db.patch(reservation._id, { status: "released", reservedUnits, availableUnits, utilizationPercent: Math.min(100, Math.round(((allocation.consumedUnits + reservedUnits) / allocation.allocatedUnits) * 100)), releasedAt: now, updatedAt: now });
+    return { success: true, reservedUnits, remainingUnits: availableUnits, allocatedUnits: allocation.allocatedUnits };
   },
 });
 
@@ -367,6 +307,7 @@ export const getUsageStatus = query({
     ),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "finance.reports.view");
     let allocations: Doc<"usageMeterAllocations">[] = [];
 
     if (args.meterType) {
@@ -400,6 +341,9 @@ export const getUsageStatus = query({
         meterType: alloc.meterType,
         allocatedUnits: alloc.allocatedUnits,
         consumedUnits: alloc.consumedUnits,
+        activeStorageBytes: alloc.activeStorageBytes ?? 0,
+        trashStorageBytes: alloc.trashStorageBytes ?? 0,
+        tempStorageBytes: alloc.tempStorageBytes ?? 0,
         reservedUnits: alloc.reservedUnits,
         availableUnits,
         utilizationPercent,
@@ -432,6 +376,7 @@ export const listUsageEvents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "finance.reports.view");
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
 
     let queryBuilder = ctx.db

@@ -17,8 +17,8 @@
   - `F2`: Active Branch Switcher & Unsaved-State Protection Seams
   - `F6`: Shared School Theme Tokens & Color Derivation Architecture
   - `F7`: Commercial & Settlement Transparency (Direct Merchant vs. Split Mode)
-- **Version**: `1.0.0`
-- **Status**: Authoritative Technical & Visual Specification
+- **Version**: `1.0.1`
+- **Status**: Corrected visual design contract — route, accessibility, content, and provider validation remain gates
 - **Effective Date**: 2026-09-03
 - **Parent Orchestrator Session**: `orch-20260903-143249`
 - **Author Role**: Staff Product Designer & Design Systems Engineer
@@ -35,11 +35,11 @@ This specification codifies the reusable user experience flows, component contra
 
 Prior to this specification, user interactions suffered from four systemic design liabilities:
 1. **Ambiguous Security State Projections**: Users navigating directly to unauthorized URLs either encountered a misleading 404 "Page Not Found" or a broken empty state, masking authorization boundaries and generating spurious support escalations.
-2. **False Operational Promises**: UI banners frequently implied full offline capability or instantaneous bank clearing, obscuring the empirical realities of network disconnection and Nigerian interbank clearing cycles (NIBSS T+1 business days).
+2. **False Operational Promises**: UI must not imply full offline capability or a fixed bank-clearing schedule. Provider settlement timing is an external evidence gate, not a NIBSS/T+1 assumption.
 3. **Semantic Color Collisions**: School tenant branding colors directly collided with operational status indicators (e.g., a school with crimson branding inadvertently turned "Active Term" badges red).
 4. **Destructive Data Loss During Navigation**: Multi-step forms (such as student enrollment or fee configuration) lacked unified dirty-state interception, causing complete data loss when switching branches or clicking top-level navigation items.
 
-This document establishes concrete, production-ready visual contracts, TypeScript component interfaces, CSS token derivations, and interaction state machines that eliminate these liabilities across all administrative, teacher, and student-facing surfaces.
+This document proposes visual contracts, component interfaces, CSS token derivations, and interaction state machines. Route coverage, browser/accessibility behavior, and implementation remain validation gates; it does not establish production readiness.
 
 ---
 
@@ -466,8 +466,8 @@ export function UnsavedBranchSwitchModal({
 ### 4.1 Settings Builder UI (`/admin/assessments/setup/grading-bands`)
 Schools configure grading policies to match WAEC, IGCSE, or local educational standards. Grade colors provide secondary semantic feedback in matrix and terminal views.
 
-#### 4.1.1 Immutable Base Preset Standard
-To prevent destructive misconfiguration, Melo provides an immutable standard preset:
+#### 4.1.1 Canonical Restorable Base Preset
+To prevent duplication and support recovery, Melo defines one canonical standard preset. It is restored by reference/version; it is not a second immutable policy alongside an editable copy:
 - `A`: 70–100% | GP 4.00 | Excellent | Emerald (`#065f46`)
 - `B`: 60–69%  | GP 3.00 | Very Good  | Royal Blue (`#1e40af`)
 - `C`: 50–59%  | GP 2.00 | Good       | Amber (`#92400e`)
@@ -502,7 +502,7 @@ Each grading tier row provides:
 ---
 
 ### 4.2 Printed & Grayscale Report Card Legibility Contract
-Nigerian schools rely heavily on physical terminal report card distribution. Over 85% of institutional printing is performed on monochrome laser printers (HP LaserJet, Canon i-SENSYS) using economode toner settings.
+Report cards may be printed on monochrome devices. The print contract is a target control and requires browser/printer validation; no local usage percentage or device compatibility is claimed.
 
 #### 4.2.1 Mathematical Contrast & Luminance Derivation
 To satisfy WCAG 2.2 AA (1.4.1 Use of Color & 1.4.3 Contrast Minimum):
@@ -540,7 +540,7 @@ When report cards are printed, colors must not wash out into unreadable pale gre
 ---
 
 ### 4.3 Consumer Inventory Across Melo
-The grade-band color contract must be consumed uniformly across six distinct product surfaces to prevent visual fragmentation:
+The following is the **required consumer-route inventory**. File paths are intended seams, not verified current consumers; M4 must reconcile this list against actual score/report rendering paths and record additions/exclusions before rollout:
 
 | Consumer Component | File Path | Usage Pattern |
 |---|---|---|
@@ -585,7 +585,7 @@ Schools maintain bank accounts for tuition collections. In accordance with `D-02
 
 #### 5.1.1 Step-Up Security & Masking
 1. **Masked Summaries**: In lists, tables, and audit views, account numbers are masked to the last 4 digits (`•••••• 4892`).
-2. **Authorized Step-Up Reveal**: Clicking the reveal icon prompts the user for session verification (re-entering their Better Auth credentials). Once verified, the unmasked 10-digit NUBAN is displayed with an auto-mask timer of 60 seconds.
+2. **Authorized Step-Up Reveal**: Clicking the reveal icon prompts the user for session verification (re-entering their Better Auth credentials). Once the approved step-up mechanism is verified, the full number may be shown only for a policy-configured short duration; the design sets no timer.
 3. **Audit Immutability**: Revealing full bank credentials logs an append-only audit event (`finance.bank_account_revealed`).
 
 ---
@@ -693,8 +693,8 @@ Schools require consistent, structured student identifiers for identity governan
 
 ### 6.2 Atomic Allocation & Enrollment Seams
 1. **Zero Premature Consumption**: Opening an enrollment form, saving a draft, or abandoning an applicant registration **never** consumes or reserves an admission number.
-2. **Atomic Approval Transaction**: The sequential counter is incremented **only** during backend execution of `studentEnrollment:approveStudent` inside an atomic transaction.
-3. **Manual Override Protocol**: Users holding `admissions.number.override` can enter a custom identifier. The system requires an explicit audit reason and prompts: *"Advance automatic counter to follow this override value?"*
+2. **Atomic Approval Transaction**: The sequential counter is advanced only in the successful enrollment-approval transaction; the concrete function name is an implementation gate. Uniqueness, ordering, and auditability are required—perfect gaplessness is not promised.
+3. **Manual Override Protocol**: Users holding `enrollment.admissions.override_number` can enter a custom identifier. The system requires an explicit audit reason and prompts: *"Advance automatic counter to follow this override value?"*
 4. **Bulk Import Reconciliation Modal**: When uploading spreadsheets containing historical admission numbers, the system compares the formats and provides three explicit choices:
    - *Preserve Historical Numbers* (verifies uniqueness; leaves counter unchanged).
    - *Issue New Numbers to Unnumbered Rows Only* (advances counter by unnumbered count).
@@ -804,7 +804,7 @@ On mobile viewports ($<768\text{px}$), complex forms display a persistent, compa
 ---
 
 ### 8.3 Rollout Inventory Across Melo
-The shared mobile progress indicator is deployed across six critical workflows:
+The following is the **initial rollout candidate inventory**, not evidence that these routes/components already exist or are integrated:
 1. **Student Onboarding & Registration** (`apps/admin/app/academic/students/onboarding`)
 2. **Bulk Spreadsheet Import Review** (`apps/admin/app/academic/students/import`)
 3. **Staff Onboarding & Credentials** (`apps/admin/app/academic/staff/onboarding`)
@@ -895,7 +895,7 @@ As established in `D-03`, Melo operates zero mail servers but coordinates extern
 │                                INSTITUTIONAL EMAIL REVIEW WORKBENCH                              │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                                  │
-│   Domain: oliveblessedcrest.edu.ng  [Verified Google Workspace]      [ Bulk Provision Mailboxes ]│
+│   Domain: oliveblessedcrest.edu.ng  [Provider verification pending]  [ Bulk Provision Mailboxes ]│
 │                                                                                                  │
 │   ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │
 │   │ Name / Role       Proposed Address                        Capability Status      Action  │   │
@@ -921,7 +921,7 @@ To prevent user confusion, the UI strictly differentiates mailbox hosting capabi
 | Badge Key | Badge Label | Visual Style | Tooltip / Description |
 |---|---|---|---|
 | `login_only` | `Login Identifier Only (No Inbox)` | Slate-100 / Slate-700 | "Used solely for logging into Melo. Cannot receive external emails." |
-| `external_verified` | `Verified External Mailbox` | Blue-100 / Blue-800 | "Existing mailbox verified via DNS TXT or provider directory." |
+| `external_verified` | `External mailbox evidence recorded` | Blue-100 / Blue-800 | "Show only after ownership/provider evidence is recorded; this mockup does not verify it." |
 | `provider_provisioned` | `Managed Cloud Inbox` | Purple-100 / Purple-800 | "Provisioned and synchronized with Google Workspace / Microsoft 365." |
 
 ---
@@ -971,7 +971,7 @@ Triggered before executing heavy operations (e.g. Bulk OCR of 40 exam sheets):
 ## 12. School Asset Library, Quarantine & Navigable Trash (H9)
 
 ### 12.1 Library Grid/List & Antivirus Quarantine States
-In accordance with `D-03`, all file uploads enter an isolated quarantine bucket by default. Files cannot be downloaded or shared until scanning completes.
+Required target state: uploads must remain unavailable beyond controlled administrators until the scanner/control selected by the D-03 gate completes. The mockup does not prove a quarantine bucket or scanner exists.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -1026,10 +1026,10 @@ The storage meter accounts for active and trashed bytes separately:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ Storage Allocation: 1.58 GB of 5.00 GB Used (31.6%)                                              │
+│ Storage allocation and figures come from the school plan; values below are illustrative only.      │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]  │
-│ ■ Active Assets: 1.40 GB    ▧ Recoverable Trash (30 Days): 142 MB    □ Unallocated: 3.42 GB      │
+│ ■ Active Assets: plan-derived    ▧ Recoverable Trash: plan/policy-derived    □ Remaining: derived │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1063,16 +1063,16 @@ In accordance with `D-03`, native binaries are excluded from the Convex Node run
 ## 13. Commercial & Settlement Transparency (F7)
 
 ### 13.1 Mode A: Direct School Merchant View
-Melo's default trust-first mode connects parent tuition directly to the school's own Paystack merchant account.
+Direct-merchant mode is the intended default only where the school has a verified provider connection. The screen must otherwise show an unconnected/setup state; this design does not prove any Paystack account is connected.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                DIRECT SCHOOL MERCHANT SETTLEMENT                                 │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                                  │
-│   [✓ Connected] Paystack Merchant Account: Olive Blessed Crest Limited (ID: 489201)             │
+│   [Connection status from provider verification; no account details in design evidence]           │
 │                                                                                                  │
-│   Settlement Model: 100% Direct Settlement                                                       │
+│   Settlement Model: School-direct merchant routing (provider fees disclosed separately)          │
 │   Parent tuition payments settle directly into your First Bank corporate account.                │
 │   Melo never pools, holds, or skims tuition funds.                                               │
 │                                                                                                  │
@@ -1095,15 +1095,15 @@ When a school opts into managed split settlement, every transaction ledger provi
 │   Transaction: INV-2026-09-0012 · Student: Chidinma Okafor (JSS 1A)                             │
 │                                                                                                  │
 │   1. Gross Parent Tuition Payment:                       ₦150,000.00                             │
-│   2. Less Paystack Gateway Fee (1.5% capped at ₦2,000):   -₦2,000.00                             │
-│   3. Less Melo Platform Service Fee (1.0%):               -₦1,500.00                             │
+│   2. Less provider fee (provider-configured):              [calculated amount]                    │
+│   3. Less Melo fee (approved contract-configured):         [calculated amount]                    │
 │   ──────────────────────────────────────────────────────────────────                             │
-│   4. Net Settlement to School Bank Account:              ₦146,500.00                             │
+│   4. Net Settlement to School Bank Account:               [gross − disclosed fees]               │
 │                                                                                                  │
 │   Destination Account: First Bank of Nigeria •••• 4892                                           │
-│   Estimated Settlement: Monday, Sep 8, 2026 (T+1 Business Days)                                  │
+│   Estimated Settlement: provider-derived when available; otherwise unavailable                    │
 │                                                                                                  │
-│   * Disclosure: Nigerian interbank settlement is governed by CBN clearing schedules and NIBSS.   │
+│   * Disclosure: Settlement estimate unavailable until a validated provider result is available.    │
 │     Settlements do not clear on weekends or statutory bank holidays. Melo never promises         │
 │     universal next-day clearing.                                                                 │
 │                                                                                                  │
@@ -1162,10 +1162,24 @@ gantt
 
 ## 16. Verification & Sign-off Checklist
 
-- [x] Progress semantics strictly distinguish viewport scroll depth from validated completion.
-- [x] Draft persistence states are clearly decoupled from task completion progress.
-- [x] Zero false offline claims across all connection-loss states.
-- [x] School theme tokens configure only Primary & Accent; status and grade colors are sovereign.
-- [x] School Assets Trash is a first-class, navigable workspace area analogous to Archive.
-- [x] WCAG 2.2 AA contrast, 320px mobile viewport, and print legibility verified.
-- [x] Complete consumer inventories documented for grade-band colors and school theme tokens.
+- [x] Design intent: progress semantics distinguish scroll depth from validated completion.
+- [x] Design intent: draft state is distinct from task progress and does not claim offline persistence.
+- [x] Design intent: theme colors do not replace status or grade colors.
+- [x] Design intent: Trash is specified as first-class navigation.
+- [ ] Validation gate: test actual contrast, keyboard/focus, screen-reader status, reduced motion, 320px reflow, and print/grayscale output.
+- [ ] Validation gate: reconcile grade, theme, UI/content/error, and accessibility inventories with implemented consumer routes.
+
+
+## 17. Required UI, Content, Error, and Accessibility Inventory
+
+This inventory closes design coverage only; all entries require route/component reconciliation and implementation validation.
+
+| Surface | Required content/state | Required error/empty state | Accessibility/validation gate |
+|---|---|---|---|
+| Grade policy and all score/report consumers | Canonical preset/version, letter and score independent of color. | Invalid range, contrast failure, missing historical policy. | Keyboard row editing, contrast, grayscale and print review. |
+| Bank settings and issued-document views | Masked settings; full transfer instructions only where authorized; receipt omission. | Permission denied, verification unavailable, archived/default conflict. | Fresh-auth flow, non-secret announcements, print review. |
+| Admission policy and import | Format preview, explicit counter-advance choice, no gaplessness promise. | Duplicate, invalid token, concurrency/retry outcome, policy unavailable. | Keyboard builder and clear validation summaries. |
+| Dirty state, draft, and progress | Saving/saved/recovery-pending/conflict distinct from progress. | Save failure, reauthentication/recovery, revision conflict. | Dialog focus trap/restore, Escape, live status, reduced motion. |
+| Theme and email proposal | Two-base preview; truthful login-only/external/provider state. | Invalid color, DNS/provider/authorization/licence gate unavailable. | Contrast, non-color status cues, readable provider error copy. |
+| Usage and settlement | Plan/provider-derived estimates and disclosed fee legs only. | Quota/reservation failure, unavailable settlement estimate, unconfigured routing. | Announcements, numeric/text alternatives, no misleading completion claim. |
+| Assets and Trash | Quarantine, scan state, active/trash/temp accounting, retention hold. | Scan unavailable/failed, access denied, purge/restore failure. | Keyboard grid/table, focus management, status text, no public-link claim. |

@@ -26,7 +26,7 @@ const modules = Object.fromEntries(
   ])
 );
 
-const transfersApi = (api as any).functions.academic.transfers;
+const transfersApi = api.functions.academic.transfers;
 const initiateStudentTransferRef = transfersApi.initiateStudentTransfer;
 const authorizeSourceReleaseRef = transfersApi.authorizeSourceRelease;
 const acceptDestinationTransferRef = transfersApi.acceptDestinationTransfer;

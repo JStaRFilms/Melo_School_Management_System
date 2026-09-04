@@ -45,12 +45,13 @@ Implemented `resolveActiveMembership(ctx, schoolId)` and `getActiveMembership` q
 ### 3. Additive Migration Runner (`packages/convex/functions/academic/identityMigration.ts`)
 Implemented MX-01 and MX-02 batch migration mutations:
 - **`backfillCanonicalIdentityBatch`**:
-  - Durable cursor-based batch mutation iterating through `users` table via `.paginate({ numItems: batchSize, cursor })`.
-  - Deduplicates persons by existing `user.personId`, `authTokenIdentifier`, or `email`.
-  - Creates or finds canonical `person` record and patches `user.personId`.
-  - Ensures corresponding `branchMemberships` record exists for `(personId, user.schoolId)` without touching operational records (`students`, `classes`, `studentInvoices`, etc.).
-  - Persists batch progress and cursor telemetry to `migrationRuns`.
-  - Fully idempotent: re-executing against already migrated users produces 0 duplicate records.
+  - Durable cursor-based batch mutation iterating through `users` via `.paginate({ numItems: batchSize, cursor })`; it clamps `batchSize` to 1–150.
+  - Reuses persons only by existing `user.personId` or exact `authTokenIdentifier`; it does not reconcile by email.
+  - Creates or finds a canonical `person` record and patches `user.personId`.
+  - Ensures a corresponding `branchMemberships` record exists for `(personId, user.schoolId)` without touching operational records (`students`, `classes`, `studentInvoices`, etc.).
+  - Inserts one long-lived `migrationRuns` record for the slice, then patches its cumulative cursor/counts across batches; `identityMigrationIssues` separately retains unresolved rows, and later caller cursors are ignored in favor of the stored cursor.
+  - Self-schedules the next batch while the run is `in_progress`; no runner-level pause/cancellation state exists, so safe containment must account for already-scheduled work as documented in D-05 §3.1.
+  - Fully idempotent: re-executing against already migrated users produces no duplicate records.
 - **`linkSchoolToGroupInternal`**:
   - Idempotently links a school branch to a group in `schoolGroupBranches`.
   - Enforces invariant: group linking never grants implicit branch access.

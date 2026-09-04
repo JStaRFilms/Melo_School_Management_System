@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 
 /**
@@ -68,6 +69,7 @@ export async function validateStudentRows(
 ): Promise<StagedRowValidationError[]> {
   const errors: StagedRowValidationError[] = [];
   const seenAdmissionNumbers = new Map<string, number>(); // admissionNumber -> first rowIndex
+  const seenUserIds = new Map<string, number>();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -116,9 +118,16 @@ export async function validateStudentRows(
       }
     }
 
-    // 3. Admission number uniqueness (within batch and against database)
+    // 3. Imports preserve supplied historical numbers. H4 allocation is not
+    // available in this pipeline, so a missing number blocks review/commit.
     const admissionNumber = row.admissionNumber || row.admission_number;
-    if (admissionNumber && typeof admissionNumber === "string") {
+    if (!admissionNumber || typeof admissionNumber !== "string" || admissionNumber.trim() === "") {
+      errors.push({
+        rowIndex: i,
+        field: "admissionNumber",
+        message: "Admission number is required until an H4 allocator proposal is reviewed",
+      });
+    } else {
       const normalizedAdm = admissionNumber.trim();
       if (seenAdmissionNumbers.has(normalizedAdm)) {
         errors.push({
@@ -147,7 +156,53 @@ export async function validateStudentRows(
       }
     }
 
-    // 4. Gender validation
+    // 4. A student import must reference a pre-provisioned student user. The
+    // import pipeline never invents auth IDs or token identifiers.
+    const userId = row.userId;
+    if (!userId || typeof userId !== "string") {
+      errors.push({
+        rowIndex: i,
+        field: "userId",
+        message: "A pre-provisioned student userId is required; imports cannot create credentials",
+      });
+    } else if (seenUserIds.has(userId)) {
+      errors.push({
+        rowIndex: i,
+        field: "userId",
+        message: `Duplicate student userId in import batch (first seen at row ${seenUserIds.get(userId)! + 1})`,
+      });
+    } else {
+      seenUserIds.set(userId, i);
+      let linkedUser: Doc<"users"> | null = null;
+      try {
+        linkedUser = await ctx.db.get("users", userId as Id<"users">);
+      } catch {
+        // Invalid document IDs are validation failures, not transaction errors.
+      }
+      if (!linkedUser || linkedUser.schoolId !== schoolId || linkedUser.role !== "student" || linkedUser.isArchived) {
+        errors.push({
+          rowIndex: i,
+          field: "userId",
+          message: "student userId must reference an active student user in this school",
+        });
+      } else {
+        const existingStudentForUser = await ctx.db
+          .query("students")
+          .withIndex("by_school_and_user", (q) =>
+            q.eq("schoolId", schoolId).eq("userId", linkedUser._id)
+          )
+          .first();
+        if (existingStudentForUser) {
+          errors.push({
+            rowIndex: i,
+            field: "userId",
+            message: "student userId is already enrolled in this school",
+          });
+        }
+      }
+    }
+
+    // 5. Gender validation
     if (row.gender && typeof row.gender === "string") {
       const g = row.gender.toLowerCase().trim();
       if (!["male", "female", "other", "unspecified"].includes(g)) {
@@ -183,9 +238,13 @@ export const stageImportData = mutation({
     rawTokenCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const actor = await requireCapability(ctx, args.schoolId, "enrollment.intakes.manage");
     const school = await ctx.db.get(args.schoolId);
     if (!school) {
       throw new ConvexError("School not found");
+    }
+    if (args.entityType !== "students") {
+      throw new ConvexError(`AI import entity type "${args.entityType}" is not supported for commit`);
     }
 
     // 1. Sanitize rows and strip secrets/credentials
@@ -202,15 +261,18 @@ export const stageImportData = mutation({
     }
 
     const now = Date.now();
-    const importerIdentifier =
-      args.importer ??
-      (args.importerUserId ? String(args.importerUserId) : "ai_service");
+    const importerIdentifier = actor.personId
+      ? String(actor.personId)
+      : actor.userId
+        ? String(actor.userId)
+        : "platform_admin";
 
     // 3. Stage in aiImportWorkspaces table
     const workspaceId = await ctx.db.insert("aiImportWorkspaces", {
       schoolId: args.schoolId,
       importer: importerIdentifier,
-      importerUserId: args.importerUserId,
+      importerUserId: actor.userId,
+      ownerMembershipId: actor.membershipId,
       entityType: args.entityType,
       status: "staged",
       rawTokenCount: args.rawTokenCount,
@@ -257,6 +319,14 @@ export const updateStagedRow = mutation({
     if (!workspace) {
       throw new ConvexError("Workspace not found");
     }
+    const actor = await requireCapability(ctx, workspace.schoolId, "enrollment.intakes.manage");
+    if (
+      workspace.ownerMembershipId &&
+      !actor.isPlatformAdmin &&
+      actor.membershipId !== workspace.ownerMembershipId
+    ) {
+      throw new ConvexError("Only the workspace owner may update this import");
+    }
 
     if (workspace.status === "committed" || workspace.status === "rejected") {
       throw new ConvexError(
@@ -292,8 +362,10 @@ export const updateStagedRow = mutation({
     await ctx.db.patch(workspace._id, {
       stagedRows: updatedRows,
       validationErrors: newValidationErrors,
-      status: "reviewed",
-      reviewedAt: now,
+      // Editing invalidates a prior approval. Review is an explicit separate act.
+      status: "staged",
+      reviewedAt: undefined,
+      reviewedBy: undefined,
       updatedAt: now,
     });
 
@@ -317,11 +389,34 @@ export const updateStagedRow = mutation({
   },
 });
 
+/** Explicitly records a human approval after deterministic validation succeeds. */
+export const approveImportWorkspace = mutation({
+  args: { workspaceId: v.id("aiImportWorkspaces") },
+  handler: async (ctx, args) => {
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace) throw new ConvexError("Workspace not found");
+    const actor = await requireCapability(ctx, workspace.schoolId, "enrollment.intakes.manage");
+    if (workspace.ownerMembershipId && !actor.isPlatformAdmin && actor.membershipId !== workspace.ownerMembershipId) {
+      throw new ConvexError("Only the workspace owner may approve this import");
+    }
+    if (workspace.status !== "staged") {
+      throw new ConvexError(`Workspace cannot be approved from status "${workspace.status}"`);
+    }
+    if (workspace.entityType !== "students") {
+      throw new ConvexError(`AI import entity type "${workspace.entityType}" is not supported for commit`);
+    }
+    if (workspace.validationErrors.length > 0) {
+      throw new ConvexError(`Cannot approve workspace with ${workspace.validationErrors.length} unresolved validation errors`);
+    }
+    const now = Date.now();
+    const reviewedBy = actor.personId ? String(actor.personId) : actor.userId ? String(actor.userId) : "platform_admin";
+    await ctx.db.patch(workspace._id, { status: "reviewed", reviewedAt: now, reviewedBy, updatedAt: now });
+    return { success: true, workspaceId: workspace._id, status: "reviewed" as const };
+  },
+});
+
 /**
- * Atomically commits a reviewed workspace into operational tables (e.g. students, classes).
- * Non-negotiable invariant:
- * 1. Must be in 'staged' or 'reviewed' status.
- * 2. Zero unhandled blocking validation errors allowed.
+ * Atomically commits an explicitly reviewed workspace into supported operational tables.
  */
 export const commitImportWorkspace = mutation({
   args: {
@@ -331,6 +426,14 @@ export const commitImportWorkspace = mutation({
     const workspace = await ctx.db.get(args.workspaceId);
     if (!workspace) {
       throw new ConvexError("Workspace not found");
+    }
+    const actor = await requireCapability(ctx, workspace.schoolId, "enrollment.intakes.manage");
+    if (
+      workspace.ownerMembershipId &&
+      !actor.isPlatformAdmin &&
+      actor.membershipId !== workspace.ownerMembershipId
+    ) {
+      throw new ConvexError("Only the workspace owner may commit this import");
     }
 
     if (workspace.status === "committed") {
@@ -342,16 +445,24 @@ export const commitImportWorkspace = mutation({
       };
     }
 
-    if (workspace.status !== "staged" && workspace.status !== "reviewed") {
-      throw new ConvexError(
-        `Workspace cannot be committed from status "${workspace.status}"`
-      );
+    if (workspace.status !== "reviewed" || !workspace.reviewedAt || !workspace.reviewedBy) {
+      throw new ConvexError("Workspace requires explicit reviewed approval before commit");
+    }
+    if (workspace.entityType !== "students") {
+      throw new ConvexError(`AI import entity type "${workspace.entityType}" is not supported for commit`);
     }
 
-    // Blocking Invariant: Committing with any unresolved validation errors is strictly rejected
-    if (workspace.validationErrors && workspace.validationErrors.length > 0) {
+    // Approval is only a snapshot. Re-run deterministic tenant, relationship,
+    // admission-number, and user-enrollment validation in this same commit
+    // transaction so concurrent operational writes cannot bypass review.
+    const transactionalValidationErrors = await validateStudentRows(
+      ctx,
+      workspace.schoolId,
+      workspace.stagedRows
+    );
+    if (transactionalValidationErrors.length > 0) {
       throw new ConvexError(
-        `Cannot commit workspace with ${workspace.validationErrors.length} unresolved validation errors. All rows must pass deterministic validation before commit.`
+        `Cannot commit workspace: ${transactionalValidationErrors.length} validation errors were found during transactional revalidation.`
       );
     }
 
@@ -378,32 +489,11 @@ export const commitImportWorkspace = mutation({
 
       for (let i = 0; i < workspace.stagedRows.length; i++) {
         const row = workspace.stagedRows[i];
-        const firstName = row.firstName || row.first_name || "Student";
-        const lastName = row.lastName || row.last_name || `${i + 1}`;
-        const fullName = `${firstName} ${lastName}`.trim();
-        const admissionNumber =
-          row.admissionNumber ||
-          row.admission_number ||
-          `ADM-${Date.now().toString().slice(-4)}-${i + 1}`;
+        const admissionNumber = row.admissionNumber || row.admission_number;
+        const userId = row.userId as Id<"users">;
 
-        // Create linked user account for student
-        const studentEmail =
-          row.email ||
-          `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i + 1}@melo.internal`;
-
-        const userId = await ctx.db.insert("users", {
-          schoolId: workspace.schoolId,
-          authId: `imported_student_${now}_${i}`,
-          authTokenIdentifier: `imported_student_${now}_${i}`,
-          name: fullName,
-          email: studentEmail,
-          role: "student",
-          isSchoolAdmin: false,
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        // Insert official operational student record
+        // Validation and explicit approval above establish these prerequisites;
+        // this path deliberately performs no credential or H4-number fabrication.
         await ctx.db.insert("students", {
           schoolId: workspace.schoolId,
           classId: defaultClass._id,
@@ -461,7 +551,17 @@ export const getImportWorkspace = query({
     workspaceId: v.id("aiImportWorkspaces"),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.workspaceId);
+    const workspace = await ctx.db.get(args.workspaceId);
+    if (!workspace) return null;
+    const actor = await requireCapability(ctx, workspace.schoolId, "enrollment.intakes.manage");
+    if (
+      workspace.ownerMembershipId &&
+      !actor.isPlatformAdmin &&
+      actor.membershipId !== workspace.ownerMembershipId
+    ) {
+      throw new ConvexError("Only the workspace owner may view this import");
+    }
+    return workspace;
   },
 });
 
@@ -481,20 +581,31 @@ export const listImportWorkspaces = query({
     ),
   },
   handler: async (ctx, args) => {
-    if (args.status) {
-      return await ctx.db
-        .query("aiImportWorkspaces")
-        .withIndex("by_school_and_status", (q) =>
-          q.eq("schoolId", args.schoolId).eq("status", args.status!)
-        )
-        .order("desc")
-        .take(50);
-    }
+    const actor = await requireCapability(
+      ctx,
+      args.schoolId,
+      "enrollment.intakes.manage"
+    );
+    const workspaces = args.status
+      ? await ctx.db
+          .query("aiImportWorkspaces")
+          .withIndex("by_school_and_status", (q) =>
+            q.eq("schoolId", args.schoolId).eq("status", args.status!)
+          )
+          .order("desc")
+          .take(50)
+      : await ctx.db
+          .query("aiImportWorkspaces")
+          .withIndex("by_school_and_status", (q) => q.eq("schoolId", args.schoolId))
+          .order("desc")
+          .take(50);
 
-    return await ctx.db
-      .query("aiImportWorkspaces")
-      .withIndex("by_school_and_status", (q) => q.eq("schoolId", args.schoolId))
-      .order("desc")
-      .take(50);
+    return actor.isPlatformAdmin
+      ? workspaces
+      : workspaces.filter(
+          (workspace) =>
+            !workspace.ownerMembershipId ||
+            workspace.ownerMembershipId === actor.membershipId
+        );
   },
 });

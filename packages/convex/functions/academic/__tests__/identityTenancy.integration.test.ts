@@ -33,6 +33,9 @@ const createBranchMembershipInternal =
   internal.functions.academic.identityMigration.createBranchMembershipInternal;
 const getActiveMembershipRef =
   api.functions.academic.auth.getActiveMembership;
+const listUserBranchesRef = api.functions.academic.groups.listUserBranches;
+const reconcileLegacyUserIdentity =
+  internal.functions.academic.identityMigration.reconcileLegacyUserIdentity;
 
 describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
   it("Positive: Single person with explicit memberships in two distinct branches successfully resolves active membership in both Branch A and Branch B", async () => {
@@ -457,6 +460,187 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
     ).rejects.toThrow("Not authorized");
   });
 
+  it("Compatibility bridge fails closed without an explicitly configured trusted issuer", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const schoolId = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Subject Bridge Academy", slug: "subject-bridge", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", {
+        schoolId,
+        authId: "legacy-subject-only",
+        name: "Legacy Subject User",
+        email: "legacy-subject@test",
+        role: "teacher",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return schoolId;
+    });
+    const sameSubjectFromOtherIssuer = t.withIdentity({
+      tokenIdentifier: "https://other-issuer.test|new-token",
+      subject: "legacy-subject-only",
+      issuer: "https://other-issuer.test",
+      email: "legacy-subject@test",
+    });
+    await expect(sameSubjectFromOtherIssuer.run(async (ctx) => resolveActiveMembership(ctx, schoolId))).rejects.toThrow("Not authorized");
+
+    const attacker = t.withIdentity({ tokenIdentifier: "https://auth.melo.test|attacker", subject: "other-subject", issuer: "https://auth.melo.test", email: "legacy-subject@test" });
+    await expect(attacker.run(async (ctx) => resolveActiveMembership(ctx, schoolId))).rejects.toThrow("Not authorized");
+  });
+
+  it("Negative: matching email or subject under a different token does not resolve or list a legacy account", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const schoolId = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Identity Boundary Academy",
+        slug: "identity-boundary",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("users", {
+        schoolId,
+        authId: "legacy-owner",
+        authTokenIdentifier: "https://auth.melo.test|legacy-owner",
+        name: "Legacy Owner",
+        email: "shared@identity.test",
+        role: "admin",
+        isSchoolAdmin: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return schoolId;
+    });
+
+    const unrelatedIdentity = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|unrelated-user",
+      subject: "legacy-owner",
+      email: "shared@identity.test",
+    });
+
+    await expect(
+      unrelatedIdentity.run(async (ctx) => resolveActiveMembership(ctx, schoolId))
+    ).rejects.toThrow("Not authorized");
+    await expect(unrelatedIdentity.query(listUserBranchesRef, {})).resolves.toEqual([]);
+  });
+
+  it("marks users without a stable token for reconciliation and restores access only after trusted reconciliation", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const { schoolId, userId } = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Reconciliation Academy", slug: "reconciliation", status: "active", createdAt: now, updatedAt: now });
+      const userId = await ctx.db.insert("users", { schoolId, authId: "legacy-only", name: "Legacy Only", email: "legacy-only@test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+      return { schoolId, userId };
+    });
+
+    await t.mutation(backfillCanonicalIdentityBatch, { sliceId: "MX-01-reconciliation", batchSize: 10 });
+    const unresolved = await t.run(async (ctx) => {
+      const user = await ctx.db.get(userId);
+      return user?.personId ? await ctx.db.get(user.personId) : null;
+    });
+    expect(unresolved?.authTokenIdentifier).toBeUndefined();
+    expect(unresolved?.identityReconciliationState).toBe("reconciliation_required");
+    const failedRun = await t.run(async (ctx) =>
+      ctx.db.query("migrationRuns").withIndex("by_slice_and_status", (q) =>
+        q.eq("sliceId", "MX-01-reconciliation").eq("status", "failed")
+      ).unique()
+    );
+    expect(failedRun?.failedCount).toBe(1);
+    const issue = await t.run(async (ctx) =>
+      ctx.db.query("identityMigrationIssues").withIndex("by_user_and_status", (q) =>
+        q.eq("userId", userId).eq("status", "open")
+      ).unique()
+    );
+    expect(issue?.code).toBe("missing_canonical_token");
+
+    await t.mutation(reconcileLegacyUserIdentity, {
+      userId,
+      authTokenIdentifier: "https://auth.melo.test|legacy-only",
+    });
+    const reconciledSession = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|legacy-only",
+      subject: "different-subject",
+    });
+    await expect(
+      reconciledSession.run(async (ctx) => resolveActiveMembership(ctx, schoolId))
+    ).resolves.toMatchObject({ schoolId, role: "admin" });
+    const resolvedIssue = await t.run(async (ctx) =>
+      ctx.db.query("identityMigrationIssues").withIndex("by_user_and_status", (q) =>
+        q.eq("userId", userId).eq("status", "resolved")
+      ).unique()
+    );
+    expect(resolvedIssue?.code).toBe("missing_canonical_token");
+  });
+
+  it("rejects duplicate canonical tokens and records a failed migration instead of completing", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Duplicate Token Academy", slug: "duplicate-token", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("persons", { authTokenIdentifier: "https://auth.melo.test|duplicate", email: "one@test", name: "One", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("persons", { authTokenIdentifier: "https://auth.melo.test|duplicate", email: "two@test", name: "Two", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId, authId: "legacy-duplicate", authTokenIdentifier: "https://auth.melo.test|duplicate", name: "Duplicate", email: "duplicate@test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+    });
+    const result = await t.mutation(backfillCanonicalIdentityBatch, { sliceId: "MX-01-duplicate", batchSize: 10 });
+    expect(result.isDone).toBe(true);
+    expect(result.failedCount).toBe(1);
+    const issue = await t.run(async (ctx) =>
+      ctx.db.query("identityMigrationIssues").withIndex("by_slice_and_status", (q) =>
+        q.eq("sliceId", "MX-01-duplicate").eq("status", "open")
+      ).unique()
+    );
+    expect(issue?.code).toBe("duplicate_canonical_token");
+    const completed = await t.run(async (ctx) =>
+      ctx.db.query("migrationRuns").withIndex("by_slice_and_status", (q) =>
+        q.eq("sliceId", "MX-01-duplicate").eq("status", "completed")
+      ).take(1)
+    );
+    expect(completed).toHaveLength(0);
+  });
+
+  it("rejects a legacy/canonical token mismatch and records it for reconciliation", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const { schoolId, personId } = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Prelink Conflict Academy", slug: "prelink-conflict", status: "active", createdAt: now, updatedAt: now });
+      const personId = await ctx.db.insert("persons", { authTokenIdentifier: "https://auth.melo.test|canonical", email: "canonical@test", name: "Canonical", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId, authId: "legacy-prelink", authTokenIdentifier: "https://auth.melo.test|different", personId, name: "Legacy", email: "legacy@test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+      return { schoolId, personId };
+    });
+    const result = await t.mutation(backfillCanonicalIdentityBatch, { sliceId: "MX-01-prelink", batchSize: 10 });
+    expect(result.failedCount).toBe(1);
+    const issue = await t.run(async (ctx) =>
+      ctx.db.query("identityMigrationIssues").withIndex("by_slice_and_status", (q) =>
+        q.eq("sliceId", "MX-01-prelink").eq("status", "open")
+      ).unique()
+    );
+    expect(issue).toMatchObject({ schoolId, userId: expect.any(String), code: "mismatched_prelink" });
+    const person = await t.run(async (ctx) => ctx.db.get(personId));
+    expect(person?.authTokenIdentifier).toBe("https://auth.melo.test|canonical");
+  });
+
+  it("persists one resumable migration state and ignores caller cursors after the run starts", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Resumable Academy", slug: "resumable-academy", status: "active", createdAt: now, updatedAt: now });
+      for (const suffix of ["one", "two"]) {
+        await ctx.db.insert("users", { schoolId, authId: `legacy-${suffix}`, authTokenIdentifier: `https://auth.melo.test|${suffix}`, name: suffix, email: `${suffix}@test`, role: "teacher", createdAt: now, updatedAt: now });
+      }
+    });
+    const first = await t.mutation(backfillCanonicalIdentityBatch, { sliceId: "MX-01-resume", batchSize: 1 });
+    expect(first).toMatchObject({ isDone: false, processedCount: 1, failedCount: 0 });
+    const persisted = await t.run(async (ctx) => ctx.db.query("migrationRuns").withIndex("by_slice_and_status", (q) => q.eq("sliceId", "MX-01-resume").eq("status", "in_progress")).unique());
+    expect(persisted?.cursor).toBeTruthy();
+
+    const resumed = await t.mutation(backfillCanonicalIdentityBatch, { sliceId: "MX-01-resume", cursor: null, batchSize: 1 });
+    expect(resumed).toMatchObject({ isDone: true, processedCount: 2, failedCount: 0 });
+    const runs = await t.run(async (ctx) => ctx.db.query("migrationRuns").withIndex("by_slice_and_batch", (q) => q.eq("sliceId", "MX-01-resume")).collect());
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ status: "completed", processedCount: 2, failedCount: 0, cursor: null });
+  });
+
   it("Migration batch idempotency: Running backfillCanonicalIdentityBatch twice yields identical results without creating duplicate persons or duplicate branchMemberships", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
@@ -535,14 +719,14 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
     expect(run1.isDone).toBe(true);
 
     // Verify state after run 1:
-    // - Exactly 2 persons (Alice deduplicated into 1 person, Bob is 1 person)
+    // - Exactly 2 persons (Alice deduplicated by the shared stable token, Bob is separate)
     // - Exactly 3 branch memberships (Alice has School A and School B, Bob has School A)
     const { alicePersonId, bobPersonId } = await t.run(async (ctx) => {
       const persons = await ctx.db.query("persons").collect();
       expect(persons.length).toBe(2);
 
-      const alicePerson = persons.find((p) => p.email === "alice@melo.test");
-      const bobPerson = persons.find((p) => p.email === "bob@melo.test");
+      const alicePerson = persons.find((p) => p.authTokenIdentifier === "https://auth.melo.test|alice");
+      const bobPerson = persons.find((p) => p.authTokenIdentifier === "https://auth.melo.test|bob");
       expect(alicePerson).toBeDefined();
       expect(bobPerson).toBeDefined();
 
@@ -565,6 +749,11 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
       expect(u1?.personId).toBe(alicePerson!._id);
       expect(u2?.personId).toBe(alicePerson!._id);
       expect(u3?.personId).toBe(bobPerson!._id);
+
+      // Identity backfill links membership only; it does not synthesize RBAC roles.
+      expect((await ctx.db.query("membershipRoleAssignments").collect())).toHaveLength(0);
+      expect(u3?.role).toBe("teacher");
+      expect(u3?.isSchoolAdmin).not.toBe(true);
 
       // Verify migrationRuns telemetry
       const runs = await ctx.db

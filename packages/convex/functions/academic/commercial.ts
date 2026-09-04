@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
+import { requireCapability } from "./rbac";
 
 /**
  * Commercial Catalog & Settlement Transparency Engine (F7 / MX-12)
@@ -9,8 +10,8 @@ import { recordAuditEventHelper } from "./audit";
  * Enforces:
  * 1. Routing Mode Separation: Mode A (Direct School Merchant - 100% direct settlement)
  *    vs. Mode B (Melo-Routed Split Subaccount).
- * 2. Truthful Clearing Disclosures: Discloses NIBSS T+1 clearing reality;
- *    universal "next-day" or "instant" clearing promises are strictly prohibited.
+ * 2. Truthful Clearing Disclosures: records only provider evidence; timing is
+ *    explicitly unavailable until a trusted provider supplies it.
  * 3. Seed Catalog: Core/Basic seeded at ₦1,000 per active student per term + ₦30,000 setup fee.
  */
 
@@ -18,17 +19,11 @@ export const CORE_BASIC_PLAN_CODE = "core_basic";
 export const CORE_BASIC_PER_STUDENT_KOBO = 100_000; // ₦1,000 in kobo
 export const CORE_BASIC_SETUP_FEE_KOBO = 3_000_000; // ₦30,000 in kobo
 
-export const NIBSS_CLEARING_NOTICE =
-  "Estimated Settlement: Next business day (Subject to NIBSS banking schedules, weekend clearing freezes, and statutory holidays. Universal next-day clearing claims are strictly prohibited under Central Bank of Nigeria and NIBSS operational regulations).";
-
 export interface SettlementBreakdown {
   grossAmountKobo: number;
   paystackFeeKobo: number;
   platformFeeKobo: number;
   netPayoutKobo: number;
-  clearingCycle: "NIBSS_T_PLUS_1";
-  estimatedSettlementDate: number;
-  settlementNotice: string;
 }
 
 /**
@@ -39,46 +34,30 @@ export function calculateSettlementBreakdown(params: {
   routingMode: "mode_a_direct" | "mode_b_split";
   customPaystackFeeKobo?: number;
   customPlatformFeeKobo?: number;
-  now?: number;
 }): SettlementBreakdown {
   const { grossAmountKobo, routingMode } = params;
   if (grossAmountKobo <= 0) {
     throw new ConvexError("Gross transaction amount must be greater than zero");
   }
 
-  const now = params.now ?? Date.now();
-  // Estimated T+1 business day (24 hours window baseline)
-  const estimatedSettlementDate = now + 24 * 60 * 60 * 1000;
-
-  // Paystack standard fee in Nigeria: 1.5% capped at ₦2,000 (200,000 kobo)
-  const defaultPaystackFee = Math.min(
-    Math.round(grossAmountKobo * 0.015),
-    200_000
-  );
-  const paystackFeeKobo = params.customPaystackFeeKobo !== undefined
-    ? params.customPaystackFeeKobo
-    : defaultPaystackFee;
-
-  let platformFeeKobo = 0;
-  let netPayoutKobo = 0;
-
-  if (routingMode === "mode_a_direct") {
-    // Mode A: Direct School Merchant Mode (Trust-First Default)
-    // Parent payments settle 100% directly to school bank account minus Paystack processing fee.
-    // Melo platform charges ZERO surcharge on school tuition in Mode A.
-    // (SaaS billing is invoiced independently: ₦1,000/student/term).
-    platformFeeKobo = 0;
-    netPayoutKobo = grossAmountKobo - paystackFeeKobo;
-  } else {
-    // Mode B: Melo-Routed Paystack Subaccount / Split Mode
-    // Melo acts as primary merchant; splits payment between School subaccount and Melo platform surcharge.
-    // Default platform surcharge is 1.0% or custom surcharge.
-    const defaultPlatformFee = Math.round(grossAmountKobo * 0.01);
-    platformFeeKobo = params.customPlatformFeeKobo !== undefined
-      ? params.customPlatformFeeKobo
-      : defaultPlatformFee;
-    netPayoutKobo = grossAmountKobo - paystackFeeKobo - platformFeeKobo;
+  if (params.customPaystackFeeKobo === undefined) {
+    throw new ConvexError("Provider-reported processing fee is required");
   }
+  if (params.customPaystackFeeKobo < 0) {
+    throw new ConvexError("Provider-reported processing fee cannot be negative");
+  }
+  if (routingMode === "mode_b_split" && params.customPlatformFeeKobo === undefined) {
+    throw new ConvexError("Approved split-mode platform fee is required");
+  }
+  if ((params.customPlatformFeeKobo ?? 0) < 0) {
+    throw new ConvexError("Platform fee cannot be negative");
+  }
+
+  const paystackFeeKobo = params.customPaystackFeeKobo;
+  const platformFeeKobo = routingMode === "mode_a_direct"
+    ? 0
+    : params.customPlatformFeeKobo!;
+  const netPayoutKobo = grossAmountKobo - paystackFeeKobo - platformFeeKobo;
 
   if (netPayoutKobo < 0) {
     throw new ConvexError(
@@ -99,9 +78,6 @@ export function calculateSettlementBreakdown(params: {
     paystackFeeKobo,
     platformFeeKobo,
     netPayoutKobo,
-    clearingCycle: "NIBSS_T_PLUS_1",
-    estimatedSettlementDate,
-    settlementNotice: NIBSS_CLEARING_NOTICE,
   };
 }
 
@@ -109,7 +85,7 @@ export function calculateSettlementBreakdown(params: {
  * Seeds the commercial catalog with Core/Basic subscription rate card.
  * Idempotent: If "core_basic" already exists, returns existing plan.
  */
-export const seedCommercialCatalog = mutation({
+export const seedCommercialCatalog = internalMutation({
   args: {},
   handler: async (ctx) => {
     const existing = await ctx.db
@@ -145,7 +121,7 @@ export const seedCommercialCatalog = mutation({
  * Validates Mode A vs Mode B fee breakdown, asserts clearing cycle disclosure,
  * and records an immutable audit log.
  */
-export const recordSettlementTransaction = mutation({
+export const recordSettlementTransaction = internalMutation({
   args: {
     schoolId: v.id("schools"),
     transactionRef: v.string(),
@@ -153,8 +129,16 @@ export const recordSettlementTransaction = mutation({
     grossAmountKobo: v.number(),
     paystackFeeKobo: v.optional(v.number()),
     platformFeeKobo: v.optional(v.number()),
+    settlementEvidence: v.optional(
+      v.object({
+        providerSettlementReference: v.string(),
+        providerClearingCycle: v.string(),
+        estimatedSettlementDate: v.optional(v.number()),
+        settlementNotice: v.optional(v.string()),
+      })
+    ),
     destinationAccount: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    metadata: v.optional(v.string()),
     actorUserId: v.optional(v.id("users")),
     actorPersonId: v.optional(v.id("persons")),
   },
@@ -181,9 +165,9 @@ export const recordSettlementTransaction = mutation({
       routingMode: args.routingMode,
       customPaystackFeeKobo: args.paystackFeeKobo,
       customPlatformFeeKobo: args.platformFeeKobo,
-      now,
     });
 
+    const settlementEvidence = args.settlementEvidence;
     const ledgerId = await ctx.db.insert("settlementLedgers", {
       schoolId: args.schoolId,
       transactionRef: args.transactionRef,
@@ -193,9 +177,11 @@ export const recordSettlementTransaction = mutation({
       platformFeeKobo: breakdown.platformFeeKobo,
       netPayoutKobo: breakdown.netPayoutKobo,
       currency: "NGN",
-      clearingCycle: "NIBSS_T_PLUS_1",
-      estimatedSettlementDate: breakdown.estimatedSettlementDate,
-      settlementNotice: breakdown.settlementNotice,
+      clearingCycle: settlementEvidence ? "provider_reported" : "unavailable",
+      estimatedSettlementDate: settlementEvidence?.estimatedSettlementDate,
+      settlementNotice: settlementEvidence?.settlementNotice,
+      providerSettlementReference: settlementEvidence?.providerSettlementReference,
+      providerClearingCycle: settlementEvidence?.providerClearingCycle,
       destinationAccount: args.destinationAccount,
       status: "pending_clearing",
       metadata: args.metadata,
@@ -221,7 +207,7 @@ export const recordSettlementTransaction = mutation({
         breakdown.platformFeeKobo / 100
       ).toLocaleString()}, Net Payout ₦${(
         breakdown.netPayoutKobo / 100
-      ).toLocaleString()} (Clearing: NIBSS T+1)`,
+      ).toLocaleString()} (Clearing: ${settlementEvidence ? "provider reported" : "unavailable"})`,
     });
 
     const record = await ctx.db.get(ledgerId);
@@ -252,6 +238,7 @@ export const getSettlementLedger = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "finance.settlements.view");
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
 
     let queryBuilder = ctx.db
@@ -286,6 +273,7 @@ export const getSettlementByRef = query({
     transactionRef: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "finance.settlements.view");
     return await ctx.db
       .query("settlementLedgers")
       .withIndex("by_school_and_ref", (q) =>
@@ -299,7 +287,7 @@ export const getSettlementByRef = query({
  * Creates or updates a school's institutional subscription.
  * Calculates termly platform fee based on active student count + setup fee status.
  */
-export const createOrUpdateSchoolSubscription = mutation({
+export const createOrUpdateSchoolSubscription = internalMutation({
   args: {
     schoolId: v.id("schools"),
     planCode: v.optional(v.string()),
@@ -370,6 +358,7 @@ export const getSchoolSubscription = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "finance.reports.view");
     const sub = await ctx.db
       .query("schoolSubscriptions")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))

@@ -32,8 +32,12 @@ Task title: Compliance control dossier
 - Engineering guidance only
 - No PII, secrets, or unverified claims
 
-## Completion Status
-- **Status**: Completed (2026-09-03)
-- **Artifact Written**: `docs/features/D01_ComplianceControlDossier.md` (Version 1.0.0)
-- **Verification**: Complete data classification inventory under 6 canonical tiers, purpose/lawful-basis matrix, subprocessor register, minor protection & guardian consent protocol, DSAR/erasure/retention/breach controls, primary jurisdiction source register with dated links, bidirectional controls-to-product matrix (H5, F3, H8, H9, F4, F1, H2, H3), and 10 actionable counsel questions with phased launch gating checklist.
+## Delivery Record
 
+- **Historical artifact:** The initial D-task document was delivered on 2026-09-03.
+- **Current authority:** The corrected feature document and master plan govern review status.
+- **Evidence boundary:** This delivery record does not establish legal, provider, runtime, browser/accessibility, migration/restore, security, or release validation.
+
+## Correction status (2026-09-03)
+
+This completion record is superseded for review purposes by the corrected D-01–D-05 feature bundle. The artifact remains delivered, but independent milestone re-review is pending. It does not evidence legal approval, provider/runtime validation, browser/accessibility validation, migration/restore proof, or release authorization.

@@ -7,7 +7,7 @@ import * as curriculumAdminRead from "../curriculumAdminRead";
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob("../../../**/*.ts");
 const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", Record<string, never>, unknown>;
-const admin = { subject: "admin-auth" };
+const admin = { subject: "admin-auth", issuer: "https://legacy-auth.test" };
 
 describe("curriculum admin read", () => {
   it("reads ready sources after indexed filtering and returns exact recent import labels", async () => {

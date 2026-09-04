@@ -170,7 +170,7 @@
 ### L-01 — Independent Melo-to-Melo transfer network (F4 later-gated)
 - **Objective:** Prepare a separate future initiative; do not implement in current release.
 - **Scope:** After B-09, design/approval/build plan for verified independent institutions, guardian/student authorization, source release/destination acceptance, selected portable record sharing, immutable cryptographic attribution, expiry/rejection/dispute/correction.
-- **Dependencies:** B-09, D-01 and D-03 accepted, qualified jurisdictional legal approval, separate product approval.
+- **Dependencies:** B-09, corrected D-01/D-03 plus qualified jurisdictional legal, provider, and security approval, separate product approval.
 - **Role/workflow:** Architect + counsel + security/integration team; future gated program.
 - **Prime context:** F4 ledger, D-01/D-03 outcomes, B-09 evidence.
 - **Expected artifacts:** Separate approved architecture/migration/operational packet; no current product code.

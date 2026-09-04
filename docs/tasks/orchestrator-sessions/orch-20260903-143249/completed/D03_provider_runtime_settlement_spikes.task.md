@@ -42,14 +42,12 @@ Author: Integration Architect & Systems Reliability Engineer
 ## Constraints
 - Read-only/sandbox experiments only; zero live secrets or financial mutations
 
-## Completion Status
-- **Status**: Completed (2026-09-03)
-- **Artifact Written**: `docs/features/D03_ProviderRuntimeAndSettlementSpikes.md` (Version 1.0.0)
-- **Verification**: Complete authoritative technical specification detailing:
-  1. Five non-negotiable operational constraints (Zero mail server; direct merchant vs split separation; no universal next-day promises; native C/C++ binary exclusion; quarantine-first asset gate).
-  2. Spike 1 (Paystack): Mode A (Direct School Merchant) vs Mode B (Split/Subaccount) architectures; tokenized recurring mandates under CBN regulations; zero-PAN storage boundary; NIBSS interbank clearing realities and settlement schedule matrix; double-entry internal ledger schema (`ledgerAccounts`, `ledgerJournalEntries`, `ledgerLines`); Nigerian VAT (7.5%) and WHT treatment.
-  3. Spike 2 (Institutional Email): Google Workspace, Microsoft 365, and Zoho Directory API integrations; three-state mailbox capability model (`login_only`, `external_verified`, `provider_provisioned`); DNS TXT challenge verification; dry-run mapping proposal pattern; 4-stage collision resolution; minor naming privacy safeguards and directory suppression; user departure protocol and permanent email re-allocation freeze; asynchronous outbox pattern for failure isolation.
-  4. Spike 3 (Antivirus & Quarantine): Threat model; ClamAV vs AWS GuardDuty S3 Malware Protection vs Multi-engine API evaluation (rejection of public VirusTotal for NDPA minor privacy compliance); quarantine state machine (`uploading` -> `quarantined` -> `scanning` -> `clean` / `infected`); 14-day forensic quarantine hold; server-side magic-byte inspection (`file-type`).
-  5. Spike 4 (PDF Compression in Convex Node Runtime): Convex Node action environment constraints; strict exclusion of Ghostscript, QPDF, Poppler, and native C/C++ toolkits; pure-JS `pdf-lib` real-world capabilities and bitmap limitations (<5% savings on scanned docs); safe optimization candidate rules; pre/post verification gate (page count preservation, 10% minimum savings, 14-day rollback preservation).
-  6. Spike 5 (Melo-to-Melo Inter-School Transfer Feasibility - F4): Phase 2 architecture; asymmetric Ed25519 PKI signing; Portable Academic Record Schema (PARS) aligned with W3C Verifiable Credentials; two-phase commit protocol; strict privacy boundary permanently barring financial debt and safeguarding notes; Phase 1 Build non-goal and hard legal gate.
-  7. Irreversible decision gates and vendor due-diligence checklist covering Paystack, Google, Microsoft, Zoho, and AWS GuardDuty.
+## Delivery Record
+
+- **Historical artifact:** The initial D-task document was delivered on 2026-09-03.
+- **Current authority:** The corrected feature document and master plan govern review status.
+- **Evidence boundary:** This delivery record does not establish legal, provider, runtime, browser/accessibility, migration/restore, security, or release validation.
+
+## Correction status (2026-09-03)
+
+This completion record is superseded for review purposes by the corrected D-01–D-05 feature bundle. The artifact remains delivered, but independent milestone re-review is pending. It does not evidence legal approval, provider/runtime validation, browser/accessibility validation, migration/restore proof, or release authorization.

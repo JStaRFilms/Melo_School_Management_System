@@ -8,7 +8,7 @@ import { countCurriculumReadiness, describeCurriculumReadiness } from "../curric
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 
 const modules = import.meta.glob("../../../**/*.ts");
-const admin = { subject: "readiness-admin" };
+const admin = { subject: "readiness-admin", issuer: "https://legacy-auth.test" };
 type QueryReference<Export> = Export extends RegisteredQuery<infer Visibility, infer Args, infer Result> ? FunctionReference<"query", Visibility, Args, Awaited<Result>> : never;
 const getAdminCurriculumReadiness = curriculumReadiness.getAdminCurriculumReadiness as unknown as QueryReference<typeof curriculumReadiness.getAdminCurriculumReadiness>;
 
@@ -60,6 +60,6 @@ describe("curriculum readiness aggregation", () => {
     expect(result.counts).toEqual({ topicCount: 31, sourceApprovedCount: 1, lessonPlanPreparedCount: 1, studentNotePreparedCount: 1, assignmentPreparedCount: 1, assessmentDraftedCount: 1, studentResourcePublishedCount: 1 });
     expect(result.rows).toHaveLength(25);
     expect(result.rows[0]).toMatchObject({ title: "Fractions", studentPublicationStatus: "student_resource_published" });
-    await expect(t.withIdentity({ subject: "readiness-teacher" }).query(getAdminCurriculumReadiness, { subjectId: ids.subjectId, termId: ids.termId, level: "JSS 1" })).rejects.toThrow("Admin access required");
+    await expect(t.withIdentity({ subject: "readiness-teacher", issuer: "https://legacy-auth.test" }).query(getAdminCurriculumReadiness, { subjectId: ids.subjectId, termId: ids.termId, level: "JSS 1" })).rejects.toThrow("Admin access required");
   });
 });

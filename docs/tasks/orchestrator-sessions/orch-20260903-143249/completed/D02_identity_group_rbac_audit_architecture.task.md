@@ -34,12 +34,12 @@ Task title: Identity, group, RBAC, and audit architecture
 - Backend is authoritative security boundary
 - No invented roles or unauthorized delegation
 
-## Completion Status
-- **Status**: Completed (2026-09-03)
-- **Artifact Written**: `docs/features/D02_IdentityGroupRBACAndAuditArchitecture.md` (Version 1.0.0, 940+ lines)
-- **Verification Summary**:
-  - **F2 Canonical Identity & Multi-Branch Tenancy**: Mermaid ERD, Convex schemas for `persons`, `branchMemberships`, `schoolGroups`, and `schoolGroupBranches` with strict indexes; server-side session scoping contract (`resolveActiveMembership`) enforcing zero client trust; multi-phase legacy `users` bridge with bi-directional synchronous projection (`syncLegacyUserProjection`).
-  - **H2 Granular RBAC & Authority Ceiling**: Decoupling of cosmetic `displayTitle` from typed authorization capabilities; 7 factory base templates (`proprietor`, `principal`, `academic_director`, `exam_officer`, `bursar`, `registrar`, `staff_administrator`); closed catalog of 47 typed capabilities across 8 domains with 11 sensitive capabilities segregated; mathematical union/grant/restriction evaluator formula `(⋃ Templates ∪ DirectGrants) ∖ DirectRestrictions` with pure read-only preview engine; six strict delegation ceiling rules (anti-self-escalation, anti-superior modification, ceiling bounds, possession != delegation); audited break-glass recovery for Platform Super Admin.
-  - **F1 Append-Only Audit & Redaction**: Consolidated `auditEvents` table with typed actor kinds, context scopes, and 7-year/permanent statutory retention tiers; pre-write sanitization pipeline masking bank accounts to `***-****-1234`, masking government IDs, stripping credentials/tokens to `[REDACTED_SECRET]`, and excluding binary payloads; 3-tier alerting architecture (Tier 1 Critical real-time leadership alert, Tier 2 Warn in-app badge, Tier 3 Info silent audit); RBAC-scoped CSV/PDF export contracts.
-  - **Endpoint Enforcement Inventory**: 26 public and internal Convex mutations, queries, and actions cataloged across Academic, Admissions, Finance, Staff/RBAC, Settings, Assets, Audit, and Platform recovery with required capabilities, tenant checks, emitted events, and alert tiers.
-  - **Threat Model & Negative-Test Matrix**: 10 concrete attack vectors (`SEC-NEG-01` through `SEC-NEG-10`) specifying exact preconditions, execution payloads, and authoritative 403 Forbidden / typed denial assertions.
+## Delivery Record
+
+- **Historical artifact:** The initial D-task document was delivered on 2026-09-03.
+- **Current authority:** The corrected feature document and master plan govern review status.
+- **Evidence boundary:** This delivery record does not establish legal, provider, runtime, browser/accessibility, migration/restore, security, or release validation.
+
+## Correction status (2026-09-03)
+
+This completion record is superseded for review purposes by the corrected D-01–D-05 feature bundle. The artifact remains delivered, but independent milestone re-review is pending. It does not evidence legal approval, provider/runtime validation, browser/accessibility validation, migration/restore proof, or release authorization.

@@ -6,8 +6,8 @@
 - **Document Identifier**: `MELO-RUNBOOK-D05-MIGRATION-REHEARSAL-DATA-REFRESH`
 - **Feature Code**: `D-05` (Foundations / Operational Readiness)
 - **Parent Orchestrator Session**: `orch-20260903-143249`
-- **Version**: `1.0.0`
-- **Status**: Authoritative Operational Protocol & Verification Specification
+- **Version**: `1.1.1`
+- **Status**: Corrected operational runbook — implementation alignment recorded; independent re-review and migration/restore validation remain pending
 - **Effective Date**: 2026-09-03
 - **Primary Roles**: Data Migration Architect, Security Systems Operator, Lead Systems Reliability Engineer
 - **Authoritative Dependencies**:
@@ -76,75 +76,56 @@ Before commencing any refresh activity, the operator must verify the baseline en
 
 Before running any Convex command, the operator must verify that **every** configuration file, environment variable, script, and terminal shell targets the development deployment instance exclusively.
 
-#### Verification Script (PowerShell / Windows)
+#### Verification Procedure (PowerShell / Windows)
+
+Environment-value listing commands and any command that prints environment values are prohibited. Before a refresh, the Security Systems Operator creates or reviews an access-controlled, non-repository allowlist containing only the exact approved development deployment ID and approved Convex URLs. The allowlist contains no credential values and is not copied to logs, tickets, or Git.
+
 ```powershell
-# scripts/ops/verify-target-env.ps1
+# Run from the repository root. The external allowlist is non-secret but access controlled.
 $ErrorActionPreference = "Stop"
+$allowlistPath = Join-Path $HOME ".melo-ops/approved-development-targets.json"
+$approvedTargets = Get-Content -Raw $allowlistPath | ConvertFrom-Json
+if ($approvedTargets.Count -lt 1) { throw "Abort: no approved development target." }
 
-Write-Host "=== MELO TARGET ENVIRONMENT PRE-FLIGHT VERIFICATION ===" -ForegroundColor Cyan
-
-# 1. Inspect CONVEX_DEPLOYMENT in Environment
-$envDeployment = $env:CONVEX_DEPLOYMENT
-Write-Host "Shell CONVEX_DEPLOYMENT: $envDeployment"
-
-if ([string]::IsNullOrWhiteSpace($envDeployment)) {
-    Write-Warning "Shell CONVEX_DEPLOYMENT is unset. Checking .env.local..."
-} elseif ($envDeployment -match "^prod:" -or $envDeployment -match "production") {
-    Write-Error "CRITICAL ABORT: Shell environment variable targets PRODUCTION ($envDeployment)!"
-    exit 1
-} else {
-    Write-Host "[PASS] Shell CONVEX_DEPLOYMENT points to development." -ForegroundColor Green
+function Get-ConfiguredValue([string]$path, [string]$key) {
+  $line = Select-String -Path $path -Pattern "^$([regex]::Escape($key))=" | Select-Object -First 1
+  if (-not $line) { throw "Abort: required target key is absent." }
+  return $line.Line.Substring($key.Length + 1).Trim('"', "'")
 }
 
-# 2. Inspect root .env.local
-if (Test-Path ".env.local") {
-    $envContent = Get-Content ".env.local" -Raw
-    if ($envContent -match "CONVEX_DEPLOYMENT=(prod:[^\r\n]+)") {
-        Write-Error "CRITICAL ABORT: .env.local targets PRODUCTION ($($Matches[1]))!"
-        exit 1
-    }
-    Write-Host "[PASS] Root .env.local verified (non-production)." -ForegroundColor Green
-} else {
-    Write-Warning "Root .env.local not found."
-}
+$rootDeployment = Get-ConfiguredValue ".env.local" "CONVEX_DEPLOYMENT"
+$rootUrl = Get-ConfiguredValue ".env.local" "CONVEX_URL"
+$approved = $approvedTargets | Where-Object {
+  $_.deploymentId -eq $rootDeployment -and $_.convexUrls -contains $rootUrl
+} | Select-Object -First 1
+if (-not $approved) { throw "Abort: root deployment ID/URL pair is not on the approved development allowlist." }
+if ($env:CONVEX_DEPLOYMENT -ne $approved.deploymentId) { throw "Abort: shell deployment ID does not exactly match the approved development ID." }
 
-# 3. Inspect application configurations
-$appConfigs = @(
-    "apps/admin/.env.local",
-    "apps/teacher/.env.local",
-    "apps/portal/.env.local",
-    "apps/platform/.env.local",
-    "apps/apply/.env.local",
-    "apps/sites/.env.local",
-    "apps/www/.env.local"
+$convexClientConfigPaths = @(
+  "apps/admin/.env.local", "apps/apply/.env.local", "apps/platform/.env.local",
+  "apps/portal/.env.local", "apps/teacher/.env.local"
 )
-
-foreach ($cfg in $appConfigs) {
-    if (Test-Path $cfg) {
-        $content = Get-Content $cfg -Raw
-        if ($content -match "NEXT_PUBLIC_CONVEX_URL=https://([a-zA-Z0-9-]+)\.convex\.cloud") {
-            $subdomain = $Matches[1]
-            if ($subdomain -match "prod" -or $subdomain -match "melo-prod") {
-                Write-Error "CRITICAL ABORT: $cfg points to production URL ($subdomain)!"
-                exit 1
-            }
-            Write-Host "[PASS] $cfg verified ($subdomain)." -ForegroundColor Green
-        }
-    }
+foreach ($path in $convexClientConfigPaths) {
+  if (-not (Test-Path $path)) { throw "Abort: required Convex client configuration is absent." }
+  $url = Get-ConfiguredValue $path "NEXT_PUBLIC_CONVEX_URL"
+  if ($approved.convexUrls -notcontains $url) { throw "Abort: client URL is not on the approved development allowlist." }
 }
 
-# 4. Query configured Convex CLI deployment identity
-Write-Host "Querying active Convex CLI deployment..."
-$activeDeployment = (npx convex status --json | ConvertFrom-Json).deploymentName
-Write-Host "Active Convex CLI Deployment Name: $activeDeployment"
-
-if ($activeDeployment -match "prod" -or $activeDeployment -match "production") {
-    Write-Error "CRITICAL ABORT: Convex CLI is bound to PRODUCTION deployment ($activeDeployment)!"
-    exit 1
+# Review remaining apps too: www has a server-side URL; sites must remain a no-Convex-target app.
+$wwwUrl = Get-ConfiguredValue "apps/www/.env.local" "CONVEX_URL"
+$wwwPublicUrl = Get-ConfiguredValue "apps/www/.env.local" "NEXT_PUBLIC_CONVEX_URL"
+if ($approved.convexUrls -notcontains $wwwUrl -or $approved.convexUrls -notcontains $wwwPublicUrl) { throw "Abort: www URL is not on the approved development allowlist." }
+if (Test-Path "apps/sites/.env.local") {
+  $sitesText = Get-Content -Raw "apps/sites/.env.local"
+  if ($sitesText -match "(?m)^(CONVEX|NEXT_PUBLIC_CONVEX)_") { throw "Abort: sites has an unreviewed Convex target." }
 }
-
-Write-Host "=== TARGET ENVIRONMENT VERIFIED: DEVELOPMENT CONFIRMED ===" -ForegroundColor Cyan
+Write-Host "All application target checks passed without printing target values."
 ```
+
+The procedure reads only the named deployment/URL keys into process memory and emits no values. It must not inspect, print, copy, hash, or enumerate any unrelated environment value. The operator records only a pass/fail result and the allowlist version in the external manifest. It covers every application: `admin`, `apply`, `platform`, `portal`, `teacher`, `www`, and `sites`; `sites` is explicitly checked as a no-Convex-target app, not omitted. Before a development schema deployment, run the reviewed development command only after this check; no production deployment, import, or environment-inspection command is authorized by this runbook.
+
+#### Script and command review (required for every refresh)
+Review current target semantics for root `package.json` (`convex:dev`, `convex:deploy`, `convex:codegen`, `demo:seed`, `judge:seed`, and workspace dev/start commands); `scripts/setup-convex.ps1`, `scripts/setup-convex.sh`, and `scripts/verify-convex-setup.ts`; `convex.json`; all seven application package/config directories; and every newly added script found by searching `scripts/`, `package.json`, `apps/*/package.json`, and `packages/*/package.json` for `convex`, `CONVEX_`, `import`, `export`, `deploy`, `seed`, or `migration`. Record path, command, whether it can reach or mutate Convex, target-proof result, and disposition in the external manifest. A script that can initialize, deploy, codegen, seed, import, export, or otherwise reach Convex is not run unless its target is independently allowlisted. The setup scripts and verifier are reviewed even when not used; the verifier can invoke codegen.
 
 #### Stop Condition
 If any variable, file, or active CLI deployment contains `prod:`, `production:`, or matches a known production instance identifier, **HALT IMMEDIATELY**. Do not proceed to Phase 3.
@@ -164,16 +145,17 @@ mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DEV_BACKUP_ZIP="$BACKUP_DIR/melo_dev_backup_${TIMESTAMP}.zip"
 
-# Execute export from development
-npx convex export --path "$DEV_BACKUP_ZIP"
+# Execute export from the already allowlisted development target. Keep all output private.
+PRIVATE_LOG="$BACKUP_DIR/refresh-command.log"
+npx convex export --include-file-storage --path "$DEV_BACKUP_ZIP" >"$PRIVATE_LOG" 2>&1
 ```
 
 #### Step 3.2: Verify Development Backup Integrity
 1. **Calculate SHA-256 Checksum**:
    ```bash
    sha256sum "$DEV_BACKUP_ZIP" > "${DEV_BACKUP_ZIP}.sha256"
-   cat "${DEV_BACKUP_ZIP}.sha256"
    ```
+   Do not print, attach, or copy the checksum or command log.
 2. **Inspect Archive Size & Manifest**:
    ```bash
    # Confirm archive size is greater than 10KB
@@ -190,51 +172,21 @@ npx convex export --path "$DEV_BACKUP_ZIP"
 
 ---
 
-### 2.4 Phase 4: Production Read-Only Snapshot Extraction
+### 2.4 Phase 4: Authorized Snapshot Handoff
 
-Extraction of production data must be executed with a scoped, read-only deploy key or through the authenticated Convex Cloud administrative dashboard.
-
-#### Strict Security Rules for Production Snapshot
-1. **Zero Write Permissions**: The operator token used for export MUST NOT hold deployment or write capabilities.
-2. **Direct Storage Outside Repo**: The snapshot zip must be written directly to `$HOME/.melo-ops/backups/prod_read_only_snapshots/`.
-3. **Zero Secrets / Masked PII in Logging**: Command output containing file lists or metadata must not be piped into shared logs.
-
-```bash
-# Define secure staging directory
-PROD_SNAPSHOT_DIR="$HOME/.melo-ops/backups/prod_read_only_snapshots"
-mkdir -p "$PROD_SNAPSHOT_DIR"
-PROD_SNAPSHOT_ZIP="$PROD_SNAPSHOT_DIR/prod_snapshot_readonly_${TIMESTAMP}.zip"
-
-# Perform export using read-only deploy key (or pre-staged authorized export)
-# NOTE: CONVEX_DEPLOY_KEY must be a read-only admin key
-CONVEX_DEPLOY_KEY="$PROD_READONLY_DEPLOY_KEY" npx convex export --path "$PROD_SNAPSHOT_ZIP"
-
-# Calculate checksum
-sha256sum "$PROD_SNAPSHOT_ZIP" > "${PROD_SNAPSHOT_ZIP}.sha256"
-```
-
----
+This runbook contains no production-targeting CLI command. A separately authorized, read-only production export may be handed to the dual-custody operators through an approved secure process. Its authorization, access control, source deployment ID, and checksum are recorded outside Git without exposing credentials, snapshot contents, paths, or command output. If that evidence is absent or ambiguous, abort the refresh.
 
 ### 2.5 Phase 5: Development Data Ingestion (Restoration Rehearsal)
 
 Restore the read-only production snapshot into the development environment.
 
 #### Pre-Flight Ingestion Check
-The operator must execute a second target verification immediately before running the import:
-```bash
-# Re-verify that CLI is targeting development
-CLI_TARGET=$(npx convex status --json | grep -o '"deploymentName":"[^"]*' | cut -d'"' -f4)
-if [[ "$CLI_TARGET" =~ "prod" ]]; then
-  echo "FATAL: Pre-import check failed! Target is PRODUCTION ($CLI_TARGET). ABORTING."
-  exit 1
-fi
-echo "Confirmed import target: $CLI_TARGET (development)"
-```
+Repeat the explicit development-target procedure from Phase 2 immediately before import. Abort if `CONVEX_DEPLOYMENT` is absent, differs from the approved development reference, or a production-target flag is present. Convex has no `status --json` command; do not substitute an unverified CLI probe for this gate.
 
 #### Execute Ingestion
 ```bash
 # Import the snapshot into development with replace flag
-npx convex import --replace "$PROD_SNAPSHOT_ZIP"
+npx convex import --replace-all "$PROD_SNAPSHOT_ZIP" >"$PRIVATE_LOG" 2>&1
 ```
 
 ---
@@ -244,35 +196,17 @@ npx convex import --replace "$PROD_SNAPSHOT_ZIP"
 Immediately following ingestion, run automated reconciliation queries to confirm data integrity and verify that tenant isolation is intact.
 
 #### Step 6.1: Table Record Count Reconciliation
-Execute query `internal.reconciliation.counts:getTableSummary` to verify parity between snapshot manifest and restored development database:
+Use a reviewed, read-only reconciler to enumerate the complete source snapshot manifest and the restored development deployment. This runbook intentionally does not assume an `internal.reconciliation.counts:getTableSummary` function exists. The manifest must enumerate **every exported application table**, including zero-count tables, with count and byte total where available; the reconciler must enumerate the same complete set after restore. A hand-picked core-table list or sampling is not acceptance evidence. Record the actual utility/version and non-secret aggregate output in the external manifest.
 
-| Table Name | Description | Expected Range / Baseline | Restoration Assertion |
+| Reconciliation scope | Source manifest assertion | Restored-development assertion | Required result |
 |---|---|---|---|
-| `schools` | School branch tenant records | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `users` | Legacy user identity records | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `students` | Student records | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `classes` | Class cohort definitions | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `studentInvoices` | Historical billing documents | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `feePlans` | Fee billing schedule structures | Must match snapshot manifest count exactly | Discrepancy = 0 |
-| `academicSessions`| Academic calendar years | Must match snapshot manifest count exactly | Discrepancy = 0 |
+| Every exported application table | table name and exact document count | same table name and exact document count | every delta = `0` |
+| Table-set completeness | all source table names, including empty tables | identical table-name set | no missing or extra table |
+| File storage | object count and total bytes from source manifest | object count and total bytes after restore | both deltas = `0` |
+| Storage references | all manifest/domain storage references count | same references resolve after restore | zero unresolved references |
 
 #### Step 6.2: File Storage Asset Count Reconciliation
-Query the `_storage` system table via Convex query:
-```typescript
-// Query to verify storage integrity post-refresh
-export const verifyStorageCounts = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    let totalStorageDocs = 0;
-    let totalBytes = 0;
-    for await (const doc of ctx.db.system.query("_storage")) {
-      totalStorageDocs++;
-      totalBytes += doc.size;
-    }
-    return { totalStorageDocs, totalBytes };
-  },
-});
-```
+Use the same reviewed, read-only reconciler (or a verified source snapshot manifest) to count restored file-storage entries and bytes. Do not add an ad-hoc system-table query merely to run this procedure; the utility must be reviewed, deployed to development, and documented before use. Record only aggregate, non-PII values. A difference is not “explained” into acceptance: it is a failed reconciliation until the source manifest or restore target is corrected and a new zero-delta run is recorded.
 
 #### Step 6.3: Tenant Isolation & Referential Integrity Scan
 Execute an automated integrity sweep to confirm that zero cross-tenant references exist:
@@ -291,19 +225,17 @@ Execute an automated integrity sweep to confirm that zero cross-tenant reference
 
 If any of the following triggers occur:
 - Target deployment verification is ambiguous or points to production.
-- Post-refresh record count mismatch exceeds 0.1% or critical tables (`schools`, `users`) have discrepancies.
+- Any table-set, table-count, storage count/byte, or referenced-storage discrepancy is non-zero.
 - Cross-tenant referential corruption is detected.
 - Demo school authentication fails repeatedly with unresolvable cryptographic errors.
 
 #### Execution of Rollback
 ```bash
-echo "=== EXECUTING EMERGENCY DEVELOPMENT RESTORATION ==="
-# Restore development database from pre-refresh backup captured in Phase 3
-npx convex import --replace "$DEV_BACKUP_ZIP"
+# Restore development only after repeating the exact deployment/URL allowlist check.
+# Keep command output in the access-controlled external log.
+npx convex import --replace-all "$DEV_BACKUP_ZIP" >"$PRIVATE_LOG" 2>&1
 
-# Verify restoration of pre-refresh dev state
-npx convex run internal.reconciliation.counts:getTableSummary
-echo "Development database restored to pre-refresh baseline."
+# Reconciliation is required before declaring the baseline restored.
 ```
 > [!NOTE]
 > **PRODUCTION HAS ZERO ROLLBACK ACTIONS**: Production was never mutated, touched, or redirected. Production continues normal operation without disruption.
@@ -312,58 +244,37 @@ echo "Development database restored to pre-refresh baseline."
 
 ## 3. Additive Migration Execution Protocol (Expand -> Backfill -> Verify -> Enforce -> Contract)
 
-### 3.1 Universal Batch Runner Engine Architecture
+### 3.1 Implemented Identity Batch Runner (MX-01 / MX-02 only)
 
-To eliminate transaction timeouts, lock contention, and unbounded memory consumption in Convex, all data migrations (MX-01 through MX-15) must execute through the **Universal Batch Runner Contract**.
+The repository currently implements one durable migration runner: the internal mutation `functions/academic/identityMigration:backfillCanonicalIdentityBatch`. It reconciles canonical identities and creates the corresponding branch membership; it is not a universal runner for MX-01 through MX-15. It owns one long-lived `migrationRuns` record for the active `sliceId`, updating that record after each page. While that record is `in_progress`, the runner schedules its own continuation with `ctx.scheduler.runAfter(0, ...)`.
 
 ```mermaid
 flowchart TD
-    Init[Start Migration Slice] --> ReadState[Read / Create migrationRuns Record]
-    ReadState --> QueryBatch[Query Indexed Batch with Cursor: 100-250 items]
-    QueryBatch --> CheckDone{Batch Empty / Done?}
-    CheckDone -- Yes --> MarkComplete[Set Status: completed, Set completedAt]
-    CheckDone -- No --> MutateBatch[Execute Idempotent Mutation on Batch]
-    MutateBatch --> UpdateState[Patch migrationRuns: new cursor, processedCount]
-    UpdateState --> ScheduleNext[ctx.scheduler.runAfter 0, executeBatch, nextCursor]
-    ScheduleNext --> QueryBatch
+    Invoke[Start or resume internal runner] --> State[Load authoritative migrationRuns state]
+    State --> Page[Page users from stored cursor in ascending order]
+    Page --> Reconcile[Link/create person and membership using canonical token only]
+    Reconcile --> Persist[Update cumulative run cursor, counts, status, and separate issue records]
+    Persist --> Schedule{Still in progress?}
+    Schedule -->|Yes| Continue[Self-schedule continuation]
+    Schedule -->|No| Return[Return persisted run state]
 ```
 
-#### Core Invariants of the Batch Runner
-1. **Bounded Batch Size**: Every batch transaction processes between **100 and 250 documents** (default: 150). Never attempt bulk table scans in a single transaction.
-2. **Durable Cursor-Based Pagination**: Cursors are stored in the database, not kept in ephemeral function memory. If a worker terminates, the next run picks up exactly from the stored cursor.
-3. **Idempotency Key**: Every backfill mutation checks if the target record or field is already populated. Re-running a batch over existing documents produces zero mutations.
-4. **Zero Table Locking**: Convex provides optimistic concurrency control. Bounded batches commit quickly (<50ms execution time), avoiding write collisions with active development users.
-5. **Durable Tracking Schema (`migrationRuns`)**:
-   ```typescript
-   export const migrationRuns = defineTable({
-     sliceId: v.string(), // e.g. "MX-01", "MX-02"
-     migrationName: v.string(),
-     status: v.union(
-       v.literal("pending"),
-       v.literal("in_progress"),
-       v.literal("paused"),
-       v.literal("completed"),
-       v.literal("failed")
-     ),
-     currentTable: v.string(),
-     cursor: v.union(v.string(), v.null()),
-     batchNumber: v.number(),
-     processedCount: v.number(),
-     failedCount: v.number(),
-     totalEstimatedCount: v.number(),
-     idempotencyKey: v.string(),
-     errorDetails: v.optional(v.string()),
-     startedAt: v.number(),
-     updatedAt: v.number(),
-     completedAt: v.optional(v.number()),
-   })
-     .index("by_slice", ["sliceId"])
-     .index("by_status", ["status"]);
-   ```
+#### Implemented contract
+
+1. **Invocation, batch size, and cursor:** accepts optional `cursor`, optional `batchSize`, and optional `sliceId` (default `MX-01`). `batchSize` defaults to `150` and is clamped to **1–150**. The first invocation for a slice starts from its supplied cursor (or `null`). Once a run exists, subsequent caller cursors are ignored: pagination resumes only from that run's stored cursor. The returned cursor is `null` when user pagination has reached the end; migration completion still depends on the persisted status and open issues.
+2. **Identity rule:** it reads `users.authTokenIdentifier`; it does not match by email or promote `users.authId`/provider subject into a canonical token. A person awaiting an exact reviewed token mapping remains `reconciliation_required`. `reconcileLegacyUserIdentity` is a separate internal, reviewed mapping operation; it validates one user/person/token relationship and resolves open issues.
+3. **Idempotent linkage:** an existing matching `persons` row is reused; a `users.personId` and a `(personId, schoolId)` membership are only added when absent. Duplicate token, prelink, and membership conflicts are captured as `identityMigrationIssues`, not silently selected or merged.
+4. **Persistent cumulative run state:** the first invocation inserts the run record; later batches patch that same record. Its `cursor`, `processedCount`, and `failedCount` are cumulative for the run, not per-batch values. `identityMigrationIssues` separately retains the run's unresolved/conflicting rows by `sliceId`. The implemented run fields are `sliceId`, `batchNumber`, `cursor`, `processedCount`, `failedCount`, `status`, `startedAt`, `updatedAt`, optional `completedAt`, and optional `errorMessage`.
+5. **Implemented states and continuation:** `in_progress` means a continuation is self-scheduled; `completed` means the final page completed with no open issues; `failed` means the final page had failures or open identity issues. Resolving identity issues can schedule a final runner invocation, which marks an end-of-stream failed run `completed` only after no open issues remain. There is no persisted `paused`, `scheduled`, or cancellation state.
+6. **Safe pause/stop limitation and procedure:** the runner has no pause or cancellation mechanism, and merely withholding another operator call is **not** a safe stop because an `in_progress` invocation has already scheduled its continuation. To contain it, do not manually invoke the runner; have the authorized deployment/scheduling owner disable the function rollout or scheduling path outside this runner. Already-scheduled or executing work can still run before that containment takes effect and can update the stored cursor and cumulative counts. Do not claim a stop until that owner has accounted for the queued/executing work and the run record is stable. Preserve the run record and issues for review. To recover, restore the approved scheduling/function rollout and invoke the runner for the slice; do not supply a continuation cursor because the persisted cursor is authoritative.
+
+All other MX entries below are proposed rehearsal contracts, not claims that a common runner, run-state model, scheduler, or automatic role seeding exists for them.
 
 ---
 
-### 3.2 Slice-by-Slice Rehearsal Specifications (MX-01 through MX-15)
+### 3.2 Slice-by-Slice Proposed Rehearsal Specifications (MX-01 through MX-15)
+
+Except for the MX-01/MX-02 identity batch described in §3.1, these are future contracts. They do not authorize execution or describe implemented migration-runner behavior.
 
 ```mermaid
 flowchart LR
@@ -379,29 +290,29 @@ flowchart LR
 #### 3.2.1 MX-01: Canonical Identity Bridge
 - **Change Goal**: Decouple human identity from branch employment by introducing `persons` with `authTokenIdentifier` and establishing a bridge to legacy `users`.
 - **Preflight & Inventory**:
-  - Inventory existing `users.authId`, `users.authTokenIdentifier`, and duplicate emails across schools.
+  - Inventory existing `users.authId`, optional `users.authTokenIdentifier`, and missing/duplicate canonical tokens. Do not use duplicate emails as an identity-reconciliation input.
   - Assert that platform admins (`platformAdmins` table) are indexed by `authTokenIdentifier`.
 - **1. Schema Expansion**:
-  - Add table `persons` with validator fields: `authTokenIdentifier: v.string()`, `primaryEmail: v.string()`, `displayName: v.string()`, `status: personStatusValidator`, `createdAt: v.number()`.
-  - Add indexes: `by_auth_token_identifier` on `["authTokenIdentifier"]`, `by_primary_email` on `["primaryEmail"]`.
+  - The implemented table has optional `authTokenIdentifier` only for reconciliation-required legacy records, plus `identityReconciliationState`, contact `email`, `name`, `status`, and timestamps.
+  - The canonical lookup is `persons.by_token_identifier`; `persons.by_email` is not an authentication or migration-link index.
   - Add optional foreign key `users.personId = v.optional(v.id("persons"))` and index `users.by_person` on `["personId"]`.
 - **2. Compatibility Layer (Dual-Read / Dual-Write)**:
-  - Auth helper `resolveActiveIdentity` first queries `persons` by `tokenIdentifier`. If null, falls back to `users` via legacy `by_auth_token_identifier` or `by_auth` (`authId`).
-  - When a new user registers, the auth hook writes both `persons` and `users`.
+  - Auth resolvers use exact `tokenIdentifier` first. Trusted legacy compatibility is an exact provider-subject lookup through `users.by_auth` only for an unlinked legacy row; no email fallback is allowed.
+  - No automatic dual-write/new-user provisioning contract is asserted here.
 - **3. Batch Backfill Mutation**:
   - Cursor-based query iterating `users` ordered by `_creationTime` (batch size: 150).
   - For each user:
-    - If `personId` is already set, continue (idempotent).
-    - Check if `persons` exists by `authTokenIdentifier` or `email`.
-    - If not found, insert new `persons` record.
-    - Patch `users` with `personId: person._id`.
+    - Reuse an existing `personId` only when its canonical token agrees with the legacy row.
+    - Check `persons` by exact `authTokenIdentifier` only.
+    - If no canonical token exists, retain/create a reconciliation-required person and record an open issue; do not use email or subject as a substitute.
+    - Add `users.personId` and the matching membership only when the relationship is unambiguous.
 - **4. Verification & Automated Reconciliation**:
   - Automated check: `count(users where personId is null) === 0`.
   - Check: Zero orphaned `persons` without matching `users`.
   - Dual-read audit: Query a sample of 100 users through both legacy and canonical auth resolvers; verify returned actor identity matches 100%.
 - **5. Safe Rollback & Forward-Fix**:
   - Rollback: Feature flag `ENABLE_CANONICAL_PERSON_LOOKUP` set to `false`. Reverts auth helper to legacy `users` table directly. Zero deletion of `persons` table.
-  - Forward-Fix: Correct duplicate email ambiguities by manual admin resolution or appending disambiguated institutional suffix.
+  - Forward-Fix: Resolve only reviewed canonical-token ambiguities through the internal reconciliation operation; email changes cannot repair identity ownership.
 - **6. Decommissioning / Contract Retirement Criteria**:
   - Minimum observation window: 14 days in production.
   - Resolver fallback counter `legacy_user_lookup_fallback_count === 0` for 7 consecutive days.
@@ -420,7 +331,7 @@ flowchart LR
 - **3. Batch Backfill Mutation**:
   - Iterate `users` where `personId` is populated (batch size: 150).
   - Check if `branchMemberships` exists for `(personId, schoolId)`.
-  - If absent, insert `branchMemberships` with `status: "active"`, `displayTitle: user.role`, `joinedAt: user.createdAt`.
+  - If absent, insert `branchMemberships` using the legacy row’s archived/active lifecycle and timestamps. Do not derive a display title or authority from `user.role`.
   - Canary test: Link Olive Blessed Crest branches under one group `schoolGroups`.
 - **4. Verification & Automated Reconciliation**:
   - Parity check: Every active `users` row has exactly one corresponding `branchMemberships` record for its `schoolId`.
@@ -436,28 +347,14 @@ flowchart LR
 ---
 
 #### 3.2.3 MX-03: RBAC Capabilities & Baseline Admin Migration
-- **Change Goal**: Transition from binary `users.role = "admin"` to granular 47-capability RBAC engine with delegation ceilings.
+- **Change Goal**: Establish a separately approved capability-RBAC migration after an endpoint and authority inventory.
+- **Current implementation boundary**: `rbacMigration` exposes isolated template-maintenance and legacy-admin backfill mutations, but it is not integrated with `migrationRuns`, has no durable MX-03 run state, and does not schedule itself. This runbook does not authorize or claim automatic role/template seeding.
 - **Preflight & Inventory**:
-  - Inventory all users where `role === "admin" || isSchoolAdmin === true`.
-  - Catalog school proprietors and platform super admins.
-- **1. Schema Expansion**:
-  - Add tables `membershipRoleAssignments`, `membershipDirectGrants`, `membershipDirectRestrictions`, `delegationCeilings`.
-  - Add indexes: `membershipRoleAssignments.by_membership` on `["membershipId"]`.
-- **2. Compatibility Layer**:
-  - RBAC evaluator `evaluateEffectiveCapabilities`: If `membershipRoleAssignments` are empty for an admin, automatically grant full baseline administrative capabilities (preserving access to prevent lockout).
-- **3. Batch Backfill Mutation**:
-  - Iterate all `branchMemberships` corresponding to legacy admin users.
-  - For school owners/proprietors: assign template `proprietor`.
-  - For operational administrators: assign template `principal`.
-  - For teachers: assign baseline teacher permissions.
-- **4. Verification & Automated Reconciliation**:
-  - Assert that 100% of pre-existing admin accounts have effective capability count >= baseline admin permissions.
-  - Run negative test suite `SEC-NEG-01` through `SEC-NEG-05` to verify that anti-self-escalation and delegation ceiling logic hold.
-- **5. Safe Rollback & Forward-Fix**:
-  - Rollback: Toggle `RBAC_ENFORCEMENT_MODE = "legacy_fallback"`. Reverts authorization boundary to binary admin check while leaving assigned roles intact.
-  - Forward-Fix: Amend misassigned role templates via versioned administrative correction mutations.
-- **6. Decommissioning Criteria**:
-  - Observation window: 30 days. Zero occurrences of legacy fallback authorization.
+  - Reconcile owners, platform administrators, legacy admin flags, and all endpoint authority consumers through a reviewed inventory. A title or legacy role alone is insufficient authority evidence.
+- **Execution and verification gate**:
+  - Define an explicit reviewed mapping and rollback/forward-correction plan before any assignment mutation. Verify anti-self-escalation, ceiling, branch-scope, and deny-by-default behavior before enforcement.
+- **Decommissioning Criteria**:
+  - The legacy authorization path remains until the independent migration, evidence, and observation gate is approved; no timing or automatic fallback-retirement claim is made here.
 
 ---
 
@@ -570,7 +467,7 @@ flowchart LR
   - Analyze existing student admission numbers per school to determine the maximum issued sequence integer.
   - Seed `admissionNumberSequences` with `nextValue = maxSequence + 1`.
 - **4. Verification & Automated Reconciliation**:
-  - Concurrency test: Simulate 10 concurrent enrollment approvals in the test harness; assert zero duplicate admission numbers allocated and sequence numbers advance strictly without gaps.
+  - Concurrency test: Simulate 10 concurrent enrollment approvals in the test harness; assert zero duplicate admission numbers allocated and that committed values follow the policy; gaps are permitted and must be auditable.
   - Override test: Verify that manual override requires `enrollment.admissions.override_number` capability and records an audit event.
 - **5. Safe Rollback & Forward-Fix**:
   - Rollback: Revert to manual admission number field in registrar UI. The sequence counter is NOT decremented.
@@ -581,24 +478,10 @@ flowchart LR
 ---
 
 #### 3.2.9 MX-09: Institutional Email Operations
-- **Change Goal**: School-owned domain verification and mailbox state machine (`login_only`, `external_verified`, `provider_provisioned`).
-- **Preflight & Inventory**:
-  - Inventory existing `users.email` domains and DNS settings.
-- **1. Schema Expansion**:
-  - Add tables `schoolEmailDomains` and `schoolEmailMailboxes`.
-  - Add indexes: `schoolEmailDomains.by_domain`, `schoolEmailMailboxes.by_email`.
-- **2. Compatibility Layer**:
-  - Address resolution: Check `schoolEmailMailboxes`. If absent, treat the user's login email strictly as `login_only` (no mail dispatch to unverified inboxes).
-- **3. Batch Backfill Mutation**:
-  - For all existing users, register their email in `schoolEmailMailboxes` with `capabilityState = "login_only"`.
-- **4. Verification & Automated Reconciliation**:
-  - Verify that no communication is dispatched to `login_only` addresses without verified external MX/DNS records.
-  - Verify that deleting or leaving a school suspends mailbox access without destroying user audit attribution.
-- **5. Safe Rollback & Forward-Fix**:
-  - Rollback: Suspend automated directory synchronization jobs. System remains in manual email entry mode.
-  - Forward-Fix: Reconcile provider directory state against `schoolEmailMailboxes` via asynchronous idempotency ledger.
-- **6. Decommissioning Criteria**:
-  - Observation window: 45 days.
+- **Change Goal**: A future, provider-approved domain and mailbox-operation model with states `login_only`, `external_verified`, and `provider_provisioned`.
+- **Migration boundary**: A login/contact email is not a canonical identity key or a mailbox-provisioning instruction. This runbook defines no automatic collection, matching, or registration of legacy `users.email` values into mailbox records.
+- **Preflight and execution gate**: Follow D-01/D-03 counsel, school authorization, domain-control, provider, licensing, data-residency, sandbox, and browser-flow gates before any mailbox operation. `login_only` remains non-inbox state and no communication may be dispatched to it.
+- **Reconciliation gate**: Any approved provider operation must use its own reviewed idempotency/reconciliation record and preserve identity/membership attribution. There is no MX-09 migration-runner state or scheduled job contract in this runbook.
 
 ---
 
@@ -612,10 +495,10 @@ flowchart LR
 - **2. Compatibility Layer**:
   - Form loading logic: Inspect server for active draft. If found, prompt user with "Resume Draft / Discard" modal. If absent, initialize blank form.
 - **3. Batch Backfill Mutation**:
-  - No historical data backfill required. Seed scheduled cleanup cron `internal.crons.cleanupExpiredDraftsAndUploads`.
+  - No historical data backfill is required. Any cleanup job requires a separate implemented-and-reviewed contract; it is not part of the migration runner in §3.1.
 - **4. Verification & Automated Reconciliation**:
   - Conflict test: Simulate concurrent edits in two tabs; assert revision mismatch warning prevents silent overwrite.
-  - Expiry test: Verify scheduled cleanup purges temporary uploads older than 24 hours and draft payloads older than 30 days.
+  - Expiry test: Verify any implemented cleanup behavior against its approved retention contract.
 - **5. Safe Rollback & Forward-Fix**:
   - Rollback: Toggle `ENABLE_FORM_AUTOSAVE = false`. Forms revert to standard client-side state without auto-persistence.
   - Forward-Fix: Purge corrupted drafts via admin draft reset utility.
@@ -649,7 +532,7 @@ flowchart LR
 #### 3.2.12 MX-12: Commercial Catalog, Contracts, SaaS & Settlement Ledgers
 - **Change Goal**: Double-entry financial ledgers separating SaaS subscription charges from school collection settlements.
 - **Preflight & Inventory**:
-  - Seed reviewed versioned rate card: Core/Basic at ₦1,000 active student/term + ₦30,000 setup fee.
+  - Seed reviewed versioned rate card: Core/Basic at â‚¦1,000 active student/term + â‚¦30,000 setup fee.
 - **1. Schema Expansion**:
   - Add tables `saasRateCards`, `schoolSaaSContracts`, `ledgerAccounts`, `ledgerJournalEntries`, `ledgerLines`.
   - Add index: `ledgerLines.by_account_and_timestamp` on `["accountId", "timestamp"]`.
@@ -701,7 +584,7 @@ flowchart LR
 - **2. Compatibility Layer**:
   - Asset reader: If asset is in `schoolAssets`, enforce capability check. If legacy site profile asset, allow backwards-compatible read.
 - **3. Batch Backfill Mutation**:
-  - Iterate legacy storage records belonging to schools; register active assets in `schoolAssets` with `status: "clean"`.
+  - Iterate legacy storage records belonging to schools; register assets in `schoolAssets` with `status: "legacy_unverified"`; do not infer a clean scan result from legacy presence.
 - **4. Verification & Automated Reconciliation**:
   - Quarantine test: Verify unverified upload cannot be downloaded via standard URL.
   - Trash recovery test: Move asset to Trash, verify it appears in Trash Explorer, restore it, and verify permissions and access return.
@@ -798,22 +681,17 @@ The following templates must be copied, completed, and archived for every refres
 ## 1. Core Entity Count Reconciliation
 | Table Name | Production Snapshot Count | Restored Development Count | Delta | Status |
 |---|---|---|---|---|
-| `schools` | [Count] | [Count] | 0 | MATCH |
-| `users` | [Count] | [Count] | 0 | MATCH |
-| `students` | [Count] | [Count] | 0 | MATCH |
-| `classes` | [Count] | [Count] | 0 | MATCH |
-| `subjects` | [Count] | [Count] | 0 | MATCH |
-| `studentInvoices` | [Count] | [Count] | 0 | MATCH |
-| `feePlans` | [Count] | [Count] | 0 | MATCH |
-| `academicSessions`| [Count] | [Count] | 0 | MATCH |
-| `academicTerms` | [Count] | [Count] | 0 | MATCH |
-| `gradingBands` | [Count] | [Count] | 0 | MATCH |
+| `[every source-manifest table; attach complete non-secret list]` | [Count] | [Count] | 0 | MATCH |
+
+No abbreviated core-table list is sufficient. The external manifest must attach the full table-name/count comparison, including zero-count tables, and assert no missing or extra table. Any non-zero delta is `FAIL`; “explained” is not an acceptance status.
 
 ## 2. File Storage Reconciliation
 - Snapshot Storage Files Count: [Count]
-- Restored `_storage` System Count: [Count]
-- Total Storage Bytes Restored: [Bytes] (e.g. 4.12 GB)
-- Storage Reconciliation Result: [MATCH / DISCREPANCY EXPLAINED]
+- Restored Storage Files Count: [Count]
+- Snapshot Storage Bytes: [Bytes]
+- Restored Storage Bytes: [Bytes]
+- Storage Reconciliation Result: [MATCH (zero count and byte deltas) / FAIL]
+- Every manifest/domain storage reference resolves after restore: [YES / FAIL]
 
 ## 3. Tenant Isolation & Sample Check
 - Random Student Tenant Sampling (50 records): 100% resolve to valid `schoolId`.
@@ -830,7 +708,7 @@ The following templates must be copied, completed, and archived for every refres
 # Migration Execution Drill Log
 
 - **Migration Slice ID**: [e.g. MX-01 Canonical Identity Bridge]
-- **Run ID**: [UUIDv4 from migrationRuns]
+- **Migration Run Record**: [`migrationRuns` Convex document ID; one long-lived record per active slice, patched with cumulative cursor/counts across batches; record linked `identityMigrationIssues` separately]
 - **Start Time**: YYYY-MM-DD HH:MM:SS UTC
 - **End Time**: YYYY-MM-DD HH:MM:SS UTC
 - **Total Duration**: [e.g. 4m 12s]
@@ -876,7 +754,7 @@ The following templates must be copied, completed, and archived for every refres
 
 ## 1. Abort & Rollback Sequence
 1. Abort Signal Triggered At: HH:MM:SS UTC
-2. CLI Command Executed: `npx convex import --replace <DEV_BACKUP_ZIP>`
+2. CLI Command Executed: `npx convex import --replace-all <DEV_BACKUP_ZIP>` (development only after explicit target verification)
 3. Restoration Duration: [e.g. 1m 45s]
 4. Post-Rollback Database State Verified: [YES]
 
@@ -901,11 +779,11 @@ The following templates must be copied, completed, and archived for every refres
 
 | Severity | Incident Description | Threshold / Trigger | Immediate Operator Action |
 |---|---|---|---|
-| **SEV-1 (CRITICAL)** | Target Ambiguity / Production Exposure Risk | Any shell, script, or CLI tool referencing production during refresh or migration. | **IMMEDIATE ABORT**. Kill all processes. Lock operator tokens. Verify zero prod mutations. |
-| **SEV-1 (CRITICAL)** | Data Corruption / Referential Mismatch | >0.1% foreign key mismatch, or any core table (`schools`, `users`) mismatch post-refresh. | **ABORT & ROLLBACK**. Execute Phase 7 restore of pre-refresh dev backup. |
-| **SEV-2 (HIGH)** | Authentication / Tenant Isolation Failure | Demo school authentication failure or cross-branch tenant data visibility. | **HALT MIGRATION**. Freeze backfill runners. Do not proceed to subsequent slices. |
-| **SEV-2 (HIGH)** | Migration Batch Lock Contention / Timeout | Single batch mutation exceeds 5000ms or fails with OCC error >3 times consecutively. | **PAUSE RUNNER**. Reduce batch size (e.g. from 150 to 75). Resume with backoff. |
-| **SEV-3 (MEDIUM)** | Missing Index Warning | Convex CLI logs `TABLE_SCAN` or missing index during batch pagination. | **PAUSE RUNNER**. Deploy missing index first via schema expansion before resuming backfill. |
+| **SEV-1 (CRITICAL)** | Target Ambiguity / Production Exposure Risk | Any shell, script, or CLI tool referencing production during refresh or migration. | **IMMEDIATE ABORT AND CONTAINMENT**. Kill local processes; if the identity runner is active, use §3.1 to disable scheduling/function rollout and account for queued work. Lock operator tokens and verify zero production mutations. |
+| **SEV-1 (CRITICAL)** | Reconciliation mismatch | Any non-zero table-set/count, storage count/byte, or referenced-storage discrepancy after refresh. | **ABORT & ROLLBACK**. Execute Phase 7 restore of pre-refresh dev backup. |
+| **SEV-2 (HIGH)** | Authentication / Tenant Isolation Failure | Demo school authentication failure or cross-branch tenant data visibility. | **CONTAIN MIGRATION**. Follow §3.1's safe-stop procedure before subsequent slices. |
+| **SEV-2 (HIGH)** | Migration Batch Lock Contention / Timeout | Single batch mutation exceeds 5000ms or fails with OCC error >3 times consecutively. | **CONTAIN MIGRATION**. The scheduling/function-rollout owner must account for already-scheduled work; then review the cumulative run record and use an approved 1–150 batch size for recovery. |
+| **SEV-3 (MEDIUM)** | Missing Index Warning | Convex CLI logs `TABLE_SCAN` or missing index during batch pagination. | **CONTAIN MIGRATION** under §3.1 before deploying/reviewing the index. |
 | **SEV-3 (MEDIUM)** | Storage Asset Count Discrepancy | Non-zero delta between snapshot storage manifest and restored storage records. | **INVESTIGATE DELTA**. Verify if missing files are expired temporary uploads or orphans. |
 
 ---
@@ -915,31 +793,32 @@ The following templates must be copied, completed, and archived for every refres
 ```mermaid
 flowchart TD
     Detect[Anomaly Detected During Execution] --> Classify{Classify Anomaly}
-    
+
     Classify -- Target Ambiguity or Production Risk --> SEV1_Prod[SEV-1: Target Ambiguity]
     SEV1_Prod --> KillAll[Kill Shell / CLI Process Immediately]
-    KillAll --> AuditProd[Audit Production Read-Only State]
+    KillAll --> ContainProd[If runner active, disable scheduling/function rollout and account for queued work]
+    ContainProd --> AuditProd[Audit Production Read-Only State]
     AuditProd --> IncidentReport[Log Incident Report & Escalate to Security]
 
-    Classify -- Referential Mismatch > 0.1% --> SEV1_Ref[SEV-1: Referential Corruption]
+    Classify -- Any reconciliation mismatch --> SEV1_Ref[SEV-1: Reconciliation failure]
     SEV1_Ref --> HaltIngest[Halt Ingestion / Migration]
     HaltIngest --> RollbackDev[Execute Phase 7: Restore Pre-Refresh Dev Backup]
     RollbackDev --> VerifyDev[Verify Development Integrity]
 
     Classify -- Auth Failure or Tenant Isolation Breach --> SEV2_Auth[SEV-2: Security Isolation Breach]
-    SEV2_Auth --> PauseSlice[Pause Current Migration Slice via migrationRuns]
-    PauseSlice --> InvestigateResolver[Investigate Dual-Read Resolver / Auth Bridge]
+    SEV2_Auth --> ContainAuth[Disable scheduling/function rollout; account for queued work]
+    ContainAuth --> InvestigateResolver[Investigate Canonical/Legacy Auth Bridge]
     InvestigateResolver --> FixForward[Apply Audited Forward Fix or Revert Flag]
 
     Classify -- Batch Timeout or Lock Contention --> SEV2_Timeout[SEV-2: Batch Concurrency Timeout]
-    SEV2_Timeout --> ThrottleBatch[Reduce Batch Size: 150 -> 75 docs]
-    ThrottleBatch --> ApplyBackoff[Apply 1000ms Backoff & Retry]
-    ApplyBackoff --> ResumeRunner[Resume Migration Runner]
+    SEV2_Timeout --> ContainTimeout[Disable scheduling/function rollout; account for queued work]
+    ContainTimeout --> ReviewRun[Review cumulative run state]
+    ReviewRun --> ApproveNext[Approve recovery invocation]
 
     Classify -- Missing Index Warning --> SEV3_Index[SEV-3: Missing Index Warning]
-    SEV3_Index --> PauseMigration[Pause Migration Runner]
-    PauseMigration --> AddSchemaIndex[Add withIndex to schema.ts & Codegen]
-    AddSchemaIndex --> ResumeRunner
+    SEV3_Index --> ContainIndex[Disable scheduling/function rollout; account for queued work]
+    ContainIndex --> AddSchemaIndex[Review/add index and codegen]
+    AddSchemaIndex --> ApproveNext
 ```
 
 ---
@@ -951,12 +830,12 @@ flowchart TD
 - **Root Cause**: Operator executed command in an unverified shell or loaded production `.env` file.
 - **Resolution**:
   1. Immediately terminate terminal process (`Ctrl+C` or `kill -9`).
-  2. Run `npx convex status` to confirm CLI state.
+  2. Re-run the explicit `CONVEX_DEPLOYMENT` equality check from Phase 2; do not use nonexistent a CLI status probe.
   3. Inspect production audit logs to confirm zero mutations were received.
   4. Re-execute Phase 2 verification in a pristine terminal session.
 
-#### 2. Referential Mismatch Anomaly (>0.1%)
-- **Symptom**: `verifyTenantIntegrity` returns mismatched IDs or count discrepancy >0.1% between source manifest and restored tables.
+#### 2. Reconciliation Mismatch Anomaly (any non-zero delta)
+- **Symptom**: The complete reconciler finds a missing/extra table, non-zero table count, storage count/byte, or referenced-storage discrepancy.
 - **Root Cause**: Incomplete snapshot extraction, network interruption during ingestion, or uncommitted source transactions.
 - **Resolution**:
   1. Abort immediately. Do not start any migration slice.
@@ -968,32 +847,56 @@ flowchart TD
 - **Root Cause**: Canonical person resolver failed to find legacy auth identifier fallback, or password hash mismatch in local test fixture.
 - **Resolution**:
   1. Inspect `migrationRuns` table for MX-01 state.
-  2. Test identity resolver with test query `internal.auth.testResolver:resolveIdentityByEmail`.
+  2. Test the authenticated token-identifier mapping with an internal test seam; do not resolve identity by email.
   3. Verify that `users` record has valid `authTokenIdentifier` or `authId`.
   4. If bridge logic is flawed, update `migrationAuth.ts` fallback resolver; never mutate customer authentication credentials.
 
 #### 4. Migration Timeout / Concurrency Contention Anomaly
 - **Symptom**: Convex mutation fails with `OptimisticConcurrencyControlError` or execution exceeds 5000ms.
-- **Root Cause**: Batch size too large (e.g. 250 documents) or active concurrent write traffic on target table.
+- **Root Cause**: Active concurrent write traffic on the target table or a batch size that is too large for the current workload (the runner clamps requests to 1–150 documents).
 - **Resolution**:
-  1. Patch `migrationRuns` for active slice: set `status = "paused"`.
-  2. Adjust batch size parameter in runner from 150 to 75 or 50.
-  3. Re-launch runner. The durable cursor guarantees continuation from the exact last successful document without re-processing.
+  1. Do not manually invoke the runner again. There is no `paused` state or cancellation API, and an `in_progress` batch self-schedules its continuation.
+  2. Have the authorized deployment/scheduling owner disable the scheduling or function-rollout path. They must account for work already scheduled or executing before declaring the run contained.
+  3. When the persisted run record is stable, review its cumulative cursor/counts and issues. After the fix, restore the approved path and invoke the slice with an approved 1–150 batch size; do not pass a continuation cursor.
 
 #### 5. Missing Index Warning Anomaly
 - **Symptom**: Convex server logs warning: `Query performed table scan without index`.
-- **Root Cause**: Query in migration backfill used `.filter()` instead of `.withIndex()`.
+- **Root Cause**: A migration query lacks the required index.
 - **Resolution**:
-  1. Pause migration runner.
+  1. Use the §3.1 containment procedure; there is no runner-level pause operation.
   2. Add the appropriate compound index in `packages/convex/schema.ts` (e.g. `by_slice_and_status` on `["sliceId", "status"]`).
   3. Run `pnpm convex:codegen` and deploy schema expansion.
-  4. Update runner query to `.withIndex(...)`.
-  5. Resume migration runner.
+  4. Update the affected query to `.withIndex(...)`.
+  5. After review, restore the approved scheduling/function rollout and resume from the stored run state without passing a cursor.
 
 #### 6. Storage Count Discrepancy Anomaly
 - **Symptom**: Total document count in `_storage` does not equal snapshot manifest storage count.
 - **Root Cause**: Temporary upload files or expired drafts were pruned by background cleanup jobs during export, or large binary upload was in-flight.
 - **Resolution**:
   1. Query `_storage` records joined with active domain tables (`students.photoStorageId`, `schoolSiteAssets.storageId`).
-  2. Confirm that 100% of referenced operational assets exist and are accessible.
-  3. If missing files are confirmed to be orphaned or expired temporary artifacts, log the delta in Template 2 with forensic justification. If an operational asset is missing, trigger Phase 7 rollback.
+  2. Confirm every sampled/reconciled referenced operational asset is present; record the sample scope and any excluded temporary/orphaned artifacts.
+  3. Do not accept a temporary/orphan explanation as a refresh result: correct the source manifest/target scope or restore process, then re-run to zero delta. Trigger Phase 7 rollback before any migration work.
+
+
+---
+
+## 6. Recorded Development Refresh Evidence (non-secret)
+
+### 6.1 Development refresh execution manifest
+
+This manifest records only verified non-secret facts already available to this documentation set. A blank, omitted, or unavailable evidence value is **pending**, not a pass. Backup archives, snapshots, command logs, credentials, PII, and secret values remain outside Git.
+
+| Evidence item | Recorded non-secret fact | Status |
+|---|---|---|
+| Target proof | The refresh target was verified against an approved development deployment ID through the external allowlist procedure in §2.2. The deployment ID itself is intentionally not copied into Git. | `VERIFIED (external allowlist)` |
+| Operator authorization | No non-secret operator authorization reference was supplied for inclusion in this repository. | `PENDING` |
+| Pre-refresh development backup | A development backup was required and retained in access-controlled storage outside Git. Its independently verified SHA-256 checksum value was not supplied to this documentation set. | `PENDING checksum evidence` |
+| Read-only production export | A production snapshot was handled through the authorized read-only handoff boundary. Its checksum value was not supplied to this documentation set. | `PENDING checksum evidence` |
+| Full application-table reconciliation | Recorded aggregate result: **3,956 documents** and **zero table-count differences**. The full non-secret per-table source/restored manifest is not retained here, so its independent review remains open. | `RECORDED aggregate; PENDING manifest review` |
+| Storage-file reconciliation | Recorded aggregate: **60 storage files**. Paired source/restored file-count evidence is not retained here. | `RECORDED aggregate; PENDING paired count evidence` |
+| Storage-byte reconciliation | No verified source/restored storage-byte totals were supplied. | `PENDING — not performed/recorded` |
+| Storage-reference reconciliation | No verified complete reference-resolution output was supplied. | `PENDING` |
+| Tenant/auth smoke check | No verified tenant-isolation or authenticated demo smoke result was supplied for this record. | `PENDING` |
+| Browser smoke check | No browser smoke result was supplied. | `PENDING — not performed/recorded` |
+
+The aggregate evidence above does not prove migration correctness, restore/rollback validation, legal approval, provider validation, runtime validation, full tenant isolation, or browser behavior. Those gates remain open.

@@ -946,7 +946,12 @@ export default defineSchema({
 
   // --- Canonical Identity & Multi-Branch Tenancy Kernel (F2) ---
   persons: defineTable({
-    authTokenIdentifier: v.string(),
+    // Only a provider-issued token identifier is canonical. Legacy records without
+    // one remain inaccessible until an internal reconciliation supplies it.
+    authTokenIdentifier: v.optional(v.string()),
+    identityReconciliationState: v.optional(
+      v.union(v.literal("resolved"), v.literal("reconciliation_required"))
+    ),
     email: v.string(),
     name: v.string(),
     status: v.union(
@@ -1022,6 +1027,27 @@ export default defineSchema({
   })
     .index("by_slice_and_status", ["sliceId", "status"])
     .index("by_slice_and_batch", ["sliceId", "batchNumber"]),
+
+  identityMigrationIssues: defineTable({
+    sliceId: v.string(),
+    userId: v.id("users"),
+    schoolId: v.id("schools"),
+    code: v.union(
+      v.literal("missing_canonical_token"),
+      v.literal("duplicate_canonical_token"),
+      v.literal("mismatched_prelink"),
+      v.literal("duplicate_membership"),
+      v.literal("migration_error")
+    ),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    message: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_slice_and_status", ["sliceId", "status"])
+    .index("by_user_and_status", ["userId", "status"])
+    .index("by_slice_and_user_and_code", ["sliceId", "userId", "code"]),
 
   // --- Granular Capability RBAC & Authority Ceilings (H2) ---
   roleTemplates: defineTable({
@@ -1279,6 +1305,7 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
+    .index("by_school_and_user", ["schoolId", "userId"])
     .index("by_source_application", ["sourceApplicationId"]),
 
   // --- Within-Group Branch-to-Branch Student Transfers (F4 / MX-15) ---
@@ -3287,6 +3314,7 @@ export default defineSchema({
     schoolId: v.id("schools"),
     importer: v.string(),
     importerUserId: v.optional(v.id("users")),
+    ownerMembershipId: v.optional(v.id("branchMemberships")),
     entityType: v.union(
       v.literal("students"),
       v.literal("teachers"),
@@ -3302,6 +3330,7 @@ export default defineSchema({
     rawTokenCount: v.optional(v.number()),
     stagedRows: v.array(v.any()),
     validationErrors: v.array(v.any()),
+    reviewedBy: v.optional(v.string()),
     commitResult: v.optional(
       v.object({
         committedCount: v.number(),
@@ -3366,9 +3395,17 @@ export default defineSchema({
     platformFeeKobo: v.number(),
     netPayoutKobo: v.number(),
     currency: v.string(),
-    clearingCycle: v.literal("NIBSS_T_PLUS_1"),
-    estimatedSettlementDate: v.number(),
-    settlementNotice: v.string(),
+    // Historical NIBSS values remain readable; new records are either backed by
+    // provider evidence or explicitly unavailable.
+    clearingCycle: v.union(
+      v.literal("NIBSS_T_PLUS_1"),
+      v.literal("provider_reported"),
+      v.literal("unavailable")
+    ),
+    estimatedSettlementDate: v.optional(v.number()),
+    settlementNotice: v.optional(v.string()),
+    providerSettlementReference: v.optional(v.string()),
+    providerClearingCycle: v.optional(v.string()),
     destinationAccount: v.optional(v.string()),
     status: v.union(
       v.literal("pending_clearing"),
@@ -3416,7 +3453,12 @@ export default defineSchema({
       v.literal("storage_bytes")
     ),
     allocatedUnits: v.number(),
+    // `consumedUnits` remains the quota total; buckets show where the bytes
+    // currently reside without counting a storage object twice.
     consumedUnits: v.number(),
+    activeStorageBytes: v.optional(v.number()),
+    trashStorageBytes: v.optional(v.number()),
+    tempStorageBytes: v.optional(v.number()),
     reservedUnits: v.number(),
     warningThresholdPercent: v.optional(v.number()),
     criticalThresholdPercent: v.optional(v.number()),
@@ -3439,6 +3481,11 @@ export default defineSchema({
     ),
     unitsDelta: v.number(),
     reservationId: v.optional(v.string()),
+    measurementMetadata: v.optional(v.object({
+      source: v.string(),
+      measuredAt: v.number(),
+      reference: v.optional(v.string()),
+    })),
     actorUserId: v.optional(v.id("users")),
     actorPersonId: v.optional(v.id("persons")),
     operationName: v.string(),
@@ -3447,6 +3494,41 @@ export default defineSchema({
   })
     .index("by_school_and_timestamp", ["schoolId", "timestamp"])
     .index("by_school_and_meter", ["schoolId", "meterType"]),
+
+  usageQuotaReservations: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    idempotencyKey: v.string(),
+    operationName: v.string(),
+    unitsReserved: v.number(),
+    actualUnits: v.optional(v.number()),
+    measurementMetadata: v.optional(v.object({
+      source: v.string(),
+      measuredAt: v.number(),
+      reference: v.optional(v.string()),
+    })),
+    status: v.union(
+      v.literal("reserved"),
+      v.literal("committed"),
+      v.literal("released"),
+      v.literal("rejected")
+    ),
+    allowed: v.boolean(),
+    shortfall: v.optional(v.number()),
+    allocatedUnits: v.number(),
+    consumedUnits: v.number(),
+    reservedUnits: v.number(),
+    availableUnits: v.number(),
+    utilizationPercent: v.number(),
+    committedAt: v.optional(v.number()),
+    releasedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school_and_meter_and_idempotency_key", ["schoolId", "meterType", "idempotencyKey"]),
 
   // --- School Asset Security, Navigable Trash, and PDF Compression (H9 / MX-14) ---
   schoolAssets: defineTable({
@@ -3457,6 +3539,8 @@ export default defineSchema({
     byteSize: v.number(),
     sha256: v.string(),
     category: v.string(),
+    // Optional until the deploy-compatible asset metadata backfill initializes legacy rows.
+    validationStatus: v.optional(v.union(v.literal("pending"), v.literal("valid"), v.literal("invalid"))),
     scanStatus: v.union(
       v.literal("quarantined"),
       v.literal("scanning"),
@@ -3473,6 +3557,11 @@ export default defineSchema({
     rollbackExpiryAt: v.optional(v.number()),
     pageCount: v.optional(v.number()),
     isOptimized: v.optional(v.boolean()),
+    // Set only after authoritative storage metadata has been included in a
+    // bucket baseline. Lifecycle accounting is blocked until then.
+    storageAccountingInitializedAt: v.optional(v.number()),
+    storageReconciliationState: v.optional(v.literal("reconciliation_required")),
+    uploadIntentId: v.optional(v.id("assetUploadIntents")),
     uploadedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -3480,7 +3569,62 @@ export default defineSchema({
     .index("by_school_and_trashed", ["schoolId", "isTrashed"])
     .index("by_school_and_scan", ["schoolId", "scanStatus"])
     .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
+    .index("by_rollback_expiry", ["rollbackExpiryAt"])
+    .index("by_upload_intent", ["uploadIntentId"])
+    .index("by_storage", ["storageId"])
+    .index("by_rollback_storage", ["rollbackStorageId"])
     .index("by_school", ["schoolId"]),
+
+  assetUploadIntents: defineTable({
+    schoolId: v.id("schools"),
+    requestedByUserId: v.optional(v.id("users")),
+    storageId: v.optional(v.id("_storage")),
+    assetId: v.optional(v.id("schoolAssets")),
+    status: v.union(v.literal("pending"), v.literal("finalized"), v.literal("expired")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_storage", ["storageId"]),
+
+  pdfCompressionCandidates: defineTable({
+    schoolId: v.id("schools"),
+    assetId: v.id("schoolAssets"),
+    sourceStorageId: v.id("_storage"),
+    sourceSha256: v.string(),
+    candidateStorageId: v.id("_storage"),
+    candidateSha256: v.string(),
+    optimizerVersion: v.string(),
+    status: v.union(v.literal("verified"), v.literal("rejected")),
+    reason: v.optional(v.string()),
+    originalPageCount: v.optional(v.number()),
+    compressedPageCount: v.optional(v.number()),
+    originalSizeBytes: v.optional(v.number()),
+    compressedSizeBytes: v.optional(v.number()),
+    savingsPercentage: v.optional(v.number()),
+    byteSize: v.number(),
+    cleanupScheduledAt: v.optional(v.number()),
+    verifiedAt: v.number(),
+  })
+    .index("by_asset_and_source_and_candidate", ["assetId", "sourceStorageId", "candidateStorageId"])
+    .index("by_candidate_storage", ["candidateStorageId"])
+    .index("by_cleanup_schedule", ["cleanupScheduledAt"]),
+
+  assetStorageReconciliationIssues: defineTable({
+    schoolId: v.id("schools"),
+    assetId: v.id("schoolAssets"),
+    storageId: v.id("_storage"),
+    code: v.union(
+      v.literal("missing_storage"),
+      v.literal("duplicate_storage_ownership")
+    ),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_asset_and_storage_and_code", ["assetId", "storageId", "code"])
+    .index("by_school_and_status", ["schoolId", "status"]),
 
   assetRetentionHolds: defineTable({
     assetId: v.id("schoolAssets"),

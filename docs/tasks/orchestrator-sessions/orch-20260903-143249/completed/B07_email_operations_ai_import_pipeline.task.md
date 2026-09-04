@@ -1,16 +1,17 @@
 # Task B07 / M6: Institutional Email Operations and AI Import Review Pipeline (H5/F3) - Execution Record
 
-**Status**: COMPLETED  
-**Date**: 2026-09-03  
-**Parent Session**: `orch-20260903-143249`  
-**Milestone**: M6 / PR-G  
-**Authors**: Integrations Builder & AI Pipeline Engineer  
+**Historical execution status**: COMPLETED (reported 2026-09-03)
+**Current independent-review status**: FAILED / superseded for acceptance; this record is historical work only, not current implementation, provider/runtime/legal evidence, or release authorization.
+**Date**: 2026-09-03
+**Parent Session**: `orch-20260903-143249`
+**Milestone**: M6 / PR-G
+**Authors**: Integrations Builder & AI Pipeline Engineer
 
 ---
 
 ### 1. Architectural Summary & Scope
 
-Task B-07 establishes institutional domain management, directory mailbox provisioning with collision resolution, and a safe AI-assisted import pipeline under strict human operator review:
+This historical execution record reported that B-07 established institutional domain management, directory mailbox provisioning with collision resolution, and a safe AI-assisted import pipeline under strict human operator review:
 
 1. **Convex Schema Expansion (`packages/convex/schema.ts`)**:
    - `schoolEmailDomains`:

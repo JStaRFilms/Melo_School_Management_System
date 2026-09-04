@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { query } from "../../_generated/server";
-import { Id } from "../../_generated/dataModel";
+import { Doc, Id } from "../../_generated/dataModel";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
+import { isTrustedLegacySubjectIssuer, resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
 
 /**
  * Get authenticated user and their school membership
@@ -24,11 +25,20 @@ export async function getAuthenticatedSchoolMembership(
     throw new ConvexError("Unauthorized");
   }
 
-  // Look up user by auth ID
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .unique();
+  const user = await resolveTokenFirstTrustedLegacyRow<Doc<"users">>(identity, {
+    byTokenIdentifier: (tokenIdentifier) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_auth_token_identifier", (q: any) =>
+          q.eq("authTokenIdentifier", tokenIdentifier)
+        )
+        .take(2),
+    bySubject: (subject) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_auth", (q: any) => q.eq("authId", subject))
+        .take(2),
+  });
 
   if (!user) {
     throw new ConvexError("School membership not found");
@@ -405,31 +415,21 @@ export async function resolveActiveMembership(
   }
 
   const tokenIdentifier: string | undefined = identity.tokenIdentifier;
-  const authId: string | undefined = identity.subject;
 
-  // 1. Check platformAdmins for Super Admin bypass
-  let platformAdmin = tokenIdentifier
+  // 1. Check platformAdmins for Super Admin bypass. Duplicate canonical tokens
+  // are an authorization failure, never an arbitrary first match.
+  const platformAdminMatches = tokenIdentifier
     ? await ctx.db
         .query("platformAdmins")
         .withIndex("by_auth_token_identifier", (q: any) =>
           q.eq("authTokenIdentifier", tokenIdentifier)
         )
-        .first()
-    : null;
-
-  if (!platformAdmin && authId) {
-    platformAdmin = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_auth", (q: any) => q.eq("authId", authId))
-      .first();
+        .take(2)
+    : [];
+  if (platformAdminMatches.length > 1) {
+    throw new ConvexError("Not authorized: ambiguous platform identity");
   }
-
-  if (!platformAdmin && identity.email) {
-    platformAdmin = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_email", (q: any) => q.eq("email", identity.email))
-      .first();
-  }
+  const platformAdmin = platformAdminMatches[0] ?? null;
 
   if (platformAdmin) {
     if (!platformAdmin.isActive) {
@@ -444,22 +444,19 @@ export async function resolveActiveMembership(
     };
   }
 
-  // 2. Resolve Canonical Person via authTokenIdentifier (or email fallback)
-  let person = tokenIdentifier
+  // 2. Resolve the canonical person exclusively through the stable token identifier.
+  const personMatches = tokenIdentifier
     ? await ctx.db
         .query("persons")
         .withIndex("by_token_identifier", (q: any) =>
           q.eq("authTokenIdentifier", tokenIdentifier)
         )
-        .first()
-    : null;
-
-  if (!person && identity.email) {
-    person = await ctx.db
-      .query("persons")
-      .withIndex("by_email", (q: any) => q.eq("email", identity.email))
-      .first();
+        .take(2)
+    : [];
+  if (personMatches.length > 1) {
+    throw new ConvexError("Not authorized: ambiguous canonical identity");
   }
+  const person = personMatches[0] ?? null;
 
   // 3. If person exists, query branchMemberships for requested schoolId
   if (person && person.status === "active") {
@@ -471,56 +468,75 @@ export async function resolveActiveMembership(
       .first();
 
     if (membership && membership.status === "active") {
-      let legacyUser = membership.legacyUserId
+      const linkedLegacyUser = membership.legacyUserId
         ? await ctx.db.get(membership.legacyUserId)
         : null;
+      if (
+        linkedLegacyUser &&
+        linkedLegacyUser.authTokenIdentifier &&
+        linkedLegacyUser.authTokenIdentifier !== tokenIdentifier
+      ) {
+        throw new ConvexError("Not authorized: mismatched legacy identity link");
+      }
 
-      if (!legacyUser) {
+      if (!linkedLegacyUser) {
         const schoolUsers = await ctx.db
           .query("users")
           .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
           .collect();
-
-        legacyUser =
-          schoolUsers.find(
-            (u: any) =>
-              !u.isArchived &&
-              (u.personId === person._id ||
-                (tokenIdentifier && u.authTokenIdentifier === tokenIdentifier) ||
-                (authId && u.authId === authId) ||
-                (person.email && u.email?.toLowerCase() === person.email.toLowerCase()))
-          ) ?? null;
+        const matchingUsers = schoolUsers.filter(
+          (u: any) =>
+            !u.isArchived &&
+            (u.personId === person._id ||
+              (tokenIdentifier && u.authTokenIdentifier === tokenIdentifier))
+        );
+        if (matchingUsers.length > 1) {
+          throw new ConvexError("Not authorized: ambiguous legacy identity link");
+        }
+        return {
+          personId: person._id,
+          membershipId: membership._id,
+          schoolId,
+          userId: matchingUsers[0]?._id,
+          role: matchingUsers[0]?.role ?? "member",
+          isPlatformAdmin: false,
+        };
       }
 
       return {
         personId: person._id,
         membershipId: membership._id,
         schoolId,
-        userId: legacyUser?._id,
-        role: legacyUser?.role ?? "member",
+        userId: linkedLegacyUser._id,
+        role: linkedLegacyUser.role,
         isPlatformAdmin: false,
       };
     }
   }
 
-  // 4. Compatibility fallback during bridge:
-  // If no person or membership exists yet, query existing users by (schoolId, authTokenIdentifier) or (schoolId, authId)
+  // 4. Compatibility bridge. A canonical prelink must exactly match the token.
+  // An otherwise unlinked legacy row may use only its exact historical authId
+  // and the provider subject; subject is never promoted to a canonical token.
   const schoolUsers = await ctx.db
     .query("users")
     .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
     .collect();
-
-  const legacyUser = schoolUsers.find(
-    (u: any) =>
-      !u.isArchived &&
-      ((tokenIdentifier && u.authTokenIdentifier === tokenIdentifier) ||
-        (authId && u.authId === authId) ||
-        (identity.email && u.email?.toLowerCase() === identity.email.toLowerCase()))
+  const tokenUsers = schoolUsers.filter(
+    (u: any) => !u.isArchived && tokenIdentifier && u.authTokenIdentifier === tokenIdentifier
   );
-
-  if (legacyUser) {
+  if (tokenUsers.length > 1) {
+    throw new ConvexError("Not authorized: ambiguous canonical identity link");
+  }
+  if (tokenUsers.length === 1) {
+    const legacyUser = tokenUsers[0];
+    if (legacyUser.personId) {
+      const linkedPerson = await ctx.db.get(legacyUser.personId);
+      if (linkedPerson?.authTokenIdentifier && linkedPerson.authTokenIdentifier !== tokenIdentifier) {
+        throw new ConvexError("Not authorized: mismatched canonical identity link");
+      }
+    }
     return {
-      personId: legacyUser.personId ?? person?._id,
+      personId: legacyUser.personId,
       membershipId: undefined,
       schoolId,
       userId: legacyUser._id,
@@ -529,10 +545,32 @@ export async function resolveActiveMembership(
     };
   }
 
-  // 5. If not authorized, throw clear error
-  throw new ConvexError(
-    "Not authorized: User does not have an active membership in this branch"
-  );
+  const subjectUsers = identity.subject && isTrustedLegacySubjectIssuer(identity.issuer)
+    ? schoolUsers.filter(
+        (u: any) =>
+          !u.isArchived &&
+          !u.authTokenIdentifier &&
+          u.authId === identity.subject
+      )
+    : [];
+  if (subjectUsers.length !== 1) {
+    throw new ConvexError("Not authorized: User does not have an active membership in this branch");
+  }
+  const legacyUser = subjectUsers[0];
+  const linkedPerson = legacyUser.personId
+    ? await ctx.db.get(legacyUser.personId)
+    : null;
+  if (linkedPerson?.authTokenIdentifier) {
+    throw new ConvexError("Not authorized: mismatched legacy identity link");
+  }
+  return {
+    personId: legacyUser.personId,
+    membershipId: undefined,
+    schoolId,
+    userId: legacyUser._id,
+    role: legacyUser.role,
+    isPlatformAdmin: false,
+  };
 }
 
 export const getActiveMembership = query({
