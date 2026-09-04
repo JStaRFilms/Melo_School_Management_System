@@ -270,8 +270,8 @@ export const finalizeAssetUpload = mutation({
     // and this mutation writes the intent and asset atomically.
     await assertStorageAvailableForAssetBinding(ctx, args.storageId);
     const metadata = await ctx.db.system.get("_storage", args.storageId);
-    if (!metadata || (metadata.contentType && !ALLOWED_MIME_TYPES.has(metadata.contentType))) {
-      throw new ConvexError("Uploaded file has an unsupported authoritative content type");
+    if (!metadata?.contentType || !ALLOWED_MIME_TYPES.has(metadata.contentType)) {
+      throw new ConvexError("Uploaded file has a missing or unsupported authoritative content type");
     }
     if (metadata.size > MAX_FILE_SIZE_BYTES) {
       throw new ConvexError("Uploaded file exceeds the maximum permissible size of 25 MB");

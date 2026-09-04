@@ -24,6 +24,11 @@ const modules = Object.fromEntries(
 const gradingBandsApi = (api as any).functions.academic.gradingBands;
 const admissionNumbersApi = (api as any).functions.academic.admissionNumbers;
 const bankAccountsApi = (api as any).functions.academic.bankAccounts;
+const bankAccountsInternal = internal.functions.academic.bankAccounts;
+
+function assertExists<T>(value: T): asserts value is NonNullable<T> {
+  if (value === null || value === undefined) throw new Error("Expected a result");
+}
 
 async function setupTestHarness(t: ReturnType<typeof convexTest>) {
   const now = Date.now();
@@ -537,19 +542,14 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    // 3. Snapshot payment instructions at issue time. It is not publicly callable.
-    await expect(
-      t.mutation(bankAccountsApi.snapshotInvoicePaymentInstructions, {
-        invoiceId: invoice1Id,
-      })
-    ).rejects.toThrow("Not authorized");
-    const snapshot1 = await adminSession.mutation(
-      bankAccountsApi.snapshotInvoicePaymentInstructions,
-      {
-        invoiceId: invoice1Id,
-      }
+    // 3. Snapshot payment instructions at issue time through the internal issuer.
+    expect(bankAccountsApi).not.toHaveProperty("snapshotInvoicePaymentInstructions");
+    const snapshot1 = await t.mutation(
+      bankAccountsInternal.snapshotInvoicePaymentInstructions,
+      { invoiceId: invoice1Id }
     );
 
+    assertExists(snapshot1);
     expect(snapshot1.bankName).toBe("First Bank of Nigeria");
     expect(snapshot1.accountNumber).toBe("0123456789");
     await expect(
@@ -572,13 +572,12 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     });
 
     // 5. Attempting to re-snapshot or query the historical issued invoice retains the ORIGINAL snapshot
-    const reSnapshot = await adminSession.mutation(
-      bankAccountsApi.snapshotInvoicePaymentInstructions,
-      {
-        invoiceId: invoice1Id,
-      }
+    const reSnapshot = await t.mutation(
+      bankAccountsInternal.snapshotInvoicePaymentInstructions,
+      { invoiceId: invoice1Id }
     );
 
+    assertExists(reSnapshot);
     expect(reSnapshot.bankName).toBe("First Bank of Nigeria");
     expect(reSnapshot.accountNumber).toBe("0123456789");
 
@@ -622,13 +621,12 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    const snapshot2 = await adminSession.mutation(
-      bankAccountsApi.snapshotInvoicePaymentInstructions,
-      {
-        invoiceId: invoice2Id,
-      }
+    const snapshot2 = await t.mutation(
+      bankAccountsInternal.snapshotInvoicePaymentInstructions,
+      { invoiceId: invoice2Id }
     );
 
+    assertExists(snapshot2);
     expect(snapshot2.bankName).toBe("Guaranty Trust Bank");
     expect(snapshot2.accountNumber).toBe("9876543210");
   });
@@ -690,7 +688,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    await adminSession.mutation(bankAccountsApi.snapshotInvoicePaymentInstructions, {
+    await t.mutation(bankAccountsInternal.snapshotInvoicePaymentInstructions, {
       invoiceId: unpaidInvoiceId,
     });
 

@@ -50,6 +50,15 @@ function assertExists<T>(value: T): asserts value is NonNullable<T> {
 type AuthenticatedTest = ReturnType<ReturnType<typeof convexTest>["withIdentity"]>;
 type TestClient = ReturnType<typeof convexTest> | AuthenticatedTest;
 
+async function storeTypedBlob(t: ReturnType<typeof convexTest>, blob: Blob) {
+  return await t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(blob);
+    // convex-test does not copy Blob.type into _storage metadata.
+    await ctx.db.patch(storageId, { contentType: blob.type });
+    return storageId;
+  });
+}
+
 async function finalizeAsset(
   t: ReturnType<typeof convexTest>,
   schoolId: Id<"schools">,
@@ -63,7 +72,7 @@ async function finalizeAsset(
     allocatedUnits: 100 * 1024 * 1024,
   });
   const intent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-  const storageId = await t.run(async (ctx) => ctx.storage.store(blob));
+  const storageId = await storeTypedBlob(t, blob);
   const finalized = await platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
     schoolId,
     uploadIntentId: intent.intentId,
@@ -546,6 +555,36 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(downloadable.scanStatus).toBe("clean");
       expect(downloadable.fileName).toBe("School_Calendar_2026.png");
     });
+
+    it("rejects uploads when authoritative storage metadata has no content type", async () => {
+      const t = convexTest(schema, modules);
+      const { schoolId } = await setupTestHarness(t);
+      await t.mutation(meteringInternal.allocateQuota, {
+        schoolId,
+        meterType: "storage_bytes",
+        allocatedUnits: 10_000,
+      });
+      const intent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])]))
+      );
+      const metadata = await t.run((ctx) => ctx.db.system.get("_storage", storageId));
+      expect(metadata?.contentType).toBeFalsy();
+
+      await expect(
+        platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+          schoolId,
+          uploadIntentId: intent.intentId,
+          storageId,
+          fileName: "untyped.png",
+          category: "test",
+        })
+      ).rejects.toThrow("missing or unsupported authoritative content type");
+
+      expect(await t.run((ctx) => ctx.db.get(intent.intentId))).toMatchObject({
+        status: "pending",
+      });
+    });
   });
 
   describe("5. Navigable Trash Workspace & Retention Hold Locks", () => {
@@ -726,7 +765,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       await t.mutation(meteringInternal.allocateQuota, { schoolId, meterType: "storage_bytes", allocatedUnits: 10_000 });
       await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
       const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" });
-      const storageId = await t.run((ctx) => ctx.storage.store(blob));
+      const storageId = await storeTypedBlob(t, blob);
       const firstIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
       const secondIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
       const foreignIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
@@ -923,7 +962,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       const sourceA = await finalizeAsset(t, schoolId, "source-a.png", "test", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }));
       await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
       const intentB = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
-      const sourceBStorageId = await t.run((ctx) => ctx.storage.store(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4])], { type: "image/png" })));
+      const sourceBStorageId = await storeTypedBlob(t, new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4])], { type: "image/png" }));
       const sourceBFinalized = await platformSession(t).mutation(assetsApi.finalizeAssetUpload, { schoolId: schoolB, uploadIntentId: intentB.intentId, storageId: sourceBStorageId, fileName: "source-b.png", category: "test" });
       const sourceB = await t.run((ctx) => ctx.db.get(sourceBFinalized.assetId));
       assertExists(sourceA);

@@ -1,4 +1,10 @@
-import { mutation, query } from "../../_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+} from "../../_generated/server";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { resolveActiveMembership } from "./auth";
 import {
@@ -226,58 +232,77 @@ export const setPrimaryBankAccount = mutation({
   },
 });
 
+type PaymentInstructionsSnapshot = NonNullable<
+  Doc<"studentInvoices">["paymentInstructionsSnapshot"]
+>;
+
 /**
- * Snapshot payment instructions into invoice record at issue time.
- * IMMUTABLE: If instructions are already snapshotted, returns existing snapshot without modification.
+ * Snapshots the active default payment instructions into a payable issued invoice.
+ * The caller must invoke this from the invoice issuance transaction.
  */
-export const snapshotInvoicePaymentInstructions = mutation({
+export async function snapshotInvoicePaymentInstructionsHelper(
+  ctx: MutationCtx,
+  invoiceId: Id<"studentInvoices">
+): Promise<PaymentInstructionsSnapshot | null> {
+  const invoice = await ctx.db.get(invoiceId);
+  if (!invoice) {
+    throw new ConvexError("Invoice not found");
+  }
+  if (invoice.paymentInstructionsSnapshot) {
+    return invoice.paymentInstructionsSnapshot;
+  }
+  if (invoice.status === "waived") {
+    return null;
+  }
+  if (invoice.status !== "issued" && invoice.status !== "overdue") {
+    throw new ConvexError(
+      "Payment instructions can only be snapshotted for payable issued invoices"
+    );
+  }
+  if (invoice.totalAmount <= 0) {
+    return null;
+  }
+
+  const defaultAccount = await ctx.db
+    .query("schoolBankAccounts")
+    .withIndex("by_school_and_default", (q) =>
+      q.eq("schoolId", invoice.schoolId).eq("isDefault", true)
+    )
+    .first();
+
+  if (!defaultAccount || defaultAccount.status !== "active") {
+    return null;
+  }
+
+  const snapshot: PaymentInstructionsSnapshot = {
+    bankAccountId: defaultAccount._id,
+    bankName: defaultAccount.bankName,
+    accountName: defaultAccount.accountName,
+    accountNumber: defaultAccount.accountNumber,
+    sortCode: defaultAccount.sortCode,
+    currency: defaultAccount.currency,
+    transferNote: defaultAccount.transferNote,
+    snapshottedAt: Date.now(),
+  };
+
+  await ctx.db.patch(invoice._id, {
+    paymentInstructionsSnapshot: snapshot,
+    updatedAt: Date.now(),
+  });
+
+  return snapshot;
+}
+
+/**
+ * Internal-only entry point for controlled invoice maintenance.
+ * The helper preserves an existing first snapshot and requires a payable issued invoice.
+ */
+export const snapshotInvoicePaymentInstructions = internalMutation({
   args: {
     invoiceId: v.id("studentInvoices"),
   },
-  handler: async (ctx, args) => {
-    const invoice = await ctx.db.get(args.invoiceId);
-    if (!invoice) {
-      throw new ConvexError("Invoice not found");
-    }
-    await requireCapability(ctx, invoice.schoolId, "finance.invoices.issue");
-
-    // IMMUTABILITY: An authorized caller can only read the first snapshot.
-    if (invoice.paymentInstructionsSnapshot) {
-      return invoice.paymentInstructionsSnapshot;
-    }
-    if (invoice.status !== "issued") {
-      throw new ConvexError("Payment instructions can only be snapshotted for issued invoices");
-    }
-
-    const defaultAccount = await ctx.db
-      .query("schoolBankAccounts")
-      .withIndex("by_school_and_default", (q) =>
-        q.eq("schoolId", invoice.schoolId).eq("isDefault", true)
-      )
-      .first();
-
-    if (!defaultAccount || defaultAccount.status !== "active") {
-      return null;
-    }
-
-    const snapshot = {
-      bankAccountId: defaultAccount._id,
-      bankName: defaultAccount.bankName,
-      accountName: defaultAccount.accountName,
-      accountNumber: defaultAccount.accountNumber,
-      sortCode: defaultAccount.sortCode,
-      currency: defaultAccount.currency,
-      transferNote: defaultAccount.transferNote,
-      snapshottedAt: Date.now(),
-    };
-
-    await ctx.db.patch(invoice._id, {
-      paymentInstructionsSnapshot: snapshot,
-      updatedAt: Date.now(),
-    });
-
-    return snapshot;
-  },
+  handler: async (ctx, args) =>
+    await snapshotInvoicePaymentInstructionsHelper(ctx, args.invoiceId),
 });
 
 /**

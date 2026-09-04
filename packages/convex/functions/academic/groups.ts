@@ -339,10 +339,12 @@ export const createSchoolGroup = mutation({
       args.headquartersSchoolId
     );
 
+    const membership = authContext.membershipId
+      ? await ctx.db.get(authContext.membershipId)
+      : null;
     if (
       !authContext.isPlatformAdmin &&
-      authContext.role !== "admin" &&
-      authContext.role !== "proprietor"
+      (!membership || !(await isMembershipProprietor(ctx, membership)))
     ) {
       throw new ConvexError({
         code: "FORBIDDEN",

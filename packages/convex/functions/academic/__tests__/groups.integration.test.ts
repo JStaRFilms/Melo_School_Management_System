@@ -329,7 +329,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         updatedAt: now,
       });
 
-      await ctx.db.insert("branchMemberships", {
+      const bobMembershipId = await ctx.db.insert("branchMemberships", {
         personId: bobPersonId,
         schoolId: schoolA,
         status: "active",
@@ -337,6 +337,22 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         isDefaultBranch: true,
         joinedAt: now,
         updatedAt: now,
+      });
+      const proprietorRoleTemplateId = await ctx.db.insert("roleTemplates", {
+        code: "proprietor",
+        name: "Proprietor",
+        scope: "branch",
+        schoolId: schoolA,
+        capabilities: [],
+        isSystem: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("membershipRoleAssignments", {
+        membershipId: bobMembershipId,
+        roleTemplateId: proprietorRoleTemplateId,
+        roleTemplateKey: "proprietor",
+        assignedAt: now,
       });
 
       return { schoolA, schoolB, bobPersonId };
@@ -501,7 +517,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         updatedAt: now,
       });
 
-      // Charlie is a teacher (non-admin, non-proprietor)
+      // Charlie is an administrator but not a proprietor.
       const charliePerson = await ctx.db.insert("persons", {
         authTokenIdentifier: "https://auth.melo.test|teacher-charlie",
         email: "charlie@sunrise.test",
@@ -519,8 +535,8 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         authTokenIdentifier: "https://auth.melo.test|teacher-charlie",
         name: "Charlie Teacher",
         email: "charlie@sunrise.test",
-        role: "teacher",
-        isSchoolAdmin: false,
+        role: "admin",
+        isSchoolAdmin: true,
         createdAt: now,
         updatedAt: now,
       });

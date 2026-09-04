@@ -415,7 +415,7 @@ export async function resolveActiveMembership(
   }
 
   const school = await ctx.db.get(schoolId);
-  if (!school || school.status === "suspended") {
+  if (!school) {
     throw new ConvexError("This school workspace is currently suspended by platform administration");
   }
 
@@ -447,6 +447,10 @@ export async function resolveActiveMembership(
       role: "super_admin",
       isPlatformAdmin: true,
     };
+  }
+
+  if (school.status === "suspended") {
+    throw new ConvexError("This school workspace is currently suspended by platform administration");
   }
 
   // 2. Resolve the canonical person exclusively through the stable token identifier.

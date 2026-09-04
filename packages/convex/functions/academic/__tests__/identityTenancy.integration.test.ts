@@ -800,7 +800,7 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
     });
   });
 
-  it("Canonical resolver denies suspended schools, including platform admins without a recovery policy", async () => {
+  it("Canonical resolver permits platform recovery for suspended schools while blocking ordinary and admin members", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     const schoolId = await t.run(async (ctx) => {
@@ -820,6 +820,42 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
         createdAt: now,
         updatedAt: now,
       });
+
+      for (const [token, role] of [
+        ["ordinary-member", "teacher"],
+        ["school-admin", "admin"],
+      ] as const) {
+        const personId = await ctx.db.insert("persons", {
+          authTokenIdentifier: `https://auth.melo.test|${token}`,
+          email: `${token}@school.test`,
+          name: token,
+          status: "active",
+          primarySchoolId: schoolId,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const userId = await ctx.db.insert("users", {
+          schoolId,
+          personId,
+          authId: token,
+          authTokenIdentifier: `https://auth.melo.test|${token}`,
+          name: token,
+          email: `${token}@school.test`,
+          role,
+          isSchoolAdmin: role === "admin",
+          createdAt: now,
+          updatedAt: now,
+        });
+        await ctx.db.insert("branchMemberships", {
+          personId,
+          schoolId,
+          status: "active",
+          legacyUserId: userId,
+          isDefaultBranch: true,
+          joinedAt: now,
+          updatedAt: now,
+        });
+      }
       return schoolId;
     });
 
@@ -830,7 +866,17 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
     });
     await expect(
       superSession.run(async (ctx) => resolveActiveMembership(ctx, schoolId))
-    ).rejects.toThrow("currently suspended");
+    ).resolves.toMatchObject({ isPlatformAdmin: true, schoolId });
+
+    for (const token of ["ordinary-member", "school-admin"]) {
+      const memberSession = t.withIdentity({
+        tokenIdentifier: `https://auth.melo.test|${token}`,
+        subject: token,
+      });
+      await expect(
+        memberSession.run(async (ctx) => resolveActiveMembership(ctx, schoolId))
+      ).rejects.toThrow("currently suspended");
+    }
   });
 
   it("Platform Super Admin bypass: active super admin can resolve any school branch context", async () => {
