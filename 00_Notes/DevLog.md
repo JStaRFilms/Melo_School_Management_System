@@ -142,3 +142,46 @@ Pattern A: Managed Bespoke Sites (e.g., OBHIS) The school wants their website ho
 Pattern B: External Sites (Clients with existing websites) The platform does not host their website or manage their DNS. The school simply links their existing website's "Apply Now" buttons directly to their school-scoped canonical application URL (e.g., https://apply.schoolplatform.com/s/<schoolSlug>). No DNS delegation or iframes are needed.
 Pattern C: No Website For schools with no web presence, they share their direct application link across messaging/social media channels."
 So I was going through this and I couldn't help but notice that the links need to be search engine optimized with custom banners if needed, or just a nice one. Do you understand? That they say, "Apply for so and so." Whatever information, maybe the information of the name of the form that the admin creates or something like that. I don't know. I just thought about it.
+
+ - [ ] On the admin's page, when you want to archive a teacher, the archive button is disabled on the right panel, but the one on the teacher's name is not disabled.
+
+admin/dashboard:1 [Intervention] Images loaded lazily and replaced with placeholders. Load events are deferred. See https://go.microsoft.com/fwlink/?linkid=2048113
+content.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at classifyKey (content.js:41:13)
+    at processKey (content.js:74:15)
+    at document.addEventListener.capture (content.js:125:5)
+content.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at classifyKey (content.js:41:13)
+    at processKey (content.js:74:15)
+    at document.addEventListener.capture (content.js:125:5)
+content.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at classifyKey (content.js:41:13)
+    at processKey (content.js:74:15)
+    at document.addEventListener.capture (content.js:125:5)
+content.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at classifyKey (content.js:41:13)
+    at processKey (content.js:74:15)
+    at document.addEventListener.capture (content.js:125:5)
+content.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at classifyKey (content.js:41:13)
+    at processKey (content.js:74:15)
+    at document.addEventListener.capture (content.js:125:5)
+5546-7554f47ad1aba073.js:1 [CONVEX M(functions/billing:createFeePlan)] [Request ID: 1a679c2909d54aaf] Server Error
+ArgumentValidationError: Object contains extra field `order` that is not in the validator.
+Path: .lineItems[0]
+Object: {amount: 100000.0, category: "tuition", label: "Tuition", order: 0.0}
+Validator: v.object({amount: v.float64(), category: v.optional(v.union(v.literal("tuition"), v.literal("boarding"), v.literal("transport"), v.literal("exam"), v.literal("activity"), v.literal("other"))), label: v.string()})
+
+
+(anonymous) @ 5546-7554f47ad1aba073.js:1
+5546-7554f47ad1aba073.js:1 [CONVEX M(functions/billing:createFeePlan)] [Request ID: b93cef426e979f93] Server Error
+ArgumentValidationError: Object contains extra field `order` that is not in the validator.
+Path: .lineItems[0]
+Object: {amount: 100000.0, category: "tuition", label: "Tuition", order: 0.0}
+Validator: v.object({amount: v.float64(), category: v.optional(v.union(v.literal("tuition"), v.literal("boarding"), v.literal("transport"), v.literal("exam"), v.literal("activity"), v.literal("other"))), label: v.string()})
+
+
+(anonymous) @ 5546-7554f47ad1aba073.js:1
+[NEW] Explain Console errors by using Copilot in Edge: click  to explain an error. Learn moreDon’t show again
+
+while tryin to create a fee plan
