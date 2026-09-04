@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DraftRecoveryModal } from "../DraftRecoveryModal";
 import { DraftStatusIndicator } from "../DraftStatusIndicator";
 import { DRAFT_STATUS_CONFIGS } from "../types";
+import { isLatestDraftSaveRequest } from "../useFormDraft";
 
 describe("DraftRecoveryModal and Draft Status Components", () => {
   describe("DraftRecoveryModal Invariants and Content", () => {
@@ -52,6 +53,16 @@ describe("DraftRecoveryModal and Draft Status Components", () => {
       );
 
       expect(html).toBe("");
+    });
+  });
+
+  describe("Autosave request sequencing", () => {
+    it("rejects a stale completion after a newer save request starts", () => {
+      const firstRequest = 1;
+      const secondRequest = 2;
+
+      expect(isLatestDraftSaveRequest(secondRequest, secondRequest)).toBe(true);
+      expect(isLatestDraftSaveRequest(firstRequest, secondRequest)).toBe(false);
     });
   });
 

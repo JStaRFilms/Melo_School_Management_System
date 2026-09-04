@@ -414,6 +414,11 @@ export async function resolveActiveMembership(
     );
   }
 
+  const school = await ctx.db.get(schoolId);
+  if (!school || school.status === "suspended") {
+    throw new ConvexError("This school workspace is currently suspended by platform administration");
+  }
+
   const tokenIdentifier: string | undefined = identity.tokenIdentifier;
 
   // 1. Check platformAdmins for Super Admin bypass. Duplicate canonical tokens

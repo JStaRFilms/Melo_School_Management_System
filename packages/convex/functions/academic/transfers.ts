@@ -2,7 +2,11 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generat
 import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { resolveActiveMembership, type ActiveMembershipContext } from "./auth";
-import { evaluateEffectiveCapabilities, isMembershipProprietor } from "./rbac";
+import {
+  evaluateEffectiveCapabilities,
+  isMembershipProprietor,
+  requireCapability,
+} from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 import { allocateNextAdmissionNumberHelper } from "./admissionNumbers";
 
@@ -43,6 +47,97 @@ async function assertTransferAuthority(
     code: "FORBIDDEN",
     message: `Forbidden: Caller does not hold transfer authorization for school ${schoolId}`,
   });
+}
+
+type TransferScope = "source" | "destination" | "both" | "platform";
+
+async function getAuthorizedTransferScope(
+  ctx: QueryCtx,
+  transfer: Doc<"studentTransfers">
+): Promise<TransferScope> {
+  let sourceAuthorized = false;
+  let destinationAuthorized = false;
+  let platformAuthorized = false;
+
+  try {
+    const sourceContext = await assertTransferAuthority(ctx, transfer.sourceSchoolId);
+    sourceAuthorized = true;
+    platformAuthorized = sourceContext.isPlatformAdmin;
+  } catch {
+    // Try the destination branch before denying access.
+  }
+
+  if (!platformAuthorized) {
+    try {
+      await assertTransferAuthority(ctx, transfer.destinationSchoolId);
+      destinationAuthorized = true;
+    } catch {
+      // The caller may be authorized only in the source branch.
+    }
+  }
+
+  if (platformAuthorized) return "platform";
+  if (sourceAuthorized && destinationAuthorized) return "both";
+  if (sourceAuthorized) return "source";
+  if (destinationAuthorized) return "destination";
+
+  throw new ConvexError({
+    code: "FORBIDDEN",
+    message: "Forbidden: Caller does not hold transfer authorization in either branch",
+  });
+}
+
+async function assertGroupTransferAuthority(
+  ctx: QueryCtx,
+  groupId: Id<"schoolGroups">
+): Promise<void> {
+  const branches = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_group", (q) => q.eq("groupId", groupId))
+    .collect();
+
+  for (const branch of branches) {
+    try {
+      await assertTransferAuthority(ctx, branch.schoolId);
+      return;
+    } catch {
+      // Authorization is valid in any explicitly linked branch.
+    }
+  }
+
+  throw new ConvexError({
+    code: "FORBIDDEN",
+    message: "Forbidden: Caller does not hold transfer authorization in this school group",
+  });
+}
+
+function redactTransferForScope(
+  transfer: Doc<"studentTransfers">,
+  scope: TransferScope
+) {
+  if (scope === "platform" || scope === "both") {
+    return transfer;
+  }
+
+  if (scope === "source") {
+    const {
+      destinationClassId: _destinationClassId,
+      destinationStudentId: _destinationStudentId,
+      destinationAdmissionNumber: _destinationAdmissionNumber,
+      destinationAcceptedByUserId: _destinationAcceptedByUserId,
+      destinationAcceptedAt: _destinationAcceptedAt,
+      ...sourceView
+    } = transfer;
+    return sourceView;
+  }
+
+  const {
+    sourceReleaseNote: _sourceReleaseNote,
+    sourceReleasedByUserId: _sourceReleasedByUserId,
+    sourceReleasedAt: _sourceReleasedAt,
+    ...destinationView
+  } = transfer;
+  return destinationView;
 }
 
 /**
@@ -281,7 +376,7 @@ export const authorizeSourceRelease = mutation({
  * 2. Transfer status must be "source_released" (two-phase commit).
  * 3. Target destinationClassId must exist in destination school branch.
  * 4. Allocates destination branch admission number via policy sequence.
- * 5. Updates student record to destination branch (schoolId, classId, admissionNumber).
+ * 5. Preserves the source student row and creates a destination student context.
  * 6. Transitions transfer status to "completed".
  * 7. Logs audit event.
  */
@@ -290,6 +385,8 @@ export const acceptDestinationTransfer = mutation({
     transferId: v.id("studentTransfers"),
     destinationClassId: v.id("classes"),
     admissionNumberOverride: v.optional(v.string()),
+    admissionNumberOverrideReason: v.optional(v.string()),
+    admissionNumberOverrideConfirmed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const transfer = await ctx.db.get(args.transferId);
@@ -315,9 +412,34 @@ export const acceptDestinationTransfer = mutation({
       );
     }
 
-    // Allocate admission number in destination branch
-    let destinationAdmissionNumber = args.admissionNumberOverride;
-    if (!destinationAdmissionNumber) {
+    let destinationAdmissionNumber: string;
+    const manualAdmissionNumber = args.admissionNumberOverride?.trim();
+    if (manualAdmissionNumber) {
+      if (!args.admissionNumberOverrideConfirmed) {
+        throw new ConvexError("Manual admission number override must be explicitly confirmed");
+      }
+      if (!args.admissionNumberOverrideReason?.trim()) {
+        throw new ConvexError("Manual admission number override requires a reason");
+      }
+      await requireCapability(
+        ctx,
+        transfer.destinationSchoolId,
+        "enrollment.admissions.override_number"
+      );
+
+      const existingDestinationStudent = await ctx.db
+        .query("students")
+        .withIndex("by_school_and_admission_number", (q) =>
+          q
+            .eq("schoolId", transfer.destinationSchoolId)
+            .eq("admissionNumber", manualAdmissionNumber)
+        )
+        .first();
+      if (existingDestinationStudent) {
+        throw new ConvexError("A student with this admission number already exists in the destination school");
+      }
+      destinationAdmissionNumber = manualAdmissionNumber;
+    } else {
       const { allocatedNumber } = await allocateNextAdmissionNumberHelper(ctx, {
         schoolId: transfer.destinationSchoolId,
         level: destClass.level,
@@ -325,14 +447,51 @@ export const acceptDestinationTransfer = mutation({
       destinationAdmissionNumber = allocatedNumber;
     }
 
-    const now = Date.now();
+    const sourceStudent = await ctx.db.get(transfer.studentId);
+    if (!sourceStudent || sourceStudent.schoolId !== transfer.sourceSchoolId) {
+      throw new ConvexError("Source student record is unavailable for transfer");
+    }
+    const sourceStudentUser = await ctx.db.get(sourceStudent.userId);
+    if (!sourceStudentUser || sourceStudentUser.isArchived) {
+      throw new ConvexError("Source student account is unavailable for transfer");
+    }
 
-    // Re-assign student record to destination branch
-    await ctx.db.patch(transfer.studentId, {
+    const now = Date.now();
+    const destinationStudentUserId = await ctx.db.insert("users", {
+      schoolId: transfer.destinationSchoolId,
+      authId: `student:${transfer.destinationSchoolId}:${destinationAdmissionNumber.toLowerCase()}`,
+      ...(sourceStudentUser.authTokenIdentifier
+        ? { authTokenIdentifier: sourceStudentUser.authTokenIdentifier }
+        : {}),
+      ...(sourceStudentUser.personId ? { personId: sourceStudentUser.personId } : {}),
+      name: sourceStudentUser.name,
+      ...(sourceStudentUser.firstName ? { firstName: sourceStudentUser.firstName } : {}),
+      ...(sourceStudentUser.lastName ? { lastName: sourceStudentUser.lastName } : {}),
+      email: sourceStudentUser.email,
+      ...(sourceStudentUser.phone ? { phone: sourceStudentUser.phone } : {}),
+      role: "student",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const destinationStudentId = await ctx.db.insert("students", {
       schoolId: transfer.destinationSchoolId,
       classId: args.destinationClassId,
+      userId: destinationStudentUserId,
       admissionNumber: destinationAdmissionNumber,
+      ...(sourceStudent.houseName ? { houseName: sourceStudent.houseName } : {}),
+      ...(sourceStudent.gender ? { gender: sourceStudent.gender } : {}),
+      ...(sourceStudent.dateOfBirth ? { dateOfBirth: sourceStudent.dateOfBirth } : {}),
+      ...(sourceStudent.guardianName ? { guardianName: sourceStudent.guardianName } : {}),
+      ...(sourceStudent.guardianPhone ? { guardianPhone: sourceStudent.guardianPhone } : {}),
+      ...(sourceStudent.address ? { address: sourceStudent.address } : {}),
       enrollmentStatus: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Preserve the source row and all source-scoped records as historical evidence.
+    await ctx.db.patch(sourceStudent._id, {
+      enrollmentStatus: "transferred_out",
       updatedAt: now,
     });
 
@@ -340,6 +499,7 @@ export const acceptDestinationTransfer = mutation({
     await ctx.db.patch(transfer._id, {
       status: "completed",
       destinationClassId: args.destinationClassId,
+      destinationStudentId,
       destinationAdmissionNumber,
       destinationAcceptedByUserId: authContext.userId,
       destinationAcceptedAt: now,
@@ -359,13 +519,18 @@ export const acceptDestinationTransfer = mutation({
       targetType: "studentTransfers",
       targetId: transfer._id,
       outcome: "success",
-      safeSummary: `Accepted transfer for student ${transfer.studentName} into class ${destClass.name} with admission number ${destinationAdmissionNumber}`,
+      safeSummary:
+        `Accepted transfer for student ${transfer.studentName} into class ${destClass.name} with admission number ${destinationAdmissionNumber}` +
+        (manualAdmissionNumber
+          ? ` via confirmed manual override: ${args.admissionNumberOverrideReason!.trim()}`
+          : ""),
       alertTier: "tier2_warn",
     });
 
     return {
       transferId: transfer._id,
       status: "completed" as const,
+      destinationStudentId,
       destinationAdmissionNumber,
     };
   },
@@ -474,7 +639,12 @@ export const getTransfer = query({
     transferId: v.id("studentTransfers"),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.transferId);
+    const transfer = await ctx.db.get(args.transferId);
+    if (!transfer) {
+      return null;
+    }
+    const scope = await getAuthorizedTransferScope(ctx, transfer);
+    return redactTransferForScope(transfer, scope);
   },
 });
 
@@ -498,6 +668,8 @@ export const listTransfersBySchool = query({
     ),
   },
   handler: async (ctx, args) => {
+    await assertTransferAuthority(ctx, args.schoolId);
+
     const direction = args.direction ?? "all";
     let records: Doc<"studentTransfers">[] = [];
 
@@ -529,7 +701,19 @@ export const listTransfersBySchool = query({
       records = records.filter((r) => r.status === args.status);
     }
 
-    return records.sort((a, b) => b.createdAt - a.createdAt);
+    return records
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((record) =>
+        redactTransferForScope(
+          record,
+          record.sourceSchoolId === args.schoolId &&
+            record.destinationSchoolId === args.schoolId
+            ? "both"
+            : record.sourceSchoolId === args.schoolId
+              ? "source"
+              : "destination"
+        )
+      );
   },
 });
 
@@ -550,21 +734,27 @@ export const listTransfersByGroup = query({
     ),
   },
   handler: async (ctx, args) => {
-    if (args.status) {
-      return await ctx.db
-        .query("studentTransfers")
-        .withIndex("by_group_and_status", (q) =>
-          q.eq("groupId", args.groupId).eq("status", args.status!)
+    await assertGroupTransferAuthority(ctx, args.groupId);
+
+    const records = args.status
+      ? await ctx.db
+          .query("studentTransfers")
+          .withIndex("by_group_and_status", (q) =>
+            q.eq("groupId", args.groupId).eq("status", args.status!)
+          )
+          .collect()
+      : await ctx.db
+          .query("studentTransfers")
+          .withIndex("by_group_and_status", (q) => q.eq("groupId", args.groupId))
+          .collect();
+
+    return await Promise.all(
+      records
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(async (record) =>
+          redactTransferForScope(record, await getAuthorizedTransferScope(ctx, record))
         )
-        .collect();
-    }
-
-    const all = await ctx.db
-      .query("studentTransfers")
-      .filter((q) => q.eq(q.field("groupId"), args.groupId))
-      .collect();
-
-    return all.sort((a, b) => b.createdAt - a.createdAt);
+    );
   },
 });
 
@@ -576,11 +766,36 @@ export const getStudentTransferHistory = query({
     studentId: v.id("students"),
   },
   handler: async (ctx, args) => {
-    const transfers = await ctx.db
-      .query("studentTransfers")
-      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
-      .collect();
+    const [sourceTransfers, destinationTransfers] = await Promise.all([
+      ctx.db
+        .query("studentTransfers")
+        .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
+        .collect(),
+      ctx.db
+        .query("studentTransfers")
+        .withIndex("by_destination_student", (q) =>
+          q.eq("destinationStudentId", args.studentId)
+        )
+        .collect(),
+    ]);
+    const transfers = [...sourceTransfers, ...destinationTransfers];
 
-    return transfers.sort((a, b) => b.createdAt - a.createdAt);
+    if (transfers.length === 0) {
+      const student = await ctx.db.get(args.studentId);
+      if (!student) return [];
+      await assertTransferAuthority(ctx, student.schoolId);
+      return [];
+    }
+
+    return await Promise.all(
+      transfers
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(async (transfer) =>
+          redactTransferForScope(
+            transfer,
+            await getAuthorizedTransferScope(ctx, transfer)
+          )
+        )
+    );
   },
 });

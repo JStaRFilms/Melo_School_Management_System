@@ -239,10 +239,14 @@ export const snapshotInvoicePaymentInstructions = mutation({
     if (!invoice) {
       throw new ConvexError("Invoice not found");
     }
+    await requireCapability(ctx, invoice.schoolId, "finance.invoices.issue");
 
-    // IMMUTABILITY: If already snapshotted, retain existing snapshot
+    // IMMUTABILITY: An authorized caller can only read the first snapshot.
     if (invoice.paymentInstructionsSnapshot) {
       return invoice.paymentInstructionsSnapshot;
+    }
+    if (invoice.status !== "issued") {
+      throw new ConvexError("Payment instructions can only be snapshotted for issued invoices");
     }
 
     const defaultAccount = await ctx.db
@@ -252,7 +256,7 @@ export const snapshotInvoicePaymentInstructions = mutation({
       )
       .first();
 
-    if (!defaultAccount) {
+    if (!defaultAccount || defaultAccount.status !== "active") {
       return null;
     }
 
@@ -290,6 +294,7 @@ export const getInvoicePaymentView = query({
     if (!invoice) {
       throw new ConvexError("Invoice not found");
     }
+    await resolveActiveMembership(ctx, invoice.schoolId);
 
     const isSettled = invoice.status === "paid";
 
@@ -330,6 +335,7 @@ export const getInvoiceReceipt = query({
     if (!invoice) {
       throw new ConvexError("Invoice not found");
     }
+    await resolveActiveMembership(ctx, invoice.schoolId);
 
     return {
       invoiceId: invoice._id,

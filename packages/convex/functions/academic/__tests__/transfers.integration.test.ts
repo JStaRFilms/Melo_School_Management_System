@@ -34,6 +34,7 @@ const rejectOrCancelTransferRef = transfersApi.rejectOrCancelTransfer;
 const getTransferRef = transfersApi.getTransfer;
 const listTransfersBySchoolRef = transfersApi.listTransfersBySchool;
 const listTransfersByGroupRef = transfersApi.listTransfersByGroup;
+const getStudentTransferHistoryRef = transfersApi.getStudentTransferHistory;
 
 interface TestHarness {
   schoolA: Id<"schools">;
@@ -49,6 +50,7 @@ interface TestHarness {
   studentId: Id<"students">;
   studentUserId: Id<"users">;
   adminAUserId: Id<"users">;
+  adminBMembershipId: Id<"branchMemberships">;
 }
 
 async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestHarness> {
@@ -203,7 +205,7 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestH
       updatedAt: now,
     });
 
-    await ctx.db.insert("branchMemberships", {
+    const adminBMembershipId = await ctx.db.insert("branchMemberships", {
       personId: adminBPerson,
       schoolId: schoolB,
       status: "active",
@@ -316,6 +318,7 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestH
       studentId,
       studentUserId,
       adminAUserId: adminAUser,
+      adminBMembershipId,
     };
   });
 }
@@ -488,14 +491,18 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(transferFinal?.destinationClassId).toEqual(harness.classBId);
     expect(transferFinal?.destinationAcceptedAt).toBeTypeOf("number");
 
-    // Verify student document is cleanly relocated to School B (Ikoyi branch)
-    const studentRelocated = await t.run(async (ctx) => {
-      return await ctx.db.get(harness.studentId);
-    });
-    expect(studentRelocated?.schoolId).toEqual(harness.schoolB);
-    expect(studentRelocated?.classId).toEqual(harness.classBId);
-    expect(studentRelocated?.admissionNumber).toBe(acceptResult.destinationAdmissionNumber);
-    expect(studentRelocated?.enrollmentStatus).toBe("active");
+    // The source row remains source-scoped for historical records; acceptance creates a new destination context.
+    const sourceStudent = await t.run(async (ctx) => ctx.db.get(harness.studentId));
+    const destinationStudent = await t.run(async (ctx) =>
+      ctx.db.get(acceptResult.destinationStudentId)
+    );
+    expect(sourceStudent?.schoolId).toEqual(harness.schoolA);
+    expect(sourceStudent?.classId).toEqual(harness.classAId);
+    expect(sourceStudent?.enrollmentStatus).toBe("transferred_out");
+    expect(destinationStudent?.schoolId).toEqual(harness.schoolB);
+    expect(destinationStudent?.classId).toEqual(harness.classBId);
+    expect(destinationStudent?.admissionNumber).toBe(acceptResult.destinationAdmissionNumber);
+    expect(destinationStudent?.enrollmentStatus).toBe("active");
 
     // Immutability Check (MX-15 §4): Source branch historical records retain sourceSchoolId
     const historicalInvoice = await t.run(async (ctx) => {
@@ -504,6 +511,12 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(historicalInvoice?.schoolId).toEqual(harness.schoolA);
     expect(historicalInvoice?.studentId).toEqual(harness.studentId);
     expect(historicalInvoice?.balanceDue).toBe(60000);
+
+    const destinationHistory = await adminB.query(getStudentTransferHistoryRef, {
+      studentId: acceptResult.destinationStudentId,
+    });
+    expect(destinationHistory).toHaveLength(1);
+    expect(destinationHistory[0]._id).toBe(transferId);
 
     // Verify audit event recorded at Destination Branch
     const destinationAudit = await t.run(async (ctx) => {
@@ -711,7 +724,96 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(pkg.medicalNotes).toBe("Allergic to amoxicillin");
   });
 
-  it("5. Additional Gates: Guardian consent requirement and transfer cancellation/rejection lifecycle", async () => {
+  it("5. Transfer detail, list, group, and history queries deny unauthenticated and cross-tenant callers", async () => {
+    const t = convexTest(schema, modules);
+    const harness = await setupTestHarness(t);
+    const adminA = t.withIdentity(harness.adminAIdentity);
+    const outsider = t.withIdentity(harness.unauthorizedIdentity);
+    const { transferId } = await adminA.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: harness.schoolA,
+      destinationSchoolId: harness.schoolB,
+      studentId: harness.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "signed_form",
+    });
+
+    await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(t.query(listTransfersByGroupRef, { groupId: harness.groupA })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(t.query(getStudentTransferHistoryRef, { studentId: harness.studentId })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(outsider.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(outsider.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
+
+    const sourceView = await adminA.query(getTransferRef, { transferId });
+    expect(
+      sourceView && "destinationAdmissionNumber" in sourceView
+        ? sourceView.destinationAdmissionNumber
+        : undefined
+    ).toBeUndefined();
+  });
+
+  it("6. Manual destination admission number override requires capability, confirmation, reason, and uniqueness", async () => {
+    const t = convexTest(schema, modules);
+    const harness = await setupTestHarness(t);
+    const adminA = t.withIdentity(harness.adminAIdentity);
+    const adminB = t.withIdentity(harness.adminBIdentity);
+    const { transferId } = await adminA.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: harness.schoolA,
+      destinationSchoolId: harness.schoolB,
+      studentId: harness.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "signed_form",
+    });
+    await adminA.mutation(authorizeSourceReleaseRef, { transferId });
+
+    await expect(
+      adminB.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: harness.classBId,
+        admissionNumberOverride: "IKY-2026-0001",
+        admissionNumberOverrideConfirmed: true,
+        admissionNumberOverrideReason: "Registrar correction",
+      })
+    ).rejects.toThrow("enrollment.admissions.override_number");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("membershipDirectGrants", {
+        membershipId: harness.adminBMembershipId,
+        capability: "enrollment.admissions.override_number",
+        grantedAt: Date.now(),
+        reason: "Transfer admissions registrar",
+      });
+    });
+
+    await expect(
+      adminB.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: harness.classBId,
+        admissionNumberOverride: "IKY-2026-0001",
+        admissionNumberOverrideConfirmed: true,
+      })
+    ).rejects.toThrow("requires a reason");
+
+    const accepted = await adminB.mutation(acceptDestinationTransferRef, {
+      transferId,
+      destinationClassId: harness.classBId,
+      admissionNumberOverride: "IKY-2026-0001",
+      admissionNumberOverrideConfirmed: true,
+      admissionNumberOverrideReason: "Registrar correction",
+    });
+    expect(accepted.destinationAdmissionNumber).toBe("IKY-2026-0001");
+    const audit = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditEvents")
+        .withIndex("by_module_and_action", (q) =>
+          q.eq("module", "enrollment").eq("action", "student_transfer.destination_accept")
+        )
+        .first()
+    );
+    expect(audit?.safeSummary).toContain("confirmed manual override: Registrar correction");
+  });
+
+  it("7. Additional Gates: Guardian consent requirement and transfer cancellation/rejection lifecycle", async () => {
     const t = convexTest(schema, modules);
     const harness = await setupTestHarness(t);
 

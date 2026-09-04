@@ -21,10 +21,6 @@ import {
   listAuditAlerts,
   dismissAuditAlert,
 } from "../audit";
-import {
-  seedFactoryRoleTemplates,
-  backfillExistingAdminCapabilities,
-} from "../rbacMigration";
 
 declare global {
   interface ImportMeta {
@@ -52,7 +48,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     const now = Date.now();
 
     // 1. Seed factory templates
-    await t.mutation(api.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
+    await t.mutation(internal.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
 
     // 2. Setup school, person, branch membership
     const { schoolId, personId, membershipId, academicDirectorTemplateId } = await t.run(
@@ -163,7 +159,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     const t = convexTest(schema, modules);
     const now = Date.now();
 
-    await t.mutation(api.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
+    await t.mutation(internal.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
 
     const { schoolId, managerMembershipId, bursarTemplateId } = await t.run(
       async (ctx) => {
@@ -252,7 +248,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     const t = convexTest(schema, modules);
     const now = Date.now();
 
-    await t.mutation(api.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
+    await t.mutation(internal.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
 
     const {
       schoolId,
@@ -384,7 +380,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     const t = convexTest(schema, modules);
     const now = Date.now();
 
-    await t.mutation(api.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
+    await t.mutation(internal.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
 
     const { schoolId, proprietorMembershipId, managerMembershipId } = await t.run(
       async (ctx) => {
@@ -775,7 +771,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     const now = Date.now();
 
     // 1. Seed role templates first
-    await t.mutation(api.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
+    await t.mutation(internal.functions.academic.rbacMigration.seedFactoryRoleTemplates, {});
 
     // 2. Setup school with legacy admin user and unassigned branchMembership
     const { schoolId, adminMembershipId } = await t.run(async (ctx) => {
@@ -832,7 +828,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
 
     // 4. Run backfill migration
     const backfillResult = await t.mutation(
-      api.functions.academic.rbacMigration.backfillExistingAdminCapabilities,
+      internal.functions.academic.rbacMigration.backfillExistingAdminCapabilities,
       {}
     );
 

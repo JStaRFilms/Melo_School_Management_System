@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
-import { api } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
 
 declare global {
   interface ImportMeta {
@@ -362,7 +362,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
 
     // 3. Sequential allocation #1
     const alloc1 = await t.mutation(
-      admissionNumbersApi.allocateNextAdmissionNumberInternal,
+      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
       {
         schoolId,
         level: "JSS1",
@@ -377,7 +377,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
 
     // 4. Sequential allocation #2 (advances strictly)
     const alloc2 = await t.mutation(
-      admissionNumbersApi.allocateNextAdmissionNumberInternal,
+      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
       {
         schoolId,
         level: "JSS1",
@@ -392,7 +392,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
 
     // 5. Subsequent sequential allocations advance counter without gaps
     const alloc3 = await t.mutation(
-      admissionNumbersApi.allocateNextAdmissionNumberInternal,
+      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
       {
         schoolId,
         level: "JSS1",
@@ -400,7 +400,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       }
     );
     const alloc4 = await t.mutation(
-      admissionNumbersApi.allocateNextAdmissionNumberInternal,
+      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
       {
         schoolId,
         level: "JSS1",
@@ -537,8 +537,13 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    // 3. Snapshot payment instructions at issue time
-    const snapshot1 = await t.mutation(
+    // 3. Snapshot payment instructions at issue time. It is not publicly callable.
+    await expect(
+      t.mutation(bankAccountsApi.snapshotInvoicePaymentInstructions, {
+        invoiceId: invoice1Id,
+      })
+    ).rejects.toThrow("Not authorized");
+    const snapshot1 = await adminSession.mutation(
       bankAccountsApi.snapshotInvoicePaymentInstructions,
       {
         invoiceId: invoice1Id,
@@ -547,6 +552,9 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
 
     expect(snapshot1.bankName).toBe("First Bank of Nigeria");
     expect(snapshot1.accountNumber).toBe("0123456789");
+    await expect(
+      t.query(bankAccountsApi.getInvoicePaymentView, { invoiceId: invoice1Id })
+    ).rejects.toThrow("Not authorized");
 
     // 4. Later in time, school adds GTBank and switches primary default bank account
     const gtbBankId = await adminSession.mutation(bankAccountsApi.addBankAccount, {
@@ -564,7 +572,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     });
 
     // 5. Attempting to re-snapshot or query the historical issued invoice retains the ORIGINAL snapshot
-    const reSnapshot = await t.mutation(
+    const reSnapshot = await adminSession.mutation(
       bankAccountsApi.snapshotInvoicePaymentInstructions,
       {
         invoiceId: invoice1Id,
@@ -614,7 +622,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    const snapshot2 = await t.mutation(
+    const snapshot2 = await adminSession.mutation(
       bankAccountsApi.snapshotInvoicePaymentInstructions,
       {
         invoiceId: invoice2Id,
@@ -630,6 +638,11 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     const { schoolId, classId, sessionId, termId, feePlanId, studentId, adminUserId } =
       await setupTestHarness(t);
 
+    const adminSession = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|proprietor-obc",
+      subject: "auth-proprietor-obc",
+      email: "proprietor@obc.test",
+    });
     const now = Date.now();
 
     // Setup bank account
@@ -677,12 +690,12 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       });
     });
 
-    await t.mutation(bankAccountsApi.snapshotInvoicePaymentInstructions, {
+    await adminSession.mutation(bankAccountsApi.snapshotInvoicePaymentInstructions, {
       invoiceId: unpaidInvoiceId,
     });
 
     // Unpaid invoice view DISPLAYS payment instructions
-    const unpaidView = await t.query(bankAccountsApi.getInvoicePaymentView, {
+    const unpaidView = await adminSession.query(bankAccountsApi.getInvoicePaymentView, {
       invoiceId: unpaidInvoiceId,
     });
     expect(unpaidView.showPaymentInstructions).toBe(true);
@@ -720,14 +733,14 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     });
 
     // 1. Paid invoice view SUPPRESSES payment instructions
-    const paidView = await t.query(bankAccountsApi.getInvoicePaymentView, {
+    const paidView = await adminSession.query(bankAccountsApi.getInvoicePaymentView, {
       invoiceId: paidInvoiceId,
     });
     expect(paidView.showPaymentInstructions).toBe(false);
     expect(paidView.paymentInstructions).toBeNull();
 
     // 2. Official Receipt query SUPPRESSES payment instructions
-    const receipt = await t.query(bankAccountsApi.getInvoiceReceipt, {
+    const receipt = await adminSession.query(bankAccountsApi.getInvoiceReceipt, {
       invoiceId: paidInvoiceId,
     });
     expect(receipt.status).toBe("paid");

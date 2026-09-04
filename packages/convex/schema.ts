@@ -1328,6 +1328,7 @@ export default defineSchema({
     sourceReleasedByUserId: v.optional(v.id("users")),
     sourceReleasedAt: v.optional(v.number()),
     destinationClassId: v.optional(v.id("classes")),
+    destinationStudentId: v.optional(v.id("students")),
     destinationAdmissionNumber: v.optional(v.string()),
     destinationAcceptedByUserId: v.optional(v.id("users")),
     destinationAcceptedAt: v.optional(v.number()),
@@ -1348,7 +1349,8 @@ export default defineSchema({
     .index("by_group_and_status", ["groupId", "status"])
     .index("by_source_school", ["sourceSchoolId"])
     .index("by_destination_school", ["destinationSchoolId"])
-    .index("by_student", ["studentId"]),
+    .index("by_student", ["studentId"])
+    .index("by_destination_student", ["destinationStudentId"]),
 
   classes: defineTable({
     schoolId: v.id("schools"),

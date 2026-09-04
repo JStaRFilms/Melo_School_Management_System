@@ -18,6 +18,13 @@ export interface UseFormDraftOptions<T extends Record<string, any>> {
   debounceMs?: number; // Default: 1500ms
 }
 
+export function isLatestDraftSaveRequest(
+  requestSequence: number,
+  latestRequestSequence: number
+): boolean {
+  return requestSequence === latestRequestSequence;
+}
+
 export interface UseFormDraftReturn<T> {
   status: DraftStatus;
   lastSavedAt: number | null;
@@ -57,6 +64,7 @@ export function useFormDraft<T extends Record<string, any>>({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestDataRef = useRef<T>(currentData);
   const isDirtyRef = useRef<boolean>(isDirty);
+  const saveRequestSequenceRef = useRef(0);
 
   latestDataRef.current = currentData;
   isDirtyRef.current = isDirty;
@@ -117,12 +125,16 @@ export function useFormDraft<T extends Record<string, any>>({
       return;
     }
 
+    const requestSequence = ++saveRequestSequenceRef.current;
+    const payload = latestDataRef.current;
+    const expectedRevision = currentRevisionRef.current;
+
     setStatus("saving");
     try {
-      const result = await onSave(
-        latestDataRef.current,
-        currentRevisionRef.current
-      );
+      const result = await onSave(payload, expectedRevision);
+      if (!isLatestDraftSaveRequest(requestSequence, saveRequestSequenceRef.current)) {
+        return;
+      }
 
       const savedTime = result?.lastSavedAt ?? Date.now();
       if (result?.revision !== undefined) {
@@ -131,8 +143,16 @@ export function useFormDraft<T extends Record<string, any>>({
 
       setLastSavedAt(savedTime);
       setStatus("saved");
-    } catch (err: any) {
-      if (err?.code === "CONFLICT" || err?.message?.includes?.("Conflict")) {
+    } catch (err: unknown) {
+      if (!isLatestDraftSaveRequest(requestSequence, saveRequestSequenceRef.current)) {
+        return;
+      }
+      const error = err instanceof Error ? err : null;
+      const errorCode =
+        typeof err === "object" && err !== null && "code" in err
+          ? (err as { code?: unknown }).code
+          : undefined;
+      if (errorCode === "CONFLICT" || error?.message.includes("Conflict")) {
         setStatus("conflict");
       } else if (typeof navigator !== "undefined" && !navigator.onLine) {
         setStatus("connection_lost");

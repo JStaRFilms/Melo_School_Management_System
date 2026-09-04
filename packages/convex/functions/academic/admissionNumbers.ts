@@ -1,4 +1,4 @@
-import { mutation, query, type MutationCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
@@ -268,7 +268,7 @@ export async function allocateNextAdmissionNumberHelper(
  * Atomic counter allocator evaluated during enrollment intake.
  * Increments currentSequence strictly without gaps or race conditions.
  */
-export const allocateNextAdmissionNumberInternal = mutation({
+export const allocateNextAdmissionNumber = internalMutation({
   args: {
     schoolId: v.id("schools"),
     level: v.optional(v.string()),

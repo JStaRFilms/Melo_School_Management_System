@@ -800,6 +800,39 @@ describe("Identity and Multi-Branch Tenancy Kernel (F2 / B-02)", () => {
     });
   });
 
+  it("Canonical resolver denies suspended schools, including platform admins without a recovery policy", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const schoolId = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Suspended Branch",
+        slug: "suspended-branch",
+        status: "suspended",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("platformAdmins", {
+        authId: "suspended-super-admin",
+        authTokenIdentifier: "https://auth.melo.test|suspended-super-admin",
+        email: "super@platform.test",
+        name: "Super Administrator",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return schoolId;
+    });
+
+    const superSession = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|suspended-super-admin",
+      subject: "suspended-super-admin",
+      email: "super@platform.test",
+    });
+    await expect(
+      superSession.run(async (ctx) => resolveActiveMembership(ctx, schoolId))
+    ).rejects.toThrow("currently suspended");
+  });
+
   it("Platform Super Admin bypass: active super admin can resolve any school branch context", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();

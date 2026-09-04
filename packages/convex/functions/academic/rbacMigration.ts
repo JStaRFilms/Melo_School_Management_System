@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "../../_generated/server";
+import { internalMutation } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { FACTORY_ROLE_DEFINITIONS, isMembershipProprietor } from "./rbac";
 
@@ -7,48 +7,7 @@ import { FACTORY_ROLE_DEFINITIONS, isMembershipProprietor } from "./rbac";
  * Seeds or updates the canonical factory role templates (D-02 §3.2 / MX-03).
  * Idempotent: Can be run multiple times safely.
  */
-export const seedFactoryRoleTemplates = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const templateIds: Record<string, Id<"roleTemplates">> = {};
-    let seededCount = 0;
-
-    for (const [code, def] of Object.entries(FACTORY_ROLE_DEFINITIONS)) {
-      const existing = await ctx.db
-        .query("roleTemplates")
-        .withIndex("by_code", (q) => q.eq("code", code))
-        .first();
-
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          name: def.name,
-          description: def.description,
-          capabilities: def.capabilities,
-          updatedAt: now,
-        });
-        templateIds[code] = existing._id;
-      } else {
-        const id = await ctx.db.insert("roleTemplates", {
-          code,
-          name: def.name,
-          description: def.description,
-          scope: "global",
-          capabilities: def.capabilities,
-          isSystem: true,
-          createdAt: now,
-          updatedAt: now,
-        });
-        templateIds[code] = id;
-        seededCount++;
-      }
-    }
-
-    return { seededCount, templateIds };
-  },
-});
-
-export const seedFactoryRoleTemplatesInternal = internalMutation({
+export const seedFactoryRoleTemplates = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
@@ -93,7 +52,7 @@ export const seedFactoryRoleTemplatesInternal = internalMutation({
  * MX-03: Backfills existing school administrators with baseline role templates (principal or proprietor)
  * to ensure zero lockout during migration to capability-based RBAC.
  */
-export const backfillExistingAdminCapabilities = mutation({
+export const backfillExistingAdminCapabilities = internalMutation({
   args: {
     cursor: v.optional(v.union(v.string(), v.null())),
     batchSize: v.optional(v.number()),
