@@ -5,6 +5,7 @@ import { ConvexError, v } from "convex/values";
 import { formatClassDisplayName } from "@school/shared/name-format";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { getAuthenticatedSchoolMembership } from "./academic/auth";
+import { snapshotInvoicePaymentInstructionsHelper } from "./academic/bankAccounts";
 import {
   billingFeePlanApplicationValidator,
   billingFeePlanBillingModeValidator,
@@ -471,6 +472,8 @@ async function createInvoiceFromFeePlanRecord(args: {
     createdAt: issuedAt,
     updatedAt: issuedAt,
   });
+
+  await snapshotInvoicePaymentInstructionsHelper(args.ctx, invoiceId);
 
   const invoiceNumber = generateBillingInvoiceNumber({
     prefix: getSchoolPrefix(args.school, args.settingsRecord),

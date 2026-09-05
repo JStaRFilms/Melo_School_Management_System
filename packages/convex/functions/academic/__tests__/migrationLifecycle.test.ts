@@ -100,8 +100,18 @@ describe("Migration Lifecycle Engine", () => {
       })
     ).rejects.toThrow("Unauthorized");
 
-    // 2. Teacher (non-admin) -> fails
-    const teacherSession = t.withIdentity({ subject: "auth-teacher-a" });
+    // 2. A legacy subject from an untrusted issuer cannot enter migration flows.
+    const untrustedSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://untrusted-auth.test" });
+    await expect(
+      untrustedSession.mutation(createWorkspace, {
+        schoolId: schoolA,
+        name: "Untrusted Import",
+        mode: "school_admin",
+      })
+    ).rejects.toThrow("untrusted legacy identity issuer");
+
+    // 3. Teacher (non-admin) -> fails
+    const teacherSession = t.withIdentity({ subject: "auth-teacher-a", issuer: "https://legacy-auth.test" });
     await expect(
       teacherSession.mutation(createWorkspace, {
         schoolId: schoolA,
@@ -110,8 +120,8 @@ describe("Migration Lifecycle Engine", () => {
       })
     ).rejects.toThrow("Admin access required");
 
-    // 3. Cross-school access -> fails
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    // 4. Cross-school access -> fails
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
     await expect(
       adminSession.mutation(createWorkspace, {
         schoolId: schoolB,
@@ -120,7 +130,7 @@ describe("Migration Lifecycle Engine", () => {
       })
     ).rejects.toThrow("Cross-school access denied");
 
-    // 4. School Admin on own school -> succeeds
+    // 5. School Admin on own school -> succeeds
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
       name: "2026 Intake",
@@ -128,8 +138,8 @@ describe("Migration Lifecycle Engine", () => {
     });
     expect(workspaceId).toBeDefined();
 
-    // 5. Platform Super Admin on any school -> succeeds
-    const superSession = t.withIdentity({ subject: "auth-super-admin" });
+    // 6. Platform Super Admin on any school -> succeeds
+    const superSession = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
     const superWorkspaceId = await superSession.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "Super Admin Import",
@@ -140,7 +150,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Clash Detection: flags warning with >= 80% confidence for similar names in same class", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -195,7 +205,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Sibling Household Grouping: clusters students with identical guardian phones under same familyClusterKey", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -260,7 +270,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Permissible Blanks & Auto-Increment: auto-assigns sequential admission numbers and defaults gender", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -321,7 +331,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Zero Data Loss: preserves unknown columns in migrationFeatureSignals and students.unmappedData upon merge", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -395,7 +405,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Atomic Transaction Rejection: blocks merge if unresolved error records exist in workspace", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a" });
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminSession.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -441,8 +451,8 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Workspace Tenant Ownership: blocks reading, signaling, or cancelling another school's workspace", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
 
     // Super admin creates workspace for School B
     const workspaceB = await superAdmin.mutation(createWorkspace, {
@@ -480,7 +490,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Clash Resolution Tenant Isolation: prevents merging with a student belonging to a different school", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
     const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
 
     // Create a student in School B
@@ -556,7 +566,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Large Import Batching & Whole-Workspace Pre-Flight: blocks merge if invalid row exists beyond first 1,000", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminA.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -607,7 +617,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Deterministic Grade Matching: matches exactly by admission number, matches unique student, and blocks ambiguous/unmatched", async () => {
     const { t, schoolA, jss1Class } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     // Create session and term
     const { sessionId, termId, student1Id, student2Id } = await t.run(async (ctx) => {
@@ -815,7 +825,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Platform Super Admin: creates valid user actor provenance without casting platform admin IDs", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin" });
+    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await superAdmin.mutation(createWorkspace, {
       schoolId: schoolA,
@@ -866,7 +876,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("State Transitions & Cancelled Workspaces: rejects staging, patching, resolving, and committing on cancelled workspace", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
     const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
     const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
     const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
@@ -957,7 +967,7 @@ describe("Migration Lifecycle Engine", () => {
 
   it("Large Imports >1,000 Rows & Idempotent Batch Retries: commits all batches and is idempotent on retries", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a" });
+    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
     const workspaceId = await adminA.mutation(createWorkspace, {
       schoolId: schoolA,

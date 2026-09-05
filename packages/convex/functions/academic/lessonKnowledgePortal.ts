@@ -3,6 +3,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { query, mutation, type MutationCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
 import {
   canCreateKnowledgeMaterialDraft,
   canPromoteKnowledgeMaterial,
@@ -109,16 +110,25 @@ async function getStudentPortalContext(
     throw new ConvexError("Unauthorized");
   }
 
-  const memberships = (await ctx.db
-    .query("users")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .collect()) as Doc<"users">[];
-  const activeMemberships = memberships.filter((user) => !user.isArchived);
-  if (activeMemberships.length === 0) {
+  const membership = await resolveTokenFirstTrustedLegacyRow<Doc<"users">>(identity, {
+    byTokenIdentifier: (tokenIdentifier) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_auth_token_identifier", (q: any) =>
+          q.eq("authTokenIdentifier", tokenIdentifier)
+        )
+        .take(2),
+    bySubject: (subject) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_auth", (q: any) => q.eq("authId", subject))
+        .take(2),
+  });
+  if (!membership || membership.isArchived) {
     throw new ConvexError("Portal account not found");
   }
 
-  const studentMembership = activeMemberships.find((user) => user.role === "student");
+  const studentMembership = membership.role === "student" ? membership : null;
   if (studentMembership) {
     const studentRows = await ctx.db
       .query("students")
@@ -142,26 +152,23 @@ async function getStudentPortalContext(
     };
   }
 
-  const parentMemberships = activeMemberships.filter((user) => user.role === "parent");
-  if (parentMemberships.length === 0) {
+  if (membership.role !== "parent") {
     throw new ConvexError("Portal topic pages are available to students and parents only");
   }
 
   const accessible: Array<{ student: Doc<"students">; parentUser: Doc<"users"> }> = [];
-  for (const parentUser of parentMemberships) {
-    const familyLinks = await ctx.db
-      .query("familyMembers")
-      .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", parentUser._id))
+  const familyLinks = await ctx.db
+    .query("familyMembers")
+    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", membership._id))
+    .collect();
+  for (const familyLink of familyLinks) {
+    const familyStudents = await ctx.db
+      .query("students")
+      .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
       .collect();
-    for (const familyLink of familyLinks) {
-      const familyStudents = await ctx.db
-        .query("students")
-        .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
-        .collect();
-      for (const student of familyStudents) {
-        if (student.schoolId === parentUser.schoolId && !student.isArchived) {
-          accessible.push({ student: student as Doc<"students">, parentUser });
-        }
+    for (const student of familyStudents) {
+      if (student.schoolId === membership.schoolId && !student.isArchived) {
+        accessible.push({ student: student as Doc<"students">, parentUser: membership });
       }
     }
   }

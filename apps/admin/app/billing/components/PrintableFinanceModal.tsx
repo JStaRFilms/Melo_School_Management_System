@@ -38,6 +38,14 @@ function getSafeHttpsUrl(value: string | null) {
   }
 }
 
+function withRunningBalance<T extends { charge: number; payment: number }>(transactions: T[]) {
+  let runningBalance = 0;
+  return transactions.map((transaction) => {
+    runningBalance += transaction.charge - transaction.payment;
+    return { ...transaction, runningBalance };
+  });
+}
+
 export function PrintableFinanceModal({
   mode,
   school,
@@ -106,14 +114,7 @@ export function PrintableFinanceModal({
     })),
   ].sort((left, right) => left.occurredAt - right.occurredAt);
 
-  let currentRunningBalance = 0;
-  const statementRowsWithBalance = statementTransactions.map((tx) => {
-    currentRunningBalance = currentRunningBalance + tx.charge - tx.payment;
-    return {
-      ...tx,
-      runningBalance: currentRunningBalance,
-    };
-  });
+  const statementRowsWithBalance = withRunningBalance(statementTransactions);
 
   const getStatusBadge = (status: string) => {
     switch (status) {

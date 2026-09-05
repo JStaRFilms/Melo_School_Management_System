@@ -332,6 +332,44 @@ export default function PlanningIndexPage() {
         })
       : null;
 
+  const availableSubjects = useMemo(() => {
+    const subjectMap = new Map<string, { id: string; name: string; count: number }>();
+    (planningWork ?? []).forEach((item) => {
+      const existing = subjectMap.get(item.subjectId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        subjectMap.set(item.subjectId, {
+          id: item.subjectId,
+          name: item.subjectName,
+          count: 1,
+        });
+      }
+    });
+    return Array.from(subjectMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [planningWork]);
+
+  const filteredPlanningWork = useMemo(() => {
+    return (planningWork ?? []).filter((item) => {
+      if (selectedSubjectFilter !== "all" && item.subjectId !== selectedSubjectFilter) {
+        return false;
+      }
+      if (workSearchQuery.trim()) {
+        const q = workSearchQuery.toLowerCase().trim();
+        const matchTitle = item.topicTitle.toLowerCase().includes(q);
+        const matchSummary = (item.topicSummary ?? "").toLowerCase().includes(q);
+        const matchSubject = item.subjectName.toLowerCase().includes(q) || item.subjectCode.toLowerCase().includes(q);
+        const matchLevel = item.level.toLowerCase().includes(q);
+        const matchTerm = item.termName.toLowerCase().includes(q);
+        const matchOutputs = item.outputs.some((o) => o.title.toLowerCase().includes(q));
+        if (!matchTitle && !matchSummary && !matchSubject && !matchLevel && !matchTerm && !matchOutputs) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [planningWork, selectedSubjectFilter, workSearchQuery]);
+
   if (classes === undefined || terms === undefined) {
     return (
       <div className="mx-auto max-w-[1600px] px-4 py-10 md:px-8">
@@ -483,44 +521,6 @@ export default function PlanningIndexPage() {
       </div>
     </div>
   );
-
-  const availableSubjects = useMemo(() => {
-    const subjectMap = new Map<string, { id: string; name: string; count: number }>();
-    (planningWork ?? []).forEach((item) => {
-      const existing = subjectMap.get(item.subjectId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        subjectMap.set(item.subjectId, {
-          id: item.subjectId,
-          name: item.subjectName,
-          count: 1,
-        });
-      }
-    });
-    return Array.from(subjectMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [planningWork]);
-
-  const filteredPlanningWork = useMemo(() => {
-    return (planningWork ?? []).filter((item) => {
-      if (selectedSubjectFilter !== "all" && item.subjectId !== selectedSubjectFilter) {
-        return false;
-      }
-      if (workSearchQuery.trim()) {
-        const q = workSearchQuery.toLowerCase().trim();
-        const matchTitle = item.topicTitle.toLowerCase().includes(q);
-        const matchSummary = (item.topicSummary ?? "").toLowerCase().includes(q);
-        const matchSubject = item.subjectName.toLowerCase().includes(q) || item.subjectCode.toLowerCase().includes(q);
-        const matchLevel = item.level.toLowerCase().includes(q);
-        const matchTerm = item.termName.toLowerCase().includes(q);
-        const matchOutputs = item.outputs.some((o) => o.title.toLowerCase().includes(q));
-        if (!matchTitle && !matchSummary && !matchSubject && !matchLevel && !matchTerm && !matchOutputs) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [planningWork, selectedSubjectFilter, workSearchQuery]);
 
   return (
     <div className="relative min-h-screen lg:h-[calc(100vh-64px)] lg:overflow-hidden flex flex-col bg-surface-200/50">

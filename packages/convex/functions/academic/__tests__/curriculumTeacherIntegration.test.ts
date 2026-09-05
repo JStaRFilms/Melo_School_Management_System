@@ -6,7 +6,7 @@ import * as lessonKnowledgeTeacher from "../lessonKnowledgeTeacher";
 
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob("../../../**/*.ts");
-const admin = { subject: "curriculum-teacher-admin" };
+const admin = { subject: "curriculum-teacher-admin", issuer: "https://legacy-auth.test" };
 type QueryReference<Export> = Export extends RegisteredQuery<infer Visibility, infer Args, infer Result> ? FunctionReference<"query", Visibility, Args, Awaited<Result>> : never;
 const listTopics = lessonKnowledgeTeacher.listTeacherKnowledgeTopics as unknown as QueryReference<typeof lessonKnowledgeTeacher.listTeacherKnowledgeTopics>;
 const listWork = lessonKnowledgeTeacher.listTeacherPlanningTopicWork as unknown as QueryReference<typeof lessonKnowledgeTeacher.listTeacherPlanningTopicWork>;

@@ -176,7 +176,7 @@ function AuthProviderWithConvex({ children }: { children: ReactNode }) {
       return true;
     }
 
-    if (viewerContext !== undefined && viewerContext !== null) {
+    if (viewerContext !== undefined) {
       return true;
     }
 

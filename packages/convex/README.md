@@ -59,6 +59,7 @@ Production note:
 - `SITE_URL` must be the real deployed URL for that specific app, not `localhost`
 - `TRUSTED_ORIGINS` should include the real admin and teacher origins that are allowed to share auth flows
 - use the same `BETTER_AUTH_SECRET` across the admin app, teacher app, and Convex deployment
+- set `LEGACY_SUBJECT_TRUSTED_ISSUER` on Convex only while legacy `authId` compatibility is required; it must be the exact Better Auth JWT issuer URL. Leaving it unset disables subject fallback rather than trusting another issuer.
 - if you deploy admin and teacher as separate Vercel projects, make sure each public domain is attached to the matching project root (`apps/admin` vs `apps/teacher`)
 - after any `BETTER_AUTH_SECRET` change, rotate the Better Auth keys and set the returned value as the Convex `JWKS` env:
 

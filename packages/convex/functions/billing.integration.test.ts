@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 
 declare global {
@@ -56,6 +56,276 @@ describe("billing registered functions", () => {
       lineItems,
     })).rejects.toThrow(/Manual extra fee plans cannot target classes/);
   });
+
+  it("snapshots overdue fee-plan issuance and skips fully waived invoices", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const now = Date.now();
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Snapshot Billing School",
+        slug: "snapshot-billing-school",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const adminId = await ctx.db.insert("users", {
+        schoolId,
+        authId: adminIdentity.subject,
+        authTokenIdentifier: adminIdentity.tokenIdentifier,
+        name: "Billing Admin",
+        email: "admin@snapshot-billing.test",
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const classId = await ctx.db.insert("classes", {
+        schoolId,
+        name: "Primary 1",
+        gradeName: "Primary 1",
+        level: "Primary",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sessionId = await ctx.db.insert("academicSessions", {
+        schoolId,
+        name: "2026/2027",
+        startDate: now,
+        endDate: now + 365 * 24 * 60 * 60 * 1000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const termId = await ctx.db.insert("academicTerms", {
+        schoolId,
+        sessionId,
+        name: "First Term",
+        startDate: now,
+        endDate: now + 90 * 24 * 60 * 60 * 1000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const studentIds = [];
+      for (const [index, name] of ["Ada", "Bola"].entries()) {
+        const userId = await ctx.db.insert("users", {
+          schoolId,
+          authId: `snapshot-student-${index}`,
+          authTokenIdentifier: `https://auth.school.test|snapshot-student-${index}`,
+          name,
+          email: `${name.toLowerCase()}@snapshot-billing.test`,
+          role: "student",
+          createdAt: now,
+          updatedAt: now,
+        });
+        studentIds.push(
+          await ctx.db.insert("students", {
+            schoolId,
+            classId,
+            userId,
+            admissionNumber: `SNAP-${index + 1}`,
+            enrollmentStatus: "active",
+            createdAt: now,
+            updatedAt: now,
+          })
+        );
+      }
+      const directFeePlanId = await ctx.db.insert("feePlans", {
+        schoolId,
+        name: "Direct Tuition",
+        currency: "NGN",
+        billingMode: "class_default",
+        targetClassIds: [],
+        lineItems: storedLineItems,
+        installmentPolicy: { enabled: false, installmentCount: 1, intervalDays: 0, firstDueDays: 14 },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: adminId,
+        updatedBy: adminId,
+      });
+      const bulkFeePlanId = await ctx.db.insert("feePlans", {
+        schoolId,
+        name: "Bulk Activity Fee",
+        currency: "NGN",
+        billingMode: "class_default",
+        targetClassIds: [],
+        lineItems: storedLineItems,
+        installmentPolicy: { enabled: false, installmentCount: 1, intervalDays: 0, firstDueDays: 14 },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: adminId,
+        updatedBy: adminId,
+      });
+      const waivedFeePlanId = await ctx.db.insert("feePlans", {
+        schoolId,
+        name: "Waived Tuition",
+        currency: "NGN",
+        billingMode: "class_default",
+        targetClassIds: [],
+        lineItems: storedLineItems,
+        installmentPolicy: { enabled: false, installmentCount: 1, intervalDays: 0, firstDueDays: 14 },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: adminId,
+        updatedBy: adminId,
+      });
+      const firstBankId = await ctx.db.insert("schoolBankAccounts", {
+        schoolId,
+        bankName: "First Bank",
+        accountNumber: "0123456789",
+        accountName: "Snapshot School",
+        currency: "NGN",
+        isDefault: true,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: adminId,
+      });
+      const secondBankId = await ctx.db.insert("schoolBankAccounts", {
+        schoolId,
+        bankName: "GTBank",
+        accountNumber: "9876543210",
+        accountName: "Snapshot School New",
+        currency: "NGN",
+        isDefault: false,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: adminId,
+      });
+
+      return {
+        schoolId,
+        adminId,
+        classId,
+        sessionId,
+        termId,
+        studentIds,
+        directFeePlanId,
+        bulkFeePlanId,
+        waivedFeePlanId,
+        firstBankId,
+        secondBankId,
+      };
+    });
+
+    const directInvoice = await t.withIdentity(adminIdentity).mutation(
+      api.functions.billing.createInvoiceFromFeePlan,
+      {
+        feePlanId: ids.directFeePlanId,
+        studentId: ids.studentIds[0],
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+        dueDate: Date.now() - 1,
+      }
+    );
+    expect(directInvoice.status).toBe("overdue");
+    const issuedDirectInvoice = await t.run((ctx) =>
+      ctx.db.get("studentInvoices", directInvoice._id)
+    );
+    expect(issuedDirectInvoice?.paymentInstructionsSnapshot).toMatchObject({
+      bankAccountId: ids.firstBankId,
+      bankName: "First Bank",
+      accountNumber: "0123456789",
+    });
+
+    const draftInvoiceId = await t.run((ctx) =>
+      ctx.db.insert("studentInvoices", {
+        schoolId: ids.schoolId,
+        feePlanId: ids.directFeePlanId,
+        studentId: ids.studentIds[0],
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+        invoiceNumber: "DRAFT-SNAPSHOT-MISUSE",
+        feePlanNameSnapshot: "Direct Tuition",
+        currency: "NGN",
+        lineItems: storedLineItems,
+        installmentSchedule: [],
+        subtotal: 5000,
+        waiverAmount: 0,
+        discountAmount: 0,
+        totalAmount: 5000,
+        amountPaid: 0,
+        balanceDue: 5000,
+        status: "draft",
+        dueDate: Date.now() + 24 * 60 * 60 * 1000,
+        issuedAt: Date.now(),
+        issuedBy: ids.adminId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+    );
+    await expect(
+      t.mutation(internal.functions.academic.bankAccounts.snapshotInvoicePaymentInstructions, {
+        invoiceId: draftInvoiceId,
+      })
+    ).rejects.toThrow(/payable issued invoices/);
+
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.patch(ids.firstBankId, { isDefault: false, updatedAt: now });
+      await ctx.db.patch(ids.secondBankId, { isDefault: true, updatedAt: now });
+    });
+
+    const waivedInvoice = await t.withIdentity(adminIdentity).mutation(
+      api.functions.billing.createInvoiceFromFeePlan,
+      {
+        feePlanId: ids.waivedFeePlanId,
+        studentId: ids.studentIds[1],
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+        waiverAmount: 5000,
+      }
+    );
+    expect(waivedInvoice).toMatchObject({
+      status: "waived",
+      totalAmount: 0,
+      balanceDue: 0,
+    });
+    const storedWaivedInvoice = await t.run((ctx) =>
+      ctx.db.get("studentInvoices", waivedInvoice._id)
+    );
+    expect(storedWaivedInvoice?.paymentInstructionsSnapshot).toBeUndefined();
+
+    const bulkResult = await t.withIdentity(adminIdentity).mutation(
+      api.functions.billing.applyFeePlanToClassStudents,
+      {
+        feePlanId: ids.bulkFeePlanId,
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+      }
+    );
+    expect(bulkResult.createdCount).toBe(2);
+
+    const invoices = await t.run(async (ctx) =>
+      await ctx.db
+        .query("studentInvoices")
+        .withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId))
+        .collect()
+    );
+    const historicalInvoice = invoices.find((invoice) => invoice._id === directInvoice._id);
+    const bulkInvoices = invoices.filter((invoice) => invoice.feePlanId === ids.bulkFeePlanId);
+
+    expect(historicalInvoice?.paymentInstructionsSnapshot).toMatchObject({
+      bankAccountId: ids.firstBankId,
+      bankName: "First Bank",
+      accountNumber: "0123456789",
+    });
+    expect(bulkInvoices).toHaveLength(2);
+    for (const invoice of bulkInvoices) {
+      expect(invoice.paymentInstructionsSnapshot).toMatchObject({
+        bankAccountId: ids.secondBankId,
+        bankName: "GTBank",
+        accountNumber: "9876543210",
+      });
+    }
+  }, 15_000);
 
   it("keeps invoice-less gateway events only on unfiltered dashboards", async () => {
     const t = convexTest(schema, modules);

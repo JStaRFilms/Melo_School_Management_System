@@ -153,7 +153,7 @@ function AcademicWorkspaceNavbar({
             {isCurriculumDisabled ? "Curriculum Planning Module Inactive" : "AI Knowledge Library Inactive"}
           </h2>
           <p className="text-xs text-slate-500 max-w-md mt-1.5 leading-relaxed">
-            This module is currently turned off on your school's workspace configuration. Contact your platform manager if you require access.
+            This module is currently turned off on your school&apos;s workspace configuration. Contact your platform manager if you require access.
           </p>
           <Link
             href="/admin/dashboard"

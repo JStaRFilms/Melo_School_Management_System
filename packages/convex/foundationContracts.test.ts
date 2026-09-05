@@ -7,7 +7,7 @@ import { issueCheckedDocumentAccessV1 } from "./functions/foundation/documentAcc
 import { matchesPaymentDispatchProviderModeV1 } from "./functions/foundation/paymentDispatch";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
 
 describe("B0 foundation contracts", () => {
   test("resolves canonical link from explicit school and intake records", async () => {

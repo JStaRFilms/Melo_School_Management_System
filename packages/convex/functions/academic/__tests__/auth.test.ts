@@ -16,11 +16,12 @@ function asId<TableName extends TableNames>(value: string): Id<TableName> {
 }
 
 function createCtx(options?: {
-  identity?: { subject: string } | null;
+  identity?: { subject: string; tokenIdentifier?: string; issuer?: string } | null;
   user?: {
     _id: Id<"users">;
     schoolId: Id<"schools">;
     role: string;
+    authTokenIdentifier?: string;
     email?: string;
     isArchived?: boolean;
   } | null;
@@ -55,7 +56,9 @@ function createCtx(options?: {
   }>;
 }) {
   const identity =
-    options && "identity" in options ? options.identity : { subject: "auth-user-1" };
+    options && "identity" in options
+      ? options.identity
+      : { subject: "auth-user-1", tokenIdentifier: "https://auth.test|user-1", issuer: "https://legacy-auth.test" };
   const user =
     options && "user" in options
       ? options.user
@@ -63,6 +66,7 @@ function createCtx(options?: {
           _id: asId<"users">("user-1"),
           schoolId: asId<"schools">("school-1"),
           role: "teacher",
+          authTokenIdentifier: "https://auth.test|user-1",
           email: "teacher@example.com",
         } as const);
   const teacherAssignments = options?.teacherAssignments ?? [
@@ -183,6 +187,9 @@ function createCtx(options?: {
             }
 
             if (table === "users") {
+              if (indexName === "by_auth" || indexName === "by_auth_token_identifier") {
+                return user ? [user] : [];
+              }
               return schoolUsers.filter(matchesCriteria);
             }
 
@@ -191,6 +198,7 @@ function createCtx(options?: {
 
           return {
             collect: async () => filterRows(),
+            take: async (count: number) => filterRows().slice(0, count),
             unique: async () => {
               if (table === "users") return user;
               if (table === "classes") {

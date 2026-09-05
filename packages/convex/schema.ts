@@ -944,12 +944,239 @@ export default defineSchema({
     .index("by_school_and_created_at", ["schoolId", "createdAt"])
     .index("by_actor_user_and_created_at", ["actorUserId", "createdAt"]),
 
+  // --- Canonical Identity & Multi-Branch Tenancy Kernel (F2) ---
+  persons: defineTable({
+    // Only a provider-issued token identifier is canonical. Legacy records without
+    // one remain inaccessible until an internal reconciliation supplies it.
+    authTokenIdentifier: v.optional(v.string()),
+    identityReconciliationState: v.optional(
+      v.union(v.literal("resolved"), v.literal("reconciliation_required"))
+    ),
+    email: v.string(),
+    name: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    primarySchoolId: v.optional(v.id("schools")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_token_identifier", ["authTokenIdentifier"])
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  branchMemberships: defineTable({
+    personId: v.id("persons"),
+    schoolId: v.id("schools"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    displayTitle: v.optional(v.string()),
+    isDefaultBranch: v.boolean(),
+    legacyUserId: v.optional(v.id("users")),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_person_and_school", ["personId", "schoolId"])
+    .index("by_school_and_person", ["schoolId", "personId"])
+    .index("by_person_and_status", ["personId", "status"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_legacy_user", ["legacyUserId"]),
+
+  schoolGroups: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    proprietorPersonId: v.id("persons"),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    settingsVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_proprietor", ["proprietorPersonId"]),
+
+  schoolGroupBranches: defineTable({
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    isHeadquarters: v.boolean(),
+    linkedAt: v.number(),
+  })
+    .index("by_group_and_school", ["groupId", "schoolId"])
+    .index("by_school", ["schoolId"])
+    .index("by_group", ["groupId"]),
+
+  migrationRuns: defineTable({
+    sliceId: v.string(),
+    batchNumber: v.number(),
+    cursor: v.union(v.string(), v.null()),
+    processedCount: v.number(),
+    failedCount: v.number(),
+    status: v.union(
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+  })
+    .index("by_slice_and_status", ["sliceId", "status"])
+    .index("by_slice_and_batch", ["sliceId", "batchNumber"]),
+
+  identityMigrationIssues: defineTable({
+    sliceId: v.string(),
+    userId: v.id("users"),
+    schoolId: v.id("schools"),
+    code: v.union(
+      v.literal("missing_canonical_token"),
+      v.literal("duplicate_canonical_token"),
+      v.literal("mismatched_prelink"),
+      v.literal("duplicate_membership"),
+      v.literal("migration_error")
+    ),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    message: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_slice_and_status", ["sliceId", "status"])
+    .index("by_user_and_status", ["userId", "status"])
+    .index("by_slice_and_user_and_code", ["sliceId", "userId", "code"]),
+
+  // --- Granular Capability RBAC & Authority Ceilings (H2) ---
+  roleTemplates: defineTable({
+    code: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    scope: v.union(v.literal("global"), v.literal("group"), v.literal("branch")),
+    schoolId: v.optional(v.id("schools")),
+    groupId: v.optional(v.id("schoolGroups")),
+    capabilities: v.array(v.string()),
+    isSystem: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_code", ["code"])
+    .index("by_scope_and_school", ["scope", "schoolId"])
+    .index("by_group", ["groupId"]),
+
+  membershipRoleAssignments: defineTable({
+    membershipId: v.id("branchMemberships"),
+    roleTemplateId: v.id("roleTemplates"),
+    roleTemplateKey: v.optional(v.string()),
+    assignedBy: v.optional(v.id("persons")),
+    assignedAt: v.number(),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_role", ["roleTemplateId"])
+    .index("by_membership_and_role", ["membershipId", "roleTemplateId"]),
+
+  membershipDirectGrants: defineTable({
+    membershipId: v.id("branchMemberships"),
+    capability: v.string(),
+    grantedBy: v.optional(v.id("persons")),
+    grantedAt: v.number(),
+    reason: v.optional(v.string()),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_membership_and_cap", ["membershipId", "capability"]),
+
+  membershipDirectRestrictions: defineTable({
+    membershipId: v.id("branchMemberships"),
+    capability: v.string(),
+    restrictedBy: v.optional(v.id("persons")),
+    restrictedAt: v.number(),
+    reason: v.optional(v.string()),
+  })
+    .index("by_membership", ["membershipId"])
+    .index("by_membership_and_cap", ["membershipId", "capability"]),
+
+  delegationCeilings: defineTable({
+    membershipId: v.id("branchMemberships"),
+    allowedCapabilities: v.array(v.string()),
+    updatedBy: v.optional(v.id("persons")),
+    updatedAt: v.number(),
+  }).index("by_membership", ["membershipId"]),
+
+  // --- Append-Only Redacted Audit Kernel (F1) ---
+  auditEvents: defineTable({
+    eventId: v.string(),
+    timestamp: v.number(),
+    actorKind: v.union(
+      v.literal("user"),
+      v.literal("platform_admin"),
+      v.literal("system")
+    ),
+    actorPersonId: v.optional(v.id("persons")),
+    actorMembershipId: v.optional(v.id("branchMemberships")),
+    actorEmailSnapshot: v.string(),
+    actorIpHash: v.optional(v.string()),
+    schoolId: v.id("schools"),
+    groupId: v.optional(v.id("schoolGroups")),
+    module: v.string(),
+    action: v.string(),
+    targetType: v.string(),
+    targetId: v.string(),
+    outcome: v.union(
+      v.literal("success"),
+      v.literal("denied"),
+      v.literal("failed")
+    ),
+    safeSummary: v.string(),
+    beforeSummary: v.optional(v.string()),
+    afterSummary: v.optional(v.string()),
+    correlationId: v.string(),
+    retentionClass: v.union(
+      v.literal("operational_7yr"),
+      v.literal("permanent_statutory")
+    ),
+    alertTier: v.optional(
+      v.union(
+        v.literal("tier1_critical"),
+        v.literal("tier2_warn"),
+        v.literal("tier3_info")
+      )
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_timestamp", ["schoolId", "timestamp"])
+    .index("by_group_and_timestamp", ["groupId", "timestamp"])
+    .index("by_module_and_action", ["module", "action"])
+    .index("by_actor_and_timestamp", ["actorPersonId", "timestamp"]),
+
+  auditAlerts: defineTable({
+    alertId: v.string(),
+    schoolId: v.id("schools"),
+    eventId: v.id("auditEvents"),
+    tier: v.union(
+      v.literal("tier1_critical"),
+      v.literal("tier2_warn"),
+      v.literal("tier3_info")
+    ),
+    title: v.string(),
+    message: v.string(),
+    targetRecipientPersonIds: v.optional(v.array(v.id("persons"))),
+    isDismissed: v.boolean(),
+    dismissedAt: v.optional(v.number()),
+    dismissedBy: v.optional(v.id("persons")),
+    createdAt: v.number(),
+  })
+    .index("by_school_and_dismissed", ["schoolId", "isDismissed"])
+    .index("by_event", ["eventId"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),
     // New writes use the canonical Convex token identifier. authId remains the
     // Better Auth bridge for existing memberships until a reviewed backfill.
     authTokenIdentifier: v.optional(v.string()),
+    personId: v.optional(v.id("persons")),
     name: v.string(),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -974,7 +1201,8 @@ export default defineSchema({
     .index("by_auth", ["authId"])
     .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_email", ["email"])
-    .index("by_school_and_manager_user", ["schoolId", "managerUserId"]),
+    .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
+    .index("by_person", ["personId"]),
 
   families: defineTable({
     schoolId: v.id("schools"),
@@ -1077,7 +1305,52 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
+    .index("by_school_and_user", ["schoolId", "userId"])
     .index("by_source_application", ["sourceApplicationId"]),
+
+  // --- Within-Group Branch-to-Branch Student Transfers (F4 / MX-15) ---
+  studentTransfers: defineTable({
+    groupId: v.id("schoolGroups"),
+    sourceSchoolId: v.id("schools"),
+    destinationSchoolId: v.id("schools"),
+    studentId: v.id("students"),
+    studentName: v.string(),
+    guardianConsentRecorded: v.boolean(),
+    guardianConsentMethod: v.string(),
+    status: v.union(
+      v.literal("initiated"),
+      v.literal("source_released"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("rejected")
+    ),
+    sourceReleaseNote: v.optional(v.string()),
+    sourceReleasedByUserId: v.optional(v.id("users")),
+    sourceReleasedAt: v.optional(v.number()),
+    destinationClassId: v.optional(v.id("classes")),
+    destinationStudentId: v.optional(v.id("students")),
+    destinationAdmissionNumber: v.optional(v.string()),
+    destinationAcceptedByUserId: v.optional(v.id("users")),
+    destinationAcceptedAt: v.optional(v.number()),
+    portableRecordPackage: v.optional(
+      v.object({
+        studentName: v.string(),
+        dateOfBirth: v.optional(v.string()),
+        gender: v.optional(v.string()),
+        academicHistorySummary: v.string(),
+        attendanceSummaryPct: v.number(),
+        medicalNotes: v.optional(v.string()),
+      })
+    ),
+    cancellationReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_group_and_status", ["groupId", "status"])
+    .index("by_source_school", ["sourceSchoolId"])
+    .index("by_destination_school", ["destinationSchoolId"])
+    .index("by_student", ["studentId"])
+    .index("by_destination_student", ["destinationStudentId"]),
 
   classes: defineTable({
     schoolId: v.id("schools"),
@@ -1380,13 +1653,37 @@ export default defineSchema({
     maxScore: v.number(),
     gradeLetter: v.string(),
     remark: v.string(),
+    gradePoints: v.optional(v.number()),
+    colorHex: v.optional(v.string()),
+    color: v.optional(v.string()),
+    luminanceContrast: v.optional(v.number()),
     isActive: v.boolean(),
+    version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
+
+  admissionNumberPolicies: defineTable({
+    schoolId: v.id("schools"),
+    pattern: v.string(),
+    schoolCode: v.string(),
+    campusCode: v.string(),
+    currentSequence: v.number(),
+    resetFrequency: v.optional(
+      v.union(
+        v.literal("continuous"),
+        v.literal("session"),
+        v.literal("calendar")
+      )
+    ),
+    lastResetYear: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.union(v.id("users"), v.id("persons"))),
+  }).index("by_school", ["schoolId"]),
 
   assessmentRecords: defineTable({
     schoolId: v.id("schools"),
@@ -1833,6 +2130,18 @@ export default defineSchema({
     lastPaymentAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    paymentInstructionsSnapshot: v.optional(
+      v.object({
+        bankAccountId: v.optional(v.id("schoolBankAccounts")),
+        bankName: v.string(),
+        accountName: v.string(),
+        accountNumber: v.string(),
+        sortCode: v.optional(v.string()),
+        currency: v.string(),
+        transferNote: v.optional(v.string()),
+        snapshottedAt: v.number(),
+      })
+    ),
   })
     .index("by_school", ["schoolId"])
     .index("by_school_and_class", ["schoolId", "classId"])
@@ -1840,6 +2149,24 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
     .index("by_school_and_number", ["schoolId", "invoiceNumber"]),
+
+  schoolBankAccounts: defineTable({
+    schoolId: v.id("schools"),
+    bankName: v.string(),
+    accountNumber: v.string(),
+    accountName: v.string(),
+    sortCode: v.optional(v.string()),
+    currency: v.string(),
+    isDefault: v.boolean(),
+    status: v.union(v.literal("active"), v.literal("archived"), v.literal("suspended")),
+    transferNote: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.union(v.id("users"), v.id("persons"))),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_default", ["schoolId", "isDefault"]),
 
   billingPaymentAttempts: defineTable({
     schoolId: v.id("schools"),
@@ -2905,5 +3232,422 @@ export default defineSchema({
   })
     .index("by_rawHeader", ["rawHeader"])
     .index("by_schoolId", ["schoolId"]),
+
+  formDrafts: defineTable({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    formKey: v.string(),
+    entityId: v.optional(v.string()),
+    payload: v.any(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("committed"),
+      v.literal("discarded")
+    ),
+    revision: v.optional(v.number()),
+    lastSavedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_and_form", ["userId", "formKey"])
+    .index("by_school_and_form", ["schoolId", "formKey"]),
+
+  // --- Institutional Email & Directory Provisioning (H5) ---
+  schoolEmailDomains: defineTable({
+    schoolId: v.id("schools"),
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending_verification"),
+      v.literal("verified"),
+      v.literal("failed")
+    ),
+    dnsTxtRecord: v.string(),
+    provider: v.union(
+      v.literal("google"),
+      v.literal("microsoft"),
+      v.literal("zoho"),
+      v.literal("none")
+    ),
+    isDefault: v.boolean(),
+    verifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_domain", ["schoolId", "domain"])
+    .index("by_school_and_default", ["schoolId", "isDefault"])
+    .index("by_domain", ["domain"]),
+
+  institutionalMailboxes: defineTable({
+    personId: v.id("persons"),
+    schoolId: v.id("schools"),
+    email: v.string(),
+    address: v.optional(v.string()),
+    state: v.union(
+      v.literal("login_only"),
+      v.literal("external_verified"),
+      v.literal("provider_provisioned")
+    ),
+    providerType: v.union(
+      v.literal("google"),
+      v.literal("microsoft"),
+      v.literal("zoho"),
+      v.literal("none")
+    ),
+    providerAccountId: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("archived")
+    ),
+    isMinor: v.optional(v.boolean()),
+    minorPrivacyRequested: v.optional(v.boolean()),
+    lastSyncError: v.optional(v.string()),
+    suspendedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_person_and_school", ["personId", "schoolId"])
+    .index("by_school_and_email", ["schoolId", "email"])
+    .index("by_email", ["email"]),
+
+  // --- AI Import Review Pipeline (F3 / MX-11) ---
+  aiImportWorkspaces: defineTable({
+    schoolId: v.id("schools"),
+    importer: v.string(),
+    importerUserId: v.optional(v.id("users")),
+    ownerMembershipId: v.optional(v.id("branchMemberships")),
+    entityType: v.union(
+      v.literal("students"),
+      v.literal("teachers"),
+      v.literal("curriculum"),
+      v.literal("grades")
+    ),
+    status: v.union(
+      v.literal("staged"),
+      v.literal("reviewed"),
+      v.literal("committed"),
+      v.literal("rejected")
+    ),
+    rawTokenCount: v.optional(v.number()),
+    stagedRows: v.array(v.any()),
+    validationErrors: v.array(v.any()),
+    reviewedBy: v.optional(v.string()),
+    commitResult: v.optional(
+      v.object({
+        committedCount: v.number(),
+        timestamp: v.number(),
+      })
+    ),
+    reviewedAt: v.optional(v.number()),
+    committedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_importer", ["importer"]),
+
+  // --- Commercial Catalog & Settlement Ledgers (F7 / MX-12) ---
+  subscriptionPlans: defineTable({
+    code: v.string(), // e.g. "core_basic"
+    name: v.string(),
+    description: v.optional(v.string()),
+    perStudentFeeKobo: v.number(), // ₦1,000 = 100,000 kobo
+    termSetupFeeKobo: v.number(), // ₦30,000 = 3,000,000 kobo
+    currency: v.string(), // "NGN"
+    billingCadence: v.union(v.literal("termly"), v.literal("annually")),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_code", ["code"]),
+
+  schoolSubscriptions: defineTable({
+    schoolId: v.id("schools"),
+    planId: v.id("subscriptionPlans"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("trial"),
+      v.literal("past_due"),
+      v.literal("suspended"),
+      v.literal("cancelled")
+    ),
+    activeStudentCount: v.number(),
+    currentTermFeeKobo: v.number(),
+    setupFeePaid: v.boolean(),
+    paymentRoutingMode: v.union(
+      v.literal("mode_a_direct"),
+      v.literal("mode_b_split")
+    ),
+    subaccountId: v.optional(v.string()),
+    lastBilledAt: v.optional(v.number()),
+    nextBillingDate: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
+  settlementLedgers: defineTable({
+    schoolId: v.id("schools"),
+    transactionRef: v.string(),
+    routingMode: v.union(
+      v.literal("mode_a_direct"),
+      v.literal("mode_b_split")
+    ),
+    grossAmountKobo: v.number(),
+    paystackFeeKobo: v.number(),
+    platformFeeKobo: v.number(),
+    netPayoutKobo: v.number(),
+    currency: v.string(),
+    // Historical NIBSS values remain readable; new records are either backed by
+    // provider evidence or explicitly unavailable.
+    clearingCycle: v.union(
+      v.literal("NIBSS_T_PLUS_1"),
+      v.literal("provider_reported"),
+      v.literal("unavailable")
+    ),
+    estimatedSettlementDate: v.optional(v.number()),
+    settlementNotice: v.optional(v.string()),
+    providerSettlementReference: v.optional(v.string()),
+    providerClearingCycle: v.optional(v.string()),
+    destinationAccount: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending_clearing"),
+      v.literal("settled"),
+      v.literal("held_dispute"),
+      v.literal("failed")
+    ),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    settledAt: v.optional(v.number()),
+  })
+    .index("by_school_and_ref", ["schoolId", "transactionRef"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school", ["schoolId"]),
+
+  paymentMandates: defineTable({
+    schoolId: v.id("schools"),
+    customerEmail: v.string(),
+    authorizationCode: v.string(),
+    last4: v.string(),
+    expMonth: v.string(),
+    expYear: v.string(),
+    cardBrand: v.string(),
+    bankName: v.string(),
+    consentGiven: v.boolean(),
+    consentTimestamp: v.number(),
+    consentIpHash: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("revoked")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_email", ["schoolId", "customerEmail"]),
+
+  // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
+  usageMeterAllocations: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    allocatedUnits: v.number(),
+    // `consumedUnits` remains the quota total; buckets show where the bytes
+    // currently reside without counting a storage object twice.
+    consumedUnits: v.number(),
+    activeStorageBytes: v.optional(v.number()),
+    trashStorageBytes: v.optional(v.number()),
+    tempStorageBytes: v.optional(v.number()),
+    reservedUnits: v.number(),
+    warningThresholdPercent: v.optional(v.number()),
+    criticalThresholdPercent: v.optional(v.number()),
+    hardStopThresholdPercent: v.optional(v.number()),
+    resetCadence: v.union(
+      v.literal("monthly"),
+      v.literal("termly"),
+      v.literal("prepaid_pack")
+    ),
+    lastResetAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school_and_meter", ["schoolId", "meterType"]),
+
+  usageEvents: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    unitsDelta: v.number(),
+    reservationId: v.optional(v.string()),
+    measurementMetadata: v.optional(v.object({
+      source: v.string(),
+      measuredAt: v.number(),
+      reference: v.optional(v.string()),
+    })),
+    actorUserId: v.optional(v.id("users")),
+    actorPersonId: v.optional(v.id("persons")),
+    operationName: v.string(),
+    description: v.string(),
+    timestamp: v.number(),
+  })
+    .index("by_school_and_timestamp", ["schoolId", "timestamp"])
+    .index("by_school_and_meter", ["schoolId", "meterType"]),
+
+  usageQuotaReservations: defineTable({
+    schoolId: v.id("schools"),
+    meterType: v.union(
+      v.literal("ai_tokens"),
+      v.literal("ocr_pages"),
+      v.literal("storage_bytes")
+    ),
+    idempotencyKey: v.string(),
+    operationName: v.string(),
+    unitsReserved: v.number(),
+    actualUnits: v.optional(v.number()),
+    measurementMetadata: v.optional(v.object({
+      source: v.string(),
+      measuredAt: v.number(),
+      reference: v.optional(v.string()),
+    })),
+    status: v.union(
+      v.literal("reserved"),
+      v.literal("committed"),
+      v.literal("released"),
+      v.literal("rejected")
+    ),
+    allowed: v.boolean(),
+    shortfall: v.optional(v.number()),
+    allocatedUnits: v.number(),
+    consumedUnits: v.number(),
+    reservedUnits: v.number(),
+    availableUnits: v.number(),
+    utilizationPercent: v.number(),
+    committedAt: v.optional(v.number()),
+    releasedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school_and_meter_and_idempotency_key", ["schoolId", "meterType", "idempotencyKey"]),
+
+  // --- School Asset Security, Navigable Trash, and PDF Compression (H9 / MX-14) ---
+  schoolAssets: defineTable({
+    schoolId: v.id("schools"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    mimeType: v.string(),
+    byteSize: v.number(),
+    sha256: v.string(),
+    category: v.string(),
+    // Optional until the deploy-compatible asset metadata backfill initializes legacy rows.
+    validationStatus: v.optional(v.union(v.literal("pending"), v.literal("valid"), v.literal("invalid"))),
+    scanStatus: v.union(
+      v.literal("quarantined"),
+      v.literal("scanning"),
+      v.literal("clean"),
+      v.literal("infected")
+    ),
+    threatName: v.optional(v.string()),
+    scannedAt: v.optional(v.number()),
+    isTrashed: v.boolean(),
+    trashedAt: v.optional(v.number()),
+    trashedByUserId: v.optional(v.id("users")),
+    purgeScheduledAt: v.optional(v.number()),
+    rollbackStorageId: v.optional(v.id("_storage")),
+    rollbackExpiryAt: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+    isOptimized: v.optional(v.boolean()),
+    // Set only after authoritative storage metadata has been included in a
+    // bucket baseline. Lifecycle accounting is blocked until then.
+    storageAccountingInitializedAt: v.optional(v.number()),
+    storageReconciliationState: v.optional(v.literal("reconciliation_required")),
+    uploadIntentId: v.optional(v.id("assetUploadIntents")),
+    uploadedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_trashed", ["schoolId", "isTrashed"])
+    .index("by_school_and_scan", ["schoolId", "scanStatus"])
+    .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
+    .index("by_rollback_expiry", ["rollbackExpiryAt"])
+    .index("by_upload_intent", ["uploadIntentId"])
+    .index("by_storage", ["storageId"])
+    .index("by_rollback_storage", ["rollbackStorageId"])
+    .index("by_school", ["schoolId"]),
+
+  assetUploadIntents: defineTable({
+    schoolId: v.id("schools"),
+    requestedByUserId: v.optional(v.id("users")),
+    storageId: v.optional(v.id("_storage")),
+    assetId: v.optional(v.id("schoolAssets")),
+    status: v.union(v.literal("pending"), v.literal("finalized"), v.literal("expired")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_storage", ["storageId"]),
+
+  pdfCompressionCandidates: defineTable({
+    schoolId: v.id("schools"),
+    assetId: v.id("schoolAssets"),
+    sourceStorageId: v.id("_storage"),
+    sourceSha256: v.string(),
+    candidateStorageId: v.id("_storage"),
+    candidateSha256: v.string(),
+    optimizerVersion: v.string(),
+    status: v.union(v.literal("verified"), v.literal("rejected")),
+    reason: v.optional(v.string()),
+    originalPageCount: v.optional(v.number()),
+    compressedPageCount: v.optional(v.number()),
+    originalSizeBytes: v.optional(v.number()),
+    compressedSizeBytes: v.optional(v.number()),
+    savingsPercentage: v.optional(v.number()),
+    byteSize: v.number(),
+    cleanupScheduledAt: v.optional(v.number()),
+    verifiedAt: v.number(),
+  })
+    .index("by_asset_and_source_and_candidate", ["assetId", "sourceStorageId", "candidateStorageId"])
+    .index("by_candidate_storage", ["candidateStorageId"])
+    .index("by_cleanup_schedule", ["cleanupScheduledAt"]),
+
+  assetStorageReconciliationIssues: defineTable({
+    schoolId: v.id("schools"),
+    assetId: v.id("schoolAssets"),
+    storageId: v.id("_storage"),
+    code: v.union(
+      v.literal("missing_storage"),
+      v.literal("duplicate_storage_ownership")
+    ),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_asset_and_storage_and_code", ["assetId", "storageId", "code"])
+    .index("by_school_and_status", ["schoolId", "status"]),
+
+  assetRetentionHolds: defineTable({
+    assetId: v.id("schoolAssets"),
+    schoolId: v.id("schools"),
+    holdReason: v.string(),
+    appliedByUserId: v.optional(v.id("users")),
+    appliedAt: v.number(),
+    notes: v.optional(v.string()),
+  })
+    .index("by_asset", ["assetId"])
+    .index("by_school", ["schoolId"]),
+
+  assetQuarantineLogs: defineTable({
+    assetId: v.id("schoolAssets"),
+    schoolId: v.id("schools"),
+    scanResult: v.union(v.literal("clean"), v.literal("infected")),
+    threatName: v.optional(v.string()),
+    scannerEngine: v.string(),
+    scannedAt: v.number(),
+    metadata: v.optional(v.string()),
+  }).index("by_asset", ["assetId"]),
 });
+
 
