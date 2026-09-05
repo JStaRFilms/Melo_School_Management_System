@@ -29,6 +29,7 @@ interface LibrarySidebarProps {
   
   // Upload Props
   subjectsReady: TeacherLibrarySubject[];
+  canUpload: boolean;
   onUpload: (data: {
     file: File;
     title: string;
@@ -57,6 +58,7 @@ export function LibrarySidebar({
   subjects,
   levelOptions,
   subjectsReady,
+  canUpload,
   onUpload,
   isUploading,
   isAdmin,
@@ -213,7 +215,11 @@ export function LibrarySidebar({
           <div className={cn(
             isEmbedded ? "" : "rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
           )}>
-            <form onSubmit={handleUploadSubmit} className="space-y-4">
+            {!canUpload ? (
+              <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Upload unavailable. The current storage transport cannot prove school/caller ownership, reserve purchased quota before transfer, or guarantee abandoned-upload cleanup. Existing authorized materials remain available.
+              </div>
+            ) : <form onSubmit={handleUploadSubmit} className="space-y-4">
               {/* File Dropzone / Button */}
               <div 
                 role="button"
@@ -381,7 +387,7 @@ export function LibrarySidebar({
               >
                 {isUploading ? "Uploading..." : "Publish Material"}
               </button>
-            </form>
+            </form>}
           </div>
 
           {!isEmbedded && (
