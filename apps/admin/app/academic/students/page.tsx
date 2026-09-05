@@ -35,6 +35,7 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { AttestationLetterModal } from "./components/AttestationLetterModal";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
+import { useDirtyForm } from "@school/shared/drafts";
 import { GraduationConfirmationModal } from "./components/GraduationConfirmationModal";
 import { PromotionConfirmationModal } from "./components/PromotionConfirmationModal";
 import { StudentCreationForm } from "./components/StudentCreationForm";
@@ -552,7 +553,20 @@ function StudentsPageContent() {
     setStudentPhotoResetKey((key) => key + 1);
   }, []);
 
+  const requestCreationDeparture = useDirtyForm({
+    name: "Family enrollment (not saved as a draft)",
+    isDirty: isSubmitting || Boolean(studentFirstName || studentLastName || admissionNumber || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile),
+    discard: () => {
+      if (isSubmitting) throw new Error("Wait for enrollment to finish before leaving.");
+      resetStudentCreationForm();
+    },
+  });
+  const closeCreationSheet = async () => {
+    if (await requestCreationDeparture({ kind: "close" })) setIsCreationSheetOpen(false);
+  };
+
   const submitStudent = async (confirmDuplicateLink = false) => {
+    if (isSubmitting) return;
     const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
     const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
     const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
@@ -658,6 +672,7 @@ function StudentsPageContent() {
       } as never)) as string;
 
       resetStudentCreationForm();
+      setIsCreationSheetOpen(false);
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       updateUrlParams({ studentId: createdStudentId });
@@ -1010,6 +1025,7 @@ function StudentsPageContent() {
                       ]}
                     />
                     <div className="flex items-center gap-2">
+                      <Link href="/academic/students/transfers" className="text-xs font-semibold underline">Within-group transfers</Link>
                       <Link 
                         href="/students/import"
                         className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-1.5 rounded-xl border border-indigo-200 transition-colors shadow-2xs"
@@ -1262,7 +1278,7 @@ function StudentsPageContent() {
         <div className="fixed inset-0 z-[70]">
           <div 
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-overlay-fade-in"
-            onClick={() => setIsCreationSheetOpen(false)}
+            onClick={() => void closeCreationSheet()}
           />
           <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-sheet-slide-up ease-out">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
@@ -1273,7 +1289,7 @@ function StudentsPageContent() {
                 </p>
               </div>
               <button 
-                onClick={() => setIsCreationSheetOpen(false)}
+                onClick={() => void closeCreationSheet()}
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-400"
               >
                 <X className="h-5 w-5" />
@@ -1336,10 +1352,7 @@ function StudentsPageContent() {
                   onPhotoChange={setStudentPhotoFile}
                   onRemovePhoto={() => setStudentPhotoFile(null)}
                   onPhotoValidationError={(m) => showNotice({ tone: "error", message: m })}
-                  onSubmit={async (e) => {
-                    await handleCreateStudent(e);
-                    setIsCreationSheetOpen(false);
-                  }}
+                  onSubmit={handleCreateStudent}
                   classes={classes}
                   selectedClassId={selectedClassId}
                   onClassIdChange={handleClassChange}
@@ -1375,10 +1388,7 @@ function StudentsPageContent() {
                   isParentPrimaryContact={isParentPrimaryContact}
                   onIsParentPrimaryContactChange={setIsParentPrimaryContact}
                   isSubmitting={isSubmitting}
-                  onSubmit={async (e) => {
-                    await handleCreateStudent(e);
-                    setIsCreationSheetOpen(false);
-                  }}
+                  onSubmit={handleCreateStudent}
                   inputRef={studentNameInputRef}
                 />
               )}
