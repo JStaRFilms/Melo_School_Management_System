@@ -1,3 +1,4 @@
+import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../../_generated/server";
@@ -62,15 +63,15 @@ export const stageRecordsBatch = mutation({
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged") {
+    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
       throw new ConvexError(`Cannot stage records to a ${workspace.status} workspace`);
     }
 
+    if (args.records.length < 1 || args.records.length > 50) {
+      throw new ConvexError("Stage between 1 and 50 rows per batch");
+    }
     const now = Date.now();
 
     // 1. Fetch live classes and subjects for matching
@@ -127,7 +128,7 @@ export const stageRecordsBatch = mutation({
               schoolId: args.schoolId,
               workspaceId: args.workspaceId,
               rawHeader: sig.header,
-              sampleValue: sig.sampleValue,
+              // Source values may contain child or guardian information; do not mine them.
               detectedType: sig.detectedType,
               status: "new",
               createdAt: now,
@@ -277,7 +278,8 @@ export const stageRecordsBatch = mutation({
         schoolId: args.schoolId,
         rowNumber: rec.rowNumber,
         entityType: rec.entityType,
-        rawPayload: rec.rawPayload,
+        // The reviewed projection is sufficient; do not retain a second raw copy.
+        rawPayload: {},
         parsedData: data,
         validationStatus,
         validationErrors,
