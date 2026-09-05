@@ -1,6 +1,13 @@
-import { mutation, query } from "../../_generated/server";
+import { getUnboundStorageUrl } from "./assetStorageBoundary";
+import { reportCardReviewKey } from "@school/shared/exam-recording";
+import { reportCardResultValidator } from "../foundation/reportCardContract";
+export { reportCardResultValidator } from "../foundation/reportCardContract";
+import { resolveEffectiveGradingBands } from "./gradingBands";
+import { requireCapability } from "./rbac";
+import { recordAuditEventHelper } from "./audit";
+import { mutation, query, type QueryCtx, type MutationCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { v, ConvexError } from "convex/values";
+import { v, ConvexError, type Infer } from "convex/values";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
@@ -22,10 +29,7 @@ import {
   type ReportCardCalculationMode,
 } from "@school/shared";
 import { getReadableUserName } from "./studentNameCompat";
-import {
-  buildExtrasCollectionView,
-  reportCardExtraPrintableValidator,
-} from "./reportCardExtrasModel";
+import { buildExtrasCollectionView } from "./reportCardExtrasModel";
 import {
   assertNextTermBeginsFitsAdjacentTerm,
   resolveAdjacentNextTermInSession,
@@ -188,107 +192,6 @@ const reportCardBatchStudentValidator = v.object({
   passportUrl: v.optional(v.union(v.string(), v.null())),
 });
 
-export const reportCardResultValidator = v.object({
-  schoolName: v.string(),
-  schoolLogoUrl: v.union(v.string(), v.null()),
-  schoolAddress: v.optional(v.union(v.string(), v.null())),
-  schoolContact: v.optional(v.union(v.string(), v.null())),
-  schoolMotto: v.optional(v.union(v.string(), v.null())),
-  theme: v.optional(
-    v.object({
-      primaryColor: v.string(),
-      accentColor: v.string(),
-    })
-  ),
-  sessionName: v.string(),
-  termName: v.string(),
-  classId: v.id("classes"),
-  className: v.string(),
-  generatedAt: v.number(),
-  assessmentConfig: v.object({
-    ca1Max: v.number(),
-    ca2Max: v.number(),
-    ca3Max: v.number(),
-    examMax: v.number(),
-  }),
-  resultCalculationMode: v.union(
-    v.literal("standalone"),
-    v.literal("cumulative_annual")
-  ),
-  student: v.object({
-    _id: v.id("students"),
-    name: v.string(),
-    displayName: v.string(),
-    firstName: v.union(v.string(), v.null()),
-    lastName: v.union(v.string(), v.null()),
-    admissionNumber: v.string(),
-    gender: v.union(v.string(), v.null()),
-    dateOfBirth: v.union(v.number(), v.null()),
-    guardianName: v.union(v.string(), v.null()),
-    guardianPhone: v.union(v.string(), v.null()),
-    address: v.union(v.string(), v.null()),
-    houseName: v.union(v.string(), v.null()),
-    nextTermBegins: v.union(v.number(), v.null()),
-    photoUrl: v.union(v.string(), v.null()),
-  }),
-  summary: v.object({
-    totalSubjects: v.number(),
-    recordedSubjects: v.number(),
-    pendingSubjects: v.number(),
-    averageScore: v.union(v.number(), v.null()),
-    totalScore: v.number(),
-  }),
-  results: v.array(
-    v.object({
-      subjectId: v.id("subjects"),
-      subjectName: v.string(),
-      subjectCode: v.string(),
-      ca1: v.union(v.number(), v.null()),
-      ca2: v.union(v.number(), v.null()),
-      ca3: v.union(v.number(), v.null()),
-      examScore: v.union(v.number(), v.null()),
-      total: v.number(),
-      gradeLetter: v.string(),
-      remark: v.string(),
-      isRecorded: v.boolean(),
-      calculationMode: v.union(
-        v.literal("standalone"),
-        v.literal("cumulative_annual")
-      ),
-      currentTermTotal: v.union(v.number(), v.null()),
-      firstTermTotal: v.union(v.number(), v.null()),
-      secondTermTotal: v.union(v.number(), v.null()),
-      annualAverage: v.union(v.number(), v.null()),
-      isCumulativeComplete: v.boolean(),
-      missingHistoricalTerms: v.array(
-        v.union(
-          v.literal("first"),
-          v.literal("second"),
-          v.literal("current")
-        )
-      ),
-      manualAdjustment: v.union(
-        v.object({
-          includedTerms: v.array(
-            v.union(
-              v.literal("first"),
-              v.literal("second"),
-              v.literal("current")
-            )
-          ),
-          divisor: v.number(),
-          computedAverage: v.union(v.number(), v.null()),
-          finalTotalOverride: v.union(v.number(), v.null()),
-        }),
-        v.null()
-      ),
-    })
-  ),
-  extras: reportCardExtraPrintableValidator,
-  classTeacherName: v.union(v.string(), v.null()),
-  classTeacherComment: v.union(v.string(), v.null()),
-  headTeacherComment: v.union(v.string(), v.null()),
-});
 
 function buildPendingResult(subject: {
   _id: Id<"subjects">;
@@ -474,7 +377,7 @@ async function getStudentsForClassReportCardBatch(
 
         const studentName = getReadableUserName(studentUser);
         const passportUrl = student.photoStorageId
-          ? await ctx.storage.getUrl(student.photoStorageId)
+          ? await getUnboundStorageUrl(ctx, student.photoStorageId)
           : null;
         return {
           studentId: student._id,
@@ -509,7 +412,7 @@ export async function buildStudentReportCard(
     preferredClassId?: Id<"classes">;
     skipRoleCheck?: boolean;
   }
-) {
+): Promise<Infer<typeof reportCardResultValidator>> {
   const [student, session, term, school] = await Promise.all([
     ctx.db.get(args.studentId),
     ctx.db.get(args.sessionId),
@@ -603,6 +506,25 @@ export async function buildStudentReportCard(
     }
   }
 
+  const issued = await getIssuedReport(
+    ctx, args.studentId, args.sessionId, args.termId, reportCardClassId
+  );
+  if (issued) return {
+    ...issued.report,
+    schoolLogoUrl: issued.schoolLogoStorageId
+      ? await getUnboundStorageUrl(ctx, issued.schoolLogoStorageId)
+      : issued.report.schoolLogoUrl,
+    student: {
+      ...issued.report.student,
+      photoUrl: issued.studentPhotoStorageId
+        ? await getUnboundStorageUrl(ctx, issued.studentPhotoStorageId)
+        : issued.report.student.photoUrl,
+    },
+  };
+  // Old output without an issued policy must not borrow today's thresholds.
+  const historicalWithoutPolicy =
+    !session.isActive || !term.isActive || term.endDate < Date.now();
+
   const [
     studentUser,
     classDoc,
@@ -622,8 +544,8 @@ export async function buildStudentReportCard(
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
-    student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
-    school.logoStorageId ? ctx.storage.getUrl(school.logoStorageId) : null,
+    student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
+    school.logoStorageId ? getUnboundStorageUrl(ctx, school.logoStorageId) : null,
     ctx.db
       .query("classSubjects")
       .withIndex("by_class", (q: any) => q.eq("classId", reportCardClassId))
@@ -634,12 +556,7 @@ export async function buildStudentReportCard(
         q.eq("schoolId", args.schoolId).eq("isActive", true)
       )
       .first(),
-    ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", args.schoolId).eq("isActive", true)
-      )
-      .collect(),
+    historicalWithoutPolicy ? Promise.resolve([]) : resolveEffectiveGradingBands(ctx, args.schoolId),
     ctx.db
       .query("reportCardComments")
       .withIndex("by_student_session_term", (q: any) =>
@@ -781,6 +698,7 @@ export async function buildStudentReportCard(
       minScore: band.minScore,
       maxScore: band.maxScore,
       gradeLetter: band.gradeLetter,
+      colorHex: band.colorHex ?? band.color,
       remark: band.remark,
       isActive: band.isActive,
       createdAt: band.createdAt,
@@ -982,6 +900,17 @@ export async function buildStudentReportCard(
   const recordedSubjects = results.filter((result) => result.isRecorded).length;
 
   return {
+    gradingPolicy: {
+      version: Math.max(0, ...gradingBands.map((band: Doc<"gradingBands">) => band.version ?? 0)),
+      source: historicalWithoutPolicy ? "historical_missing" : "current",
+      bands: activeGradingBands.map(band => ({
+        gradeLetter: band.gradeLetter,
+        minScore: band.minScore,
+        maxScore: band.maxScore,
+        remark: band.remark,
+        ...(band.colorHex ? {colorHex: band.colorHex} : {}),
+      })),
+    },
     schoolName: normalizeHumanName(school.name),
     schoolLogoUrl,
     schoolAddress: school.address ?? null,
@@ -1044,7 +973,7 @@ export const getStudentReportCard = query({
   returns: reportCardResultValidator,
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
     return await buildStudentReportCard(ctx, {
       userId,
       schoolId,
@@ -1066,7 +995,7 @@ export const getStudentsForReportCardBatch = query({
   returns: v.array(reportCardBatchStudentValidator),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
@@ -1095,7 +1024,7 @@ export const getClassReportCards = query({
   returns: v.array(reportCardResultValidator),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
@@ -1147,7 +1076,7 @@ export const saveStudentReportCardComments = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
     const [student, session, term, existingComment, assessmentRecords] =
       await Promise.all([
         ctx.db.get(args.studentId),
@@ -1266,7 +1195,7 @@ export const saveTermNextTermBegins = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -1320,5 +1249,112 @@ export const saveTermNextTermBegins = mutation({
 
     await ctx.db.replace(args.termId, replacement);
     return null;
+  },
+});
+
+async function getIssuedReport(
+  ctx: QueryCtx | MutationCtx,
+  studentId: Id<"students">,
+  sessionId: Id<"academicSessions">,
+  termId: Id<"academicTerms">,
+  classId: Id<"classes">,
+) {
+  return ctx.db
+    .query("issuedReportCards")
+    .withIndex("by_student_session_term_class", (q) =>
+      q
+        .eq("studentId", studentId)
+        .eq("sessionId", sessionId)
+        .eq("termId", termId)
+        .eq("classId", classId),
+    )
+    .unique();
+}
+
+export const certifyStudentReportCard = mutation({
+  args: {
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    confirmation: v.string(),
+    reviewedKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { schoolId, userId, role } =
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.publish_final" });
+    const auth = await requireCapability(
+      ctx,
+      schoolId,
+      "academic.report_cards.publish_final",
+    );
+    const student = await ctx.db.get(args.studentId);
+    if (
+      !student ||
+      student.schoolId !== schoolId ||
+      args.confirmation !== student.admissionNumber
+    )
+      throw new ConvexError("Confirm the student's admission number");
+    const report = await buildStudentReportCard(ctx, {
+      ...args,
+      schoolId,
+      userId,
+      role,
+      preferredClassId: args.classId,
+    });
+    if (report.certifiedAt) return report.certifiedAt;
+    if (report.gradingPolicy?.source !== "current")
+      throw new ConvexError(
+        "Historical reports without an issued policy cannot be certified using today's policy",
+      );
+    if (!report.gradingPolicy.bands.length || report.gradingPolicy.version < 1)
+      throw new ConvexError(
+        "Save a versioned grading policy before certification",
+      );
+    if (reportCardReviewKey(report) !== args.reviewedKey)
+      throw new ConvexError(
+        "Report changed since review. Review the latest preview before certifying.",
+      );
+    if (
+      report.summary.pendingSubjects > 0 ||
+      report.results.some(
+        (r) =>
+          r.calculationMode === "cumulative_annual" &&
+          r.isCumulativeComplete === false,
+      )
+    )
+      throw new ConvexError("Complete all scores before certification");
+    const now = Date.now();
+    await ctx.db.insert("issuedReportCards", {
+      schoolId,
+      studentId: args.studentId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+      classId: args.classId,
+      issuedAt: now,
+      issuedBy: userId,
+      schoolLogoStorageId: (await ctx.db.get(schoolId))?.logoStorageId,
+      studentPhotoStorageId: student.photoStorageId,
+      report: {
+        ...report,
+        certifiedAt: now,
+        gradingPolicy: { ...report.gradingPolicy, source: "snapshot" },
+      },
+    });
+    await recordAuditEventHelper(ctx, {
+      schoolId,
+      actorKind: "user",
+      actorPersonId: auth.personId,
+      actorMembershipId: auth.membershipId,
+      actorEmailSnapshot: role,
+      module: "academic",
+      action: "report_card.certify",
+      targetType: "students",
+      targetId: student._id,
+      outcome: "success",
+      safeSummary: "Certified immutable report card and grading policy",
+      alertTier: "tier1_critical",
+    });
+    return now;
   },
 });

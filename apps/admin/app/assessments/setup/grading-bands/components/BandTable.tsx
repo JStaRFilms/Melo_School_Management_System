@@ -1,9 +1,11 @@
 "use client";
+import { GradeColorControl } from "./GradeColorControl";
+import { gradeDisplayColor } from "@school/shared/exam-recording";
 
 import { useCallback, useMemo } from "react";
 import { AlertCircle, Trash2 } from "lucide-react";
 import type { GradingBandDraft, BandValidationError } from "@/types";
-import { validateBandsClient, getGradeBadgeColorClass } from "@/exam-helpers";
+import { validateBandsClient } from "@/exam-helpers";
 import { BandRow } from "./BandRow";
 import { AddBandButton } from "./AddBandButton";
 
@@ -33,7 +35,7 @@ function BandMobileCard({
   onChange,
   onDelete,
 }: BandMobileCardProps) {
-  const badgeClass = getGradeBadgeColorClass(band.gradeLetter);
+  const badgeClass = "";
 
   const handleScrollToErrors = () => {
     const banner = document.getElementById("band-validation-banner");
@@ -65,6 +67,8 @@ function BandMobileCard({
             <span className="text-xs font-bold text-slate-600">Grade:</span>
             <input
               type="text"
+              aria-label={`Grade label for tier ${index + 1}`}
+              style={{ color: gradeDisplayColor(band.colorHex) }}
               value={band.gradeLetter}
               onChange={(e) => {
                 const nextValue = e.target.value.toUpperCase().replace(/\s+/g, "");
@@ -152,6 +156,7 @@ function BandMobileCard({
         </label>
       </div>
 
+      <GradeColorControl grade={band.gradeLetter} value={band.colorHex} onChange={value => onChange(index, "colorHex", value)} />
       {/* Transcript Remark */}
       <label className="space-y-1 block">
         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
@@ -254,6 +259,7 @@ export function BandTable({
               <th className="table-th w-24 px-6 border-b">Grade</th>
               <th className="table-th w-40 border-b">Range</th>
               <th className="table-th border-b">Remark</th>
+              <th className="table-th border-b">Color & preview</th>
               <th className="table-th w-16 border-b" />
             </tr>
           </thead>

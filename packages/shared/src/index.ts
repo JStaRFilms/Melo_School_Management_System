@@ -55,6 +55,7 @@ export * from "./admissions-foundation";
 export * from "./academic-timeline";
 export * from "./migration";
 export * from "./components/migration";
+export * from "./components/InvoicePaymentInstructions";
 
 
 
