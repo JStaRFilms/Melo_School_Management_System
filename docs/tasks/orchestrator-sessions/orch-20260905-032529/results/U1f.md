@@ -1,6 +1,6 @@
 # U1f — Group defaults: branding slice and remaining contract work
 
-**Status: PARTIAL / E0. The packet definition of done is NOT complete.** A real branding-only default/override API, UI and profile consumer are implemented and locally verified. Seven other requested domains have no new effective resolver in this delivery. These are remaining implementation work, not external-access blockers or completed inheritance. No migrations/backfills, production reads, providers, live Convex CLI, codegen, deployment, credentials, servers or commits were used. Existing U1a–e changes were preserved.
+**Status: PARTIAL / E0. The packet definition of done is NOT complete.** A real branding default/override API, UI and profile consumer are implemented and locally verified; U2a subsequently added the approved grading reference/default contract. Six other requested domains still have no effective group resolver. These are remaining implementation work, not external-access blockers or completed inheritance. No migrations/backfills, production reads, providers, live Convex CLI, codegen, deployment, credentials, servers or commits were used. Existing U1a–e changes were preserved.
 
 ## Delivered schema and ownership
 
@@ -39,12 +39,16 @@ Admin `/admin/group` now mounts `GroupBranding.tsx` after selecting an owned gro
 
 Branch query denial has a local retry boundary so it does not hide the independent group-default editor. Remote group/branch revision changes retain edits and require explicit discard/load-latest; they cannot silently update the mutation's expected version. Other domains are listed as not adopted. Full U3a navigation/browser/account dirty guard is not integrated; branch/group selector changes can still discard local in-memory edits. No persistent draft claim.
 
+## 2026-09-05 resume reconciliation
+
+No new generic group-settings schema or unrelated editor was added in the resume. The existing branding effective contract remains unchanged; U2a's already-committed grading reference/default implementation supersedes the earlier grading-not-implemented row below. Admission numbering and the other domain defaults remain incomplete unless their existing domain contracts can own versioning, history and prospective resolution without a duplicate JSON store. They were not guessed into U1g or branch selection.
+
 ## Per-domain adoption / outstanding work
 
 | Requested domain | Existing source / owner handoff | Actual status / required work |
 |---|---|---|
 | Branding | `schools.theme`, `schoolBranding`; U3d | **Partial implemented above.** U3d must integrate domain settings UI for non-proprietor branch managers, effective-origin display in its own editor, semantic tokens/public publication/print consumers and shared dirty guard. No general public group configuration API. |
-| Grading bands/colors | `gradingBands` + shared exam-recording validation; U2a/U2b | **Not implemented in group resolver.** Reuse six-band preset and actual validators; add immutable policy version references, allowed override/preview and prospective consumer adoption without changing issued results. Do not duplicate bands into an untyped group settings blob. |
+| Grading bands/colors | `gradingBands` + shared exam-recording validation; U2a/U2b | **Implemented subsequently by U2a.** Explicit immutable group-policy references and branch inherit/override resolution reuse the six-band policy and preserve issued-report snapshots; no generic settings blob. See `results/U2a.md` and `results/U2b.md`. |
 | Role templates | Existing `roleTemplates` scope/version and U1d immutable creation/evaluator | **Not implemented in group-default governance.** Reuse scoped immutable templates; explicit assignment is still required. A group default must never assign roles or expand delegation ceilings/membership by itself. |
 | Admission templates | `admissionNumbers` policies/counters; U2c | **Not implemented.** Owner must fix session-year/reset/version lifecycle and adopt prospective formatter resolution. Group template is not permission to share counters or rename historical admission numbers. |
 | Report-card templates | Existing report config/assets; U2b/U3c | **Not implemented.** Need approved immutable domain template/version and issued-report snapshot boundary; no raw document/config duplication. |
@@ -52,7 +56,7 @@ Branch query denial has a local retry boundary so it does not hide the independe
 | Academic policies | Legacy `settings.ts` assessment settings | **Not implemented.** Need domain-approved policy validators, immutable version ownership and effective caller adoption. No second generic assessment-policy store. |
 | Calendar templates | Academic sessions/terms | **Not implemented.** Need typed relative template and separately validated branch date application; retain branch dates and enforce session/term ranges. No calendar writes or calendar-date acceptance tests were added. Overview UTC filter validation is NOT calendar-template validation. |
 
-These seven domain implementations, immutable historical consumers, delegated group-management authority, branch manager entry outside the proprietor directory, and U3a guards remain acceptance gaps. They are not being marked complete because the branding contract exists.
+The six still-missing domain implementations, their immutable historical consumers, delegated group-management authority, branch manager entry outside the proprietor directory, and U3a guards remain acceptance gaps. They are not being marked complete because the branding contract exists.
 
 ## Verification / self-review
 
