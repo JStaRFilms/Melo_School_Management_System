@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { deriveSchoolTheme, normalizeThemeColor } from "@school/shared/theme";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import {
   Building2,
@@ -133,6 +134,14 @@ export default function SchoolSettingsPage() {
     }
   }, [branding]);
 
+  const normalizedPrimary = normalizeThemeColor(primaryColor);
+  const normalizedAccent = normalizeThemeColor(accentColor);
+  const previewTokens = useMemo(
+    () => deriveSchoolTheme(normalizedPrimary, normalizedAccent),
+    [normalizedPrimary, normalizedAccent],
+  );
+  const themeCanSave = Boolean(normalizedPrimary && normalizedAccent);
+
   const logoPreviewUrl = useMemo(() => {
     if (logoFile) {
       return URL.createObjectURL(logoFile);
@@ -161,6 +170,12 @@ export default function SchoolSettingsPage() {
     if (!name.trim()) {
       appToast.warning("School name required", {
         description: "Please enter your official school name.",
+      });
+      return;
+    }
+    if (!normalizedPrimary || !normalizedAccent) {
+      appToast.warning("Use a valid brand colour", {
+        description: "Enter a 3- or 6-digit hex colour for both Primary and Accent so a safe theme can be derived.",
       });
       return;
     }
@@ -194,8 +209,8 @@ export default function SchoolSettingsPage() {
         name: name.trim(),
         motto: motto.trim() || undefined,
         theme: {
-          primaryColor,
-          accentColor,
+          primaryColor: normalizedPrimary,
+          accentColor: normalizedAccent,
         },
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
@@ -248,12 +263,13 @@ export default function SchoolSettingsPage() {
           <p className="text-xs text-slate-500 mt-1">
             Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
           </p>
+          <a className="text-sm underline" href="/admin/settings/email-domains">Institutional email policy and review</a>
         </div>
 
         <button
           type="button"
           onClick={handleSaveProfile}
-          disabled={isSaving}
+          disabled={isSaving || !themeCanSave}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
         >
           {isSaving ? (
@@ -392,25 +408,22 @@ export default function SchoolSettingsPage() {
             <div className="md:col-span-2 space-y-3">
               <div>
                 <h4 className="text-xs font-bold text-slate-900">Upload Institution Crest</h4>
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  Recommended: High-resolution PNG, SVG, or WebP with a transparent background (min 400x400px).
-                  This crest dynamically populates browser tab favicons, printable report cards, and student portal headers.
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  New crest uploads are unavailable until storage can prove tenant ownership, reserve purchased quota, and clean up abandoned uploads. Existing authorized crests remain visible and removable.
                 </p>
               </div>
 
               <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <label
-                  aria-disabled={isSaving}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors shadow-xs focus-within:outline-none focus-within:ring-2 focus-within:ring-slate-900 focus-within:ring-offset-2 sm:w-auto ${
-                    isSaving ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-slate-800"
-                  }`}
+                  aria-disabled="true"
+                  className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white opacity-50 shadow-xs sm:w-auto"
                 >
                   <Upload className="h-3.5 w-3.5" />
                   <span>Choose Image</span>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    disabled={isSaving}
+                    disabled
                     className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
@@ -473,7 +486,7 @@ export default function SchoolSettingsPage() {
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={primaryColor}
+                    value={normalizedPrimary ?? "#0f172a"}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
@@ -494,7 +507,7 @@ export default function SchoolSettingsPage() {
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={accentColor}
+                    value={normalizedAccent ?? "#2563eb"}
                     onChange={(e) => setAccentColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
@@ -506,6 +519,57 @@ export default function SchoolSettingsPage() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">Used for badges, highlights, and report card distinctions.</p>
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl border p-4"
+              style={{
+                backgroundColor: previewTokens["--school-primary-surface"],
+                borderColor: previewTokens["--school-primary-border"],
+              }}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Live school-facing preview</p>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    Primary and Accent derive interaction, focus, selection, and progress tokens. Status alerts and grade-band colours are not changed.
+                  </p>
+                </div>
+                <span className={`text-[11px] font-semibold ${themeCanSave ? "text-emerald-700" : "text-rose-700"}`} role="status">
+                  {themeCanSave ? "Contrast-safe tokens ready" : "Enter valid hex colours to save"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 text-xs font-bold outline-none ring-offset-2 focus-visible:ring-2"
+                  style={{
+                    backgroundColor: previewTokens["--school-primary"],
+                    color: previewTokens["--school-primary-contrast"],
+                    outlineColor: previewTokens["--school-focus-ring"],
+                  }}
+                >
+                  Primary action
+                </button>
+                <span
+                  className="rounded-lg px-3 py-2 text-center text-xs font-bold"
+                  style={{
+                    backgroundColor: previewTokens["--school-accent"],
+                    color: previewTokens["--school-accent-contrast"],
+                  }}
+                >
+                  Accent highlight
+                </span>
+                <span
+                  className="rounded-lg px-3 py-2 text-center text-xs font-bold"
+                  style={{
+                    backgroundColor: previewTokens["--school-progress"],
+                    color: previewTokens["--school-progress-contrast"],
+                  }}
+                >
+                  Progress
+                </span>
               </div>
             </div>
 

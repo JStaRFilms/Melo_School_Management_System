@@ -5,7 +5,10 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
+import { MobileProgressIndicator } from "@school/shared";
+import { feePlanValidation } from "../../fee-plan-validation";
+import { BankAccountSelection } from "../BankAccountSelection";
 import { cn } from "@/utils";
 import type { ClassOption, FeePlanDraft } from "../../types";
 
@@ -92,6 +95,11 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col h-full min-h-0 overflow-hidden">
+      <MobileProgressIndicator mode="sections" topOffset="top-0" sections={[
+        { id: "plan", title: "Plan name", isValid: Boolean(draft.name.trim()) },
+        { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
+      ]} saveStatusText="Unsaved form · no recovery draft" />
+      <BankAccountSelection value={draft.bankAccountId ?? ""} onChange={bankAccountId => onChange({ ...draft, bankAccountId })} />
       {/* Scrollable Form Body */}
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
         {/* Plan Name */}

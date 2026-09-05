@@ -1,10 +1,14 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { useAuth } from "@/AuthProvider";
+import { api } from "../../../../../../packages/convex/_generated/api";
+import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { useDirtyForm } from "@school/shared/drafts";
 
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
 
@@ -47,6 +51,9 @@ export default function StudentOnboardingPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -54,6 +61,12 @@ export default function StudentOnboardingPage() {
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  const canNumber = useQuery(api.functions.academic.rbac.hasViewerCapability, schoolId ? { schoolId, capability: "enrollment.intakes.manage" } : "skip");
+  const canOverride = useQuery(api.functions.academic.rbac.hasViewerCapability, schoolId ? { schoolId, capability: "enrollment.admissions.override_number" } : "skip");
+  const numbering = useQuery(api.functions.academic.admissionNumbers.getAdmissionNumberPolicy, schoolId && canNumber ? { schoolId, level: classes?.find(c => c._id === selectedClassId)?.level } : "skip");
+  const [reviewedNumberingVersion, setReviewedNumberingVersion] = useState<number | null>(null);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [parentFirstName, setParentFirstName] = useState("");
@@ -73,6 +86,19 @@ export default function StudentOnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const requestKey = useRef<string | null>(null);
+  const createdStudent = useRef<string | null>(null);
+  const [followUpPending, setFollowUpPending] = useState(false);
+
+  const requestDeparture = useDirtyForm({
+    name: "Student enrollment (not saved as a draft)",
+    isDirty: isSubmitting || followUpPending || Boolean(firstName || lastName || admissionNumber || overrideReason || overrideConfirmed || advanceCounterTo || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || selectedClassId || studentPhotoFile || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || provisionStudentPortalAccess || provisionParentPortalAccess || studentTemporaryPassword !== "Student123!Pass" || parentTemporaryPassword !== "Parent123!Pass"),
+    discard: () => {
+      if (isSubmitting) throw new Error("Wait for the enrollment request to finish before leaving.");
+      resetForm();
+      setCredentialSummary(null);
+    },
+  });
 
   useEffect(() => {
     firstNameInputRef.current?.focus();
@@ -125,9 +151,12 @@ export default function StudentOnboardingPage() {
   }
 
   const resetForm = () => {
+    createdStudent.current = null;
+    setFollowUpPending(false);
     setFirstName("");
     setLastName("");
     setAdmissionNumber("");
+    setOverrideReason(""); setOverrideConfirmed(false); setAdvanceCounterTo(""); setReviewedNumberingVersion(null); requestKey.current = null;
     setGender("");
     setHouseName("");
     setDateOfBirth("");
@@ -151,6 +180,7 @@ export default function StudentOnboardingPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const normalizedFirstName = humanNameFinalStrict(firstName);
     const normalizedLastName = humanNameFinalStrict(lastName);
     const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
@@ -167,13 +197,15 @@ export default function StudentOnboardingPage() {
     if (
       !normalizedFirstName ||
       !normalizedLastName ||
-      !admissionNumber.trim() ||
       !gender.trim() ||
       !selectedClassId
     ) {
       return;
     }
 
+    if (!admissionNumber.trim() && (!numbering?.preview || reviewedNumberingVersion !== numbering.version)) {
+      showNotice({ tone: "error", message: "Review the available numbering policy before enrolling." }); return;
+    }
     if (shouldLinkParent) {
       if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
         showNotice({
@@ -222,17 +254,23 @@ export default function StudentOnboardingPage() {
 
     let uploadedPhoto = false;
     try {
-      const uploadedPhotoMetadata = studentPhotoFile
+      const uploadedPhotoMetadata = studentPhotoFile && !createdStudent.current
         ? await uploadStudentPhoto(studentPhotoFile, () =>
             generateStudentPhotoUploadUrl({} as never) as Promise<string>
           )
         : null;
       uploadedPhoto = Boolean(uploadedPhotoMetadata);
 
-      const createdStudentId = (await createStudent({
+      requestKey.current ??= crypto.randomUUID();
+      const createdStudentId = createdStudent.current ?? (await createStudent({
+        requestKey: requestKey.current,
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         admissionNumber: admissionNumber.trim(),
+        numberingVersion: reviewedNumberingVersion ?? undefined,
+        overrideReason,
+        overrideConfirmed,
+        advanceCounterTo: advanceCounterTo ? Number(advanceCounterTo) : undefined,
         classId: selectedClassId,
         gender,
         houseName: houseName.trim() || null,
@@ -244,6 +282,8 @@ export default function StudentOnboardingPage() {
         photoFileName: uploadedPhotoMetadata?.fileName,
         photoContentType: uploadedPhotoMetadata?.contentType,
       } as never)) as string;
+      createdStudent.current = createdStudentId;
+      setFollowUpPending(true);
 
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
@@ -301,7 +341,9 @@ export default function StudentOnboardingPage() {
     } catch (error) {
       showNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(
+        message: createdStudent.current
+          ? "The student was created. Family or portal setup is incomplete. Retry in this tab to finish setup for the same student; do not start a second enrollment."
+          : getUserFacingErrorMessage(
           error,
           uploadedPhoto
             ? "The photo uploaded, but we couldn't finish creating the student."
@@ -314,6 +356,23 @@ export default function StudentOnboardingPage() {
   };
 
   return (
+    <>
+    <section className="space-y-2 p-4">
+      <p role="status">Edits are held only in this page, not saved as a draft. Photos and credentials are not recoverable after leaving.</p>
+      {followUpPending && <p role="alert">Student created; follow-up setup is pending. Retry uses the same student. Identity edits here will not update that created record.</p>}
+      <a className="underline" href="/admin/settings/admission-numbering">Admission numbering settings</a>
+      <p>Leave admission number blank for atomic allocation on successful enrollment. Supplied historical identifiers are preserved; manual overrides require separate permission.</p>
+      {!admissionNumber.trim() && <div>
+        <p>{canNumber === false ? "Numbering access denied." : numbering === undefined ? "Loading numbering policy…" : numbering.preview ? `Next illustrative number: ${numbering.preview}. Not reserved; concurrent enrollment can change the sequence.` : "Configure numbering, select a class and ensure one active academic session."}</p>
+        {numbering?.preview && <label><input type="checkbox" checked={reviewedNumberingVersion === numbering.version} onChange={e => setReviewedNumberingVersion(e.target.checked ? numbering.version : null)} /> I reviewed policy version {numbering.version}; allocate on successful enrollment.</label>}
+      </div>}
+      {admissionNumber.trim() && canOverride === false && <p role="alert">Manual admission override access denied. Ask an authorized registrar to preserve a supplied historical identifier; automatic allocation is only for genuinely missing identifiers.</p>}
+      {admissionNumber.trim() && <fieldset disabled={canOverride !== true} className="space-y-2"><legend>Manual override review</legend>
+        <label className="block">Reason<input className="block border p-2" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} /></label>
+        <label className="block">Explicit next counter (blank = unchanged)<input className="block border p-2" type="number" min="1" step="1" value={advanceCounterTo} onChange={e => setAdvanceCounterTo(e.target.value)} /></label>
+        <label><input type="checkbox" checked={overrideConfirmed} onChange={e => setOverrideConfirmed(e.target.checked)} /> I confirm this identifier and the counter decision.</label>
+      </fieldset>}
+    </section>
     <StudentFirstOnboardingForm
       classes={classes}
       selectedClassId={selectedClassId}
@@ -371,9 +430,10 @@ export default function StudentOnboardingPage() {
           message,
         })
       }
-      onReset={resetForm}
+      onReset={() => { void requestDeparture({ kind: "close" }).then(approved => { if (approved) resetForm(); }); }}
       onSubmit={handleSubmit}
     />
+    </>
   );
 }
 
