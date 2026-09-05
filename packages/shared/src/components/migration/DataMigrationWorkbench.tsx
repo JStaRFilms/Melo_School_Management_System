@@ -36,6 +36,7 @@ export function DataMigrationWorkbench({
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingAdm, setIsGeneratingAdm] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
+  const [commitProgress, setCommitProgress] = useState<{ processed: number; total: number } | null>(null);
 
   // Modal States
   const [clashModalRecord, setClashModalRecord] = useState<StagedStudentRow | null>(null);
@@ -107,6 +108,8 @@ export function DataMigrationWorkbench({
         nextAdmissionSequence: nextSequence,
       } as never)) as string;
 
+      // Retain the created workspace if a later staging batch fails.
+      setActiveWorkspaceId(workspaceId);
       const BATCH_SIZE = 50;
       for (let i = 0; i < parseResult.rows.length; i += BATCH_SIZE) {
         const batch = parseResult.rows.slice(i, i + BATCH_SIZE);
@@ -199,6 +202,7 @@ export function DataMigrationWorkbench({
           totalRecords?: number;
         };
 
+        setCommitProgress({ processed: res.processedRecords ?? 0, total: res.totalRecords ?? 0 });
         if (res.done) {
           isDone = true;
           totalMerged = res.mergedStudents ?? res.processedRecords ?? 0;
@@ -207,7 +211,7 @@ export function DataMigrationWorkbench({
       appToast.success(`Successfully merged ${totalMerged} records to live school database!`);
       onSuccess?.();
     } catch (err) {
-      appToast.error(getErrorMessage(err, "Merge failed"));
+      appToast.error(getErrorMessage(err, "Batch failed. Earlier successful batches remain saved; retry resumes incomplete work."));
     } finally {
       setIsMerging(false);
     }
@@ -230,7 +234,8 @@ export function DataMigrationWorkbench({
             {activeWorkspaceId && (
               <button
                 type="button"
-                onClick={() => setActiveWorkspaceId(null)}
+                onClick={() => { setActiveWorkspaceId(null); setCommitProgress(null); }}
+                disabled={isMerging || isUploading}
                 className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 title="Back to workspace list"
               >
@@ -245,7 +250,7 @@ export function DataMigrationWorkbench({
               <p className="text-xs text-slate-500 mt-0.5">
                 {activeWorkspaceId
                   ? `Staging Workspace • Mode: ${mode === "super_admin" ? "Platform Super Admin" : "School Admin"}`
-                  : "Upload, stage, deduplicate, and merge legacy school records with zero direct-to-prod risk."}
+                  : "Stage and review private school records before committing to the school database."}
               </p>
             </div>
           </div>
@@ -276,6 +281,15 @@ export function DataMigrationWorkbench({
         </div>
       </div>
 
+      <p role="status" className="mx-auto max-w-7xl px-6 pt-4 text-sm text-slate-600">
+        AI interpretation unavailable: no reviewed provider is connected. Column parsing and duplicate scores are deterministic, not AI output.
+        Institutional email approval is separate; this workbench does not provision mailboxes.
+      </p>
+      {commitProgress && (
+        <p role="status" className="mx-auto max-w-7xl px-6 pt-2 text-sm text-slate-600">
+          Server-confirmed progress: {commitProgress.processed} / {commitProgress.total} records processed.
+        </p>
+      )}
       {/* Main Content Area */}
       <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
         {!activeWorkspaceId ? (
@@ -289,7 +303,7 @@ export function DataMigrationWorkbench({
                   {workspaces.map((ws) => (
                     <div
                       key={ws._id}
-                      onClick={() => setActiveWorkspaceId(ws._id)}
+                      onClick={() => { setActiveWorkspaceId(ws._id); setCommitProgress(null); }}
                       className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition-all space-y-3"
                     >
                       <div className="flex items-start justify-between">
