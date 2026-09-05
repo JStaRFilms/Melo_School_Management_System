@@ -1002,6 +1002,11 @@ export default defineSchema({
       version: v.number(),
       allowBranchOverride: v.boolean(),
     })),
+    admissionNumberDefault: v.optional(v.object({
+      pattern: v.string(),
+      allowBranchOverride: v.boolean(),
+      version: v.number(),
+    })),
     brandingDefault: v.optional(v.object({
       theme: schoolThemeValidator,
       allowBranchOverride: v.boolean(),
@@ -1018,6 +1023,10 @@ export default defineSchema({
     schoolId: v.id("schools"),
     isHeadquarters: v.boolean(),
     gradingMode: v.optional(v.union(v.literal("inherit"), v.literal("override"))),
+    admissionNumberFormat: v.optional(v.object({
+      mode: v.union(v.literal("inherit"), v.literal("override")),
+      revision: v.number(),
+    })),
     brandingOverride: v.optional(v.object({
       mode: v.union(v.literal("inherit"), v.literal("override")),
       theme: v.optional(schoolThemeValidator),
@@ -1722,10 +1731,30 @@ export default defineSchema({
   admissionNumberClaims: defineTable({ schoolId: v.id("schools"), number: v.string(), createdAt: v.number() })
     .index("by_school_number", ["schoolId", "number"]),
 
+  admissionNumberSequences: defineTable({
+    schoolId: v.id("schools"),
+    key: v.string(),
+    name: v.string(),
+    level: v.optional(v.string()),
+    currentSequence: v.number(),
+    resetFrequency: v.union(v.literal("continuous"), v.literal("session"), v.literal("calendar")),
+    resetPeriod: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("paused"), v.literal("archived")),
+    configVersion: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_key", ["schoolId", "key"])
+    .index("by_school_and_level", ["schoolId", "level"])
+    .index("by_school_and_status", ["schoolId", "status"]),
+
   admissionNumberPolicies: defineTable({
     schoolId: v.id("schools"),
     version: v.optional(v.number()),
     resetPeriod: v.optional(v.string()),
+    counterStatus: v.optional(v.union(v.literal("active"), v.literal("paused"))),
+    counterVersion: v.optional(v.number()),
+    defaultSequenceKey: v.optional(v.string()),
     pattern: v.string(),
     schoolCode: v.string(),
     campusCode: v.string(),
@@ -3204,6 +3233,17 @@ export default defineSchema({
     planningBaseSequence: v.optional(v.number()),
     planningNextSequence: v.optional(v.number()),
     planningPolicyVersion: v.optional(v.number()),
+    planningFormatVersion: v.optional(v.string()),
+    planningCounterKey: v.optional(v.string()),
+    planningCounterVersion: v.optional(v.number()),
+    planningCounters: v.optional(v.array(v.object({
+      key: v.string(),
+      policyVersion: v.number(),
+      formatVersion: v.string(),
+      counterVersion: v.number(),
+      baseSequence: v.number(),
+      nextSequence: v.number(),
+    }))),
     reviewedAt: v.optional(v.number()),
     reviewedBy: v.optional(v.union(v.id("users"), v.id("platformAdmins"))),
     reviewApprovalReceiptId: v.optional(v.string()),
@@ -3291,6 +3331,9 @@ export default defineSchema({
     manualNumberReason: v.optional(v.string()),
     advanceCounterTo: v.optional(v.number()),
     expectedNumberPolicyVersion: v.optional(v.number()),
+    expectedNumberFormatVersion: v.optional(v.string()),
+    expectedNumberCounterKey: v.optional(v.string()),
+    expectedNumberCounterVersion: v.optional(v.number()),
     proposedAdmissionNumber: v.optional(v.string()),
     approvedPlanVersion: v.optional(v.number()),
     isCommitted: v.optional(v.boolean()),

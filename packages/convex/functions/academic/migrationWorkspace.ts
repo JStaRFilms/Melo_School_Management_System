@@ -9,11 +9,15 @@ import { proposeAdmissionNumberHelper } from "./admissionNumbers";
 export async function getPrivateMigrationWorkspace(
   ctx: MigrationCtx,
   schoolId: Id<"schools">,
-  workspaceId: Id<"importWorkspaces">
+  workspaceId: Id<"importWorkspaces">,
 ) {
   const auth = await assertMigrationAccess(ctx, schoolId);
   const workspace = await ctx.db.get(workspaceId);
-  if (!workspace || workspace.schoolId !== schoolId || workspace.createdBy !== auth.callerId) {
+  if (
+    !workspace ||
+    workspace.schoolId !== schoolId ||
+    workspace.createdBy !== auth.callerId
+  ) {
     throw new ConvexError("Workspace not found");
   }
   return { auth, workspace };
@@ -36,20 +40,29 @@ export const createWorkspace = mutation({
           fileName: v.string(),
           fileSize: v.number(),
           uploadedAt: v.number(),
-        })
-      )
+        }),
+      ),
     ),
   },
   handler: async (ctx, args) => {
     const auth = await assertMigrationAccess(ctx, args.schoolId);
     if (args.sourceFiles?.length) {
-      throw new ConvexError("Temporary file storage is unavailable until private upload controls are configured");
+      throw new ConvexError(
+        "Temporary file storage is unavailable until private upload controls are configured",
+      );
     }
-    if (args.admissionNumberPrefix !== undefined || args.nextAdmissionSequence !== undefined) {
-      throw new ConvexError("Import-local numbering is disabled; use the reviewed official admission-number policy");
+    if (
+      args.admissionNumberPrefix !== undefined ||
+      args.nextAdmissionSequence !== undefined
+    ) {
+      throw new ConvexError(
+        "Import-local numbering is disabled; use the reviewed official admission-number policy",
+      );
     }
     if ((args.mode === "super_admin") !== auth.isSuperAdmin) {
-      throw new ConvexError("Workspace mode does not match authenticated actor");
+      throw new ConvexError(
+        "Workspace mode does not match authenticated actor",
+      );
     }
     const now = Date.now();
 
@@ -90,7 +103,9 @@ export const listWorkspaces = query({
       .order("desc")
       .take(50);
 
-    return workspaces.filter((workspace) => workspace.createdBy === auth.callerId);
+    return workspaces.filter(
+      (workspace) => workspace.createdBy === auth.callerId,
+    );
   },
 });
 
@@ -103,7 +118,11 @@ export const getWorkspaceSummary = query({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
     return workspace;
   },
 });
@@ -117,9 +136,11 @@ export const getWorkspaceRecords = query({
     schoolId: v.id("schools"),
     workspaceId: v.id("importWorkspaces"),
     validationStatus: v.optional(
-      v.union(v.literal("valid"), v.literal("warning"), v.literal("error"))
+      v.union(v.literal("valid"), v.literal("warning"), v.literal("error")),
     ),
-    entityType: v.optional(v.union(v.literal("student"), v.literal("grade_record"))),
+    entityType: v.optional(
+      v.union(v.literal("student"), v.literal("grade_record")),
+    ),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -133,7 +154,7 @@ export const getWorkspaceRecords = query({
         .withIndex("by_workspaceId_and_validationStatus", (q) =>
           q
             .eq("workspaceId", args.workspaceId)
-            .eq("validationStatus", args.validationStatus!)
+            .eq("validationStatus", args.validationStatus!),
         )
         .take(maxItems);
       return records;
@@ -143,7 +164,9 @@ export const getWorkspaceRecords = query({
       const records = await ctx.db
         .query("stagedImportRecords")
         .withIndex("by_workspaceId_and_entityType", (q) =>
-          q.eq("workspaceId", args.workspaceId).eq("entityType", args.entityType!)
+          q
+            .eq("workspaceId", args.workspaceId)
+            .eq("entityType", args.entityType!),
         )
         .take(maxItems);
       return records;
@@ -151,7 +174,9 @@ export const getWorkspaceRecords = query({
 
     const records = await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_rowNumber", (q) => q.eq("workspaceId", args.workspaceId))
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
       .take(maxItems);
 
     return records;
@@ -169,7 +194,9 @@ export const getWorkspaceRecordsPage = query({
     await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
     return await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_rowNumber", (q) => q.eq("workspaceId", args.workspaceId))
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
       .paginate(args.paginationOpts);
   },
 });
@@ -182,16 +209,39 @@ export const getWorkspaceReviewOptions = query({
   },
   handler: async (ctx, args) => {
     await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
-    const [classes, subjects, families, students, users, sessions] = await Promise.all([
-      ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
-      ctx.db.query("subjects").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
-      ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(200),
-      ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(500),
-      ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(500),
-      ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(50),
-    ]);
-    const enrolledUserIds = new Set(students.map((student) => String(student.userId)));
-    const userNames = new Map(users.map((user) => [String(user._id), user.name]));
+    const [classes, subjects, families, students, users, sessions] =
+      await Promise.all([
+        ctx.db
+          .query("classes")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(200),
+        ctx.db
+          .query("subjects")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(200),
+        ctx.db
+          .query("families")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(200),
+        ctx.db
+          .query("students")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(500),
+        ctx.db
+          .query("users")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(500),
+        ctx.db
+          .query("academicSessions")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+          .take(50),
+      ]);
+    const enrolledUserIds = new Set(
+      students.map((student) => String(student.userId)),
+    );
+    const userNames = new Map(
+      users.map((user) => [String(user._id), user.name]),
+    );
     const sessionOptions = [];
     for (const session of sessions) {
       const terms = await ctx.db
@@ -204,28 +254,65 @@ export const getWorkspaceReviewOptions = query({
         terms: terms.map((term) => ({ id: term._id, name: term.name })),
       });
     }
-    let numbering:
-      | { available: true; nextNumber: string; nextSequence: number; policyVersion: number }
+    type NumberingOption =
+      | {
+          available: true;
+          nextNumber: string;
+          nextSequence: number;
+          policyVersion: number;
+          formatVersion: string;
+          counterKey: string;
+          counterVersion: number;
+        }
       | { available: false; reason: string };
-    try {
-      const proposal = await proposeAdmissionNumberHelper(ctx, {
-        schoolId: args.schoolId,
-        level: classes[0]?.level,
-      });
-      numbering = {
-        available: true,
-        nextNumber: proposal.allocatedNumber,
-        nextSequence: proposal.sequenceNumber,
-        policyVersion: proposal.policyVersion,
-      };
-    } catch (error) {
-      numbering = {
-        available: false,
-        reason: error instanceof Error ? error.message : "Official numbering is unavailable",
-      };
+    const uniqueLevels = [...new Set(classes.map((item) => item.level))];
+    if (uniqueLevels.length > 50) {
+      throw new ConvexError(
+        "Class level directory exceeds supported numbering review size",
+      );
     }
+    const byLevel: Array<{ level: string; numbering: NumberingOption }> = [];
+    for (const level of uniqueLevels) {
+      try {
+        const proposal = await proposeAdmissionNumberHelper(ctx, {
+          schoolId: args.schoolId,
+          level,
+        });
+        byLevel.push({
+          level,
+          numbering: {
+            available: true,
+            nextNumber: proposal.allocatedNumber,
+            nextSequence: proposal.sequenceNumber,
+            policyVersion: proposal.policyVersion,
+            formatVersion: proposal.formatVersion,
+            counterKey: proposal.counterKey,
+            counterVersion: proposal.counterVersion,
+          },
+        });
+      } catch (error) {
+        byLevel.push({
+          level,
+          numbering: {
+            available: false,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "Official numbering is unavailable",
+          },
+        });
+      }
+    }
+    const numbering: NumberingOption = byLevel[0]?.numbering ?? {
+      available: false,
+      reason: "Select an existing class to review its exact counter",
+    };
     return {
-      classes: classes.map((item) => ({ id: item._id, name: item.name, level: item.level })),
+      classes: classes.map((item) => ({
+        id: item._id,
+        name: item.name,
+        level: item.level,
+      })),
       subjects: subjects.map((item) => ({ id: item._id, name: item.name })),
       families: families.map((item) => ({ id: item._id, name: item.name })),
       students: students.map((item) => ({
@@ -236,11 +323,17 @@ export const getWorkspaceReviewOptions = query({
         familyId: item.familyId,
       })),
       availableStudentUsers: users
-        .filter((user) => user.role === "student" && !user.isArchived && !enrolledUserIds.has(String(user._id)))
+        .filter(
+          (user) =>
+            user.role === "student" &&
+            !user.isArchived &&
+            !enrolledUserIds.has(String(user._id)),
+        )
         .slice(0, 200)
         .map((user) => ({ id: user._id, name: user.name })),
       sessions: sessionOptions,
       numbering,
+      numberingByLevel: byLevel,
       bounded: true,
     };
   },
@@ -280,7 +373,11 @@ export const cancelWorkspace = mutation({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
 
     if (workspace.status === "merged") {
       throw new ConvexError("Cannot cancel an already merged workspace");

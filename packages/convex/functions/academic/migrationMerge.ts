@@ -31,7 +31,11 @@ export const approveImportWorkspace = mutation({
   },
   handler: async (ctx, args) => {
     const batchSize = validateBatchSize(args.batchSize);
-    const { auth, workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
     if (workspace.status === "ready") {
       return {
         success: true,
@@ -42,32 +46,64 @@ export const approveImportWorkspace = mutation({
       };
     }
     if (workspace.status !== "reviewing" && workspace.status !== "analyzing") {
-      throw new ConvexError(`Workspace cannot be approved from ${workspace.status} status`);
+      throw new ConvexError(
+        `Workspace cannot be approved from ${workspace.status} status`,
+      );
     }
     const firstPending = await ctx.db
       .query("stagedImportRecords")
       .withIndex("by_workspaceId_and_reviewStatus", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("reviewStatus", "pending")
+        q.eq("workspaceId", args.workspaceId).eq("reviewStatus", "pending"),
       )
       .first();
-    if (firstPending) throw new ConvexError(`Row #${firstPending.rowNumber} still requires explicit review`);
+    if (firstPending)
+      throw new ConvexError(
+        `Row #${firstPending.rowNumber} still requires explicit review`,
+      );
 
     const starting = workspace.status === "reviewing";
-    const planVersion = starting ? (workspace.reviewPlanVersion ?? 0) + 1 : workspace.reviewPlanVersion;
-    if (planVersion === undefined) throw new ConvexError("Reviewed plan version is unavailable");
+    const planVersion = starting
+      ? (workspace.reviewPlanVersion ?? 0) + 1
+      : workspace.reviewPlanVersion;
+    if (planVersion === undefined)
+      throw new ConvexError("Reviewed plan version is unavailable");
     const page = await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_rowNumber", (q) => q.eq("workspaceId", args.workspaceId))
-      .paginate({ numItems: batchSize, cursor: starting ? null : workspace.planningCursor ?? null });
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
+      .paginate({
+        numItems: batchSize,
+        cursor: starting ? null : (workspace.planningCursor ?? null),
+      });
 
-    let baseSequence = starting ? undefined : workspace.planningBaseSequence;
-    let nextSequence = starting ? undefined : workspace.planningNextSequence;
-    let policyVersion = starting ? undefined : workspace.planningPolicyVersion;
+    const legacyPlanningCounter =
+      workspace.planningCounterKey !== undefined &&
+      workspace.planningPolicyVersion !== undefined &&
+      workspace.planningFormatVersion !== undefined &&
+      workspace.planningCounterVersion !== undefined &&
+      workspace.planningBaseSequence !== undefined &&
+      workspace.planningNextSequence !== undefined
+        ? {
+            key: workspace.planningCounterKey,
+            policyVersion: workspace.planningPolicyVersion,
+            formatVersion: workspace.planningFormatVersion,
+            counterVersion: workspace.planningCounterVersion,
+            baseSequence: workspace.planningBaseSequence,
+            nextSequence: workspace.planningNextSequence,
+          }
+        : undefined;
+    const planningCounters = starting
+      ? []
+      : [...(workspace.planningCounters ?? (legacyPlanningCounter ? [legacyPlanningCounter] : []))];
     const proposals: Array<{ rowNumber: number; admissionNumber: string }> = [];
 
     for (const record of page.page) {
       if (record.isCommitted) {
-        await ctx.db.patch(record._id, { approvedPlanVersion: planVersion, updatedAt: Date.now() });
+        await ctx.db.patch(record._id, {
+          approvedPlanVersion: planVersion,
+          updatedAt: Date.now(),
+        });
         continue;
       }
       await validateReviewedRecord(ctx, args.schoolId, record);
@@ -75,42 +111,101 @@ export const approveImportWorkspace = mutation({
       const usesOfficialCounter =
         record.entityType === "student" &&
         record.resolutionAction === "create_new" &&
-        (record.admissionNumberMode === "official_generated" || record.advanceCounterTo !== undefined);
+        (record.admissionNumberMode === "official_generated" ||
+          record.advanceCounterTo !== undefined);
       if (usesOfficialCounter) {
-        if (!record.selectedClassId) throw new ConvexError(`Row #${record.rowNumber} requires an existing class`);
+        if (!record.selectedClassId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} requires an existing class`,
+          );
         const selectedClass = await ctx.db.get(record.selectedClassId);
-        if (!selectedClass || selectedClass.schoolId !== args.schoolId) throw new ConvexError(`Row #${record.rowNumber} class is outside this school`);
-        const current = await proposeAdmissionNumberHelper(ctx, { schoolId: args.schoolId, level: selectedClass.level });
-        if (baseSequence === undefined) {
-          baseSequence = current.sequenceNumber;
-          nextSequence = current.sequenceNumber;
-          policyVersion = current.policyVersion;
-        } else if (current.sequenceNumber !== baseSequence || current.policyVersion !== policyVersion) {
-          throw new ConvexError("Official numbering changed during review; restart approval");
+        if (!selectedClass || selectedClass.schoolId !== args.schoolId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} class is outside this school`,
+          );
+        const current = await proposeAdmissionNumberHelper(ctx, {
+          schoolId: args.schoolId,
+          level: selectedClass.level,
+        });
+        let counterState = planningCounters.find(
+          (item) => item.key === current.counterKey,
+        );
+        if (!counterState) {
+          counterState = {
+            key: current.counterKey,
+            policyVersion: current.policyVersion,
+            formatVersion: current.formatVersion,
+            counterVersion: current.counterVersion,
+            baseSequence: current.sequenceNumber,
+            nextSequence: current.sequenceNumber,
+          };
+          planningCounters.push(counterState);
+        } else if (
+          current.sequenceNumber !== counterState.baseSequence ||
+          current.policyVersion !== counterState.policyVersion ||
+          current.formatVersion !== counterState.formatVersion ||
+          current.counterVersion !== counterState.counterVersion
+        ) {
+          throw new ConvexError(
+            `Counter ${current.counterKey} changed during review; restart approval`,
+          );
         }
-        if (record.expectedNumberPolicyVersion !== policyVersion || nextSequence === undefined) {
-          throw new ConvexError(`Row #${record.rowNumber} has a stale numbering review`);
+        if (
+          record.expectedNumberPolicyVersion !== counterState.policyVersion ||
+          record.expectedNumberFormatVersion !== counterState.formatVersion ||
+          record.expectedNumberCounterKey !== counterState.key ||
+          record.expectedNumberCounterVersion !== counterState.counterVersion
+        ) {
+          throw new ConvexError(
+            `Row #${record.rowNumber} has a stale numbering review`,
+          );
         }
         if (record.admissionNumberMode === "official_generated") {
-          const proposalNumber = await proposeAdmissionNumberAtSequenceHelper(ctx, {
-            schoolId: args.schoolId,
-            level: selectedClass.level,
-            sequence: nextSequence,
-            expectedVersion: policyVersion,
-          });
+          const proposalNumber = await proposeAdmissionNumberAtSequenceHelper(
+            ctx,
+            {
+              schoolId: args.schoolId,
+              level: selectedClass.level,
+              sequence: counterState.nextSequence,
+              expectedVersion: counterState.policyVersion,
+              expectedFormatVersion: counterState.formatVersion,
+              expectedCounterKey: counterState.key,
+              expectedCounterVersion: counterState.counterVersion,
+            },
+          );
           proposedAdmissionNumber = proposalNumber;
           const [existing, claim] = await Promise.all([
-            ctx.db.query("students").withIndex("by_school_and_admission_number", (q) => q.eq("schoolId", args.schoolId).eq("admissionNumber", proposalNumber)).first(),
-            ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", args.schoolId).eq("number", proposalNumber)).unique(),
+            ctx.db
+              .query("students")
+              .withIndex("by_school_and_admission_number", (q) =>
+                q
+                  .eq("schoolId", args.schoolId)
+                  .eq("admissionNumber", proposalNumber),
+              )
+              .first(),
+            ctx.db
+              .query("admissionNumberClaims")
+              .withIndex("by_school_number", (q) =>
+                q.eq("schoolId", args.schoolId).eq("number", proposalNumber),
+              )
+              .unique(),
           ]);
-          if (existing || claim) throw new ConvexError(`Official proposal for row #${record.rowNumber} is already assigned or claimed`);
-          nextSequence += 1;
-          proposals.push({ rowNumber: record.rowNumber, admissionNumber: proposedAdmissionNumber });
+          if (existing || claim)
+            throw new ConvexError(
+              `Official proposal for row #${record.rowNumber} is already assigned or claimed`,
+            );
+          counterState.nextSequence += 1;
+          proposals.push({
+            rowNumber: record.rowNumber,
+            admissionNumber: proposedAdmissionNumber,
+          });
         } else if (record.advanceCounterTo !== undefined) {
-          if (record.advanceCounterTo <= nextSequence) {
-            throw new ConvexError(`Counter choice on row #${record.rowNumber} does not exceed the prior reviewed sequence`);
+          if (record.advanceCounterTo <= counterState.nextSequence) {
+            throw new ConvexError(
+              `Counter choice on row #${record.rowNumber} does not exceed the prior reviewed sequence`,
+            );
           }
-          nextSequence = record.advanceCounterTo;
+          counterState.nextSequence = record.advanceCounterTo;
         }
       }
       await ctx.db.patch(record._id, {
@@ -120,17 +215,24 @@ export const approveImportWorkspace = mutation({
       });
     }
 
-    const processedRecords = (starting ? 0 : workspace.planningProcessedRecords ?? 0) + page.page.length;
+    const processedRecords =
+      (starting ? 0 : (workspace.planningProcessedRecords ?? 0)) +
+      page.page.length;
     const now = Date.now();
+    const singleCounter = planningCounters.length === 1 ? planningCounters[0] : undefined;
     if (!page.isDone) {
       await ctx.db.patch(workspace._id, {
         status: "analyzing",
         reviewPlanVersion: planVersion,
         planningCursor: page.continueCursor,
         planningProcessedRecords: processedRecords,
-        planningBaseSequence: baseSequence,
-        planningNextSequence: nextSequence,
-        planningPolicyVersion: policyVersion,
+        planningBaseSequence: singleCounter?.baseSequence,
+        planningNextSequence: singleCounter?.nextSequence,
+        planningPolicyVersion: singleCounter?.policyVersion,
+        planningFormatVersion: singleCounter?.formatVersion,
+        planningCounterKey: singleCounter?.key,
+        planningCounterVersion: singleCounter?.counterVersion,
+        planningCounters,
         reviewedAt: undefined,
         reviewedBy: undefined,
         updatedAt: now,
@@ -165,9 +267,13 @@ export const approveImportWorkspace = mutation({
       reviewPlanVersion: planVersion,
       planningCursor: undefined,
       planningProcessedRecords: workspace.totalRecords,
-      planningBaseSequence: baseSequence,
-      planningNextSequence: nextSequence,
-      planningPolicyVersion: policyVersion,
+      planningBaseSequence: singleCounter?.baseSequence,
+      planningNextSequence: singleCounter?.nextSequence,
+      planningPolicyVersion: singleCounter?.policyVersion,
+      planningFormatVersion: singleCounter?.formatVersion,
+      planningCounterKey: singleCounter?.key,
+      planningCounterVersion: singleCounter?.counterVersion,
+      planningCounters,
       reviewedAt: now,
       reviewedBy: auth.callerId,
       reviewApprovalReceiptId: approvalReceipt.eventId,
@@ -194,17 +300,24 @@ export const reopenIncompleteImportReview = mutation({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    const { auth, workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
     if (workspace.status !== "committing") {
-      throw new ConvexError("Only a partially committed workspace can be reopened for reconciliation");
+      throw new ConvexError(
+        "Only a partially committed workspace can be reopened for reconciliation",
+      );
     }
     const incomplete = await ctx.db
       .query("stagedImportRecords")
       .withIndex("by_workspaceId_and_isCommitted", (q) =>
-        q.eq("workspaceId", workspace._id).eq("isCommitted", false)
+        q.eq("workspaceId", workspace._id).eq("isCommitted", false),
       )
       .first();
-    if (!incomplete) throw new ConvexError("No incomplete rows require reconciliation");
+    if (!incomplete)
+      throw new ConvexError("No incomplete rows require reconciliation");
     const receipt = await recordAuditEventHelper(ctx, {
       schoolId: args.schoolId,
       actorKind: auth.isSuperAdmin ? "platform_admin" : "user",
@@ -228,6 +341,10 @@ export const reopenIncompleteImportReview = mutation({
       planningBaseSequence: undefined,
       planningNextSequence: undefined,
       planningPolicyVersion: undefined,
+      planningFormatVersion: undefined,
+      planningCounterKey: undefined,
+      planningCounterVersion: undefined,
+      planningCounters: undefined,
       reviewedAt: undefined,
       reviewedBy: undefined,
       reviewApprovalReceiptId: undefined,
@@ -235,7 +352,11 @@ export const reopenIncompleteImportReview = mutation({
       processedRecords: 0,
       updatedAt: Date.now(),
     });
-    return { success: true, receiptId: receipt.eventId, firstIncompleteRow: incomplete.rowNumber };
+    return {
+      success: true,
+      receiptId: receipt.eventId,
+      firstIncompleteRow: incomplete.rowNumber,
+    };
   },
 });
 
@@ -251,8 +372,13 @@ export const commitImportWorkspace = mutation({
   },
   handler: async (ctx, args) => {
     const batchSize = validateBatchSize(args.batchSize);
-    const { auth, workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
-    if (workspace.status === "cancelled") throw new ConvexError("Cannot commit a cancelled workspace");
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (workspace.status === "cancelled")
+      throw new ConvexError("Cannot commit a cancelled workspace");
     if (workspace.status === "merged") {
       return {
         success: true,
@@ -270,13 +396,23 @@ export const commitImportWorkspace = mutation({
       !workspace.reviewedBy ||
       workspace.reviewPlanVersion === undefined
     ) {
-      throw new ConvexError("Public import commit is disabled until every row has a current approved plan");
+      throw new ConvexError(
+        "Public import commit is disabled until every row has a current approved plan",
+      );
     }
 
     const page = await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_rowNumber", (q) => q.eq("workspaceId", args.workspaceId))
-      .paginate({ numItems: batchSize, cursor: workspace.status === "ready" ? null : workspace.commitCursor ?? null });
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
+      .paginate({
+        numItems: batchSize,
+        cursor:
+          workspace.status === "ready"
+            ? null
+            : (workspace.commitCursor ?? null),
+      });
     const now = Date.now();
     const outcomes: Array<{
       recordId: Id<"stagedImportRecords">;
@@ -288,13 +424,28 @@ export const commitImportWorkspace = mutation({
 
     for (const record of page.page) {
       if (record.isCommitted) continue;
-      await validateReviewedRecord(ctx, args.schoolId, record, workspace.reviewPlanVersion);
+      await validateReviewedRecord(
+        ctx,
+        args.schoolId,
+        record,
+        workspace.reviewPlanVersion,
+      );
       if (record.resolutionAction === "ignore") {
-        outcomes.push({ recordId: record._id, rowNumber: record.rowNumber, outcome: "ignored" });
+        outcomes.push({
+          recordId: record._id,
+          rowNumber: record.rowNumber,
+          outcome: "ignored",
+        });
         continue;
       }
-      if (record.entityType === "student" && record.resolutionAction === "merge_existing") {
-        if (!record.selectedStudentId) throw new ConvexError(`Row #${record.rowNumber} requires a merge target`);
+      if (
+        record.entityType === "student" &&
+        record.resolutionAction === "merge_existing"
+      ) {
+        if (!record.selectedStudentId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} requires a merge target`,
+          );
         // Merge is an explicit reconciliation outcome. Unmapped/import text does
         // not overwrite a canonical student profile without field-level review.
         outcomes.push({
@@ -306,29 +457,50 @@ export const commitImportWorkspace = mutation({
         continue;
       }
       if (record.entityType === "student") {
-        if (!record.selectedClassId || !record.selectedUserId) throw new ConvexError(`Row #${record.rowNumber} has incomplete placement`);
+        if (!record.selectedClassId || !record.selectedUserId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} has incomplete placement`,
+          );
         const selectedClass = await ctx.db.get(record.selectedClassId);
-        if (!selectedClass || selectedClass.schoolId !== args.schoolId) throw new ConvexError(`Row #${record.rowNumber} class is outside this school`);
+        if (!selectedClass || selectedClass.schoolId !== args.schoolId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} class is outside this school`,
+          );
         let admissionNumber = record.parsedData.admissionNumber?.trim();
         if (record.admissionNumberMode === "official_generated") {
           const allocation = await allocateNextAdmissionNumberHelper(ctx, {
             schoolId: args.schoolId,
             level: selectedClass.level,
             expectedVersion: record.expectedNumberPolicyVersion,
+            expectedFormatVersion: record.expectedNumberFormatVersion,
+            expectedCounterKey: record.expectedNumberCounterKey,
+            expectedCounterVersion: record.expectedNumberCounterVersion,
           });
-          if (!record.proposedAdmissionNumber || allocation.allocatedNumber !== record.proposedAdmissionNumber) {
-            throw new ConvexError(`Official number for row #${record.rowNumber} changed; repeat approval`);
+          if (
+            !record.proposedAdmissionNumber ||
+            allocation.allocatedNumber !== record.proposedAdmissionNumber
+          ) {
+            throw new ConvexError(
+              `Official number for row #${record.rowNumber} changed; repeat approval`,
+            );
           }
           admissionNumber = allocation.allocatedNumber;
         } else {
-          if (!admissionNumber) throw new ConvexError(`Row #${record.rowNumber} has no reviewed admission number`);
+          if (!admissionNumber)
+            throw new ConvexError(
+              `Row #${record.rowNumber} has no reviewed admission number`,
+            );
           await commitManualAdmissionNumberHelper(ctx, {
             schoolId: args.schoolId,
             number: admissionNumber,
+            level: selectedClass.level,
             confirmed: record.manualNumberConfirmed,
             reason: record.manualNumberReason,
             advanceTo: record.advanceCounterTo,
             expectedVersion: record.expectedNumberPolicyVersion,
+            expectedFormatVersion: record.expectedNumberFormatVersion,
+            expectedCounterKey: record.expectedNumberCounterKey,
+            expectedCounterVersion: record.expectedNumberCounterVersion,
           });
         }
         const studentId = await ctx.db.insert("students", {
@@ -346,13 +518,29 @@ export const commitImportWorkspace = mutation({
           createdAt: now,
           updatedAt: now,
         });
-        outcomes.push({ recordId: record._id, rowNumber: record.rowNumber, outcome: "created", studentId });
+        outcomes.push({
+          recordId: record._id,
+          rowNumber: record.rowNumber,
+          outcome: "created",
+          studentId,
+        });
         continue;
       }
 
-      if (!auth.userId) throw new ConvexError("Grade import requires an authenticated school user for attribution");
-      if (!record.selectedStudentId || !record.selectedClassId || !record.selectedSubjectId || !record.selectedSessionId || !record.selectedTermId) {
-        throw new ConvexError(`Grade row #${record.rowNumber} has incomplete reviewed mappings`);
+      if (!auth.userId)
+        throw new ConvexError(
+          "Grade import requires an authenticated school user for attribution",
+        );
+      if (
+        !record.selectedStudentId ||
+        !record.selectedClassId ||
+        !record.selectedSubjectId ||
+        !record.selectedSessionId ||
+        !record.selectedTermId
+      ) {
+        throw new ConvexError(
+          `Grade row #${record.rowNumber} has incomplete reviewed mappings`,
+        );
       }
       const ca1 = record.parsedData.ca1 ?? 0;
       const ca2 = record.parsedData.ca2 ?? 0;
@@ -371,7 +559,8 @@ export const commitImportWorkspace = mutation({
         examRawScore: exam,
         examScaledScore: exam,
         total,
-        gradeLetter: total >= 70 ? "A" : total >= 60 ? "B" : total >= 50 ? "C" : "F",
+        gradeLetter:
+          total >= 70 ? "A" : total >= 60 ? "B" : total >= 50 ? "C" : "F",
         remark: total >= 50 ? "Pass" : "Needs Improvement",
         examInputModeSnapshot: "raw",
         examRawMaxSnapshot: 100,
@@ -381,7 +570,12 @@ export const commitImportWorkspace = mutation({
         createdAt: now,
         updatedAt: now,
       });
-      outcomes.push({ recordId: record._id, rowNumber: record.rowNumber, outcome: "grade_created", assessmentRecordId });
+      outcomes.push({
+        recordId: record._id,
+        rowNumber: record.rowNumber,
+        outcome: "grade_created",
+        assessmentRecordId,
+      });
     }
 
     const receipt = await recordAuditEventHelper(ctx, {
@@ -411,7 +605,9 @@ export const commitImportWorkspace = mutation({
       });
     }
 
-    const processedRecords = (workspace.status === "ready" ? 0 : workspace.processedRecords ?? 0) + page.page.length;
+    const processedRecords =
+      (workspace.status === "ready" ? 0 : (workspace.processedRecords ?? 0)) +
+      page.page.length;
     if (page.isDone) {
       await ctx.db.patch(workspace._id, {
         status: "merged",
@@ -438,11 +634,17 @@ export const commitImportWorkspace = mutation({
       totalRecords: workspace.totalRecords,
       workspaceId: workspace._id,
       receiptId: receipt.eventId,
-      outcomes: outcomes.map(({ rowNumber, outcome, studentId, assessmentRecordId }) => ({
-        rowNumber,
-        outcome,
-        targetId: studentId ? String(studentId) : assessmentRecordId ? String(assessmentRecordId) : undefined,
-      })),
+      outcomes: outcomes.map(
+        ({ rowNumber, outcome, studentId, assessmentRecordId }) => ({
+          rowNumber,
+          outcome,
+          targetId: studentId
+            ? String(studentId)
+            : assessmentRecordId
+              ? String(assessmentRecordId)
+              : undefined,
+        }),
+      ),
     };
   },
 });

@@ -98,7 +98,16 @@ async function fixture() {
       createdAt: 1,
       updatedAt: 1,
     });
-    return { schoolId, sessionId, policyId, classId, membershipId };
+    return {
+      schoolId,
+      sessionId,
+      policyId,
+      classId,
+      membershipId,
+      groupId,
+      personId,
+      userId,
+    };
   });
   return { t, ...ids };
 }
@@ -117,6 +126,9 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
     admissionNumber: "",
     requestKey: "intent-one",
     numberingVersion: 1,
+    numberingFormatVersion: "branch:1:0",
+    numberingCounterKey: "default",
+    numberingCounterVersion: 0,
   };
   const studentId = await viewer.mutation(
     api.functions.academic.studentEnrollment.createStudent,
@@ -184,6 +196,96 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
     22,
   );
 });
+it("corrects an existing student only with reason and explicit version-pinned advancement", async () => {
+  const { t, schoolId, classId, policyId } = await fixture();
+  const viewer = t.withIdentity({
+    subject: "owner",
+    issuer: "test",
+    tokenIdentifier: "test|owner",
+  });
+  const studentId = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      schoolId,
+      authId: "existing",
+      name: "Existing Student",
+      email: "existing@example.test",
+      role: "student",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return await ctx.db.insert("students", {
+      schoolId,
+      classId,
+      userId,
+      admissionNumber: "OLD-001",
+      gender: "Female",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+  });
+  await expect(
+    viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+      studentId,
+      admissionNumber: "CORRECT-001",
+    }),
+  ).rejects.toThrow("reason");
+  await viewer.mutation(
+    api.functions.academic.studentEnrollment.updateStudent,
+    {
+      studentId,
+      admissionNumber: "CORRECT-001",
+      overrideConfirmed: true,
+      overrideReason: "Registrar reviewed source register",
+    },
+  );
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    admissionNumber: "CORRECT-001",
+  });
+  const claims = await t.run((ctx) =>
+    ctx.db
+      .query("admissionNumberClaims")
+      .withIndex("by_school_number", (q) => q.eq("schoolId", schoolId))
+      .collect(),
+  );
+  expect(claims.map((item) => item.number).sort()).toEqual([
+    "CORRECT-001",
+    "OLD-001",
+  ]);
+  await viewer.mutation(
+    api.functions.academic.studentEnrollment.updateStudent,
+    {
+      studentId,
+      admissionNumber: "CORRECT-002",
+      overrideConfirmed: true,
+      overrideReason: "Registrar reviewed corrected archive",
+      advanceCounterTo: 20,
+      numberingVersion: 1,
+      numberingFormatVersion: "branch:1:0",
+      numberingCounterKey: "default",
+      numberingCounterVersion: 0,
+    },
+  );
+  expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(
+    20,
+  );
+  await expect(
+    viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+      studentId,
+      admissionNumber: "CORRECT-003",
+      overrideConfirmed: true,
+      overrideReason: "Registrar retried stale correction",
+      advanceCounterTo: 30,
+      numberingVersion: 1,
+      numberingFormatVersion: "branch:1:0",
+      numberingCounterKey: "default",
+      numberingCounterVersion: 99,
+    }),
+  ).rejects.toThrow("changed");
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    admissionNumber: "CORRECT-002",
+  });
+});
+
 it("does not infer manual override permission from the legacy admin title", async () => {
   const { t, schoolId, classId } = await fixture();
   await t.run(async (ctx) => {
@@ -225,6 +327,7 @@ it("conflicts on policy versions and rejects counter rewinds; calendar reset kee
     expectedVersion: 1,
     confirmedNextSequence: 10,
     currentSequence: 10,
+    expectedCounterVersion: 0,
   };
   await viewer.mutation(
     api.functions.academic.admissionNumbers.updateAdmissionNumberPolicy,
@@ -242,6 +345,7 @@ it("conflicts on policy versions and rejects counter rewinds; calendar reset kee
       {
         ...change,
         expectedVersion: 2,
+        expectedCounterVersion: 1,
         confirmedNextSequence: 1,
         currentSequence: 1,
       },
@@ -264,6 +368,229 @@ it("conflicts on policy versions and rejects counter rewinds; calendar reset kee
     ).allocatedNumber,
   ).toBe("SYN/2025/00001");
 });
+it("configures named level and branch sequences with status and independent concurrent allocation", async () => {
+  const { t, schoolId, policyId } = await fixture();
+  const viewer = t.withIdentity({
+    subject: "owner",
+    issuer: "test",
+    tokenIdentifier: "test|owner",
+  });
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.configureAdmissionNumberSequence,
+    {
+      schoolId,
+      key: "primary",
+      name: "Primary intake",
+      level: "Primary",
+      currentSequence: 100,
+      confirmedNextSequence: 100,
+      resetFrequency: "continuous",
+      status: "active",
+      expectedConfigVersion: 0,
+    },
+  );
+  const policy = await viewer.query(
+    api.functions.academic.admissionNumbers.getAdmissionNumberPolicy,
+    { schoolId, level: "PRIMARY" },
+  );
+  expect(policy.counter).toMatchObject({
+    key: "primary",
+    level: "primary",
+    status: "active",
+    configVersion: 1,
+  });
+  const results = await Promise.all(
+    [1, 2].map(() =>
+      t.mutation(
+        internal.functions.academic.admissionNumbers
+          .allocateNextAdmissionNumber,
+        { schoolId, level: "Primary" },
+      ),
+    ),
+  );
+  expect(results.map((item) => item.allocatedNumber).sort()).toEqual([
+    "SYN-2025-0100",
+    "SYN-2025-0101",
+  ]);
+  expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(1);
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.configureAdmissionNumberSequence,
+    {
+      schoolId,
+      key: "primary",
+      name: "Primary intake",
+      level: "Primary",
+      currentSequence: 102,
+      confirmedNextSequence: 102,
+      resetFrequency: "continuous",
+      status: "paused",
+      expectedConfigVersion: 1,
+    },
+  );
+  await expect(
+    t.mutation(
+      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
+      { schoolId, level: "Primary" },
+    ),
+  ).rejects.toThrow("paused");
+  await expect(
+    viewer.mutation(
+      api.functions.academic.admissionNumbers.configureAdmissionNumberSequence,
+      {
+        schoolId,
+        key: "primary",
+        name: "Stale",
+        level: "Primary",
+        currentSequence: 102,
+        confirmedNextSequence: 102,
+        resetFrequency: "continuous",
+        status: "active",
+        expectedConfigVersion: 1,
+      },
+    ),
+  ).rejects.toThrow("changed");
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.configureAdmissionNumberSequence,
+    {
+      schoolId,
+      key: "branch-2026",
+      name: "Branch 2026",
+      currentSequence: 500,
+      confirmedNextSequence: 500,
+      resetFrequency: "session",
+      status: "active",
+      expectedConfigVersion: 0,
+    },
+  );
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.setDefaultAdmissionNumberSequence,
+    { schoolId, key: "branch-2026", expectedPolicyVersion: 1 },
+  );
+  expect(
+    (
+      await viewer.query(
+        api.functions.academic.admissionNumbers.getAdmissionNumberPolicy,
+        { schoolId },
+      )
+    ).counter?.key,
+  ).toBe("branch-2026");
+  await expect(
+    viewer.mutation(
+      api.functions.academic.admissionNumbers.archiveAdmissionNumberSequence,
+      { schoolId, key: "branch-2026", expectedConfigVersion: 1 },
+    ),
+  ).rejects.toThrow("another default");
+});
+
+it("inherits only an explicitly adopted group format while counters stay branch-owned", async () => {
+  const { t, schoolId, groupId, personId } = await fixture();
+  const viewer = t.withIdentity({
+    subject: "owner",
+    issuer: "test",
+    tokenIdentifier: "test|owner",
+  });
+  const branch = await t.run(async (ctx) => {
+    const branchId = await ctx.db.insert("schools", {
+      name: "Branch",
+      slug: "branch",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const userId = await ctx.db.insert("users", {
+      schoolId: branchId,
+      personId,
+      authId: "owner-branch",
+      authTokenIdentifier: "test|owner",
+      name: "Owner",
+      email: "owner@example.test",
+      role: "admin",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("branchMemberships", {
+      schoolId: branchId,
+      personId,
+      legacyUserId: userId,
+      isDefaultBranch: false,
+      status: "active",
+      joinedAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("schoolGroupBranches", {
+      schoolId: branchId,
+      groupId,
+      isHeadquarters: false,
+      linkedAt: 1,
+    });
+    await ctx.db.insert("academicSessions", {
+      schoolId: branchId,
+      name: "2025/26",
+      startDate: Date.UTC(2025, 8, 1),
+      endDate: Date.UTC(2026, 7, 31),
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const policyId = await ctx.db.insert("admissionNumberPolicies", {
+      schoolId: branchId,
+      pattern: "LOCAL/{SEQ:4}",
+      schoolCode: "BRN",
+      campusCode: "EAST",
+      currentSequence: 40,
+      resetFrequency: "continuous",
+      version: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return { branchId, policyId };
+  });
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.publishGroupAdmissionNumberFormat,
+    {
+      schoolId,
+      groupId,
+      expectedGroupVersion: 0,
+      allowBranchOverride: true,
+      confirmation: "group",
+    },
+  );
+  expect(
+    (
+      await t.run((ctx) =>
+        proposeAdmissionNumberHelper(ctx, { schoolId: branch.branchId }),
+      )
+    ).allocatedNumber,
+  ).toBe("LOCAL/0040");
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
+    {
+      schoolId: branch.branchId,
+      groupId,
+      mode: "inherit",
+      expectedGroupVersion: 1,
+      expectedRevision: 0,
+      confirmation: "branch",
+    },
+  );
+  const inherited = await t.run((ctx) =>
+    proposeAdmissionNumberHelper(ctx, { schoolId: branch.branchId }),
+  );
+  expect(inherited.allocatedNumber).toBe("BRN-2025-0040");
+  expect(inherited.formatVersion).toContain("group:");
+  await t.mutation(
+    internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
+    { schoolId: branch.branchId },
+  );
+  expect(
+    (await t.run((ctx) => ctx.db.get(branch.policyId)))?.currentSequence,
+  ).toBe(41);
+  const source = await t.run((ctx) =>
+    proposeAdmissionNumberHelper(ctx, { schoolId }),
+  );
+  expect(source.sequenceNumber).toBe(1);
+});
+
 it("rejects malformed tokens, excessive padding and fractional or unbounded sequences", () => {
   for (const pattern of [
     "{SEQ:0}",
