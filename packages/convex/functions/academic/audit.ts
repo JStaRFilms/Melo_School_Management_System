@@ -120,6 +120,11 @@ export async function recordAuditEventHelper(
     operators.length === 1 && operators[0].isActive
       ? operators[0]._id
       : undefined;
+  const groupLink = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    .unique();
+  const eventGroupId = args.groupId ?? groupLink?.groupId;
   const docId = await ctx.db.insert("auditEvents", {
     eventId,
     actorPlatformAdminId,
@@ -130,7 +135,7 @@ export async function recordAuditEventHelper(
     actorEmailSnapshot: sanitizeAuditSummary(args.actorEmailSnapshot),
     actorIpHash: args.actorIpHash,
     schoolId: args.schoolId,
-    groupId: args.groupId,
+    groupId: eventGroupId,
     module: args.module,
     action: args.action,
     targetType: args.targetType,
@@ -163,15 +168,10 @@ export async function recordAuditEventHelper(
   if (args.alertTier === "tier1_critical" || args.alertTier === "tier2_warn") {
     const alertId = `alt_${now}_${Math.random().toString(36).slice(2, 11)}`;
 
-    // Resolve school group proprietor if available to target alert recipient
-    const groupLink = await ctx.db
-      .query("schoolGroupBranches")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .first();
-
+    // Resolve the snapshotted school group proprietor when available.
     let targetRecipients: Id<"persons">[] | undefined = undefined;
-    if (groupLink) {
-      const group = await ctx.db.get(groupLink.groupId);
+    if (eventGroupId) {
+      const group = await ctx.db.get(eventGroupId);
       if (group?.proprietorPersonId) {
         targetRecipients = [group.proprietorPersonId];
       }
@@ -277,6 +277,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
       throw new ConvexError("Forbidden: Platform audit authority required");
     return {
       schoolIds: null,
+      groupId: undefined,
       modules: null,
       platformOnly: true,
       personId: undefined,
@@ -290,6 +291,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
     const platformOnly = await isGroupPlatformOperator(ctx);
     return {
       schoolIds: overview.branches.map((b) => b.schoolId),
+      groupId: scope.groupId,
       modules: null,
       platformOnly,
       personId: platformOnly ? undefined : overview.group.proprietorPersonId,
@@ -314,6 +316,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
   const caps = auth.effectiveCapabilities;
   return {
     schoolIds: [scope.schoolId],
+    groupId: undefined,
     modules,
     platformOnly: auth.isPlatformAdmin,
     personId: auth.personId,
@@ -325,7 +328,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
 type AuditAuthority = Awaited<ReturnType<typeof auditAuthority>>;
 function visibleEvent(event: Doc<"auditEvents">, auth: AuditAuthority) {
   return (
-    (!auth.schoolIds || auth.schoolIds.includes(event.schoolId)) &&
+    (!auth.schoolIds || auth.schoolIds.includes(event.schoolId) || (auth.groupId !== undefined && event.groupId === auth.groupId)) &&
     (!auth.platformOnly || event.actorKind === "platform_admin") &&
     (!auth.modules || auth.modules.includes(event.module))
   );
@@ -393,6 +396,80 @@ export const getAuditAccess = query({
   },
 });
 
+type GroupAuditSource =
+  | { kind: "snapshot"; key: string; groupId: Id<"schoolGroups"> }
+  | { kind: "legacy"; key: string; schoolId: Id<"schools"> };
+
+function groupSourceQuery(ctx: Context, source: GroupAuditSource, filters: Filters) {
+  if (source.kind === "snapshot") {
+    return ctx.db.query("auditEvents").withIndex("by_group_and_timestamp", q => {
+      const group = q.eq("groupId", source.groupId);
+      if (filters.startDate !== undefined && filters.endDate !== undefined) return group.gte("timestamp", filters.startDate).lte("timestamp", filters.endDate);
+      if (filters.startDate !== undefined) return group.gte("timestamp", filters.startDate);
+      if (filters.endDate !== undefined) return group.lte("timestamp", filters.endDate);
+      return group;
+    });
+  }
+  return ctx.db.query("auditEvents").withIndex("by_school_and_groupId_and_timestamp", q => {
+    const legacy = q.eq("schoolId", source.schoolId).eq("groupId", undefined);
+    if (filters.startDate !== undefined && filters.endDate !== undefined) return legacy.gte("timestamp", filters.startDate).lte("timestamp", filters.endDate);
+    if (filters.startDate !== undefined) return legacy.gte("timestamp", filters.startDate);
+    if (filters.endDate !== undefined) return legacy.lte("timestamp", filters.endDate);
+    return legacy;
+  });
+}
+
+function encodeGroupCursor(source: GroupAuditSource, cursor: string | null) {
+  return JSON.stringify({ version: 1, source: source.key, cursor });
+}
+
+function decodeGroupCursor(raw: string, sources: GroupAuditSource[]) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ConvexError("Invalid group audit cursor");
+  }
+  if (typeof parsed !== "object" || parsed === null || !("version" in parsed) || parsed.version !== 1 || !("source" in parsed) || typeof parsed.source !== "string" || !("cursor" in parsed) || (parsed.cursor !== null && typeof parsed.cursor !== "string")) {
+    throw new ConvexError("Invalid group audit cursor");
+  }
+  const sourceIndex = sources.findIndex(source => source.key === parsed.source);
+  if (sourceIndex < 0) throw new ConvexError("Group audit scope changed; restart pagination");
+  return { sourceIndex, cursor: parsed.cursor };
+}
+
+async function groupAuditPage(
+  ctx: Context,
+  args: Filters & { scope: { kind: "group"; groupId: Id<"schoolGroups"> }; paginationOpts: { numItems: number; cursor: string | null } },
+  auth: AuditAuthority,
+) {
+  const sources: GroupAuditSource[] = [
+    { kind: "snapshot", key: `group:${args.scope.groupId}`, groupId: args.scope.groupId },
+    ...(auth.schoolIds ?? []).slice().sort().map(schoolId => ({ kind: "legacy" as const, key: `legacy:${schoolId}`, schoolId })),
+  ];
+  const decoded = args.paginationOpts.cursor ? decodeGroupCursor(args.paginationOpts.cursor, sources) : { sourceIndex: 0, cursor: null };
+  let sourceIndex = decoded.sourceIndex;
+  let sourceCursor = decoded.cursor;
+  while (sourceIndex < sources.length && !(await groupSourceQuery(ctx, sources[sourceIndex], args).order("desc").first())) {
+    sourceIndex++;
+    sourceCursor = null;
+  }
+  if (sourceIndex >= sources.length) return { page: [], isDone: true, continueCursor: "" };
+  const source = sources[sourceIndex];
+  const result = await groupSourceQuery(ctx, source, args).order("desc").paginate({
+    numItems: Math.min(Math.max(args.paginationOpts.numItems, 1), 100),
+    cursor: sourceCursor,
+  });
+  if (!result.isDone) return { ...result, continueCursor: encodeGroupCursor(source, result.continueCursor) };
+  let nextIndex = sourceIndex + 1;
+  while (nextIndex < sources.length && !(await groupSourceQuery(ctx, sources[nextIndex], args).order("desc").first())) nextIndex++;
+  return {
+    page: result.page,
+    isDone: nextIndex >= sources.length,
+    continueCursor: nextIndex >= sources.length ? "" : encodeGroupCursor(sources[nextIndex], null),
+  };
+}
+
 async function auditPage(
   ctx: Context,
   args: Filters & {
@@ -433,39 +510,32 @@ async function auditPage(
     )
   )
     throw new ConvexError("Filter text is too long");
-  // Page the source, then filter. Empty matching pages still carry the continuation cursor;
-  // no recent-window truncation, including old group events lacking a groupId snapshot.
-  const schoolId =
-    args.scope.kind === "branch" ? args.scope.schoolId : args.branchId;
-  const source = schoolId
-    ? ctx.db.query("auditEvents").withIndex("by_school_and_timestamp", (q) => {
-        const branch = q.eq("schoolId", schoolId);
-        if (args.startDate !== undefined && args.endDate !== undefined)
-          return branch
-            .gte("timestamp", args.startDate)
-            .lte("timestamp", args.endDate);
-        if (args.startDate !== undefined)
-          return branch.gte("timestamp", args.startDate);
-        if (args.endDate !== undefined)
-          return branch.lte("timestamp", args.endDate);
-        return branch;
-      })
-    : ctx.db.query("auditEvents").withIndex("by_timestamp", (q) => {
-        if (args.startDate !== undefined && args.endDate !== undefined)
-          return q
-            .gte("timestamp", args.startDate)
-            .lte("timestamp", args.endDate);
-        if (args.startDate !== undefined)
-          return q.gte("timestamp", args.startDate);
-        if (args.endDate !== undefined) return q.lte("timestamp", args.endDate);
-        return q;
-      });
-  const result = await source
-    .order("desc")
-    .paginate({
+  // Group-wide reads use the group snapshot index plus a current-branch legacy
+  // fallback. Only Platform scope intentionally reads the global timestamp index.
+  let result: { page: Doc<"auditEvents">[]; isDone: boolean; continueCursor: string };
+  if (args.scope.kind === "group" && !args.branchId) {
+    result = await groupAuditPage(ctx, { ...args, scope: args.scope }, auth);
+  } else {
+    const schoolId = args.scope.kind === "branch" ? args.scope.schoolId : args.branchId;
+    const source = schoolId
+      ? ctx.db.query("auditEvents").withIndex("by_school_and_timestamp", (q) => {
+          const branch = q.eq("schoolId", schoolId);
+          if (args.startDate !== undefined && args.endDate !== undefined) return branch.gte("timestamp", args.startDate).lte("timestamp", args.endDate);
+          if (args.startDate !== undefined) return branch.gte("timestamp", args.startDate);
+          if (args.endDate !== undefined) return branch.lte("timestamp", args.endDate);
+          return branch;
+        })
+      : ctx.db.query("auditEvents").withIndex("by_timestamp", (q) => {
+          if (args.startDate !== undefined && args.endDate !== undefined) return q.gte("timestamp", args.startDate).lte("timestamp", args.endDate);
+          if (args.startDate !== undefined) return q.gte("timestamp", args.startDate);
+          if (args.endDate !== undefined) return q.lte("timestamp", args.endDate);
+          return q;
+        });
+    result = await source.order("desc").paginate({
       ...args.paginationOpts,
       numItems: Math.min(Math.max(args.paginationOpts.numItems, 1), 100),
     });
+  }
   const page = result.page
     .filter((event) => visibleEvent(event, auth))
     .map(safeEvent)

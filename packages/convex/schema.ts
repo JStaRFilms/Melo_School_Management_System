@@ -1167,6 +1167,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_school_and_timestamp", ["schoolId", "timestamp"])
+    .index("by_school_and_groupId_and_timestamp", ["schoolId", "groupId", "timestamp"])
     .index("by_group_and_timestamp", ["groupId", "timestamp"])
     .index("by_timestamp", ["timestamp"])
     .index("by_module_and_action", ["module", "action"])

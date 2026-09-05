@@ -78,24 +78,20 @@ export async function exportAudit({
       );
     const rows: AuditRow[] = [];
     let cursor: string | null = null;
-    let complete = false;
-    for (let batch = 0; batch < 200; batch++) {
+    const seenCursors = new Set<string>();
+    while (true) {
       const result = await fetchPage(cursor);
       rows.push(...result.page);
       if (rows.length > 5000)
         throw new Error(
           "Export exceeds 5,000 matching events. Narrow the filters; no partial file was exported.",
         );
-      if (result.isDone) {
-        complete = true;
-        break;
-      }
+      if (result.isDone) break;
+      if (!result.continueCursor || seenCursors.has(result.continueCursor))
+        throw new Error("Audit pagination did not advance; no partial file was exported.");
+      seenCursors.add(result.continueCursor);
       cursor = result.continueCursor;
     }
-    if (!complete)
-      throw new Error(
-        "Search exceeds 200 source pages. Narrow the date/branch filters; no partial file was exported.",
-      );
     // Recheck export authority immediately before preparing a downloadable/printable document.
     const outcome = await record("client_prepared", rows.length);
     if (!outcome.permitted)
