@@ -188,6 +188,7 @@ export function RosterGridRow({
         examScaledScore={derived.examScaledScore}
         total={derived.total}
         gradeLetter={derived.gradeLetter}
+        gradeColor={derived.gradeColor}
         remark={derived.remark}
         examInputMode={examInputMode}
       />

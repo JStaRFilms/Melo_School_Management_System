@@ -249,7 +249,7 @@ export function AdminRosterGrid({
                        {derived.total !== null ? `${derived.total.toFixed(0)}%` : "--"}
                      </div>
                    </div>
-                   <div className={`w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-[10px] font-black ${derived.gradeLetter === 'F' ? 'text-red-500' : 'text-slate-950'}`}>
+                   <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-[10px] font-black" style={{color: derived.gradeColor}}>
                      {derived.gradeLetter ?? "-"}
                    </div>
                 </div>

@@ -1,8 +1,9 @@
 "use client";
+import { GradeColorControl } from "./GradeColorControl";
+import { gradeDisplayColor } from "@school/shared/exam-recording";
 
 import { Trash2 } from "lucide-react";
 import type { GradingBandDraft } from "@/types";
-import { getGradeBadgeColorClass } from "@/exam-helpers";
 
 interface BandRowProps {
   band: GradingBandDraft;
@@ -13,7 +14,7 @@ interface BandRowProps {
   onChange: (
     index: number,
     field: keyof GradingBandDraft,
-    value: string | number
+    value: string | number,
   ) => void;
   onDelete: (index: number) => void;
 }
@@ -27,7 +28,7 @@ export function BandRow({
   onChange,
   onDelete,
 }: BandRowProps) {
-  const badgeClass = getGradeBadgeColorClass(band.gradeLetter);
+  const badgeClass = "";
 
   return (
     <tr
@@ -36,6 +37,8 @@ export function BandRow({
       <td className="p-2.5 px-6">
         <input
           type="text"
+          aria-label={`Grade label for tier ${index + 1}`}
+          style={{ color: gradeDisplayColor(band.colorHex) }}
           value={band.gradeLetter}
           onChange={(e) => {
             const nextValue = e.target.value.toUpperCase().replace(/\s+/g, "");
@@ -56,9 +59,11 @@ export function BandRow({
         <div className="flex items-center gap-1">
           <input
             type="number"
+            aria-label={`Minimum score for tier ${index + 1}`}
             value={band.minScore ?? ""}
             onChange={(e) => {
-              const v = e.target.value === "" ? null : parseInt(e.target.value, 10);
+              const v =
+                e.target.value === "" ? null : parseInt(e.target.value, 10);
               onChange(index, "minScore", v as number);
             }}
             min={0}
@@ -69,14 +74,20 @@ export function BandRow({
                 ? "border-rose-500 bg-rose-50/90 text-rose-800 ring-1 ring-rose-500/20"
                 : "border-slate-200"
             }`}
-            title={hasRangeError ? "Invalid, duplicate, or overlapping score range" : undefined}
+            title={
+              hasRangeError
+                ? "Invalid, duplicate, or overlapping score range"
+                : undefined
+            }
           />
           <span className="text-slate-200 font-bold px-0.5">&ndash;</span>
           <input
             type="number"
+            aria-label={`Maximum score for tier ${index + 1}`}
             value={band.maxScore ?? ""}
             onChange={(e) => {
-              const v = e.target.value === "" ? null : parseInt(e.target.value, 10);
+              const v =
+                e.target.value === "" ? null : parseInt(e.target.value, 10);
               onChange(index, "maxScore", v as number);
             }}
             min={0}
@@ -87,23 +98,36 @@ export function BandRow({
                 ? "border-rose-500 bg-rose-50/90 text-rose-800 ring-1 ring-rose-500/20"
                 : "border-slate-200"
             }`}
-            title={hasRangeError ? "Invalid, duplicate, or overlapping score range" : undefined}
+            title={
+              hasRangeError
+                ? "Invalid, duplicate, or overlapping score range"
+                : undefined
+            }
           />
         </div>
       </td>
       <td className="p-2.5">
         <input
           type="text"
+          aria-label={`Remark for tier ${index + 1}`}
           value={band.remark}
           onChange={(e) => onChange(index, "remark", e.target.value)}
           placeholder="Remark..."
           className="w-full h-9 px-4 bg-slate-50/50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 focus:bg-white focus:border-blue-500/50 outline-none transition-all"
         />
       </td>
+      <td className="p-2.5">
+        <GradeColorControl
+          grade={band.gradeLetter}
+          value={band.colorHex}
+          onChange={(value) => onChange(index, "colorHex", value)}
+        />
+      </td>
       <td className="p-2.5 px-6 text-right">
         <button
+          aria-label={`Delete tier ${index + 1}`}
           onClick={() => onDelete(index)}
-          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 p-2 transition-all"
+          className="opacity-100 text-slate-300 hover:text-rose-500 p-2 transition-all"
         >
           <Trash2 className="w-4 h-4" />
         </button>

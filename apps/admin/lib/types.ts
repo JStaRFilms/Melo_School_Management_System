@@ -132,6 +132,10 @@ export interface AssessmentEditingStateResponse {
 
 // Grading band from the query response
 export interface GradingBandResponse {
+  colorHex?: string;
+  color?: string;
+  gradePoints?: number;
+  version?: number;
   _id: Id<"gradingBands">;
   _creationTime: number;
   schoolId: Id<"schools">;
@@ -171,6 +175,7 @@ export function toGradingBand(band: GradingBandResponse): GradingBand {
     minScore: band.minScore,
     maxScore: band.maxScore,
     gradeLetter: band.gradeLetter,
+    colorHex: band.colorHex ?? band.color,
     remark: band.remark,
     isActive: band.isActive,
     createdAt: band.createdAt,
@@ -187,6 +192,10 @@ export interface SelectorOption {
 
 // Grading band draft for editing
 export interface GradingBandDraft {
+  colorHex?: string;
+  color?: string;
+  gradePoints?: number;
+  version?: number;
   minScore: number | null;
   maxScore: number | null;
   gradeLetter: string;

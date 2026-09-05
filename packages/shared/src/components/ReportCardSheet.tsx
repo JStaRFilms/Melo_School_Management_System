@@ -1,6 +1,10 @@
 "use client";
+import { resolveGradeColor } from "../exam-recording/grade-policy";
+import { deriveSchoolTheme } from "../theme/themeDerivation";
 
 export type ReportCardSheetData = {
+  certifiedAt?: number;
+  gradingPolicy?: { version: number; source: "current" | "snapshot" | "historical_missing"; bands: Array<{gradeLetter:string;minScore:number;maxScore:number;remark:string;colorHex?:string}> };
   schoolName: string;
   schoolAddress?: string | null;
   schoolContact?: string | null;
@@ -138,24 +142,6 @@ function buildInitials(name: string) {
     .join("");
 }
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case "A":
-      return "#065f46";
-    case "B":
-      return "#1e40af";
-    case "C":
-      return "#92400e";
-    case "D":
-      return "#9a3412";
-    case "E":
-    case "F":
-      return "#991b1b";
-    default:
-      return "#64748b";
-  }
-}
-
 /* ─── Inline print styles (injected once) ─── */
 const PRINT_STYLE_ID = "report-card-print-styles";
 const A4_PAGE_WIDTH_MM = 210;
@@ -242,6 +228,9 @@ function ensurePrintStyles() {
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact; 
       }
+      .rc-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+      .rc-sheet thead { display: table-header-group; }
+      .rc-grade { background: white !important; font-weight: 700 !important; }
       /* Prevent page breaks inside report card */
       .rc-sheet,
       .rc-sheet-wrapper {
@@ -261,6 +250,8 @@ function ensurePrintStyles() {
         page-break-after: auto; 
       }
     }
+    @media print and (monochrome) { .rc-grade { color: black !important; } }
+    @media (forced-colors: active) { .rc-grade { color: CanvasText !important; } }
   `;
   document.head.appendChild(style);
 }
@@ -318,8 +309,10 @@ export function ReportCardSheet({
     },
   ];
   const extras = reportCard.extras ?? [];
-  const primaryColor = reportCard.theme?.primaryColor || "#0f172a";
-  const accentColor = reportCard.theme?.accentColor || "#d97706";
+  const themeTokens = deriveSchoolTheme(reportCard.theme?.primaryColor, reportCard.theme?.accentColor);
+  const primaryColor = themeTokens["--school-primary"];
+  const accentColor = themeTokens["--school-accent"];
+  const primaryContrast = themeTokens["--school-primary-contrast"];
 
   return (
     <div className="rc-print-root" style={{ fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
@@ -486,7 +479,7 @@ export function ReportCardSheet({
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.14em",
-                  color: "white",
+                  color: primaryContrast,
                 }}
               >
                 Student Report Card
@@ -596,7 +589,7 @@ export function ReportCardSheet({
               fontWeight: 800,
               textTransform: "uppercase",
               letterSpacing: "0.14em",
-              color: "white",
+              color: primaryContrast,
             }}
           >
             Examination Details
@@ -700,10 +693,11 @@ export function ReportCardSheet({
                     )}
                     <Td
                       bold
+                      grade
                       color={
                         isIncompleteCumulativeResult(result)
                           ? "#64748b"
-                          : gradeColor(result.gradeLetter)
+                          : resolveGradeColor(result.gradeLetter, reportCard.gradingPolicy?.bands)
                       }
                     >
                       {getResultGradeDisplay(result)}
@@ -715,6 +709,9 @@ export function ReportCardSheet({
                 ))}
               </tbody>
           </table>
+          <p style={{fontSize: 10, color: "#475569", marginTop: 6}}>
+            {reportCard.gradingPolicy?.source === "snapshot" ? `Certified grading policy v${reportCard.gradingPolicy.version}.` : reportCard.gradingPolicy?.source === "current" ? `Current grading policy v${reportCard.gradingPolicy.version} · Uncertified preview.` : "Historical grading policy unavailable; recorded scores and labels retained without policy colors."}
+          </p>
           {reportCard.resultCalculationMode === "cumulative_annual" &&
           reportCard.results.some(
             (result) =>
@@ -772,7 +769,7 @@ export function ReportCardSheet({
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.14em",
-                  color: "white",
+                  color: primaryContrast,
                 }}
               >
                 Report Card Extras
@@ -912,6 +909,7 @@ function Td({
   mono,
   color,
   fontSize: fs,
+  grade,
 }: {
   children: React.ReactNode;
   align?: "left" | "center" | "right";
@@ -919,9 +917,11 @@ function Td({
   mono?: boolean;
   color?: string;
   fontSize?: number;
+  grade?: boolean;
 }) {
   return (
     <td
+      className={grade ? "rc-grade" : undefined}
       style={{
         padding: "4px 6px",
         textAlign: align,

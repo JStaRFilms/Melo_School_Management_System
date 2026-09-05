@@ -1,25 +1,9 @@
 "use client";
+import { resolveGradeColor } from "@school/shared/exam-recording";
 
 import { useState } from "react";
 import type { ReportCardSheetData } from "@school/shared";
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case "A":
-      return "text-emerald-700";
-    case "B":
-      return "text-blue-700";
-    case "C":
-      return "text-amber-700";
-    case "D":
-      return "text-orange-700";
-    case "E":
-    case "F":
-      return "text-rose-700";
-    default:
-      return "text-slate-500";
-  }
-}
 
 function fmtScore(v: number | null) {
   if (v === null) return "-";
@@ -207,7 +191,7 @@ export function ResultsSummary({
                       </>
                     )}
                     <td
-                      className={`px-2 py-2 text-center font-bold ${isIncompleteCumulativeResult(r) ? "text-slate-400" : gradeColor(r.gradeLetter)}`}
+                      className="px-2 py-2 text-center font-bold" style={{color: isIncompleteCumulativeResult(r) ? "#64748b" : resolveGradeColor(r.gradeLetter, reportCard.gradingPolicy?.bands)}}
                     >
                       {gradeDisplay(r)}
                     </td>

@@ -1,436 +1,418 @@
-import { query, mutation } from "../../_generated/server";
-import { v } from "convex/values";
-import { ConvexError } from "convex/values";
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
+import {
+  query,
+  mutation,
+  type QueryCtx,
+  type MutationCtx,
+} from "../../_generated/server";
+import { v, ConvexError } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
-  assertAdminForSchool,
+  resolveActiveMembership,
 } from "./auth";
 import { requireCapability } from "./rbac";
+import { requireGroupOwner } from "./groupSettings";
 import { recordAuditEventHelper } from "./audit";
-import { validateGradingBands } from "@school/shared/exam-recording";
+import {
+  FACTORY_DEFAULT_GRADING_BANDS,
+  isGradeHex,
+  gradeDisplayColor,
+} from "@school/shared/exam-recording";
+import {
+  calculateContrastRatio,
+  calculateLuminance,
+  hexToRgb,
+} from "@school/shared/theme";
+export { FACTORY_DEFAULT_GRADING_BANDS } from "@school/shared/exam-recording";
+export type { GradingBandItem } from "@school/shared/exam-recording";
 
-export interface GradingBandItem {
-  _id?: string;
+type Context = QueryCtx | MutationCtx;
+export const gradingBandInput = v.object({
+  gradeLetter: v.string(),
+  minScore: v.number(),
+  maxScore: v.number(),
+  gradePoints: v.optional(v.number()),
+  remark: v.string(),
+  colorHex: v.optional(v.string()),
+});
+type BandInput = {
   gradeLetter: string;
   minScore: number;
   maxScore: number;
-  gradePoints: number;
+  gradePoints?: number;
   remark: string;
-  colorHex: string;
-  luminanceContrast: number;
-  isDefaultPreset?: boolean;
-}
-
-/**
- * Immutable Factory Preset Standard Defaults (H1 / MX-06)
- * A: 75-100, B: 65-74, C: 50-64, D: 45-49, E: 40-44, F: 0-39
- */
-export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
-  {
-    gradeLetter: "A",
-    minScore: 75,
-    maxScore: 100,
-    gradePoints: 4.0,
-    remark: "Excellent",
-    colorHex: "#065f46", // Emerald
-    luminanceContrast: 7.2,
-    isDefaultPreset: true,
-  },
-  {
-    gradeLetter: "B",
-    minScore: 65,
-    maxScore: 74,
-    gradePoints: 3.0,
-    remark: "Very Good",
-    colorHex: "#1e40af", // Royal Blue
-    luminanceContrast: 8.1,
-    isDefaultPreset: true,
-  },
-  {
-    gradeLetter: "C",
-    minScore: 50,
-    maxScore: 64,
-    gradePoints: 2.0,
-    remark: "Good",
-    colorHex: "#92400e", // Amber
-    luminanceContrast: 5.4,
-    isDefaultPreset: true,
-  },
-  {
-    gradeLetter: "D",
-    minScore: 45,
-    maxScore: 49,
-    gradePoints: 1.0,
-    remark: "Fair Pass",
-    colorHex: "#9a3412", // Burnt Orange
-    luminanceContrast: 4.9,
-    isDefaultPreset: true,
-  },
-  {
-    gradeLetter: "E",
-    minScore: 40,
-    maxScore: 44,
-    gradePoints: 0.5,
-    remark: "Pass",
-    colorHex: "#7c2d12", // Deep Bronze
-    luminanceContrast: 6.2,
-    isDefaultPreset: true,
-  },
-  {
-    gradeLetter: "F",
-    minScore: 0,
-    maxScore: 39,
-    gradePoints: 0.0,
-    remark: "Fail",
-    colorHex: "#991b1b", // Rose / Crimson
-    luminanceContrast: 6.8,
-    isDefaultPreset: true,
-  },
-] as const;
-
-/**
- * ITU-R BT.709 relative luminance calculation
- */
+  colorHex?: string;
+};
 export function calculateRelativeLuminance(hex: string): number {
-  const cleanHex = hex.replace("#", "");
-  if (cleanHex.length !== 6) return 0.2;
-  const r = parseInt(cleanHex.slice(0, 2), 16) / 255;
-  const g = parseInt(cleanHex.slice(2, 4), 16) / 255;
-  const b = parseInt(cleanHex.slice(4, 6), 16) / 255;
-
-  const toLinear = (c: number) =>
-    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-
-  const rLin = toLinear(r);
-  const gLin = toLinear(g);
-  const bLin = toLinear(b);
-
-  return 0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin;
+  const rgb = isGradeHex(hex) ? hexToRgb(hex) : null;
+  return rgb ? calculateLuminance(rgb) : 0.2;
 }
-
-/**
- * Contrast ratio against pure white (#ffffff, L = 1.0)
- * (L1 + 0.05) / (L2 + 0.05)
- */
 export function calculateContrastAgainstWhite(hex: string): number {
-  const lum = calculateRelativeLuminance(hex);
-  const ratio = (1.0 + 0.05) / (lum + 0.05);
-  return Math.round(ratio * 10) / 10;
+  return Math.round(calculateContrastRatio(hex, "#ffffff") * 10) / 10;
 }
-
-/**
- * Validates that score ranges are contiguous, non-overlapping, and span 0 to 100.
- */
 export function validateContiguousScoreRanges(
-  bands: Array<{ minScore: number; maxScore: number; gradeLetter: string }>
+  bands: Array<{ minScore: number; maxScore: number; gradeLetter: string }>,
 ): void {
-  if (!bands || bands.length === 0) {
-    throw new ConvexError("Grading bands array cannot be empty");
-  }
-
-  for (const b of bands) {
-    if (!b.gradeLetter || b.gradeLetter.trim() === "") {
-      throw new ConvexError("Grade letter cannot be empty");
-    }
-    if (b.minScore < 0 || b.maxScore > 100) {
+  if (!bands.length || bands.length > 100)
+    throw new ConvexError("Use 1–100 grading bands");
+  const labels = new Set<string>();
+  for (const band of bands) {
+    const label = band.gradeLetter.trim().toUpperCase();
+    if (!label || labels.has(label))
+      throw new ConvexError("Grade labels must be nonempty and unique");
+    labels.add(label);
+    if (
+      !Number.isInteger(band.minScore) ||
+      !Number.isInteger(band.maxScore) ||
+      band.minScore < 0 ||
+      band.maxScore > 100 ||
+      band.minScore > band.maxScore
+    )
       throw new ConvexError(
-        `Score range for ${b.gradeLetter} must be within 0 to 100`
+        "Score ranges must be whole numbers within 0 to 100",
       );
-    }
-    if (b.minScore > b.maxScore) {
-      throw new ConvexError(
-        `minScore (${b.minScore}) cannot be greater than maxScore (${b.maxScore}) for grade ${b.gradeLetter}`
-      );
-    }
   }
-
   const sorted = [...bands].sort((a, b) => a.minScore - b.minScore);
-
-  if (sorted[0].minScore !== 0) {
-    throw new ConvexError(
-      `Grading bands must start at score 0 (currently starts at ${sorted[0].minScore})`
-    );
-  }
-
-  if (sorted[sorted.length - 1].maxScore !== 100) {
-    throw new ConvexError(
-      `Grading bands must end at score 100 (currently ends at ${sorted[sorted.length - 1].maxScore})`
-    );
-  }
-
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const current = sorted[i];
-    const next = sorted[i + 1];
-
-    if (current.maxScore >= next.minScore) {
-      throw new ConvexError(
-        `Overlapping score range between ${current.gradeLetter} (${current.minScore}-${current.maxScore}) and ${next.gradeLetter} (${next.minScore}-${next.maxScore})`
-      );
-    }
-    if (next.minScore !== current.maxScore + 1) {
-      throw new ConvexError(
-        `Gap detected in score range between ${current.gradeLetter} (max ${current.maxScore}) and ${next.gradeLetter} (min ${next.minScore}). Score ranges must be contiguous.`
-      );
-    }
+  if (sorted[0].minScore !== 0 || sorted[sorted.length - 1].maxScore !== 100)
+    throw new ConvexError("Grading bands must span 0 to 100");
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].minScore <= sorted[i - 1].maxScore)
+      throw new ConvexError("Overlapping score range");
+    if (sorted[i].minScore !== sorted[i - 1].maxScore + 1)
+      throw new ConvexError("Gap detected in score range");
   }
 }
 
-/**
- * Get grading bands for a school.
- * Returns custom branch bands or factory standard defaults with luminance-safe colors.
- */
-export const getGradingBands = query({
-  args: {
-    schoolId: v.id("schools"),
-  },
-  handler: async (ctx, args) => {
-    const bands = await ctx.db
+async function localBands(ctx: Context, schoolId: Id<"schools">) {
+  const bands = await ctx.db
+    .query("gradingBands")
+    .withIndex("by_school_active", (q) =>
+      q.eq("schoolId", schoolId).eq("isActive", true),
+    )
+    .take(101);
+  if (bands.length > 100)
+    throw new ConvexError("Grading policy exceeds supported band count");
+  return bands.sort((a, b) => a.minScore - b.minScore);
+}
+
+/** Internal resolver: the caller must establish branch/assignment or family authority first. */
+export async function resolveEffectiveGradingBands(
+  ctx: Context,
+  schoolId: Id<"schools">,
+) {
+  const local = await localBands(ctx, schoolId);
+  const link = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  const group = link ? await ctx.db.get(link.groupId) : null;
+  const defaults =
+    group?.status === "active" ? group.gradingDefault : undefined;
+  // Linking alone never opts a branch into grading inheritance.
+  if (
+    defaults &&
+    (link?.gradingMode === "inherit" ||
+      (link?.gradingMode === "override" && !defaults.allowBranchOverride))
+  ) {
+    const inherited = await ctx.db
       .query("gradingBands")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", args.schoolId).eq("isActive", true)
+      .withIndex("by_school_version", (q) =>
+        q.eq("schoolId", defaults.schoolId).eq("version", defaults.version),
       )
-      .collect();
+      .take(101);
+    if (!inherited.length || inherited.length > 100)
+      throw new ConvexError("Group grading policy unavailable");
+    return inherited.sort((a, b) => a.minScore - b.minScore);
+  }
+  return local;
+}
 
-    if (bands.length === 0) {
-      return [...FACTORY_DEFAULT_GRADING_BANDS];
-    }
-
-    // Sort descending by minScore (A to F)
-    return bands
-      .map((b) => ({
-        _id: b._id,
-        gradeLetter: b.gradeLetter,
-        minScore: b.minScore,
-        maxScore: b.maxScore,
-        gradePoints: b.gradePoints ?? 0,
-        remark: b.remark,
-        colorHex: b.colorHex ?? b.color ?? "#000000",
-        luminanceContrast:
-          b.luminanceContrast ??
-          calculateContrastAgainstWhite(b.colorHex ?? b.color ?? "#000000"),
-        isDefaultPreset: false,
-      }))
-      .sort((a, b) => b.minScore - a.minScore);
+export const getGradingBands = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    await resolveActiveMembership(ctx, args.schoolId);
+    const bands = await resolveEffectiveGradingBands(ctx, args.schoolId);
+    return bands.length
+      ? bands.map((b) => ({
+          ...b,
+          colorHex: b.colorHex ?? b.color ?? "#334155",
+          gradePoints: b.gradePoints ?? 0,
+          luminanceContrast: calculateContrastAgainstWhite(
+            gradeDisplayColor(b.colorHex ?? b.color),
+          ),
+          isDefaultPreset: false,
+        }))
+      : [...FACTORY_DEFAULT_GRADING_BANDS];
+  },
+});
+export const getActiveGradingBands = query({
+  args: { schoolId: v.optional(v.id("schools")) },
+  handler: async (ctx, args) => {
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { ...args, capability: ACADEMIC_CONTEXT_CAPABILITIES });
+    return resolveEffectiveGradingBands(ctx, schoolId);
   },
 });
 
-/**
- * Update grading bands for a school.
- * Validates contiguous score ranges (0 to 100), enforces academic.grading.manage capability,
- * and logs an append-only audit event.
- */
+async function savePolicy(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  bands: BandInput[],
+  expectedVersion?: number,
+) {
+  const auth = await requireCapability(
+    ctx,
+    schoolId,
+    "academic.grading_bands.manage",
+  );
+  if (auth.isPlatformAdmin || !auth.userId)
+    throw new ConvexError("An active branch staff projection is required");
+  validateContiguousScoreRanges(bands);
+  for (const band of bands) {
+    if (band.colorHex !== undefined && !isGradeHex(band.colorHex))
+      throw new ConvexError("Use six-digit hex colors");
+    if (
+      band.gradePoints !== undefined &&
+      (!Number.isFinite(band.gradePoints) || band.gradePoints < 0)
+    )
+      throw new ConvexError("Grade points must be nonnegative");
+  }
+  const link = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  const group = link ? await ctx.db.get(link.groupId) : null;
+  if (
+    group?.status === "active" &&
+    group.gradingDefault &&
+    link?.gradingMode === "override" &&
+    !group.gradingDefault.allowBranchOverride
+  )
+    throw new ConvexError("Branch grading overrides are disabled");
+  if (
+    group?.status === "active" &&
+    group.gradingDefault &&
+    link?.gradingMode === "inherit"
+  )
+    throw new ConvexError(
+      "Choose an allowed branch override before editing inherited grading bands",
+    );
+  const existing = await localBands(ctx, schoolId);
+  const version = Math.max(0, ...existing.map((b) => b.version ?? 0));
+  if (expectedVersion !== undefined && expectedVersion !== version)
+    throw new ConvexError(
+      "Policy changed. Discard and load latest before saving.",
+    );
+  const latestVersion = await ctx.db
+    .query("gradingBands")
+    .withIndex("by_school_version", (q) => q.eq("schoolId", schoolId))
+    .order("desc")
+    .first();
+  const nextVersion = Math.max(version, latestVersion?.version ?? 0) + 1;
+  const now = Date.now();
+  for (const band of existing)
+    await ctx.db.patch(band._id, { isActive: false, updatedAt: now });
+  const ids: Id<"gradingBands">[] = [];
+  for (const band of bands) {
+    const prior = existing.find((b) => b.gradeLetter === band.gradeLetter);
+    const colorHex = (
+      band.colorHex ??
+      prior?.colorHex ??
+      prior?.color ??
+      "#334155"
+    ).toLowerCase();
+    ids.push(
+      await ctx.db.insert("gradingBands", {
+        ...band,
+        schoolId,
+        colorHex,
+        color: colorHex,
+        gradePoints: band.gradePoints ?? prior?.gradePoints ?? 0,
+        luminanceContrast: calculateContrastAgainstWhite(
+          gradeDisplayColor(colorHex),
+        ),
+        isActive: true,
+        version: nextVersion,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: auth.userId,
+      }),
+    );
+  }
+  await recordAuditEventHelper(ctx, {
+    schoolId,
+    actorKind: "user",
+    actorPersonId: auth.personId,
+    actorMembershipId: auth.membershipId,
+    actorEmailSnapshot: auth.role,
+    module: "academic",
+    action: "grading_bands.update",
+    targetType: "gradingBands",
+    targetId: schoolId,
+    outcome: "success",
+    safeSummary: `Saved grading policy version ${nextVersion} (${bands.length} bands)`,
+    retentionClass: "permanent_statutory",
+    alertTier: "tier1_critical",
+  });
+  return ids;
+}
 export const updateGradingBands = mutation({
   args: {
     schoolId: v.id("schools"),
-    bands: v.array(
-      v.object({
-        gradeLetter: v.string(),
-        minScore: v.number(),
-        maxScore: v.number(),
-        gradePoints: v.optional(v.number()),
-        remark: v.string(),
-        colorHex: v.optional(v.string()),
-      })
-    ),
+    bands: v.array(gradingBandInput),
+    expectedVersion: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
-    // 1. Capability check
-    const authContext = await requireCapability(
-      ctx,
-      args.schoolId,
-      "academic.grading.manage"
-    );
-
-    // 2. Score range validation
-    validateContiguousScoreRanges(args.bands);
-
-    // 3. Deactivate existing active bands for this school
-    const existing = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", args.schoolId).eq("isActive", true)
-      )
-      .collect();
-
-    const now = Date.now();
-    for (const b of existing) {
-      await ctx.db.patch(b._id, {
-        isActive: false,
-        updatedAt: now,
-      });
-    }
-
-    // 4. Resolve acting user ID
-    let userId = authContext.userId;
-    if (!userId) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .first();
-      if (user) {
-        userId = user._id;
-      } else {
-        userId = await ctx.db.insert("users", {
-          schoolId: args.schoolId,
-          authId: `sys_${now}`,
-          email: "admin@system.local",
-          name: "System Admin",
-          role: "admin",
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-    }
-
-    // 5. Insert new active bands
-    const insertedIds = [];
-    for (const band of args.bands) {
-      const color = band.colorHex ?? "#065f46";
-      const contrast = calculateContrastAgainstWhite(color);
-      const bandId = await ctx.db.insert("gradingBands", {
-        schoolId: args.schoolId,
-        minScore: band.minScore,
-        maxScore: band.maxScore,
-        gradeLetter: band.gradeLetter,
-        remark: band.remark,
-        gradePoints: band.gradePoints ?? 0,
-        colorHex: color,
-        color,
-        luminanceContrast: contrast,
-        isActive: true,
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: userId,
-      });
-      insertedIds.push(bandId);
-    }
-
-    // 6. Record audit event
-    await recordAuditEventHelper(ctx, {
-      schoolId: args.schoolId,
-      actorKind: authContext.isPlatformAdmin ? "platform_admin" : "user",
-      actorPersonId: authContext.personId,
-      actorMembershipId: authContext.membershipId,
-      actorEmailSnapshot: authContext.role ?? "user@school",
-      module: "academic",
-      action: "grading_bands.update",
-      targetType: "gradingBands",
-      targetId: args.schoolId,
-      outcome: "success",
-      safeSummary: `Updated grading bands for school (${args.bands.length} bands)`,
-      alertTier: "tier3_info",
-    });
-
-    return insertedIds;
-  },
+  handler: (ctx, args) =>
+    savePolicy(ctx, args.schoolId, args.bands, args.expectedVersion),
 });
-
-/**
- * Backward compatibility: Get active grading bands for current session's school
- */
-export const getActiveGradingBands = query({
-  args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("gradingBands"),
-      _creationTime: v.number(),
-      schoolId: v.id("schools"),
-      minScore: v.number(),
-      maxScore: v.number(),
-      gradeLetter: v.string(),
-      remark: v.string(),
-      isActive: v.boolean(),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      updatedBy: v.id("users"),
-    })
-  ),
-  handler: async (ctx: any) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
-
-    const bands = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
-
-    // Sort by minScore ascending
-    return [...bands].sort((a: any, b: any) => a.minScore - b.minScore);
-  },
-});
-
-/**
- * Backward compatibility: Save grading bands (admin only)
- */
 export const saveGradingBands = mutation({
   args: {
-    bands: v.array(
-      v.object({
-        minScore: v.number(),
-        maxScore: v.number(),
-        gradeLetter: v.string(),
-        remark: v.string(),
-      })
-    ),
+    schoolId: v.optional(v.id("schools")),
+    bands: v.array(gradingBandInput),
+    expectedVersion: v.optional(v.number()),
   },
-  returns: v.array(v.id("gradingBands")),
-  handler: async (ctx: any, args: { bands: any[] }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
-      ctx
+  handler: async (ctx, args) => {
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { ...args, capability: "academic.grading_bands.manage" });
+    return savePolicy(ctx, schoolId, args.bands, args.expectedVersion);
+  },
+});
+
+export const getPolicyGovernance = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    const auth = await requireCapability(
+      ctx,
+      args.schoolId,
+      "academic.grading_bands.manage",
     );
-
-    await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    const bandsToValidate = args.bands.map((band) => ({
-      ...band,
-      schoolId,
-      isActive: true,
-      createdAt: 0,
-      updatedAt: 0,
-      updatedBy: userId,
-    }));
-
-    const validationErrors = validateGradingBands(bandsToValidate);
-    if (validationErrors.length > 0) {
-      throw new ConvexError(
-        validationErrors.map((e) => e.message).join("; ")
-      );
-    }
-
-    const existingBands = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .unique();
+    const group = link ? await ctx.db.get(link.groupId) : null;
+    return group?.status === "active" && link
+      ? {
+          groupId: group._id,
+          groupName: group.name,
+          groupSlug: group.slug,
+          canPublish: auth.personId === group.proprietorPersonId,
+          mode:
+            link.gradingMode === "override" &&
+            group.gradingDefault?.allowBranchOverride === false
+              ? "inherit"
+              : (link.gradingMode ?? "override"),
+          defaultVersion: group.gradingDefault?.version ?? null,
+          allowBranchOverride:
+            group.gradingDefault?.allowBranchOverride ?? true,
+        }
+      : null;
+  },
+});
+export const setGradingInheritance = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    mode: v.union(v.literal("inherit"), v.literal("override")),
+  },
+  handler: async (ctx, args) => {
+    const auth = await requireCapability(
+      ctx,
+      args.schoolId,
+      "academic.grading_bands.manage",
+    );
+    if (!auth.membershipId || auth.isPlatformAdmin)
+      throw new ConvexError("Explicit branch membership required");
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .unique();
+    const group = link ? await ctx.db.get(link.groupId) : null;
+    if (!link || group?.status !== "active" || !group.gradingDefault)
+      throw new ConvexError("No group grading default configured");
+    if (args.mode === "override" && !group.gradingDefault.allowBranchOverride)
+      throw new ConvexError("Branch grading overrides are disabled");
+    await ctx.db.patch(link._id, { gradingMode: args.mode });
+    await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: "user",
+      actorPersonId: auth.personId,
+      actorMembershipId: auth.membershipId,
+      actorEmailSnapshot: auth.role,
+      module: "academic",
+      action: "grading_bands.inheritance",
+      targetType: "schoolGroupBranches",
+      targetId: link._id,
+      outcome: "success",
+      safeSummary: `Grading policy mode: ${args.mode}`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier1_critical",
+    });
+    return resolveEffectiveGradingBands(ctx, args.schoolId);
+  },
+});
+/** Publish an immutable reference, not a second copy of the standard preset. */
+export const publishGroupGradingDefault = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    groupId: v.id("schoolGroups"),
+    allowBranchOverride: v.boolean(),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { group } = await requireGroupOwner(ctx, args.groupId);
+    const auth = await requireCapability(
+      ctx,
+      args.schoolId,
+      "academic.grading_bands.manage",
+    );
+    if (!auth.membershipId || auth.isPlatformAdmin)
+      throw new ConvexError("Explicit branch membership required");
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_group_and_school", (q) =>
+        q.eq("groupId", args.groupId).eq("schoolId", args.schoolId),
       )
-      .collect();
-
-    for (const band of existingBands) {
-      await ctx.db.patch(band._id, {
-        isActive: false,
-        updatedAt: Date.now(),
-      });
-    }
-
-    const now = Date.now();
-    const newBandIds: any[] = [];
-
-    for (const band of args.bands) {
-      const bandId = await ctx.db.insert("gradingBands", {
-        schoolId,
-        minScore: band.minScore,
-        maxScore: band.maxScore,
-        gradeLetter: band.gradeLetter,
-        remark: band.remark,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: userId,
-      });
-      newBandIds.push(bandId);
-    }
-
-    return newBandIds;
+      .unique();
+    if (!link || args.confirmation !== group.slug)
+      throw new ConvexError("Confirm the linked group slug");
+    const bands = await localBands(ctx, args.schoolId);
+    const version = bands[0]?.version;
+    if (!version || bands.some((b) => b.version !== version))
+      throw new ConvexError("Save a versioned branch policy first");
+    const versionBands = await ctx.db
+      .query("gradingBands")
+      .withIndex("by_school_version", (q) =>
+        q.eq("schoolId", args.schoolId).eq("version", version),
+      )
+      .take(101);
+    if (
+      versionBands.length !== bands.length ||
+      versionBands.some((b) => !b.isActive)
+    )
+      throw new ConvexError(
+        "Save a new branch policy version before publishing legacy bands",
+      );
+    await ctx.db.patch(group._id, {
+      gradingDefault: {
+        schoolId: args.schoolId,
+        version,
+        allowBranchOverride: args.allowBranchOverride,
+      },
+      updatedAt: Date.now(),
+    });
+    await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: "user",
+      actorPersonId: auth.personId,
+      actorMembershipId: auth.membershipId,
+      actorEmailSnapshot: auth.role,
+      module: "academic",
+      action: "grading_bands.group_default",
+      targetType: "schoolGroups",
+      targetId: group._id,
+      outcome: "success",
+      safeSummary: `Published group grading policy version ${version}`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier1_critical",
+    });
   },
 });

@@ -1,4 +1,8 @@
-import type { ExamInputMode, GradingBand, DerivedAssessmentFields } from "./types";
+import type {
+  ExamInputMode,
+  GradingBand,
+  DerivedAssessmentFields,
+} from "./types";
 
 /**
  * Round a number to a specified number of decimal places
@@ -17,13 +21,13 @@ export function caTotal(ca1: number, ca2: number, ca3: number): number {
 
 /**
  * Calculate the exam scaled score based on input mode
- * 
+ *
  * raw40: examScaledScore = examRawScore
  * raw60_scaled_to_40: examScaledScore = round((examRawScore / 60) * 40, 2)
  */
 export function examScaledScore(
   examRawScore: number,
-  examInputMode: ExamInputMode
+  examInputMode: ExamInputMode,
 ): number {
   if (examInputMode === "raw40") {
     return examRawScore;
@@ -40,20 +44,20 @@ export function total(
   ca1: number,
   ca2: number,
   ca3: number,
-  examScaledScoreValue: number
+  examScaledScoreValue: number,
 ): number {
   return round(ca1 + ca2 + ca3 + examScaledScoreValue, 2);
 }
 
 /**
  * Derive grade letter and remark from total score using active grading bands
- * 
+ *
  * @throws Error if no band matches (should never happen if bands cover 0-100)
  */
 export function deriveGradeAndRemark(
   totalScore: number,
-  activeBands: GradingBand[]
-): { gradeLetter: string; remark: string } {
+  activeBands: GradingBand[],
+): { gradeLetter: string; remark: string; colorHex?: string } {
   if (activeBands.length === 0) {
     return { gradeLetter: "-", remark: "N/A" };
   }
@@ -65,7 +69,7 @@ export function deriveGradeAndRemark(
   const bandLookupScore = Math.floor(score);
 
   const band = activeBands.find(
-    (b) => bandLookupScore >= b.minScore && bandLookupScore <= b.maxScore
+    (b) => bandLookupScore >= b.minScore && bandLookupScore <= b.maxScore,
   );
 
   if (!band) {
@@ -88,12 +92,15 @@ export function deriveGradeAndRemark(
   return {
     gradeLetter: band.gradeLetter,
     remark: band.remark,
+    ...((band.colorHex ?? band.color)
+      ? { colorHex: band.colorHex ?? band.color }
+      : {}),
   };
 }
 
 /**
  * Derive all assessment fields from raw inputs
- * 
+ *
  * This is the main calculation function that combines all derivation steps
  */
 export function deriveAssessmentFields(
@@ -102,12 +109,15 @@ export function deriveAssessmentFields(
   ca3: number,
   examRawScore: number,
   examInputMode: ExamInputMode,
-  activeBands: GradingBand[]
+  activeBands: GradingBand[],
 ): DerivedAssessmentFields {
   const caTotalValue = caTotal(ca1, ca2, ca3);
   const examScaledScoreValue = examScaledScore(examRawScore, examInputMode);
   const totalValue = total(ca1, ca2, ca3, examScaledScoreValue);
-  const { gradeLetter, remark } = deriveGradeAndRemark(totalValue, activeBands);
+  const { gradeLetter, remark, colorHex } = deriveGradeAndRemark(
+    totalValue,
+    activeBands,
+  );
 
   return {
     caTotal: caTotalValue,
@@ -115,5 +125,6 @@ export function deriveAssessmentFields(
     total: totalValue,
     gradeLetter,
     remark,
+    ...(colorHex ? { colorHex } : {}),
   };
 }

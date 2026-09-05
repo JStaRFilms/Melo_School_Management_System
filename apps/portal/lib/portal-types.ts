@@ -78,6 +78,7 @@ export interface PortalWorkspaceData {
 }
 
 export interface PortalBillingInvoice {
+  paymentInstructions?: import("@school/shared").InvoiceBankInstructions | null;
   invoiceId: string;
   studentId: string;
   invoiceNumber: string;

@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../_generated/server";
@@ -242,7 +243,7 @@ export const getTermReportCardSettings = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [term, groups] = await Promise.all([
@@ -298,7 +299,7 @@ export const saveTermReportCardDefaults = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -381,7 +382,7 @@ export const saveTermReportCardSettingGroup = mutation({
   returns: v.id("reportCardTermSettingGroups"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -498,7 +499,7 @@ export const deleteTermReportCardSettingGroup = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const group = await ctx.db.get(args.groupId);
