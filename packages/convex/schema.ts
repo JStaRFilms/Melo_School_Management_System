@@ -3680,6 +3680,9 @@ export default defineSchema({
     trashedAt: v.optional(v.number()),
     trashedByUserId: v.optional(v.id("users")),
     purgeScheduledAt: v.optional(v.number()),
+    cleanupRetryAt: v.optional(v.number()),
+    cleanupFailureCount: v.optional(v.number()),
+    cleanupFailureCode: v.optional(v.literal("storage_delete_failed")),
     rollbackStorageId: v.optional(v.id("_storage")),
     rollbackExpiryAt: v.optional(v.number()),
     pageCount: v.optional(v.number()),
@@ -3755,6 +3758,9 @@ export default defineSchema({
     savingsPercentage: v.optional(v.number()),
     byteSize: v.number(),
     cleanupScheduledAt: v.optional(v.number()),
+    cleanupRetryAt: v.optional(v.number()),
+    cleanupFailureCount: v.optional(v.number()),
+    cleanupFailureCode: v.optional(v.literal("storage_delete_failed")),
     verifiedAt: v.number(),
   })
     .index("by_asset_and_source_and_candidate", ["assetId", "sourceStorageId", "candidateStorageId"])

@@ -10,5 +10,11 @@ crons.interval(
   internal.functions.academic.drafts.expireFormDrafts,
   {},
 );
+crons.interval(
+  "retry asset retention cleanup",
+  { hours: 1 },
+  internal.functions.academic.assets.cleanupExpiredAssetStorage,
+  {},
+);
 
 export default crons;
