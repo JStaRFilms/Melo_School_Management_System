@@ -604,7 +604,7 @@ export const createAdminKnowledgeTopic = mutation({
     status: v.union(v.literal("draft"), v.literal("active"), v.literal("retired")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const title = normalizeRequiredText(args.title, "Topic title");
@@ -703,7 +703,7 @@ export const listAdminKnowledgeTopics = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const limit = Math.min(Math.max(args.limit ?? 200, 1), 300);
@@ -783,7 +783,7 @@ export const listAdminKnowledgeMaterials = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const materials = await readMaterialList(ctx, schoolId, args);
@@ -896,7 +896,7 @@ export const getAdminKnowledgeMaterial = query({
     ),
   }),
   handler: async (ctx, args): Promise<KnowledgeLibraryDetailResponse> => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const material = await ctx.db.get(args.materialId);
@@ -1004,7 +1004,7 @@ export const getAdminKnowledgeMaterialOriginalFileAccess = query({
   },
   returns: knowledgeMaterialOriginalFileAccessValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const material = await ctx.db.get(args.materialId);
@@ -1034,7 +1034,7 @@ export const updateAdminKnowledgeMaterialDetails = mutation({
     labelSuggestions: v.array(v.string()),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     const actorRole = role === "admin" ? "admin" : "teacher";
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
@@ -1147,7 +1147,7 @@ export const updateAdminKnowledgeMaterialState = mutation({
     reviewStatus: knowledgeReviewStatusValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     const actorRole = role === "admin" ? "admin" : "teacher";
     await assertAdminForSchool(ctx, userId, schoolId, role);
 

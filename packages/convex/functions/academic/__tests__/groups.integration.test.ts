@@ -175,6 +175,9 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
 
     // Suspended branch C must not be in list
     expect(branchC).toBeUndefined();
+    await t.run(ctx => ctx.db.patch(personId, { status: "suspended" }));
+    await expect(paulaSession.query(listUserBranchesRef, {})).rejects.toThrow("Forbidden");
+    await expect(paulaSession.query(getGroupOverviewRef, { groupId: groupA })).rejects.toThrow("Forbidden");
   });
 
   it("2. Cross-branch isolation: Linking Branch A and Branch B into a school group does NOT allow Branch A queries to access Branch B data", async () => {
@@ -355,6 +358,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         assignedAt: now,
       });
 
+      await ctx.db.insert("platformAdmins", { authId: "operator", authTokenIdentifier: "https://auth.melo.test|operator", email: "operator@example.test", name: "Platform operator", isActive: true, createdAt: now, updatedAt: now });
       return { schoolA, schoolB, bobPersonId };
     });
 
@@ -364,13 +368,18 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       email: "bob@emerald.test",
     });
 
-    // 1. Create School Group
-    const { groupId, branchLinkId } = await bobSession.mutation(
+    const operator = t.withIdentity({ tokenIdentifier: "https://auth.melo.test|operator" });
+    await expect(bobSession.mutation(createSchoolGroupRef, { name: "Denied", slug: "denied", headquartersSchoolId: schoolA, proprietorPersonId: bobPersonId, confirmation: "emerald-ikoyi" })).rejects.toThrow("Forbidden");
+    const originalSchools = await t.run(async ctx => [await ctx.db.get(schoolA), await ctx.db.get(schoolB)]);
+    // Platform explicitly selects Bob, never itself.
+    const { groupId, branchLinkId } = await operator.mutation(
       createSchoolGroupRef,
       {
         name: "Emerald Heights Educational Group",
         slug: "emerald-group",
         headquartersSchoolId: schoolA,
+        proprietorPersonId: bobPersonId,
+        confirmation: "emerald-ikoyi",
       }
     );
 
@@ -418,11 +427,15 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
     });
 
     // 2. Link Branch B to Group
-    const linkResult = await bobSession.mutation(linkBranchToGroupRef, {
+    await expect(bobSession.mutation(linkBranchToGroupRef, { groupId, schoolId: schoolB, confirmation: "emerald-vi" })).rejects.toThrow("Forbidden");
+    const linkResult = await operator.mutation(linkBranchToGroupRef, {
       groupId,
       schoolId: schoolB,
       isHeadquarters: false,
+      confirmation: "emerald-vi",
     });
+    expect(await operator.mutation(linkBranchToGroupRef, { groupId, schoolId: schoolB, confirmation: "emerald-vi" })).toEqual(linkResult);
+    await expect(operator.mutation(createSchoolGroupRef, { name: "Duplicate", slug: "emerald-group", headquartersSchoolId: schoolA, proprietorPersonId: bobPersonId, confirmation: "emerald-ikoyi" })).rejects.toThrow("ALREADY_EXISTS");
 
     expect(linkResult.success).toBe(true);
     expect(linkResult.branchLinkId).toBeDefined();
@@ -474,13 +487,14 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       groupId,
     });
     expect(groupBranches).toHaveLength(2);
+    expect(await t.run(async ctx => [await ctx.db.get(schoolA), await ctx.db.get(schoolB)])).toEqual(originalSchools);
   });
 
   it("4. Unauthorized users cannot create groups or link branches", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
 
-    const { schoolA, schoolB, group } = await t.run(async (ctx) => {
+    const { schoolA, schoolB, group, proprietorPerson } = await t.run(async (ctx) => {
       const schoolA = await ctx.db.insert("schools", {
         name: "Sunrise Academy",
         slug: "sunrise-main",
@@ -551,7 +565,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         updatedAt: now,
       });
 
-      return { schoolA, schoolB, group };
+      return { schoolA, schoolB, group, proprietorPerson };
     });
 
     const charlieSession = t.withIdentity({
@@ -560,12 +574,15 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       email: "charlie@sunrise.test",
     });
 
+    await expect(charlieSession.query(getGroupOverviewRef, { groupId: group })).rejects.toThrow("Forbidden");
     // Charlie attempts to create a school group -> MUST be rejected
     await expect(
       charlieSession.mutation(createSchoolGroupRef, {
         name: "Charlie Rogue Group",
         slug: "charlie-rogue",
         headquartersSchoolId: schoolA,
+        proprietorPersonId: proprietorPerson,
+        confirmation: "sunrise-main",
       })
     ).rejects.toThrow("Forbidden");
 
@@ -575,6 +592,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         groupId: group,
         schoolId: schoolB,
         isHeadquarters: false,
+        confirmation: "sunrise-branch",
       })
     ).rejects.toThrow("Forbidden");
   });

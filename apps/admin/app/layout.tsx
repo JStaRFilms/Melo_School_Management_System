@@ -5,6 +5,7 @@ import { AuthProvider } from "@/AuthProvider";
 import { ConvexClientProvider } from "@/ConvexClientProvider";
 import { hasConvexAuthEnv } from "@school/auth";
 import { AppToaster } from "@school/shared/toast";
+import { DepartureGuardProvider } from "@school/shared/drafts";
 import { getToken } from "@/auth-server";
 
 export const metadata: Metadata = {
@@ -34,7 +35,7 @@ export default async function RootLayout({
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
             <AppToaster />
-            {children}
+            <DepartureGuardProvider>{children}</DepartureGuardProvider>
           </AuthProvider>
         </ConvexClientProvider>
       </body>

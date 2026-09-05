@@ -6,6 +6,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./workspace-access": "./src/workspace-access.ts",
+    "./group-settings": "./src/group-settings.ts",
     "./name-format": "./src/name-format.ts",
     "./planning-context": "./src/planning-context.ts",
     "./planning-routes": "./src/planning-routes.ts",

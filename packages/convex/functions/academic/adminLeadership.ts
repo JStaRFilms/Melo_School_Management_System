@@ -1,10 +1,20 @@
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
-import { action, mutation, query } from "../../_generated/server";
+import { action, mutation, query, type MutationCtx } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 import { createAuth } from "../../betterAuth";
-import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
+import {
+  getAuthenticatedSchoolMembership,
+  assertAdminForSchool,
+  resolveActiveMembership,
+} from "./auth";
+import {
+  assertPermissionManagementTargetForLegacyUser,
+  isMembershipProprietor,
+  isPermissionManaged,
+  requireCapability,
+} from "./rbac";
 import { provisionSchoolAdminAuthUser } from "../platform/provisioningHelpers";
 import {
   ensureResolvedSchoolLeadAdminRecord,
@@ -12,6 +22,27 @@ import {
   getSchoolAdminRows,
   getSchoolLeadAdmin,
 } from "./adminLeadershipHelpers";
+
+async function assertTargetIsNotProprietor(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  userId: Id<"users">,
+) {
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", userId))
+    .take(2);
+  if (memberships.length > 1)
+    throw new ConvexError("Target identity requires review");
+  const membership = memberships[0];
+  if (membership && membership.schoolId !== schoolId)
+    throw new ConvexError("Target identity requires review");
+  if (membership && (await isMembershipProprietor(ctx, membership))) {
+    throw new ConvexError(
+      "Forbidden: School Proprietor lifecycle requires separate recovery authority",
+    );
+  }
+}
 
 export const listSchoolAdmins = query({
   args: {},
@@ -39,7 +70,9 @@ export const listSchoolAdmins = query({
     ),
   }),
   handler: async (ctx) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.list.view",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
@@ -103,6 +136,33 @@ export const listSchoolAdmins = query({
   },
 });
 
+export const getCreateSchoolAdminAuthority = query({
+  args: {},
+  returns: v.object({
+    appUserId: v.id("users"),
+    schoolId: v.id("schools"),
+  }),
+  handler: async (ctx) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.onboard",
+    });
+    await assertAdminForSchool(ctx, viewer.userId, viewer.schoolId, viewer.role);
+    const context = await resolveActiveMembership(ctx, viewer.schoolId);
+    if (await isPermissionManaged(ctx, context)) {
+      await requireCapability(ctx, viewer.schoolId, "staff.permissions.manage");
+      const membership = context.membershipId
+        ? await ctx.db.get(context.membershipId)
+        : null;
+      if (!membership || !(await isMembershipProprietor(ctx, membership))) {
+        throw new ConvexError(
+          "Forbidden: Creating an administrator requires proprietor authority",
+        );
+      }
+    }
+    return { appUserId: viewer.userId, schoolId: viewer.schoolId };
+  },
+});
+
 export const createSchoolAdmin = action({
   args: {
     name: v.string(),
@@ -123,10 +183,10 @@ export const createSchoolAdmin = action({
     email: string;
     temporaryPassword: string;
   }> => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
-    if (!viewer || viewer.isSchoolAdmin !== true) {
-      throw new ConvexError("Admin access required");
-    }
+    const viewer = await ctx.runQuery(
+      api.functions.academic.adminLeadership.getCreateSchoolAdminAuthority,
+      {},
+    );
 
     const normalizedName = normalizeHumanName(args.name);
     const normalizedEmail = args.email.trim().toLowerCase();
@@ -224,7 +284,9 @@ export const promoteTeacherToAdmin = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.permissions.manage",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await ensureResolvedSchoolLeadAdminRecord(ctx, {
@@ -240,6 +302,11 @@ export const promoteTeacherToAdmin = mutation({
     if (target.isArchived) {
       throw new ConvexError("Archived teachers cannot be promoted");
     }
+    await assertPermissionManagementTargetForLegacyUser(
+      ctx,
+      schoolId,
+      target._id,
+    );
 
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.promoteTeacherToAdminInternal,
@@ -260,7 +327,9 @@ export const promoteSchoolAdmin = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.permissions.manage",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await ensureResolvedSchoolLeadAdminRecord(ctx, {
@@ -280,6 +349,11 @@ export const promoteSchoolAdmin = mutation({
     if (target.isArchived) {
       throw new ConvexError("Archived admins cannot be promoted");
     }
+    await assertPermissionManagementTargetForLegacyUser(
+      ctx,
+      schoolId,
+      target._id,
+    );
 
     const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
       ctx,
@@ -304,7 +378,9 @@ export const demoteAdminToTeacher = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.permissions.manage",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await ensureResolvedSchoolLeadAdminRecord(ctx, {
@@ -324,6 +400,11 @@ export const demoteAdminToTeacher = mutation({
     if (String(target._id) === String(userId)) {
       throw new ConvexError("You cannot downgrade your own administrator account.");
     }
+    await assertPermissionManagementTargetForLegacyUser(
+      ctx,
+      schoolId,
+      target._id,
+    );
 
     const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
       ctx,
@@ -383,7 +464,9 @@ export const archiveSchoolAdmin = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.account.suspend",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await ensureResolvedSchoolLeadAdminRecord(ctx, {
@@ -411,6 +494,7 @@ export const archiveSchoolAdmin = mutation({
     if (target.isArchived) {
       throw new ConvexError("Admin is already archived");
     }
+    await assertTargetIsNotProprietor(ctx, schoolId, target._id);
 
     await ctx.db.patch(target._id, {
       isArchived: true,
@@ -429,7 +513,9 @@ export const transferSchoolAdminLeadership = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.permissions.manage",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
@@ -465,6 +551,11 @@ export const transferSchoolAdminLeadership = mutation({
     if (target.isArchived) {
       throw new ConvexError("Archived admins cannot receive leadership");
     }
+    await assertPermissionManagementTargetForLegacyUser(
+      ctx,
+      schoolId,
+      target._id,
+    );
 
     if (String(target.managerUserId ?? "") !== String(userId)) {
       throw new ConvexError(
@@ -489,7 +580,9 @@ export const restoreSchoolAdmin = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "staff.account.suspend",
+    });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const target = await ctx.db.get(args.adminId);
@@ -504,6 +597,7 @@ export const restoreSchoolAdmin = mutation({
     if (!target.isArchived) {
       throw new ConvexError("Admin is not archived");
     }
+    await assertTargetIsNotProprietor(ctx, schoolId, target._id);
 
     const existingUsers = await ctx.db
       .query("users")

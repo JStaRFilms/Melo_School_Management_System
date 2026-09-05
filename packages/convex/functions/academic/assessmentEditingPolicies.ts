@@ -45,9 +45,7 @@ export const getAssessmentEditingPolicyForAdmin = query({
   },
   returns: v.union(assessmentEditingPolicyReturnValidator, v.null()),
   handler: async (ctx: any, args: { sessionId: any; termId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -95,9 +93,7 @@ export const saveAssessmentEditingPolicy = mutation({
       finalizeAt: number | null;
     }
   ) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
