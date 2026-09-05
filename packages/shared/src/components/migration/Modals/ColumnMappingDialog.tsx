@@ -46,12 +46,10 @@ export function ColumnMappingDialog({ signals, onClose }: ColumnMappingDialogPro
         <div className="bg-indigo-50/60 border-b border-indigo-100/80 p-5 text-xs text-indigo-900 space-y-1.5">
           <div className="font-bold flex items-center gap-1.5">
             <Database className="h-4 w-4 text-indigo-600" />
-            Zero Data Loss Guarantee
+            Deterministic column review
           </div>
           <p className="text-indigo-700 leading-relaxed">
-            Melo automatically preserves all uncatered columns in the student record's{" "}
-            <code className="font-mono bg-indigo-100/70 px-1 py-0.5 rounded text-[11px]">unmappedData</code>{" "}
-            attic. These signals are also logged to the product intelligence backlog for upcoming feature discovery.
+            Unrecognized headers are listed without source values. Review row projections before approval; a header signal is not an AI mapping, database instruction, or guarantee that a field will be committed.
           </p>
         </div>
 
@@ -81,7 +79,7 @@ export function ColumnMappingDialog({ signals, onClose }: ColumnMappingDialogPro
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                       <Check className="h-3 w-3" />
-                      Preserved
+                      Review signal
                     </span>
                   </div>
                 </div>

@@ -582,6 +582,7 @@ export const acceptDestinationTransfer = mutation({
         reason: args.admissionNumberOverrideReason,
         confirmed: args.admissionNumberOverrideConfirmed,
         advanceTo: args.advanceCounterTo,
+        expectedVersion: args.expectedPolicyVersion,
       });
       destinationAdmissionNumber = manualAdmissionNumber;
     } else {

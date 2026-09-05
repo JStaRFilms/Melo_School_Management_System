@@ -3181,6 +3181,7 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("analyzing"),
       v.literal("reviewing"),
+      v.literal("ready"),
       v.literal("committing"),
       v.literal("merged"),
       v.literal("failed"),
@@ -3193,6 +3194,16 @@ export default defineSchema({
     processedRecords: v.optional(v.number()),
     commitCursor: v.optional(v.string()),
     commitPhase: v.optional(v.union(v.literal("students"), v.literal("grades"))),
+    reviewPlanVersion: v.optional(v.number()),
+    planningCursor: v.optional(v.string()),
+    planningProcessedRecords: v.optional(v.number()),
+    planningBaseSequence: v.optional(v.number()),
+    planningNextSequence: v.optional(v.number()),
+    planningPolicyVersion: v.optional(v.number()),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.union(v.id("users"), v.id("platformAdmins"))),
+    reviewApprovalReceiptId: v.optional(v.string()),
+    lastCommitReceiptId: v.optional(v.string()),
     sourceFiles: v.array(
       v.object({
         storageId: v.id("_storage"),
@@ -3250,6 +3261,7 @@ export default defineSchema({
     clashConfidence: v.optional(v.number()), // 0 - 100
     clashReason: v.optional(v.string()),
     familyClusterKey: v.optional(v.string()), // Phone-based hash grouping siblings
+    normalizedAdmissionNumber: v.optional(v.string()),
     isResolved: v.boolean(),
     resolutionAction: v.optional(
       v.union(
@@ -3259,15 +3271,42 @@ export default defineSchema({
         v.literal("ignore")
       )
     ),
+    reviewStatus: v.optional(v.union(v.literal("pending"), v.literal("approved"))),
+    rowRevision: v.optional(v.number()),
+    reviewedRowRevision: v.optional(v.number()),
+    selectedClassId: v.optional(v.id("classes")),
+    selectedSubjectId: v.optional(v.id("subjects")),
+    selectedStudentId: v.optional(v.id("students")),
+    selectedUserId: v.optional(v.id("users")),
+    selectedFamilyId: v.optional(v.id("families")),
+    selectedSessionId: v.optional(v.id("academicSessions")),
+    selectedTermId: v.optional(v.id("academicTerms")),
+    reviewUniquenessKey: v.optional(v.string()),
+    admissionNumberMode: v.optional(v.union(v.literal("supplied"), v.literal("official_generated"))),
+    manualNumberConfirmed: v.optional(v.boolean()),
+    manualNumberReason: v.optional(v.string()),
+    advanceCounterTo: v.optional(v.number()),
+    expectedNumberPolicyVersion: v.optional(v.number()),
+    proposedAdmissionNumber: v.optional(v.string()),
+    approvedPlanVersion: v.optional(v.number()),
     isCommitted: v.optional(v.boolean()),
+    commitOutcome: v.optional(v.union(v.literal("created"), v.literal("merged"), v.literal("ignored"), v.literal("grade_created"))),
+    commitReceiptId: v.optional(v.string()),
     committedStudentId: v.optional(v.id("students")),
+    committedAssessmentRecordId: v.optional(v.id("assessmentRecords")),
     updatedAt: v.number(),
   })
     .index("by_workspaceId", ["workspaceId"])
+    .index("by_workspaceId_and_rowNumber", ["workspaceId", "rowNumber"])
     .index("by_workspaceId_and_validationStatus", ["workspaceId", "validationStatus"])
     .index("by_workspaceId_and_entityType", ["workspaceId", "entityType"])
     .index("by_workspaceId_and_familyClusterKey", ["workspaceId", "familyClusterKey"])
-    .index("by_workspaceId_and_isCommitted", ["workspaceId", "isCommitted"]),
+    .index("by_workspaceId_and_admissionNumber", ["workspaceId", "normalizedAdmissionNumber"])
+    .index("by_workspaceId_and_isCommitted", ["workspaceId", "isCommitted"])
+    .index("by_workspaceId_and_reviewStatus", ["workspaceId", "reviewStatus"])
+    .index("by_workspaceId_and_selectedUserId", ["workspaceId", "selectedUserId"])
+    .index("by_workspaceId_and_selectedStudentId", ["workspaceId", "selectedStudentId"])
+    .index("by_workspaceId_and_reviewUniquenessKey", ["workspaceId", "reviewUniquenessKey"]),
 
   migrationFeatureSignals: defineTable({
     schoolId: v.id("schools"),

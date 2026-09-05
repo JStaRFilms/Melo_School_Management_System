@@ -437,7 +437,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
     });
   });
 
-  describe("4. AI Import Review Pipeline (Zero Direct Commits)", () => {
+  describe("4. Legacy AI staging isolation (commit permanently gated)", () => {
     it("stages raw rows, catches validation errors deterministically, and isolates operational tables", async () => {
       const t = convexTest(schema, modules);
       const { schoolId, adminUserId, importStudentUserIds } = await setupTestHarness(t);
@@ -515,7 +515,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
           workspaceId: stageResult.workspaceId,
         })
-      ).rejects.toThrow("Workspace requires explicit reviewed approval");
+      ).rejects.toThrow("Legacy AI import commit is disabled");
 
       // Operational tables must still be untouched
       const countAfterRejectedCommit = await t.run(async (ctx) => {
@@ -568,30 +568,20 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       expect(approval.status).toBe("reviewed");
 
-      // 5. Commit workspace atomically into official operational tables
-      const commitResult = await tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
+      // 5. The disconnected legacy path remains unable to write even after its old approval.
+      await expect(tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
         workspaceId: stageResult.workspaceId,
-      });
-
-      expect(commitResult.success).toBe(true);
-      expect(commitResult.committedCount).toBe(4);
-
-      // Verify operational database records now exist
-      const operationalStudents = await t.run(async (ctx) => {
-        return await ctx.db
-          .query("students")
-          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-          .collect();
-      });
-      expect(operationalStudents).toHaveLength(4);
-
-      // Verify final workspace status is 'committed'
+      })).rejects.toThrow("Legacy AI import commit is disabled");
+      const operationalStudents = await t.run((ctx) =>
+        ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      );
+      expect(operationalStudents).toHaveLength(0);
       const finalWorkspace = await tenantSession(t).query(aiImportApi.getImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       assertExists(finalWorkspace);
-      expect(finalWorkspace.status).toBe("committed");
-      expect(finalWorkspace.committedAt).toBeDefined();
+      expect(finalWorkspace.status).toBe("reviewed");
+      expect(finalWorkspace.committedAt).toBeUndefined();
     });
   });
 
@@ -613,7 +603,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       await expect(session.mutation(aiImportApi.commitImportWorkspace, {
         workspaceId: validWorkspace.workspaceId,
-      })).rejects.toThrow("requires explicit reviewed approval");
+      })).rejects.toThrow("Legacy AI import commit is disabled");
 
       const missingNumber = await session.mutation(aiImportApi.stageImportData, {
         schoolId,

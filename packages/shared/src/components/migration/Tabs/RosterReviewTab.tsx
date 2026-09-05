@@ -4,6 +4,24 @@ import { Search, AlertTriangle, AlertCircle, CheckCircle2, SlidersHorizontal } f
 export interface StagedStudentRow {
   _id: string;
   rowNumber: number;
+  entityType: "student" | "grade_record";
+  rowRevision?: number;
+  reviewStatus?: "pending" | "approved";
+  selectedClassId?: string;
+  selectedSubjectId?: string;
+  selectedStudentId?: string;
+  selectedUserId?: string;
+  selectedFamilyId?: string;
+  selectedSessionId?: string;
+  selectedTermId?: string;
+  existingStudentId?: string;
+  admissionNumberMode?: "supplied" | "official_generated";
+  manualNumberConfirmed?: boolean;
+  manualNumberReason?: string;
+  advanceCounterTo?: number;
+  proposedAdmissionNumber?: string;
+  commitOutcome?: "created" | "merged" | "ignored" | "grade_created";
+  commitReceiptId?: string;
   parsedData: {
     firstName: string;
     lastName: string;
@@ -15,6 +33,10 @@ export interface StagedStudentRow {
     guardianPhone?: string;
     guardianEmail?: string;
     address?: string;
+    subjectName?: string;
+    ca1?: number;
+    ca2?: number;
+    exam?: number;
   };
   validationStatus: "valid" | "warning" | "error";
   validationErrors: string[];
@@ -26,15 +48,17 @@ export interface StagedStudentRow {
 
 export interface RosterReviewTabProps {
   records: StagedStudentRow[];
-  onPatchField: (recordId: string, patch: Record<string, any>) => Promise<void>;
+  onPatchField: (recordId: string, patch: Record<string, unknown>) => Promise<void>;
   onOpenClashModal: (record: StagedStudentRow) => void;
+  onReview: (record: StagedStudentRow) => void;
 }
 
-export function RosterReviewTab({ records, onPatchField, onOpenClashModal }: RosterReviewTabProps) {
+export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onReview }: RosterReviewTabProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "error" | "warning" | "valid">("all");
 
   const filteredRecords = records.filter((rec) => {
+    if (rec.entityType !== "student") return false;
     if (statusFilter !== "all" && rec.validationStatus !== statusFilter) {
       return false;
     }
@@ -99,7 +123,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal }: Ros
               <th className="px-4 py-3.5 min-w-[150px]">Admission ID</th>
               <th className="px-4 py-3.5 min-w-[110px]">Gender</th>
               <th className="px-4 py-3.5 min-w-[160px]">Guardian Phone</th>
-              <th className="px-4 py-3.5 min-w-[150px] text-right">Validation</th>
+              <th className="px-4 py-3.5 min-w-[190px] text-right">Review & validation</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -165,6 +189,9 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal }: Ros
                       placeholder="Auto"
                       className="w-32 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-mono font-medium text-slate-700 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
                     />
+                    {rec.proposedAdmissionNumber && (
+                      <div className="mt-1 text-[10px] font-semibold text-slate-500">Approved proposal: <span className="font-mono">{rec.proposedAdmissionNumber}</span></div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <select
@@ -191,7 +218,15 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal }: Ros
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {rec.validationStatus === "error" ? (
+                    <div className="flex items-center justify-end gap-2">
+                    <button type="button" onClick={() => onReview(rec)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
+                      {rec.reviewStatus === "approved" ? "Edit review" : "Review row"}
+                    </button>
+                    {rec.reviewStatus === "approved" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700" title={rec.proposedAdmissionNumber ? `Proposed ID: ${rec.proposedAdmissionNumber}` : undefined}>
+                        <CheckCircle2 className="h-3 w-3" />{rec.commitOutcome ?? "Reviewed"}
+                      </span>
+                    ) : rec.validationStatus === "error" ? (
                       <span
                         className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200"
                         title={rec.validationErrors.join(", ")}
@@ -214,6 +249,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal }: Ros
                         Valid
                       </span>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))

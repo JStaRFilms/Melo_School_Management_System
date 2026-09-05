@@ -1,5 +1,7 @@
 # U4b — Import review safety increment
 
+> **Superseded status (R1 remediation):** R1 Critical 1 is now locally remediated. The revisioned reviewed-plan, explicit existing-entity mapping, H4 numbering, actor-attributed receipts, idempotent reconciliation, and disabled unsafe legacy/file/provider paths are documented in [`R1-import-remediation.md`](./R1-import-remediation.md). The partial assessment below is retained as the pre-remediation record.
+
 **PARTIAL / NOT PACKET COMPLETION / E0.** The complete routed human-approved importer is not implemented. Do not deploy or treat this result as acceptance of F3/H4/H5. This pass delivers a small privacy/progress increment only. Remaining work below is substantive implementation, not merely U7 evidence or an unconfigured-provider gate.
 
 Read the packet, normative F3/H4/H5 decisions, U2c/U3a/U3c/U4a results, actual migration workbench/upload/action bar and migration/aiImport code, Convex guidance and existing lifecycle tests. No live provider, production, deploy, migration/backfill, CLI codegen, credential, seed, commit or subagent operation ran. Tests use synthetic in-memory fixtures only. Existing unrelated working-tree work was preserved. No schema or generated file changes.

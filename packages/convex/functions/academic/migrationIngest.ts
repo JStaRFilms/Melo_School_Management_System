@@ -65,12 +65,19 @@ export const stageRecordsBatch = mutation({
 
     const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
+    if (workspace.status !== "draft" && workspace.status !== "reviewing" && workspace.status !== "failed") {
       throw new ConvexError(`Cannot stage records to a ${workspace.status} workspace`);
     }
 
     if (args.records.length < 1 || args.records.length > 50) {
       throw new ConvexError("Stage between 1 and 50 rows per batch");
+    }
+    const rowNumbers = new Set<number>();
+    for (const record of args.records) {
+      if (!Number.isSafeInteger(record.rowNumber) || record.rowNumber < 1 || rowNumbers.has(record.rowNumber)) {
+        throw new ConvexError("Every staged row requires a unique positive integer row number");
+      }
+      rowNumbers.add(record.rowNumber);
     }
     const now = Date.now();
 
@@ -147,6 +154,14 @@ export const stageRecordsBatch = mutation({
     }> = [];
 
     for (const rec of args.records) {
+      const existingRow = await ctx.db
+        .query("stagedImportRecords")
+        .withIndex("by_workspaceId_and_rowNumber", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("rowNumber", rec.rowNumber)
+        )
+        .unique();
+      if (existingRow) continue;
+
       const data = { ...rec.parsedData };
       const validationErrors: string[] = [];
 
@@ -288,7 +303,10 @@ export const stageRecordsBatch = mutation({
         clashConfidence,
         clashReason,
         familyClusterKey,
-        isResolved: !clashConfidence || clashConfidence < 50,
+        normalizedAdmissionNumber: data.admissionNumber?.trim() || undefined,
+        isResolved: false,
+        reviewStatus: "pending",
+        rowRevision: 1,
         isCommitted: false,
         updatedAt: now,
       });
@@ -306,7 +324,7 @@ export const stageRecordsBatch = mutation({
     const newWarning = newlyStaged.filter((r) => r.validationStatus === "warning").length;
     const newError = newlyStaged.filter((r) => r.validationStatus === "error").length;
 
-    const totalRecords = (workspace.totalRecords || 0) + args.records.length;
+    const totalRecords = (workspace.totalRecords || 0) + newlyStaged.length;
     const validRecords = (workspace.validRecords || 0) + newValid;
     const warningRecords = (workspace.warningRecords || 0) + newWarning;
     const errorRecords = (workspace.errorRecords || 0) + newError;
@@ -317,11 +335,22 @@ export const stageRecordsBatch = mutation({
       warningRecords,
       errorRecords,
       status: "reviewing",
+      reviewPlanVersion: (workspace.reviewPlanVersion ?? 0) + 1,
+      planningCursor: undefined,
+      planningProcessedRecords: undefined,
+      planningBaseSequence: undefined,
+      planningNextSequence: undefined,
+      planningPolicyVersion: undefined,
+      reviewedAt: undefined,
+      reviewedBy: undefined,
+      reviewApprovalReceiptId: undefined,
+      commitCursor: undefined,
+      processedRecords: 0,
       updatedAt: now,
     });
 
     return {
-      stagedCount: args.records.length,
+      stagedCount: newlyStaged.length,
       totalRecords,
       validRecords,
       warningRecords,

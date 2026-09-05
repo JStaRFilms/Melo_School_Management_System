@@ -221,6 +221,28 @@ export async function proposeAdmissionNumberHelper(
     policyId: policy._id,
   };
 }
+/** Read-only preview at a specified sequence for reviewed multi-row import plans. */
+export async function proposeAdmissionNumberAtSequenceHelper(
+  ctx: QueryCtx | MutationCtx,
+  args: { schoolId: Id<"schools">; level?: string; sequence: number; expectedVersion: number },
+) {
+  validateSequence(args.sequence);
+  const { policy, session, period } = await getContext(ctx, args.schoolId);
+  if (!policy || !session || !period)
+    throw new ConvexError("Configure numbering and one active academic session before allocation");
+  if ((policy.version ?? 0) !== args.expectedVersion)
+    throw new ConvexError("Numbering policy changed; review again");
+  if (policy.pattern.includes("{LEVEL}") && !args.level)
+    throw new ConvexError("An explicit enrollment level is required");
+  return formatAdmissionNumber(policy.pattern, {
+    school: policy.schoolCode,
+    campus: policy.campusCode,
+    level: args.level ?? "",
+    year: new Date(session.startDate).getUTCFullYear(),
+    seq: args.sequence,
+  });
+}
+
 /** Commit ONLY inside the successful record-creation transaction. No gapless promise. */
 export async function allocateNextAdmissionNumberHelper(
   ctx: MutationCtx,
@@ -294,6 +316,7 @@ export async function commitManualAdmissionNumberHelper(
     reason?: string;
     confirmed?: boolean;
     advanceTo?: number;
+    expectedVersion?: number;
   },
 ) {
   const actor = await requireCapability(
@@ -316,7 +339,9 @@ export async function commitManualAdmissionNumberHelper(
   if (args.advanceTo !== undefined) {
     validateSequence(args.advanceTo);
     const { policy, sequence, period } = await getContext(ctx, args.schoolId);
-    if (!policy || !period || args.advanceTo <= sequence)
+    if (!policy || !period || (policy.version ?? 0) !== args.expectedVersion)
+      throw new ConvexError("Numbering policy changed; review again");
+    if (args.advanceTo <= sequence)
       throw new ConvexError(
         "Explicit advancement must exceed the current next sequence",
       );
