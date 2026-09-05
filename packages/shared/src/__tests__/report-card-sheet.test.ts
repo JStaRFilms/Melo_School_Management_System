@@ -108,3 +108,19 @@ describe("ReportCardSheet cumulative layout", () => {
     expect(markup).toContain("Printing stays blocked");
   });
 });
+
+it("renders custom snapshot colors and old no-policy text fallback without changing scores", () => {
+  const report=buildCumulativeReportCard();
+  report.results[0].gradeLetter="OUT";
+  report.gradingPolicy={source:"snapshot",version:7,bands:[{gradeLetter:"OUT",minScore:0,maxScore:100,remark:"Recorded",colorHex:"#7c2d12"}]};
+  const markup=renderToStaticMarkup(createElement(ReportCardSheet,{reportCard:report,backHref:"/"}));
+  expect(markup).toContain("#7c2d12");
+  expect(markup).toContain("Certified grading policy v7");
+  expect(markup).toContain("rc-grade");
+  expect(markup).toContain("OUT");
+  delete report.gradingPolicy;
+  const oldMarkup=renderToStaticMarkup(createElement(ReportCardSheet,{reportCard:report,backHref:"/"}));
+  expect(oldMarkup).not.toContain("#7c2d12");
+  expect(oldMarkup).toContain("Historical grading policy unavailable");
+  expect(oldMarkup).toContain("OUT");
+});

@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import type { BillingDashboardData, PaymentLinkResult } from "../types";
 import { formatDateTime, formatMoney } from "../utils";
 
+import { InvoicePaymentInstructions } from "@school/shared";
+
 type InvoiceRow = BillingDashboardData["invoices"][number];
 type PaymentRow = BillingDashboardData["payments"][number];
 type PaymentAttemptRow = BillingDashboardData["paymentAttempts"][number];
@@ -229,6 +231,7 @@ export function PrintableFinanceModal({
           </div>
 
           {/* ── MODE: INVOICE ────────────────────────────────────── */}
+          {(mode === "invoice" ? [invoice] : studentInvoices).map(row => <InvoicePaymentInstructions key={row.invoice._id} reference={row.invoice.invoiceNumber} instructions={row.invoice.paymentInstructions} payable={row.invoice.balanceDue > 0 && ["issued", "overdue", "partially_paid"].includes(row.invoice.status)} />)}
           {mode === "invoice" ? (
             <div className="space-y-6">
               {/* Financial KPI Summary Cards */}

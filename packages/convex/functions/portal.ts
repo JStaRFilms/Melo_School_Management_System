@@ -1,4 +1,6 @@
+import { getUnboundStorageUrl } from "./academic/assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
+import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
 import type { Id } from "../_generated/dataModel";
 import { api } from "../_generated/api";
 import { query } from "../_generated/server";
@@ -52,6 +54,7 @@ const portalNotificationValidator = v.object({
 });
 
 const portalBillingInvoiceValidator = v.object({
+  paymentInstructions: v.union(paymentInstructionsValidator, v.null()),
   invoiceId: v.id("studentInvoices"),
   studentId: v.id("students"),
   invoiceNumber: v.string(),
@@ -281,7 +284,7 @@ async function getAccessibleStudentsAcrossPortalMemberships(ctx: any, portalAuth
       schoolId: membership.schoolId,
       role: membership.role,
     });
-    const schoolLogoUrl = school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null;
+    const schoolLogoUrl = school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null;
 
     for (const entry of students) {
       entries.push({
@@ -477,7 +480,7 @@ export const getWorkspaceData = query({
       studentRows.map(async ({ student, relationship, school: studentSchool, schoolLogoUrl, className }) => {
         const [studentUser, photoUrl] = await Promise.all([
           ctx.db.get(student.userId),
-          student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+          student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
         ]);
 
         const studentUserRecord = studentUser as
@@ -778,7 +781,7 @@ export const getWorkspaceData = query({
       school: {
         id: school._id,
         name: normalizeHumanName(school.name),
-        logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+        logoUrl: school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null,
         theme: {
           primaryColor: "#020617",
           accentColor: "#2563eb",
@@ -911,6 +914,7 @@ export const getBillingData = query({
       .sort((left: any, right: any) => right.issuedAt - left.issuedAt)
       .map((invoice: any) => ({
         invoiceId: invoice._id,
+        paymentInstructions: invoicePaymentInstructions(invoice),
         studentId: invoice.studentId,
         invoiceNumber: invoice.invoiceNumber,
         feePlanName: invoice.feePlanNameSnapshot,

@@ -38,6 +38,7 @@ export type FeePlanDraftItem = {
 };
 
 export type FeePlanDraft = {
+  bankAccountId?: string;
   name: string;
   description: string;
   currency: string;
@@ -51,6 +52,7 @@ export type FeePlanDraft = {
 };
 
 export type FeePlanApplicationDraft = {
+  bankAccountId?: string;
   feePlanId: string;
   classId: string;
   sessionId: string;
@@ -275,6 +277,7 @@ export type BillingDashboardData = {
       totalAmount: number;
       amountPaid: number;
       balanceDue: number;
+      paymentInstructions?: import("@school/shared").InvoiceBankInstructions | null;
       status: string;
       dueDate: number;
       issuedAt: number;

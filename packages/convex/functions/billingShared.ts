@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paymentInstructionsValidator } from "./foundation/bankInstructions";
 
 export const billingLineItemCategoryValidator = v.union(
   v.literal("tuition"),
@@ -40,6 +41,7 @@ export const billingFeePlanBillingModeValidator = v.union(
 );
 
 export const billingFeePlanValidator = v.object({
+  bankAccountId: v.optional(v.id("schoolBankAccounts")),
   _id: v.id("feePlans"),
   schoolId: v.id("schools"),
   name: v.string(),
@@ -83,6 +85,7 @@ export const billingInvoiceStatusValidator = v.union(
 );
 
 export const billingInvoiceValidator = v.object({
+  paymentInstructions: v.union(paymentInstructionsValidator, v.null()),
   _id: v.id("studentInvoices"),
   schoolId: v.id("schools"),
   feePlanId: v.id("feePlans"),

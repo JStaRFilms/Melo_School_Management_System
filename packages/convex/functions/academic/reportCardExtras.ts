@@ -1,3 +1,5 @@
+import { getUnboundStorageUrl } from "./assetStorageBoundary";
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { mutation, query } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
@@ -203,7 +205,7 @@ export const listReportCardExtraScaleTemplates = query({
   args: {},
   returns: v.array(scaleTemplateValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const templates = await ctx.db
       .query("reportCardExtraScaleTemplates")
@@ -237,7 +239,7 @@ export const saveReportCardExtraScaleTemplate = mutation({
   },
   returns: v.id("reportCardExtraScaleTemplates"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const name = args.name.trim();
@@ -287,7 +289,7 @@ export const listReportCardExtraBundles = query({
   args: {},
   returns: v.array(bundleValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const bundles = await ctx.db
@@ -339,7 +341,7 @@ export const saveReportCardExtraBundle = mutation({
   },
   returns: v.id("reportCardExtraBundles"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const name = args.name.trim();
@@ -392,7 +394,7 @@ export const setClassReportCardExtraBundles = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -440,7 +442,7 @@ export const getClassReportCardExtraBundles = query({
   args: { classId: v.id("classes") },
   returns: classBundleAssignmentValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -476,7 +478,7 @@ export const listSchoolReportCardExtraBundleAssignments = query({
   args: {},
   returns: v.array(classBundleAssignmentValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [assignments, bundles] = await Promise.all([
@@ -553,7 +555,7 @@ export const getStudentReportCardExtrasEntry = query({
     bundles: v.array(reportCardExtraEditorBundleValidator),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
     const access = await getExtrasWorkspaceAccess(ctx, {
       userId,
       schoolId,
@@ -574,7 +576,7 @@ export const getStudentReportCardExtrasEntry = query({
 
     const studentUser = await ctx.db.get(student.userId);
     const passportUrl = student.photoStorageId
-      ? await ctx.storage.getUrl(student.photoStorageId)
+      ? await getUnboundStorageUrl(ctx, student.photoStorageId)
       : null;
     const { bundles } = await buildExtrasCollectionView(ctx, {
       schoolId,
