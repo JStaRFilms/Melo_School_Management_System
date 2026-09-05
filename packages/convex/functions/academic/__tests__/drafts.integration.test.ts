@@ -2,282 +2,86 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api } from "../../../_generated/api";
-
-declare global {
-  interface ImportMeta {
-    glob(pattern: string | string[]): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const convexRoot = new URL("../../../", import.meta.url).pathname;
-const rawModules = import.meta.glob([
-  "../../../**/*.ts",
-  "!../../../**/*.test.ts",
-]);
-const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, module]) => [
-    `./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`,
-    module,
-  ]),
-);
-
-const draftsApi = api.functions.academic.drafts;
-
-const userAIdentity = {
-  subject: "user-a-auth-id",
-  tokenIdentifier: "https://auth.school.test|user-a",
-};
-
-const userBIdentity = {
-  subject: "user-b-auth-id",
-  tokenIdentifier: "https://auth.school.test|user-b",
-};
-
-async function setupTestHarness(t: ReturnType<typeof convexTest>) {
-  const now = Date.now();
-  return await t.run(async (ctx) => {
-    // Create School
-    const schoolId = await ctx.db.insert("schools", {
-      name: "Olive Blessed Crest Lagos",
-      slug: "obc",
-      status: "active",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Create User A
-    const userAId = await ctx.db.insert("users", {
-      schoolId,
-      authId: userAIdentity.subject,
-      authTokenIdentifier: userAIdentity.tokenIdentifier,
-      name: "Dr. Aminat Adebayo",
-      email: "aminat.adebayo@obc.edu.ng",
-      role: "admin",
-      isSchoolAdmin: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Create User B (different user in same or different school)
-    const userBId = await ctx.db.insert("users", {
-      schoolId,
-      authId: userBIdentity.subject,
-      authTokenIdentifier: userBIdentity.tokenIdentifier,
-      name: "Mr. Babatunde Adeleke",
-      email: "babatunde.adeleke@obc.edu.ng",
-      role: "teacher",
-      isSchoolAdmin: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return { schoolId, userAId, userBId };
+const rawModules = import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]);
+const modules = Object.fromEntries(Object.entries(rawModules).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`, module]));
+const drafts = api.functions.academic.drafts;
+const identity = { subject: "draft-owner", tokenIdentifier: "https://auth.test|draft-owner" };
+const otherIdentity = { subject: "other", tokenIdentifier: "https://auth.test|other" };
+async function setup() {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async ctx => {
+    const now = Date.now();
+    const schoolId = await ctx.db.insert("schools", { name: "School", slug: "draft-school", status: "active", createdAt: now, updatedAt: now });
+    const otherSchoolId = await ctx.db.insert("schools", { name: "Other", slug: "draft-other", status: "active", createdAt: now, updatedAt: now });
+    const userId = await ctx.db.insert("users", { schoolId, authId: identity.subject, authTokenIdentifier: identity.tokenIdentifier, name: "Owner", email: "owner@example.test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+    const otherUserId = await ctx.db.insert("users", { schoolId, authId: otherIdentity.subject, authTokenIdentifier: otherIdentity.tokenIdentifier, name: "Other", email: "other@example.test", role: "admin", createdAt: now, updatedAt: now });
+    return { schoolId, otherSchoolId, userId, otherUserId };
   });
+  const user = t.withIdentity(identity);
+  const scope = { schoolId: ids.schoolId, formKey: "student_onboarding" };
+  const begin = () => user.mutation(drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+  return { t, user, other: t.withIdentity(otherIdentity), ...ids, scope, begin };
 }
 
-describe("Form Drafts Persistence and Recovery", () => {
-  it("saves a new form draft and retrieves it successfully", async () => {
-    const t = convexTest(schema, modules);
-    const { schoolId, userAId } = await setupTestHarness(t);
-
-    const userAT = t.withIdentity(userAIdentity);
-
-    // 1. Initially no draft exists
-    const initialDraft = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "student_onboarding",
-    });
-    expect(initialDraft).toBeNull();
-
-    // 2. Save active draft
-    const saveResult = await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "student_onboarding",
-      payload: {
-        firstName: "Chidinma",
-        lastName: "Okafor",
-        classLevel: "JSS 1A",
-      },
-    });
-
-    expect(saveResult.isNew).toBe(true);
-    expect(saveResult.revision).toBe(1);
-    expect(saveResult.draftId).toBeDefined();
-
-    // 3. Retrieve draft
-    const retrievedDraft = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "student_onboarding",
-    });
-
-    expect(retrievedDraft).not.toBeNull();
-    expect(retrievedDraft?.schoolId).toBe(schoolId);
-    expect(retrievedDraft?.userId).toBe(userAId);
-    expect(retrievedDraft?.formKey).toBe("student_onboarding");
-    expect(retrievedDraft?.status).toBe("active");
-    expect(retrievedDraft?.revision).toBe(1);
-    expect(retrievedDraft?.payload).toEqual({
-      firstName: "Chidinma",
-      lastName: "Okafor",
-      classLevel: "JSS 1A",
-    });
+describe("Private registered draft lifecycle", () => {
+  it("allocates explicitly, saves a validated projection, and audits lifecycle only", async () => {
+    const h = await setup();
+    const instance = await h.begin();
+    const saved = await h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: { firstName: "Ada" } });
+    expect(saved.revision).toBe(1);
+    expect(await h.user.query(drafts.getFormDraft, h.scope)).toMatchObject({ userId: h.userId, schoolId: h.schoolId, payload: { firstName: "Ada" }, revision: 1 });
+    const events = await h.t.run(ctx => ctx.db.query("auditEvents").take(10));
+    expect(events).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain("Ada");
+    expect(instance.expiresAt - Date.now()).toBeGreaterThan(89 * 86400000);
   });
-
-  it("upserts existing active draft, bumping revision and timestamps without duplicate rows", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-    const userAT = t.withIdentity(userAIdentity);
-
-    // Save initial draft
-    const save1 = await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "fee_plan_builder",
-      payload: { planName: "Term 1 Tuition", amount: 150000 },
-    });
-    expect(save1.revision).toBe(1);
-
-    // Update draft with second save
-    const save2 = await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "fee_plan_builder",
-      payload: { planName: "Term 1 Tuition Final", amount: 175000, discount: 5000 },
-      expectedRevision: 1,
-    });
-    expect(save2.isNew).toBe(false);
-    expect(save2.revision).toBe(2);
-    expect(save2.draftId).toBe(save1.draftId);
-
-    // Retrieve updated draft
-    const updated = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "fee_plan_builder",
-    });
-    expect(updated?.revision).toBe(2);
-    expect(updated?.payload).toEqual({
-      planName: "Term 1 Tuition Final",
-      amount: 175000,
-      discount: 5000,
-    });
+  it("requires explicit recovery and rejects concurrent stale writes", async () => {
+    const h = await setup(); const instance = await h.begin();
+    await expect(h.begin()).rejects.toThrow(/Preview, resume or discard/);
+    const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: { firstName: "First tab" } };
+    await h.user.mutation(drafts.saveFormDraft, args);
+    await expect(h.user.mutation(drafts.saveFormDraft, { ...args, payload: { firstName: "Stale tab" } })).rejects.toThrow(/Conflict/);
+    expect((await h.user.query(drafts.getFormDraft, h.scope))?.payload).toEqual({ firstName: "First tab" });
   });
-
-  it("detects revision conflict when expectedRevision does not match", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-    const userAT = t.withIdentity(userAIdentity);
-
-    // Save initial draft (rev 1)
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "curriculum_plan",
-      payload: { week: 1 },
-    });
-
-    // Save update (rev 2)
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "curriculum_plan",
-      payload: { week: 1, topic: "Algebra" },
-    });
-
-    // Stale client tries to save with expectedRevision: 1
-    await expect(
-      userAT.mutation(draftsApi.saveFormDraft, {
-        formKey: "curriculum_plan",
-        payload: { week: 1, topic: "Stale edit" },
-        expectedRevision: 1,
-      })
-    ).rejects.toThrow(/Conflict detected/);
+  it("rejects unknown schemas, versions, entity context, secret and file fields", async () => {
+    const h = await setup();
+    await expect(h.user.mutation(drafts.beginFormDraft, { ...h.scope, formKey: "secret_notes", schemaVersion: 1 })).rejects.toThrow(/reviewed/);
+    await expect(h.user.mutation(drafts.beginFormDraft, { ...h.scope, schemaVersion: 2 })).rejects.toThrow(/version/);
+    await expect(h.user.mutation(drafts.beginFormDraft, { ...h.scope, schemaVersion: 1, entityId: "foreign-student" })).rejects.toThrow(/new records/);
+    const instance = await h.begin();
+    for (const payload of [{ password: "secret" }, { token: "secret" }, { fileUrl: "https://public.test/file" }, { storageId: "raw-file" }, { firstName: 42 }]) {
+      await expect(h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload })).rejects.toThrow(/unapproved/);
+    }
   });
-
-  it("supports entity-scoped drafts alongside un-scoped drafts", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-    const userAT = t.withIdentity(userAIdentity);
-
-    // Un-scoped draft (e.g. creating new student)
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "student_profile",
-      payload: { mode: "create" },
-    });
-
-    // Entity-scoped draft (e.g. editing student 123)
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "student_profile",
-      entityId: "student_123",
-      payload: { mode: "edit", studentId: "student_123" },
-    });
-
-    // Retrieve un-scoped
-    const newStudentDraft = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "student_profile",
-    });
-    expect(newStudentDraft?.payload).toEqual({ mode: "create" });
-
-    // Retrieve entity-scoped
-    const editStudentDraft = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "student_profile",
-      entityId: "student_123",
-    });
-    expect(editStudentDraft?.payload).toEqual({ mode: "edit", studentId: "student_123" });
+  it("denies cross-user, branch, suspended, revoked and unauthenticated access", async () => {
+    const h = await setup(); const instance = await h.begin();
+    const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0 };
+    await expect(h.other.mutation(drafts.discardFormDraft, args)).rejects.toThrow(/unavailable/);
+    expect(await h.other.query(drafts.getFormDraft, h.scope)).toBeNull();
+    await h.t.run(ctx => ctx.db.patch(h.otherUserId, { role: "teacher" }));
+    await expect(h.other.query(drafts.getFormDraft, h.scope)).rejects.toThrow(/not permitted/);
+    await expect(h.user.query(drafts.getFormDraft, { ...h.scope, schoolId: h.otherSchoolId })).rejects.toThrow();
+    await expect(h.t.query(drafts.getFormDraft, h.scope)).rejects.toThrow(/Unauthorized/);
+    await h.t.run(ctx => ctx.db.patch(h.schoolId, { status: "suspended" }));
+    await expect(h.user.query(drafts.getFormDraft, h.scope)).rejects.toThrow();
+    await h.t.run(async ctx => { await ctx.db.patch(h.schoolId, { status: "active" }); await ctx.db.patch(h.userId, { isArchived: true }); });
+    await expect(h.user.mutation(drafts.discardFormDraft, args)).rejects.toThrow();
   });
-
-  it("discards draft so it is no longer retrieved", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-    const userAT = t.withIdentity(userAIdentity);
-
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "staff_onboarding",
-      payload: { name: "New Teacher" },
-    });
-
-    // Discard via formKey
-    const discardResult = await userAT.mutation(draftsApi.discardFormDraft, {
-      formKey: "staff_onboarding",
-    });
-    expect(discardResult.success).toBe(true);
-    expect(discardResult.discardedCount).toBe(1);
-
-    // Query should now return null
-    const check = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "staff_onboarding",
-    });
-    expect(check).toBeNull();
+  it.each(["discardFormDraft", "commitFormDraft"] as const)("%s erases payload and permanently rejects delayed autosave", async endpoint => {
+    const h = await setup(); const instance = await h.begin();
+    await h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: { firstName: "Remove me" } });
+    const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 1 };
+    await h.user.mutation(drafts[endpoint], args);
+    await expect(h.user.mutation(drafts.saveFormDraft, { ...args, schemaVersion: 1, payload: { firstName: "late" } })).rejects.toThrow(/already/);
+    expect(await h.user.query(drafts.getFormDraft, h.scope)).toBeNull();
+    expect((await h.t.run(ctx => ctx.db.get(instance.draftId)))?.payload).toEqual({});
+    const next = await h.begin(); expect(next.draftId).not.toBe(instance.draftId);
   });
-
-  it("commits draft upon final submission", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-    const userAT = t.withIdentity(userAIdentity);
-
-    const save = await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "exam_entry",
-      payload: { scores: [90, 85, 92] },
-    });
-
-    // Commit via draftId
-    const commitResult = await userAT.mutation(draftsApi.commitFormDraft, {
-      draftId: save.draftId,
-    });
-    expect(commitResult.success).toBe(true);
-    expect(commitResult.committedCount).toBe(1);
-
-    // Active query returns null
-    const check = await userAT.query(draftsApi.getFormDraft, {
-      formKey: "exam_entry",
-    });
-    expect(check).toBeNull();
-  });
-
-  it("enforces strict user isolation so User B cannot access User A's drafts", async () => {
-    const t = convexTest(schema, modules);
-    await setupTestHarness(t);
-
-    const userAT = t.withIdentity(userAIdentity);
-    const userBT = t.withIdentity(userBIdentity);
-
-    // User A creates draft
-    await userAT.mutation(draftsApi.saveFormDraft, {
-      formKey: "confidential_notes",
-      payload: { notes: "Confidential appraisal data" },
-    });
-
-    // User B attempts to query the same formKey
-    const userBDraft = await userBT.query(draftsApi.getFormDraft, {
-      formKey: "confidential_notes",
-    });
-    expect(userBDraft).toBeNull();
+  it("hides expired drafts and rejects both stale saves and closure", async () => {
+    const h = await setup(); const instance = await h.begin();
+    await h.t.run(ctx => ctx.db.patch(instance.draftId, { expiresAt: Date.now() - 1 }));
+    expect(await h.user.query(drafts.getFormDraft, h.scope)).toBeNull();
+    await expect(h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: {} })).rejects.toThrow(/expired/);
   });
 });

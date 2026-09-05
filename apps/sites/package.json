@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@school/shared": "workspace:*",
     "lucide-react": "^0.400.0",
     "next": "^16.2.4",
     "react": "^18.3.0",

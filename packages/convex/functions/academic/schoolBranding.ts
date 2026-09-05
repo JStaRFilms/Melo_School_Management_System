@@ -1,3 +1,10 @@
+import {
+  assertSecureUploadTransportAvailable,
+  assertStorageClaimedOnlyBy,
+  assertStorageUnclaimed,
+  getUnboundStorageUrl,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
 import { mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import {
@@ -5,13 +12,9 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { schoolThemeValidator as schoolBrandingThemeValidator } from "../foundation/brandingContract";
 import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
 import { requireCapability } from "./rbac";
-
-const schoolBrandingThemeValidator = v.object({
-  primaryColor: v.string(),
-  accentColor: v.string(),
-});
 
 export const schoolFeaturesValidator = v.object({
   billing: v.boolean(),
@@ -63,6 +66,7 @@ export const getCurrentSchoolBranding = query({
     try {
       const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
         allowSuspended: true,
+        membershipOnly: true,
       });
       const school = await ctx.db.get(schoolId);
       if (!school) {
@@ -81,7 +85,9 @@ export const getCurrentSchoolBranding = query({
         name: normalizeHumanName(school.name),
         slug: school.slug,
         status: school.status ?? "active",
-        logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+        logoUrl: school.logoStorageId
+          ? await getUnboundStorageUrl(ctx, school.logoStorageId)
+          : null,
         motto: school.motto,
         theme: fallbackTheme(effectiveTheme.theme),
         contactEmail: school.contactEmail,
@@ -107,7 +113,9 @@ export const updateSchoolProfile = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const trimmedName = args.name.trim();
@@ -162,11 +170,11 @@ export const generateSchoolLogoUploadUrl = mutation({
   returns: v.string(),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    await requireCapability(ctx, schoolId, "settings.branding.manage");
-
-    return await ctx.storage.generateUploadUrl();
+    return secureUploadUnavailable<string>();
   },
 });
 
@@ -179,9 +187,11 @@ export const saveSchoolLogo = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    await requireCapability(ctx, schoolId, "settings.branding.manage");
+    assertSecureUploadTransportAvailable();
 
     if (!args.logoContentType.startsWith("image/")) {
       throw new ConvexError("School logo must be an image file");
@@ -192,6 +202,7 @@ export const saveSchoolLogo = mutation({
       throw new ConvexError("School not found");
     }
 
+    await assertStorageUnclaimed(ctx, args.logoStorageId);
     await ctx.db.patch(schoolId, {
       logoStorageId: args.logoStorageId,
       logoFileName: args.logoFileName,
@@ -209,7 +220,9 @@ export const removeSchoolLogo = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     await requireCapability(ctx, schoolId, "settings.branding.manage");
 
@@ -219,6 +232,10 @@ export const removeSchoolLogo = mutation({
     }
 
     if (school.logoStorageId) {
+      await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
+        purpose: "schoolLogo",
+        ownerId: String(school._id),
+      });
       await ctx.storage.delete(school.logoStorageId);
     }
 

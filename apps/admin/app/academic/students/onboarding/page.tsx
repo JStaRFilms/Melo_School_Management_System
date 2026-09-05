@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { useDirtyForm } from "@school/shared/drafts";
 
 import { useAuth } from "@/AuthProvider";
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
@@ -24,16 +25,6 @@ type FamilyLinkResult = {
   familyId: string;
   parentUserId: string;
   familyMemberId: string;
-};
-
-type OnboardingAttempt = {
-  requestKey: string;
-  studentId?: string;
-  photoMetadata?: {
-    storageId: string;
-    fileName: string;
-    contentType: string;
-  } | null;
 };
 
 export default function StudentOnboardingPage() {
@@ -102,7 +93,6 @@ export default function StudentOnboardingPage() {
     parent: { email: string; temporaryPassword: string } | null;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const onboardingAttemptRef = useRef<OnboardingAttempt | null>(null);
 
   const selectedClassLevel = classes?.find(
     (classDoc) => classDoc._id === selectedClassId,
@@ -127,6 +117,55 @@ export default function StudentOnboardingPage() {
     numberingPolicyConfigured && admissionNumberMode === "automatic";
 
   const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const requestKey = useRef<string | null>(null);
+  const createdStudent = useRef<string | null>(null);
+  const uploadedPhotoMetadata = useRef<{
+    storageId: string;
+    fileName: string;
+    contentType: string;
+  } | null | undefined>(undefined);
+  const [followUpPending, setFollowUpPending] = useState(false);
+
+  const requestDeparture = useDirtyForm({
+    name: "Student enrollment (not saved as a draft)",
+    isDirty:
+      isSubmitting ||
+      followUpPending ||
+      Boolean(
+        firstName ||
+          lastName ||
+          admissionNumber ||
+          overrideReason ||
+          overrideConfirmed ||
+          overrideCounterDecision ||
+          advanceCounterTo ||
+          gender ||
+          houseName ||
+          dateOfBirth ||
+          guardianName ||
+          guardianPhone ||
+          address ||
+          selectedClassId ||
+          studentPhotoFile ||
+          parentFirstName ||
+          parentLastName ||
+          parentEmail ||
+          parentPhone ||
+          parentRelationship ||
+          !isParentPrimaryContact ||
+          provisionStudentPortalAccess ||
+          provisionParentPortalAccess ||
+          studentTemporaryPassword !== "Student123!Pass" ||
+          parentTemporaryPassword !== "Parent123!Pass",
+      ),
+    discard: () => {
+      if (isSubmitting) {
+        throw new Error("Wait for the enrollment request to finish before leaving.");
+      }
+      resetForm();
+      setCredentialSummary(null);
+    },
+  });
 
   useEffect(() => {
     firstNameInputRef.current?.focus();
@@ -179,6 +218,10 @@ export default function StudentOnboardingPage() {
   }
 
   const resetForm = () => {
+    createdStudent.current = null;
+    requestKey.current = null;
+    uploadedPhotoMetadata.current = undefined;
+    setFollowUpPending(false);
     setFirstName("");
     setLastName("");
     setAdmissionNumber("");
@@ -210,6 +253,7 @@ export default function StudentOnboardingPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const normalizedFirstName = humanNameFinalStrict(firstName);
     const normalizedLastName = humanNameFinalStrict(lastName);
     const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
@@ -282,22 +326,20 @@ export default function StudentOnboardingPage() {
 
     let uploadedPhoto = false;
     try {
-      const attempt =
-        onboardingAttemptRef.current ??
-        { requestKey: crypto.randomUUID() };
-      onboardingAttemptRef.current = attempt;
-      if (attempt.photoMetadata === undefined) {
-        attempt.photoMetadata = studentPhotoFile
+      if (uploadedPhotoMetadata.current === undefined) {
+        uploadedPhotoMetadata.current = studentPhotoFile
           ? await uploadStudentPhoto(studentPhotoFile, () =>
               generateStudentPhotoUploadUrl({} as never) as Promise<string>
             )
           : null;
       }
-      const uploadedPhotoMetadata = attempt.photoMetadata;
-      uploadedPhoto = Boolean(uploadedPhotoMetadata);
+      uploadedPhoto = Boolean(uploadedPhotoMetadata.current);
 
-      const createdStudentId = attempt.studentId ?? (await createStudent({
-        requestKey: attempt.requestKey,
+      requestKey.current ??= crypto.randomUUID();
+      const createdStudentId =
+        createdStudent.current ??
+        ((await createStudent({
+        requestKey: requestKey.current,
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         admissionNumber: useAutomaticAdmissionNumber
@@ -331,11 +373,12 @@ export default function StudentOnboardingPage() {
         guardianName: guardianName.trim() || null,
         guardianPhone: guardianPhone.trim() || null,
         address: address.trim() || null,
-        photoStorageId: uploadedPhotoMetadata?.storageId,
-        photoFileName: uploadedPhotoMetadata?.fileName,
-        photoContentType: uploadedPhotoMetadata?.contentType,
-      } as never)) as string;
-      attempt.studentId = createdStudentId;
+        photoStorageId: uploadedPhotoMetadata.current?.storageId,
+        photoFileName: uploadedPhotoMetadata.current?.fileName,
+        photoContentType: uploadedPhotoMetadata.current?.contentType,
+      } as never)) as string);
+      createdStudent.current = createdStudentId;
+      setFollowUpPending(true);
 
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
@@ -384,7 +427,6 @@ export default function StudentOnboardingPage() {
           : null,
       });
 
-      onboardingAttemptRef.current = null;
       resetForm();
       showNotice({
         tone: "success",
@@ -394,12 +436,14 @@ export default function StudentOnboardingPage() {
     } catch (error) {
       showNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(
-          error,
-          uploadedPhoto
-            ? "The photo uploaded, but we couldn't finish creating the student."
-            : "We couldn't create the student right now."
-        ),
+        message: createdStudent.current
+          ? "The student was created. Family or portal setup is incomplete. Retry in this tab to finish setup for the same student; do not start a second enrollment."
+          : getUserFacingErrorMessage(
+              error,
+              uploadedPhoto
+                ? "The photo uploaded, but we couldn't finish creating the student."
+                : "We couldn't create the student right now.",
+            ),
       });
     } finally {
       setIsSubmitting(false);
@@ -407,7 +451,20 @@ export default function StudentOnboardingPage() {
   };
 
   return (
-    <StudentFirstOnboardingForm
+    <>
+      <section className="space-y-2 p-4">
+        <p role="status">
+          Edits are held only in this page, not saved as a draft. Photos and
+          credentials are not recoverable after leaving.
+        </p>
+        {followUpPending && (
+          <p role="alert">
+            Student created; follow-up setup is pending. Retry uses the same
+            student. Identity edits here will not update that created record.
+          </p>
+        )}
+      </section>
+      <StudentFirstOnboardingForm
       classes={classes}
       selectedClassId={selectedClassId}
       firstName={firstName}
@@ -478,9 +535,14 @@ export default function StudentOnboardingPage() {
           message,
         })
       }
-      onReset={resetForm}
+      onReset={() => {
+        void requestDeparture({ kind: "close" }).then((approved) => {
+          if (approved) resetForm();
+        });
+      }}
       onSubmit={handleSubmit}
     />
+    </>
   );
 }
 

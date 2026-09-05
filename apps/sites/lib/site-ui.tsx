@@ -38,7 +38,7 @@ export function SectionHeading({
   return (
     <div className="space-y-3">
       {eyebrow ? (
-        <p className="text-xs font-bold uppercase tracking-[0.24em] text-[color:var(--school-secondary)]">{eyebrow}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-[color:var(--school-accent)]">{eyebrow}</p>
       ) : null}
       <h2 className="max-w-3xl text-3xl font-semibold text-slate-950 sm:text-4xl">{title}</h2>
       {description ? <p className="max-w-3xl text-base leading-7 text-slate-600">{description}</p> : null}
@@ -59,7 +59,7 @@ function ActionLink({
 }) {
   const styles = {
     solid:
-      "bg-[color:var(--school-primary)] text-white shadow-soft hover:translate-y-[-1px] hover:bg-[color:var(--school-secondary)]",
+      "bg-[color:var(--school-primary)] text-[color:var(--school-primary-contrast)] shadow-soft hover:translate-y-[-1px] hover:bg-[color:var(--school-primary-hover)] hover:text-[color:var(--school-primary-hover-contrast)]",
     outline:
       "border border-slate-200 bg-white text-slate-900 hover:border-[color:var(--school-primary)] hover:text-[color:var(--school-primary)]",
     ghost: "bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-950",
@@ -88,7 +88,7 @@ function SiteHeader({ school }: { school: SchoolConfig }) {
       <Container className="py-4">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--school-primary)] text-sm font-bold text-white shadow-soft">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--school-primary)] text-sm font-bold text-[color:var(--school-primary-contrast)] shadow-soft">
               {school.brand.logoMark || school.brand.fallbackMark}
             </div>
             <div className="leading-tight">
@@ -191,7 +191,7 @@ function SiteFooter({ school }: { school: SchoolConfig }) {
             <div className="flex flex-col gap-3">
               <a
                 href={`tel:${school.contact.phone.replace(/\s+/g, "")}`}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[color:var(--school-primary)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[color:var(--school-secondary)]"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[color:var(--school-primary)] px-5 py-3 text-sm font-semibold text-[color:var(--school-primary-contrast)] transition hover:bg-[color:var(--school-primary-hover)] hover:text-[color:var(--school-primary-hover-contrast)]"
               >
                 <Phone className="h-4 w-4" />
                 Call office
@@ -213,7 +213,7 @@ function HeroSection({ school, page }: { school: SchoolConfig; page: PageContent
       <Container>
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="space-y-6">
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[color:var(--school-secondary)]">{page.hero.eyebrow}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[color:var(--school-accent)]">{page.hero.eyebrow}</p>
             <div className="space-y-4">
               <h1 className="max-w-3xl text-4xl font-semibold text-slate-950 sm:text-5xl lg:text-6xl">{page.hero.title}</h1>
               <p className="max-w-2xl text-lg leading-8 text-slate-600">{page.hero.description}</p>
@@ -251,7 +251,7 @@ function HeroSection({ school, page }: { school: SchoolConfig; page: PageContent
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-2xl bg-white p-3 shadow-sm">
-                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-secondary)]/10 text-[color:var(--school-secondary)]">
+                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent)]">
                     <Phone className="h-4 w-4" />
                   </span>
                   <div>
@@ -316,7 +316,7 @@ function TimelineSection({ items }: { items: SummaryCard[] }) {
         <div className="mt-8 grid gap-4 lg:grid-cols-3">
           {items.map((item, index) => (
             <SurfaceCard key={item.title} className="space-y-4">
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-secondary)]/10 text-[color:var(--school-secondary)]">
+              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent)]">
                 <span className="text-sm font-bold">0{index + 1}</span>
               </div>
               <div className="space-y-2">
@@ -424,9 +424,9 @@ function NoteSection({ note }: { note: string }) {
   return (
     <section className="pb-16">
       <Container>
-        <SurfaceCard className="bg-[linear-gradient(135deg,#173b72_0%,#0f766e_100%)] p-6 text-white sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/80">Note</p>
-          <p className="mt-3 max-w-3xl text-base leading-7 text-white/90">{note}</p>
+        <SurfaceCard className="bg-[color:var(--school-primary)] p-6 text-[color:var(--school-primary-contrast)] sm:p-8">
+          <p className="text-xs font-bold uppercase tracking-[0.24em] opacity-80">Note</p>
+          <p className="mt-3 max-w-3xl text-base leading-7 opacity-90">{note}</p>
         </SurfaceCard>
       </Container>
     </section>
@@ -442,19 +442,19 @@ function CtaSection({
   return (
     <section className="pb-20">
       <Container>
-        <SurfaceCard className="bg-[linear-gradient(135deg,#173b72_0%,#0f766e_100%)] p-8 text-white sm:p-10">
+        <SurfaceCard className="bg-[color:var(--school-primary)] p-8 text-[color:var(--school-primary-contrast)] sm:p-10">
           <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="space-y-3">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/80">Next step</p>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] opacity-80">Next step</p>
               <h2 className="text-3xl font-semibold sm:text-4xl">{title}</h2>
-              <p className="max-w-2xl text-sm leading-7 text-white/85">{description}</p>
+              <p className="max-w-2xl text-sm leading-7 opacity-85">{description}</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
               <ActionLink href={primaryAction.href} className="bg-white text-slate-950 hover:bg-slate-100">
                 {primaryAction.label}
               </ActionLink>
               {secondaryAction ? (
-                <ActionLink href={secondaryAction.href} variant="outline" className="border-white/30 bg-white/10 text-white hover:border-white/50 hover:bg-white/15">
+                <ActionLink href={secondaryAction.href} variant="outline" className="border-current/30 bg-white/10 text-current hover:border-current/50 hover:bg-white/15">
                   {secondaryAction.label}
                 </ActionLink>
               ) : null}

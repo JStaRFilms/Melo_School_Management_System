@@ -1,3 +1,4 @@
+import { BankAccountSelection } from "../BankAccountSelection";
 import { Users } from "lucide-react";
 import React, { useMemo } from "react";
 import { BankAccountSelection } from "../BankAccountSelection";
@@ -49,6 +50,7 @@ export function BulkApplicationForm({
           <p className="text-xs text-slate-500 font-medium">Generate term invoices for every student in a class.</p>
         </div>
 
+        <BankAccountSelection value={draft.bankAccountId ?? ""} onChange={bankAccountId => onChange({ ...draft, bankAccountId })} />
         <div className="space-y-3.5">
           <BankAccountSelection
             value={draft.bankAccountId ?? ""}

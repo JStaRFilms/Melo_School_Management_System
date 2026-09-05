@@ -7,6 +7,7 @@ import {
   Plus
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useDepartureGuard, useDirtyForm } from "@school/shared/drafts";
 import type { ScreenProps } from "../types";
 import {
   createBundleDraft,
@@ -32,6 +33,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   onSaveBundle,
   renderAssignmentPanel,
 }: ScreenProps) {
+  const { requestDeparture } = useDepartureGuard();
   const [tab, setTab] = useState<"bundles" | "scales">("bundles");
   const [selectedScaleId, setSelectedScaleId] = useState<string | "new" | null>(null);
   const [selectedBundleId, setSelectedBundleId] = useState<string | "new" | null>(null);
@@ -126,7 +128,8 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     }
   }, [bundleDraft.sourceUpdatedAt, bundleDirty, bundles, selectedBundleId]);
 
-  const handleSelectBundle = useCallback((value: string | "new") => {
+  const handleSelectBundle = useCallback(async (value: string | "new") => {
+    if (!await requestDeparture({ kind: "close" })) return;
     setSelectedBundleId(value);
     if (value === "new") {
       const empty = createEmptyBundleDraft();
@@ -135,9 +138,10 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       setBundleDirty(false);
       loadedBundleIdRef.current = "new";
     }
-  }, []);
+  }, [requestDeparture]);
 
-  const handleSelectScale = useCallback((value: string | "new") => {
+  const handleSelectScale = useCallback(async (value: string | "new") => {
+    if (!await requestDeparture({ kind: "close" })) return;
     setSelectedScaleId(value);
     if (value === "new") {
       const empty = createEmptyScaleDraft();
@@ -146,7 +150,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
       setScaleDirty(false);
       loadedScaleIdRef.current = "new";
     }
-  }, []);
+  }, [requestDeparture]);
 
   const handleBundleChange = useCallback(
     (nextDraft: typeof bundleDraft | ((prev: typeof bundleDraft) => typeof bundleDraft)) => {
@@ -169,19 +173,6 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     },
     []
   );
-
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!scaleDirty && !bundleDirty) {
-        return;
-      }
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [bundleDirty, scaleDirty]);
 
   const handleSaveScale = useCallback(async () => {
     const issue = validateScaleDraft(scaleDraft);
@@ -228,6 +219,9 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     setBundleDraft(nextDraft);
     setBundleDirty(false);
   }, [bundles, selectedBundleId]);
+
+  useDirtyForm({ name: "Report scale (unpublished edits)", isDirty: scaleDirty, discard: handleDiscardScale });
+  useDirtyForm({ name: "Report bundle (unpublished edits)", isDirty: bundleDirty, discard: handleDiscardBundle });
 
   const handleSaveScaleAndNext = useCallback(async () => {
     if (scaleDirty) {

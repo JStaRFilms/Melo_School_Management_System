@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDirtyForm } from "@school/shared/drafts";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import {
@@ -38,6 +39,23 @@ export function SessionCreationModal({
   const [activateSession, setActivateSession] = useState(true);
   const [autoGenerateTerms, setAutoGenerateTerms] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [initial] = useState({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
+  const requestDeparture = useDirtyForm({
+    name: "Session setup (not saved as a draft)",
+    isDirty: isOpen && (isSaving || JSON.stringify({ sessionName, startDate, endDate, activateSession, autoGenerateTerms }) !== JSON.stringify(initial)),
+    discard: () => {
+      if (isSaving) throw new Error("Wait for creation to finish before leaving.");
+      setSessionName(initial.sessionName);
+      setStartDate(initial.startDate);
+      setEndDate(initial.endDate);
+      setActivateSession(initial.activateSession);
+      setAutoGenerateTerms(initial.autoGenerateTerms);
+    },
+  });
+  const requestClose = useCallback(async () => {
+    if (await requestDeparture({ kind: "close" })) onClose();
+  }, [requestDeparture, onClose]);
+
 
   useEffect(() => {
     setMounted(true);
@@ -69,13 +87,13 @@ export function SessionCreationModal({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        void requestClose();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, shouldRender]);
+  }, [requestClose, shouldRender]);
 
   if (!shouldRender || !mounted) return null;
 
@@ -94,6 +112,7 @@ export function SessionCreationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     const normalizedName = humanNameFinal(sessionName);
     if (!normalizedName || !startDate || !endDate) return;
 
@@ -147,7 +166,7 @@ export function SessionCreationModal({
         className={`absolute inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-400 ease-out ${
           isAnimating ? "opacity-100" : "opacity-0"
         }`}
-        onClick={onClose}
+        onClick={() => void requestClose()}
       />
 
       {/* Sheet / Modal Container */}
@@ -181,7 +200,7 @@ export function SessionCreationModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void requestClose()}
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer shrink-0"
           >
             <X className="h-4 w-4" />
@@ -295,7 +314,7 @@ export function SessionCreationModal({
             <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void requestClose()}
                 className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer text-center"
               >
                 Cancel

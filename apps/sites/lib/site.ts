@@ -1,5 +1,6 @@
 import type { Metadata, MetadataRoute } from "next";
 import type { CSSProperties } from "react";
+import { deriveSchoolTheme } from "@school/shared/theme";
 
 export type TemplateKey =
   | "modern-campus"
@@ -97,8 +98,8 @@ export interface SchoolDomain {
 }
 
 export interface SchoolTheme {
+  /** Static published inputs. These are not synchronized from private Admin data. */
   primary: string;
-  secondary: string;
   accent: string;
   background: string;
   surface: string;
@@ -405,7 +406,6 @@ const greenfieldSchool: SchoolConfig = {
   },
   theme: {
     primary: "#1E4B7A",
-    secondary: "#0F766E",
     accent: "#C08B2E",
     background: "#F7FAFC",
     surface: "#FFFFFF",
@@ -654,7 +654,6 @@ const obhisSchool: SchoolConfig = {
   },
   theme: {
     primary: "#174E67",
-    secondary: "#7A4D0B",
     accent: "#A85E14",
     background: "#F6F4EF",
     surface: "#FFFFFF",
@@ -901,7 +900,6 @@ const asterPrimarySchool: SchoolConfig = {
   },
   theme: {
     primary: "#5C4BC5",
-    secondary: "#0F766E",
     accent: "#E9A23B",
     background: "#F9F7FF",
     surface: "#FFFFFF",
@@ -1132,7 +1130,6 @@ const legacySchool: SchoolConfig = {
   },
   theme: {
     primary: "#234B5E",
-    secondary: "#8B6C3A",
     accent: "#C38C31",
     background: "#F5F7F8",
     surface: "#FFFFFF",
@@ -1388,10 +1385,9 @@ function toAbsoluteUrl(url: string, origin: string): string {
 }
 
 export function siteThemeStyle(theme: SchoolTheme): CSSProperties {
+  const tokens = deriveSchoolTheme(theme.primary, theme.accent);
   return {
-    ["--school-primary" as never]: theme.primary,
-    ["--school-secondary" as never]: theme.secondary,
-    ["--school-accent" as never]: theme.accent,
+    ...tokens,
     ["--school-background" as never]: theme.background,
     ["--school-surface" as never]: theme.surface,
     ["--school-ink" as never]: theme.ink,
