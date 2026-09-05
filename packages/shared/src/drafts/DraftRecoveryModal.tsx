@@ -17,6 +17,7 @@ export interface DraftRecoveryModalProps {
   onPreview?: () => void;
   isDiscarding?: boolean;
   onStay?: () => void;
+  excludedFieldsNotice?: string;
 }
 
 function formatDate(dateOrTimestamp: number | Date): string {
@@ -54,6 +55,7 @@ export function DraftRecoveryModal({
   onPreview,
   isDiscarding = false,
   onStay,
+  excludedFieldsNotice,
 }: DraftRecoveryModalProps) {
   const titleId = useId(); const descriptionId = useId();
   const [showInternalPreview, setShowInternalPreview] = useState(false);
@@ -112,6 +114,12 @@ export function DraftRecoveryModal({
         >
           We found an unfinished draft. Resume replaces the current form only when you choose it; stay here to keep current edits.
         </p>
+
+        {excludedFieldsNotice && (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+            {excludedFieldsNotice}
+          </p>
+        )}
 
         {/* Metadata Card */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2.5 text-xs text-slate-700 mb-5">

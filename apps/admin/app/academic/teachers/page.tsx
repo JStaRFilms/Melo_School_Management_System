@@ -14,11 +14,19 @@ import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { TeacherRecord } from "@/types";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { useDraftConnection } from "@/useDraftConnection";
 
 type ProvisionResult = {
   teacherId: string;
   email: string;
   temporaryPassword: string;
+};
+type DraftClosure = {
+  schoolId: Id<"schools">;
+  draftId: Id<"formDrafts">;
+  expectedRevision: number;
 };
 
 function normalizeArchiveBlockers(blockers: string[] | undefined) {
@@ -44,6 +52,14 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 }
 
 export default function TeachersPage() {
+  const { workspaceAccess, session } = useAuth();
+  const draftConnection = useDraftConnection();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? (workspaceAccess.branch.schoolId as Id<"schools">)
+    : undefined;
+  const draftContext = schoolId && session?.user.id
+    ? { schoolId, accountId: session.user.id, connection: draftConnection }
+    : undefined;
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
@@ -121,7 +137,7 @@ export default function TeachersPage() {
     );
   }, [deferredSearch, teachers]);
 
-  const handleProvision = async (name: string, email: string, password: string): Promise<ProvisionResult> => {
+  const handleProvision = async (name: string, email: string, password: string, draft?: DraftClosure): Promise<ProvisionResult> => {
     setIsSubmitting(true);
     try {
       const response = await createTeacher({
@@ -129,6 +145,8 @@ export default function TeachersPage() {
         email: email.trim().toLowerCase(),
         temporaryPassword: password.trim(),
         origin: window.location.origin,
+        draftId: draft?.draftId,
+        expectedDraftRevision: draft?.expectedRevision,
       } as never) as ProvisionResult;
       
       showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
@@ -282,8 +300,8 @@ export default function TeachersPage() {
         {/* Sidebar Bucket - Locked & Pinned */}
         <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
           <div id="teacher-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
-            <div className="hidden lg:block">
-              {selectedTeacherWithArchiveState ? (
+            {selectedTeacherWithArchiveState ? (
+              <div className="hidden lg:block">
                 <TeacherEditForm
                   teacher={selectedTeacherWithArchiveState}
                   onUpdate={handleUpdate}
@@ -294,22 +312,14 @@ export default function TeachersPage() {
                   isResetting={isResetting}
                   isArchiveStatusLoading={isArchiveStatusLoading}
                 />
-              ) : (
-                <TeacherCreationForm
-                  onProvision={handleProvision}
-                  isSubmitting={isSubmitting}
-                />
-              )}
-            </div>
-
-            <div className="lg:hidden">
-              {!selectedTeacher && (
-                 <TeacherCreationForm
-                   onProvision={handleProvision}
-                   isSubmitting={isSubmitting}
-                 />
-              )}
-            </div>
+              </div>
+            ) : (
+              <TeacherCreationForm
+                onProvision={handleProvision}
+                isSubmitting={isSubmitting}
+                draftContext={draftContext}
+              />
+            )}
           </div>
 
           <div className="pt-3 border-t border-slate-200/60 shrink-0">

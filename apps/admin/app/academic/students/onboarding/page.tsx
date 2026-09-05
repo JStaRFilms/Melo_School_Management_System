@@ -8,9 +8,12 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
 
 import { humanNameFinalStrict } from "@/human-name";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
 import { uploadStudentPhoto } from "../components/studentPhotoUpload";
 import type { ClassSummary } from "../components/types";
@@ -27,6 +30,10 @@ type FamilyLinkResult = {
   parentUserId: string;
   familyMemberId: string;
 };
+
+function newEnrollmentRequestKey() {
+  return globalThis.crypto.randomUUID();
+}
 
 export default function StudentOnboardingPage() {
   const classes = useQuery(
@@ -61,7 +68,8 @@ export default function StudentOnboardingPage() {
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
-  const { workspaceAccess } = useAuth();
+  const { workspaceAccess, session } = useAuth();
+  const draftConnection = useDraftConnection();
   const schoolId =
     workspaceAccess?.state === "ready"
       ? (workspaceAccess.branch.schoolId as Id<"schools">)
@@ -91,6 +99,14 @@ export default function StudentOnboardingPage() {
     counterKey: string;
     counterVersion: number;
   } | null>(null);
+  const numberingReviewIsCurrent = Boolean(numbering?.formatVersion && numbering.counter &&
+    reviewedNumbering?.policyVersion === numbering.version &&
+    reviewedNumbering.formatVersion === numbering.formatVersion &&
+    reviewedNumbering.counterKey === numbering.counter.key &&
+    reviewedNumbering.counterVersion === numbering.counter.configVersion);
+  const numberingReady = admissionNumber.trim()
+    ? canOverride === true && overrideConfirmed && overrideReason.trim().length >= 8 && overrideReason.trim().length <= 240 && (!advanceCounterTo || numberingReviewIsCurrent)
+    : Boolean(numbering?.preview && numberingReviewIsCurrent);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [parentFirstName, setParentFirstName] = useState("");
@@ -114,48 +130,88 @@ export default function StudentOnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const firstNameInputRef = useRef<HTMLInputElement>(null);
-  const requestKey = useRef<string | null>(null);
+  const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
   const createdStudent = useRef<string | null>(null);
   const [followUpPending, setFollowUpPending] = useState(false);
+  const [draftInstanceKey, setDraftInstanceKey] = useState(0);
+  const draftData = useMemo<DraftPayload<"student_onboarding">>(() => ({
+    firstName,
+    lastName,
+    admissionNumber,
+    overrideReason,
+    overrideConfirmed,
+    advanceCounterTo,
+    reviewedNumbering,
+    gender,
+    houseName,
+    dateOfBirth,
+    guardianName,
+    guardianPhone,
+    address,
+    classId: selectedClassId,
+    parentFirstName,
+    parentLastName,
+    parentEmail,
+    parentPhone,
+    parentRelationship,
+    isParentPrimaryContact,
+    provisionStudentPortalAccess,
+    provisionParentPortalAccess,
+    enrollmentRequestKey,
+  }), [address, admissionNumber, advanceCounterTo, dateOfBirth, enrollmentRequestKey, firstName, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, lastName, overrideConfirmed, overrideReason, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, provisionParentPortalAccess, provisionStudentPortalAccess, reviewedNumbering, selectedClassId]);
+  const draftIsDirty = isSubmitting || followUpPending || Boolean(
+    firstName || lastName || admissionNumber || overrideReason || overrideConfirmed || advanceCounterTo ||
+    gender || houseName || dateOfBirth || guardianName || guardianPhone || address || selectedClassId ||
+    studentPhotoFile || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship ||
+    !isParentPrimaryContact || provisionStudentPortalAccess || provisionParentPortalAccess ||
+    studentTemporaryPassword !== "Student123!Pass" || parentTemporaryPassword !== "Parent123!Pass"
+  );
+  const draft = usePersistentFormDraft({
+    formKey: "student_onboarding",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: draftData,
+    isDirty: draftIsDirty,
+    instanceKey: draftInstanceKey,
+    onRestore: (payload) => {
+      setFirstName(payload.firstName);
+      setLastName(payload.lastName);
+      setAdmissionNumber(payload.admissionNumber);
+      setOverrideReason(payload.overrideReason);
+      setOverrideConfirmed(payload.overrideConfirmed);
+      setAdvanceCounterTo(payload.advanceCounterTo);
+      setReviewedNumbering(payload.reviewedNumbering);
+      setGender(payload.gender);
+      setHouseName(payload.houseName);
+      setDateOfBirth(payload.dateOfBirth);
+      setGuardianName(payload.guardianName);
+      setGuardianPhone(payload.guardianPhone);
+      setAddress(payload.address);
+      setSelectedClassId(payload.classId);
+      setParentFirstName(payload.parentFirstName);
+      setParentLastName(payload.parentLastName);
+      setParentEmail(payload.parentEmail);
+      setParentPhone(payload.parentPhone);
+      setParentRelationship(payload.parentRelationship);
+      setIsParentPrimaryContact(payload.isParentPrimaryContact);
+      setProvisionStudentPortalAccess(payload.provisionStudentPortalAccess);
+      setProvisionParentPortalAccess(payload.provisionParentPortalAccess);
+      setEnrollmentRequestKey(payload.enrollmentRequestKey ?? newEnrollmentRequestKey());
+      setStudentPhotoFile(null);
+      setStudentTemporaryPassword("");
+      setParentTemporaryPassword("");
+      setCredentialSummary(null);
+    },
+  });
 
   const requestDeparture = useDirtyForm({
-    name: "Student enrollment (not saved as a draft)",
-    isDirty:
-      isSubmitting ||
-      followUpPending ||
-      Boolean(
-        firstName ||
-        lastName ||
-        admissionNumber ||
-        overrideReason ||
-        overrideConfirmed ||
-        advanceCounterTo ||
-        gender ||
-        houseName ||
-        dateOfBirth ||
-        guardianName ||
-        guardianPhone ||
-        address ||
-        selectedClassId ||
-        studentPhotoFile ||
-        parentFirstName ||
-        parentLastName ||
-        parentEmail ||
-        parentPhone ||
-        parentRelationship ||
-        !isParentPrimaryContact ||
-        provisionStudentPortalAccess ||
-        provisionParentPortalAccess ||
-        studentTemporaryPassword !== "Student123!Pass" ||
-        parentTemporaryPassword !== "Parent123!Pass",
-      ),
-    discard: () => {
-      if (isSubmitting)
-        throw new Error(
-          "Wait for the enrollment request to finish before leaving.",
-        );
-      resetForm();
-      setCredentialSummary(null);
+    name: "Student enrollment",
+    isDirty: draftIsDirty,
+    save: draft.retrySave,
+    discard: async () => {
+      if (isSubmitting) throw new Error("Wait for the enrollment request to finish before leaving.");
+      await draft.handleDiscardDraft();
     },
   });
 
@@ -228,7 +284,7 @@ export default function StudentOnboardingPage() {
     setOverrideConfirmed(false);
     setAdvanceCounterTo("");
     setReviewedNumbering(null);
-    requestKey.current = null;
+    setEnrollmentRequestKey(newEnrollmentRequestKey());
     setGender("");
     setHouseName("");
     setDateOfBirth("");
@@ -340,8 +396,17 @@ export default function StudentOnboardingPage() {
       return;
     }
 
-    setIsSubmitting(true);
+    try {
+      await draft.prepareSubmission();
+    } catch {
+      showNotice({
+        tone: "error",
+        message: "Save the recoverable draft before submitting. Your current edits are still here.",
+      });
+      return;
+    }
 
+    setIsSubmitting(true);
     setCredentialSummary(null);
 
     let uploadedPhoto = false;
@@ -356,11 +421,10 @@ export default function StudentOnboardingPage() {
           : null;
       uploadedPhoto = Boolean(uploadedPhotoMetadata);
 
-      requestKey.current ??= crypto.randomUUID();
       const createdStudentId =
         createdStudent.current ??
         ((await createStudent({
-          requestKey: requestKey.current,
+          requestKey: enrollmentRequestKey,
           firstName: normalizedFirstName,
           lastName: normalizedLastName,
           admissionNumber: admissionNumber.trim(),
@@ -440,13 +504,16 @@ export default function StudentOnboardingPage() {
           : null,
       });
 
+      await draft.handleCommitDraft();
       resetForm();
+      setDraftInstanceKey((key) => key + 1);
       showNotice({
         tone: "success",
         message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
       });
       firstNameInputRef.current?.focus();
     } catch (error) {
+      draft.submissionFailed();
       showNotice({
         tone: "error",
         message: createdStudent.current
@@ -466,10 +533,17 @@ export default function StudentOnboardingPage() {
   return (
     <>
       <section className="space-y-2 p-4">
-        <p role="status">
-          Edits are held only in this page, not saved as a draft. Photos and
-          credentials are not recoverable after leaving.
-        </p>
+        <PersistentFormDraftControls
+          draft={draft}
+          formTitle="student enrollment"
+          isDirty={draftIsDirty}
+          excludedFieldsNotice="Drafts include approved enrollment and contact fields only. Photos are not saved; reselect the photo after recovery. Temporary passwords and credential results are never saved; re-enter them after resuming."
+          onDiscard={async () => {
+            await draft.handleDiscardDraft();
+            resetForm();
+            setDraftInstanceKey((key) => key + 1);
+          }}
+        />
         {followUpPending && (
           <p role="alert">
             Student created; follow-up setup is pending. Retry uses the same
@@ -624,6 +698,7 @@ export default function StudentOnboardingPage() {
         photoPreviewUrl={photoPreviewUrl}
         photoResetKey={studentPhotoResetKey}
         isSubmitting={isSubmitting}
+        numberingReady={numberingReady}
         firstNameInputRef={firstNameInputRef}
         onFirstNameChange={(value) => setFirstName(value)}
         onFirstNameBlur={(value) => setFirstName(humanNameFinalStrict(value))}
@@ -655,9 +730,14 @@ export default function StudentOnboardingPage() {
             message,
           })
         }
+        draftStatus={draft.status}
+        draftLastSavedAt={draft.lastSavedAt}
         onReset={() => {
           void requestDeparture({ kind: "close" }).then((approved) => {
-            if (approved) resetForm();
+            if (!approved) return;
+            resetForm();
+            setCredentialSummary(null);
+            setDraftInstanceKey((key) => key + 1);
           });
         }}
         onSubmit={handleSubmit}

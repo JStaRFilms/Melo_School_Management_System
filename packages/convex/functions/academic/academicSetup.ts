@@ -26,6 +26,7 @@ import {
   getTeacherArchiveBlockers as readTeacherArchiveBlockers,
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
+import { finishFormDraft } from "./drafts";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -144,9 +145,14 @@ export const createTeacherRecordInternal = internalMutation({
     name: v.string(),
     email: v.string(),
     authId: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("users"),
   handler: async (ctx, args) => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    }
     const normalizedEmail = normalizeTeacherEmail(args.email);
     const teacherName = resolveStoredUserNameFields({
       name: args.name,
@@ -185,6 +191,14 @@ export const createTeacherRecordInternal = internalMutation({
       updatedAt: now,
     });
 
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId: args.schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+      }, "committed");
+    }
+
     return teacherId;
   },
 });
@@ -195,6 +209,8 @@ export const createTeacher = action({
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.object({
     teacherId: v.id("users"),
@@ -209,6 +225,9 @@ export const createTeacher = action({
       email: string;
       temporaryPassword: string;
   }> => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    }
     const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.onboard" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
@@ -270,6 +289,8 @@ export const createTeacher = action({
         name: normalizeHumanName(args.name),
         email: normalizedEmail,
         authId: signUpPayload.user.id,
+        draftId: args.draftId,
+        expectedDraftRevision: args.expectedDraftRevision,
       }
     );
 

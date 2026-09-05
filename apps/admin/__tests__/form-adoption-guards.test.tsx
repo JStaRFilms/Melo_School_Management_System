@@ -7,7 +7,7 @@ import { feePlanValidation } from "../app/billing/fee-plan-validation";
 import { initialFeePlanDraft } from "../app/billing/utils";
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
-vi.mock("convex/react", () => ({ useMutation: () => mocks.mutate }));
+vi.mock("convex/react", () => ({ useQuery: () => undefined, useMutation: () => mocks.mutate }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function Leave({ onLeave }: { onLeave: () => void }) {

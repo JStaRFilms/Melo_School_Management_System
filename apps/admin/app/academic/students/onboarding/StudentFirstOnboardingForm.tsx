@@ -17,13 +17,13 @@ import {
   Users,
   AlertCircle,
   RotateCcw,
-  Sparkles,
   Check,
 } from "lucide-react";
 import Link from "next/link";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
+import { cleanEmailInput, cleanPhoneInput, MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
@@ -65,6 +65,9 @@ type StudentFirstOnboardingFormProps = {
   photoPreviewUrl: string | null;
   photoResetKey: number;
   isSubmitting: boolean;
+  numberingReady: boolean;
+  draftStatus: DraftStatus;
+  draftLastSavedAt: number | null;
   firstNameInputRef: RefObject<HTMLInputElement>;
   onFirstNameChange: (value: string) => void;
   onFirstNameBlur: (value: string) => void;
@@ -123,6 +126,9 @@ export function StudentFirstOnboardingForm({
   photoPreviewUrl,
   photoResetKey,
   isSubmitting,
+  numberingReady,
+  draftStatus,
+  draftLastSavedAt,
   firstNameInputRef,
   onFirstNameChange,
   onFirstNameBlur,
@@ -193,7 +199,7 @@ export function StudentFirstOnboardingForm({
   const hasCoreIdentity = Boolean(
     firstName.trim() && lastName.trim() && gender.trim()
   );
-  const hasClassPlacement = Boolean(selectedClassId);
+  const hasClassPlacement = Boolean(selectedClassId && numberingReady);
   const hasParentOrGuardian = Boolean(
     guardianName.trim() || parentFirstName.trim() || parentEmail.trim()
   );
@@ -202,20 +208,33 @@ export function StudentFirstOnboardingForm({
   );
 
   const canSubmit = hasClassPlacement && hasCoreIdentity && !isPhotoProcessing;
-
-  const completedStepsCount = [
-    hasClassPlacement,
-    hasCoreIdentity,
-    hasParentOrGuardian,
-    hasPortalAccess,
-  ].filter(Boolean).length;
-  const progressPercent = Math.round((completedStepsCount / 4) * 100);
+  const hasAnyParentField = Boolean(parentFirstName.trim() || parentLastName.trim() || parentEmail.trim() || parentPhone.trim() || parentRelationship.trim());
+  const parentDetailsValid = !hasAnyParentField || Boolean(parentFirstName.trim() && parentLastName.trim() && isParentEmailValid);
+  const portalDetailsValid =
+    (!provisionStudentPortalAccess || Boolean(studentTemporaryPassword.trim())) &&
+    (!provisionParentPortalAccess || Boolean(parentTemporaryPassword.trim()) && parentDetailsValid);
+  const dateIsValid = !dateOfBirth || dateOfBirth <= todayDateString;
+  const progressSections = [
+    { id: "placement", title: "Class placement", isValid: hasClassPlacement, hasError: false },
+    { id: "identity", title: "Student identity", isValid: hasCoreIdentity && dateIsValid, hasError: Boolean(dateOfBirth && !dateIsValid) },
+    { id: "household", title: "Household contact", isValid: parentDetailsValid, hasError: hasAnyParentField && !parentDetailsValid, optional: true },
+    { id: "portal", title: "Portal access", isValid: portalDetailsValid, hasError: hasPortalAccess && !portalDetailsValid, optional: true },
+  ];
+  const firstInvalidSection = progressSections.findIndex((section) => !section.isValid);
+  const currentProgressIndex = firstInvalidSection >= 0 ? firstInvalidSection : progressSections.length - 1;
 
   const fullNameDisplay = [firstName, lastName].filter(Boolean).join(" ") || "New Student";
 
   return (
     <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+      <MobileProgressIndicator
+        mode="sections"
+        sections={progressSections}
+        currentStepIndex={currentProgressIndex}
+        draftStatus={draftStatus}
+        lastSavedAt={draftLastSavedAt}
+      />
 
       {/* Split Workbench View */}
       <form
@@ -298,8 +317,8 @@ export function StudentFirstOnboardingForm({
               <div className="space-y-2">
                 <ChecklistItem
                   isDone={hasClassPlacement}
-                  label="Academic Class Selected"
-                  detail={selectedClassName ?? "Required for roster assignment"}
+                  label="Class and numbering reviewed"
+                  detail={selectedClassName ? `${selectedClassName} · ${numberingReady ? "numbering reviewed" : "numbering review required"}` : "Required for roster assignment"}
                 />
                 <ChecklistItem
                   isDone={hasCoreIdentity}
@@ -924,19 +943,10 @@ export function StudentFirstOnboardingForm({
 
         {/* ── MOBILE STICKY ACTION BAR (< lg) ── */}
         <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur-xl lg:hidden">
-          {/* Subtle Dynamic Progress Line */}
-          <div className="h-1 w-full bg-slate-100 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 ease-out"
-              style={{ width: `${Math.max(10, progressPercent)}%` }}
-            />
-          </div>
-
           <div className="flex items-center gap-4 p-3.5">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 font-display">Target Class</p>
-                <span className="text-[9px] font-bold text-emerald-600 font-mono">• {completedStepsCount}/4 Done</span>
               </div>
               <p className="text-xs font-bold text-slate-950 truncate">
                 {selectedClassName || "Unselected"}

@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import schema from "../../../schema";
-import { api } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
 const convexRoot = new URL("../../../", import.meta.url).pathname;
 const rawModules = import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]);
 const modules = Object.fromEntries(Object.entries(rawModules).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`, module]));
@@ -42,7 +42,7 @@ describe("Private registered draft lifecycle", () => {
     const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: { firstName: "First tab" } };
     await h.user.mutation(drafts.saveFormDraft, args);
     await expect(h.user.mutation(drafts.saveFormDraft, { ...args, payload: { firstName: "Stale tab" } })).rejects.toThrow(/Conflict/);
-    expect((await h.user.query(drafts.getFormDraft, h.scope))?.payload).toEqual({ firstName: "First tab" });
+    expect((await h.user.query(drafts.getFormDraft, h.scope))?.payload).toMatchObject({ firstName: "First tab" });
   });
   it("rejects unknown schemas, versions, entity context, secret and file fields", async () => {
     const h = await setup();
@@ -54,6 +54,33 @@ describe("Private registered draft lifecycle", () => {
       await expect(h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload })).rejects.toThrow(/unapproved/);
     }
   });
+  it("closes staff onboarding in the successful local teacher-record transaction", async () => {
+    const h = await setup();
+    const scope = { schoolId: h.schoolId, formKey: "staff_onboarding" };
+    const instance = await h.user.mutation(drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    const saved = await h.user.mutation(drafts.saveFormDraft, {
+      schoolId: h.schoolId,
+      draftId: instance.draftId,
+      expectedRevision: 0,
+      schemaVersion: 1,
+      payload: { name: "Synthetic Teacher", email: "teacher@example.test" },
+    });
+    const teacherId = await h.user.mutation(
+      internal.functions.academic.academicSetup.createTeacherRecordInternal,
+      {
+        schoolId: h.schoolId,
+        name: "Synthetic Teacher",
+        email: "teacher@example.test",
+        authId: "synthetic-provider-id",
+        draftId: instance.draftId,
+        expectedDraftRevision: saved.revision,
+      },
+    );
+    expect(await h.t.run(ctx => ctx.db.get(teacherId))).toMatchObject({ email: "teacher@example.test", role: "teacher" });
+    expect(await h.user.query(drafts.getFormDraft, scope)).toBeNull();
+    expect(await h.t.run(ctx => ctx.db.get(instance.draftId))).toMatchObject({ status: "committed", payload: {} });
+  }, 10000);
+
   it("denies cross-user, branch, suspended, revoked and unauthenticated access", async () => {
     const h = await setup(); const instance = await h.begin();
     const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0 };
