@@ -16,7 +16,7 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 
 | Boundary | Commit | Branch | Notes |
 |---|---|---|---|
-| Independent ancestor | `44086fa005db6adaf161ef2ddb070bc8a8a14d6c` | inherited by stack | Existing architecture documentation; not part of this program's authored commits. |
+| Independent ancestor | `44086fa005db6adaf161ef2ddb070bc8a8a14d6c` | `docs/module-entitlements-checkpoint`; inherited by stack | Existing architecture documentation; not part of this program's authored commits. |
 | Shared prerequisite | `61cdbc79a036bd2ed51a050b47631ca2d6317aeb` | included in U1 | Serialized shared contracts and additive schema required by the domain slices. |
 | U1 | `53d44175427f7deb438fd7eead4a4df1efa84b8d` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. Partial/E0. |
 | U2 | `9e0d55ab93753515bc8d0ec978de542745e55197` | `feat/melo-productization-u2` | Grading, report consumers, numbering, banks. Partial/E0. |
@@ -35,7 +35,8 @@ Ancestry verification passed for `44086fa -> U1 -> U2 -> U3 -> U4 -> U5 -> U6`.
 
 | Boundary | Base | Draft PR |
 |---|---|---|
-| U1 | `master` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/23 |
+| Independent architecture docs | `master` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/30 |
+| U1 | `docs/module-entitlements-checkpoint` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/23 |
 | U2 | `feat/melo-productization-u1` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/24 |
 | U3 | `feat/melo-productization-u2` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/25 |
 | U4 | `feat/melo-productization-u3` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/26 |
@@ -43,7 +44,7 @@ Ancestry verification passed for `44086fa -> U1 -> U2 -> U3 -> U4 -> U5 -> U6`.
 | U6 | `feat/melo-productization-u5` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/28 |
 | S0 records | `feat/melo-productization-u6` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/29 |
 
-All six product branches and the documentation branch were pushed. Every PR is draft, states its direct/transitive dependency and E0/partial limitations, and says not to merge. No PR was merged.
+All six product branches, the independent architecture branch, and the stabilization documentation branch were pushed. Every PR is draft, states its direct/transitive dependency and E0/partial limitations, and says not to merge. No PR was merged.
 
 ## No-live verification
 
