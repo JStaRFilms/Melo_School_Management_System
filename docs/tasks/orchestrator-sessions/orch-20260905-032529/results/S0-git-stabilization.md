@@ -25,6 +25,7 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 | U5 | `aa46e20729a69ccf3e9c6831ae8f2f78d44cf011` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle. Partial/E0; upload remains fail-closed. |
 | U6 | `f814be9d1cf3313470b9830c9c801ff86d797ca2` | `feat/melo-productization-u6` | Within-group transfers. Locally implemented/E0. |
 | Cross-stack test correction | `2463b62c12ffbb93142892340908792bd3674674` | `feat/melo-productization-u6` | Aligns the group-default test with the final terminal Platform capability denial. |
+| S0 records | `3ec1fee12acfdf9b361cbfbc1c22236a0ef1d222` | `docs/melo-productization-stabilization` | Documentation-only packet, review, and stabilization evidence. |
 
 Known multi-slice files were serialized to their dependency owner rather than repeatedly restaged. `packages/shared/src/index.ts` was manually hunk-split so U1 received workspace/audit exports and U2 received the invoice export. Product code was committed from explicit reviewed path lists; the remaining session records are isolated in this final documentation commit.
 
@@ -40,8 +41,9 @@ Ancestry verification passed for `44086fa -> U1 -> U2 -> U3 -> U4 -> U5 -> U6`.
 | U4 | `feat/melo-productization-u3` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/26 |
 | U5 | `feat/melo-productization-u4` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/27 |
 | U6 | `feat/melo-productization-u5` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/28 |
+| S0 records | `feat/melo-productization-u6` | https://github.com/JStaRFilms/Melo_School_Management_System/pull/29 |
 
-All six branches were pushed. Every PR is draft, states its direct/transitive dependency and E0/partial limitations, and says not to merge. No PR was merged.
+All six product branches and the documentation branch were pushed. Every PR is draft, states its direct/transitive dependency and E0/partial limitations, and says not to merge. No PR was merged.
 
 ## No-live verification
 
