@@ -1,46 +1,12 @@
-"use client";
-
-import React, { Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { DataMigrationWorkbench, MeloLoader } from "@school/shared";
-import { Id } from "@school/convex/_generated/dataModel";
-
-function PlatformMigrationContent() {
-  const params = useParams();
-  const router = useRouter();
-  const rawId = (params?.schoolId || params?.id) as string;
-
-  if (!rawId) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <MeloLoader message="Locating school..." />
-      </div>
-    );
-  }
-
-  const schoolId = rawId as Id<"schools">;
-
-  return (
-    <DataMigrationWorkbench
-      schoolId={schoolId}
-      mode="super_admin"
-      onSuccess={() => {
-        router.push("/schools");
-      }}
-    />
-  );
-}
+import Link from "next/link";
 
 export default function PlatformSchoolMigrationPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <MeloLoader message="Preparing platform migration workbench..." />
-        </div>
-      }
-    >
-      <PlatformMigrationContent />
-    </Suspense>
+    <section role="alert">
+      <h1>Tenant migration access unavailable</h1>
+      <p>Platform governance does not authorize access to private school import workspaces. A reviewed school operator must use the Admin workspace.</p>
+      <p>Platform support and proprietor recovery are not enabled through this route.</p>
+      <Link href="/schools">Return to schools</Link>
+    </section>
   );
 }

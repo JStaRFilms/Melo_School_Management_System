@@ -2,11 +2,12 @@ import { convexTest } from "convex-test";
 import type { FunctionReference } from "convex/server";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
-import * as migrationWorkspace from "../migrationWorkspace";
-import * as migrationIngest from "../migrationIngest";
-import * as migrationAutosave from "../migrationAutosave";
-import * as migrationMerge from "../migrationMerge";
-import * as branchSplitV2Action from "../branchSplitV2Action";
+import { api, internal } from "../../../_generated/api";
+const migrationWorkspace = api.functions.academic.migrationWorkspace;
+const migrationIngest = api.functions.academic.migrationIngest;
+const migrationAutosave = api.functions.academic.migrationAutosave;
+const migrationMerge = api.functions.academic.migrationMerge;
+import { restoreSuperAdminAction } from "../branchSplitV2Action";
 
 declare global {
   interface ImportMeta {
@@ -14,7 +15,11 @@ declare global {
   }
 }
 
-const modules = import.meta.glob("../../../**/*.ts");
+const convexRoot = new URL("../../../", import.meta.url).pathname;
+const rawModules = import.meta.glob("../../../**/*.ts");
+const modules = Object.fromEntries(Object.entries(rawModules).map(([path, module]) => [
+  `./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`, module,
+]));
 
 type MutationRef = FunctionReference<"mutation", "public", any, any>;
 type QueryRef = FunctionReference<"query", "public", any, any>;
@@ -88,7 +93,49 @@ async function setupTestFixture() {
 }
 
 describe("Migration Lifecycle Engine", () => {
-  it("Authentication Guard: rejects non-admins and allows schoolAdmin & platformSuperAdmin", async () => {
+  it("keeps staging private from peer and platform admins and freezes committing rows", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        schoolId: schoolA, authId: "peer-admin", role: "admin", name: "Peer",
+        email: "peer@example.test", createdAt: 1, updatedAt: 1,
+      });
+    });
+    const owner = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const workspaceId = await owner.mutation(api.functions.academic.migrationWorkspace.createWorkspace, {
+      schoolId: schoolA, name: "Private", mode: "school_admin",
+    });
+    const row = {
+      rowNumber: 1, entityType: "student" as const,
+      rawPayload: { password: "must-not-persist" },
+      parsedData: { firstName: "Ada", lastName: "Example", gender: "Female", className: "JSS 1A" },
+      unrecognizedHeaders: [{ header: "Extra", sampleValue: "private-source-value", detectedType: "string" }],
+    };
+    await owner.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, {
+      schoolId: schoolA, workspaceId, records: [row],
+    });
+    const records = await t.run((ctx) => ctx.db.query("stagedImportRecords").collect());
+    expect(records[0].rawPayload).toEqual({});
+    const signals = await owner.query(api.functions.academic.migrationWorkspace.getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId });
+    expect(signals[0]).not.toHaveProperty("sampleValue");
+    for (const subject of ["peer-admin"]) {
+      const other = t.withIdentity({ subject, issuer: "https://legacy-auth.test" });
+      expect(await other.query(api.functions.academic.migrationWorkspace.listWorkspaces, { schoolId: schoolA })).toEqual([]);
+      await expect(other.query(api.functions.academic.migrationWorkspace.getWorkspaceSummary, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
+      await expect(other.mutation(api.functions.academic.migrationAutosave.patchStagedRecord, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("Workspace not found");
+      await expect(other.mutation(api.functions.academic.migrationMerge.commitImportWorkspace, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
+    }
+    const platform = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    await expect(platform.query(api.functions.academic.migrationWorkspace.listWorkspaces, { schoolId: schoolA })).rejects.toThrow();
+    await expect(platform.query(api.functions.academic.migrationWorkspace.getWorkspaceSummary, { schoolId: schoolA, workspaceId })).rejects.toThrow();
+    await expect(owner.mutation(api.functions.academic.migrationMerge.commitImportWorkspace, { schoolId: schoolA, workspaceId, batchSize: 0 })).rejects.toThrow("Batch size");
+    await t.run((ctx) => ctx.db.patch(workspaceId, { status: "committing" }));
+    await expect(owner.mutation(api.functions.academic.migrationAutosave.patchStagedRecord, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("committing");
+    await expect(owner.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] })).rejects.toThrow("committing");
+    await expect(owner.mutation(api.functions.academic.migrationAutosave.bulkResolveAdmissionNumbers, { schoolId: schoolA, workspaceId })).rejects.toThrow("committing");
+  });
+
+  it("Authentication Guard: allows only same-school legacy admins, never Platform", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
 
     // 1. Unauthenticated -> fails
@@ -128,7 +175,7 @@ describe("Migration Lifecycle Engine", () => {
         name: "Cross School Import",
         mode: "school_admin",
       })
-    ).rejects.toThrow("Cross-school access denied");
+    ).rejects.toThrow("Not authorized");
 
     // 5. School Admin on own school -> succeeds
     const workspaceId = await adminSession.mutation(createWorkspace, {
@@ -138,14 +185,13 @@ describe("Migration Lifecycle Engine", () => {
     });
     expect(workspaceId).toBeDefined();
 
-    // 6. Platform Super Admin on any school -> succeeds
+    // 6. Platform governance does not authorize private school imports.
     const superSession = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
-    const superWorkspaceId = await superSession.mutation(createWorkspace, {
+    await expect(superSession.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "Super Admin Import",
       mode: "super_admin",
-    });
-    expect(superWorkspaceId).toBeDefined();
+    })).rejects.toThrow();
   });
 
   it("Clash Detection: flags warning with >= 80% confidence for similar names in same class", async () => {
@@ -452,13 +498,14 @@ describe("Migration Lifecycle Engine", () => {
   it("Workspace Tenant Ownership: blocks reading, signaling, or cancelling another school's workspace", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
     const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    await t.run(ctx => ctx.db.insert("users", { schoolId: schoolB, authId: "admin-b", name: "Admin B", email: "b@test.invalid", role: "admin", createdAt: 1, updatedAt: 1 }));
+    const adminB = t.withIdentity({ subject: "admin-b", issuer: "https://legacy-auth.test" });
 
-    // Super admin creates workspace for School B
-    const workspaceB = await superAdmin.mutation(createWorkspace, {
+    // An actual branch operator creates the foreign private workspace.
+    const workspaceB = await adminB.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "School B Intake",
-      mode: "super_admin",
+      mode: "school_admin",
     });
 
     const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
@@ -823,55 +870,13 @@ describe("Migration Lifecycle Engine", () => {
     });
   });
 
-  it("Platform Super Admin: creates valid user actor provenance without casting platform admin IDs", async () => {
+  it("Platform cannot manufacture or impersonate a tenant migration actor", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
-
-    const workspaceId = await superAdmin.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Super Admin Provenance Intake",
-      mode: "super_admin",
-      admissionNumberPrefix: "SCH/SA/",
-      nextAdmissionSequence: 1,
-    });
-
-    await superAdmin.mutation(stageRecordsBatch, {
-      schoolId: schoolA,
-      workspaceId,
-      records: [
-        {
-          rowNumber: 1,
-          rawPayload: { Name: "Ibrahim Musa", Phone: "08012345678" },
-          parsedData: {
-            firstName: "Ibrahim",
-            lastName: "Musa",
-            className: "JSS 1A",
-            guardianName: "Musa Ibrahim",
-            guardianPhone: "08012345678",
-            gender: "Male",
-          },
-          entityType: "student",
-        },
-      ],
-    });
-
-    const mergeResult = await superAdmin.mutation(commitImportWorkspace, {
-      schoolId: schoolA,
-      workspaceId,
-    });
-    expect(mergeResult.success).toBe(true);
-
-    // Verify family createdBy is a valid Id<"users"> pointing to a user in schoolA
-    await t.run(async (ctx) => {
-      const families = await ctx.db
-        .query("families")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
-        .collect();
-      expect(families.length).toBe(1);
-      const creatorUser = await ctx.db.get(families[0].createdBy);
-      expect(creatorUser).toBeDefined();
-      expect(creatorUser?.schoolId).toBe(schoolA);
-    });
+    const platform = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    const before = await t.run(ctx => ctx.db.query("users").take(20));
+    await expect(platform.mutation(createWorkspace, { schoolId: schoolA, name: "Unauthorized", mode: "super_admin" })).rejects.toThrow();
+    expect(await t.run(ctx => ctx.db.query("users").take(20))).toEqual(before);
+    expect(await t.run(ctx => ctx.db.query("importWorkspaces").take(1))).toEqual([]);
   });
 
   it("State Transitions & Cancelled Workspaces: rejects staging, patching, resolving, and committing on cancelled workspace", async () => {
@@ -1057,8 +1062,7 @@ describe("Migration Lifecycle Engine", () => {
   });
 
   it("Super Admin Restoration: verified as internal-only action, not public API", () => {
-    expect(branchSplitV2Action.restoreSuperAdminAction).toBeDefined();
-    expect((branchSplitV2Action.restoreSuperAdminAction as any).isInternal).toBe(true);
+    expect(restoreSuperAdminAction.isInternal).toBe(true);
   });
 
   it("Branch Split Foreign Key Remapping: remaps user references in settings, grading bands, and evidence without source leakage", async () => {
@@ -1156,8 +1160,7 @@ describe("Migration Lifecycle Engine", () => {
       };
     });
 
-    const branchSplitModule = await import("../branchSplitV2");
-    const runSplitIntegrityCheck = branchSplitModule.runSplitIntegrityCheck as unknown as FunctionReference<"query", "internal", any, any>;
+    const runSplitIntegrityCheck = internal.functions.academic.branchSplitV2.runSplitIntegrityCheck;
 
     // Insert target records with target user
     await t.run(async (ctx) => {

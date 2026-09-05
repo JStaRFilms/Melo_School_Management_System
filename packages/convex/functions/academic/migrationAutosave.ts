@@ -1,3 +1,4 @@
+import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../../_generated/server";
@@ -39,12 +40,9 @@ export const patchStagedRecord = mutation({
       throw new ConvexError("Staged record not found");
     }
 
-    const workspace = await ctx.db.get(record.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, record.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged") {
+    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
       throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
     }
 
@@ -132,12 +130,9 @@ export const resolveRecordClash = mutation({
       throw new ConvexError("Staged record not found");
     }
 
-    const workspace = await ctx.db.get(record.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, record.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged") {
+    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
       throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
     }
 
@@ -203,12 +198,9 @@ export const bulkResolveAdmissionNumbers = mutation({
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged") {
+    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
       throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
     }
 
