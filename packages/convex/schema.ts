@@ -1693,7 +1693,9 @@ export default defineSchema({
     schoolLogoStorageId: v.optional(v.id("_storage")),
     studentPhotoStorageId: v.optional(v.id("_storage")),
     report: reportCardResultValidator,
-  }).index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
+  })
+    .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    .index("by_school_and_issued_at", ["schoolId", "issuedAt"]),
 
   gradingBands: defineTable({
     schoolId: v.id("schools"),
@@ -2194,7 +2196,8 @@ export default defineSchema({
     .index("by_school_and_session_term", ["schoolId", "sessionId", "termId"])
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
-    .index("by_school_and_number", ["schoolId", "invoiceNumber"]),
+    .index("by_school_and_number", ["schoolId", "invoiceNumber"])
+    .index("by_school_and_issued_at", ["schoolId", "issuedAt"]),
 
   schoolBankAccounts: defineTable({
     schoolId: v.id("schools"),
@@ -2311,6 +2314,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
+    .index("by_school_and_received_at", ["schoolId", "receivedAt"])
     .index("by_invoice", ["invoiceId"])
     .index("by_reference", ["reference"])
     .index("by_gateway_reference", ["gatewayReference"])

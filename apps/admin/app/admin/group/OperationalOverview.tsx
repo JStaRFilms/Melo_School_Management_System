@@ -5,12 +5,58 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 
+type DisplayMetric = {
+  key: string;
+  label: string;
+  unit: string;
+  value: number | null;
+  state: string;
+  reason: string;
+  basis: string;
+  details: { label: string; value: number; unit: string }[];
+};
+
+function MetricView({ metric }: { metric: DisplayMetric }) {
+  const percentage = metric.key === "attendance" || metric.key === "academics";
+  return (
+    <div className="min-w-0 rounded border border-slate-200 bg-white p-3">
+      <dt className="font-medium">
+        {metric.label}: {metric.state.replaceAll("_", " ")}
+      </dt>
+      <dd className="mt-1 space-y-1">
+        {metric.value !== null && (
+          <strong className="block text-lg">
+            {metric.value.toLocaleString()}
+            {percentage ? "%" : ""}
+            {!percentage && (
+              <span className="ml-1 text-xs font-normal">{metric.unit}</span>
+            )}
+          </strong>
+        )}
+        <p>{metric.reason}</p>
+        <p className="text-xs text-slate-600">Basis: {metric.basis}</p>
+        {metric.details.length > 0 && (
+          <ul className="text-xs text-slate-700">
+            {metric.details.map((detail) => (
+              <li key={`${detail.label}:${detail.unit}`}>
+                {detail.label}: {detail.value.toLocaleString()} {detail.unit}
+              </li>
+            ))}
+          </ul>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 export default function OperationalOverview({
   groupId,
   branches,
+  onOpenBranchAudit,
 }: {
   groupId: Id<"schoolGroups">;
   branches: { schoolId: Id<"schools">; name: string }[];
+  onOpenBranchAudit?: (schoolId: Id<"schools">) => Promise<void>;
 }) {
   const [start, setStart] = useState(() =>
     new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
@@ -23,6 +69,8 @@ export default function OperationalOverview({
     branchId: undefined as Id<"schools"> | undefined,
   }));
   const [error, setError] = useState("");
+  const [drilldownPending, setDrilldownPending] = useState<Id<"schools">>();
+  const [drilldownError, setDrilldownError] = useState("");
   const overview = useQuery(
     api.functions.academic.groups.getOperationalOverview,
     { groupId, ...period },
@@ -92,11 +140,31 @@ export default function OperationalOverview({
         <button className="rounded border px-3 py-2">Apply period</button>
       </form>
       {error && <p role="alert">{error}</p>}
+      {drilldownError && <p role="alert">{drilldownError}</p>}
       {!overview ? (
         <p role="status">Checking operational scope…</p>
       ) : (
         <>
           <p className="text-sm">{overview.note}</p>
+          <p className="text-xs text-slate-600">
+            Per request: at most {overview.limits.branchesPerAggregate}{" "}
+            branches, {overview.limits.sourceRowsPerTable.toLocaleString()} rows
+            per source table and {overview.limits.termsPerBranch} terms per
+            branch. A breached bound is unavailable, never a partial total.
+          </p>
+          <section
+            aria-labelledby="group-totals"
+            className="rounded-lg bg-slate-50 p-3"
+          >
+            <h3 id="group-totals" className="font-semibold">
+              Complete selected-group totals
+            </h3>
+            <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              {overview.totals.map((total) => (
+                <MetricView key={total.key} metric={total} />
+              ))}
+            </dl>
+          </section>
           <p className="text-sm">
             Applied period:{" "}
             {new Date(overview.period.startDate).toISOString().slice(0, 10)} –{" "}
@@ -124,21 +192,37 @@ export default function OperationalOverview({
                 ) : (
                   <dl className="grid gap-3 text-sm sm:grid-cols-2">
                     {branch.metrics.map((metric) => (
-                      <div key={metric.key}>
-                        <dt className="font-medium">
-                          {metric.label}: {metric.state.replaceAll("_", " ")}
-                        </dt>
-                        <dd>
-                          {metric.reason} Units: {metric.unit}.
-                        </dd>
-                      </div>
+                      <MetricView key={metric.key} metric={metric} />
                     ))}
                   </dl>
                 )}
-                <p className="text-sm text-slate-600">
-                  Drilldown unavailable until selected-branch routes and
-                  unsaved-change guards are approved.
-                </p>
+                {branch.drilldown && onOpenBranchAudit ? (
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-2 text-sm disabled:opacity-50"
+                    disabled={Boolean(drilldownPending)}
+                    onClick={() => {
+                      setDrilldownPending(branch.schoolId);
+                      setDrilldownError("");
+                      void onOpenBranchAudit(branch.schoolId)
+                        .catch(() =>
+                          setDrilldownError(
+                            "Could not open the selected branch. Your current workspace remains active; retry after reviewing access.",
+                          ),
+                        )
+                        .finally(() => setDrilldownPending(undefined));
+                    }}
+                  >
+                    {drilldownPending === branch.schoolId
+                      ? "Opening scoped audit…"
+                      : "Open this branch’s scoped audit"}
+                  </button>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    No authorized selected-branch drilldown is available for
+                    this row.
+                  </p>
+                )}
               </li>
             ))}
           </ul>

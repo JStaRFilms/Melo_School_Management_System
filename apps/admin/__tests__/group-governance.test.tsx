@@ -2,10 +2,24 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import GroupPage from "../app/admin/group/page";
 import GroupError from "../app/admin/group/error";
-const mocks = vi.hoisted(() => ({ directory: vi.fn(), query: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  directory: vi.fn(),
+  query: vi.fn(),
+  push: vi.fn(),
+  selectSchool: vi.fn(),
+}));
 vi.mock("convex/react", () => ({
   usePaginatedQuery: mocks.directory,
   useQuery: mocks.query,
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("@/AuthProvider", () => ({
+  useAuth: () => ({ selectSchool: mocks.selectSchool }),
+}));
+vi.mock("@school/shared/drafts", () => ({
+  useDepartureGuard: () => ({
+    requestDeparture: vi.fn().mockResolvedValue(true),
+  }),
 }));
 beforeEach(() => {
   vi.clearAllMocks();

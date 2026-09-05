@@ -155,8 +155,14 @@ it("operations shows denied vs unavailable, validates dates, and never enables a
     "Checking operational scope",
   );
   mocks.query.mockReturnValue({
-    note: "No numeric totals are available.",
+    note: "Bounded metrics.",
     period: { startDate: 0, endDate: 86400000 },
+    limits: {
+      branchesPerAggregate: 3,
+      sourceRowsPerTable: 500,
+      termsPerBranch: 100,
+    },
+    totals: [],
     branches: [
       {
         schoolId,
@@ -197,4 +203,53 @@ it("operations shows denied vs unavailable, validates dates, and never enables a
       endDate: Date.parse("2026-09-06"),
     }),
   );
+});
+
+it("renders genuine bounded values and opens only an authorized scoped audit", async () => {
+  const openAudit = vi.fn().mockResolvedValue(undefined);
+  const metric = {
+    key: "enrollment",
+    label: "Enrollment",
+    unit: "active students",
+    value: 42,
+    state: "available",
+    reason: "Current active, unique student records.",
+    basis: "Current snapshot with archived and departed records excluded.",
+    details: [{ label: "Excluded roster rows", value: 3, unit: "rows" }],
+  };
+  mocks.query.mockReturnValue({
+    note: "Bounded reviewed sources.",
+    period: { startDate: 0, endDate: 86400000 },
+    limits: {
+      branchesPerAggregate: 3,
+      sourceRowsPerTable: 500,
+      termsPerBranch: 100,
+    },
+    totals: [metric],
+    branches: [
+      {
+        schoolId,
+        name: "Headquarters",
+        status: "active",
+        access: "scoped",
+        metrics: [metric],
+        drilldown: { auditPath: "/admin/audit" },
+      },
+    ],
+  });
+  render(
+    <OperationalOverview
+      groupId={groupId}
+      branches={branches}
+      onOpenBranchAudit={openAudit}
+    />,
+  );
+  expect(screen.getAllByText("42")[0]).toBeInTheDocument();
+  expect(
+    screen.getAllByText(/Excluded roster rows: 3 rows/)[0],
+  ).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open this branch’s scoped audit" }),
+  );
+  await waitFor(() => expect(openAudit).toHaveBeenCalledWith(schoolId));
 });
