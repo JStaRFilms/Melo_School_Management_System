@@ -1,5 +1,9 @@
+import { commercialRate } from "./functions/foundation/commercialContract";
+import { bankMetadata, paymentInstructionsValidator } from "./functions/foundation/bankInstructions";
+import { reportCardResultValidator } from "./functions/foundation/reportCardContract";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { schoolThemeValidator } from "./functions/foundation/brandingContract";
 import {
   admissionsDataClassValidator,
   admissionsDecisionStateValidator,
@@ -235,12 +239,7 @@ export default defineSchema({
     logoContentType: v.optional(v.string()),
     logoUpdatedAt: v.optional(v.number()),
     motto: v.optional(v.string()),
-    theme: v.optional(
-      v.object({
-        primaryColor: v.string(),
-        accentColor: v.string(),
-      })
-    ),
+    theme: v.optional(schoolThemeValidator),
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     address: v.optional(v.string()),
@@ -256,7 +255,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_logo_storage", ["logoStorageId"]),
 
   // Shared B0 foundation. These tables are additive and intentionally contain
   // contracts/data boundaries only; B1 and B4 own their feature behaviour.
@@ -976,6 +976,10 @@ export default defineSchema({
       v.literal("archived")
     ),
     displayTitle: v.optional(v.string()),
+    // Explicit audit visibility; absence grants no module scope to delegated readers.
+    auditModules: v.optional(v.array(v.string())),
+    // Terminal RBAC cutover: deleting assignments must not restore legacy authority.
+    permissionsManagedAt: v.optional(v.number()),
     isDefaultBranch: v.boolean(),
     legacyUserId: v.optional(v.id("users")),
     joinedAt: v.number(),
@@ -993,6 +997,16 @@ export default defineSchema({
     proprietorPersonId: v.id("persons"),
     status: v.union(v.literal("active"), v.literal("archived")),
     settingsVersion: v.optional(v.number()),
+    gradingDefault: v.optional(v.object({
+      schoolId: v.id("schools"),
+      version: v.number(),
+      allowBranchOverride: v.boolean(),
+    })),
+    brandingDefault: v.optional(v.object({
+      theme: schoolThemeValidator,
+      allowBranchOverride: v.boolean(),
+      version: v.number(),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1003,6 +1017,12 @@ export default defineSchema({
     groupId: v.id("schoolGroups"),
     schoolId: v.id("schools"),
     isHeadquarters: v.boolean(),
+    gradingMode: v.optional(v.union(v.literal("inherit"), v.literal("override"))),
+    brandingOverride: v.optional(v.object({
+      mode: v.union(v.literal("inherit"), v.literal("override")),
+      theme: v.optional(schoolThemeValidator),
+      revision: v.number(),
+    })),
     linkedAt: v.number(),
   })
     .index("by_group_and_school", ["groupId", "schoolId"])
@@ -1108,6 +1128,7 @@ export default defineSchema({
   auditEvents: defineTable({
     eventId: v.string(),
     timestamp: v.number(),
+    actorPlatformAdminId: v.optional(v.id("platformAdmins")),
     actorKind: v.union(
       v.literal("user"),
       v.literal("platform_admin"),
@@ -1147,6 +1168,7 @@ export default defineSchema({
   })
     .index("by_school_and_timestamp", ["schoolId", "timestamp"])
     .index("by_group_and_timestamp", ["groupId", "timestamp"])
+    .index("by_timestamp", ["timestamp"])
     .index("by_module_and_action", ["module", "action"])
     .index("by_actor_and_timestamp", ["actorPersonId", "timestamp"]),
 
@@ -1305,11 +1327,22 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
+    .index("by_photo_storage", ["photoStorageId"])
     .index("by_school_and_user", ["schoolId", "userId"])
     .index("by_source_application", ["sourceApplicationId"]),
 
   // --- Within-Group Branch-to-Branch Student Transfers (F4 / MX-15) ---
   studentTransfers: defineTable({
+    sourceSchoolName: v.optional(v.string()),
+    destinationSchoolName: v.optional(v.string()),
+    initiationIntent: v.optional(v.string()),
+    requestKey: v.optional(v.string()),
+    proposalClassName: v.optional(v.string()),
+    proposalSessionName: v.optional(v.string()),
+    acceptanceIntent: v.optional(v.string()),
+    destinationSessionId: v.optional(v.id("academicSessions")),
+    destinationClassName: v.optional(v.string()),
+    destinationSessionName: v.optional(v.string()),
     groupId: v.id("schoolGroups"),
     sourceSchoolId: v.id("schools"),
     destinationSchoolId: v.id("schools"),
@@ -1338,7 +1371,7 @@ export default defineSchema({
         dateOfBirth: v.optional(v.string()),
         gender: v.optional(v.string()),
         academicHistorySummary: v.string(),
-        attendanceSummaryPct: v.number(),
+        attendanceSummaryPct: v.optional(v.number()),
         medicalNotes: v.optional(v.string()),
       })
     ),
@@ -1350,7 +1383,8 @@ export default defineSchema({
     .index("by_source_school", ["sourceSchoolId"])
     .index("by_destination_school", ["destinationSchoolId"])
     .index("by_student", ["studentId"])
-    .index("by_destination_student", ["destinationStudentId"]),
+    .index("by_destination_student", ["destinationStudentId"])
+    .index("by_source_request", ["sourceSchoolId", "requestKey"]),
 
   classes: defineTable({
     schoolId: v.id("schools"),
@@ -1647,6 +1681,19 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
 
+  issuedReportCards: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    issuedAt: v.number(),
+    issuedBy: v.id("users"),
+    schoolLogoStorageId: v.optional(v.id("_storage")),
+    studentPhotoStorageId: v.optional(v.id("_storage")),
+    report: reportCardResultValidator,
+  }).index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
+
   gradingBands: defineTable({
     schoolId: v.id("schools"),
     minScore: v.number(),
@@ -1664,10 +1711,18 @@ export default defineSchema({
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
-    .index("by_school_active", ["schoolId", "isActive"]),
+    .index("by_school_active", ["schoolId", "isActive"])
+    .index("by_school_version", ["schoolId", "version"]),
+
+  enrollmentRequests: defineTable({ schoolId: v.id("schools"), key: v.string(), userId: v.id("users"), studentId: v.id("students") }).index("by_school_key", ["schoolId", "key"]),
+
+  admissionNumberClaims: defineTable({ schoolId: v.id("schools"), number: v.string(), createdAt: v.number() })
+    .index("by_school_number", ["schoolId", "number"]),
 
   admissionNumberPolicies: defineTable({
     schoolId: v.id("schools"),
+    version: v.optional(v.number()),
+    resetPeriod: v.optional(v.string()),
     pattern: v.string(),
     schoolCode: v.string(),
     campusCode: v.string(),
@@ -2010,6 +2065,7 @@ export default defineSchema({
   }).index("by_school", ["schoolId"]),
   feePlans: defineTable({
     schoolId: v.id("schools"),
+    bankAccountId: v.optional(v.id("schoolBankAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
     currency: v.string(),
@@ -2130,18 +2186,7 @@ export default defineSchema({
     lastPaymentAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-    paymentInstructionsSnapshot: v.optional(
-      v.object({
-        bankAccountId: v.optional(v.id("schoolBankAccounts")),
-        bankName: v.string(),
-        accountName: v.string(),
-        accountNumber: v.string(),
-        sortCode: v.optional(v.string()),
-        currency: v.string(),
-        transferNote: v.optional(v.string()),
-        snapshottedAt: v.number(),
-      })
-    ),
+    paymentInstructionsSnapshot: v.optional(paymentInstructionsValidator),
   })
     .index("by_school", ["schoolId"])
     .index("by_school_and_class", ["schoolId", "classId"])
@@ -2152,6 +2197,7 @@ export default defineSchema({
 
   schoolBankAccounts: defineTable({
     schoolId: v.id("schools"),
+    ...bankMetadata,
     bankName: v.string(),
     accountNumber: v.string(),
     accountName: v.string(),
@@ -2444,6 +2490,7 @@ export default defineSchema({
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
+    .index("by_storage", ["storageId"])
     .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
     .index("by_school_and_owner_role", ["schoolId", "ownerRole"])
     .index("by_school_and_visibility", ["schoolId", "visibility"])
@@ -3234,6 +3281,8 @@ export default defineSchema({
     .index("by_schoolId", ["schoolId"]),
 
   formDrafts: defineTable({
+    schemaVersion: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     schoolId: v.id("schools"),
     userId: v.id("users"),
     formKey: v.string(),
@@ -3250,11 +3299,22 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user_and_form", ["userId", "formKey"])
-    .index("by_school_and_form", ["schoolId", "formKey"]),
+    .index("by_school_and_form", ["schoolId", "formKey"])
+    .index("by_expiresAt", ["expiresAt"]),
 
   // --- Institutional Email & Directory Provisioning (H5) ---
+  emailAddressPolicies: defineTable({
+    schoolId: v.id("schools"),
+    domainId: v.optional(v.id("schoolEmailDomains")),
+    staffTemplate: v.union(v.literal("firstname.lastname"), v.literal("f.lastname")),
+    studentTemplate: v.union(v.literal("firstname.lastname"), v.literal("f.lastname")),
+    version: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
   schoolEmailDomains: defineTable({
     schoolId: v.id("schools"),
+    sharedGroupId: v.optional(v.id("schoolGroups")),
     domain: v.string(),
     status: v.union(
       v.literal("pending_verification"),
@@ -3278,6 +3338,10 @@ export default defineSchema({
     .index("by_domain", ["domain"]),
 
   institutionalMailboxes: defineTable({
+    // Approved additional-address relation only, never a provider alias activation.
+    aliasOfMailboxId: v.optional(v.id("institutionalMailboxes")),
+    approvedPolicyVersion: v.optional(v.number()),
+    lastProviderOperationId: v.optional(v.string()),
     personId: v.id("persons"),
     schoolId: v.id("schools"),
     email: v.string(),
@@ -3347,6 +3411,35 @@ export default defineSchema({
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_importer", ["importer"]),
 
+  // Append-only commercial records; legacy subscription tables remain readable.
+  commercialRateVersions: defineTable({
+    code: v.string(), name: v.string(), version: v.number(),
+    effectiveFrom: v.number(), rate: commercialRate,
+    createdAt: v.number(),
+  }).index("by_code_and_version", ["code", "version"]),
+  commercialContracts: defineTable({
+    schoolId: v.id("schools"), rateVersionId: v.id("commercialRateVersions"),
+    rate: commercialRate, code: v.string(), version: v.number(),
+    effectiveFrom: v.number(), effectiveTo: v.number(),
+    overrideReason: v.optional(v.string()),
+    setupHandling: v.union(v.literal("charge_once"), v.literal("previously_paid"), v.literal("waived")),
+    setupReason: v.string(), createdAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+  subscriptionInvoices: defineTable({
+    schoolId: v.id("schools"), contractId: v.id("commercialContracts"),
+    chargeClass: v.literal("saas_subscription"), status: v.literal("issued_unpaid"),
+    periodLabel: v.string(), periodStart: v.number(), periodEnd: v.number(),
+    rate: commercialRate, studentCount: v.number(), excludedCount: v.number(),
+    snapshotPolicy: v.literal("active_unique_user_v1"),
+    prorationNumerator: v.number(), prorationDenominator: v.number(),
+    unitMinor: v.number(), subtotalMinor: v.number(), proratedMinor: v.number(),
+    discountMinor: v.number(), setupMinor: v.number(), totalMinor: v.number(),
+    createdAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+  subscriptionInvoiceStudents: defineTable({
+    invoiceId: v.id("subscriptionInvoices"), studentId: v.id("students"),
+  }).index("by_invoiceId", ["invoiceId"]),
+
   // --- Commercial Catalog & Settlement Ledgers (F7 / MX-12) ---
   subscriptionPlans: defineTable({
     code: v.string(), // e.g. "core_basic"
@@ -3385,6 +3478,11 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_school", ["schoolId"]),
 
+  settlementLegs: defineTable({
+    schoolId: v.id("schools"), settlementId: v.id("settlementLedgers"),
+    kind: v.union(v.literal("refund"), v.literal("dispute"), v.literal("adjustment")),
+    amountMinor: v.number(), evidenceReference: v.string(), createdAt: v.number(),
+  }).index("by_settlementId", ["settlementId"]),
   settlementLedgers: defineTable({
     schoolId: v.id("schools"),
     transactionRef: v.string(),
@@ -3474,6 +3572,25 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_school_and_meter", ["schoolId", "meterType"]),
 
+  // Internal provider evidence is separate from customer allowance, including failed work.
+  usageProviderCosts: defineTable({
+    schoolId: v.id("schools"),
+    operationId: v.string(),
+    evidenceId: v.string(),
+    provider: v.string(),
+    model: v.string(),
+    outcome: v.union(v.literal("succeeded"), v.literal("failed"), v.literal("unknown")),
+    currency: v.string(),
+    costMinor: v.number(),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    pages: v.optional(v.number()),
+    bytes: v.optional(v.number()),
+    measuredAt: v.number(),
+  })
+    .index("by_school_and_measuredAt", ["schoolId", "measuredAt"])
+    .index("by_provider_and_evidenceId", ["provider", "evidenceId"]),
+
   usageEvents: defineTable({
     schoolId: v.id("schools"),
     meterType: v.union(
@@ -3541,14 +3658,19 @@ export default defineSchema({
     byteSize: v.number(),
     sha256: v.string(),
     category: v.string(),
+    description: v.optional(v.string()),
+    archivedAt: v.optional(v.number()),
+    archivedByUserId: v.optional(v.id("users")),
     // Optional until the deploy-compatible asset metadata backfill initializes legacy rows.
     validationStatus: v.optional(v.union(v.literal("pending"), v.literal("valid"), v.literal("invalid"))),
     scanStatus: v.union(
       v.literal("quarantined"),
       v.literal("scanning"),
+      v.literal("failed"),
       v.literal("clean"),
       v.literal("infected")
     ),
+    scanFailureCode: v.optional(v.union(v.literal("unavailable"), v.literal("timeout"), v.literal("scanner_failed"))),
     threatName: v.optional(v.string()),
     scannedAt: v.optional(v.number()),
     isTrashed: v.boolean(),
@@ -3577,8 +3699,32 @@ export default defineSchema({
     .index("by_rollback_storage", ["rollbackStorageId"])
     .index("by_school", ["schoolId"]),
 
+  assetPurgeReceipts: defineTable({
+    schoolId: v.id("schools"),
+    assetId: v.id("schoolAssets"),
+    fileName: v.string(),
+    purgedAt: v.number(),
+  }).index("by_asset", ["assetId"]),
+
+  assetPolicies: defineTable({
+    schoolId: v.id("schools"),
+    maxFileSizeBytes: v.number(),
+    trashRetentionDays: v.number(),
+    policyReference: v.string(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
+  assetBranchShares: defineTable({
+    assetId: v.id("schoolAssets"),
+    ownerSchoolId: v.id("schools"),
+    recipientSchoolId: v.id("schools"),
+    createdAt: v.number(),
+  }).index("by_asset", ["assetId"])
+    .index("by_recipient", ["recipientSchoolId"]),
+
   assetUploadIntents: defineTable({
     schoolId: v.id("schools"),
+    requestedByTokenIdentifier: v.optional(v.string()),
     requestedByUserId: v.optional(v.id("users")),
     storageId: v.optional(v.id("_storage")),
     assetId: v.optional(v.id("schoolAssets")),
