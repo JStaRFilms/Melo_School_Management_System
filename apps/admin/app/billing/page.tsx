@@ -14,6 +14,8 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { appToast } from "@school/shared/toast";
 import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
+import { useDirtyForm } from "@school/shared/drafts";
+import { feePlanSignature, feePlanValidation } from "./fee-plan-validation";
 
 // Local Components
 import { BillingHeader } from "./components/BillingHeader";
@@ -85,6 +87,20 @@ export default function BillingPage() {
 
   // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
+  const [feePlanSubmitting, setFeePlanSubmitting] = useState(false);
+  const [emptyFeePlanSignature] = useState(() => feePlanSignature(initialFeePlanDraft()));
+  const feePlanDirty = feePlanSignature(feePlanDraft) !== emptyFeePlanSignature;
+  const requestFeeDeparture = useDirtyForm({
+    name: "Fee plan (not saved as a draft)",
+    isDirty: feePlanDirty || feePlanSubmitting,
+    discard: () => {
+      if (feePlanSubmitting) throw new Error("Wait for fee-plan creation to finish before leaving.");
+      setFeePlanDraft(initialFeePlanDraft());
+    },
+  });
+  const closeFeeSidebar = async () => {
+    if (await requestFeeDeparture({ kind: "close" })) setSidebarOpen(false);
+  };
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
@@ -234,45 +250,46 @@ export default function BillingPage() {
 
   const handleCreateFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (feePlanSubmitting) return;
     const planName = feePlanDraft.name.trim();
-    if (!planName) {
-      appToast.error("Please enter a fee plan name");
+    const issue = feePlanValidation(feePlanDraft);
+    if (issue) {
+      appToast.error(issue);
       return;
     }
 
-    const validLineItems = feePlanDraft.lineItems
-      .filter((item) => item.label.trim().length > 0 && (Number(item.amount) || 0) > 0)
-      .map((item) => ({
-        label: item.label.trim(),
-        amount: Number(item.amount) || 0,
-        category: item.category,
-        isOptional: Boolean(item.isOptional),
-      }));
+    const validLineItems = feePlanDraft.lineItems.map((item) => ({
+      label: item.label.trim(),
+      amount: Number(item.amount),
+      category: item.category,
+      isOptional: Boolean(item.isOptional),
+    }));
 
-    if (validLineItems.length === 0) {
-      appToast.error("Please fill in at least one fee line item with a name and amount");
-      return;
-    }
-
-    const success = await actions.runAction(async () => {
-      await actions.createFeePlan({
-        name: planName,
-        description: feePlanDraft.description?.trim() || undefined,
-        currency: feePlanDraft.currency || "NGN",
-        billingMode: feePlanDraft.billingMode,
-        targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
-        installmentPolicy: {
-          enabled: feePlanDraft.installmentEnabled,
-          installmentCount: feePlanDraft.installmentEnabled ? Math.max(2, Number(feePlanDraft.installmentCount) || 2) : 1,
-          intervalDays: feePlanDraft.installmentEnabled ? Math.max(1, Number(feePlanDraft.intervalDays) || 30) : 0,
-          firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
-        },
-        lineItems: validLineItems,
-      } as never);
-    }, "Fee Plan Created", "Unable to create new fee plan.");
-    if (success) {
-      setFeePlanDraft(initialFeePlanDraft());
-      setSidebarOpen(false);
+    setFeePlanSubmitting(true);
+    try {
+      const success = await actions.runAction(async () => {
+        await actions.createFeePlan({
+          bankAccountId: feePlanDraft.bankAccountId || undefined,
+          name: planName,
+          description: feePlanDraft.description?.trim() || undefined,
+          currency: feePlanDraft.currency || "NGN",
+          billingMode: feePlanDraft.billingMode,
+          targetClassIds: feePlanDraft.targetClassIds.length > 0 ? feePlanDraft.targetClassIds : undefined,
+          installmentPolicy: {
+            enabled: feePlanDraft.installmentEnabled,
+            installmentCount: feePlanDraft.installmentEnabled ? Number(feePlanDraft.installmentCount) : 1,
+            intervalDays: feePlanDraft.installmentEnabled ? Number(feePlanDraft.intervalDays) : 0,
+            firstDueDays: Number(feePlanDraft.firstDueDays),
+          },
+          lineItems: validLineItems,
+        } as never);
+      }, "Fee Plan Created", "Unable to create new fee plan.");
+      if (success) {
+        setFeePlanDraft(initialFeePlanDraft());
+        setSidebarOpen(false);
+      }
+    } finally {
+      setFeePlanSubmitting(false);
     }
   };
 
@@ -280,6 +297,7 @@ export default function BillingPage() {
     e.preventDefault();
     const success = await actions.runAction(async () => {
       await actions.applyFeePlanToClassStudents({
+        bankAccountId: feePlanApplicationDraft.bankAccountId || undefined,
         feePlanId: feePlanApplicationDraft.feePlanId,
         classId: feePlanApplicationDraft.classId,
         sessionId: feePlanApplicationDraft.sessionId,
@@ -645,7 +663,7 @@ export default function BillingPage() {
             <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
               <BillingSidebar 
-                onClose={() => setSidebarOpen(false)}
+                onClose={() => void closeFeeSidebar()}
                 variant={sidebarVariant}
                 onVariantChange={(v) => {
                   setSidebarVariant(v);
@@ -682,11 +700,11 @@ export default function BillingPage() {
       {/* Mobile Sidebar */}
       <AdminSheet
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => void closeFeeSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
         <BillingSidebar 
-          onClose={() => setSidebarOpen(false)}
+          onClose={() => void closeFeeSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}
           paymentDraft={paymentDraft}

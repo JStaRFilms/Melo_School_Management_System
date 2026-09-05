@@ -243,9 +243,10 @@ export function TopicPage({ topicId }: { topicId: string }) {
         <h2 className="text-lg font-semibold text-slate-900">Upload a supplemental resource</h2>
         <p className="mt-1 text-sm text-slate-600">Uploads stay scoped to your class and return to review before anyone can approve them for the topic.</p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <input className="w-full rounded-xl border border-slate-300 px-3 py-2" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resource title" />
-          <textarea className="w-full rounded-xl border border-slate-300 px-3 py-2" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" rows={3} />
+          <input disabled={!canUpload} className="w-full rounded-xl border border-slate-300 px-3 py-2 disabled:opacity-50" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resource title" />
+          <textarea disabled={!canUpload} className="w-full rounded-xl border border-slate-300 px-3 py-2 disabled:opacity-50" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" rows={3} />
           <input
+            disabled={!canUpload}
             type="file"
             accept="application/pdf,application/x-pdf,.pdf,text/plain,text/markdown,text/csv,text/tab-separated-values,.txt,.md,.csv,.tsv"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -253,8 +254,8 @@ export function TopicPage({ topicId }: { topicId: string }) {
           <button disabled={!canUpload || busy} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {busy ? "Submitting…" : "Submit for review"}
           </button>
-          {!canUpload ? <p className="text-sm text-amber-700">This topic is not yet eligible for class-scoped uploads.</p> : null}
-          <p className="text-sm text-slate-500">Only PDF and text-based files are accepted, up to 12 MB.</p>
+          {!canUpload ? <p className="text-sm text-amber-700">Uploads are unavailable because the current storage transport cannot guarantee tenant ownership, quota reservation, or abandoned-upload cleanup. Existing approved resources remain available.</p> : null}
+          <p className="text-sm text-slate-500">File intake will remain disabled until secure transport is approved.</p>
           {status ? <p className="text-sm text-slate-600">{status}</p> : null}
         </form>
       </section>

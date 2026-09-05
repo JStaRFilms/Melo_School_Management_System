@@ -1,3 +1,5 @@
+import { assertStorageClaimedOnlyBy, secureUploadUnavailable } from "./assetStorageBoundary";
+import { assetMetadata } from "./assetWorkspace";
 import { ConvexError, v } from "convex/values";
 import { internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
@@ -5,6 +7,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { requireCapability } from "./rbac";
 import { PDFDocument, PDFSignature } from "pdf-lib";
+export { getWorkspace, listAssets, inspectAsset, editMetadata, setArchived, listShareRecipients, listSharedAssets, setBranchShare, configurePolicy } from "./assetWorkspace";
 
 /**
  * School Asset Security, Navigable Trash, and Pure-JS PDF Compression (H9 / MX-14)
@@ -22,6 +25,10 @@ import { PDFDocument, PDFSignature } from "pdf-lib";
  *    - Must achieve >10% savings gate (newBytes < 0.90 * origBytes).
  *    - Original copy preserved in rollbackStorageId for 14-day rollback.
  */
+
+function assertPdfPromotionApproved(): void {
+  throw new ConvexError("PDF promotion unavailable: D03 runtime and fidelity approval required");
+}
 
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -163,23 +170,8 @@ function validationStatusOf(asset: Doc<"schoolAssets">): "pending" | "valid" | "
 }
 
 function assertAssetAccountingInitialized(asset: Doc<"schoolAssets">): void {
-  if (asset.storageAccountingInitializedAt === undefined) {
+  if (asset.storageAccountingInitializedAt === undefined || asset.storageReconciliationState) {
     throw new ConvexError("Asset lifecycle is blocked until storage accounting migration completes");
-  }
-}
-
-async function assertStorageAvailableForAssetBinding(
-  ctx: MutationCtx,
-  storageId: Id<"_storage">,
-): Promise<void> {
-  const [intents, assets, rollbackAssets, candidates] = await Promise.all([
-    ctx.db.query("assetUploadIntents").withIndex("by_storage", (q) => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_storage", (q) => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_rollback_storage", (q) => q.eq("rollbackStorageId", storageId)).take(2),
-    ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", (q) => q.eq("candidateStorageId", storageId)).take(2),
-  ]);
-  if (intents.length > 0 || assets.length > 0 || rollbackAssets.length > 0 || candidates.length > 0) {
-    throw new ConvexError("Storage object is already bound to an upload, asset, or compression candidate");
   }
 }
 
@@ -213,31 +205,19 @@ async function applyStorageAccounting(
   });
 }
 
-function assetFinalizeResponse(assetId: Id<"schoolAssets">) {
-  return { assetId };
-}
-
-/** Issues a controlled private-upload intent. Finalization, not the browser, owns asset metadata. */
+/** Issuance remains closed until transport can reserve and own every uploaded byte. */
 export const createAssetUploadIntent = mutation({
   args: { schoolId: v.id("schools") },
   handler: async (ctx, args) => {
-    const actor = await requireCapability(ctx, args.schoolId, "assets.upload");
-    const now = Date.now();
-    const intentId = await ctx.db.insert("assetUploadIntents", {
-      schoolId: args.schoolId,
-      requestedByUserId: actor.userId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { intentId, uploadUrl: await ctx.storage.generateUploadUrl() };
+    await requireCapability(ctx, args.schoolId, "assets.upload");
+    return secureUploadUnavailable<{
+      intentId: Id<"assetUploadIntents">;
+      uploadUrl: string;
+    }>();
   },
 });
 
-/**
- * Finalizes a controlled upload using storage-system metadata and payload magic bytes.
- * Client-provided MIME, size, hash, and uploader values are deliberately not accepted.
- */
+/** Generic storage IDs are never accepted as asset ownership evidence. */
 export const finalizeAssetUpload = mutation({
   args: {
     schoolId: v.id("schools"),
@@ -247,111 +227,8 @@ export const finalizeAssetUpload = mutation({
     category: v.string(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireCapability(ctx, args.schoolId, "assets.upload");
-    const intent = await ctx.db.get(args.uploadIntentId);
-    if (!intent || intent.schoolId !== args.schoolId || intent.requestedByUserId !== actor.userId) {
-      throw new ConvexError("Upload intent is not owned by this caller");
-    }
-    if (intent.status === "finalized") {
-      const existingAsset = await ctx.db
-        .query("schoolAssets")
-        .withIndex("by_upload_intent", (q) => q.eq("uploadIntentId", intent._id))
-        .unique();
-      if (!existingAsset || intent.assetId !== existingAsset._id || intent.storageId !== existingAsset.storageId) {
-        throw new ConvexError("Finalized upload intent is missing its authoritative asset binding");
-      }
-      if (existingAsset.storageId !== args.storageId) {
-        throw new ConvexError("Upload intent is already bound to a different storage object");
-      }
-      return assetFinalizeResponse(existingAsset._id);
-    }
-    if (intent.status !== "pending" || intent.storageId || intent.assetId) throw new ConvexError("Upload intent is no longer pending");
-    // This is the authoritative claim: all competing binding tables are read
-    // and this mutation writes the intent and asset atomically.
-    await assertStorageAvailableForAssetBinding(ctx, args.storageId);
-    const metadata = await ctx.db.system.get("_storage", args.storageId);
-    if (!metadata?.contentType || !ALLOWED_MIME_TYPES.has(metadata.contentType)) {
-      throw new ConvexError("Uploaded file has a missing or unsupported authoritative content type");
-    }
-    if (metadata.size > MAX_FILE_SIZE_BYTES) {
-      throw new ConvexError("Uploaded file exceeds the maximum permissible size of 25 MB");
-    }
-    const now = Date.now();
-    const allocation = await ctx.db
-      .query("usageMeterAllocations")
-      .withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId).eq("meterType", "storage_bytes"))
-      .first();
-    const availableBytes = allocation
-      ? Math.max(0, allocation.allocatedUnits - allocation.consumedUnits - allocation.reservedUnits)
-      : 0;
-    if (!allocation || metadata.size > availableBytes) {
-      throw new ConvexError("Storage quota is insufficient to finalize this asset");
-    }
-    const reservationKey = `asset-finalize:${intent._id}`;
-    const consumedUnits = allocation.consumedUnits + metadata.size;
-    const remainingUnits = allocation.allocatedUnits - consumedUnits - allocation.reservedUnits;
-    const utilizationPercent = allocation.allocatedUnits === 0 ? 100 : Math.min(100, Math.round(((consumedUnits + allocation.reservedUnits) / allocation.allocatedUnits) * 100));
-    // The storage system's size and SHA-256 are the measurement. Reservation,
-    // settlement, and asset creation share this mutation transaction.
-    await ctx.db.insert("usageQuotaReservations", {
-      schoolId: args.schoolId,
-      meterType: "storage_bytes",
-      idempotencyKey: reservationKey,
-      operationName: "asset_finalize",
-      unitsReserved: metadata.size,
-      actualUnits: metadata.size,
-      measurementMetadata: { source: "convex_storage", measuredAt: now, reference: String(args.storageId) },
-      status: "committed",
-      allowed: true,
-      allocatedUnits: allocation.allocatedUnits,
-      consumedUnits,
-      reservedUnits: allocation.reservedUnits,
-      availableUnits: remainingUnits,
-      utilizationPercent,
-      committedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.patch(allocation._id, {
-      consumedUnits,
-      activeStorageBytes: (allocation.activeStorageBytes ?? 0) + metadata.size,
-      updatedAt: now,
-    });
-    await ctx.db.insert("usageEvents", {
-      schoolId: args.schoolId,
-      meterType: "storage_bytes",
-      unitsDelta: metadata.size,
-      reservationId: reservationKey,
-      measurementMetadata: { source: "convex_storage", measuredAt: now, reference: String(args.storageId) },
-      actorUserId: actor.userId,
-      operationName: "asset_finalize",
-      description: "Storage finalized from authoritative metadata",
-      timestamp: now,
-    });
-    const assetId = await ctx.db.insert("schoolAssets", {
-      schoolId: args.schoolId,
-      storageId: args.storageId,
-      fileName: args.fileName,
-      mimeType: metadata.contentType ?? "application/octet-stream",
-      byteSize: metadata.size,
-      sha256: metadata.sha256,
-      category: args.category,
-      validationStatus: "pending",
-      storageAccountingInitializedAt: now,
-      scanStatus: "quarantined",
-      isTrashed: false,
-      uploadIntentId: intent._id,
-      uploadedByUserId: actor.userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.patch(intent._id, {
-      storageId: args.storageId,
-      assetId,
-      status: "finalized",
-      updatedAt: now,
-    });
-    return assetFinalizeResponse(assetId);
+    await requireCapability(ctx, args.schoolId, "assets.upload");
+    return secureUploadUnavailable<{ assetId: Id<"schoolAssets"> }>();
   },
 });
 
@@ -369,7 +246,7 @@ export const recordAssetMagicValidation = internalMutation({
   args: { assetId: v.id("schoolAssets"), valid: v.boolean(), mimeType: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const asset = await ctx.db.get(args.assetId);
-    if (!asset) throw new ConvexError("Asset not found");
+    if (!asset) return null;
     if (validationStatusOf(asset) !== "pending") return asset;
     await ctx.db.patch(asset._id, { validationStatus: args.valid ? "valid" : "invalid", mimeType: args.valid && args.mimeType ? args.mimeType : asset.mimeType, updatedAt: Date.now() });
     return await ctx.db.get(asset._id);
@@ -384,7 +261,7 @@ export const validateAssetMagicBytes = internalAction({
       internal.functions.academic.assets.getAssetValidationInput,
       { assetId: args.assetId }
     );
-    if (!input) throw new ConvexError("Asset not found");
+    if (!input) return null;
     const blob = await ctx.storage.get(input.storageId);
     const bytes = blob ? new Uint8Array(await blob.slice(0, 16).arrayBuffer()) : new Uint8Array();
     const detectedMimeType = detectMagicMimeType(bytes);
@@ -404,6 +281,18 @@ export const beginAssetScan = internalMutation({
     if (validationStatusOf(asset) !== "valid" || asset.scanStatus !== "quarantined") throw new ConvexError("Only signature-validated quarantined assets can be submitted for scanning");
     await ctx.db.patch(asset._id, { scanStatus: "scanning", updatedAt: Date.now() });
     return await ctx.db.get(asset._id);
+  },
+});
+
+/** Failure evidence never clears quarantine or dispatches a provider retry. */
+export const recordAssetScanFailure = internalMutation({
+  args: { assetId: v.id("schoolAssets"), code: v.union(v.literal("unavailable"), v.literal("timeout"), v.literal("scanner_failed")) },
+  handler: async (ctx, args) => {
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset) return null;
+    if (asset.scanStatus === "clean" || asset.scanStatus === "infected") throw new ConvexError("Terminal scan result requires security review");
+    await ctx.db.patch(asset._id, { scanStatus: "failed", scanFailureCode: args.code, updatedAt: Date.now() });
+    return null;
   },
 });
 
@@ -465,7 +354,7 @@ export const processAssetScanResult = internalMutation({
 });
 
 /**
- * Generates downloadable asset signed URL.
+ * Reserved private delivery entry point; D03 approval is absent, so no URL is issued.
  * STRICT SECURITY GATE:
  * - Unscanned or infected files are rejected with an explicit security error.
  * - Trashed assets must be restored before downloading.
@@ -496,16 +385,8 @@ export const getDownloadableAssetUrl = query({
       );
     }
 
-    const downloadUrl = await ctx.storage.getUrl(asset.storageId);
-    return {
-      assetId: asset._id,
-      fileName: asset.fileName,
-      mimeType: asset.mimeType,
-      byteSize: asset.byteSize,
-      downloadUrl,
-      scanStatus: asset.scanStatus,
-      isOptimized: asset.isOptimized ?? false,
-    };
+    // D03 S5: metadata or a legacy clean flag is not an approved private delivery path.
+    throw new ConvexError("Downloads unavailable: antivirus and private authenticated delivery approval required");
   },
 });
 
@@ -526,12 +407,13 @@ export const trashAsset = mutation({
     }
 
     if (asset.isTrashed) {
-      return asset;
+      return assetMetadata(asset);
     }
     assertAssetAccountingInitialized(asset);
 
     const now = Date.now();
-    const purgeScheduledAt = now + TRASH_RETENTION_MS;
+    const policy = await ctx.db.query("assetPolicies").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
+    const purgeScheduledAt = now + (policy?.trashRetentionDays ?? 30) * 24 * 60 * 60 * 1000;
 
     await ctx.db.patch(args.assetId, {
       isTrashed: true,
@@ -555,10 +437,11 @@ export const trashAsset = mutation({
       targetType: "schoolAsset",
       targetId: args.assetId,
       outcome: "success",
-      safeSummary: `Asset '${asset.fileName}' moved to Trash workspace (Auto-purge scheduled in 30 days).`,
+      safeSummary: "Asset moved to Trash; bytes remain charged until storage deletion succeeds.",
     });
 
-    return await ctx.db.get(args.assetId);
+    const updated = await ctx.db.get(args.assetId);
+    return updated ? assetMetadata(updated) : null;
   },
 });
 
@@ -592,7 +475,7 @@ export const listTrashedAssets = query({
         const daysRemaining = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
 
         return {
-          ...asset,
+          ...assetMetadata(asset),
           daysRemainingUntilPurge: daysRemaining,
           hasRetentionHold: holds.length > 0,
           activeHolds: holds,
@@ -614,14 +497,14 @@ export const restoreAsset = mutation({
     userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireCapability(ctx, args.schoolId, "assets.trash.manage");
+    const actor = await requireCapability(ctx, args.schoolId, "assets.restore");
     const asset = await ctx.db.get(args.assetId);
     if (!asset || asset.schoolId !== args.schoolId) {
       throw new ConvexError("Asset not found");
     }
 
     if (!asset.isTrashed) {
-      return asset;
+      return assetMetadata(asset);
     }
     assertAssetAccountingInitialized(asset);
 
@@ -650,7 +533,8 @@ export const restoreAsset = mutation({
       safeSummary: `Asset '${asset.fileName}' restored from Trash workspace to active library.`,
     });
 
-    return await ctx.db.get(args.assetId);
+    const updated = await ctx.db.get(args.assetId);
+    return updated ? assetMetadata(updated) : null;
   },
 });
 
@@ -673,6 +557,8 @@ export const applyRetentionHold = mutation({
       throw new ConvexError("Asset not found");
     }
 
+    await requireCapability(ctx, args.schoolId, "assets.holds.apply");
+    if (!args.holdReason.trim() || args.holdReason.length > 200 || (args.notes?.length ?? 0) > 1000) throw new ConvexError("A bounded retention reason is required");
     const now = Date.now();
     const holdId = await ctx.db.insert("assetRetentionHolds", {
       assetId: args.assetId,
@@ -709,7 +595,7 @@ export const removeRetentionHold = mutation({
     userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireCapability(ctx, args.schoolId, "assets.trash.manage");
+    const actor = await requireCapability(ctx, args.schoolId, "assets.holds.remove");
     const hold = await ctx.db.get(args.holdId);
     if (!hold || hold.schoolId !== args.schoolId) {
       throw new ConvexError("Retention hold not found");
@@ -749,9 +635,12 @@ export const permanentPurgeAsset = mutation({
   handler: async (ctx, args) => {
     const actor = await requireCapability(ctx, args.schoolId, "assets.permanent_delete");
     const asset = await ctx.db.get(args.assetId);
-    if (!asset || asset.schoolId !== args.schoolId) {
-      throw new ConvexError("Asset not found");
+    if (!asset) {
+      const receipt = await ctx.db.query("assetPurgeReceipts").withIndex("by_asset", q => q.eq("assetId", args.assetId)).unique();
+      if (receipt?.schoolId === args.schoolId && args.confirmation === `PURGE ${receipt.fileName}`) return { success: true, assetId: args.assetId };
+      throw new ConvexError("Asset not found or confirmation mismatch");
     }
+    if (asset.schoolId !== args.schoolId) throw new ConvexError("Asset not found");
 
     if (!asset.isTrashed) {
       throw new ConvexError(
@@ -775,11 +664,18 @@ export const permanentPurgeAsset = mutation({
       );
     }
 
-    // 2. Delete storage before releasing its quota. A storage failure aborts
-    // this mutation, so no bytes are released for an object that still exists.
+    // 2. Prove exclusive ownership, then delete storage before releasing quota.
+    await assertStorageClaimedOnlyBy(ctx, asset.storageId, {
+      purpose: "schoolAsset",
+      ownerId: String(asset._id),
+    });
     await ctx.storage.delete(asset.storageId);
     let rollbackByteSize = 0;
     if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
+      await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+        purpose: "schoolAssetRollback",
+        ownerId: String(asset._id),
+      });
       const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
       rollbackByteSize = rollbackMetadata?.size ?? 0;
       await ctx.storage.delete(asset.rollbackStorageId);
@@ -789,6 +685,11 @@ export const permanentPurgeAsset = mutation({
       temp: -rollbackByteSize,
     });
 
+    // Remove explicit grants only after storage deletion succeeds.
+    const shares = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
+    for (const share of shares) await ctx.db.delete(share._id);
+    // Receipt permits exact confirmed retries without releasing quota twice.
+    await ctx.db.insert("assetPurgeReceipts", { schoolId: args.schoolId, assetId: asset._id, fileName: asset.fileName, purgedAt: Date.now() });
     // 3. Delete database record
     await ctx.db.delete(args.assetId);
 
@@ -850,94 +751,16 @@ export const recordPdfCompressionCandidateEvidence = internalMutation({
     schoolId: v.id("schools"), assetId: v.id("schoolAssets"), sourceStorageId: v.id("_storage"), sourceSha256: v.string(), candidateStorageId: v.id("_storage"), candidateSha256: v.string(), candidateByteSize: v.number(), optimizerVersion: v.string(),
     verified: v.boolean(), reason: v.optional(v.string()), originalPageCount: v.optional(v.number()), compressedPageCount: v.optional(v.number()), originalSizeBytes: v.optional(v.number()), compressedSizeBytes: v.optional(v.number()), savingsPercentage: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
-    const existingCandidates = await ctx.db
-      .query("pdfCompressionCandidates")
-      .withIndex("by_candidate_storage", (q) => q.eq("candidateStorageId", args.candidateStorageId))
-      .take(2);
-    const existing = existingCandidates[0];
-    if (existing) {
-      if (
-        existingCandidates.length === 1 &&
-        existing.schoolId === args.schoolId &&
-        existing.assetId === args.assetId &&
-        existing.sourceStorageId === args.sourceStorageId &&
-        existing.sourceSha256 === args.sourceSha256 &&
-        existing.candidateSha256 === args.candidateSha256 &&
-        existing.byteSize === args.candidateByteSize
-      ) return existing;
-      throw new ConvexError("Storage object is already bound to an upload, asset, or compression candidate");
-    }
-
-    const asset = await ctx.db.get(args.assetId);
-    if (!asset || asset.schoolId !== args.schoolId || asset.storageId !== args.sourceStorageId) {
-      throw new ConvexError("Compression candidate source is not the current school asset");
-    }
-    assertAssetAccountingInitialized(asset);
-    if (args.candidateStorageId === asset.storageId) {
-      throw new ConvexError("Compression candidate cannot claim the active asset storage object");
-    }
-    const [sourceMetadata, candidateMetadata] = await Promise.all([
-      ctx.db.system.get("_storage", args.sourceStorageId),
-      ctx.db.system.get("_storage", args.candidateStorageId),
-    ]);
-    if (!sourceMetadata || !candidateMetadata || sourceMetadata.sha256 !== args.sourceSha256 || candidateMetadata.sha256 !== args.candidateSha256 || candidateMetadata.size !== args.candidateByteSize) {
-      throw new ConvexError("Compression candidate storage metadata changed before it could be claimed");
-    }
-    // The preceding action is only evidence collection. This mutation makes
-    // the durable claim after re-reading every competing binding.
-    await assertStorageAvailableForAssetBinding(ctx, args.candidateStorageId);
-
-    const now = Date.now();
-    const { verified, candidateByteSize, ...evidence } = args;
-    const cleanupScheduledAt = now + 24 * 60 * 60 * 1000;
-    const candidateId = await ctx.db.insert("pdfCompressionCandidates", {
-      ...evidence,
-      byteSize: candidateByteSize,
-      status: verified ? "verified" : "rejected",
-      cleanupScheduledAt,
-      verifiedAt: now,
-    });
-    if (verified) {
-      await applyStorageAccounting(ctx, args.schoolId, { temp: candidateByteSize });
-    } else {
-      // Rejected candidates never become an asset and are deleted immediately;
-      // their short-lived evidence is retained for idempotent audit/cleanup.
-      await ctx.storage.delete(args.candidateStorageId);
-    }
-    await ctx.scheduler.runAt(cleanupScheduledAt, internal.functions.academic.assets.cleanupExpiredAssetStorage, {});
-    return await ctx.db.get(candidateId);
+  handler: async () => {
+    return secureUploadUnavailable<Doc<"pdfCompressionCandidates"> | null>();
   },
 });
 
 /** Uses the storage-capable action runtime to produce PDF verifier evidence before any commit. */
 export const verifyPdfCompressionCandidateForAsset = internalAction({
   args: { schoolId: v.id("schools"), assetId: v.id("schoolAssets"), candidateStorageId: v.id("_storage"), optimizerVersion: v.string() },
-  handler: async (ctx, args): Promise<Doc<"pdfCompressionCandidates"> | null> => {
-    const input: { sourceStorageId: Id<"_storage">; sourceSha256: string; candidateSha256: string; candidateByteSize: number } = await ctx.runQuery(
-      internal.functions.academic.assets.getPdfCompressionVerificationInput,
-      args
-    );
-    const [source, candidate] = await Promise.all([ctx.storage.get(input.sourceStorageId), ctx.storage.get(args.candidateStorageId)]);
-    if (!source || !candidate) throw new ConvexError("PDF source or candidate is missing from storage");
-    const verification = await verifyPdfCompressionCandidate(await source.arrayBuffer(), await candidate.arrayBuffer());
-    return await ctx.runMutation(internal.functions.academic.assets.recordPdfCompressionCandidateEvidence, {
-      schoolId: args.schoolId,
-      assetId: args.assetId,
-      sourceStorageId: input.sourceStorageId,
-      sourceSha256: input.sourceSha256,
-      candidateStorageId: args.candidateStorageId,
-      candidateSha256: input.candidateSha256,
-      candidateByteSize: input.candidateByteSize,
-      optimizerVersion: args.optimizerVersion,
-      verified: verification.verified,
-      reason: verification.reason,
-      originalPageCount: verification.originalPageCount,
-      compressedPageCount: verification.compressedPageCount,
-      originalSizeBytes: verification.originalSizeBytes,
-      compressedSizeBytes: verification.compressedSizeBytes,
-      savingsPercentage: verification.savingsPercentage,
-    });
+  handler: async () => {
+    return secureUploadUnavailable<Doc<"pdfCompressionCandidates"> | null>();
   },
 });
 
@@ -945,6 +768,7 @@ export const verifyPdfCompressionCandidateForAsset = internalAction({
 export const commitOptimizedPdfAsset = internalMutation({
   args: { schoolId: v.id("schools"), assetId: v.id("schoolAssets"), candidateId: v.id("pdfCompressionCandidates") },
   handler: async (ctx, args) => {
+    assertPdfPromotionApproved();
     const [asset, candidate] = await Promise.all([ctx.db.get(args.assetId), ctx.db.get(args.candidateId)]);
     if (!asset || asset.schoolId !== args.schoolId) throw new ConvexError("Asset not found");
     assertAssetAccountingInitialized(asset);
@@ -1000,6 +824,9 @@ export const rollbackOptimizedPdfAsset = internalMutation({
     if (!asset.rollbackStorageId) {
       throw new ConvexError("No rollback copy available for this asset.");
     }
+    if (asset.isTrashed) throw new ConvexError("Restore from Trash before rollback");
+    const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(1);
+    if (hold.length) throw new ConvexError("Retention hold blocks deletion of the replaced version during rollback");
     assertAssetAccountingInitialized(asset);
 
     const now = Date.now();
@@ -1009,6 +836,14 @@ export const rollbackOptimizedPdfAsset = internalMutation({
 
     const restoredStorageId = asset.rollbackStorageId;
     const compressedStorageId = asset.storageId;
+    await assertStorageClaimedOnlyBy(ctx, compressedStorageId, {
+      purpose: "schoolAsset",
+      ownerId: String(asset._id),
+    });
+    await assertStorageClaimedOnlyBy(ctx, restoredStorageId, {
+      purpose: "schoolAssetRollback",
+      ownerId: String(asset._id),
+    });
     const originalMetadata = await ctx.db.system.get("_storage", restoredStorageId);
     if (!originalMetadata) throw new ConvexError("Authoritative rollback original is missing from storage");
 
@@ -1051,9 +886,17 @@ export const cleanupExpiredAssetStorage = internalMutation({
       assertAssetAccountingInitialized(asset);
       const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
       if (hold.length > 0) continue;
+      await assertStorageClaimedOnlyBy(ctx, asset.storageId, {
+        purpose: "schoolAsset",
+        ownerId: String(asset._id),
+      });
       await ctx.storage.delete(asset.storageId);
       let rollbackByteSize = 0;
       if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
+        await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+          purpose: "schoolAssetRollback",
+          ownerId: String(asset._id),
+        });
         const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
         rollbackByteSize = rollbackMetadata?.size ?? 0;
         await ctx.storage.delete(asset.rollbackStorageId);
@@ -1062,6 +905,10 @@ export const cleanupExpiredAssetStorage = internalMutation({
         trash: -asset.byteSize,
         temp: -rollbackByteSize,
       });
+      const shares = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
+      for (const share of shares) await ctx.db.delete(share._id);
+      await recordAuditEventHelper(ctx, { schoolId: asset.schoolId, actorKind: "system", actorEmailSnapshot: "asset retention cleanup", module: "assets", action: "asset.expired_purged", targetType: "schoolAsset", targetId: asset._id, outcome: "success", safeSummary: "Expired asset storage deletion succeeded; charged bytes released.", retentionClass: "permanent_statutory" });
+      await ctx.db.insert("assetPurgeReceipts", { schoolId: asset.schoolId, assetId: asset._id, fileName: asset.fileName, purgedAt: now });
       await ctx.db.delete(asset._id);
       cleaned++;
     }
@@ -1075,6 +922,10 @@ export const cleanupExpiredAssetStorage = internalMutation({
       assertAssetAccountingInitialized(asset);
       const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
       if (hold.length > 0) continue;
+      await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+        purpose: "schoolAssetRollback",
+        ownerId: String(asset._id),
+      });
       const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
       await ctx.storage.delete(asset.rollbackStorageId);
       await applyStorageAccounting(ctx, asset.schoolId, { temp: -(rollbackMetadata?.size ?? 0) });
@@ -1087,6 +938,10 @@ export const cleanupExpiredAssetStorage = internalMutation({
       .withIndex("by_cleanup_schedule", (q) => q.lt("cleanupScheduledAt", now))
       .take(limit);
     for (const candidate of staleCandidates) {
+      await assertStorageClaimedOnlyBy(ctx, candidate.candidateStorageId, {
+        purpose: "pdfCompressionCandidate",
+        ownerId: String(candidate._id),
+      });
       const metadata = await ctx.db.system.get("_storage", candidate.candidateStorageId);
       if (metadata) await ctx.storage.delete(candidate.candidateStorageId);
       if (candidate.status === "verified") {
@@ -1095,7 +950,9 @@ export const cleanupExpiredAssetStorage = internalMutation({
       await ctx.db.delete(candidate._id);
       cleaned++;
     }
-    if (trashed.length === limit || rollbackCandidates.length === limit || staleCandidates.length === limit) {
+    // Do not hot-loop forever on a full batch of retained/held rows.
+    // A cursor-based maintenance sweep is still needed to reach rows behind holds.
+    if (cleaned > 0 && (trashed.length === limit || rollbackCandidates.length === limit || staleCandidates.length === limit)) {
       await ctx.scheduler.runAfter(0, internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit });
     }
     return { cleaned };
@@ -1113,6 +970,7 @@ export const listSchoolAssets = query({
       v.union(
         v.literal("quarantined"),
         v.literal("scanning"),
+        v.literal("failed"),
         v.literal("clean"),
         v.literal("infected")
       )
@@ -1132,11 +990,12 @@ export const listSchoolAssets = query({
       .take(limit * 2);
 
     const filtered = assets.filter((a) => {
+      if (a.archivedAt !== undefined) return false;
       if (args.category && a.category !== args.category) return false;
       if (args.scanStatus && a.scanStatus !== args.scanStatus) return false;
       return true;
     });
 
-    return filtered.slice(0, limit);
+    return filtered.slice(0, limit).map(assetMetadata);
   },
 });
