@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import schema from "../../../schema";
 import { api } from "../../../_generated/api";
 const convexRoot = new URL("../../../", import.meta.url).pathname;
@@ -77,6 +77,89 @@ describe("Private registered draft lifecycle", () => {
     expect(await h.user.query(drafts.getFormDraft, h.scope)).toBeNull();
     expect((await h.t.run(ctx => ctx.db.get(instance.draftId)))?.payload).toEqual({});
     const next = await h.begin(); expect(next.draftId).not.toBe(instance.draftId);
+  });
+  it("recovers the indexed active draft behind more than 100 newer tombstones and rejects a second begin", async () => {
+    const h = await setup();
+    const active = await h.begin();
+    await h.t.run(async ctx => {
+      const now = Date.now();
+      for (let index = 0; index < 101; index++) {
+        await ctx.db.insert("formDrafts", {
+          schoolId: h.schoolId,
+          userId: h.userId,
+          formKey: h.scope.formKey,
+          payload: {},
+          schemaVersion: 1,
+          status: "committed",
+          revision: 1,
+          lastSavedAt: now + index + 1,
+          createdAt: now + index + 1,
+          updatedAt: now + index + 1,
+        });
+      }
+    });
+    expect(await h.user.query(drafts.getFormDraft, h.scope)).toMatchObject({ draftId: active.draftId });
+    await expect(h.begin()).rejects.toThrow(/Preview, resume or discard/);
+    const activeRows = await h.t.run(ctx => ctx.db.query("formDrafts").withIndex("by_school_and_user_and_form_and_status", q => q.eq("schoolId", h.schoolId).eq("userId", h.userId).eq("formKey", h.scope.formKey).eq("status", "active")).take(10));
+    expect(activeRows).toHaveLength(1);
+  });
+  it("serializes concurrent begins through the deterministic active scope claim", async () => {
+    const h = await setup();
+    const results = await Promise.allSettled([h.begin(), h.begin()]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+    const activeRows = await h.t.run(ctx => ctx.db.query("formDrafts").withIndex("by_school_and_user_and_form_and_status", q => q.eq("schoolId", h.schoolId).eq("userId", h.userId).eq("formKey", h.scope.formKey).eq("status", "active")).take(10));
+    expect(activeRows).toHaveLength(1);
+    expect(activeRows[0].activeScopeKey).toContain(String(h.schoolId));
+  });
+  it("expires more than 100 due payloads from scheduling, retains newer drafts and audits no content", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      const h = await setup();
+      const scheduled = await h.begin();
+      const dueAt = scheduled.expiresAt;
+      const newerId = await h.t.run(async ctx => {
+        for (let index = 0; index < 120; index++) {
+          await ctx.db.insert("formDrafts", {
+            schoolId: h.schoolId,
+            userId: h.userId,
+            formKey: `historic_${index}`,
+            payload: { privateName: `Child ${index}` },
+            schemaVersion: 1,
+            expiresAt: dueAt,
+            status: "committed",
+            revision: 1,
+            lastSavedAt: Date.now(),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+        return await ctx.db.insert("formDrafts", {
+          schoolId: h.schoolId,
+          userId: h.userId,
+          formKey: "newer",
+          payload: { privateName: "Keep until due" },
+          schemaVersion: 1,
+          expiresAt: dueAt + 365 * 86400000,
+          status: "committed",
+          revision: 1,
+          lastSavedAt: Date.now(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      });
+      await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(90 * 86400000 + 1));
+      const dueRows = await h.t.run(ctx => ctx.db.query("formDrafts").withIndex("by_expiresAt", q => q.gt("expiresAt", 0).lte("expiresAt", dueAt)).take(200));
+      expect(dueRows).toHaveLength(0);
+      expect(await h.t.run(ctx => ctx.db.get(newerId))).toMatchObject({ payload: { privateName: "Keep until due" } });
+      const events = await h.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_school_and_timestamp", q => q.eq("schoolId", h.schoolId)).take(200));
+      expect(events.filter(event => event.action === "expired")).toHaveLength(121);
+      expect(JSON.stringify(events)).not.toContain("Child 0");
+      expect(JSON.stringify(events)).not.toContain("Keep until due");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("hides expired drafts and rejects both stale saves and closure", async () => {
     const h = await setup(); const instance = await h.begin();

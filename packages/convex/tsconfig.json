@@ -12,6 +12,7 @@
     "auth.config.ts",
     "betterAuth.ts",
     "convex.config.ts",
+    "crons.ts",
     "http.ts",
     "schema.ts",
     "functions/**/*.ts"

@@ -3287,6 +3287,7 @@ export default defineSchema({
     userId: v.id("users"),
     formKey: v.string(),
     entityId: v.optional(v.string()),
+    activeScopeKey: v.optional(v.string()),
     payload: v.any(),
     status: v.union(
       v.literal("active"),
@@ -3300,6 +3301,8 @@ export default defineSchema({
   })
     .index("by_user_and_form", ["userId", "formKey"])
     .index("by_school_and_form", ["schoolId", "formKey"])
+    .index("by_school_and_user_and_form_and_status", ["schoolId", "userId", "formKey", "status"])
+    .index("by_activeScopeKey", ["activeScopeKey"])
     .index("by_expiresAt", ["expiresAt"]),
 
   // --- Institutional Email & Directory Provisioning (H5) ---
