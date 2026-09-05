@@ -51,13 +51,14 @@ function fallbackFeatures(features?: {
 }
 
 export const getCurrentSchoolBranding = query({
-  args: {},
+  args: { schoolId: v.optional(v.id("schools")) },
   returns: v.union(schoolBrandingSummaryValidator, v.null()),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     try {
       const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
         allowSuspended: true,
         membershipOnly: true,
+        schoolId: args.schoolId,
       });
       const school = await ctx.db.get(schoolId);
       if (!school) {

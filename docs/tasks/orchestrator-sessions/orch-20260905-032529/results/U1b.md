@@ -1,6 +1,14 @@
 # U1b — Workspace shells, navigation and denied routes
 
-**Status: partial / locally verified.** Default-workspace integration is delivered. **No staff route is enabled for switched-branch data.** Selected-school persistence/activation and final U3a guard handshake remain gated. No commits, deployment, migration, Convex CLI, live backend, credentials, provider, server, or browser authentication commands were used. Pre-existing U1a changes were preserved.
+**Status: partial / locally verified, updated by the U1 productization resume.** Default-workspace integration remains delivered. Admin selected-school activation is now implemented for a closed allowlist of explicit-school routes; legacy unscoped routes still fail closed. Teacher routes remain default-only because no complete Teacher caller chain is selected-school-safe. No deployment, migration, Convex CLI, live backend, credentials, provider, server, or browser authentication commands were used.
+
+## 2026-09-05 resume update — actual branch activation
+
+- Admin now loads `groups.listUserBranches`, persists only a school ID under an account-ID-scoped localStorage key, and revalidates both the directory and `getViewerAccess({schoolId})` each session. Hydration and target changes unmount route content until the requested summary matches; revoked/stale persisted targets fail closed and are removed for the next session. The user can explicitly return to the default branch.
+- The active selector is enabled only on `/admin/audit`, `/admin/permissions`, `/admin/assets` (including Archive/Trash), `/admin/settings/admission-numbering`, `/admin/settings/email-domains`, and `/assessments/setup/grading-bands`. These mounted callers pass the selected `schoolId` and enforce their own server capability/resource checks. `schoolBranding.getCurrentSchoolBranding` gained an optional, server-resolved school argument for the shell adapter.
+- All other Admin routes and every Teacher route remain switch-disabled. If a persisted nondefault selection opens an unscoped route, the shell mounts no child data, exposes no target-labelled legacy data, and offers return to default. Selected-branch navigation contains only allowlisted routes the current target capabilities admit.
+- Branch changes await the existing U3a `requestDeparture({kind:'branch'})` save/discard/stay contract. Rejection stays put; failures are announced. No `users.schoolId`, Better Auth identity, role, membership, or data row is mutated.
+- New local coverage: account-scoped hydration/reset/revocation cleanup, selected-summary and branch-list validation, strict canonical membership/capability admission, safe-nav projection, guarded selector switching, target-scoped branding, and unscoped-route blocking. Exact final commands are recorded in the completion handoff after the aggregate packet rerun.
 
 ## Decisions and delivered behavior
 

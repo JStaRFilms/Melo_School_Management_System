@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceAccessSummary } from "../workspace-access";
-import { getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial } from "../workspace-route-access";
+import {
+  getBranchScopedWorkspaceAccess,
+  getLegacyWorkspaceAccess,
+  getWorkspaceModuleDenial,
+  getWorkspaceCapabilityDenial,
+  isWorkspaceBranchScopedRoute,
+} from "../workspace-route-access";
 import { getAccessibleWorkspaceSections, isWorkspaceSectionActive } from "../workspace-navigation";
 
 const ready: Extract<WorkspaceAccessSummary, { state: "ready" }> = {
@@ -76,6 +82,32 @@ describe("managed capability navigation and deep links", () => {
     const platform = { ...ready, compatibility: { ...ready.compatibility, mode: "platform" as const } };
     expect(getLegacyWorkspaceAccess("admin", platform).state).toBe("forbidden");
     expect(getAccessibleWorkspaceSections("admin", { access: platform })).toEqual([]);
+  });
+});
+
+describe("selected branch route adapters", () => {
+  const selected = {
+    ...ready,
+    branch: { ...ready.branch, schoolId: "branch-two" },
+    membership: { membershipId: "membership-two", personId: "person", displayTitle: "Admin" },
+    effectiveCapabilities: ["staff.permissions.manage", "audit.branch.view"],
+    compatibility: { ...ready.compatibility, mode: "canonical" as const },
+  };
+
+  it("admits only audited explicit-school callers and requires canonical target membership", () => {
+    expect(isWorkspaceBranchScopedRoute("admin", "/admin/permissions")).toBe(true);
+    expect(isWorkspaceBranchScopedRoute("admin", "/admin/dashboard")).toBe(false);
+    expect(getBranchScopedWorkspaceAccess("admin", "/admin/permissions", selected).state).toBe("allowed");
+    expect(getBranchScopedWorkspaceAccess("admin", "/admin/dashboard", selected).state).toBe("reconciliation_required");
+    expect(getBranchScopedWorkspaceAccess("admin", "/admin/permissions", { ...selected, membership: null }).state).toBe("forbidden");
+  });
+
+  it("projects only selected-school-safe navigation and enforces each route capability", () => {
+    const sections = getAccessibleWorkspaceSections("admin", { access: selected, branchScopedOnly: true });
+    expect(sections.map(section => section.href)).toEqual(expect.arrayContaining(["/admin/permissions", "/admin/audit"]));
+    expect(sections.map(section => section.href)).not.toContain("/admin/dashboard");
+    expect(sections.map(section => section.href)).not.toContain("/academic/students");
+    expect(getBranchScopedWorkspaceAccess("admin", "/admin/assets", selected).state).toBe("forbidden");
   });
 });
 

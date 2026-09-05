@@ -1,5 +1,5 @@
 import type { WorkspaceAccessSummary } from "./workspace-access";
-import { getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, type WorkspaceFeatures } from "./workspace-route-access";
+import { getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, isWorkspaceBranchScopedRoute, type WorkspaceFeatures } from "./workspace-route-access";
 
 export type WorkspaceKey = "admin" | "teacher" | "portal";
 
@@ -215,12 +215,15 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
 /** Navigation uses the same legacy/module decision as the owning layout, not guessed RBAC mappings. */
 export function getAccessibleWorkspaceSections(
   workspace: WorkspaceKey,
-  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null } = {},
+  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null; branchScopedOnly?: boolean } = {},
 ) {
-  if (workspace !== "portal" && options.access && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
+  if (workspace !== "portal" && options.access && !options.branchScopedOnly && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
   return getWorkspaceSections(workspace).filter(section =>
+    (!options.branchScopedOnly || isWorkspaceBranchScopedRoute(workspace, section.href)) &&
     !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
-    (!options.access || !getWorkspaceCapabilityDenial(workspace, section.href, options.access)) &&
+    (!options.access || (options.branchScopedOnly
+      ? getBranchScopedWorkspaceAccess(workspace, section.href, options.access).state === "allowed"
+      : !getWorkspaceCapabilityDenial(workspace, section.href, options.access))) &&
     !(workspace === "portal" && section.href === "/learning/topics" && options.userRole !== "student")
   );
 }
