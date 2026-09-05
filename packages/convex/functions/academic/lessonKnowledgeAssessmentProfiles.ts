@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { mutation, query, type MutationCtx } from "../../_generated/server";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 
 const questionStyleValidator = v.union(
   v.literal("balanced"),
@@ -112,7 +113,7 @@ export const listAssessmentGenerationProfiles = query({
     updatedAt: v.number(),
   })),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const isTeacher = role === "teacher";
     if (!isTeacher) {
       await assertAdminForSchool(ctx, userId, schoolId, role);
@@ -162,7 +163,7 @@ export const saveAssessmentGenerationProfile = mutation({
   args: profilePayloadValidator,
   returns: v.id("assessmentGenerationProfiles"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const normalized = validateProfile(args);

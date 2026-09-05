@@ -9,6 +9,7 @@ import {
 } from "@school/shared/planning-context";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   canUseKnowledgeMaterialAsLessonSource,
   resolveClassScopedKnowledgeMaterialStaffAccess,
@@ -1200,7 +1201,7 @@ export const getTeacherAssessmentBankWorkspace = query({
   },
   returns: workspaceValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1432,7 +1433,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
   },
   returns: saveResultValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1637,7 +1638,7 @@ export const recordTeacherAssessmentBankAiRun = mutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { useMutation,useQuery } from "convex/react";
@@ -279,6 +280,7 @@ export default function ArchivedRecordsPage() {
                 />
               </div>
               <AdminHeader title="Archive Audit" />
+              <Link href="/admin/assets/archive">School Asset Archive and Trash (separate from academic records)</Link>
             </div>
 
 

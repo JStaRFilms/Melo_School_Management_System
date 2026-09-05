@@ -1,4 +1,11 @@
+import {
+  assertSecureUploadTransportAvailable,
+  assertStorageClaimedOnlyBy,
+  assertStorageUnclaimed,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
+import { assertPaidUsageAvailable } from "../foundation/paidUsageGate";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import {
@@ -11,6 +18,7 @@ import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
 } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   assertActiveKnowledgeSubjectTopicScope,
   assertKnowledgeMaterialIngestionAccess,
@@ -439,7 +447,8 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
     assertKnowledgeMaterialIngestionAccess({
       userId,
       schoolId,
@@ -480,6 +489,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       subjectId: args.subjectId ?? null,
       level,
     });
+    assertSecureUploadTransportAvailable();
 
     const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
     const selectedPageNumbers = selectedPageRanges ? parsePdfPageRanges(selectedPageRanges) : undefined;
@@ -524,7 +534,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       changeSummary: "Created a knowledge material shell and issued an upload URL.",
     });
 
-    const uploadUrl = await ctx.storage.generateUploadUrl();
+    const uploadUrl = secureUploadUnavailable<string>();
 
     return {
       materialId,
@@ -554,7 +564,8 @@ export const finalizeKnowledgeMaterialUpload = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {
@@ -580,6 +591,8 @@ export const finalizeKnowledgeMaterialUpload = mutation({
     if (material.storageId && String(material.storageId) !== String(args.storageId)) {
       throw new ConvexError("This material already points to a different upload");
     }
+    assertSecureUploadTransportAvailable();
+    await assertStorageUnclaimed(ctx, args.storageId);
 
     const storageMeta = (await ctx.db.system.get(
       "_storage",
@@ -703,7 +716,7 @@ export const registerKnowledgeMaterialLink = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     assertKnowledgeMaterialIngestionAccess({
       userId,
       schoolId,
@@ -803,7 +816,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
     processingStatus: v.union(v.literal("queued"), v.literal("extracting")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
     if (actorRole !== "teacher" && actorRole !== "admin") {
       throw new ConvexError("Knowledge material OCR is restricted to staff");
@@ -822,6 +835,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
     if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
       throw new ConvexError("OCR can only be queued for OCR-needed or failed material");
     }
+    assertPaidUsageAvailable();
     const storageMeta = await ctx.db.system.get("_storage", material.storageId);
     const normalizedContentType = normalizeKnowledgeMaterialContentType(storageMeta?.contentType);
     const isOcrEligible =
@@ -1102,7 +1116,7 @@ export const retryKnowledgeMaterialIngestion = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {
@@ -1298,6 +1312,11 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     if (args.previousStorageId === args.nextStorageId) {
       throw new ConvexError("Replacement storage must differ from previous storage");
     }
+    await assertStorageClaimedOnlyBy(ctx, args.previousStorageId, {
+      purpose: "knowledgeMaterial",
+      ownerId: String(material._id),
+    });
+    await assertStorageUnclaimed(ctx, args.nextStorageId);
 
     await ctx.db.patch(args.materialId, {
       storageId: args.nextStorageId,

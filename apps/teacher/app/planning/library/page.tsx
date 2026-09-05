@@ -173,6 +173,10 @@ export default function TeacherLibraryPage() {
     return true;
   }), [materials, subjectFilter, levelFilter, searchQuery]);
 
+  // Secure upload transport is externally gated. Capability alone must not
+  // imply that generic storage URLs establish provenance or reserve quota.
+  const canUploadMaterials = false;
+
   const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
     privateOwner: 0,
@@ -338,6 +342,7 @@ export default function TeacherLibraryPage() {
     subjects: subjects ?? [],
     levelOptions,
     subjectsReady: subjects ?? [],
+    canUpload: canUploadMaterials,
     onUpload: handleUpload,
     isUploading,
     isAdmin: session?.user?.role === "admin",
@@ -442,6 +447,7 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
+                <p role="status" className="text-sm">Provider OCR is unavailable pending confirmed plan estimates and reservation reconciliation. Upload limits remain technical limits, not purchased plan allowances. No OCR charge is initiated.</p>
               </div>
 
               <StatGroup
@@ -580,8 +586,9 @@ export default function TeacherLibraryPage() {
 
       {/* Primary Mobile Action */}
       <button
-        onClick={() => setIsMobileUploadOpen(true)}
-        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 hover:scale-105 active:scale-95 transition-all z-50"
+        disabled
+        aria-label="Upload unavailable — secure storage transport required"
+        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white opacity-50 shadow-2xl shadow-slate-950/40 z-50"
       >
         <Plus className="h-7 w-7" />
       </button>

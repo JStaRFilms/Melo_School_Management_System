@@ -12,6 +12,11 @@ import {
   resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
+import {
+  assertSecureUploadTransportAvailable,
+  assertStorageUnclaimed,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
 import { assertKnowledgeMaterialUploadIsSupported } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import {
@@ -366,7 +371,9 @@ export const getPortalTopicPageData = query({
       },
       classId: student.classId,
       className: classDoc.name,
-      canUploadSupplemental: classEligible,
+      // Class eligibility is preserved for future transport enablement, but the
+      // current generic upload URL cannot establish safe storage ownership.
+      canUploadSupplemental: false,
       approvedMaterials,
     };
   },
@@ -448,6 +455,7 @@ export const requestPortalSupplementalUploadUrl = mutation({
     if (!canCreateKnowledgeMaterialDraft(actor, { visibility: "class_scoped", reviewStatus: "pending_review", classContextMatches: true })) {
       throw new ConvexError("Supplemental uploads are not available");
     }
+    assertSecureUploadTransportAvailable();
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "portal_supplemental_upload_url",
       schoolId,
@@ -511,7 +519,7 @@ export const requestPortalSupplementalUploadUrl = mutation({
       materialId,
       changeSummary: "Created a class-scoped supplemental upload shell from the portal topic page.",
     });
-    const uploadUrl = await ctx.storage.generateUploadUrl();
+    const uploadUrl = secureUploadUnavailable<string>();
     return { materialId, uploadUrl };
   },
 });
@@ -552,6 +560,8 @@ export const finalizePortalSupplementalUpload = mutation({
     if (!bindings.some((binding) => binding.classId === student.classId && binding.bindingPurpose === "topic_attachment" && binding.bindingStatus === "active")) {
       throw new ConvexError("Supplemental upload topic attachment is missing");
     }
+    assertSecureUploadTransportAvailable();
+    await assertStorageUnclaimed(ctx, args.storageId);
 
     const storageMeta = await ctx.db.system.get("_storage", args.storageId);
     if (!storageMeta) {

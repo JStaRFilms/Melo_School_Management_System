@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { mutation, type MutationCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 
 export const lessonKnowledgeRateLimitActionValidator = v.union(
   v.literal("teacher_lesson_plan_generation"),
@@ -263,7 +264,7 @@ export const consumeTeacherLessonPlanGenerationLimit = mutation({
   args: {},
   returns: lessonKnowledgeRateLimitResultValidator,
   handler: async (ctx) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     assertStaffGenerationAccess(role, isSchoolAdmin);
 
     return await consumeLessonKnowledgeRateLimit(ctx, {
@@ -278,7 +279,7 @@ export const consumeTeacherAssessmentGenerationLimit = mutation({
   args: {},
   returns: lessonKnowledgeRateLimitResultValidator,
   handler: async (ctx) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     assertStaffGenerationAccess(role, isSchoolAdmin);
 
     return await consumeLessonKnowledgeRateLimit(ctx, {

@@ -1,4 +1,5 @@
-import { convexTest, type TestConvex } from "convex-test";
+import { seedReviewedTenantOperator } from "./securityFixtures";
+import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
@@ -35,12 +36,11 @@ const commercialInternal = internal.functions.academic.commercial;
 const meteringInternal = internal.functions.academic.metering;
 const assetsInternal = internal.functions.academic.assets;
 const assetsMigrationInternal = internal.functions.academic.assetsMigration;
-const tenantOperatorToken = "https://auth.school.test|commercial-asset-operator";
 
 function tenantSession(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({
-    tokenIdentifier: tenantOperatorToken,
-    subject: "commercial-asset-operator",
+    tokenIdentifier: "test|reviewed",
+    subject: "reviewed",
   });
 }
 
@@ -50,76 +50,49 @@ function assertExists<T>(value: T): asserts value is NonNullable<T> {
 
 type AuthenticatedTest = ReturnType<ReturnType<typeof convexTest>["withIdentity"]>;
 type TestClient = ReturnType<typeof convexTest> | AuthenticatedTest;
-
-async function storeTypedBlob(t: ReturnType<typeof convexTest>, blob: Blob) {
-  return await t.run(async (ctx) => {
-    const storageId = await ctx.storage.store(blob);
-    // convex-test does not copy Blob.type into _storage metadata.
-    await ctx.db.patch(storageId, { contentType: blob.type });
-    return storageId;
-  });
-}
-
-async function grantTenantOperatorAccess(
-  t: TestConvex<typeof schema>,
-  schoolId: Id<"schools">,
-) {
-  await t.run(async (ctx) => {
-    const person = await ctx.db
-      .query("persons")
-      .withIndex("by_token_identifier", (q) => q.eq("authTokenIdentifier", tenantOperatorToken))
-      .unique();
-    const role = await ctx.db
-      .query("roleTemplates")
-      .withIndex("by_code", (q) => q.eq("code", "commercial_asset_test_operator"))
-      .unique();
-    if (!person || !role) throw new Error("Tenant operator fixture is incomplete");
-    const existing = await ctx.db
-      .query("branchMemberships")
-      .withIndex("by_person_and_school", (q) => q.eq("personId", person._id).eq("schoolId", schoolId))
-      .unique();
-    if (existing) return;
-    const now = Date.now();
-    const membershipId = await ctx.db.insert("branchMemberships", {
-      personId: person._id,
-      schoolId,
-      status: "active",
-      permissionsManagedAt: now,
-      isDefaultBranch: false,
-      joinedAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.insert("membershipRoleAssignments", {
-      membershipId,
-      roleTemplateId: role._id,
-      assignedAt: now,
-    });
-  });
+function createHarness() {
+  return convexTest(schema, modules);
 }
 
 async function finalizeAsset(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<typeof createHarness>,
   schoolId: Id<"schools">,
   fileName: string,
   category: string,
   blob: Blob
 ) {
-  await grantTenantOperatorAccess(t, schoolId);
   await t.mutation(meteringInternal.allocateQuota, {
     schoolId,
     meterType: "storage_bytes",
     allocatedUnits: 100 * 1024 * 1024,
   });
-  const intent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-  const storageId = await storeTypedBlob(t, blob);
-  const finalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-    schoolId,
-    uploadIntentId: intent.intentId,
-    storageId,
-    fileName,
-    category,
+  return await t.run(async (ctx) => {
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    if (!allocation) throw new Error("fixture allocation missing");
+    const storageId = await ctx.storage.store(blob);
+    const byteSize = blob.size;
+    await ctx.db.patch(allocation._id, {
+      consumedUnits: allocation.consumedUnits + byteSize,
+      activeStorageBytes: (allocation.activeStorageBytes ?? 0) + byteSize,
+      updatedAt: Date.now(),
+    });
+    const assetId = await ctx.db.insert("schoolAssets", {
+      schoolId,
+      storageId,
+      fileName,
+      category,
+      mimeType: blob.type || "application/octet-stream",
+      byteSize,
+      sha256: `historical-fixture-${String(storageId)}`,
+      validationStatus: "pending",
+      scanStatus: "quarantined",
+      isTrashed: false,
+      storageAccountingInitializedAt: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return await ctx.db.get(assetId);
   });
-  return await t.run((ctx) => ctx.db.get(finalized.assetId));
 }
 
 async function setupTestHarness(t: ReturnType<typeof convexTest>) {
@@ -134,11 +107,23 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       updatedAt: now,
     });
 
-    // 2. Create an explicitly scoped tenant operator.
+    await ctx.db.insert("platformAdmins", {
+      authId: "platform-admin",
+      authTokenIdentifier: "https://auth.school.test|platform-admin",
+      email: "platform-admin@school.test",
+      name: "Test Platform Administrator",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await seedReviewedTenantOperator(ctx, [schoolId], "test|reviewed");
+
+    // 2. Create Admin User
     const adminUserId = await ctx.db.insert("users", {
       schoolId,
-      authId: "commercial-asset-operator",
-      authTokenIdentifier: tenantOperatorToken,
+      authId: "auth-admin-comm",
+      authTokenIdentifier: "https://auth.school.test|admin-comm",
       name: "Bursar Adeleke",
       email: "bursar@olivecrest.edu.ng",
       role: "admin",
@@ -149,44 +134,13 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
 
     // 3. Create Person
     const personId = await ctx.db.insert("persons", {
-      authTokenIdentifier: tenantOperatorToken,
+      authTokenIdentifier: "https://auth.school.test|person-comm",
       email: "bursar.personal@gmail.com",
       name: "Babatunde Adeleke",
       status: "active",
       primarySchoolId: schoolId,
       createdAt: now,
       updatedAt: now,
-    });
-    const membershipId = await ctx.db.insert("branchMemberships", {
-      personId,
-      schoolId,
-      legacyUserId: adminUserId,
-      status: "active",
-      permissionsManagedAt: now,
-      isDefaultBranch: true,
-      joinedAt: now,
-      updatedAt: now,
-    });
-    const roleTemplateId = await ctx.db.insert("roleTemplates", {
-      code: "commercial_asset_test_operator",
-      name: "Commercial and asset test operator",
-      scope: "global",
-      capabilities: [
-        "finance.settlements.view",
-        "finance.reports.view",
-        "assets.upload",
-        "assets.download.standard",
-        "assets.library.view",
-        "assets.trash.manage",
-        "assets.permanent_delete",
-      ],
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.insert("membershipRoleAssignments", {
-      membershipId,
-      roleTemplateId,
-      assignedAt: now,
     });
 
     return {
@@ -370,8 +324,8 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         return schoolB;
       });
       const crossTenant = t.withIdentity({ tokenIdentifier: "https://auth.school.test|finance-a", subject: "finance-a" });
-      const expectDenied = async (operation: () => Promise<unknown>) => {
-        await expect(operation()).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Not authorized|Forbidden/);
+      const expectDenied = async (operation: () => Promise<unknown>, message = "Not authorized") => {
+        await expect(operation()).rejects.toThrow(message);
       };
       const operations = (client: TestClient) => [
         () => client.query(commercialApi.getSettlementLedger, { schoolId: schoolB }),
@@ -380,7 +334,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         () => client.query(meteringApi.getUsageStatus, { schoolId: schoolB }),
         () => client.query(meteringApi.listUsageEvents, { schoolId: schoolB }),
       ];
-      for (const operation of operations(t)) await expectDenied(operation);
+      for (const operation of operations(t)) await expectDenied(operation, "UNAUTHENTICATED");
       for (const operation of operations(crossTenant)) await expectDenied(operation);
     });
   });
@@ -547,7 +501,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
   });
 
   describe("5. Asset Quarantine Gate & Security State Machine", () => {
-    it("rejects downloading unscanned or infected assets and allows clean assets", async () => {
+    it("rejects downloading unscanned, infected and recorded-clean assets while AV delivery is unapproved", async () => {
       const t = convexTest(schema, modules);
       const { schoolId, adminUserId } = await setupTestHarness(t);
 
@@ -608,42 +562,17 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         scannerEngine: "approved-test-scanner",
       });
 
-      const downloadable = await tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
-        schoolId,
-        assetId: cleanAsset._id,
-      });
-      expect(downloadable.scanStatus).toBe("clean");
-      expect(downloadable.fileName).toBe("School_Calendar_2026.png");
+      await expect(tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
+        schoolId, assetId: cleanAsset._id,
+      })).rejects.toThrow("approval required");
     });
 
-    it("rejects uploads when authoritative storage metadata has no content type", async () => {
+    it("does not issue generic transport even when storage quota is allocated", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
-      await t.mutation(meteringInternal.allocateQuota, {
-        schoolId,
-        meterType: "storage_bytes",
-        allocatedUnits: 10_000,
-      });
-      const intent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      const storageId = await t.run((ctx) =>
-        ctx.storage.store(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])]))
-      );
-      const metadata = await t.run((ctx) => ctx.db.system.get("_storage", storageId));
-      expect(metadata?.contentType).toBeFalsy();
-
-      await expect(
-        tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-          schoolId,
-          uploadIntentId: intent.intentId,
-          storageId,
-          fileName: "untyped.png",
-          category: "test",
-        })
-      ).rejects.toThrow("missing or unsupported authoritative content type");
-
-      expect(await t.run((ctx) => ctx.db.get(intent.intentId))).toMatchObject({
-        status: "pending",
-      });
+      await t.mutation(meteringInternal.allocateQuota, { schoolId, meterType: "storage_bytes", allocatedUnits: 10_000 });
+      await expect(tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow("Uploads unavailable");
+      expect(await t.run((ctx) => ctx.db.query("assetUploadIntents").withIndex("by_school_and_status", q => q.eq("schoolId", schoolId).eq("status", "pending")).take(1))).toHaveLength(0);
     });
   });
 
@@ -747,7 +676,8 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
       assertExists(restored);
       expect(restored.isTrashed).toBe(false);
-      expect(restored.purgeScheduledAt).toBeUndefined();
+      expect(restored.purgeScheduledAt).toBeNull();
+      expect(restored).not.toHaveProperty("storageId");
       storageAllocation = await t.run((ctx) =>
         ctx.db
           .query("usageMeterAllocations")
@@ -760,12 +690,10 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         tempStorageBytes: 0,
       });
 
-      // Download is now accessible again
-      const downloadable = await tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
-        schoolId,
-        assetId: asset._id,
-      });
-      expect(downloadable.fileName).toBe("Audited_School_Accounts_2025.xlsx");
+      // Restore never overrides the independent AV/private-delivery gate.
+      await expect(tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
+        schoolId, assetId: asset._id,
+      })).rejects.toThrow("approval required");
 
       // 5. Remove hold, trash again, and purge permanently
       await tenantSession(t).mutation(assetsApi.removeRetentionHold, {
@@ -809,72 +737,21 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
   });
 
   describe("5. Storage-object tenancy and scheduled cleanup", () => {
-    it("binds storage to one intent and releases scheduled-trash quota only after cleanup", async () => {
+    it("does not issue tenant or cross-tenant upload intents from generic transport", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
-        return await ctx.db.insert("schools", {
-          name: "Storage Boundary Academy",
-          slug: "storage-boundary",
-          status: "active",
-          createdAt: now,
-          updatedAt: now,
-        });
+        const school = await ctx.db.insert("schools", { name: "Storage Boundary Academy", slug: "storage-boundary", status: "active", createdAt: now, updatedAt: now });
+        await seedReviewedTenantOperator(ctx, [school], "test|reviewed");
+        return school;
       });
-      await grantTenantOperatorAccess(t, schoolB);
       await t.mutation(meteringInternal.allocateQuota, { schoolId, meterType: "storage_bytes", allocatedUnits: 10_000 });
       await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
-      const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" });
-      const storageId = await storeTypedBlob(t, blob);
-      const firstIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      const secondIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      const foreignIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
-      const finalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-        schoolId,
-        uploadIntentId: firstIntent.intentId,
-        storageId,
-        fileName: "bound.png",
-        category: "test",
-      });
-      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-        schoolId,
-        uploadIntentId: secondIntent.intentId,
-        storageId,
-        fileName: "duplicate.png",
-        category: "test",
-      })).rejects.toThrow("already bound");
-      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-        schoolId: schoolB,
-        uploadIntentId: foreignIntent.intentId,
-        storageId,
-        fileName: "foreign.png",
-        category: "test",
-      })).rejects.toThrow("already bound");
-
-      const asset = await t.run((ctx) => ctx.db.get(finalized.assetId));
-      assertExists(asset);
-      await tenantSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: asset._id });
-      await t.run((ctx) => ctx.db.patch(asset._id, { purgeScheduledAt: Date.now() - 1 }));
-      await t.mutation(assetsInternal.cleanupExpiredAssetStorage, { limit: 10 });
-      expect(await t.run((ctx) => ctx.db.get(asset._id))).toBeNull();
-      const allocation = await t.run((ctx) =>
-        ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique()
-      );
-      expect(allocation).toMatchObject({
-        consumedUnits: 0,
-        activeStorageBytes: 0,
-        trashStorageBytes: 0,
-        tempStorageBytes: 0,
-      });
-      const foreignAllocation = await t.run((ctx) =>
-        ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolB).eq("meterType", "storage_bytes")).unique()
-      );
-      const foreignIntentAfterRejection = await t.run((ctx) => ctx.db.get(foreignIntent.intentId));
-      expect(foreignAllocation).toMatchObject({ consumedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0 });
-      expect(foreignIntentAfterRejection).toMatchObject({ status: "pending" });
-      expect(foreignIntentAfterRejection).not.toHaveProperty("storageId");
-      expect(foreignIntentAfterRejection).not.toHaveProperty("assetId");
+      await expect(tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow("Uploads unavailable");
+      await expect(tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB })).rejects.toThrow("Uploads unavailable");
+      const allocations = await t.run(async (ctx) => Promise.all([schoolId, schoolB].map(id => ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", id).eq("meterType", "storage_bytes")).unique())));
+      expect(allocations).toEqual(expect.arrayContaining([expect.objectContaining({ consumedUnits: 0, reservedUnits: 0 }), expect.objectContaining({ consumedUnits: 0, reservedUnits: 0 })]));
     });
   });
 
@@ -976,7 +853,9 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       const { schoolId } = await setupTestHarness(t);
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
-        return await ctx.db.insert("schools", { name: "Duplicate Ownership Academy", slug: "duplicate-ownership", status: "active", createdAt: now, updatedAt: now });
+        const school = await ctx.db.insert("schools", { name: "Duplicate Ownership Academy", slug: "duplicate-ownership", status: "active", createdAt: now, updatedAt: now });
+        await seedReviewedTenantOperator(ctx, [school], "test|reviewed");
+        return school;
       });
       await t.mutation(meteringInternal.allocateQuota, { schoolId, meterType: "storage_bytes", allocatedUnits: 10_000 });
       const [sharedStorageId, alternateStorageId] = await t.run((ctx) => Promise.all([
@@ -1013,20 +892,17 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(allocation).toMatchObject({ consumedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0 });
     });
 
-    it("claims candidate storage atomically and rejects concurrent, reverse, and cross-tenant reuse", async () => {
+    it("keeps candidate transport disabled across concurrent and cross-tenant attempts", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
-        return await ctx.db.insert("schools", { name: "Candidate Boundary Academy", slug: "candidate-boundary", status: "active", createdAt: now, updatedAt: now });
+        const school = await ctx.db.insert("schools", { name: "Candidate Boundary Academy", slug: "candidate-boundary", status: "active", createdAt: now, updatedAt: now });
+        await seedReviewedTenantOperator(ctx, [school], "test|reviewed");
+        return school;
       });
-      await grantTenantOperatorAccess(t, schoolB);
       const sourceA = await finalizeAsset(t, schoolId, "source-a.png", "test", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }));
-      await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
-      const intentB = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
-      const sourceBStorageId = await storeTypedBlob(t, new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4])], { type: "image/png" }));
-      const sourceBFinalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, { schoolId: schoolB, uploadIntentId: intentB.intentId, storageId: sourceBStorageId, fileName: "source-b.png", category: "test" });
-      const sourceB = await t.run((ctx) => ctx.db.get(sourceBFinalized.assetId));
+      const sourceB = await finalizeAsset(t, schoolB, "source-b.png", "test", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4])], { type: "image/png" }));
       assertExists(sourceA);
       assertExists(sourceB);
       const candidateStorageId = await t.run((ctx) => ctx.storage.store(new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1])], { type: "application/pdf" })));
@@ -1049,26 +925,25 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         verified: true,
       });
       const claims = await Promise.allSettled([claimA, claimB]);
-      expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(1);
-      expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(1);
+      expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(0);
+      expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(2);
 
-      const reverseIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
-        schoolId, uploadIntentId: reverseIntent.intentId, storageId: candidateStorageId, fileName: "reused.pdf", category: "test",
-      })).rejects.toThrow("already bound");
+      await expect(tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow("Uploads unavailable");
       await expect(t.mutation(assetsInternal.recordPdfCompressionCandidateEvidence, {
         schoolId: schoolB, assetId: sourceB._id, sourceStorageId: sourceB.storageId, sourceSha256: sourceBMetadata.sha256,
         candidateStorageId, candidateSha256: candidateMetadata.sha256, candidateByteSize: candidateMetadata.size, optimizerVersion: "test",
         verified: true,
-      })).rejects.toThrow("already bound");
+      })).rejects.toThrow("Uploads unavailable");
     });
 
-    it("rejects reverse, concurrent, and cross-tenant claims of retained rollback originals", async () => {
+    it("keeps retained rollback originals unavailable to disabled finalizers", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
-        return await ctx.db.insert("schools", { name: "Rollback Boundary Academy", slug: "rollback-boundary", status: "active", createdAt: now, updatedAt: now });
+        const school = await ctx.db.insert("schools", { name: "Rollback Boundary Academy", slug: "rollback-boundary", status: "active", createdAt: now, updatedAt: now });
+        await seedReviewedTenantOperator(ctx, [school], "test|reviewed");
+        return school;
       });
       const sourceA = await finalizeAsset(t, schoolId, "source-a.png", "test", new Blob(["source-a"], { type: "image/png" }));
       const sourceB = await finalizeAsset(t, schoolB, "source-b.png", "test", new Blob(["source-b"], { type: "image/png" }));
@@ -1095,23 +970,23 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         candidateByteSize: retainedMetadata.size,
         optimizerVersion: "test",
         verified: true,
-      })).rejects.toThrow("already bound");
+      })).rejects.toThrow("Uploads unavailable");
 
-      const [intentA, intentB] = await Promise.all([
-        tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId }),
-        tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB }),
-      ]);
+      const [intentA, intentB] = await t.run(async (ctx) => Promise.all([
+        ctx.db.insert("assetUploadIntents", { schoolId, status: "pending", createdAt: Date.now(), updatedAt: Date.now() }),
+        ctx.db.insert("assetUploadIntents", { schoolId: schoolB, status: "pending", createdAt: Date.now(), updatedAt: Date.now() }),
+      ]));
       const claims = await Promise.allSettled([
         tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
           schoolId,
-          uploadIntentId: intentA.intentId,
+          uploadIntentId: intentA,
           storageId: retainedOriginalId,
           fileName: "claimed-a.pdf",
           category: "test",
         }),
         tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
           schoolId: schoolB,
-          uploadIntentId: intentB.intentId,
+          uploadIntentId: intentB,
           storageId: retainedOriginalId,
           fileName: "claimed-b.pdf",
           category: "test",
@@ -1128,7 +1003,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
     it("rejects unauthenticated asset uploads and denies cross-tenant reads", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
-      await expect(t.mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required/);
+      await expect(t.mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow("UNAUTHENTICATED");
 
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
@@ -1177,12 +1052,12 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
       await expect(
         schoolAUser.query(assetsApi.listSchoolAssets, { schoolId: schoolB })
-      ).rejects.toThrow(/active membership|Forbidden/);
+      ).rejects.toThrow("Not authorized");
     });
   });
 
   describe("6. Server-verified PDF commit", () => {
-    it("rejects unevidenced candidates and commits only matching verifier evidence", async () => {
+    it("keeps PDF promotion closed even for verified evidence and supports historical rollback", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
       const sourceDocument = await PDFDocument.create();
@@ -1197,42 +1072,29 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       await t.mutation(assetsInternal.beginAssetScan, { assetId: asset._id });
       await t.mutation(assetsInternal.processAssetScanResult, { assetId: asset._id, scanResult: "clean", scannerEngine: "approved-test-scanner" });
 
-      const malformedCandidate = await t.run((ctx) => ctx.storage.store(new Blob(["not a PDF"], { type: "application/pdf" })));
-      const rejected = await t.action(assetsInternal.verifyPdfCompressionCandidateForAsset, { schoolId, assetId: asset._id, candidateStorageId: malformedCandidate, optimizerVersion: "test-v1" });
-      assertExists(rejected);
-      expect(rejected.status).toBe("rejected");
-      expect(await t.run((ctx) => ctx.storage.get(malformedCandidate))).toBeNull();
-      await expect(t.mutation(assetsInternal.commitOptimizedPdfAsset, { schoolId, assetId: asset._id, candidateId: rejected._id })).rejects.toThrow("evidence");
-      await t.run((ctx) => ctx.db.patch(rejected._id, { cleanupScheduledAt: Date.now() - 1 }));
-      await t.mutation(assetsInternal.cleanupExpiredAssetStorage, { limit: 10 });
-      expect(await t.run((ctx) => ctx.db.get(rejected._id))).toBeNull();
-
       const optimizedDocument = await PDFDocument.create();
       for (let index = 0; index < 3; index += 1) optimizedDocument.addPage([600, 400]).drawText(`Page ${index + 1}`, { x: 20, y: 350, size: 8 });
       const optimizedBytes = new Uint8Array(await optimizedDocument.save({ useObjectStreams: true }));
       const optimized = await t.run((ctx) => ctx.storage.store(new Blob([optimizedBytes.buffer], { type: "application/pdf" })));
-      const verified = await t.action(assetsInternal.verifyPdfCompressionCandidateForAsset, { schoolId, assetId: asset._id, candidateStorageId: optimized, optimizerVersion: "test-v1" });
-      assertExists(verified);
-      expect(verified.status).toBe("verified");
+      await expect(t.action(assetsInternal.verifyPdfCompressionCandidateForAsset, { schoolId, assetId: asset._id, candidateStorageId: optimized, optimizerVersion: "test-v1" })).rejects.toThrow("Uploads unavailable");
+      expect(await t.run(async (ctx) => Boolean(await ctx.storage.get(optimized)))).toBe(true);
+      expect(await t.run((ctx) => ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", optimized)).take(1))).toHaveLength(0);
       let storageAllocation = await t.run((ctx) =>
         ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique()
       );
-      expect(storageAllocation?.tempStorageBytes).toBe(optimizedBytes.byteLength);
-      const committed = await t.mutation(assetsInternal.commitOptimizedPdfAsset, { schoolId, assetId: asset._id, candidateId: verified._id });
-      assertExists(committed);
-      expect(committed.storageId).toBe(optimized);
-      expect(committed.rollbackStorageId).toBe(asset.storageId);
-      expect(await t.run((ctx) => ctx.db.get(verified._id))).toBeNull();
-      const optimizedMetadata = await t.run((ctx) => ctx.db.system.get("_storage", optimized));
-      expect(committed).toMatchObject({ byteSize: optimizedMetadata?.size, sha256: optimizedMetadata?.sha256 });
-      storageAllocation = await t.run((ctx) =>
-        ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique()
-      );
-      expect(storageAllocation).toMatchObject({
-        activeStorageBytes: optimizedMetadata?.size,
-        tempStorageBytes: asset.byteSize,
+      // Synthetic historical promoted state proves existing rollback remains usable.
+      await t.run(async ctx => {
+        const metadata = await ctx.db.system.get("_storage", optimized);
+        assertExists(metadata); assertExists(storageAllocation);
+        await ctx.db.patch(asset._id, { storageId: optimized, byteSize: metadata.size, sha256: metadata.sha256, rollbackStorageId: asset.storageId, rollbackExpiryAt: Date.now() + 86400000, isOptimized: true });
+        await ctx.db.patch(storageAllocation._id, { activeStorageBytes: metadata.size, tempStorageBytes: asset.byteSize });
       });
 
+      const rollbackHold = await tenantSession(t).mutation(assetsApi.applyRetentionHold, { schoolId, assetId: asset._id, holdReason: "Retain both versions" });
+      assertExists(rollbackHold);
+      await expect(t.mutation(assetsInternal.rollbackOptimizedPdfAsset, { schoolId, assetId: asset._id })).rejects.toThrow("Retention hold");
+      expect(await t.run(async ctx => (await ctx.storage.get(asset.storageId)) !== null)).toBe(true);
+      await tenantSession(t).mutation(assetsApi.removeRetentionHold, { schoolId, holdId: rollbackHold._id });
       const rolledBack = await t.mutation(assetsInternal.rollbackOptimizedPdfAsset, { schoolId, assetId: asset._id });
       const sourceMetadata = await t.run((ctx) => ctx.db.system.get("_storage", asset.storageId));
       expect(rolledBack).toMatchObject({ storageId: asset.storageId, byteSize: sourceMetadata?.size, sha256: sourceMetadata?.sha256, isOptimized: false });

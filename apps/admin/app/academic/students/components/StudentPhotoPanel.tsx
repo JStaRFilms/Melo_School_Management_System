@@ -19,7 +19,7 @@ interface StudentPhotoPanelProps {
   resetKey?: string | number | null;
   onProcessingChange?: (isProcessing: boolean) => void;
   onValidationError?: (message: string) => void;
-  disabled?: boolean;
+  uploadAvailable?: boolean;
 }
 
 const defaultCrop: StudentPhotoCrop = { zoom: 1, x: 50, y: 50 };
@@ -33,7 +33,7 @@ export function StudentPhotoPanel({
   resetKey,
   onProcessingChange,
   onValidationError,
-  disabled = false,
+  uploadAvailable = false,
 }: StudentPhotoPanelProps) {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [crop, setCrop] = useState<StudentPhotoCrop>(defaultCrop);
@@ -153,14 +153,6 @@ export function StudentPhotoPanel({
 
   const visiblePreviewUrl = sourcePreviewUrl ?? previewUrl;
 
-  if (disabled) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
-        Student photo uploads are temporarily unavailable. Existing photos are preserved.
-      </div>
-    );
-  }
-
   return (
     <div className="w-full space-y-2.5">
       {/* Hidden file input */}
@@ -168,6 +160,7 @@ export function StudentPhotoPanel({
         ref={inputRef}
         type="file"
         accept="image/*"
+        disabled={!uploadAvailable}
         onChange={handlePhotoInputChange}
         className="hidden"
       />
@@ -219,14 +212,16 @@ export function StudentPhotoPanel({
                 <span>{showCropAdjuster ? "Close" : "Crop"}</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="flex flex-1 h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
-            >
-              <Upload className="h-3 w-3 text-slate-400" />
-              <span>Change</span>
-            </button>
+            {uploadAvailable && (
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="flex flex-1 h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                <Upload className="h-3 w-3 text-slate-400" />
+                <span>Change</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRemovePhoto}
@@ -248,8 +243,7 @@ export function StudentPhotoPanel({
             </div>
           )}
         </div>
-      ) : (
-        /* Empty State Dropzone */
+      ) : uploadAvailable ? (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -259,14 +253,14 @@ export function StudentPhotoPanel({
             <Camera className="h-4 w-4 text-slate-400 group-hover:text-brand-primary transition-colors" />
           </div>
           <div className="space-y-0.5">
-            <p className="text-xs font-bold text-slate-700 group-hover:text-brand-primary transition-colors font-display">
-              Upload Photo
-            </p>
-            <p className="text-[9px] font-medium text-slate-400">
-              {helperText}
-            </p>
+            <p className="text-xs font-bold text-slate-700 group-hover:text-brand-primary transition-colors font-display">Upload Photo</p>
+            <p className="text-[9px] font-medium text-slate-400">{helperText}</p>
           </div>
         </button>
+      ) : (
+        <div role="note" className="mx-auto w-full max-w-[180px] rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Photo upload unavailable until secure tenant ownership, quota reservation, and abandoned-upload cleanup are supported.
+        </div>
       )}
     </div>
   );

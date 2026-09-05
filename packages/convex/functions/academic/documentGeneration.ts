@@ -1,6 +1,7 @@
 "use node";
 
 import { ConvexError, v } from "convex/values";
+import { assertPaidUsageAvailable } from "../foundation/paidUsageGate";
 import { generateObject, NoObjectGeneratedError, type GenerateObjectResult } from "ai";
 import {
   buildAssignmentPrompt,
@@ -27,6 +28,7 @@ import {
 } from "@school/ai";
 import { api } from "../../_generated/api";
 import { action, type ActionCtx } from "../../_generated/server";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import type { Id } from "../../_generated/dataModel";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
@@ -1250,7 +1252,7 @@ function assessmentSubjectName(workspace: AssessmentWorkspace): string | null {
 }
 
 async function requireStaffGenerationContext(ctx: ActionCtx) {
-  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capabilities: [...TEACHER_PLANNING_CAPABILITIES] });
   if (!viewer) {
     throw new ConvexError("Unauthorized");
   }
@@ -1289,6 +1291,7 @@ export const generateTeacherLessonPlanDraft = action({
   returns: lessonPlanGenerationResultValidator,
   handler: async (ctx, args): Promise<LessonPlanGenerationResultShape> => {
     await requireStaffGenerationContext(ctx);
+    assertPaidUsageAvailable();
 
     const requestedSourceIds = normalizeSourceIds(args.sourceIds.map((id) => String(id)));
     if (requestedSourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
