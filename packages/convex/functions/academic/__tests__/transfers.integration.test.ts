@@ -11,7 +11,6 @@ declare global {
 }
 
 // Verification guideline compliance: supports standard relative globbing
-const _localModules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
 
 // Monorepo root resolution for convex-test in nested test directories
 const convexRoot = new URL("../../../", import.meta.url).pathname;
@@ -23,7 +22,7 @@ const modules = Object.fromEntries(
   Object.entries(rawModules).map(([path, module]) => [
     `./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`,
     module,
-  ])
+  ]),
 );
 
 const transfersApi = api.functions.academic.transfers;
@@ -44,7 +43,11 @@ interface TestHarness {
   groupB: Id<"schoolGroups">;
   adminAIdentity: { tokenIdentifier: string; subject: string; email: string };
   adminBIdentity: { tokenIdentifier: string; subject: string; email: string };
-  unauthorizedIdentity: { tokenIdentifier: string; subject: string; email: string };
+  unauthorizedIdentity: {
+    tokenIdentifier: string;
+    subject: string;
+    email: string;
+  };
   classAId: Id<"classes">;
   classBId: Id<"classes">;
   studentId: Id<"students">;
@@ -53,7 +56,9 @@ interface TestHarness {
   adminBMembershipId: Id<"branchMemberships">;
 }
 
-async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestHarness> {
+async function setupTestHarness(
+  t: ReturnType<typeof convexTest>,
+): Promise<TestHarness> {
   const now = Date.now();
   return await t.run(async (ctx) => {
     // 1. Create Schools
@@ -292,6 +297,27 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestH
       updatedAt: now,
     });
 
+    // Destination numbering must be explicitly configured; production allocation never invents codes/session.
+    await ctx.db.insert("academicSessions", {
+      schoolId: schoolB,
+      name: "2026/27",
+      startDate: Date.UTC(2026, 8, 1),
+      endDate: Date.UTC(2027, 7, 31),
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("admissionNumberPolicies", {
+      schoolId: schoolB,
+      pattern: "{SCHOOL}-{CAMPUS}-{LEVEL}-{YEAR}-{SEQ:4}",
+      schoolCode: "OBC",
+      campusCode: "IKY",
+      currentSequence: 1,
+      resetFrequency: "continuous",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
     return {
       schoolA,
       schoolB,
@@ -408,6 +434,45 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     const adminA = t.withIdentity(harness.adminAIdentity);
     const adminB = t.withIdentity(harness.adminBIdentity);
 
+    const sourceHistory = await t.run(async (ctx) => {
+      const invoice = await ctx.db.get(historicalInvoiceId);
+      if (!invoice) throw new Error("Missing invoice fixture");
+      const subjectId = await ctx.db.insert("subjects", {
+        schoolId: harness.schoolA,
+        name: "Mathematics",
+        code: "MATH",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const context = {
+        schoolId: harness.schoolA,
+        studentId: harness.studentId,
+        classId: harness.classAId,
+        sessionId: invoice.sessionId,
+        termId: invoice.termId,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: harness.adminAUserId,
+      };
+      const attendanceId = await ctx.db.insert(
+        "reportCardAttendanceStudentValues",
+        { ...context, timesPresent: 72 },
+      );
+      const scoreId = await ctx.db.insert("historicalTermTotals", {
+        ...context,
+        subjectId,
+        total: 87,
+        source: "manual_backfill",
+      });
+      return {
+        attendanceId,
+        scoreId,
+        attendance: await ctx.db.get(attendanceId),
+        score: await ctx.db.get(scoreId),
+        invoice,
+      };
+    });
+
     // --- Phase 1 Step 1: Initiate Transfer ---
     const initiateResult = await adminA.mutation(initiateStudentTransferRef, {
       sourceSchoolId: harness.schoolA,
@@ -415,7 +480,8 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       studentId: harness.studentId,
       guardianConsentRecorded: true,
       guardianConsentMethod: "signed_hardcopy_and_sms_otp",
-      academicHistorySummary: "Completed Basic 5 with Grade A in Mathematics and English",
+      academicHistorySummary:
+        "Completed Basic 5 with Grade A in Mathematics and English",
       attendanceSummaryPct: 97.5,
       medicalNotes: "Asthma - carries emergency inhaler",
     });
@@ -431,16 +497,24 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(transferAfterInit?.status).toBe("initiated");
     expect(transferAfterInit?.groupId).toEqual(harness.groupA);
     expect(transferAfterInit?.guardianConsentRecorded).toBe(true);
-    expect(transferAfterInit?.portableRecordPackage?.studentName).toBe("Oluwaseun Adeyemi");
-    expect(transferAfterInit?.portableRecordPackage?.attendanceSummaryPct).toBe(97.5);
-    expect(transferAfterInit?.portableRecordPackage?.medicalNotes).toBe("Asthma - carries emergency inhaler");
+    expect(transferAfterInit?.portableRecordPackage?.studentName).toBe(
+      "Oluwaseun Adeyemi",
+    );
+    expect(transferAfterInit?.portableRecordPackage?.attendanceSummaryPct).toBe(
+      97.5,
+    );
+    expect(
+      transferAfterInit?.portableRecordPackage?.medicalNotes,
+    ).toBeUndefined();
 
     // Verify audit event written for initiation
     const initiateAudit = await t.run(async (ctx) => {
       return await ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>
-          q.eq("module", "enrollment").eq("action", "student_transfer.initiate")
+          q
+            .eq("module", "enrollment")
+            .eq("action", "student_transfer.initiate"),
         )
         .first();
     });
@@ -450,7 +524,8 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     // --- Phase 1 Step 2: Source Branch Release ---
     const releaseResult = await adminA.mutation(authorizeSourceReleaseRef, {
       transferId,
-      sourceReleaseNote: "Principal sign-off approved. Academic dossier cleared for inter-branch relocation.",
+      sourceReleaseNote:
+        "Principal sign-off approved. Academic dossier cleared for inter-branch relocation.",
     });
 
     expect(releaseResult.status).toBe("source_released");
@@ -459,7 +534,9 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       return (await ctx.db.get(transferId)) as Doc<"studentTransfers"> | null;
     });
     expect(transferAfterRelease?.status).toBe("source_released");
-    expect(transferAfterRelease?.sourceReleaseNote).toContain("Principal sign-off approved");
+    expect(transferAfterRelease?.sourceReleaseNote).toContain(
+      "Principal sign-off approved",
+    );
     expect(transferAfterRelease?.sourceReleasedAt).toBeTypeOf("number");
 
     // Verify audit event written for source release
@@ -467,7 +544,9 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       return await ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>
-          q.eq("module", "enrollment").eq("action", "student_transfer.source_release")
+          q
+            .eq("module", "enrollment")
+            .eq("action", "student_transfer.source_release"),
         )
         .first();
     });
@@ -492,16 +571,20 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(transferFinal?.destinationAcceptedAt).toBeTypeOf("number");
 
     // The source row remains source-scoped for historical records; acceptance creates a new destination context.
-    const sourceStudent = await t.run(async (ctx) => ctx.db.get(harness.studentId));
+    const sourceStudent = await t.run(async (ctx) =>
+      ctx.db.get(harness.studentId),
+    );
     const destinationStudent = await t.run(async (ctx) =>
-      ctx.db.get(acceptResult.destinationStudentId)
+      ctx.db.get(acceptResult.destinationStudentId),
     );
     expect(sourceStudent?.schoolId).toEqual(harness.schoolA);
     expect(sourceStudent?.classId).toEqual(harness.classAId);
     expect(sourceStudent?.enrollmentStatus).toBe("transferred_out");
     expect(destinationStudent?.schoolId).toEqual(harness.schoolB);
     expect(destinationStudent?.classId).toEqual(harness.classBId);
-    expect(destinationStudent?.admissionNumber).toBe(acceptResult.destinationAdmissionNumber);
+    expect(destinationStudent?.admissionNumber).toBe(
+      acceptResult.destinationAdmissionNumber,
+    );
     expect(destinationStudent?.enrollmentStatus).toBe("active");
 
     // Immutability Check (MX-15 §4): Source branch historical records retain sourceSchoolId
@@ -511,10 +594,20 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(historicalInvoice?.schoolId).toEqual(harness.schoolA);
     expect(historicalInvoice?.studentId).toEqual(harness.studentId);
     expect(historicalInvoice?.balanceDue).toBe(60000);
+    expect(historicalInvoice).toEqual(sourceHistory.invoice);
+    expect(
+      await t.run((ctx) => ctx.db.get(sourceHistory.attendanceId)),
+    ).toEqual(sourceHistory.attendance);
+    expect(await t.run((ctx) => ctx.db.get(sourceHistory.scoreId))).toEqual(
+      sourceHistory.score,
+    );
 
-    const destinationHistory = await adminB.query(getStudentTransferHistoryRef, {
-      studentId: acceptResult.destinationStudentId,
-    });
+    const destinationHistory = await adminB.query(
+      getStudentTransferHistoryRef,
+      {
+        studentId: acceptResult.destinationStudentId,
+      },
+    );
     expect(destinationHistory).toHaveLength(1);
     expect(destinationHistory[0]._id).toBe(transferId);
 
@@ -523,13 +616,17 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       return await ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>
-          q.eq("module", "enrollment").eq("action", "student_transfer.destination_accept")
+          q
+            .eq("module", "enrollment")
+            .eq("action", "student_transfer.destination_accept"),
         )
         .first();
     });
     expect(destinationAudit).not.toBeNull();
     expect(destinationAudit?.outcome).toBe("success");
-    expect(destinationAudit?.safeSummary).toContain("Accepted transfer for student Oluwaseun Adeyemi");
+    expect(destinationAudit?.safeSummary).toContain(
+      "Accepted transfer for student Oluwaseun Adeyemi",
+    );
   });
 
   it("2. Negative: Attempting transfer between schools in different groups is strictly rejected (Cross-Group Gate)", async () => {
@@ -546,9 +643,9 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         studentId: harness.studentId,
         guardianConsentRecorded: true,
         guardianConsentMethod: "written_parental_consent",
-      })
+      }),
     ).rejects.toThrow(
-      "Cross-group transfers are not permitted. Transferee schools must belong to the same verified school group."
+      "Cross-group transfers are not permitted. Transferee schools must belong to the same verified school group.",
     );
   });
 
@@ -573,9 +670,9 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       adminB.mutation(acceptDestinationTransferRef, {
         transferId,
         destinationClassId: harness.classBId,
-      })
+      }),
     ).rejects.toThrow(
-      "Cannot accept transfer: transfer is in status 'initiated', expected 'source_released'"
+      "Cannot accept transfer: transfer is in status 'initiated', expected 'source_released'",
     );
   });
 
@@ -589,10 +686,12 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       // 1. Inject private sensitive safeguarding and disciplinary records into student record
       await ctx.db.patch(harness.studentId, {
         customAttributes: {
-          safeguardingNotes: "CONFIDENTIAL_DSL_REPORT: Statutory social services child welfare referral",
+          safeguardingNotes:
+            "CONFIDENTIAL_DSL_REPORT: Statutory social services child welfare referral",
           childProtectionFlag: true,
           disciplinaryRecords: "Suspended 3 days for altercation with student",
-          familyFinancialDispute: "Parent defaulted on term 2 tuition balance of ₦180,000",
+          familyFinancialDispute:
+            "Parent defaulted on term 2 tuition balance of ₦180,000",
         },
       });
 
@@ -688,22 +787,24 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
 
     // Inspect compiled portableRecordPackage
     const transferRecord = await t.run(async (ctx) => {
-      return (await ctx.db.get(transferId as Id<"studentTransfers">)) as Doc<"studentTransfers"> | null;
+      return (await ctx.db.get(
+        transferId as Id<"studentTransfers">,
+      )) as Doc<"studentTransfers"> | null;
     });
 
     expect(transferRecord).not.toBeNull();
-    const pkg = transferRecord!.portableRecordPackage as any;
+    const pkg = transferRecord?.portableRecordPackage;
     expect(pkg).toBeDefined();
 
     // 1. Assert absolute absence of prohibited fields
-    expect(pkg.safeguardingNotes).toBeUndefined();
-    expect(pkg.childProtectionFlag).toBeUndefined();
-    expect(pkg.disciplinaryRecords).toBeUndefined();
-    expect(pkg.familyFinancialDispute).toBeUndefined();
-    expect(pkg.balanceDue).toBeUndefined();
-    expect(pkg.overdueBalance).toBeUndefined();
-    expect(pkg.invoices).toBeUndefined();
-    expect(pkg.debtHistory).toBeUndefined();
+    expect(pkg).not.toHaveProperty("safeguardingNotes");
+    expect(pkg).not.toHaveProperty("childProtectionFlag");
+    expect(pkg).not.toHaveProperty("disciplinaryRecords");
+    expect(pkg).not.toHaveProperty("familyFinancialDispute");
+    expect(pkg).not.toHaveProperty("balanceDue");
+    expect(pkg).not.toHaveProperty("overdueBalance");
+    expect(pkg).not.toHaveProperty("invoices");
+    expect(pkg).not.toHaveProperty("debtHistory");
 
     // 2. Assert serialized payload does not leak confidential tokens or debt amounts
     const serializedPackage = JSON.stringify(pkg);
@@ -716,12 +817,14 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(serializedPackage).not.toContain("fee arrears");
 
     // 3. Assert permitted, necessary portable data is present and intact
-    expect(pkg.studentName).toBe("Oluwaseun Adeyemi");
-    expect(pkg.gender).toBe("male");
-    expect(pkg.dateOfBirth).toBe("2014-05-12");
-    expect(pkg.academicHistorySummary).toBe("Completed Basic 5 coursework; honors in Science");
-    expect(pkg.attendanceSummaryPct).toBe(98.0);
-    expect(pkg.medicalNotes).toBe("Allergic to amoxicillin");
+    expect(pkg?.studentName).toBe("Oluwaseun Adeyemi");
+    expect(pkg?.gender).toBe("male");
+    expect(pkg?.dateOfBirth).toBe("2014-05-12");
+    expect(pkg?.academicHistorySummary).toBe(
+      "Completed Basic 5 coursework; honors in Science",
+    );
+    expect(pkg?.attendanceSummaryPct).toBe(98.0);
+    expect(pkg?.medicalNotes).toBeUndefined();
   });
 
   it("5. Transfer detail, list, group, and history queries deny unauthenticated and cross-tenant callers", async () => {
@@ -737,18 +840,30 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       guardianConsentMethod: "signed_form",
     });
 
-    await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(listTransfersByGroupRef, { groupId: harness.groupA })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(getStudentTransferHistoryRef, { studentId: harness.studentId })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(outsider.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(outsider.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(
+      /Not authorized|Forbidden/,
+    );
+    await expect(
+      t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA }),
+    ).rejects.toThrow(/UNAUTHENTICATED/);
+    await expect(
+      t.query(listTransfersByGroupRef, { groupId: harness.groupA }),
+    ).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(
+      t.query(getStudentTransferHistoryRef, { studentId: harness.studentId }),
+    ).rejects.toThrow(/UNAUTHENTICATED/);
+    await expect(
+      outsider.query(getTransferRef, { transferId }),
+    ).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(
+      outsider.query(listTransfersBySchoolRef, { schoolId: harness.schoolA }),
+    ).rejects.toThrow(/Not authorized|Forbidden/);
 
     const sourceView = await adminA.query(getTransferRef, { transferId });
     expect(
       sourceView && "destinationAdmissionNumber" in sourceView
         ? sourceView.destinationAdmissionNumber
-        : undefined
+        : undefined,
     ).toBeUndefined();
   });
 
@@ -773,7 +888,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         admissionNumberOverride: "IKY-2026-0001",
         admissionNumberOverrideConfirmed: true,
         admissionNumberOverrideReason: "Registrar correction",
-      })
+      }),
     ).rejects.toThrow("enrollment.admissions.override_number");
 
     await t.run(async (ctx) => {
@@ -783,6 +898,12 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         grantedAt: Date.now(),
         reason: "Transfer admissions registrar",
       });
+      await ctx.db.insert("membershipDirectGrants", {
+        membershipId: harness.adminBMembershipId,
+        capability: "enrollment.intakes.manage",
+        grantedAt: Date.now(),
+        reason: "Managed transfer authority is explicit, not the legacy admin role",
+      });
     });
 
     await expect(
@@ -791,7 +912,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         destinationClassId: harness.classBId,
         admissionNumberOverride: "IKY-2026-0001",
         admissionNumberOverrideConfirmed: true,
-      })
+      }),
     ).rejects.toThrow("requires a reason");
 
     const accepted = await adminB.mutation(acceptDestinationTransferRef, {
@@ -802,15 +923,27 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       admissionNumberOverrideReason: "Registrar correction",
     });
     expect(accepted.destinationAdmissionNumber).toBe("IKY-2026-0001");
+    const manualClaims = await t.run((ctx) =>
+      ctx.db.query("admissionNumberClaims").collect(),
+    );
+    expect(manualClaims).toHaveLength(1);
+    expect(
+      (await t.run((ctx) => ctx.db.query("admissionNumberPolicies").first()))
+        ?.currentSequence,
+    ).toBe(1);
     const audit = await t.run(async (ctx) =>
       ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>
-          q.eq("module", "enrollment").eq("action", "student_transfer.destination_accept")
+          q
+            .eq("module", "enrollment")
+            .eq("action", "student_transfer.destination_accept"),
         )
-        .first()
+        .first(),
     );
-    expect(audit?.safeSummary).toContain("confirmed manual override: Registrar correction");
+    expect(audit?.safeSummary).toContain(
+      "confirmed manual override: Registrar correction",
+    );
   });
 
   it("7. Additional Gates: Guardian consent requirement and transfer cancellation/rejection lifecycle", async () => {
@@ -828,17 +961,22 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         studentId: harness.studentId,
         guardianConsentRecorded: false,
         guardianConsentMethod: "none",
-      })
-    ).rejects.toThrow("Guardian consent must be explicitly recorded prior to initiating transfer");
+      }),
+    ).rejects.toThrow(
+      "Guardian consent must be explicitly recorded prior to initiating transfer",
+    );
 
     // Gate B: Valid initiation followed by source branch cancellation
-    const { transferId: transfer1 } = await adminA.mutation(initiateStudentTransferRef, {
-      sourceSchoolId: harness.schoolA,
-      destinationSchoolId: harness.schoolB,
-      studentId: harness.studentId,
-      guardianConsentRecorded: true,
-      guardianConsentMethod: "in_person_verbal",
-    });
+    const { transferId: transfer1 } = await adminA.mutation(
+      initiateStudentTransferRef,
+      {
+        sourceSchoolId: harness.schoolA,
+        destinationSchoolId: harness.schoolB,
+        studentId: harness.studentId,
+        guardianConsentRecorded: true,
+        guardianConsentMethod: "in_person_verbal",
+      },
+    );
 
     const cancelResult = await adminA.mutation(rejectOrCancelTransferRef, {
       transferId: transfer1,
@@ -847,7 +985,9 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(cancelResult.status).toBe("cancelled");
 
     const cancelledTransfer = await t.run(async (ctx) => {
-      return (await ctx.db.get(transfer1 as Id<"studentTransfers">)) as Doc<"studentTransfers"> | null;
+      return (await ctx.db.get(
+        transfer1 as Id<"studentTransfers">,
+      )) as Doc<"studentTransfers"> | null;
     });
     expect(cancelledTransfer?.status).toBe("cancelled");
     expect(cancelledTransfer?.cancellationReason).toContain("Family relocated");
@@ -864,17 +1004,22 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       adminB.mutation(acceptDestinationTransferRef, {
         transferId: transfer1,
         destinationClassId: harness.classBId,
-      })
-    ).rejects.toThrow("Cannot accept transfer: transfer is in status 'cancelled', expected 'source_released'");
+      }),
+    ).rejects.toThrow(
+      "Cannot accept transfer: transfer is in status 'cancelled', expected 'source_released'",
+    );
 
     // Gate C: Valid initiation & source release followed by destination branch rejection
-    const { transferId: transfer2 } = await adminA.mutation(initiateStudentTransferRef, {
-      sourceSchoolId: harness.schoolA,
-      destinationSchoolId: harness.schoolB,
-      studentId: harness.studentId,
-      guardianConsentRecorded: true,
-      guardianConsentMethod: "portal_submission",
-    });
+    const { transferId: transfer2 } = await adminA.mutation(
+      initiateStudentTransferRef,
+      {
+        sourceSchoolId: harness.schoolA,
+        destinationSchoolId: harness.schoolB,
+        studentId: harness.studentId,
+        guardianConsentRecorded: true,
+        guardianConsentMethod: "portal_submission",
+      },
+    );
 
     await adminA.mutation(authorizeSourceReleaseRef, {
       transferId: transfer2,
@@ -888,10 +1033,14 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(rejectResult.status).toBe("rejected");
 
     const rejectedTransfer = await t.run(async (ctx) => {
-      return (await ctx.db.get(transfer2 as Id<"studentTransfers">)) as Doc<"studentTransfers"> | null;
+      return (await ctx.db.get(
+        transfer2 as Id<"studentTransfers">,
+      )) as Doc<"studentTransfers"> | null;
     });
     expect(rejectedTransfer?.status).toBe("rejected");
-    expect(rejectedTransfer?.cancellationReason).toContain("Class capacity reached");
+    expect(rejectedTransfer?.cancellationReason).toContain(
+      "Class capacity reached",
+    );
 
     // Student remains active at source school
     const studentAfterReject = await t.run(async (ctx) => {
@@ -899,5 +1048,387 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     });
     expect(studentAfterReject?.schoolId).toEqual(harness.schoolA);
     expect(studentAfterReject?.enrollmentStatus).toBe("active");
+  });
+});
+
+describe("U6 routed workflow contracts", () => {
+  it("replays initiation/release/accept atomically, rejects altered intent and keeps claims", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const proposal = {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Signed form reference 123",
+      requestKey: "stable-intent",
+      proposalClassName: "JSS 1",
+      proposalSessionName: "2026/27",
+    };
+    const first = await source.mutation(initiateStudentTransferRef, proposal);
+    expect(await source.mutation(initiateStudentTransferRef, proposal)).toEqual(
+      first,
+    );
+    await expect(
+      source.mutation(initiateStudentTransferRef, {
+        ...proposal,
+        proposalClassName: "Changed",
+      }),
+    ).rejects.toThrow("different proposal");
+    await expect(
+      source.mutation(initiateStudentTransferRef, {
+        ...proposal,
+        requestKey: "new-intent",
+      }),
+    ).rejects.toThrow("active transfer");
+    await expect(
+      destination.mutation(authorizeSourceReleaseRef, {
+        transferId: first.transferId,
+      }),
+    ).rejects.toThrow();
+    const release = {
+      transferId: first.transferId,
+      sourceReleaseNote: "Reviewed consent",
+    };
+    expect(await source.mutation(authorizeSourceReleaseRef, release)).toEqual(
+      await source.mutation(authorizeSourceReleaseRef, release),
+    );
+    await expect(
+      source.mutation(acceptDestinationTransferRef, {
+        transferId: first.transferId,
+        destinationClassId: h.classBId,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        transferId: first.transferId,
+        destinationClassId: h.classAId,
+      }),
+    ).rejects.toThrow("Destination class");
+    const args = {
+      transferId: first.transferId,
+      destinationClassId: h.classBId,
+      expectedPolicyVersion: 1,
+    };
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        ...args,
+        expectedPolicyVersion: 9,
+      }),
+    ).rejects.toThrow();
+    const [accepted, replay] = await Promise.all([
+      destination.mutation(acceptDestinationTransferRef, args),
+      destination.mutation(acceptDestinationTransferRef, args),
+    ]);
+    expect(replay).toEqual(accepted);
+    expect(await source.mutation(initiateStudentTransferRef, proposal)).toEqual(
+      first,
+    );
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        ...args,
+        admissionNumberOverride: "NEW",
+      }),
+    ).rejects.toThrow("Cannot accept");
+    const rows = await t.run(async (ctx) => ({
+      students: await ctx.db
+        .query("students")
+        .withIndex("by_school", (q) => q.eq("schoolId", h.schoolB))
+        .collect(),
+      claims: await ctx.db.query("admissionNumberClaims").collect(),
+      policy: await ctx.db.query("admissionNumberPolicies").first(),
+      audits: await ctx.db
+        .query("auditEvents")
+        .withIndex("by_module_and_action", (q) =>
+          q
+            .eq("module", "enrollment")
+            .eq("action", "student_transfer.destination_accept"),
+        )
+        .collect(),
+    }));
+    expect(rows.students).toHaveLength(1);
+    expect(rows.claims).toHaveLength(1);
+    expect(rows.policy?.currentSequence).toBe(2);
+    expect(rows.audits).toHaveLength(1);
+    expect(rows.students[0].guardianPhone).toBeUndefined();
+    const sourceView = await source.query(getTransferRef, {
+      transferId: first.transferId,
+    });
+    expect(sourceView).not.toHaveProperty("acceptanceIntent");
+    expect(sourceView).not.toHaveProperty("destinationSessionId");
+  });
+
+  it("selectors expose only same-group names and own rosters; sessions, group and source state are rechecked", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const workspace = await source.query(transfersApi.getTransferWorkspace, {
+      schoolId: h.schoolA,
+    });
+    expect(
+      workspace.allowed && workspace.destinations.map((d) => d._id),
+    ).toEqual([h.schoolB]);
+    await expect(
+      source.query(transfersApi.listTransferCandidates, {
+        schoolId: h.schoolA,
+        classId: h.classBId,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await source.query(transfersApi.getTransferWorkspace, {
+        schoolId: h.schoolB,
+      }),
+    ).toEqual({ allowed: false });
+    const { transferId } = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    });
+    await t.run((ctx) => ctx.db.patch(h.groupA, { status: "archived" }));
+    await expect(
+      source.mutation(authorizeSourceReleaseRef, { transferId }),
+    ).rejects.toThrow("active school group");
+    await t.run((ctx) => ctx.db.patch(h.groupA, { status: "active" }));
+    await source.mutation(authorizeSourceReleaseRef, { transferId });
+    const session = await t.run(async (ctx) =>
+      ctx.db.insert("academicSessions", {
+        schoolId: h.schoolA,
+        name: "Foreign",
+        isActive: true,
+        startDate: 1,
+        endDate: 2,
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    );
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: h.classBId,
+        destinationSessionId: session,
+      }),
+    ).rejects.toThrow("active academic session");
+    await t.run(async (ctx) =>
+      ctx.db.patch(h.studentId, { enrollmentStatus: "withdrawn" }),
+    );
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: h.classBId,
+      }),
+    ).rejects.toThrow("Source student record");
+    const reason = {
+      transferId,
+      reason: "Family withdrew enrollment",
+      action: "cancelled" as const,
+    };
+    const cancelled = await source.mutation(rejectOrCancelTransferRef, reason);
+    expect(await source.mutation(rejectOrCancelTransferRef, reason)).toEqual(
+      cancelled,
+    );
+    expect(
+      (await t.run((ctx) => ctx.db.get(h.studentId)))?.enrollmentStatus,
+    ).toBe("withdrawn");
+    await expect(
+      destination.mutation(rejectOrCancelTransferRef, {
+        ...reason,
+        action: "rejected",
+      }),
+    ).rejects.toThrow("finalized");
+  });
+
+  it("redacts legacy health data, filters unrelated group records and gives destination a released/rejected timeline", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const { transferId } = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    });
+    await t.run(async (ctx) => {
+      const row = await ctx.db.get(transferId);
+      if (!row?.portableRecordPackage) throw new Error("Missing fixture");
+      await ctx.db.patch(transferId, {
+        portableRecordPackage: {
+          ...row.portableRecordPackage,
+          medicalNotes: "legacy private health",
+        },
+      });
+      await ctx.db.insert("studentTransfers", {
+        ...Object.fromEntries(
+          Object.entries(row).filter(([key]) => !key.startsWith("_")),
+        ),
+        groupId: h.groupA,
+        sourceSchoolId: h.schoolB,
+        destinationSchoolId: h.schoolC,
+        studentId: h.studentId,
+        studentName: "Unrelated student",
+        guardianConsentRecorded: true,
+        guardianConsentMethod: "Written",
+        status: "initiated",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const view = await destination.query(getTransferRef, { transferId });
+    expect(JSON.stringify(view)).not.toContain("legacy private health");
+    expect(view?.portableRecordPackage?.attendanceSummaryPct).toBeUndefined();
+    expect(
+      await source.query(listTransfersByGroupRef, { groupId: h.groupA }),
+    ).toHaveLength(1);
+    await source.mutation(authorizeSourceReleaseRef, {
+      transferId,
+      sourceReleaseNote: "Source private note",
+    });
+    const rejection = {
+      transferId,
+      reason: "No places available",
+      action: "rejected" as const,
+    };
+    expect(
+      await destination.mutation(rejectOrCancelTransferRef, rejection),
+    ).toEqual(await destination.mutation(rejectOrCancelTransferRef, rejection));
+    const rejected = await destination.query(getTransferRef, { transferId });
+    expect(rejected?.sourceReleaseRecorded).toBe(true);
+    expect(rejected).not.toHaveProperty("sourceReleaseNote");
+  });
+});
+
+describe("U6 continuous history and current branch authority", () => {
+  it("follows two enrollment contexts while keeping each branch's private release data scoped", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("academicSessions", {
+        schoolId: h.schoolA,
+        name: "2026/27",
+        startDate: Date.UTC(2026, 8, 1),
+        endDate: Date.UTC(2027, 7, 31),
+        isActive: true,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("admissionNumberPolicies", {
+        schoolId: h.schoolA,
+        pattern: "{SCHOOL}-{SEQ:4}",
+        schoolCode: "SRC",
+        campusCode: "A",
+        currentSequence: 1,
+        resetFrequency: "continuous",
+        version: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const first = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    });
+    await source.mutation(authorizeSourceReleaseRef, {
+      transferId: first.transferId,
+      sourceReleaseNote: "First branch note",
+    });
+    const arrived = await destination.mutation(acceptDestinationTransferRef, {
+      transferId: first.transferId,
+      destinationClassId: h.classBId,
+    });
+    const second = await destination.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolB,
+      destinationSchoolId: h.schoolA,
+      studentId: arrived.destinationStudentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "New written consent",
+    });
+    await destination.mutation(authorizeSourceReleaseRef, {
+      transferId: second.transferId,
+      sourceReleaseNote: "Second branch private note",
+    });
+    const returned = await source.mutation(acceptDestinationTransferRef, {
+      transferId: second.transferId,
+      destinationClassId: h.classAId,
+    });
+    const history = await source.query(getStudentTransferHistoryRef, {
+      studentId: returned.destinationStudentId,
+    });
+    expect(history).toHaveLength(2);
+    expect(JSON.stringify(history)).not.toContain("Second branch private note");
+    expect(
+      await source.query(getStudentTransferHistoryRef, {
+        studentId: h.studentId,
+      }),
+    ).toHaveLength(2);
+    await expect(
+      destination.query(getStudentTransferHistoryRef, {
+        studentId: h.studentId,
+      }),
+    ).rejects.toThrow();
+    expect((await t.run((ctx) => ctx.db.get(h.studentId)))?.schoolId).toBe(
+      h.schoolA,
+    );
+  });
+  it("capability-only transfer authority is branch-scoped and revocation also denies replay", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const source = t.withIdentity(h.adminAIdentity);
+    const userId = await t.run(async (ctx) => {
+      const membership = await ctx.db.get(h.adminBMembershipId);
+      if (!membership?.legacyUserId) throw new Error("Missing fixture");
+      await ctx.db.patch(membership.legacyUserId, {
+        role: "teacher",
+        isSchoolAdmin: false,
+      });
+      return membership.legacyUserId;
+    });
+    expect(
+      await destination.query(transfersApi.getTransferWorkspace, {
+        schoolId: h.schoolB,
+      }),
+    ).toEqual({ allowed: false });
+    const grantId = await t.run((ctx) =>
+      ctx.db.insert("membershipDirectGrants", {
+        membershipId: h.adminBMembershipId,
+        capability: "enrollment.intakes.manage",
+        reason: "Transfer registrar",
+        grantedAt: 1,
+      }),
+    );
+    const workspace = await destination.query(
+      transfersApi.getTransferWorkspace,
+      { schoolId: h.schoolB },
+    );
+    expect(workspace.allowed).toBe(true);
+    expect(workspace.allowed && workspace.canOverrideNumber).toBe(false);
+    const { transferId } = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    });
+    await source.mutation(authorizeSourceReleaseRef, { transferId });
+    const acceptance = { transferId, destinationClassId: h.classBId };
+    await destination.mutation(acceptDestinationTransferRef, acceptance);
+    await t.run(async (ctx) => {
+      await ctx.db.delete(grantId);
+      expect((await ctx.db.get(userId))?.role).toBe("teacher");
+    });
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, acceptance),
+    ).rejects.toThrow("Forbidden");
   });
 });

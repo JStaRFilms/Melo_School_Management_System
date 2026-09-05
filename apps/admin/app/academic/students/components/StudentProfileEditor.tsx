@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
@@ -220,6 +221,7 @@ export function StudentProfileEditor({
 
   return (
     <div className="space-y-6 pb-10">
+      {studentId && <Link className="block text-sm underline" href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}>Within-group transfer history</Link>}
       {/* Tab Switcher - Only in Sidebar/Default Desktop mode */}
       {isSidebar && (
         <div className="flex p-1 bg-slate-100/60 rounded-xl mb-2">

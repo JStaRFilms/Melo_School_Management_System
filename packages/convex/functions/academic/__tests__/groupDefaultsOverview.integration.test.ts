@@ -260,7 +260,7 @@ describe("U1f versioned branding defaults", () => {
         groupId: f.groupId,
         schoolId: f.schoolId,
       }),
-    ).rejects.toThrow("explicit canonical");
+    ).rejects.toThrow("required capability");
     await f.t.run((ctx) => ctx.db.delete(f.grantId));
     await expect(
       f.member.query(endpoints.getBranchBranding, {
