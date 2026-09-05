@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
+import { useDialogFocus } from "./useDialogFocus";
 import { FileText, Clock, User, CheckSquare, Eye, EyeOff, Trash2, ArrowRight, Loader2 } from "lucide-react";
 
 export interface DraftRecoveryModalProps {
@@ -15,6 +16,7 @@ export interface DraftRecoveryModalProps {
   onDiscard: () => void | Promise<void>;
   onPreview?: () => void;
   isDiscarding?: boolean;
+  onStay?: () => void;
 }
 
 function formatDate(dateOrTimestamp: number | Date): string {
@@ -51,8 +53,18 @@ export function DraftRecoveryModal({
   onDiscard,
   onPreview,
   isDiscarding = false,
+  onStay,
 }: DraftRecoveryModalProps) {
+  const titleId = useId(); const descriptionId = useId();
   const [showInternalPreview, setShowInternalPreview] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ref = useDialogFocus(isOpen, () => { if (!busy && !isDiscarding) onStay?.(); });
+  const discard = async () => {
+    setBusy(true); setError(null);
+    try { await onDiscard(); } catch { setError("Discard failed. Your draft is still available; please retry."); }
+    finally { setBusy(false); }
+  };
 
   if (!isOpen) return null;
 
@@ -65,13 +77,16 @@ export function DraftRecoveryModal({
 
   return (
     <div
+      ref={ref}
+      tabIndex={-1}
+      aria-busy={busy || isDiscarding}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="draft-recovery-title"
-      aria-describedby="draft-recovery-desc"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-start gap-3.5 mb-4">
           <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-600 shrink-0">
@@ -82,7 +97,7 @@ export function DraftRecoveryModal({
               Unfinished Draft Detected
             </span>
             <h2
-              id="draft-recovery-title"
+              id={titleId}
               className="text-lg font-bold text-slate-900 mt-0.5"
             >
               Resume editing {formTitle}?
@@ -92,10 +107,10 @@ export function DraftRecoveryModal({
 
         {/* Description & Invariant notice */}
         <p
-          id="draft-recovery-desc"
+          id={descriptionId}
           className="text-sm text-slate-600 leading-relaxed mb-4"
         >
-          We found an unfinished draft from a previous session. To protect your work, Melo will not silently overwrite your blank form.
+          We found an unfinished draft. Resume replaces the current form only when you choose it; stay here to keep current edits.
         </p>
 
         {/* Metadata Card */}
@@ -142,12 +157,14 @@ export function DraftRecoveryModal({
           </div>
         )}
 
+        {error && <p role="alert" className="mb-3 text-sm text-rose-700">{error}</p>}
+        {onStay && <button type="button" data-dialog-initial disabled={busy || isDiscarding} onClick={onStay} className="min-h-11 px-3">Keep current edits</button>}
         {/* Action Buttons */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
           <button
             type="button"
-            disabled={isDiscarding}
-            onClick={onDiscard}
+            disabled={busy || isDiscarding}
+            onClick={() => void discard()}
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50 transition"
           >
             {isDiscarding ? (
@@ -162,6 +179,8 @@ export function DraftRecoveryModal({
             {payload && (
               <button
                 type="button"
+                disabled={busy || isDiscarding}
+                aria-expanded={showInternalPreview}
                 onClick={handleTogglePreview}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
               >
@@ -181,7 +200,8 @@ export function DraftRecoveryModal({
 
             <button
               type="button"
-              onClick={onResume}
+              disabled={busy || isDiscarding}
+              onClick={() => { try { onResume(); } catch { setError("This draft cannot be resumed with the current form schema. Keep your current edits or discard the draft."); } }}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[color:var(--school-primary,#0f172a)] text-xs font-semibold text-white hover:opacity-95 shadow-sm transition"
             >
               Resume Editing Draft
