@@ -2,6 +2,8 @@
 
 import { useQuery } from "convex/react";
 import { useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@/AuthProvider";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import {
@@ -46,6 +48,8 @@ type TeacherRecord = {
 };
 
 export default function AdminManagementPage() {
+  const { workspaceAccess } = useAuth();
+  const capabilities = workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
   const data = useQuery(
     "functions/academic/adminLeadership:listSchoolAdmins" as never
   ) as AdminDashboardData | undefined;
@@ -119,6 +123,11 @@ export default function AdminManagementPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-[#f8fafc]">
+      <nav aria-label="Governance" className="flex flex-wrap gap-4 border-b bg-white px-4 py-3 text-sm">
+        <Link className="underline" href="/admin/group">School group</Link>
+        {(capabilities.includes("staff.permissions.manage") || capabilities.includes("permissions.manage")) && <Link className="underline" href="/admin/permissions">Staff permissions</Link>}
+        {(capabilities.includes("audit.branch.view") || capabilities.includes("audit.view")) && <Link className="underline" href="/admin/audit">Audit explorer</Link>}
+      </nav>
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 5px;

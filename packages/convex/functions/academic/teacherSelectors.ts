@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -13,7 +14,7 @@ export const getTeacherSessions = query({
   args: {},
   returns: v.array(v.object({ _id: v.id("academicSessions"), name: v.string() })),
   handler: async (ctx: any) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const sessions = await ctx.db
       .query("academicSessions")
       .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
@@ -33,7 +34,7 @@ export const getTermsBySession = query({
   args: { sessionId: v.id("academicSessions") },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any, args: { sessionId: any }) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const session = await ctx.db.get(args.sessionId);
 
     if (!session || session.schoolId !== schoolId || session.isArchived) {
@@ -59,7 +60,7 @@ export const getTeacherActiveTerms = query({
   args: {},
   returns: v.array(v.object({ id: v.string(), name: v.string(), isActive: v.boolean() })),
   handler: async (ctx: any) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const terms = await ctx.db
       .query("academicTerms")
       .withIndex("by_school_active", (q: any) => q.eq("schoolId", schoolId).eq("isActive", true))
@@ -87,7 +88,7 @@ export const getTeacherAssignableClasses = query({
     })
   ),
   handler: async (ctx: any) => {
-    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
 
     if (isSchoolAdmin || role === "admin") {
       const classes = await ctx.db
@@ -148,7 +149,7 @@ export const getTeacherAssignableSubjectsByClass = query({
   args: { classId: v.id("classes") },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any, args: { classId: any }) => {
-    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const classDoc = await ctx.db.get(args.classId);
 
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {

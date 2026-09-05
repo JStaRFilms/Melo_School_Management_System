@@ -1,3 +1,4 @@
+import { resolveEffectiveGradingBands } from "./gradingBands";
 import { query, mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -114,6 +115,11 @@ export const getExamEntrySheet = query({
         maxScore: v.number(),
         gradeLetter: v.string(),
         remark: v.string(),
+        colorHex: v.optional(v.string()),
+        color: v.optional(v.string()),
+        gradePoints: v.optional(v.number()),
+        version: v.optional(v.number()),
+        luminanceContrast: v.optional(v.number()),
         isActive: v.boolean(),
         createdAt: v.number(),
         updatedAt: v.number(),
@@ -123,9 +129,7 @@ export const getExamEntrySheet = query({
     editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -185,12 +189,7 @@ export const getExamEntrySheet = query({
     const editingState = getAssessmentEditingState(editingPolicy, Date.now());
 
     // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     // Sort grading bands by minScore
     const sortedBands = [...gradingBandsResult].sort((a, b) => a.minScore - b.minScore);
@@ -333,9 +332,7 @@ export const upsertAssessmentRecordsBulk = mutation({
     ),
   }),
   handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -402,12 +399,7 @@ export const upsertAssessmentRecordsBulk = mutation({
     }
 
     // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     if (gradingBandsResult.length === 0) {
       throw new ConvexError("Grading bands not configured");
@@ -421,6 +413,7 @@ export const upsertAssessmentRecordsBulk = mutation({
         minScore: band.minScore,
         maxScore: band.maxScore,
         gradeLetter: band.gradeLetter,
+        colorHex: band.colorHex ?? band.color,
         remark: band.remark,
         isActive: band.isActive,
         createdAt: band.createdAt,
