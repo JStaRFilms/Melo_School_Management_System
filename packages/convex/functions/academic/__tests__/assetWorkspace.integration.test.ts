@@ -72,6 +72,41 @@ it("archive is active charged storage, Trash follows policy and restore preserve
   const restored = await p.query(a.inspectAsset, { schoolId, assetId });
   expect(restored.archivedAt).not.toBeNull(); expect(restored.ownerName).toBe("Principal"); expect(restored.shares).toHaveLength(1);
 });
+it("filters library and archive state before pagination", async () => {
+  const { t, p, schoolId, assetId } = await fixture();
+  await t.run(async (ctx) => {
+    for (let index = 0; index < 31; index += 1) {
+      const storageId = await ctx.storage.store(new Blob([`archived-${index}`]));
+      const metadata = await ctx.db.system.get("_storage", storageId);
+      if (!metadata) throw new Error("archived storage fixture missing");
+      await ctx.db.insert("schoolAssets", {
+        schoolId,
+        storageId,
+        fileName: `Archived ${index}.pdf`,
+        category: "Policy",
+        mimeType: "application/pdf",
+        byteSize: metadata.size,
+        sha256: metadata.sha256,
+        archivedAt: Date.now() + index,
+        scanStatus: "quarantined",
+        validationStatus: "pending",
+        isTrashed: false,
+        storageAccountingInitializedAt: Date.now(),
+        createdAt: Date.now() + index,
+        updatedAt: Date.now() + index,
+      });
+    }
+  });
+
+  const paginationOpts = { numItems: 30, cursor: null };
+  const library = await p.query(a.listAssets, { schoolId, workspace: "library", paginationOpts });
+  const archive = await p.query(a.listAssets, { schoolId, workspace: "archive", paginationOpts });
+  expect(library.page.map((asset) => asset._id)).toEqual([assetId]);
+  expect(library.isDone).toBe(true);
+  expect(archive.page).toHaveLength(30);
+  expect(archive.isDone).toBe(false);
+});
+
 it("membership alone shares nothing; explicit grants are tenant-bound and revoked immediately", async () => {
   const { p, schoolId, otherId, assetId } = await fixture();
   expect((await p.query(a.listSharedAssets, { schoolId: otherId })).rows).toHaveLength(0);
@@ -118,6 +153,62 @@ it("holds have separate removal authority; confirmed purge cannot override holds
   expect((await p.query(a.getWorkspace, { schoolId })).storage?.consumed).toBe(0);
   expect(await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, {})).toEqual({ cleaned: 0 });
 });
+it("continues expired cleanup past a full page of retention-held assets", async () => {
+  const { t, principal, schoolId, assetId } = await fixture();
+  await principal.mutation(a.trashAsset, { schoolId, assetId });
+  const held = await t.run(async (ctx) => {
+    const now = Date.now();
+    const rows = [];
+    let heldBytes = 0;
+    for (let index = 0; index < 2; index += 1) {
+      const storageId = await ctx.storage.store(new Blob([`held-${index}`]));
+      const metadata = await ctx.db.system.get("_storage", storageId);
+      if (!metadata) throw new Error("held storage fixture missing");
+      heldBytes += metadata.size;
+      const heldAssetId = await ctx.db.insert("schoolAssets", {
+        schoolId,
+        storageId,
+        fileName: `Held ${index}.pdf`,
+        category: "Policy",
+        mimeType: "application/pdf",
+        byteSize: metadata.size,
+        sha256: metadata.sha256,
+        scanStatus: "quarantined",
+        validationStatus: "pending",
+        isTrashed: true,
+        trashedAt: now - 2_000,
+        purgeScheduledAt: now - 2_000 + index,
+        storageAccountingInitializedAt: now,
+        createdAt: now - 3_000,
+        updatedAt: now,
+      });
+      await ctx.db.insert("assetRetentionHolds", {
+        assetId: heldAssetId,
+        schoolId,
+        holdReason: "Statutory retention",
+        appliedAt: now,
+      });
+      rows.push(heldAssetId);
+    }
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    if (!allocation) throw new Error("storage allocation fixture missing");
+    await ctx.db.patch(allocation._id, {
+      consumedUnits: allocation.consumedUnits + heldBytes,
+      trashStorageBytes: (allocation.trashStorageBytes ?? 0) + heldBytes,
+      updatedAt: now,
+    });
+    await ctx.db.patch(assetId, { purgeScheduledAt: now - 1 });
+    return { rows, heldBytes };
+  });
+
+  expect(await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit: 2 })).toEqual({ cleaned: 0 });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect(await t.run((ctx) => ctx.db.get(assetId))).toBeNull();
+  for (const heldAssetId of held.rows) expect(await t.run((ctx) => ctx.db.get(heldAssetId))).not.toBeNull();
+  expect((await principal.query(a.getWorkspace, { schoolId })).storage?.consumed).toBe(held.heldBytes);
+});
+
 it("reports upload intake unavailable before generic transport can create or bind storage", async () => {
   const { t, p, schoolId } = await fixture();
   expect(await p.query(a.getWorkspace, { schoolId })).toMatchObject({ uploadAvailable: false });

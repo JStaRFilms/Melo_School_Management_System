@@ -36,7 +36,7 @@ const DEMO_SCHOOL_TABLES = [
   "curriculumUnits", "curriculumImports",
   "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterials", "knowledgeTopics",
   "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
-  "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
+  "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",

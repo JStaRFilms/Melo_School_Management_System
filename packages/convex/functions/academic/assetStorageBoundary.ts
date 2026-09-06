@@ -29,7 +29,9 @@ type StorageClaimPurpose =
   | "schoolAsset"
   | "schoolAssetRollback"
   | "pdfCompressionCandidate"
-  | "demoSeedCleanup";
+  | "demoSeedCleanup"
+  | "issuedReportLogoReference"
+  | "issuedReportPhotoReference";
 
 export type ExpectedStorageClaim = {
   purpose: StorageClaimPurpose;
@@ -40,9 +42,9 @@ type CollectedStorageClaim = ExpectedStorageClaim & {
   linkedOwnerId?: string;
 };
 
-/** References such as OCR jobs and immutable report snapshots are not owners. */
+/** Every durable owner or historical reference must block destructive reuse. */
 async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, siteAssets, schools, students, materials, intents, assets, rollbacks, candidates, cleanup] = await Promise.all([
+  const [admissions, siteAssets, schools, students, materials, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(2),
@@ -53,6 +55,8 @@ async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Pr
     ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(2),
     ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", storageId)).take(2),
     ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
+    ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(2),
+    ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(2),
   ]);
   return [
     ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id) })),
@@ -69,6 +73,8 @@ async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Pr
     ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id) })),
     ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id) })),
     ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id) })),
+    ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id) })),
+    ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id) })),
   ];
 }
 
@@ -89,10 +95,12 @@ export async function assertStorageClaimedOnlyBy(
   const expectedClaims = claims.filter(
     claim => claim.purpose === expected.purpose && claim.ownerId === expected.ownerId,
   );
-  const linkedFinalizedIntents = expected.purpose === "schoolAsset"
-    ? claims.filter(claim => claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId)
-    : [];
-  if (expectedClaims.length !== 1 || claims.length !== expectedClaims.length + linkedFinalizedIntents.length) {
+  const allowedClaims = claims.filter(claim =>
+    (claim.purpose === expected.purpose && claim.ownerId === expected.ownerId) ||
+    (expected.purpose === "schoolAsset" && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
+    (expected.purpose === "demoSeedCleanup" && claim.purpose === "demoSeedCleanup")
+  );
+  if (expectedClaims.length !== 1 || claims.length !== allowedClaims.length) {
     throw new ConvexError("Storage object has conflicting ownership and cannot be deleted");
   }
 }

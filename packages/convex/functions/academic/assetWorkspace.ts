@@ -62,8 +62,23 @@ export const listAssets = query({
     await requireCapability(ctx, args.schoolId, "assets.library.view");
     if (args.workspace === "trash") await requireCapability(ctx, args.schoolId, "assets.trash.manage");
     if (args.workspace === "archive") await requireCapability(ctx, args.schoolId, "assets.archive.manage");
-    const page = await ctx.db.query("schoolAssets").withIndex("by_school_and_trashed", q => q.eq("schoolId", args.schoolId).eq("isTrashed", args.workspace === "trash")).order("desc").paginate(args.paginationOpts);
-    return { ...page, page: page.page.filter(a => args.workspace === "trash" || (args.workspace === "archive" ? a.archivedAt !== undefined : a.archivedAt === undefined)).map(assetMetadata) };
+    const page = args.workspace === "trash"
+      ? await ctx.db
+          .query("schoolAssets")
+          .withIndex("by_school_and_trashed", q => q.eq("schoolId", args.schoolId).eq("isTrashed", true))
+          .order("desc")
+          .paginate(args.paginationOpts)
+      : await ctx.db
+          .query("schoolAssets")
+          .withIndex("by_school_and_trashed_and_archived_at", q => {
+            const branchAssets = q.eq("schoolId", args.schoolId).eq("isTrashed", false);
+            return args.workspace === "archive"
+              ? branchAssets.gt("archivedAt", 0)
+              : branchAssets.eq("archivedAt", undefined);
+          })
+          .order("desc")
+          .paginate(args.paginationOpts);
+    return { ...page, page: page.page.map(assetMetadata) };
   },
 });
 export const inspectAsset = query({
