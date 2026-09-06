@@ -83,11 +83,20 @@ it("records top-ups separately and exception requests grant nothing until one ap
   const decision = await f.platform.mutation(fn.decide, { schoolId: f.schoolId, requestId, outcome: "approved", reason: "Approved bounded temporary exception", confirmation: "CONFIRM" }); expect(decision).toBeTruthy(); await expect(f.platform.mutation(fn.decide, { schoolId: f.schoolId, requestId, outcome: "declined", reason: "different replay", confirmation: "CONFIRM" })).rejects.toThrow("Conflicting");
   view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view; expect(view.meters.find(row => row.meterType === "ocr_pages")?.exceptionUnits).toBe(7);
 });
-it("creates a bounded group pool and only the proprietor can allocate matching-cycle branch units", async () => {
+it("creates a bounded group pool and idempotently allocates matching-cycle branch units for the proprietor", async () => {
   const f = await setup();
   const poolId = await f.platform.mutation(fn.pool, { journalSchoolId: f.schoolId, groupId: f.groupId, entitlementVersionId: f.versionId, meterType: "ai_tokens", totalUnits: 50, startAt: today - day, endAt: today + 20 * day, reason: "Reviewed shared group pool", confirmation: "CONFIRM" }) as Id<"usageGroupPools">;
-  await f.owner.mutation(fn.allocatePool, { poolId, schoolId: f.schoolId, cycleId: f.cycleId, units: 40, reason: "Allocate to headquarters need", confirmation: "ALLOCATE" });
-  await expect(f.owner.mutation(fn.allocatePool, { poolId, schoolId: f.schoolId, cycleId: f.cycleId, units: 11, reason: "Exceeds remaining pool", confirmation: "ALLOCATE" })).rejects.toThrow("exceeds");
+  const allocationArgs = { poolId, schoolId: f.schoolId, cycleId: f.cycleId, idempotencyKey: "hq-allocation-1", units: 40, reason: "Allocate to headquarters need", confirmation: "ALLOCATE" };
+  const allocationId = await f.owner.mutation(fn.allocatePool, allocationArgs);
+  expect(await f.owner.mutation(fn.allocatePool, allocationArgs)).toBe(allocationId);
+  await expect(f.owner.mutation(fn.allocatePool, { ...allocationArgs, units: 41 })).rejects.toThrow("bound to different");
+  await expect(f.owner.mutation(fn.allocatePool, { ...allocationArgs, idempotencyKey: "hq-allocation-2", units: 11, reason: "Exceeds remaining pool" })).rejects.toThrow("exceeds");
+  const state = await f.t.run(async ctx => ({
+    allocations: await ctx.db.query("usageBranchPoolAllocations").withIndex("by_pool", q => q.eq("poolId", poolId)).take(10),
+    audits: (await ctx.db.query("auditEvents").take(20)).filter(event => event.action === "usage.group_pool_allocated"),
+  }));
+  expect(state.allocations).toHaveLength(1);
+  expect(state.audits).toHaveLength(1);
   const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; poolUnits: number }> };
   expect(view.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(40);
   expect(view.meters.find(row => row.meterType === "ocr_pages")?.poolUnits).toBe(0);
@@ -148,6 +157,7 @@ it("closes with provenance-validated effective-at-end totals while preserving cu
     poolId,
     schoolId: f.schoolId,
     cycleId: f.cycleId,
+    idempotencyKey: "temporary-pool-allocation",
     units: 40,
     reason: "Temporary reviewed pool allocation",
     confirmation: "ALLOCATE",

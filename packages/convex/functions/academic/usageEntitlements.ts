@@ -195,13 +195,24 @@ export const createGroupPool = mutation({
   handler: async (ctx, args) => { await platform(ctx, args.journalSchoolId, args.confirmation); validPeriod(args.startAt, args.endAt); safePositive(args.totalUnits, "Pool units"); const version = await ctx.db.get(args.entitlementVersionId); const group = await ctx.db.get(args.groupId); if (!version || version.effectiveFrom > args.startAt || !group || group.status !== "active" || !version.entitlement.allowances.some(row => row.meterType === args.meterType)) throw new ConvexError("Effective group entitlement meter unavailable"); const id = await ctx.db.insert("usageGroupPools", { groupId: group._id, entitlementVersionId: version._id, meterType: args.meterType, totalUnits: args.totalUnits, startAt: args.startAt, endAt: args.endAt, reason: bounded(args.reason, "Pool reason", 8), createdAt: Date.now() }); await audit(ctx, args.journalSchoolId, "usage.group_pool_created", id, "Created bounded group allowance pool; no branch allocation or purchase inferred"); return id; },
 });
 export const allocateGroupPoolToBranch = mutation({
-  args: { poolId: v.id("usageGroupPools"), schoolId: v.id("schools"), cycleId: v.id("usageCycles"), units: v.number(), reason: v.string(), confirmation: v.string() },
+  args: { poolId: v.id("usageGroupPools"), schoolId: v.id("schools"), cycleId: v.id("usageCycles"), idempotencyKey: v.string(), units: v.number(), reason: v.string(), confirmation: v.string() },
   handler: async (ctx, args) => {
-    if (args.confirmation !== "ALLOCATE") throw new ConvexError("Type ALLOCATE after reviewing branch units"); safePositive(args.units, "Branch units"); const pool = await ctx.db.get(args.poolId); if (!pool) throw new ConvexError("Pool unavailable"); const { person } = await requireGroupOwner(ctx, pool.groupId);
+    if (args.confirmation !== "ALLOCATE") throw new ConvexError("Type ALLOCATE after reviewing branch units");
+    safePositive(args.units, "Branch units");
+    const key = bounded(args.idempotencyKey, "Allocation ID", 8);
+    const reason = bounded(args.reason, "Allocation reason", 8);
+    const pool = await ctx.db.get(args.poolId); if (!pool) throw new ConvexError("Pool unavailable");
+    const { person } = await requireGroupOwner(ctx, pool.groupId);
+    const existing = await ctx.db.query("usageBranchPoolAllocations").withIndex("by_pool_and_idempotencyKey", q => q.eq("poolId", pool._id).eq("idempotencyKey", key)).unique();
+    if (existing) {
+      if (existing.schoolId !== args.schoolId || existing.cycleId !== args.cycleId || existing.units !== args.units || existing.reason !== reason)
+        throw new ConvexError("Allocation ID is bound to different branch units");
+      return existing._id;
+    }
     const link = await ctx.db.query("schoolGroupBranches").withIndex("by_group_and_school", q => q.eq("groupId", pool.groupId).eq("schoolId", args.schoolId)).unique(); const cycle = await ctx.db.get(args.cycleId);
     if (!link || !cycle || cycle.schoolId !== args.schoolId || cycle.entitlementVersionId !== pool.entitlementVersionId || Date.now() < cycle.startAt || Date.now() >= cycle.endAt || Date.now() < pool.startAt || Date.now() >= pool.endAt) throw new ConvexError("Linked branch with matching current entitlement cycle required");
     const rows = await ctx.db.query("usageBranchPoolAllocations").withIndex("by_pool", q => q.eq("poolId", pool._id)).take(101); if (rows.length > 100 || rows.reduce((sum, row) => sum + row.units, 0) + args.units > pool.totalUnits) throw new ConvexError("Pool allocation exceeds total or review bound");
-    const id = await ctx.db.insert("usageBranchPoolAllocations", { poolId: pool._id, schoolId: args.schoolId, cycleId: cycle._id, units: args.units, reason: bounded(args.reason, "Allocation reason", 8), createdAt: Date.now() });
+    const id = await ctx.db.insert("usageBranchPoolAllocations", { poolId: pool._id, schoolId: args.schoolId, cycleId: cycle._id, idempotencyKey: key, units: args.units, reason, createdAt: Date.now() });
     const meter = await allocation(ctx, args.schoolId, pool.meterType); const effective = await effectiveAllowance(ctx, cycle, pool.meterType); if (!effective) throw new ConvexError("Meter unavailable"); await ctx.db.patch(meter._id, { allocatedUnits: effective.allocatedUnits, poolUnits: effective.poolUnits, updatedAt: Date.now() });
     await audit(ctx, args.schoolId, "usage.group_pool_allocated", id, "Proprietor allocated recorded pool units to linked branch", person._id); return id;
   },

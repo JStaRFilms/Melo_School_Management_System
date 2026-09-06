@@ -3713,8 +3713,9 @@ export default defineSchema({
   }).index("by_group", ["groupId"]),
   usageBranchPoolAllocations: defineTable({
     poolId: v.id("usageGroupPools"), schoolId: v.id("schools"), cycleId: v.id("usageCycles"),
-    units: v.number(), reason: v.string(), createdAt: v.number(),
-  }).index("by_pool", ["poolId"]).index("by_cycle", ["cycleId"]),
+    // Optional only for pre-idempotency historical rows; every new allocation supplies it.
+    idempotencyKey: v.optional(v.string()), units: v.number(), reason: v.string(), createdAt: v.number(),
+  }).index("by_pool", ["poolId"]).index("by_cycle", ["cycleId"]).index("by_pool_and_idempotencyKey", ["poolId", "idempotencyKey"]),
   usageAllowanceGrants: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
     kind: v.union(v.literal("top_up"), v.literal("exception")), units: v.number(),
