@@ -57,8 +57,11 @@ export async function effectiveAllowance(ctx: Context, cycle: Doc<"usageCycles">
       pool.startAt > now ||
       pool.endAt <= now
     ) continue;
-    const link = await ctx.db.query("schoolGroupBranches").withIndex("by_group_and_school", q => q.eq("groupId", pool.groupId).eq("schoolId", cycle.schoolId)).unique();
-    if (link) poolUnits += row.units;
+    const [link, group] = await Promise.all([
+      ctx.db.query("schoolGroupBranches").withIndex("by_group_and_school", q => q.eq("groupId", pool.groupId).eq("schoolId", cycle.schoolId)).unique(),
+      ctx.db.get(pool.groupId),
+    ]);
+    if (link && group?.status === "active") poolUnits += row.units;
   }
   return { baseUnits: base.baseUnits, graceUnits: base.graceUnits, topUpUnits, exceptionUnits, poolUnits, allocatedUnits: base.baseUnits + base.graceUnits + topUpUnits + exceptionUnits + poolUnits };
 }

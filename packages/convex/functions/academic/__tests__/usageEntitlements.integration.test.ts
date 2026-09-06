@@ -91,6 +91,10 @@ it("creates a bounded group pool and only the proprietor can allocate matching-c
   const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; poolUnits: number }> };
   expect(view.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(40);
   expect(view.meters.find(row => row.meterType === "ocr_pages")?.poolUnits).toBe(0);
+  await f.t.run(ctx => ctx.db.patch(f.groupId, { status: "archived" }));
+  const archivedGroup = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view;
+  expect(archivedGroup.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(0);
+  await f.t.run(ctx => ctx.db.patch(f.groupId, { status: "active" }));
 
   const clock = vi.spyOn(Date, "now").mockReturnValue(today + 21 * day);
   try {
