@@ -1,5 +1,6 @@
 import { seedReviewedTenantOperator } from "./securityFixtures";
 import { convexTest } from "convex-test";
+import type { FunctionReturnType } from "convex/server";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
@@ -27,6 +28,7 @@ const institutionalEmailApi = api.functions.academic.institutionalEmail;
 const aiImportApi = api.functions.academic.aiImport;
 const assetsApi = api.functions.academic.assets;
 const institutionalEmailInternal = internal.functions.academic.institutionalEmail;
+const draftsApi = api.functions.academic.drafts;
 
 function tenantSession(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({
@@ -437,7 +439,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
     });
   });
 
-  describe("4. AI Import Review Pipeline (Zero Direct Commits)", () => {
+  describe("4. Legacy AI staging isolation (commit permanently gated)", () => {
     it("stages raw rows, catches validation errors deterministically, and isolates operational tables", async () => {
       const t = convexTest(schema, modules);
       const { schoolId, adminUserId, importStudentUserIds } = await setupTestHarness(t);
@@ -515,7 +517,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
           workspaceId: stageResult.workspaceId,
         })
-      ).rejects.toThrow("Workspace requires explicit reviewed approval");
+      ).rejects.toThrow("Legacy AI import commit is disabled");
 
       // Operational tables must still be untouched
       const countAfterRejectedCommit = await t.run(async (ctx) => {
@@ -568,30 +570,20 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       expect(approval.status).toBe("reviewed");
 
-      // 5. Commit workspace atomically into official operational tables
-      const commitResult = await tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
+      // 5. The disconnected legacy path remains unable to write even after its old approval.
+      await expect(tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
         workspaceId: stageResult.workspaceId,
-      });
-
-      expect(commitResult.success).toBe(true);
-      expect(commitResult.committedCount).toBe(4);
-
-      // Verify operational database records now exist
-      const operationalStudents = await t.run(async (ctx) => {
-        return await ctx.db
-          .query("students")
-          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-          .collect();
-      });
-      expect(operationalStudents).toHaveLength(4);
-
-      // Verify final workspace status is 'committed'
+      })).rejects.toThrow("Legacy AI import commit is disabled");
+      const operationalStudents = await t.run((ctx) =>
+        ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      );
+      expect(operationalStudents).toHaveLength(0);
       const finalWorkspace = await tenantSession(t).query(aiImportApi.getImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       assertExists(finalWorkspace);
-      expect(finalWorkspace.status).toBe("committed");
-      expect(finalWorkspace.committedAt).toBeDefined();
+      expect(finalWorkspace.status).toBe("reviewed");
+      expect(finalWorkspace.committedAt).toBeUndefined();
     });
   });
 
@@ -613,7 +605,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       await expect(session.mutation(aiImportApi.commitImportWorkspace, {
         workspaceId: validWorkspace.workspaceId,
-      })).rejects.toThrow("requires explicit reviewed approval");
+      })).rejects.toThrow("Legacy AI import commit is disabled");
 
       const missingNumber = await session.mutation(aiImportApi.stageImportData, {
         schoolId,
@@ -750,15 +742,21 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
           const membership = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", schoolId)).unique(); assertExists(membership);
           await ctx.db.patch(membership._id, { legacyUserId: userId });
         }
-        for (const [name, capability] of [["registrar", "enrollment.intakes.manage"], ["staff", "staff.onboard"]]) {
+        for (const [name, capability] of [["registrar", "enrollment.intakes.manage"], ["staff", "staff.onboard"], ["domain", "settings.domains.manage"]]) {
           const personId = await ctx.db.insert("persons", { name, email: `${name}@example.test`, authTokenIdentifier: `test|${name}`, status: "active", createdAt: 1, updatedAt: 1 });
-          const membershipId = await ctx.db.insert("branchMemberships", { schoolId, personId, status: "active", isDefaultBranch: true, joinedAt: 1, updatedAt: 1 });
+          const userId = await ctx.db.insert("users", { schoolId, personId, name, email: `${name}@example.test`, authId: name, authTokenIdentifier: `test|${name}`, role: "teacher", createdAt: 1, updatedAt: 1 });
+          const membershipId = await ctx.db.insert("branchMemberships", { schoolId, personId, legacyUserId: userId, status: "active", isDefaultBranch: true, joinedAt: 1, updatedAt: 1 });
           await ctx.db.insert("membershipDirectGrants", { membershipId, capability, grantedAt: 1 });
         }
       });
       const registrar = t.withIdentity({ subject: "registrar", tokenIdentifier: "test|registrar" });
       await expect(registrar.mutation(institutionalEmailApi.setEmailDomainSharing, { domainId: domain.domainId, sharedWithGroup: true, confirmed: true })).rejects.toThrow("settings.domains.manage");
       const staff = t.withIdentity({ subject: "staff", tokenIdentifier: "test|staff" });
+      const domainReviewer = t.withIdentity({ subject: "domain", tokenIdentifier: "test|domain" });
+      for (const reviewer of [registrar, staff, domainReviewer]) {
+        const draft = await reviewer.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+        await reviewer.mutation(draftsApi.discardFormDraft, { schoolId, draftId: draft.draftId, expectedRevision: 0 });
+      }
       const studentProposal = await registrar.query(institutionalEmailApi.proposeEmailAddresses, { schoolId, persons: [{ personId: person1Id, firstName: "John", lastName: "Doe" }] });
       expect(studentProposal[0].localPart).toBe("j.doe");
       const staffProposal = await staff.query(institutionalEmailApi.proposeEmailAddresses, { schoolId, persons: [{ personId: person2Id, firstName: "John", lastName: "Doe" }] });
@@ -766,7 +764,10 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       await expect(staff.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: "student@scoped.example", expectedPolicyVersion: 1 })).rejects.toThrow("scoped");
       await expect(registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person2Id, email: "teacher@scoped.example", expectedPolicyVersion: 1 })).rejects.toThrow("scoped");
       await expect(registrar.mutation(institutionalEmailApi.saveEmailPolicy, { schoolId, domainId: domain.domainId, staffTemplate: "f.lastname", studentTemplate: "f.lastname", expectedVersion: 1, confirmed: true })).rejects.toThrow("settings.domains.manage");
-      await registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: studentProposal[0].proposedEmail, expectedPolicyVersion: 1 });
+      const approvalDraft = await registrar.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+      const savedApprovalDraft = await registrar.mutation(draftsApi.saveFormDraft, { schoolId, draftId: approvalDraft.draftId, expectedRevision: 0, schemaVersion: 1, payload: { personId: person1Id, firstName: "John", lastName: "Doe", localPart: studentProposal[0].localPart } });
+      await registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: studentProposal[0].proposedEmail, expectedPolicyVersion: 1, draftId: approvalDraft.draftId, expectedDraftRevision: savedApprovalDraft.revision });
+      expect(await t.run(ctx => ctx.db.get(approvalDraft.draftId))).toMatchObject({ status: "committed", payload: {} });
       await staff.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person2Id, email: staffProposal[0].proposedEmail, expectedPolicyVersion: 1 });
       expect((await registrar.query(institutionalEmailApi.getInstitutionalMailboxes, { schoolId })).map(m => m.personId)).toEqual([person1Id]);
       expect((await staff.query(institutionalEmailApi.getInstitutionalMailboxes, { schoolId })).map(m => m.personId)).toEqual([person2Id]);
@@ -824,6 +825,89 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(approvals[0]).toMatchObject({ actorKind: "user", actorEmailSnapshot: "reviewed@test.invalid" });
       expect(events.some(e => e.action === "approve_additional_address")).toBe(true);
       expect(events.some(e => e.action === "provider_reconciliation_required")).toBe(true);
+    });
+
+    it("paginates domains, proposal candidates and allocations without exposing challenges or provider identifiers", async () => {
+      const t = convexTest(schema, modules);
+      const { schoolId, person1Id } = await setupTestHarness(t);
+      const viewer = tenantSession(t);
+      const challenges: string[] = [];
+      for (const name of ["a.example", "b.example", "c.example"]) {
+        const result = await viewer.mutation(institutionalEmailApi.registerEmailDomain, { schoolId, domain: name, provider: "none" });
+        challenges.push(result.dnsTxtRecord);
+      }
+      await t.run(async ctx => {
+        for (let index = 0; index < 53; index += 1) {
+          const personId = await ctx.db.insert("persons", { name: `Paged Person ${index}`, email: `paged-${index}@private.test`, status: "active", createdAt: index + 2, updatedAt: index + 2 });
+          await ctx.db.insert("branchMemberships", { personId, schoolId, status: "active", isDefaultBranch: false, joinedAt: index + 2, updatedAt: index + 2 });
+          await ctx.db.insert("institutionalMailboxes", { personId: person1Id, schoolId, email: `paged-${String(index).padStart(2, "0")}@a.example`, state: "provider_provisioned", providerType: "google", providerAccountId: `private-provider-${index}`, lastProviderOperationId: `private-operation-${index}`, status: "active", createdAt: index + 2, updatedAt: index + 2 });
+        }
+      });
+      let cursor: string | null = null;
+      const domains = [];
+      do {
+        const domainPage: FunctionReturnType<typeof institutionalEmailApi.listEmailDomainsPage> = await viewer.query(institutionalEmailApi.listEmailDomainsPage, { schoolId, scope: "owned", paginationOpts: { numItems: 2, cursor } });
+        domains.push(...domainPage.page);
+        cursor = domainPage.isDone ? null : domainPage.continueCursor;
+      } while (cursor);
+      expect(domains).toHaveLength(3);
+      expect(JSON.stringify(domains)).not.toContain("melo-verify=");
+      for (const challenge of challenges) expect(JSON.stringify(domains)).not.toContain(challenge);
+      cursor = null;
+      const people = [];
+      do {
+        const peoplePage: FunctionReturnType<typeof institutionalEmailApi.listEmailProposalPeoplePage> = await viewer.query(institutionalEmailApi.listEmailProposalPeoplePage, { schoolId, paginationOpts: { numItems: 13, cursor } });
+        people.push(...peoplePage.page);
+        cursor = peoplePage.isDone ? null : peoplePage.continueCursor;
+      } while (cursor);
+      expect(people.length).toBeGreaterThan(50);
+      cursor = null;
+      const mailboxes = [];
+      do {
+        const mailboxPage: FunctionReturnType<typeof institutionalEmailApi.listInstitutionalMailboxesPage> = await viewer.query(institutionalEmailApi.listInstitutionalMailboxesPage, { schoolId, paginationOpts: { numItems: 13, cursor } });
+        mailboxes.push(...mailboxPage.page);
+        cursor = mailboxPage.isDone ? null : mailboxPage.continueCursor;
+      } while (cursor);
+      expect(mailboxes).toHaveLength(53);
+      expect(JSON.stringify(mailboxes)).not.toContain("private-provider");
+      expect(JSON.stringify(mailboxes)).not.toContain("private-operation");
+      await expect(viewer.query(institutionalEmailApi.listEmailProposalPeoplePage, { schoolId, paginationOpts: { numItems: 51, cursor: null } })).rejects.toThrow("1–50");
+    });
+
+    it("uses the private U3 revision contract and atomically erases the review draft only after approval", async () => {
+      const t = convexTest(schema, modules);
+      const { schoolId, person1Id } = await setupTestHarness(t);
+      const viewer = tenantSession(t);
+      const domain = await viewer.mutation(institutionalEmailApi.registerEmailDomain, { schoolId, domain: "draft-review.example", provider: "none" });
+      await viewer.mutation(institutionalEmailApi.saveEmailPolicy, { schoolId, domainId: domain.domainId, staffTemplate: "firstname.lastname", studentTemplate: "f.lastname", expectedVersion: 0, confirmed: true });
+      const begun = await viewer.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+      await expect(viewer.mutation(draftsApi.saveFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: 0, schemaVersion: 1,
+        payload: { personId: person1Id, firstName: "John", middleName: "", lastName: "Doe", isMinor: true, minorPrivacyRequested: true, localPart: "j.doe", aliasOfMailboxId: "", dnsTxtRecord: domain.dnsTxtRecord, providerAccountId: "must-not-persist" } })).rejects.toThrow("unapproved fields");
+      const saved = await viewer.mutation(draftsApi.saveFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: 0, schemaVersion: 1,
+        payload: { personId: person1Id, firstName: "John", middleName: "", lastName: "Doe", isMinor: true, minorPrivacyRequested: true, localPart: "j.doe", aliasOfMailboxId: "" } });
+      const latest = await viewer.mutation(draftsApi.saveFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: saved.revision, schemaVersion: 1,
+        payload: { personId: person1Id, firstName: "John", middleName: "", lastName: "Doe", isMinor: true, minorPrivacyRequested: true, localPart: "j.doe2", aliasOfMailboxId: "" } });
+      await expect(viewer.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: "j.doe@draft-review.example", expectedPolicyVersion: 1, isMinor: true, minorPrivacyRequested: true, draftId: begun.draftId, expectedDraftRevision: saved.revision })).rejects.toThrow("Conflict");
+      expect(await t.run(ctx => ctx.db.query("institutionalMailboxes").withIndex("by_email", q => q.eq("email", "j.doe@draft-review.example")).first())).toBeNull();
+      const approved = await viewer.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: "j.doe2@draft-review.example", expectedPolicyVersion: 1, isMinor: true, minorPrivacyRequested: true, draftId: begun.draftId, expectedDraftRevision: latest.revision });
+      expect(approved.state).toBe("login_only");
+      expect(await t.run(ctx => ctx.db.get(begun.draftId))).toMatchObject({ status: "committed", payload: {} });
+      const serialized = JSON.stringify(await t.run(ctx => ctx.db.query("auditEvents").collect()));
+      expect(serialized).not.toContain(domain.dnsTxtRecord);
+      expect(serialized).not.toContain("must-not-persist");
+      expect(serialized).not.toContain("j.doe2@draft-review.example");
+    });
+
+    it("discards a private email review draft without leaving payload or allowing stale resurrection", async () => {
+      const t = convexTest(schema, modules);
+      const { schoolId, person1Id } = await setupTestHarness(t);
+      const viewer = tenantSession(t);
+      const begun = await viewer.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+      const saved = await viewer.mutation(draftsApi.saveFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: 0, schemaVersion: 1,
+        payload: { personId: person1Id, firstName: "Private", middleName: "", lastName: "Minor", isMinor: true, minorPrivacyRequested: true, localPart: "p.minor", aliasOfMailboxId: "" } });
+      await viewer.mutation(draftsApi.discardFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: saved.revision });
+      expect(await t.run(ctx => ctx.db.get(begun.draftId))).toMatchObject({ status: "discarded", payload: {} });
+      await expect(viewer.mutation(draftsApi.saveFormDraft, { schoolId, draftId: begun.draftId, expectedRevision: saved.revision, schemaVersion: 1, payload: {} })).rejects.toThrow("CLOSED");
     });
   });
 

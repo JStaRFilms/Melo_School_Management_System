@@ -12,11 +12,19 @@ const mocks = vi.hoisted(() => ({ query: vi.fn(), replace: vi.fn(), push: vi.fn(
 let access: WorkspaceAccessSummary | undefined;
 let path = "/admin/dashboard";
 let loading = false;
+let selectedSchoolId: string | null = null;
+let availableBranches: BranchSummary[] | undefined;
+const selectSchool = vi.fn();
+const clearSelectedSchool = vi.fn();
 vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args) }));
 vi.mock("next/navigation", () => ({ usePathname: () => path, useRouter: () => ({ replace: mocks.replace, push: mocks.push }) }));
 vi.mock("@/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/auth-client", () => ({ authClient: { changePassword: vi.fn() } }));
-vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ session: { user: { id: "account", name: "Test Admin", role: "admin" } }, workspaceAccess: access, isLoading: loading, isAuthenticated: true, signOut: mocks.signOut }) }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({
+  session: { user: { id: "account", name: "Test Admin", role: "admin" } },
+  workspaceAccess: access, availableBranches, selectedSchoolId, selectSchool, clearSelectedSchool,
+  isLoading: loading, isAuthenticated: true, signOut: mocks.signOut,
+}) }));
 vi.mock("@school/shared", async () => ({
   ...await import("../../../packages/shared/src/workspace-route-access"),
   ...await import("../../../packages/shared/src/components/AuthoritativeForbiddenView"),
@@ -39,6 +47,10 @@ beforeEach(() => {
   access = ready;
   path = "/admin/dashboard";
   loading = false;
+  selectedSchoolId = null;
+  availableBranches = undefined;
+  selectSchool.mockReset();
+  clearSelectedSchool.mockReset();
   mocks.query.mockImplementation((_query: unknown, args: unknown) => args === "skip" ? undefined : {
     schoolId: "default", name: "Default School", status: "active", features: { billing: false },
   });
@@ -85,6 +97,45 @@ describe("default-school shell", () => {
     expect(screen.getByText(/Branch switching is unavailable/)).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
+  it("switches only on a scoped route after guard approval and scopes branding to the target", async () => {
+    path = "/admin/permissions";
+    selectedSchoolId = "branch-two";
+    availableBranches = [
+      { schoolId: "default", name: "Default School", slug: "default", status: "active", isHeadquarters: true },
+      { schoolId: "branch-two", name: "Branch Two", slug: "branch-two", status: "active", isHeadquarters: false },
+    ];
+    access = {
+      ...ready,
+      branch: { ...ready.branch, schoolId: "branch-two", name: "Branch Two", slug: "branch-two" },
+      membership: { membershipId: "membership-two", personId: "person", displayTitle: "Admin" },
+      effectiveCapabilities: ["staff.permissions.manage"],
+      compatibility: { ...ready.compatibility, mode: "canonical" },
+    };
+    mocks.query.mockImplementation((_query: unknown, args: unknown) => args === "skip" ? undefined : {
+      schoolId: "branch-two", name: "Branch Two", status: "active", features: {},
+    });
+    render(<StaffWorkspace><p>Scoped permissions</p></StaffWorkspace>);
+    expect(screen.getByText("Scoped permissions")).toBeInTheDocument();
+    expect(mocks.query).toHaveBeenCalledWith(expect.anything(), { schoolId: "branch-two" });
+    expect(screen.queryByRole("link", { name: "Students" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Active branch" }), { target: { value: "default" } });
+    await waitFor(() => expect(selectSchool).toHaveBeenCalledWith("default"));
+  });
+
+  it("blocks a persisted selected branch on an unscoped route and offers an explicit reset", () => {
+    selectedSchoolId = "branch-two";
+    access = {
+      ...ready,
+      branch: { ...ready.branch, schoolId: "branch-two", name: "Branch Two" },
+      membership: { membershipId: "membership-two", personId: "person", displayTitle: "Admin" },
+      compatibility: { ...ready.compatibility, mode: "canonical" },
+    };
+    render(<StaffWorkspace><p>Default dashboard records</p></StaffWorkspace>);
+    expect(screen.queryByText("Default dashboard records")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Return to default branch" }));
+    expect(clearSelectedSchool).toHaveBeenCalledTimes(1);
+  });
+
   it("unmounts records after revocation and never renders a target header over default data", () => {
     const view = render(<StaffWorkspace><p>Private records</p></StaffWorkspace>);
     expect(screen.getByText("Private records")).toBeInTheDocument();
@@ -109,7 +160,7 @@ describe("branch and departure seams", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(select).not.toHaveBeenCalled();
   });
-  it("uses a labelled native keyboard selector with no suspended target in the DOM", () => {
+  it("uses a labelled native keyboard selector with no suspended target in the DOM", async () => {
     const select = vi.fn();
     const other = { ...branch, schoolId: "other", name: "Other School" };
     render(<BranchSwitcher currentBranch={branch} availableBranches={[branch, other, { ...branch, schoolId: "suspended", name: "Suspended School", status: "suspended" }]} onSelectBranch={select} />);
@@ -119,6 +170,7 @@ describe("branch and departure seams", () => {
     expect(screen.queryByRole("option", { name: "Suspended School" })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: "other" } });
     expect(select).toHaveBeenCalledWith(other);
+    await waitFor(() => expect(screen.queryByText("Checking target branch…")).not.toBeInTheDocument());
   });
   it("awaits sign-out approval and attaches/removes browser guard callbacks", async () => {
     const requestDeparture = vi.fn().mockResolvedValue(false);

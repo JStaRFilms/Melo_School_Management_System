@@ -10,7 +10,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import type { ExamInputMode } from "@school/shared";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useDepartureGuard, useDirtyForm } from "@school/shared/drafts";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ExamModeSelector } from "./components/ExamModeSelector";
@@ -46,6 +46,7 @@ export default function ExamRecordingSettingsPage() {
 }
 
 function LiveExamSettingsPage() {
+  const { requestDeparture } = useDepartureGuard();
   const settings = useQuery(
     "functions/academic/settings:getSchoolAssessmentSettings" as never
   ) as { examInputMode: ExamInputMode } | null | undefined;
@@ -146,15 +147,17 @@ function LiveExamSettingsPage() {
     setDraftMode(mode);
   }, []);
 
-  const handleSessionChange = useCallback((sessionId: string) => {
+  const handleSessionChange = useCallback(async (sessionId: string) => {
+    if (!await requestDeparture({ kind: "close" })) return;
     const nextSessionId = (sessionId || null) as Id<"academicSessions"> | null;
     const nextDraft = createAssessmentEditingPolicyDraft(nextSessionId, null);
     setPolicyDraft(nextDraft);
     setSavedPolicyDraft(nextDraft);
-  }, []);
+  }, [requestDeparture]);
 
   const handleTermChange = useCallback(
-    (termId: string) => {
+    async (termId: string) => {
+      if (!await requestDeparture({ kind: "close" })) return;
       const nextTermId = (termId || null) as Id<"academicTerms"> | null;
       const nextDraft = createAssessmentEditingPolicyDraft(
         policyDraft.sessionId,
@@ -163,7 +166,7 @@ function LiveExamSettingsPage() {
       setPolicyDraft(nextDraft);
       setSavedPolicyDraft(nextDraft);
     },
-    [policyDraft.sessionId]
+    [policyDraft.sessionId, requestDeparture]
   );
 
   const handlePolicyToggleChange = useCallback(
@@ -222,6 +225,7 @@ function LiveExamSettingsPage() {
   useDirtyForm({
     name: "Exam recording settings",
     isDirty: hasUnsavedChanges,
+    save: handleSave,
     discard: handleDiscard,
   });
 
@@ -246,6 +250,7 @@ function LiveExamSettingsPage() {
 }
 
 function MockExamSettingsPage() {
+  const { requestDeparture } = useDepartureGuard();
   const mockSettings = getMockSettings();
   const [savedMode, setSavedMode] = useState<ExamInputMode>(
     mockSettings.examInputMode
@@ -306,6 +311,7 @@ function MockExamSettingsPage() {
   useDirtyForm({
     name: "Exam recording settings",
     isDirty: hasUnsavedChanges,
+    save: handleSave,
     discard: handleDiscard,
   });
 
@@ -319,7 +325,8 @@ function MockExamSettingsPage() {
       isLoadingSessions={false}
       isLoadingTerms={false}
       onModeChange={setDraftMode}
-      onSessionChange={(sessionId) => {
+      onSessionChange={async (sessionId) => {
+        if (!await requestDeparture({ kind: "close" })) return;
         const nextDraft = createAssessmentEditingPolicyDraft(
           (sessionId || null) as Id<"academicSessions"> | null,
           null
@@ -327,7 +334,8 @@ function MockExamSettingsPage() {
         setPolicyDraft(nextDraft);
         setSavedPolicyDraft(nextDraft);
       }}
-      onTermChange={(termId) => {
+      onTermChange={async (termId) => {
+        if (!await requestDeparture({ kind: "close" })) return;
         const nextDraft = createAssessmentEditingPolicyDraft(
           policyDraft.sessionId,
           (termId || null) as Id<"academicTerms"> | null

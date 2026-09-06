@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MobileProgressIndicator } from "@school/shared";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import {
@@ -39,17 +45,57 @@ export function SessionCreationModal({
   const [activateSession, setActivateSession] = useState(true);
   const [autoGenerateTerms, setAutoGenerateTerms] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [draftInstanceKey, setDraftInstanceKey] = useState(0);
   const [initial] = useState({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
+  const sessionDraftData = useMemo<DraftPayload<"academic_setup">>(() => ({
+    name: sessionName,
+    startDate,
+    endDate,
+    isActive: activateSession,
+    autoGenerateTerms,
+  }), [activateSession, autoGenerateTerms, endDate, sessionName, startDate]);
+  const sessionDirty = JSON.stringify(sessionDraftData) !== JSON.stringify({
+    name: initial.sessionName,
+    startDate: initial.startDate,
+    endDate: initial.endDate,
+    isActive: initial.activateSession,
+    autoGenerateTerms: initial.autoGenerateTerms,
+  });
+  const { session, workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  const draftConnection = useDraftConnection();
+  const persistentDraft = usePersistentFormDraft({
+    formKey: "academic_setup",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: sessionDraftData,
+    isDirty: isOpen && sessionDirty,
+    instanceKey: draftInstanceKey,
+    onRestore: (payload) => {
+      setSessionName(payload.name);
+      setStartDate(payload.startDate);
+      setEndDate(payload.endDate);
+      setActivateSession(payload.isActive);
+      setAutoGenerateTerms(payload.autoGenerateTerms);
+    },
+  });
+  const resetForm = useCallback(() => {
+    setSessionName(initial.sessionName);
+    setStartDate(initial.startDate);
+    setEndDate(initial.endDate);
+    setActivateSession(initial.activateSession);
+    setAutoGenerateTerms(initial.autoGenerateTerms);
+  }, [initial]);
   const requestDeparture = useDirtyForm({
-    name: "Session setup (not saved as a draft)",
-    isDirty: isOpen && (isSaving || JSON.stringify({ sessionName, startDate, endDate, activateSession, autoGenerateTerms }) !== JSON.stringify(initial)),
-    discard: () => {
+    name: "Academic session setup",
+    isDirty: isOpen && (isSaving || sessionDirty),
+    save: persistentDraft.retrySave,
+    discard: async () => {
       if (isSaving) throw new Error("Wait for creation to finish before leaving.");
-      setSessionName(initial.sessionName);
-      setStartDate(initial.startDate);
-      setEndDate(initial.endDate);
-      setActivateSession(initial.activateSession);
-      setAutoGenerateTerms(initial.autoGenerateTerms);
+      await persistentDraft.handleDiscardDraft();
+      resetForm();
+      setDraftInstanceKey((key) => key + 1);
     },
   });
   const requestClose = useCallback(async () => {
@@ -128,9 +174,19 @@ export function SessionCreationModal({
       return;
     }
 
+    let closure;
+    try {
+      closure = await persistentDraft.prepareSubmission();
+    } catch {
+      appToast.error("Draft save required", { description: "Save the recoverable session draft before creating it. Your edits are still here." });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const sessionId: any = await createSession({
+      const sessionId = await createSession({
+        draftId: closure?.draftId,
+        expectedDraftRevision: closure?.expectedRevision,
         name: normalizedName,
         startDate: startTimestamp,
         endDate: endTimestamp,
@@ -142,11 +198,15 @@ export function SessionCreationModal({
         description: `${normalizedName} ${autoGenerateTerms ? "with 3 balanced terms" : ""} is ready.`,
       });
 
+      persistentDraft.submissionSucceeded();
+      resetForm();
+      setDraftInstanceKey((key) => key + 1);
       if (onSessionCreated && sessionId) {
-        onSessionCreated(sessionId);
+        onSessionCreated(String(sessionId));
       }
       onClose();
     } catch (err) {
+      persistentDraft.submissionFailed();
       appToast.error("Session creation failed", {
         description: getUserFacingErrorMessage(err, "Failed to create academic session"),
       });
@@ -238,6 +298,27 @@ export function SessionCreationModal({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
+            <MobileProgressIndicator
+              mode="sections"
+              topOffset="top-0"
+              sections={[
+                { id: "identity", title: "Session details", isValid: Boolean(sessionName.trim()) },
+                { id: "dates", title: "Valid dates", isValid: Boolean(startDate && endDate && parseLocalDate(endDate) > parseLocalDate(startDate)), hasError: Boolean(startDate && endDate && parseLocalDate(endDate) <= parseLocalDate(startDate)) },
+              ]}
+              draftStatus={persistentDraft.status}
+              lastSavedAt={persistentDraft.lastSavedAt}
+            />
+            <PersistentFormDraftControls
+              draft={persistentDraft}
+              formTitle="academic session"
+              isDirty={sessionDirty}
+              excludedFieldsNotice="This private draft stores only the session name, dates, and setup choices. It contains no credentials, documents, or provider payloads."
+              onDiscard={async () => {
+                await persistentDraft.handleDiscardDraft();
+                resetForm();
+                setDraftInstanceKey((key) => key + 1);
+              }}
+            />
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block pl-0.5">
                 Session Name

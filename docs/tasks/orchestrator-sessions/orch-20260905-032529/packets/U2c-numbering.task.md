@@ -20,7 +20,7 @@ Focused tests cover concurrent creates, failed transaction, abandoned form, repl
 
 ## Execution status
 
-Partial local delivery recorded in `../results/U2c.md`; default branch numbering/settings and transactional enrollment are implemented and verified. Named/level/group counters and group template inheritance remain unimplemented code scope. Do not mark this packet complete based on U7 browser evidence.
+Local branch-owned code scope is complete and recorded in `../results/U2c.md`: named branch/level counters, explicit status/default/version controls, transactional enrollment and profile correction, reviewed-import parity, and versioned format-only group inheritance are implemented and verified. A group-wide counter remains deliberately unavailable because no existing contract grants shared allocation authority; do not infer that authority. U7 browser evidence and schema rollout remain separate gates.
 
 ## Artifacts
 `results/U2c.md`: exact allocator/override/import contract and UI routes, tests/self-review, U4b/U6 handoff. Update matrix. No production, migrations, deployment, providers, credentials or Convex CLI invocation; parent owns review/PRs.

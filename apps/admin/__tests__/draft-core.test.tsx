@@ -6,8 +6,8 @@ import { DraftRecoveryModal } from "../../../packages/shared/src/drafts/DraftRec
 import { WorkspaceNavbar } from "../../../packages/shared/src/components/WorkspaceNavbar";
 
 afterEach(() => { vi.useRealTimers(); });
-const payload = { firstName: "Ada" };
 const parse = (data: unknown) => parseDraftPayload("student_onboarding", data);
+const payload = parse({ firstName: "Ada" });
 function options(): UseFormDraftOptions<ReturnType<typeof parse>> {
   return { formKey: "student_onboarding", contextKey: "school:new", accountId: "owner", connection: { connected: true, authenticated: true, accountId: "owner" }, isDirty: true, currentData: payload, parsePayload: parse, serverDraft: null, onSave: vi.fn().mockResolvedValue({ revision: 1, lastSavedAt: 100 }), onRestore: vi.fn(), onDiscardServerDraft: vi.fn().mockResolvedValue(undefined) };
 }
@@ -51,6 +51,19 @@ describe("awaitable draft recovery core", () => {
     expect(o.onDiscardServerDraft).toHaveBeenCalledWith(1);
     await act(async () => { await expect(hook.result.current.retrySave()).rejects.toThrow(/closed/); });
   });
+  it("surfaces a stale tombstone revision as a conflict without clearing edits", async () => {
+    const o = options();
+    o.onDiscardServerDraft = vi.fn().mockRejectedValue({ data: { code: "CONFLICT" } });
+    const hook = renderHook(() => useFormDraft(o));
+    await act(async () => {
+      await expect(hook.result.current.handleDiscardDraft()).rejects.toEqual({ data: { code: "CONFLICT" } });
+    });
+    expect(hook.result.current.status).toBe("conflict");
+    await act(async () => {
+      await expect(hook.result.current.retrySave()).rejects.toThrow(/latest/);
+    });
+  });
+
   it("does not report a failed awaited save as success", async () => {
     const o = options(); o.onSave = vi.fn().mockRejectedValue(new Error("rejected"));
     const hook = renderHook(() => useFormDraft(o));
@@ -65,6 +78,19 @@ describe("awaitable draft recovery core", () => {
     await act(async () => { await expect(hook.result.current.retrySave()).rejects.toThrow(/closed/); });
     expect(o.onSave).toHaveBeenCalledTimes(1);
   });
+  it("starts a fresh mounted controller only after the adopter advances its closed instance key", async () => {
+    let o = { ...options(), instanceKey: 0 };
+    const hook = renderHook(() => useFormDraft(o));
+    await act(async () => hook.result.current.retrySave());
+    act(() => hook.result.current.submissionSucceeded());
+    o = { ...o, instanceKey: 1, currentData: parse({ firstName: "Next" }) };
+    hook.rerender();
+    await act(async () => {});
+    await act(async () => hook.result.current.retrySave());
+    expect(o.onSave).toHaveBeenCalledTimes(2);
+    expect(o.onSave).toHaveBeenLastCalledWith(o.currentData, 0);
+  });
+
   it("retains only account-scoped in-memory recovery above an auth-gated unmount", () => {
     let o = options();
     function Form() { const draft = useFormDraft(o); return <><span>{draft.memoryDraft ? "Memory recovery available" : "No memory recovery"}</span><button onClick={draft.resumeMemoryDraft}>Resume memory</button></>; }

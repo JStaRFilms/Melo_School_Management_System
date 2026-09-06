@@ -3,6 +3,7 @@ import { reportCardReviewKey } from "@school/shared/exam-recording";
 import { reportCardResultValidator } from "../foundation/reportCardContract";
 export { reportCardResultValidator } from "../foundation/reportCardContract";
 import { resolveEffectiveGradingBands } from "./gradingBands";
+import { resolveEffectiveAcademicPolicy } from "./settings";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 import { mutation, query, type QueryCtx, type MutationCtx } from "../../_generated/server";
@@ -550,12 +551,7 @@ export async function buildStudentReportCard(
       .query("classSubjects")
       .withIndex("by_class", (q: any) => q.eq("classId", reportCardClassId))
       .collect(),
-    ctx.db
-      .query("schoolAssessmentSettings")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", args.schoolId).eq("isActive", true)
-      )
-      .first(),
+    resolveEffectiveAcademicPolicy(ctx, args.schoolId),
     historicalWithoutPolicy ? Promise.resolve([]) : resolveEffectiveGradingBands(ctx, args.schoolId),
     ctx.db
       .query("reportCardComments")

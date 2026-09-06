@@ -1,52 +1,54 @@
-# U1g — Operational overview scope and truthful unavailable states
+# U1g — Bounded proprietor operational overview
 
-**Status: PARTIAL / E0. Numeric aggregate dashboards and operational drilldowns are NOT implemented.** Added a real bounded authorization/filter/status API and Admin integration; every metric value remains null/unavailable or denied. The packet explicitly permits unavailable dimensions instead of unbounded/fabricated aggregation; this is that safe boundary, not completion of the dashboard requirement. Work followed the U1f branding implementation; final test/self-review bundle covers both. No database counting probes, production/sample reads, provider calls, live Convex CLI, deployment, migration, credential access, server/browser launch or commits.
+**Status: locally implemented; runtime/schema rollout and browser evidence remain gated.** The previous null-only status screen has been replaced with genuine enrollment, attendance, finance, staffing and academic summaries. Every source read is indexed and bounded; exceeded bounds, incomplete authority and disabled modules remain unavailable rather than becoming partial totals or zero. No production reads, live Convex/provider commands, deployment, migration, credentials, server or authenticated browser were used.
 
 ## API and authority
 
-Public API: `api.functions.academic.groups.getOperationalOverview({groupId,branchId?,startDate,endDate})`, implemented by `academic/groupOverview.ts` helper. Registered in the existing generated module, no generated file edits.
+Public API remains `api.functions.academic.groups.getOperationalOverview({groupId, branchId?, startDate, endDate})`.
 
-- Active canonical recorded proprietor required. Ordinary linked-branch members and Platform-only governance operators are rejected. Delegated group-summary roles/department summaries have **not** been enabled because no approved explicit group-summary scope exists in the current catalog.
-- Group links are bounded to 101 rows with explicit overflow above 100. A supplied branch filter must be an exact link in that group, otherwise forbidden.
-- Link/name/status metadata is allowed by group ownership. Before any operational source could be used, every active branch goes through `resolveActiveMembership`; canonical membership ID is mandatory and Platform support bypass is rejected. Revoked/missing membership returns `access:'denied'`, zero metrics and no drilldown. Suspended/missing/nonactive school returns `access:'inactive'`.
-- Scoped branches then get per-dimension capability and module checks. Current candidate gates: enrollment `enrollment.intakes.manage` + admissions feature; finance `finance.reports.view` + billing; staff `staff.list.view`; academics `academic.report_cards.preview` + curriculum. Attendance has no approved summary capability and stays denied. These are conservative gates for unavailable placeholders, **not approval to reuse them for future broad data metrics without source/department review**.
-- No student, attendance, invoice/payment, staff roster or score table is queried by this implementation. It returns safe branch metadata, metric labels/units/state/reason with `value:null`, five unavailable group totals, applied period and explicit limitations. No private records/prompts/bank data are serialized.
+- Active canonical recorded proprietor authority is still required for the group. Platform governance and ordinary linked members do not receive group operational access.
+- Each active branch independently requires the proprietor's explicit canonical active membership. Per-dimension capability and module checks happen before its source query. Group linkage never authorizes operational reads.
+- Active denied/disabled/unavailable branches make the corresponding group total unavailable. Inactive branches are explicitly excluded. A partial sum is never labelled as a group total.
+- Optional `branchId` must be an exact link in the group. It is the supported way to retrieve a larger group's bounded branch summary.
+- Safe payloads contain branch metadata, aggregates, units/bases/bounds and an optional `/admin/audit` route descriptor. They contain no roster, student identity, admission number, invoice/payment identity, bank details, staff identity or report-card body.
 
-## Period and units/source manifest
+## Metric source and semantics
 
-Period is integer UTC epoch milliseconds, `startDate >= 0`, end exclusive, positive duration <=366 days. UI uses native date inputs; invalid ranges are rejected both client and server. Optional branch filter is authoritative. These dates currently **select no operational data**, because sources are unavailable; they are an applied contract only. Session/term mapping/comparison is unimplemented and disclosed, not inferred across independent branch calendars.
-
-| Dimension | Inspected actual source / semantics | Output now | Work before numeric adoption |
+| Dimension | Server gate | Genuine source and definition | Honest boundary |
 |---|---|---|---|
-| Enrollment | `studentEnrollment.listStudentsByClass`: default legacy school, class-owned `.collect()`, excludes archived student/user but not sufficient historical/duplicate/active status semantics. `students` has school/class indexes and optional enrollmentStatus; no bounded reviewed active counter found. | Null; unit active students; unavailable if permitted, else module-disabled/denied | Bounded counter/source with applicants, archived users/students, duplicate, graduated, withdrawn, transferred-out and historical-only exclusions; explicit as-of/session meaning. Do not count every legacy row as active. |
-| Attendance | No dedicated bounded group-compatible attendance opportunity/presence source found; report/transfer attendance summary fields are not a complete denominator. | Null/denied; intended unit present / recorded attendance opportunities (%) | Approved attendance summary capability/scope, indexed period numerator/denominator and missing-data state; never call missing attendance zero. |
-| Finance | `billing.getBillingDashboard`: no school argument, legacy default-admin gate, unbounded all invoices/payments/attempts/gateway events/fee-plan applications and provider-overview dependency. | Null; minor currency units separated by currency; unavailable/denied/disabled | Bounded explicit branch/period ledger aggregates; distinguish assessed, collected, outstanding, waived/refunded, school collection vs SaaS/settlement; no cross-currency sum. No provider invoked here. |
-| Staffing | `academicSetup.listTeachers`: legacy default school, unbounded school users filtered by teacher role and archived flag, raw names/emails. Canonical memberships are not staff headcount. | Null; active staff people; unavailable/denied | Bounded canonical staff source with deduplication, employment/activity/branch assignment semantics; do not count guardians or students as staff memberships. |
-| Academics | Existing grading/report/exam rows are per-domain and independently scoped; no comparable bounded published-score denominator/session/term aggregate found. | Null; published assessments with denominator; unavailable/denied/disabled | Approved bounded source, publication/finality and missing-score semantics, compatible grading/session/term comparison. Never average unrelated grading systems/terms or include draft scores as final. |
+| Enrollment | `enrollment.intakes.manage`; admissions module | Current `students` snapshot joined to same-school student users; unique by user. Excludes archived, graduated, withdrawn, transferred-out, wrong-role/wrong-school and duplicate-user rows. | Current snapshot, not historical period enrollment. More than 500 school student rows returns unavailable. |
+| Attendance | `academic.report_cards.preview` | Existing report-card class openings and student times-present records for terms fully contained in the selected UTC period. Latest duplicate key wins; only valid `0 <= present <= opened` pairs contribute. Returns weighted present/opportunity percentage. | Missing/invalid records are excluded and disclosed, never zero. No complete term or denominator is `empty`. Either attendance table over 500 school rows or term directory over 100 is unavailable. Partial-term inference is not attempted. |
+| Finance | `finance.reports.view`; billing module | In-period issued school-fee invoices and successful/reconciled applied payments. Returns assessed, collected, current outstanding and waived values separately by currency. | Draft/cancelled invoices; pending/failed/reversed payments; SaaS, provider attempts and settlement ledgers excluded. Invoice and payment windows each cap at 500; no cross-currency scalar total. |
+| Staffing | `staff.list.view` | Current nonarchived Admin/Teacher accounts, deduplicated by canonical person then authentication identity. | An account count, not employment/FTE/payroll/attendance. More than 500 school users is unavailable. |
+| Academics | `academic.report_cards.preview`; curriculum module | Immutable issued report-card snapshots whose `issuedAt` is in-period. Returns issued report count, distinct students, reports with averages and their weighted mean. Draft assessment rows are excluded. | Publication activity, not a causal cohort trend. Branch grading comparability is not asserted. More than 500 issued reports in-period is unavailable. |
 
-No known synthetic totals, archived-student counting or academic period-filtering acceptance is claimed: **there is no numeric aggregator to test yet**. Group totals stay null even if some branches are denied; a partial sum is never presented as a full-group total. An empty linked selection explicitly says it is not a zero total.
+The period remains integer UTC milliseconds, end-exclusive, positive and at most 366 days. Current-snapshot metrics explicitly say they do not use it. At most three branches are source-aggregated in one request to keep the transaction bounded; larger all-branch requests return unavailable dimensions and instruct the user to select a branch. Group totals combine only complete authorized active-branch data. Attendance uses numerator/denominator weighting; academics uses reports-with-average weighting; finance remains split by currency.
 
-## Actual Admin route / drilldown
+## Admin integration and safe branch drilldown
 
-`/admin/group` now mounts `OperationalOverview.tsx` alongside the separate U1f settings section. It has native labelled start/end/branch controls, applied-period text, loading, denied/revoked/inactive/module-disabled/unavailable explanations, no-branches state and route-level query error/retry inherited from U1c. Layout uses wrapping controls and a responsive definition list, not a wide roster table. Group changes remount the section and reset its scoped filters.
+`/admin/group` now shows:
 
-**No drilldown link or button exists**: every row says selected-branch routes and unsaved-change guards must be approved. This follows U1b, where no switched operational route/caller chain is approved and U3a dirty guard is not installed. No invented route, header relabel, active-school persistence, unscoped dashboard query or group-link-as-membership workaround was added. Domain owners must establish selected-branch activation, query/entity reset and guarded navigation before enabling actual supported paths.
+- bounded group totals and branch values with explicit value, state, reason, basis and supporting counts;
+- native UTC date and linked-branch filters;
+- available, empty, denied, inactive, module-disabled, source-overflow and aggregate-branch-limit states;
+- the actual per-request limits (500 source rows/table, 100 terms/branch, three branches/all-branch request);
+- one real drilldown only when the branch also has `audit.branch.view`: **Open this branch's scoped audit**.
 
-## Local tests and verification
+The drilldown awaits U3a's branch departure guard, activates only a server-listed target through the U1b account-scoped selector, then navigates to the allowlisted explicit-school `/admin/audit` adapter. No enrollment, attendance, finance, staffing or academic legacy route is linked because those caller chains remain default-school scoped. No invented route or relabelled legacy dashboard was added.
 
-See [U1f](U1f.md) for exact combined commands and ordinary fixes:
-- New combined backend file: **5 PASS**, including **2 overview** cases covering five null totals, scoped/denied/inactive/module-disabled rows, Platform/member exclusion, revocation, foreign branch injection, exact branch filter, UTC period validation and no sensitive fields/drilldowns.
-- New Admin file: **4 PASS**, including **1 overview** DOM case for loading, explicit denial, no fake link, native focus, invalid range and submitted exact period/branch contract.
-- Final combined relevant backend bundle: **29 PASS**; Admin bundle: **13 PASS**.
-- Convex/Admin/Platform/Shared/Teacher/Portal typechecks: **all six PASS**.
-- Changed-file eslint and `git diff --check`: PASS (line-ending notices only).
+## Local verification and self-review
 
-Self-review: source reads are metadata/auth/capability only; no hidden `.collect()` aggregation, partial-window counts, raw DTO or provider dependency. Moved operational membership handling into overview instead of leaving it in settings. Per-branch auth errors fail closed; unexpected non-Convex errors propagate to retry boundary. Owner metadata visibility cannot bypass branch membership. Removed new configuration fields from old group metadata projections. Empty/unavailable/denied remain distinct.
+Focused tests now cover known synthetic totals for all five dimensions, archived/departed/duplicate enrollment exclusions, complete-term attendance numerator/denominator, per-currency assessed/collected values, published report averages, period exclusion, denied/inactive/module-disabled branches, no partial group total, Platform/member denial, unrelated branch injection, membership revocation and payload redaction. Admin DOM tests cover numeric/supporting rendering, bounds text, empty/denied states, UTC validation/filter arguments and authorized scoped-audit callback.
 
-## Files, acceptance remaining and U7 handoff
+Final local rerun: Convex group/access/RBAC bundle **4 files / 28 PASS** (U1f/g suite **7 PASS**); Admin selection/shell/group bundle **4 files / 22 PASS** (overview/default suite **5 PASS**, governance **2 PASS**); Shared workspace policy/navigation **2 files / 19 PASS**. Convex, Shared, Admin, Teacher, Portal and Platform typechecks passed. Focused changed-file ESLint passed with zero warnings; full Admin lint passed with zero errors and 115 pre-existing warnings. `git diff --check` passed with line-ending notices only. The informational theme audit reported only existing tenant-theme fixture colors in touched U1g tests.
 
-Created `academic/groupOverview.ts`, Admin `app/admin/group/OperationalOverview.tsx`, this result. Modified groups API registrations and Admin group page; shares `groupDefaultsOverview.integration.test.ts` and `group-defaults-overview.test.tsx` with U1f. Existing metadata behavior/Platform UI otherwise preserved.
+Schema changes are additive indexes only: `issuedReportCards.by_school_and_issued_at`, `studentInvoices.by_school_and_issued_at`, and `billingPayments.by_school_and_received_at`. They were authored and tested locally but not deployed.
 
-Remaining implementation: all five bounded source adapters/counters, actual totals/exclusion tests, session/term filters/comparability, explicitly delegated summary scopes and dimension permissions, selected-branch-safe real-route drilldowns and U3a guard. These are **not completed by a status screen**. No database migration is authorized to manufacture counters; a future owner must design prospective updates and separately reviewed legacy availability.
+Self-review confirmed every operational query is behind proprietor + explicit branch membership + dimension authority, uses an index and `.take(limit + 1)`, suppresses overflow values, and emits no raw entity DTO. No counter migration, global identity mutation, provider call, broad Platform bypass or generic settings design was introduced.
 
-**U7 screenshots: E0, none captured.** Request synthetic/redacted proprietor partial scope, no links, revoked branch, suspended branch, module-disabled, unavailable dimensions, invalid period and top-level denial/retry at desktop and **320px**; exercise native keyboard/tab order and long names. jsdom focus/control tests do not prove actual mobile reflow or authenticated runtime. No numeric-dashboard screenshot can be requested as implemented until adapters land.
+## Remaining safe code / external evidence
+
+- Larger-than-bound schools need reviewed maintained aggregate counters or pagination-based materialization before numeric values can be available; current code truthfully withholds them.
+- Additional selected-school domain routes remain U1b/domain adapter work; only scoped audit is enabled from this overview.
+- Delegated non-proprietor group-summary roles still lack an approved scope contract and remain denied.
+- Authorized index/function rollout, authenticated desktop/320px keyboard/browser evidence and screenshots remain U7/runtime gates. U7 itself is blocked by the absent approved account allowlist; that did not block local implementation.

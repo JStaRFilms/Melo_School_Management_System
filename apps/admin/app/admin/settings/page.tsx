@@ -263,7 +263,10 @@ export default function SchoolSettingsPage() {
           <p className="text-xs text-slate-500 mt-1">
             Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
           </p>
-          <a className="text-sm underline" href="/admin/settings/email-domains">Institutional email policy and review</a>
+          <div className="flex flex-wrap gap-3">
+            <a className="text-sm underline" href="/admin/settings/email-domains">Institutional email policy and review</a>
+            <a className="text-sm underline" href="/admin/settings/group-defaults">Group default choices</a>
+          </div>
         </div>
 
         <button

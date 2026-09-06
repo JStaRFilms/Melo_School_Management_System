@@ -26,7 +26,9 @@ import {
   X,
   FileText,
 } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { getUserFacingErrorMessage, MobileProgressIndicator } from "@school/shared";
+import { useDirtyForm, type DraftStatus } from "@school/shared/drafts";
+import { useDraftConnection } from "@/lib/useDraftConnection";
 import { appToast } from "@school/shared/toast";
 import { useConvex } from "convex/react";
 
@@ -43,7 +45,7 @@ interface LessonPlanWorkspaceScreenProps {
   onOutputTypeChange: (next: LessonPlanWorkspaceOutputType) => void;
   onRemoveSource: (sourceId: string) => void;
   onOpenLibrary: () => void;
-  onSaveDraft: (draft: { title: string; documentState: string; plainText: string }) => Promise<LessonPlanSaveResult>;
+  onSaveDraft: (draft: { title: string; documentState: string; plainText: string; expectedRevisionNumber: number }) => Promise<LessonPlanSaveResult>;
   onGenerateDraft: () => Promise<LessonPlanSaveResult>;
 }
 
@@ -81,6 +83,12 @@ const toolbarActions = [
   { id: "link", label: "Link", icon: Link2 },
   { id: "table", label: "Table", icon: Table2 },
 ] as const;
+
+function draftErrorCode(error: unknown): unknown {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("data" in error) return draftErrorCode(error.data);
+  return "code" in error ? error.code : undefined;
+}
 
 function formatRelativeTime(timestamp: number | null) {
   if (!timestamp) {
@@ -183,6 +191,8 @@ export function LessonPlanWorkspaceScreen({
   const [documentState, setDocumentState] = useState(workspace.draft.documentState);
   const [plainText, setPlainText] = useState(workspace.draft.plainText);
   const [revisionNumber, setRevisionNumber] = useState(workspace.draft.revisionNumber);
+  const [lastSavedAt, setLastSavedAt] = useState(workspace.draft.lastSavedAt);
+  const revisionRef = useRef(workspace.draft.revisionNumber);
   const [lastSavedSignature, setLastSavedSignature] = useState(
     JSON.stringify({ title: workspace.draft.title, documentState: workspace.draft.documentState })
   );
@@ -202,14 +212,19 @@ export function LessonPlanWorkspaceScreen({
     }
   }, [isDrawerClosing]);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
+  const connection = useDraftConnection();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatusIndex, setGenerationStatusIndex] = useState(0);
   const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const saveInFlightRef = useRef(false);
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
   const retrySaveRef = useRef(false);
+  const editorRef = useRef({ title, documentState, plainText });
+  useEffect(() => {
+    editorRef.current = { title, documentState, plainText };
+  }, [documentState, plainText, title]);
 
   const handleRestoreRevision = async (revisionId: string) => {
     try {
@@ -223,7 +238,6 @@ export function LessonPlanWorkspaceScreen({
         setTitle(content.title);
         setDocumentState(content.documentState);
         setPlainText(content.plainText);
-        setLastSavedSignature(JSON.stringify({ title: content.title, documentState: content.documentState }));
         setSaveState("idle");
       }
     } catch (error) {
@@ -318,78 +332,113 @@ export function LessonPlanWorkspaceScreen({
     [documentState]
   );
 
-  const persistDraft = useCallback(
+  const persistOnce = useCallback(
     async (mode: "manual" | "autosave") => {
-      if (!canAutosave) {
-        return;
-      }
-
+      if (!canAutosave) throw new Error("Saving is unavailable for this planning context.");
+      if (!connection.authenticated || connection.accountId === null) throw new Error("Sign in again before saving. Edits remain in this tab.");
+      if (!connection.connected) throw new Error("Connection lost. Reconnect and explicitly save; this draft is not saved yet.");
       if (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level)) {
-        return;
+        throw new Error("Resolve a valid planning context before saving.");
       }
 
+      const snapshot = editorRef.current;
+      const snapshotSignature = JSON.stringify({ title: snapshot.title, documentState: snapshot.documentState });
       setSaveState("saving");
       try {
-        const result = await onSaveDraft({ title, documentState, plainText });
+        const result = await onSaveDraft({
+          ...snapshot,
+          expectedRevisionNumber: revisionRef.current,
+        });
+        revisionRef.current = result.revisionNumber;
         setRevisionNumber(result.revisionNumber);
-        setTitle(result.title);
-        setDocumentState(result.documentState);
-        setPlainText(result.plainText);
-        setLastSavedSignature(JSON.stringify({ title: result.title, documentState: result.documentState }));
-        setSaveState("saved");
-        if (mode === "manual") {
-          pushNotice("success", `Saved revision ${result.revisionNumber}.`);
+        setLastSavedAt(result.savedAt);
+        const savedSignature = JSON.stringify({ title: result.title, documentState: result.documentState });
+        setLastSavedSignature(savedSignature);
+        if (JSON.stringify({ title: editorRef.current.title, documentState: editorRef.current.documentState }) === snapshotSignature) {
+          setTitle(result.title);
+          setDocumentState(result.documentState);
+          setPlainText(result.plainText);
         }
+        setSaveState("saved");
+        if (mode === "manual") pushNotice("success", `Saved revision ${result.revisionNumber}.`);
       } catch (error) {
-        setSaveState("error");
-        pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
+        setSaveState(draftErrorCode(error) === "CONFLICT" ? "conflict" : "error");
+        throw error;
       }
-    },
-    [canAutosave, documentState, onSaveDraft, plainText, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    }, [canAutosave, connection.accountId, connection.authenticated, connection.connected, onSaveDraft, pushNotice, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
-  useEffect(() => {
-    if (!dirty || !canAutosave || isGenerating) {
+  const persistDraft = useCallback(async (mode: "manual" | "autosave") => {
+    if (saveInFlightRef.current) {
+      retrySaveRef.current = true;
+      await saveInFlightRef.current;
       return;
     }
+    do {
+      retrySaveRef.current = false;
+      const operation = persistOnce(mode);
+      saveInFlightRef.current = operation;
+      try {
+        await operation;
+      } finally {
+        if (saveInFlightRef.current === operation) saveInFlightRef.current = null;
+      }
+    } while (retrySaveRef.current && saveState !== "conflict");
+  }, [persistOnce, saveState]);
 
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-    }
-
+  useEffect(() => {
+    if (!dirty || !canAutosave || isGenerating || !connection.connected || !connection.authenticated || saveState === "conflict") return;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      if (saveInFlightRef.current) {
-        retrySaveRef.current = true;
-        return;
-      }
-
-      saveInFlightRef.current = true;
-      persistDraft("autosave")
-        .catch(() => {})
-        .finally(() => {
-          saveInFlightRef.current = false;
-          if (retrySaveRef.current) {
-            retrySaveRef.current = false;
-            setSaveState((current) => (current === "error" ? current : "idle"));
-          }
-        });
+      void persistDraft("autosave").catch((error) => {
+        pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
+      });
     }, 1200);
-
     return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-      }
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
-  }, [canAutosave, dirty, isGenerating, persistDraft, signature]);
+  }, [canAutosave, connection.authenticated, connection.connected, dirty, isGenerating, persistDraft, pushNotice, saveState, signature]);
 
   const handleManualSave = useCallback(async () => {
+    if (isGenerating || isRestoring) throw new Error("Wait for the planning operation to finish before leaving.");
     if (!dirty) {
       pushNotice("success", "No changes to save.");
       return;
     }
+    try {
+      await persistDraft("manual");
+    } catch (error) {
+      pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
+      throw error;
+    }
+  }, [dirty, isGenerating, isRestoring, persistDraft, pushNotice]);
 
-    await persistDraft("manual");
-  }, [dirty, persistDraft, pushNotice]);
+  const discardLocalChanges = useCallback(() => {
+    revisionRef.current = workspace.draft.revisionNumber;
+    setRevisionNumber(workspace.draft.revisionNumber);
+    setLastSavedAt(workspace.draft.lastSavedAt);
+    setTitle(workspace.draft.title);
+    setDocumentState(workspace.draft.documentState);
+    setPlainText(workspace.draft.plainText);
+    const latestSignature = JSON.stringify({ title: workspace.draft.title, documentState: workspace.draft.documentState });
+    setLastSavedSignature(latestSignature);
+    setSaveState("idle");
+  }, [workspace.draft]);
+  const requestDeparture = useDirtyForm({
+    name: "Teacher planning draft",
+    isDirty: dirty || isGenerating || isRestoring,
+    save: handleManualSave,
+    discard: () => {
+      if (isGenerating || isRestoring) throw new Error("Wait for the planning operation to finish before leaving.");
+      discardLocalChanges();
+    },
+  });
+  const loadLatestRevision = useCallback(() => {
+    if (workspace.draft.revisionNumber <= revisionRef.current) return;
+    discardLocalChanges();
+    pushNotice("success", `Loaded latest revision ${workspace.draft.revisionNumber}.`);
+  }, [discardLocalChanges, pushNotice, workspace.draft.revisionNumber]);
+  const hasNewerReactiveRevision = workspace.draft.revisionNumber > revisionNumber;
 
   useEffect(() => {
     if (!isGenerating) {
@@ -414,40 +463,70 @@ export function LessonPlanWorkspaceScreen({
     setGenerationStatusIndex(0);
     setGenerationStartedAt(Date.now());
     try {
+      if (dirty) await persistDraft("manual");
       const result = await onGenerateDraft();
+      revisionRef.current = result.revisionNumber;
       setRevisionNumber(result.revisionNumber);
+      setLastSavedAt(result.savedAt);
       setTitle(result.title);
       setDocumentState(result.documentState);
       setPlainText(result.plainText);
-      setLastSavedSignature(JSON.stringify({ title: result.title, documentState: result.documentState }));
+      const generatedSignature = JSON.stringify({ title: result.title, documentState: result.documentState });
+      setLastSavedSignature(generatedSignature);
       setSaveState("saved");
       const repairSuffix = result.generationMeta?.repaired ? " Automatically repaired to match the school template." : "";
       pushNotice("success", `Generated ${workspace.outputTypeLabel.toLowerCase()} revision ${result.revisionNumber}.${repairSuffix}`);
     } catch (error) {
-      setSaveState("error");
+      setSaveState(draftErrorCode(error) === "CONFLICT" ? "conflict" : "error");
       pushNotice("error", getUserFacingErrorMessage(error, "Generation failed."));
     } finally {
       setIsGenerating(false);
     }
-  }, [canGenerate, onGenerateDraft, pushNotice, workspace.outputTypeLabel]);
+  }, [canGenerate, dirty, onGenerateDraft, persistDraft, pushNotice, workspace.outputTypeLabel]);
 
   const handleOutputTypeChange = useCallback(
-    (next: LessonPlanWorkspaceOutputType) => {
-      if (next === workspace.outputType) {
-        return;
-      }
-
-      if (dirty && !window.confirm("You have unsaved changes. Switch output type anyway?")) {
-        return;
-      }
-
+    async (next: LessonPlanWorkspaceOutputType) => {
+      if (next === workspace.outputType) return;
+      if (!await requestDeparture({ kind: "close" })) return;
       onOutputTypeChange(next);
     },
-    [dirty, onOutputTypeChange, workspace.outputType]
+    [onOutputTypeChange, requestDeparture, workspace.outputType]
   );
+
+  const draftStatus: DraftStatus = dirty && !connection.authenticated
+    ? "reauth_required"
+    : dirty && !connection.connected
+      ? "connection_lost"
+      : saveState === "conflict"
+        ? "conflict"
+        : saveState === "error"
+          ? "save_failed"
+          : saveState;
+  const requiredSections = workspace.template?.sectionDefinitions.filter((section) => section.required) ?? [];
+  const progressSections = [
+    { id: "title", title: "Title", isValid: Boolean(title.trim()) },
+    ...requiredSections.map((section) => {
+      const heading = new RegExp(`^#{1,6}\\s+${section.label.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*$`, "im");
+      const isValid = heading.test(documentState);
+      return { id: section.id, title: section.label, isValid, hasError: !isValid && Boolean(documentState.trim()) };
+    }),
+  ];
+  const openLibrary = async () => {
+    if (await requestDeparture({ kind: "close" })) onOpenLibrary();
+  };
+  const removeSource = async (sourceId: string) => {
+    if (await requestDeparture({ kind: "close" })) onRemoveSource(sourceId);
+  };
 
   return (
     <div className="h-full flex flex-col xl:flex-row min-h-0 overflow-hidden relative">
+      <MobileProgressIndicator
+        mode="sections"
+        topOffset="top-0"
+        sections={progressSections}
+        draftStatus={draftStatus}
+        lastSavedAt={lastSavedAt}
+      />
       {/* ── LEFT COLUMN: Library Attachments (Pinned on desktop with internal scroll) ── */}
       <aside className="hidden xl:block w-[260px] 2xl:w-[280px] shrink-0 h-full overflow-y-auto border-r border-slate-200/80 p-4 space-y-4 custom-scrollbar bg-slate-50/20">
         <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs">
@@ -458,7 +537,7 @@ export function LessonPlanWorkspaceScreen({
             </div>
             <button
               type="button"
-              onClick={onOpenLibrary}
+              onClick={() => void openLibrary()}
               className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 cursor-pointer"
             >
               <BookOpenText className="h-3 w-3" />
@@ -476,7 +555,9 @@ export function LessonPlanWorkspaceScreen({
                       <p className="mt-0.5 text-[8px] font-medium text-slate-400 uppercase tracking-wider">{source.sourceType.replace("_", " ")}</p>
                     </div>
                     <button
-                      onClick={() => onRemoveSource(source._id)}
+                      type="button"
+                      aria-label={`Remove source ${source.title}`}
+                      onClick={() => void removeSource(source._id)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all cursor-pointer"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -544,8 +625,15 @@ export function LessonPlanWorkspaceScreen({
                 </div>
 
                 <div className="flex items-center gap-2">
-                   <div className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
-                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{dirty ? "Saving..." : "Synced"}</span>
+                   <div className={`h-1.5 w-1.5 rounded-full ${draftStatus === "saved" ? "bg-emerald-400" : draftStatus === "saving" ? "bg-amber-400 animate-pulse" : "bg-rose-400"}`} />
+                   <span role="status" className="text-[9px] font-black uppercase tracking-widest text-slate-500">{
+                     draftStatus === "saving" ? "Saving draft" :
+                     draftStatus === "saved" ? "Draft saved" :
+                     draftStatus === "connection_lost" ? "Connection lost · not saved" :
+                     draftStatus === "reauth_required" ? "Sign in again · edits in this tab" :
+                     draftStatus === "conflict" ? "Conflict · load latest" :
+                     draftStatus === "save_failed" ? "Save failed · retry" : dirty ? "Unsaved" : "Synced"
+                   }</span>
                 </div>
               </div>
 
@@ -567,7 +655,7 @@ export function LessonPlanWorkspaceScreen({
                   <div className="h-3 w-[1px] bg-slate-200" />
                   <div className="flex items-center gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">Modified</span>
-                    <span className="text-[10px] font-bold text-slate-900">{formatRelativeTime(workspace.draft.lastSavedAt)}</span>
+                    <span className="text-[10px] font-bold text-slate-900">{formatRelativeTime(lastSavedAt)}</span>
                   </div>
                 </div>
               </div>
@@ -644,10 +732,20 @@ export function LessonPlanWorkspaceScreen({
               <p role="status" className="text-sm">Paid generation unavailable: plan estimate, allowance reservation and provider reconciliation are not enabled. No charge is incurred. Existing drafts can still be edited and saved.</p>
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-1.5">
+                  {saveState === "conflict" && (
+                    <button
+                      type="button"
+                      onClick={loadLatestRevision}
+                      disabled={!hasNewerReactiveRevision}
+                      className="inline-flex disabled:opacity-50 h-9 items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3.5 text-[10px] font-bold text-amber-900"
+                    >
+                      Load latest revision
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={handleManualSave}
-                    disabled={!dirty || saveState === "saving" || !canAutosave}
+                    onClick={() => void handleManualSave().catch(() => {})}
+                    disabled={!dirty || saveState === "saving" || saveState === "conflict" || !canAutosave}
                     className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-30 cursor-pointer shadow-2xs"
                   >
                     {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
@@ -783,7 +881,7 @@ export function LessonPlanWorkspaceScreen({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Attached ({workspace.selectedSourceCount})</p>
-                    <button onClick={onOpenLibrary} className="text-[10px] font-bold text-slate-900 underline underline-offset-4 decoration-slate-200">Library</button>
+                    <button onClick={() => void openLibrary()} className="text-[10px] font-bold text-slate-900 underline underline-offset-4 decoration-slate-200">Library</button>
                   </div>
                   <div className="grid gap-3">
                     {workspace.selectedSources.map(source => (
@@ -793,7 +891,7 @@ export function LessonPlanWorkspaceScreen({
                             <p className="truncate text-[11px] font-bold text-slate-950">{source.title}</p>
                             <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-slate-400">{source.sourceType}</p>
                           </div>
-                          <button onClick={() => onRemoveSource(source._id)} className="text-[10px] font-black uppercase text-rose-500">Remove</button>
+                          <button onClick={() => void removeSource(source._id)} className="text-[10px] font-black uppercase text-rose-500">Remove</button>
                         </div>
                       </div>
                     ))}

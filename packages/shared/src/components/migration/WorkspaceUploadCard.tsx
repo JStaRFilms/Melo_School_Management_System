@@ -9,8 +9,6 @@ import {
 export interface WorkspaceUploadCardProps {
   onStartIngest: (params: {
     workspaceName: string;
-    admissionPrefix: string;
-    nextSequence: number;
     parseResult: SpreadsheetParseResult;
   }) => Promise<void>;
   isIngesting: boolean;
@@ -19,8 +17,6 @@ export interface WorkspaceUploadCardProps {
 export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUploadCardProps) {
   const currentYear = new Date().getFullYear();
   const [workspaceName, setWorkspaceName] = useState(`${currentYear}/${currentYear + 1} Baseline Intake`);
-  const [admissionPrefix, setAdmissionPrefix] = useState(`SCH/${currentYear}/`);
-  const [nextSequence, setNextSequence] = useState(1);
   const [parseResult, setParseResult] = useState<SpreadsheetParseResult | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -85,8 +81,6 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
 
     await onStartIngest({
       workspaceName,
-      admissionPrefix,
-      nextSequence,
       parseResult,
     });
   };
@@ -105,7 +99,7 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Workspace Configurations */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="max-w-md">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Workspace Label
@@ -119,33 +113,9 @@ export function WorkspaceUploadCard({ onStartIngest, isIngesting }: WorkspaceUpl
               placeholder="e.g. 2026/2027 Baseline Intake"
             />
           </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Admission No. Prefix
-            </label>
-            <input
-              type="text"
-              value={admissionPrefix}
-              onChange={(e) => setAdmissionPrefix(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-mono font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
-              placeholder="e.g. SCH/2026/"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Sequence Starting Seed
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={nextSequence}
-              onChange={(e) => setNextSequence(parseInt(e.target.value, 10) || 1)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-mono font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
-              placeholder="e.g. 1 or 101"
-            />
-          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Missing admission IDs use the configured official policy after review. Historical IDs are preserved; this workspace has no private counter.
+          </p>
         </div>
 
         {/* Dropzone */}

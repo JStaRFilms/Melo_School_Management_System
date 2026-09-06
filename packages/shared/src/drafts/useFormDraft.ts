@@ -27,6 +27,8 @@ export interface UseFormDraftOptions<T> {
   onDiscardServerDraft: (expectedRevision: number) => Promise<void>;
   onCommitServerDraft?: (expectedRevision: number) => Promise<void>;
   debounceMs?: number;
+  /** Change only after this instance has been submitted/discarded to start a fresh draft in the same mounted form. */
+  instanceKey?: string | number;
 }
 export function isLatestDraftSaveRequest(request: number, latest: number) { return request === latest; }
 function errorCode(error: unknown): unknown {
@@ -36,7 +38,7 @@ function errorCode(error: unknown): unknown {
 }
 export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const memory = useDraftMemory();
-  const memoryKey = JSON.stringify([options.accountId, options.contextKey, options.formKey, options.entityId]);
+  const memoryKey = JSON.stringify([options.accountId, options.contextKey, options.formKey, options.entityId, options.instanceKey ?? 0]);
   const [memoryDraft, setMemoryDraft] = useState(() => {
     const found = memory?.get(memoryKey);
     return found && Date.now() - found.capturedAt < 30 * 60 * 1000 ? found : null;
@@ -45,6 +47,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   latest.current = options;
   const initialContext = useRef(options.contextKey);
   const initialAccount = useRef(options.accountId);
+  const initialInstance = useRef(options.instanceKey ?? 0);
   const [status, setStatus] = useState<DraftStatus>("idle");
   const statusRef = useRef<DraftStatus>("idle");
   const updateStatus = (value: DraftStatus) => { statusRef.current = value; setStatus(value); };
@@ -62,18 +65,37 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current); }; }, []);
   useEffect(() => {
-    if (!options.isDirty || closed.current || options.accountId !== initialAccount.current || options.contextKey !== initialContext.current || options.connection.accountId !== options.accountId) return;
+    const nextInstance = options.instanceKey ?? 0;
+    if (nextInstance === initialInstance.current) return;
+    if (inFlight.current || finishing.current) return;
+    clearTimeout(timer.current);
+    initialInstance.current = nextInstance;
+    initialContext.current = options.contextKey;
+    initialAccount.current = options.accountId;
+    revision.current = 0;
+    accepted.current = false;
+    closed.current = false;
+    pause.current = false;
+    savedData.current = undefined;
+    setMemoryDraft(null);
+    setActiveServerDraft(null);
+    setShowRecoveryModal(false);
+    setLastSavedAt(null);
+    updateStatus("idle");
+  }, [options.instanceKey, options.contextKey, options.accountId]);
+  useEffect(() => {
+    if (!options.isDirty || closed.current || options.accountId !== initialAccount.current || options.contextKey !== initialContext.current || (options.instanceKey ?? 0) !== initialInstance.current || options.connection.accountId !== options.accountId) return;
     // Only the approved projection reaches the recovery cache. Invalid state stays in its form.
     try { memory?.set(memoryKey, { payload: options.parsePayload(options.currentData), revision: revision.current, capturedAt: Date.now() }); } catch { /* no unreviewed memory recovery */ }
-  }, [memory, memoryKey, options.currentData, options.isDirty, options.parsePayload, options.accountId, options.contextKey, options.connection.accountId]);
+  }, [memory, memoryKey, options.currentData, options.isDirty, options.parsePayload, options.accountId, options.contextKey, options.instanceKey, options.connection.accountId]);
 
   useEffect(() => {
-    if (!accepted.current && options.serverDraft && options.accountId === initialAccount.current && options.contextKey === initialContext.current) {
+    if (!accepted.current && options.serverDraft && options.accountId === initialAccount.current && options.contextKey === initialContext.current && (options.instanceKey ?? 0) === initialInstance.current) {
       setActiveServerDraft(options.serverDraft);
       setShowRecoveryModal(true);
     }
-  }, [options.serverDraft, options.accountId, options.contextKey]);
-  const sameContext = options.accountId === initialAccount.current && options.contextKey === initialContext.current && options.connection.accountId === initialAccount.current;
+  }, [options.serverDraft, options.accountId, options.contextKey, options.instanceKey]);
+  const sameContext = options.accountId === initialAccount.current && options.contextKey === initialContext.current && (options.instanceKey ?? 0) === initialInstance.current && options.connection.accountId === initialAccount.current;
   const available = options.connection.connected && options.connection.authenticated && sameContext;
   useEffect(() => {
     if (!available) {
@@ -88,7 +110,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     while (inFlight.current) { await inFlight.current; }
     const o = latest.current;
     if (closed.current || finishing.current) throw new Error("This draft instance is closed.");
-    if (!o.connection.connected || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current) {
+    if (!o.connection.connected || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || (o.instanceKey ?? 0) !== initialInstance.current) {
       updateStatus(o.connection.authenticated ? "connection_lost" : "reauth_required");
       throw new Error("Reconnect and sign in to the same account before saving. Edits remain in memory.");
     }
@@ -117,7 +139,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
         pause.current = false;
       } catch (error) {
         const code = errorCode(error);
-        updateStatus(code === "CONFLICT" ? "conflict" : code === "EXPIRED" || code === "CLOSED" ? "expired" : !latest.current.connection.authenticated ? "reauth_required" : !latest.current.connection.connected ? "connection_lost" : "save_failed");
+        updateStatus(code === "CONFLICT" || code === "RECOVERY_REQUIRED" ? "conflict" : code === "EXPIRED" || code === "CLOSED" ? "expired" : !latest.current.connection.authenticated ? "reauth_required" : !latest.current.connection.connected ? "connection_lost" : "save_failed");
         pause.current = true;
         throw error;
       }
@@ -140,7 +162,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const handleResumeDraft = useCallback(() => {
     const draft = activeServerDraft;
     const o = latest.current;
-    if (!draft || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || draft.formKey !== o.formKey || draft.entityId !== o.entityId) return;
+    if (!draft || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || (o.instanceKey ?? 0) !== initialInstance.current || draft.formKey !== o.formKey || draft.entityId !== o.entityId) return;
     if (draft.expiresAt && draft.expiresAt <= Date.now()) { updateStatus("expired"); return; }
     const restored = o.parsePayload(draft.payload);
     o.onRestore(restored);
@@ -158,7 +180,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     try {
       if (inFlight.current) await inFlight.current;
       const o = latest.current;
-      if (!o.connection.connected || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current) throw new Error("Reconnect before closing the draft.");
+      if (!o.connection.connected || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || (o.instanceKey ?? 0) !== initialInstance.current) throw new Error("Reconnect before closing the draft.");
       const rev = !accepted.current && o.serverDraft ? o.serverDraft.revision ?? 0 : revision.current;
       if (kind === "discard") await o.onDiscardServerDraft(rev);
       else {
@@ -171,6 +193,11 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
       setActiveServerDraft(null);
       setShowRecoveryModal(false);
       updateStatus("idle");
+    } catch (error) {
+      const code = errorCode(error);
+      updateStatus(code === "CONFLICT" ? "conflict" : code === "EXPIRED" || code === "CLOSED" ? "expired" : "save_failed");
+      pause.current = true;
+      throw error;
     } finally { finishing.current = false; }
   }, [memory, memoryKey]);
   return {

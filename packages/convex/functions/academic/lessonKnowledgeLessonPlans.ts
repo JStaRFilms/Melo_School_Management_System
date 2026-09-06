@@ -1779,6 +1779,7 @@ export const getTeacherInstructionArtifactRevisionContent = query({
 export const saveTeacherInstructionArtifactDraft = mutation({
   args: {
     artifactId: v.optional(v.union(v.id("instructionArtifacts"), v.null())),
+    expectedRevisionNumber: v.number(),
     outputType: outputTypeValidator,
     title: v.string(),
     documentState: v.string(),
@@ -1845,9 +1846,23 @@ export const saveTeacherInstructionArtifactDraft = mutation({
         throw new ConvexError("You cannot edit this draft");
       }
 
+      const latestRevision = await ctx.db
+        .query("instructionArtifactRevisions")
+        .withIndex("by_school_and_artifact", (q) =>
+          q.eq("schoolId", schoolId).eq("artifactId", existingArtifact._id)
+        )
+        .order("desc")
+        .first();
+      if (!Number.isSafeInteger(args.expectedRevisionNumber) || args.expectedRevisionNumber !== (latestRevision?.revisionNumber ?? 0)) {
+        throw new ConvexError({ code: "CONFLICT", message: "A newer planning revision exists. Reload the latest draft before saving." });
+      }
+
       artifactId = existingArtifact._id;
       existingDocumentId = existingArtifact.currentDocumentId ?? null;
     } else {
+      if (args.expectedRevisionNumber !== 0) {
+        throw new ConvexError({ code: "CONFLICT", message: "This planning draft no longer matches a new artifact." });
+      }
       artifactId = await ctx.db.insert("instructionArtifacts", {
         schoolId,
         ownerUserId: userId,

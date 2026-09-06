@@ -28,10 +28,17 @@ vi.mock("convex/react", () => ({
     if (name.endsWith("getAdmissionNumberPolicy"))
       return {
         policy: null,
+        branchCounter: null,
         version: 0,
         nextSequence: 1,
         sessionYear: 2025,
         preview: null,
+        effectiveFormat: null,
+        formatSource: "branch",
+        formatVersion: null,
+        governance: null,
+        counter: null,
+        sequences: [],
       };
     return undefined;
   },

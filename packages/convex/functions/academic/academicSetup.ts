@@ -26,6 +26,8 @@ import {
   getTeacherArchiveBlockers as readTeacherArchiveBlockers,
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
+import { finishFormDraft } from "./drafts";
+import { resolveDomainSetting } from "./groupSettings";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -144,9 +146,14 @@ export const createTeacherRecordInternal = internalMutation({
     name: v.string(),
     email: v.string(),
     authId: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("users"),
   handler: async (ctx, args) => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    }
     const normalizedEmail = normalizeTeacherEmail(args.email);
     const teacherName = resolveStoredUserNameFields({
       name: args.name,
@@ -185,6 +192,14 @@ export const createTeacherRecordInternal = internalMutation({
       updatedAt: now,
     });
 
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId: args.schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+      }, "committed");
+    }
+
     return teacherId;
   },
 });
@@ -195,6 +210,8 @@ export const createTeacher = action({
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.object({
     teacherId: v.id("users"),
@@ -209,6 +226,9 @@ export const createTeacher = action({
       email: string;
       temporaryPassword: string;
   }> => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    }
     const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.onboard" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
@@ -270,6 +290,8 @@ export const createTeacher = action({
         name: normalizeHumanName(args.name),
         email: normalizedEmail,
         authId: signUpPayload.user.id,
+        draftId: args.draftId,
+        expectedDraftRevision: args.expectedDraftRevision,
       }
     );
 
@@ -652,6 +674,8 @@ export const createSession = mutation({
     endDate: v.number(),
     isActive: v.boolean(),
     autoGenerateTerms: v.optional(v.boolean()),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("academicSessions"),
   handler: async (ctx, args) => {
@@ -694,10 +718,33 @@ export const createSession = mutation({
     });
 
     if (args.autoGenerateTerms) {
-      const dynamicTerms = calculateDynamicTermSchedule(
-        args.startDate,
-        args.endDate
+      const calendar = await resolveDomainSetting(
+        ctx,
+        schoolId,
+        "calendar_template",
       );
+      const dynamicTerms =
+        calendar.mode === "legacy" || !calendar.value
+          ? calculateDynamicTermSchedule(args.startDate, args.endDate)
+          : calendar.value.terms.map((term, index) => ({
+              name: term.name,
+              startDate: args.startDate + term.startOffsetDays * 86_400_000,
+              endDate: args.startDate + term.endOffsetDays * 86_400_000,
+              isActive: index === 0,
+              resultCalculationMode: term.resultCalculationMode,
+            }));
+      if (
+        dynamicTerms.some(
+          (term) =>
+            term.startDate < args.startDate ||
+            term.endDate > args.endDate ||
+            term.endDate < term.startDate,
+        )
+      ) {
+        throw new ConvexError(
+          "The selected calendar template does not fit this branch session date range",
+        );
+      }
 
       // If session is active, deactivate existing active terms in the school
       if (args.isActive) {
@@ -730,6 +777,17 @@ export const createSession = mutation({
           updatedAt: now,
         });
       }
+    }
+
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft identity and revision must be supplied together");
+    }
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+      }, "committed");
     }
 
     return sessionId;

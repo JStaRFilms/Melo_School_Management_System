@@ -1,46 +1,39 @@
 # U2c — Numbering and enrollment
 
-**Status: PARTIAL, locally verified / E0. Not the complete packet definition of done.** Actual settings and enrollment integration are delivered. Named branch/level counters, explicitly permitted group-wide counters and the U1f admission-template default/override resolver are NOT implemented. These are remaining code scope, not browser evidence or external-access blockers. No live Convex/CLI/codegen/deployment, migration, provider, production operation or commit was performed.
+**Status: local code scope complete for branch-owned counters and explicitly adopted group formats / E0.** No group-wide counter was invented: the current authorization contracts prove group format governance, but do not grant a shared sequence owner. No live Convex/CLI/codegen/deployment, migration, provider or production operation was performed. The scoped changes were committed locally.
 
-## Implemented contract
+## Delivered contract
 
-- Actual `/admin/settings/admission-numbering` has a constrained-token input/builder, illustrative live preview, explicit school/branch codes, next-sequence confirmation, continuous/session/calendar options, loaded version, missing-session/unconfigured/denied/error states, retained failed edits and discard/latest. `/academic/students/onboarding` links to it and displays the selected class-level preview and reviewed policy version. No made-up campus/JSS1/calendar-year defaults are installed.
-- `getAdmissionNumberPolicy({schoolId,level?})` requires `enrollment.intakes.manage`; returns `{policy,version,nextSequence,sessionYear,preview}`. The old unguarded, synthetic-policy response was replaced. One active nonarchived academic session is required; YEAR always uses its UTC start year, including calendar-reset policies.
-- `updateAdmissionNumberPolicy({schoolId,pattern,schoolCode,campusCode,resetFrequency?,currentSequence?,expectedVersion,confirmedNextSequence})` validates exact version, one SEQ token with padding 1–9, allowed tokens/separators, integer counter 1–999999999 and bounded explicit codes. Never lowers the effective next counter. Policy updates are prospective and audit permanently with leadership warning. Existing policy rows gain optional `version/resetPeriod`; legacy missing reset markers preserve their current counter instead of inventing a rewind.
-- Default implementation is **one independent counter per school/branch**; LEVEL is a formatting token supplied by the selected class's `level`, not a separate counter. Session reset uses session identity; calendar reset uses UTC calendar year; continuous never resets. A repeated formatted identifier causes an explicit conflict, never an automatic skip or guessed advancement.
-- `createStudent` calls allocation inside the actual creation mutation, after input/class validation. Successful parent-link operations are in the same mutation. Client opening/preview/photo work never allocates. Optional `requestKey` stores only school/operator/key/student ID in `enrollmentRequests`; replay by the same operator returns the original student, including after a lost response. It is an intent identity, not permission to create another student after editing the form. The onboarding page retains it across follow-up failures and clears it on a successful reset.
-- Nonempty `admissionNumber` is preserved (existing trimming convention), requires separate `enrollment.admissions.override_number`, `overrideConfirmed`, an 8–240-character `overrideReason`, and optional explicit `advanceCounterTo`. Blank means genuinely missing and triggers allocation. No manual string is parsed for counter advancement. The UI clearly distinguishes unavailable override authority and the unchanged-counter choice.
-- Explicit `updateStudent` identifier corrections now require that same override contract. The old identifier receives a retained claim before correction. Ordinary unchanged identifier edits are unaffected. Existing correction forms that actually rename identifiers need these newly required confirmation/reason fields; they cannot silently bypass authority.
-- Additive `admissionNumberClaims` prevents reuse even if an assigned student is later removed. Existing students, including archived ones, are checked by the existing school/admission-number index. No old identifiers, imports or users were renamed/backfilled.
+- `/admin/settings/admission-numbering` manages the versioned branch format and legacy branch counter plus named branch-wide or normalized-level counters. Each counter has an explicit key, status (`active`, `paused`, archived), reset frequency, next sequence and configuration version. Default selection is explicit; archived counters remain unavailable for allocation.
+- Policy, effective-format and selected-counter revisions are separate optimistic pins. Reviewed enrollment and import calls fail closed when any pin changes. Session/calendar/continuous resets use the active academic session and never promise gapless numbering.
+- `createStudent` allocates and permanently claims only inside the successful enrollment transaction. Actor-scoped request replay returns the original student after a lost response. Failed transactions, previews and abandoned forms do not advance a counter.
+- Manual enrollment and existing-student correction require `enrollment.admissions.override_number`, explicit confirmation and an 8–240 character reason. Optional counter advancement is an exact reviewed integer with policy/format/key/config pins. Supplied identifiers are never parsed and never advance a counter implicitly. Corrected-away identifiers retain permanent claims.
+- The profile editor now exposes the correction contract instead of sending an unreviewed rename. It clearly separates “leave counter unchanged” from explicit advancement and refreshes its pin when the class level changes.
+- Reviewed imports now resolve proposals by selected class level, persist policy/effective-format/counter pins per row, and plan independent level/branch counters together. Approval is read-only; final commit allocates or claims in the student transaction and rejects stale counter configuration. Historical supplied values remain unchanged unless a separately authorized reviewer explicitly chooses advancement.
+- `admissionNumberSequences` models school-owned named/default/level sequences. Matching is normalized and one nonarchived sequence may own a level. Concurrency relies on Convex transaction conflicts plus permanent claims; collisions terminate rather than skip or recycle identifiers.
+- Group owners may publish a versioned **format-only** default from an explicitly linked branch, and linked branches may explicitly inherit or override it subject to `allowBranchOverride`. Effective format resolution snapshots group ID/version and branch revision. All counters remain branch-owned and use the destination branch's school/campus code.
 
-## U4b / U6 handoff
+## Group boundary
 
-All helpers are in `academic/admissionNumbers.ts`:
+A global/group-wide sequence is intentionally unavailable. Existing scoped settings APIs establish group ownership and linked-branch authority for versioned defaults, but no contract establishes a legal counter owner, allocation authority across branches, or recovery semantics for unlinking. Implementing one would violate the instruction not to infer group authority. A future group-counter feature must add that authorization contract explicitly; this is not substituted with a hidden shared counter.
 
-1. `proposeAdmissionNumberHelper(ctx,{schoolId,level?})`: **read-only**, caller must authorize its import/transfer audience first. Returns allocatedNumber/sequenceNumber/policyVersion/period/policyId. Proposal is not a reservation. Use only for missing imported values; supplied identifiers remain untouched.
-2. `allocateNextAdmissionNumberHelper(ctx,{schoolId,level?,expectedVersion?})`: recomputes, checks the reviewed version if supplied, claims uniqueness and advances atomically. Call ONLY inside the final successful enrollment/import/destination mutation. Legacy year/campus/school token override arguments now reject rather than override reviewed policy/session. No gapless promise.
-3. `commitManualAdmissionNumberHelper(ctx,{schoolId,number,reason?,confirmed?,advanceTo?})`: separately authorizes, claims the supplied identifier and optionally advances to the exact explicit value. No policy required when preserving a supplied number without advancement.
-4. Existing internal allocator remains internal for compatibility, not a client preallocation API. U4b still owns reviewed batch/idempotency contracts and missing-only adoption. U6 automatic destination acceptance already uses the helper and now requires explicit destination policy/session configuration; the transfer test fixture was updated accordingly. U6 manual-transfer path still needs adoption of the permanent-claim helper and explicit advancement controls in its own transaction/UI.
+## Reusable allocation seams
+
+- `proposeAdmissionNumberHelper(ctx,{schoolId,level?,sequenceKey?,...pins})` is read-only.
+- `allocateNextAdmissionNumberHelper(...)` recomputes and atomically claims/advances in the caller transaction.
+- `commitManualAdmissionNumberHelper(...)` claims a supplied number and advances only when `advanceTo` is explicitly supplied.
+- U6 already adopts both automatic and manual helpers. U4b reviewed imports now adopt these helpers for missing-only allocation and explicit manual claims.
 
 ## Verification and self-review
 
-- New numbering suite: **8 PASS**. Tests actual create/replay/concurrent creates, manual preservation/reason/explicit advancement, separate override denial, unauthorized policy read, nonmutating previews, concurrent helper transactions, rollback, claims/no reuse, format bounds, version conflicts/no rewind, session start year and calendar/session resets.
-- Transfer suite: **7 PASS**. Added explicit synthetic destination configuration. One unauthenticated school-list assertion was aligned with U1a's structured `UNAUTHENTICATED` error; denial was not removed or weakened into success.
-- Combined final backend bundle (numbering, banks, billing, transfers, foundation): **5 files / 25 PASS**.
-- Admin settings DOM bundle: **3 PASS** (numbering reviewed version/confirmation, retained save failure; shared denied settings and bank confirmation tests). Shared invoice renderer: **2 PASS**.
-- Convex/Admin/Portal/Shared typechecks passed. Focused lint and final diff checks are recorded in U2d/final handoff.
-- Cold import of the existing studentEnrollment/provisioning graph initially exceeded the test's five-second budget; loading that module at test collection resolved it. No timeout increase or provider invocation.
+- Convex focused bundle: **3 files / 34 PASS** (`admissionNumbers` 11, reviewed import 11, transfers 12).
+- Admin focused bundle: **2 files / 5 PASS** (numbering/settings and migration workbench).
+- Convex, Shared, Admin and Portal TypeScript checks: PASS.
+- Tests cover concurrent/retried allocation, transaction rollback, stale policy/format/counter pins, no reuse, named level isolation/status, branch default selection, format-only group inheritance with branch-owned counters, existing-student correction, and multi-counter import planning/stale commit.
+- Self-review kept manual IDs opaque, kept group counters unavailable without authority, retained prior claims, and preserved compatibility for an in-progress legacy single-counter import plan.
 
-Self-review removed redundant enrollment payload retention, kept replay metadata private/minimal, used actual class level instead of class display name, protected legacy identifiers during explicit correction, and kept reset collisions terminal. No automatic policy initialization, guessed import reconciliation, sequence recycling or generated API edits.
+## Remaining evidence / follow-up
 
-## Remaining acceptance work (not U7-only)
-
-- Named branch/campus and level counters, group-wide permissioned counters, effective group admission template inheritance/version references are still missing.
-- U4b reviewed-import caller adoption and U6 manual-transfer helper adoption remain their assigned follow-on work.
-- The complete student-profile correction UI is not adapted to the newly enforced override reason/confirmation. Existing unchanged student editing works; renaming will fail closed until adopted.
-- U3a/U3b own shared draft/router/branch/account departure protection; no separate persistence framework was added.
-- E0: U7 must still capture actual desktop/320px/keyboard states, stale policy/counter preview, authorization revocation, enrollment retries and save errors on an authorized synthetic target. Schema/functions are authored only, not deployed.
-
-## Files
-
-Modified `academic/admissionNumbers.ts`, `studentEnrollment.ts`, additive schema, onboarding page/form and transfer fixture. Created numbering settings page/error and numbering integration test; shared Admin settings DOM suite is listed in U2d. No generated file was hand-edited.
+- E0 only: U7 still owns authorized desktop/320px/keyboard/runtime evidence, including stale-save, denied/revoked authority, retry and print-adjacent flows.
+- Schema/functions are authored locally only; rollout remains outside this packet.
+- A true group-wide counter remains future contract work as described above, not an inferred implementation.

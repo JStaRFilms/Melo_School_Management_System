@@ -2,7 +2,8 @@
 
 import { Sparkles, Users } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
-import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
+import { cleanEmailInput, cleanPhoneInput, MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
 import type { ClassSummary } from "./types";
 
 interface FamilyOnboardingFormProps {
@@ -46,6 +47,8 @@ interface FamilyOnboardingFormProps {
   onIsParentPrimaryContactChange: (value: boolean) => void;
   
   isSubmitting: boolean;
+  draftStatus: DraftStatus;
+  draftLastSavedAt: number | null;
   onSubmit: (event: FormEvent) => Promise<void>;
   inputRef: RefObject<HTMLInputElement>;
 }
@@ -80,11 +83,30 @@ export function FamilyOnboardingForm({
   isParentPrimaryContact,
   onIsParentPrimaryContactChange,
   isSubmitting,
+  draftStatus,
+  draftLastSavedAt,
   onSubmit,
   inputRef,
 }: FamilyOnboardingFormProps) {
+  const studentValid = Boolean(selectedClassId && studentFirstName.trim() && studentLastName.trim() && admissionNumber.trim() && gender.trim());
+  const hasFamilyDetails = Boolean(parentFirstName.trim() || parentLastName.trim() || parentEmail.trim() || parentPhone.trim() || parentRelationship.trim());
+  const familyValid = !hasFamilyDetails || Boolean(parentFirstName.trim() && parentLastName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim()));
+  const sections = [
+    { id: "student", title: "Student identity", isValid: studentValid, hasError: false },
+    { id: "family", title: "Family link", isValid: familyValid, hasError: hasFamilyDetails && !familyValid, optional: true },
+  ];
+  const currentStepIndex = studentValid ? 1 : 0;
+
   return (
     <form onSubmit={(event) => void onSubmit(event)} className="space-y-6">
+      <MobileProgressIndicator
+        mode="sections"
+        sections={sections}
+        currentStepIndex={currentStepIndex}
+        draftStatus={draftStatus}
+        lastSavedAt={draftLastSavedAt}
+        topOffset="top-0"
+      />
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
@@ -122,7 +144,7 @@ export function FamilyOnboardingForm({
 
       <section className="space-y-4 border-b border-slate-200/70 pb-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Student identity</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">First Name</label>
             <input
@@ -149,7 +171,7 @@ export function FamilyOnboardingForm({
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Admission ID</label>
             <input
@@ -179,7 +201,7 @@ export function FamilyOnboardingForm({
 
       <section className="space-y-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Family link</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent First Name</label>
             <input
@@ -213,7 +235,7 @@ export function FamilyOnboardingForm({
             placeholder="parent@example.com"
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</label>
             <input

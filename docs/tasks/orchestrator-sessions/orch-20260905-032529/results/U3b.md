@@ -1,40 +1,66 @@
-# U3b — People forms protection
+# U3b — People forms persistent recovery
 
-**PARTIAL implementation, not packet completion.** This pass delivers shared departure registration and two concrete enrollment loss/retry fixes. It does **not** deliver the required server-draft adapters, recovery UI or people-form validated progress. Those are remaining code work, not merely U7 evidence or deployment blockers. No live Convex, provider, deployment, migration, production operation or commit was performed.
+**Status: local code scope complete; authenticated browser/runtime evidence remains E0.** No live Convex/CLI, deployment, migration, provider, credential, production-data or Astra operation was performed. The unrelated `.gitignore` edit and untracked orchestration artifacts were preserved and excluded from this U3-only follow-up.
 
-Read U3a's actual registry/hook/transaction contract, U2a–d results, actual enrollment/billing edits, the packet/implementation ownership plan and H6/H7 decisions before editing. Existing changes were preserved. No shared framework or backend code was changed.
+## Actual adapters and field classification
 
-## Actual integration / classification
-
-| Route / state owner | Fields and classification | Implemented protection / remaining adapter |
+| Draft key / actual owner | Persisted private server projection | Deliberately excluded |
 |---|---|---|
-| `/academic/students/onboarding/page.tsx` → `StudentFirstOnboardingForm` | Personal: student first/last names, gender, DOB, house, guardian name/phone, address; parent names/email/phone/relationship/contact preference. Operational enrollment: class, admission number, override reason/confirmation/counter choice, reviewed policy. | Shared `useDirtyForm`, including credential-only and photo-only edits; reset uses awaited guard. **No persistent adapter yet** for reserved `student_onboarding`. |
-| `/academic/students/page.tsx` → quick form and `components/FamilyOnboardingForm.tsx` | Same student/contact fields available in this owner, parent contact/link fields, class context. Parent linking already occurs inside its create mutation. | Registration is at actual state owner, not duplicated in desktop/mobile renderers. Both mobile close controls await common guard; modal closes only after successful create, never after caught validation/mutation failure. **No persistent `family_onboarding` adapter yet.** |
-| `/academic/teachers` → `TeacherCreationForm` | Personal: display name/email. Credential: temporary password, returned teacher/email/password result. UI-only: copied flag, pending/error state. | Shared dirty guard until successful action result; pending create cannot be discarded; password input masked and raw provisioning error no longer logged by this form. **No persistent `staff_onboarding` adapter yet.** Three-field form receives no redundant progress indicator. |
+| `student_onboarding` — `/academic/students/onboarding/page.tsx` → `StudentFirstOnboardingForm` | Student names, admission number, reviewed U2 numbering pins/override reason/confirmation/explicit advancement, gender, class, house, DOB, guardian name/phone/address; parent names/email/phone/relationship/primary-contact intent; portal-provisioning intent booleans; actor-scoped enrollment request key | Student/parent temporary passwords, returned credential summary, raw photo `File`, preview URL, upload/storage ID, filename/content type, provider responses/tokens |
+| `family_onboarding` — `/academic/students/page.tsx` state owner → `FamilyOnboardingForm` | Student names/admission number/gender/class, optional house/DOB/guardian contact/address, parent names/email/phone/relationship/primary-contact intent, actor-scoped enrollment request key | Raw photo/file, preview URL and all upload metadata; no credential fields exist in this form |
+| `staff_onboarding` — `/academic/teachers` → one responsive `TeacherCreationForm` writer | Teacher display name and email only | Temporary password, returned teacher/credential result, copied/error/pending UI state, auth/provider IDs/tokens |
 
-All fields above remain page memory only in this pass. This table is an inventory, **not an extension to U3a's strict allowlists**. Credentials, provisioning summaries, auth tokens, raw photo `File`, blob preview URLs, upload storage IDs and photo metadata must remain excluded when implementing persistence. Recovered projections need explicit photo reselect and credential re-entry notices; that recovery UI is not implemented. No localStorage/sessionStorage/IndexedDB or draft audit writes were added.
+All three use the existing strict shared registry and creator/branch/capability-checked Convex lifecycle. The thin Admin adapter explicitly allocates one immutable draft ID, retains it for revision-pinned saves and closure, never allocates from delayed stale saves, and resets only after a confirmed close. The previous duplicate desktop/mobile teacher creation mounts were collapsed to one responsive writer.
 
-## Submit/retry contract delivered
+## Recovery, saving and progress
 
-Standalone enrollment retains U2c's request key for uncertain create responses. After an acknowledged create, it now retains the created student ID and skips create/photo upload on later family/credential retry. A visible noncredential notice explains that the student exists, follow-up is pending, and identity edits do not modify the created record. Generic follow-up failure text avoids exposing provider responses. Reset is guarded; explicit discard still does not delete a created student. Success resets only after the complete requested workflow succeeds. A focused DOM test verifies a failed family action then retry calls create once and links the same ID twice without invoking credential providers.
+- Approved edits start one authenticated server instance. Autosave remains the shared 1.5-second debounce (bounded 1–2 seconds), with an explicit **Save draft** control and only server-confirmed timestamps/status.
+- Existing server content opens the timestamped Preview/Resume/Discard modal and never overwrites current edits. Conflict status pauses writes; **Preview latest draft** loads the reactive server revision only after explicit Resume. Discard is awaited.
+- Same-document reauthentication still has the U3a account/context-keyed RAM projection; no local/session/IndexedDB persistence was added. Account/branch mismatches cannot save or resume another scope.
+- Recovery notices explicitly require photo reselection and temporary-password re-entry. Preview/audit payloads contain no passwords, credential summaries, photos, raw documents or upload references. Draft lifecycle audit remains payload-free.
+- Student onboarding now uses required-valid section progress, including current U2 numbering review and invalid DOB/partial-family/portal states. Family onboarding uses required-valid student progress and separately exposes optional family errors. The old position-based/minimum-10% visual was removed. Family grids reflow to one column at 320px. The short three-field staff form intentionally has no duplicate progress stepper.
 
-**Limit:** this continuation identity is RAM-only. Hard reload, close or full-document reauthentication is not a recoverable continuation. Transactional private-draft closure and durable follow-up identity are still required before claiming crash-safe/no-duplicate recovery. Existing family-list create path still needs U2c manual-override controls and durable request identity; no authority bypass was added.
+## Submit/retry contract
 
-Shared registrations use U3a's common sidebar/link/navbar/native reload/ordinary Back paths. They do not magically guard arbitrary imperative class/session/history replacements. Operational branch switching remains U1b-disabled on unscoped routes. Account reauthentication/remount recovery is not delivered for these guard-only forms. No Save draft and leave action is offered for them.
+### Student and family enrollment
 
-## Verification / self-review
+The generated enrollment request key is part of the approved operational draft projection and is flushed before any domain submit. `createStudent` already stores that key transactionally with the created student and returns the original student ID for an authenticated same-operator/same-school replay.
 
-- Admin `vitest run __tests__/form-adoption-guards.test.tsx __tests__/student-onboarding-retry.test.tsx __tests__/draft-core.test.tsx`: **3 files, 19 PASS** (5 new adoption tests, 14 existing core regressions).
-- Shared `vitest run src/components/__tests__/MobileProgressIndicator.test.tsx`: **8 PASS**, shared core progress regression only.
-- Admin and Shared `typecheck`: **PASS**.
-- Explicit changed-file ESLint: **0 errors / 9 existing unused-import/variable warnings**. `git diff --check`: **PASS**, LF/CRLF advisories.
-- Tests cover teacher failure retention, Stay/discard, no fake draft-save option, pending-create departure denial, masked password, session close/invalid dates, invalid optional fee and student partial-follow-up retry. They do not establish authenticated browser behavior or server recovery.
-- Initial lint failures from ref-based modal baselines were fixed with state; a test's unsupported accountId intent property was removed and checks rerun. No valid tests were weakened.
+- Standalone onboarding retains the acknowledged student ID in memory for immediate follow-up retries. After reload/recovery, replaying the persisted request key re-derives that same protected ID server-side instead of trusting a client-supplied student ID.
+- Family linking and portal credential calls are upserts. A family-list create carries the same request key; an uncertain successful response replays the original student rather than inserting another.
+- The draft is tombstoned only after every requested follow-up has succeeded. If a later action or tombstone acknowledgement fails, the form and key remain, `submissionFailed()` unfreezes the controller, and retry cannot duplicate enrollment.
+- Numbering authority is unchanged: automatic/manual allocation remains inside U2c's successful student transaction with its policy/format/counter pins. This U3 follow-up adds no reservation, gapless promise or authority bypass. The separate family-list numbering-control gap remains U2-owned and is not disguised as draft work.
 
-Modified U3b files: standalone onboarding page, students page, TeacherCreationForm. Created tests: `apps/admin/__tests__/form-adoption-guards.test.tsx`, `student-onboarding-retry.test.tsx` (first suite also covers U3c). Related U3c changes and limitations are in U3c.md.
+### Staff onboarding
 
-## Remaining acceptance / U7 request
+The optional draft ID/revision is passed through the existing teacher action only after the approved name/email projection is saved. The local teacher-record mutation calls `finishFormDraft(..., "committed")` in the same transaction as inserting the teacher row. Provider credentials never enter that transaction or draft. A failed transaction leaves both local row and draft closure unapplied; a successful local insert cannot leave an active draft through an early optimistic clear.
 
-Implement reviewed schemas + authenticated branch/account/create-instance adapter, explicit begin, autosave/Save, Preview/Resume/Discard/revision resolution, approved RAM recovery and atomic domain submission closure. Add validated student/family section semantics without duplicating existing presentation. Complete durable partial-creation continuation, all imperative selector/context departures and provider-action retry safety. Add real form integration tests for failure/conflict/reauth/isolation/recovery; core tests are not adopter coverage.
+## Tests and self-review
 
-U7 must use synthetic identities, never capture temporary-password/result panels, and verify desktop/320px, keyboard/focus, actual Back/Forward/reload/sidebar/account, failed family create modal retention and same-tab follow-up retry. **No screenshots or browser acceptance are claimed. Keep U3b open.**
+Final commands:
+
+- `pnpm --filter @school/admin test` — **27 files / 120 tests PASS**.
+- Focused Admin U3 bundle (`draft-core`, `people-draft-adapters`, `student-onboarding-retry`, `form-adoption-guards`) — **4 files / 25 tests PASS**.
+- `pnpm --filter @school/shared test` — **23 files / 163 tests PASS**; focused draft/progress subset **2 files / 14 tests PASS**.
+- Convex drafts + U2 numbering — **2 files / 22 tests PASS** (11 each). The synthetic long-retention timers emit the existing `TimeoutOverflowWarning`; assertions pass.
+- Admin, Shared, Convex and Teacher `typecheck` — **PASS**.
+- Explicit changed-file ESLint — **0 errors / 5 pre-existing warnings** (unused imports/constant/router and existing `<img>` warning).
+- `node scripts/audit-theme-colors.mjs` — **informational PASS**. Direct colors in touched forms classify as existing semantic status colors, product neutrals or existing product accents; no tenant branding replacement was made.
+- `git diff --check` — **PASS**, with repository CRLF advisories only.
+
+Coverage demonstrates strict sensitive-field rejection, one-instance allocation, exact revision save/closure, timestamped non-silent recovery, explicit resume, fresh-instance reset after closure, creator/branch server isolation, concurrent conflict/no stale resurrection, staff atomic tombstone, same-student retry, pending/failure departure behavior and invalid optional progress. The first combined Convex run exceeded the default 5-second limit while the new transaction case ran in parallel; its explicit 10-second test allowance was added and the same two-file command passed in 4.1 seconds for that suite. No assertion was weakened to hide a product failure.
+
+## Files changed
+
+- Shared: `packages/shared/src/drafts/{registry.ts,useFormDraft.ts,DraftRecoveryModal.tsx}`
+- Admin adapter/UI: `apps/admin/lib/usePersistentFormDraft.ts`, `apps/admin/lib/components/drafts/PersistentFormDraftControls.tsx`
+- Actual owners/forms: standalone student onboarding page/form, students page/family form, teachers page/creation form
+- Convex: `packages/convex/functions/academic/academicSetup.ts`
+- Tests: Admin draft/adoption/retry plus new `people-draft-adapters.test.tsx`; Convex draft integration
+- Documentation: this result and `ui-coverage-matrix.md`
+
+## Remaining U7 evidence / real limitations
+
+Authenticated desktop and 320px browser proof remains E0: native reload warning, Back/Forward sentinel behavior, sidebar/account transition, same-account reauthentication return, reactive two-tab conflict, keyboard/focus and actual branch isolation require the separately authorized U7 environment. No screenshots are claimed. Arbitrary unguarded raw Next router/history calls remain outside U3a's supported interception contract. No live rollout of already-authored draft indexes/functions was performed here.
+
+The existing teacher action still calls the external auth provider before its local Convex teacher-record transaction. The new local row/draft closure is atomic, but a provider success followed by any local transaction failure remains the pre-existing provider-reconciliation risk; solving that requires the explicitly excluded auth-provider/idempotency redesign and is not hidden as completed here.

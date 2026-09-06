@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
+import type { Id } from "../../../_generated/dataModel";
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
 const a = api.functions.academic.assets;
@@ -116,8 +117,78 @@ it("holds have separate removal authority; confirmed purge cannot override holds
   expect((await p.query(a.getWorkspace, { schoolId })).storage).toMatchObject({ consumed: 0, trash: 0 });
   await expect(p.mutation(a.permanentPurgeAsset, { schoolId, assetId, confirmation: "PURGE Policy.pdf" })).resolves.toMatchObject({ success: true });
   expect((await p.query(a.getWorkspace, { schoolId })).storage?.consumed).toBe(0);
-  expect(await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, {})).toEqual({ cleaned: 0 });
+  expect(await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, {})).toMatchObject({ queued: 0, source: "trash", isDone: true });
 });
+it("advances past more than a batch of held rows without changing held storage or accounting", async () => {
+  const { t, schoolId, size: fixtureSize } = await fixture();
+  const seeded = await t.run(async ctx => {
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    if (!allocation) throw new Error("missing allocation");
+    const held: Array<{ assetId: Id<"schoolAssets">; storageId: Id<"_storage">; size: number }> = [];
+    let addedBytes = 0;
+    let laterAssetId: Id<"schoolAssets"> | undefined;
+    for (let index = 0; index < 5; index++) {
+      const storageId = await ctx.storage.store(new Blob([`cleanup-${index}`]));
+      const metadata = await ctx.db.system.get("_storage", storageId);
+      if (!metadata) throw new Error("missing storage metadata");
+      const assetId = await ctx.db.insert("schoolAssets", { schoolId, storageId, fileName: `Cleanup ${index}.pdf`, category: "Test", mimeType: "application/pdf", byteSize: metadata.size, sha256: metadata.sha256, scanStatus: "quarantined", validationStatus: "pending", isTrashed: true, purgeScheduledAt: Date.now() - 100 + index, storageAccountingInitializedAt: Date.now(), createdAt: Date.now() + index, updatedAt: Date.now() });
+      addedBytes += metadata.size;
+      if (index < 4) {
+        await ctx.db.insert("assetRetentionHolds", { assetId, schoolId, holdReason: "Required hold", appliedAt: Date.now() });
+        held.push({ assetId, storageId, size: metadata.size });
+      } else {
+        laterAssetId = assetId;
+      }
+    }
+    await ctx.db.patch(allocation._id, { consumedUnits: allocation.consumedUnits + addedBytes, trashStorageBytes: (allocation.trashStorageBytes ?? 0) + addedBytes, updatedAt: Date.now() });
+    if (!laterAssetId) throw new Error("missing later asset");
+    return { held, laterAssetId };
+  });
+  await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit: 3 });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await t.run(ctx => ctx.db.get(seeded.laterAssetId))).toBeNull();
+  const heldState = await t.run(async ctx => {
+    const rows = await Promise.all(seeded.held.map(row => ctx.db.get(row.assetId)));
+    const storage = await Promise.all(seeded.held.map(row => ctx.db.system.get("_storage", row.storageId)));
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    return { rows, storage, allocation };
+  });
+  expect(heldState.rows.every(Boolean)).toBe(true);
+  expect(heldState.storage.every(Boolean)).toBe(true);
+  const heldBytes = seeded.held.reduce((total, row) => total + row.size, 0);
+  expect(heldState.allocation).toMatchObject({ consumedUnits: fixtureSize + heldBytes, trashStorageBytes: heldBytes });
+  expect(await t.run(ctx => ctx.db.query("assetPurgeReceipts").take(10))).toHaveLength(1);
+});
+
+it("records a failed cleanup without accounting drift and retries it idempotently", async () => {
+  const { t, schoolId, size: fixtureSize } = await fixture();
+  const seeded = await t.run(async ctx => {
+    const storageId = await ctx.storage.store(new Blob(["retry-cleanup"]));
+    const metadata = await ctx.db.system.get("_storage", storageId);
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    if (!metadata || !allocation) throw new Error("missing retry fixture state");
+    const common = { schoolId, storageId, category: "Test", mimeType: "application/pdf", byteSize: metadata.size, sha256: metadata.sha256, scanStatus: "quarantined" as const, validationStatus: "pending" as const, isTrashed: true, purgeScheduledAt: Date.now() - 1, storageAccountingInitializedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now() };
+    const assetId = await ctx.db.insert("schoolAssets", { ...common, fileName: "Retry.pdf" });
+    const conflictingAssetId = await ctx.db.insert("schoolAssets", { ...common, fileName: "Conflicting owner.pdf", isTrashed: false, purgeScheduledAt: undefined, storageAccountingInitializedAt: undefined });
+    await ctx.db.patch(allocation._id, { consumedUnits: allocation.consumedUnits + metadata.size, trashStorageBytes: (allocation.trashStorageBytes ?? 0) + metadata.size, updatedAt: Date.now() });
+    return { assetId, conflictingAssetId, byteSize: metadata.size };
+  });
+  await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit: 5 });
+  vi.advanceTimersByTime(0);
+  await t.finishInProgressScheduledFunctions();
+  vi.advanceTimersByTime(0);
+  await t.finishInProgressScheduledFunctions();
+  const failed = await t.run(ctx => ctx.db.get(seeded.assetId));
+  expect(failed).toMatchObject({ cleanupFailureCount: 1, cleanupFailureCode: "storage_delete_failed" });
+  expect(await t.run(ctx => ctx.db.query("assetPurgeReceipts").withIndex("by_asset", q => q.eq("assetId", seeded.assetId)).take(2))).toHaveLength(0);
+  expect(await t.run(ctx => ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique())).toMatchObject({ consumedUnits: fixtureSize + seeded.byteSize, trashStorageBytes: seeded.byteSize });
+  await t.run(ctx => ctx.db.delete(seeded.conflictingAssetId));
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await t.run(ctx => ctx.db.get(seeded.assetId))).toBeNull();
+  expect(await t.run(ctx => ctx.db.query("assetPurgeReceipts").withIndex("by_asset", q => q.eq("assetId", seeded.assetId)).take(2))).toHaveLength(1);
+  expect(await t.run(ctx => ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique())).toMatchObject({ consumedUnits: fixtureSize, trashStorageBytes: 0 });
+});
+
 it("reports upload intake unavailable before generic transport can create or bind storage", async () => {
   const { t, p, schoolId } = await fixture();
   expect(await p.query(a.getWorkspace, { schoolId })).toMatchObject({ uploadAvailable: false });

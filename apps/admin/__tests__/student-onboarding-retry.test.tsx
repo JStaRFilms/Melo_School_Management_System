@@ -7,6 +7,14 @@ import type { StudentFirstOnboardingForm } from "../app/academic/students/onboar
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), link: vi.fn(), action: vi.fn(), classes: [{ _id: "class-one", name: "Synthetic Class", level: "P1" }] }));
 vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: undefined }) }));
+vi.mock("@/useDraftConnection", () => ({ useDraftConnection: () => ({ connected: true, authenticated: true, accountId: "operator-one" }) }));
+vi.mock("@/usePersistentFormDraft", () => ({ usePersistentFormDraft: () => ({
+  status: "idle", lastSavedAt: null, memoryDraft: null, serverDraft: null, showRecoveryModal: false,
+  retrySave: vi.fn().mockResolvedValue(undefined), prepareSubmission: vi.fn().mockResolvedValue(null),
+  handleCommitDraft: vi.fn().mockResolvedValue(undefined), handleDiscardDraft: vi.fn().mockResolvedValue(undefined),
+  submissionFailed: vi.fn(), previewLatest: vi.fn(), dismissRecoveryModal: vi.fn(), handleResumeDraft: vi.fn(),
+  resumeMemoryDraft: vi.fn(), discardMemoryDraft: vi.fn(),
+}) }));
 vi.mock("convex/react", () => ({
   useQuery: (reference: unknown) => typeof reference === "string" ? mocks.classes : undefined,
   useMutation: (reference: string) => reference.endsWith(":createStudent") ? mocks.create : reference.endsWith(":upsertStudentFamilyLink") ? mocks.link : vi.fn(),

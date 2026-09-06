@@ -736,6 +736,21 @@ function Review({
                     expectedPolicyVersion: number?.available
                       ? number.policyVersion
                       : undefined,
+                    expectedFormatVersion: number?.available
+                      ? number.formatVersion
+                      : undefined,
+                    expectedCounterKey: number?.available
+                      ? number.counterKey
+                      : undefined,
+                    expectedCounterVersion: number?.available
+                      ? number.counterVersion
+                      : undefined,
+                    expectedAdmissionNumber: number?.available
+                      ? number.allocatedNumber
+                      : undefined,
+                    expectedSequenceNumber: number?.available
+                      ? number.sequenceNumber
+                      : undefined,
                     admissionNumberOverride: manual.trim() || undefined,
                     admissionNumberOverrideReason: manual.trim()
                       ? overrideReason

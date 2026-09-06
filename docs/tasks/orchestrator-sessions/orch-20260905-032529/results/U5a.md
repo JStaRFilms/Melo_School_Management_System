@@ -1,5 +1,7 @@
 # U5a — Commercial catalog, contracts and separate billing surfaces
 
+> **Safe productization follow-up:** Added proprietor-only idempotent configured-catalog choice requests (request only; no activation), optional Platform linkage into a contract snapshot, cursor-paginated invoice history, Platform-only append-only credit/debit/void/note corrections, and currency-separated group subscription totals. Group totals admit the canonical proprietor, Platform, or a delegate holding explicit `finance.reports.view` membership in every branch; any branch denial or >100 branches/>500 invoice/correction rows per branch fails without a partial total. School fees, usage and settlement rows are excluded. The existing >500-student issuance path remains fail-closed: a transaction-safe multi-batch roster snapshot job was not invented in this follow-up, so this limit remains a code gap rather than issuing a partial invoice. Focused commercial suite now passes 6 tests; Admin commercial surfaces 4 tests pass; typecheck/lint status is recorded in the final follow-up below.
+
 **Status: safe local commercial workflow implemented; P/G, E0.** Not a payment release or full commercial-product completion. No live Convex/provider command, codegen, migration, deployment, production operation, credential access, server/browser, payment or commit was performed. Existing predecessor edits were preserved. Asset-library runtime code is outside this change.
 
 ## Actual routes / ownership

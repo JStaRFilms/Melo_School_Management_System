@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 import GroupBranding from "./GroupBranding";
+import GroupDomainDefaults from "./GroupDomainDefaults";
 import OperationalOverview from "./OperationalOverview";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { useDepartureGuard } from "@school/shared/drafts";
 
 export default function GroupPage() {
+  const { selectSchool } = useAuth();
+  const { requestDeparture } = useDepartureGuard();
+  const router = useRouter();
   const groups = usePaginatedQuery(
     api.functions.academic.groups.listGroups,
     {},
@@ -129,10 +136,21 @@ export default function GroupPage() {
             groupId={groupId}
             branches={overview.branches}
           />
+          <GroupDomainDefaults
+            key={`domains:${groupId}`}
+            groupId={groupId}
+            branches={overview.branches}
+          />
           <OperationalOverview
             key={`operations:${groupId}`}
             groupId={groupId}
             branches={overview.branches}
+            onOpenBranchAudit={async (schoolId) => {
+              if (!(await requestDeparture({ kind: "branch", schoolId })))
+                return;
+              selectSchool(schoolId);
+              router.push("/admin/audit");
+            }}
           />
         </>
       )}

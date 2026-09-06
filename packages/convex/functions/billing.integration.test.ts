@@ -57,6 +57,33 @@ describe("billing registered functions", () => {
     })).rejects.toThrow(/Manual extra fee plans cannot target classes/);
   });
 
+  it("creates a fee plan and tombstones its exact private draft in one transaction", async () => {
+    const t = convexTest(schema, modules);
+    const schoolId = await t.run(async (ctx) => {
+      const now = Date.now();
+      const id = await ctx.db.insert("schools", { name: "Draft Billing School", slug: "draft-billing-school", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId: id, authId: adminIdentity.subject, authTokenIdentifier: adminIdentity.tokenIdentifier, name: "Admin User", email: "admin@billing.test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+      return id;
+    });
+    const actor = t.withIdentity(adminIdentity);
+    const scope = { schoolId, formKey: "fee_plan_builder" };
+    const instance = await actor.mutation(api.functions.academic.drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    const payload = { bankAccountId: "", name: "Recovered fees", description: "", currency: "NGN", billingMode: "class_default" as const, targetClassIds: [], installmentEnabled: false, installmentCount: "2", intervalDays: "30", firstDueDays: "14", lineItems: [{ label: "Tuition", amount: "5000", category: "tuition" as const, isOptional: false }] };
+    const saved = await actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload });
+    const plan = await actor.mutation(api.functions.billing.createFeePlan, { name: payload.name, lineItems, draftId: instance.draftId, expectedDraftRevision: saved.revision });
+    expect(plan.name).toBe("Recovered fees");
+    expect(await actor.query(api.functions.academic.drafts.getFormDraft, scope)).toBeNull();
+    expect(await t.run(ctx => ctx.db.get(instance.draftId))).toMatchObject({ status: "committed", payload: {} });
+    await expect(actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: instance.draftId, expectedRevision: saved.revision, schemaVersion: 1, payload })).rejects.toThrow(/already/);
+
+    const stale = await actor.mutation(api.functions.academic.drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    await actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: stale.draftId, expectedRevision: 0, schemaVersion: 1, payload: { ...payload, name: "Must roll back" } });
+    await expect(actor.mutation(api.functions.billing.createFeePlan, { name: "Must roll back", lineItems, draftId: stale.draftId, expectedDraftRevision: 0 })).rejects.toThrow(/Conflict/);
+    const rolledBackPlans = await t.run(ctx => ctx.db.query("feePlans").withIndex("by_school", q => q.eq("schoolId", schoolId)).collect());
+    expect(rolledBackPlans.map(row => row.name)).not.toContain("Must roll back");
+    expect(await actor.query(api.functions.academic.drafts.getFormDraft, scope)).toMatchObject({ draftId: stale.draftId, revision: 1 });
+  });
+
   it("snapshots overdue fee-plan issuance and skips fully waived invoices", async () => {
     const t = convexTest(schema, modules);
     const ids = await t.run(async (ctx) => {

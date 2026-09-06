@@ -14,7 +14,11 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { appToast } from "@school/shared/toast";
 import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
+import { useAuth } from "@/AuthProvider";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 import { feePlanSignature, feePlanValidation } from "./fee-plan-validation";
 
 // Local Components
@@ -88,14 +92,58 @@ export default function BillingPage() {
   // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
   const [feePlanSubmitting, setFeePlanSubmitting] = useState(false);
+  const [feePlanDraftInstanceKey, setFeePlanDraftInstanceKey] = useState(0);
   const [emptyFeePlanSignature] = useState(() => feePlanSignature(initialFeePlanDraft()));
   const feePlanDirty = feePlanSignature(feePlanDraft) !== emptyFeePlanSignature;
+  const { session, workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  const draftConnection = useDraftConnection();
+  const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
+    bankAccountId: feePlanDraft.bankAccountId ?? "",
+    name: feePlanDraft.name,
+    description: feePlanDraft.description,
+    currency: feePlanDraft.currency,
+    billingMode: feePlanDraft.billingMode,
+    targetClassIds: feePlanDraft.targetClassIds,
+    installmentEnabled: feePlanDraft.installmentEnabled,
+    installmentCount: feePlanDraft.installmentCount,
+    intervalDays: feePlanDraft.intervalDays,
+    firstDueDays: feePlanDraft.firstDueDays,
+    lineItems: feePlanDraft.lineItems.map(({ label, amount, category, isOptional }) => ({
+      label, amount, category, isOptional: Boolean(isOptional),
+    })),
+  }), [feePlanDraft]);
+  const persistentFeePlanDraft = usePersistentFormDraft({
+    formKey: "fee_plan_builder",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: feePlanDraftData,
+    isDirty: feePlanDirty,
+    instanceKey: feePlanDraftInstanceKey,
+    onRestore: (payload) => setFeePlanDraft({
+      bankAccountId: payload.bankAccountId || undefined,
+      name: payload.name,
+      description: payload.description,
+      currency: payload.currency,
+      billingMode: payload.billingMode,
+      targetClassIds: [...payload.targetClassIds],
+      installmentEnabled: payload.installmentEnabled,
+      installmentCount: payload.installmentCount,
+      intervalDays: payload.intervalDays,
+      firstDueDays: payload.firstDueDays,
+      lineItems: payload.lineItems.map((item) => ({ ...item, draftId: crypto.randomUUID() })),
+    }),
+  });
   const requestFeeDeparture = useDirtyForm({
-    name: "Fee plan (not saved as a draft)",
+    name: "Fee plan",
     isDirty: feePlanDirty || feePlanSubmitting,
-    discard: () => {
+    save: persistentFeePlanDraft.retrySave,
+    discard: async () => {
       if (feePlanSubmitting) throw new Error("Wait for fee-plan creation to finish before leaving.");
+      await persistentFeePlanDraft.handleDiscardDraft();
       setFeePlanDraft(initialFeePlanDraft());
+      setFeePlanDraftInstanceKey((key) => key + 1);
     },
   });
   const closeFeeSidebar = async () => {
@@ -265,10 +313,20 @@ export default function BillingPage() {
       isOptional: Boolean(item.isOptional),
     }));
 
+    let closure;
+    try {
+      closure = await persistentFeePlanDraft.prepareSubmission();
+    } catch {
+      appToast.error("Save the recoverable fee-plan draft before creating the plan. Your edits are still here.");
+      return;
+    }
+
     setFeePlanSubmitting(true);
     try {
       const success = await actions.runAction(async () => {
         await actions.createFeePlan({
+          draftId: closure?.draftId,
+          expectedDraftRevision: closure?.expectedRevision,
           bankAccountId: feePlanDraft.bankAccountId || undefined,
           name: planName,
           description: feePlanDraft.description?.trim() || undefined,
@@ -285,9 +343,16 @@ export default function BillingPage() {
         } as never);
       }, "Fee Plan Created", "Unable to create new fee plan.");
       if (success) {
+        persistentFeePlanDraft.submissionSucceeded();
         setFeePlanDraft(initialFeePlanDraft());
+        setFeePlanDraftInstanceKey((key) => key + 1);
         setSidebarOpen(false);
+      } else {
+        persistentFeePlanDraft.submissionFailed();
       }
+    } catch {
+      persistentFeePlanDraft.submissionFailed();
+      appToast.error("Unable to create the fee plan. Your edits and recovery draft are still available.");
     } finally {
       setFeePlanSubmitting(false);
     }
@@ -449,6 +514,21 @@ export default function BillingPage() {
 
   return (
     <main className="lg:h-[calc(100vh-56px)] lg:max-h-[calc(100dvh-56px)] lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      {(sidebarVariant === "plan" || persistentFeePlanDraft.serverDraft || persistentFeePlanDraft.memoryDraft) && (
+        <div className="shrink-0 p-2">
+          <PersistentFormDraftControls
+            draft={persistentFeePlanDraft}
+            formTitle="fee plan"
+            isDirty={feePlanDirty}
+            excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
+            onDiscard={async () => {
+              await persistentFeePlanDraft.handleDiscardDraft();
+              setFeePlanDraft(initialFeePlanDraft());
+              setFeePlanDraftInstanceKey((key) => key + 1);
+            }}
+          />
+        </div>
+      )}
       <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
@@ -682,6 +762,8 @@ export default function BillingPage() {
                 feePlanDraft={feePlanDraft}
                 onFeePlanDraftChange={setFeePlanDraft}
                 onCreateFeePlan={handleCreateFeePlan}
+                feePlanDraftStatus={persistentFeePlanDraft.status}
+                feePlanDraftLastSavedAt={persistentFeePlanDraft.lastSavedAt}
                 feePlanApplicationDraft={feePlanApplicationDraft}
                 onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
                 onApplyFeePlan={handleApplyFeePlan}
@@ -720,6 +802,8 @@ export default function BillingPage() {
           feePlanDraft={feePlanDraft}
           onFeePlanDraftChange={setFeePlanDraft}
           onCreateFeePlan={handleCreateFeePlan}
+          feePlanDraftStatus={persistentFeePlanDraft.status}
+          feePlanDraftLastSavedAt={persistentFeePlanDraft.lastSavedAt}
           feePlanApplicationDraft={feePlanApplicationDraft}
           onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
           onApplyFeePlan={handleApplyFeePlan}

@@ -62,13 +62,11 @@ export default function GroupBranding({
         </BranchBoundary>
       )}
       <details className="text-sm">
-        <summary>Other shared domains — not yet adopted</summary>
+        <summary>Branding inheritance boundaries</summary>
         <p className="mt-2">
-          Grading bands/colors, role templates, admission templates, report-card
-          templates, notifications, academic policies and calendar templates
-          remain with their domain editors. No inheritance or calendar date
-          changes are enabled for these domains. Issued reports, invoices and
-          admission numbers are never rewritten by this editor.
+          This editor changes current school-facing branding only. It does not
+          synchronize Static Sites or rewrite issued reports, invoices or other
+          historical snapshots.
         </p>
       </details>
     </section>

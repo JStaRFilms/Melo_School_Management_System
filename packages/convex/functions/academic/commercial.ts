@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
@@ -8,6 +9,7 @@ import {
 } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { isGroupPlatformOperator } from "./groups";
+import { requireGroupOwner } from "./groupSettings";
 import {
   commercialRate,
   APPROVED_CORE_BASIC_RATE,
@@ -555,23 +557,34 @@ export const getCommercialWorkspace = query({
     const platform = await isGroupPlatformOperator(ctx);
     if (!platform)
       await requireCapability(ctx, schoolId, "finance.reports.view");
-    const [rates, contracts, invoices, legacy] = await Promise.all([
-      ctx.db.query("commercialRateVersions").order("desc").take(101),
-      ctx.db
-        .query("commercialContracts")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .order("desc")
-        .take(101),
-      ctx.db
-        .query("subscriptionInvoices")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .order("desc")
-        .take(101),
-      ctx.db
-        .query("schoolSubscriptions")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .first(),
-    ]);
+    const [rates, contracts, invoices, choices, corrections, legacy] =
+      await Promise.all([
+        ctx.db.query("commercialRateVersions").order("desc").take(101),
+        ctx.db
+          .query("commercialContracts")
+          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+          .order("desc")
+          .take(101),
+        ctx.db
+          .query("subscriptionInvoices")
+          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+          .order("desc")
+          .take(101),
+        ctx.db
+          .query("commercialContractChoices")
+          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+          .order("desc")
+          .take(101),
+        ctx.db
+          .query("subscriptionInvoiceCorrections")
+          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+          .order("desc")
+          .take(101),
+        ctx.db
+          .query("schoolSubscriptions")
+          .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+          .first(),
+      ]);
     const now = Date.now();
     const mandates = await ctx.db
       .query("paymentMandates")
@@ -579,16 +592,44 @@ export const getCommercialWorkspace = query({
       .order("desc")
       .take(101);
     const roster = platform ? await billableRoster(ctx, schoolId) : null;
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .unique();
+    const groupLinks = link
+      ? await ctx.db
+          .query("schoolGroupBranches")
+          .withIndex("by_group", (q) => q.eq("groupId", link.groupId))
+          .take(101)
+      : [];
+    const canReadGroupSummary =
+      !!link &&
+      groupLinks.length <= 100 &&
+      (await canReadGroupCommercial(
+        ctx,
+        link.groupId,
+        groupLinks.map((row) => row.schoolId),
+      )
+        .then(() => true)
+        .catch(() => false));
+    const canRequestContract =
+      !platform &&
+      !!link &&
+      (await requireGroupOwner(ctx, link.groupId)
+        .then(() => true)
+        .catch(() => false));
     return {
-      mandates: mandates
-        .slice(0, 100)
-        .map((m) => ({
-          id: m._id,
-          recordedStatus: m.status,
-          consentRecorded: m.consentGiven,
-          updatedAt: m.updatedAt,
-          activation: "unavailable" as const,
-        })),
+      mandates: mandates.slice(0, 100).map((m) => ({
+        id: m._id,
+        recordedStatus: m.status,
+        consentRecorded: m.consentGiven,
+        updatedAt: m.updatedAt,
+        activation: "unavailable" as const,
+      })),
+      commercialGroupId: canReadGroupSummary ? (link?.groupId ?? null) : null,
+      canRequestContract,
+      choices: choices.slice(0, 100),
+      corrections: corrections.slice(0, 100),
       rosterPreview: roster
         ? {
             studentCount: roster.included.length,
@@ -613,10 +654,93 @@ export const getCommercialWorkspace = query({
         rates.length > 100 ||
         contracts.length > 100 ||
         invoices.length > 100 ||
+        choices.length > 100 ||
+        corrections.length > 100 ||
         mandates.length > 100,
       gates: COMMERCIAL_GATES,
       canWrite: platform,
     };
+  },
+});
+
+export const requestContractChoice = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    rateVersionId: v.id("commercialRateVersions"),
+    requestedCadence: v.union(v.literal("termly"), v.literal("annually")),
+    requestedStart: v.number(),
+    reason: v.string(),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.confirmation !== "REQUEST")
+      throw new ConvexError("Type REQUEST after reviewing the catalog choice");
+    period(args.requestedStart, args.requestedStart + 86400000);
+    if (
+      args.requestedStart < Date.now() ||
+      args.reason.trim().length < 8 ||
+      args.reason.length > 240
+    )
+      throw new ConvexError(
+        "A future UTC start and reason (8–240 characters) are required",
+      );
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .unique();
+    if (!link)
+      throw new ConvexError(
+        "A recorded group proprietor is required for contract choice",
+      );
+    const { person } = await requireGroupOwner(ctx, link.groupId);
+    const rate = await ctx.db.get(args.rateVersionId);
+    if (
+      !rate ||
+      rate.effectiveFrom > args.requestedStart ||
+      rate.rate.cadence !== args.requestedCadence
+    )
+      throw new ConvexError(
+        "Choose a catalog version effective for the requested cadence and start",
+      );
+    const recent = await ctx.db
+      .query("commercialContractChoices")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .order("desc")
+      .take(100);
+    const duplicate = recent.find(
+      (r) =>
+        r.rateVersionId === rate._id &&
+        r.requestedStart === args.requestedStart &&
+        r.requestedCadence === args.requestedCadence &&
+        r.reason === args.reason.trim(),
+    );
+    if (duplicate) return duplicate._id;
+    const id = await ctx.db.insert("commercialContractChoices", {
+      schoolId: args.schoolId,
+      groupId: link.groupId,
+      rateVersionId: rate._id,
+      requestedCadence: args.requestedCadence,
+      requestedStart: args.requestedStart,
+      reason: args.reason.trim(),
+      requestedByPersonId: person._id,
+      createdAt: Date.now(),
+    });
+    await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: "user",
+      actorPersonId: person._id,
+      actorEmailSnapshot: person.email,
+      module: "commercial",
+      action: "subscription.contract_choice_requested",
+      targetType: "commercial_contract_choice",
+      targetId: id,
+      outcome: "success",
+      safeSummary:
+        "Proprietor requested a configured catalog option; no contract or payment activated",
+      retentionClass: "permanent_statutory",
+      alertTier: "tier2_warn",
+    });
+    return id;
   },
 });
 
@@ -625,6 +749,7 @@ export const createContract = mutation({
     schoolId: v.id("schools"),
     confirmation: v.string(),
     rateVersionId: v.id("commercialRateVersions"),
+    choiceRequestId: v.optional(v.id("commercialContractChoices")),
     effectiveFrom: v.number(),
     effectiveTo: v.number(),
     overrideRate: v.optional(commercialRate),
@@ -640,6 +765,18 @@ export const createContract = mutation({
     await platformWrite(ctx, args.schoolId, args.confirmation);
     period(args.effectiveFrom, args.effectiveTo);
     const version = await ctx.db.get(args.rateVersionId);
+    const choice = args.choiceRequestId
+      ? await ctx.db.get(args.choiceRequestId)
+      : null;
+    if (
+      args.choiceRequestId &&
+      (!choice ||
+        choice.schoolId !== args.schoolId ||
+        choice.rateVersionId !== args.rateVersionId)
+    )
+      throw new ConvexError(
+        "Contract choice request does not match this school and rate",
+      );
     if (!version || version.effectiveFrom > args.effectiveFrom)
       throw new ConvexError("Rate is not effective at contract start");
     if (
@@ -683,6 +820,7 @@ export const createContract = mutation({
     const id = await ctx.db.insert("commercialContracts", {
       schoolId: args.schoolId,
       rateVersionId: version._id,
+      choiceRequestId: choice?._id,
       code: version.code,
       version: version.version,
       rate,
@@ -821,6 +959,240 @@ export const issueSubscriptionInvoice = mutation({
       id,
     );
     return id;
+  },
+});
+
+export const listSubscriptionInvoiceHistory = query({
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const platform = await isGroupPlatformOperator(ctx);
+    if (!platform)
+      await requireCapability(ctx, args.schoolId, "finance.reports.view");
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 50)
+      throw new ConvexError("Invoice page size must be 1–50");
+    return await ctx.db
+      .query("subscriptionInvoices")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
+
+export const appendInvoiceCorrection = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    invoiceId: v.id("subscriptionInvoices"),
+    idempotencyKey: v.string(),
+    kind: v.union(
+      v.literal("credit"),
+      v.literal("debit"),
+      v.literal("void"),
+      v.literal("note"),
+    ),
+    amountMinor: v.number(),
+    reason: v.string(),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await platformWrite(ctx, args.schoolId, args.confirmation);
+    if (
+      !args.idempotencyKey.trim() ||
+      args.idempotencyKey.length > 128 ||
+      args.reason.trim().length < 8 ||
+      args.reason.length > 240 ||
+      !Number.isSafeInteger(args.amountMinor)
+    )
+      throw new ConvexError(
+        "Bounded idempotency key, integer amount and reason are required",
+      );
+    const idempotencyKey = args.idempotencyKey.trim();
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.schoolId !== args.schoolId)
+      throw new ConvexError("Subscription invoice unavailable");
+    const existing = await ctx.db
+      .query("subscriptionInvoiceCorrections")
+      .withIndex("by_invoice_and_idempotency", (q) =>
+        q.eq("invoiceId", invoice._id).eq("idempotencyKey", idempotencyKey),
+      )
+      .unique();
+    if (existing) {
+      if (
+        existing.kind !== args.kind ||
+        existing.amountMinor !== args.amountMinor ||
+        existing.reason !== args.reason.trim()
+      )
+        throw new ConvexError("Conflicting correction retry");
+      return existing._id;
+    }
+    if (
+      (args.kind === "credit" && args.amountMinor >= 0) ||
+      (args.kind === "debit" && args.amountMinor <= 0) ||
+      (args.kind === "note" && args.amountMinor !== 0)
+    )
+      throw new ConvexError("Correction kind and signed amount do not match");
+    const prior = await ctx.db
+      .query("subscriptionInvoiceCorrections")
+      .withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+      .take(101);
+    if (prior.length > 100)
+      throw new ConvexError("Correction history exceeds review bound");
+    if (prior.some((c) => c.kind === "void"))
+      throw new ConvexError("A voided invoice accepts no later corrections");
+    const priorEffective =
+      invoice.totalMinor +
+      prior.reduce((sum, row) => sum + row.amountMinor, 0);
+    if (args.kind === "void" && args.amountMinor !== -priorEffective)
+      throw new ConvexError(
+        "Void must reduce the current effective invoice amount to zero",
+      );
+    const effective = priorEffective + args.amountMinor;
+    if (effective < 0)
+      throw new ConvexError(
+        "Correction cannot produce a negative invoice amount",
+      );
+    const id = await ctx.db.insert("subscriptionInvoiceCorrections", {
+      schoolId: args.schoolId,
+      invoiceId: invoice._id,
+      idempotencyKey,
+      kind: args.kind,
+      amountMinor: args.amountMinor,
+      reason: args.reason.trim(),
+      createdAt: Date.now(),
+    });
+    await commercialAudit(
+      ctx,
+      args.schoolId,
+      `subscription.invoice_${args.kind}`,
+      id,
+    );
+    return id;
+  },
+});
+
+async function canReadGroupCommercial(
+  ctx: QueryCtx,
+  groupId: Id<"schoolGroups">,
+  schoolIds: Id<"schools">[],
+) {
+  if (await isGroupPlatformOperator(ctx)) return "platform" as const;
+  if (
+    await requireGroupOwner(ctx, groupId)
+      .then(() => true)
+      .catch(() => false)
+  )
+    return "proprietor" as const;
+  for (const schoolId of schoolIds) {
+    const allowed = await requireCapability(
+      ctx,
+      schoolId,
+      "finance.reports.view",
+    )
+      .then((result) => !!result.membershipId && !result.isPlatformAdmin)
+      .catch(() => false);
+    if (!allowed)
+      throw new ConvexError(
+        "Forbidden: delegated summary requires explicit finance authority in every branch",
+      );
+  }
+  return "delegated_all_branches" as const;
+}
+
+export const getGroupCommercialSummary = query({
+  args: { groupId: v.id("schoolGroups") },
+  handler: async (ctx, args) => {
+    const links = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_group", (q) => q.eq("groupId", args.groupId))
+      .take(101);
+    if (links.length > 100)
+      throw new ConvexError(
+        "Group exceeds 100-branch commercial summary bound",
+      );
+    const scope = await canReadGroupCommercial(
+      ctx,
+      args.groupId,
+      links.map((l) => l.schoolId),
+    );
+    const currencies: Record<
+      string,
+      {
+        originalMinor: number;
+        correctionsMinor: number;
+        effectiveMinor: number;
+        invoiceCount: number;
+      }
+    > = {};
+    const branches = [];
+    for (const link of links) {
+      const school = await ctx.db.get(link.schoolId);
+      const invoices = await ctx.db
+        .query("subscriptionInvoices")
+        .withIndex("by_school", (q) => q.eq("schoolId", link.schoolId))
+        .take(501);
+      const corrections = await ctx.db
+        .query("subscriptionInvoiceCorrections")
+        .withIndex("by_school", (q) => q.eq("schoolId", link.schoolId))
+        .take(501);
+      if (invoices.length > 500 || corrections.length > 500)
+        throw new ConvexError(
+          "Branch commercial history exceeds summary bound; no partial total shown",
+        );
+      const invoiceIds = new Set(invoices.map((i) => i._id));
+      const branchCurrencies: Record<
+        string,
+        {
+          originalMinor: number;
+          correctionsMinor: number;
+          effectiveMinor: number;
+          invoiceCount: number;
+        }
+      > = {};
+      for (const invoice of invoices) {
+        const row = branchCurrencies[invoice.rate.currency] ?? {
+          originalMinor: 0,
+          correctionsMinor: 0,
+          effectiveMinor: 0,
+          invoiceCount: 0,
+        };
+        row.originalMinor += invoice.totalMinor;
+        row.effectiveMinor += invoice.totalMinor;
+        row.invoiceCount += 1;
+        branchCurrencies[invoice.rate.currency] = row;
+      }
+      for (const correction of corrections) {
+        if (!invoiceIds.has(correction.invoiceId))
+          throw new ConvexError("Correction history requires reconciliation");
+        const invoice = invoices.find((i) => i._id === correction.invoiceId)!;
+        const row = branchCurrencies[invoice.rate.currency];
+        row.correctionsMinor += correction.amountMinor;
+        row.effectiveMinor += correction.amountMinor;
+      }
+      for (const [currency, row] of Object.entries(branchCurrencies)) {
+        const total = currencies[currency] ?? {
+          originalMinor: 0,
+          correctionsMinor: 0,
+          effectiveMinor: 0,
+          invoiceCount: 0,
+        };
+        total.originalMinor += row.originalMinor;
+        total.correctionsMinor += row.correctionsMinor;
+        total.effectiveMinor += row.effectiveMinor;
+        total.invoiceCount += row.invoiceCount;
+        currencies[currency] = total;
+      }
+      branches.push({
+        schoolId: link.schoolId,
+        schoolName: school?.name ?? "Unavailable branch",
+        currencies: branchCurrencies,
+      });
+    }
+    return {
+      scope,
+      basis:
+        "All subscription invoice snapshots and append-only corrections within the <=500 records/branch bound; no school-fee, usage or settlement rows",
+      branches,
+      currencies,
+    };
   },
 });
 

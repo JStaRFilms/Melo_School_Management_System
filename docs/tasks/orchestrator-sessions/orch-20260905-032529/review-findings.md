@@ -12,7 +12,7 @@ The local slices contain useful tenant checks, immutable invoice-instruction sna
 
 ## Blocking findings
 
-### CRITICAL 1 — Import commit silently binds collisions and bypasses reviewed numbering/audit contracts
+### CRITICAL 1 — Import commit silently binds collisions and bypasses reviewed numbering/audit contracts (**locally remediated; see `results/R1-import-remediation.md`**)
 
 **Location:** `packages/convex/functions/academic/migrationMerge.ts:17-24`, `:82-161`, `:258-320`; `packages/convex/functions/academic/migrationAutosave.ts:191-249`
 
@@ -23,6 +23,8 @@ This violates explicit human duplicate/relationship resolution, deterministic va
 **Required fix:** Until complete, make commit unreachable from public clients or hard-fail it. Implement an immutable reviewed plan with per-row create/merge/ignore, class/subject/family decisions, supplied-number preservation, authoritative H4 proposals and expected versions. Commit only that plan; reject rather than infer collisions; use claim/allocation helpers transactionally; emit batch audit/reconciliation receipts and deterministic retry state. Do not create fake auth identities as provisioning.
 
 **Regressions:** unresolved/accidental collisions cannot commit; only explicit same-tenant `merge_existing` can merge; >1,000 rows plus concurrent enrollment cannot duplicate/desynchronize counters; implicit class/subject/family creation is rejected; replay preserves exact outcomes and receipts.
+
+> **Remediation update:** The routed importer now freezes revisioned per-row decisions, requires existing identity/entity selections, uses H4 proposals and transactional claims/allocation, rejects stale/colliding plans, records actor-attributed approval/batch receipts, and preserves immutable outcomes across bounded retries. The disconnected legacy commit is server-disabled. Provider AI and temporary file uploads remain truthfully unavailable. Focused tests and typechecks pass; browser/runtime evidence remains E0. See `results/R1-import-remediation.md`.
 
 ### CRITICAL 2 — Configured RBAC restrictions do not govern the shell or major legacy mutations
 
@@ -126,7 +128,7 @@ These are not satisfied by screenshots, credentials, deployment, or provider app
 6. **U2c:** named default/branch-level counters, approved group-wide and branch-plus-level scopes, inherited numbering defaults, import integration, and optimistic policy/counter checks.
 7. **U3b/U3c:** persistent adapters, timestamped Preview/Resume/Discard, atomic finish-on-domain-submit, and adoption across student, family, staff, fee-plan, academic setup, report-card, import-review, and Teacher planning. Current guard/in-memory slices are partial.
 8. **U3a lifecycle:** operational expiry and correct active-instance indexing (Warnings 6–7).
-9. **U4b:** finish or disable public import commit; reviewed mappings/confidence/duplicate/relationship decisions, H4 numbering, audit, reconciliation, retry, and privacy-safe outcomes (Critical 1).
+9. **U4b (locally remediated):** reviewed existing-entity mappings, deterministic duplicate/relationship decisions, H4 numbering, audit receipts, reconciliation, retry, privacy-safe outcomes, and disabled unsafe legacy/file/provider paths are implemented. Runtime/browser evidence remains outstanding (Critical 1).
 10. **U5a/U5b:** versioned plan entitlements/editor; allowance cycle/top-up/exception/grace/group pools; model/task profiles; authoritative heavy-action estimate/confirm/cancel and reserve-dispatch-settle/reconcile. Dashboards and a generic ledger are not a provider gate.
 11. **U5c/U5d:** purchased-entitlement upload binding, abandoned/raw temporary-object accounting/cleanup, non-starving retention sweeps, and provider-failure recovery (Critical 4, Warning 8). Private download, AV, and PDF promotion stay hard-disabled pending genuine external approvals.
 12. **U6a:** canonical transfer/Portal identity continuity and destination-login regressions (Warning 5). The explicitly excluded future inter-school network and automated staff-transfer policy are not added to this milestone.

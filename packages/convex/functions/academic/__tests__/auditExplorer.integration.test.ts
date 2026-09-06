@@ -228,6 +228,91 @@ it("paginates past recent nonmatches, enforces branch/module boundaries and keep
   ).rejects.toThrow("Forbidden");
 });
 
+it("uses scoped group sources beyond unrelated global pages and preserves relinking history", async () => {
+  const f = await setup();
+  const secondGroupId = await f.t.run(async ctx => {
+    await recordAuditEventHelper(ctx, {
+      schoolId: f.schoolId,
+      actorKind: "system",
+      actorEmailSnapshot: "system",
+      module: "groups",
+      action: "old_group_snapshot",
+      targetType: "school",
+      targetId: String(f.schoolId),
+      outcome: "success",
+      safeSummary: "Historical old-group event",
+    });
+    const now = Date.now();
+    await ctx.db.insert("auditEvents", {
+      eventId: "legacy_without_group_snapshot",
+      timestamp: now,
+      actorKind: "system",
+      actorEmailSnapshot: "system",
+      schoolId: f.schoolId,
+      module: "groups",
+      action: "legacy_current_branch",
+      targetType: "school",
+      targetId: String(f.schoolId),
+      outcome: "success",
+      safeSummary: "Legacy event without historical group evidence",
+      correlationId: "legacy_without_group_snapshot",
+      retentionClass: "operational_7yr",
+      createdAt: now,
+    });
+    for (let index = 0; index < 205; index++) {
+      await recordAuditEventHelper(ctx, {
+        schoolId: f.otherSchoolId,
+        actorKind: "system",
+        actorEmailSnapshot: "system",
+        module: "system",
+        action: "unrelated_global_noise",
+        targetType: "noise",
+        targetId: String(index),
+        outcome: "success",
+        safeSummary: "Unrelated tenant event",
+      });
+    }
+    const oldLink = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).unique();
+    if (!oldLink) throw new Error("missing old group link");
+    await ctx.db.delete(oldLink._id);
+    const secondGroupId = await ctx.db.insert("schoolGroups", { name: "Second audit group", slug: "second-audit-group", proprietorPersonId: f.ownerId, status: "active", createdAt: now, updatedAt: now });
+    await ctx.db.insert("schoolGroupBranches", { groupId: secondGroupId, schoolId: f.schoolId, isHeadquarters: true, linkedAt: now });
+    await recordAuditEventHelper(ctx, {
+      schoolId: f.schoolId,
+      actorKind: "system",
+      actorEmailSnapshot: "system",
+      module: "groups",
+      action: "new_group_snapshot",
+      targetType: "school",
+      targetId: String(f.schoolId),
+      outcome: "success",
+      safeSummary: "Historical new-group event",
+    });
+    return secondGroupId;
+  });
+  const oldGroup = await f.owner.query(audit.queryAuditPage, {
+    scope: { kind: "group", groupId: f.groupId },
+    paginationOpts: { numItems: 1, cursor: null },
+  });
+  expect(oldGroup.page.map(row => row.action)).toEqual(["old_group_snapshot"]);
+  expect(oldGroup.isDone).toBe(true);
+
+  let cursor: string | null = null;
+  const newGroupActions: string[] = [];
+  for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+    const page: FunctionReturnType<typeof audit.queryAuditPage> = await f.owner.query(audit.queryAuditPage, {
+      scope: { kind: "group", groupId: secondGroupId },
+      paginationOpts: { numItems: 1, cursor },
+    });
+    newGroupActions.push(...page.page.map(row => row.action));
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  expect(newGroupActions).toEqual(["new_group_snapshot", "legacy_current_branch"]);
+  expect(newGroupActions).not.toContain("old_group_snapshot");
+  expect(newGroupActions).not.toContain("unrelated_global_noise");
+});
+
 it("restricts Platform views, scopes alert recipients and records safe export outcomes", async () => {
   const f = await setup();
   const alertId = await f.t.run(async (ctx) => {

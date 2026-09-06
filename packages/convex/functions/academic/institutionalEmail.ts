@@ -1,15 +1,22 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { requireCapability, getContextCapabilities } from "./rbac";
 import { resolveActiveMembership } from "./auth";
+import { finishFormDraft } from "./drafts";
 
 // H5 / D01 / D03: Melo operates no mail server. Public writes are metadata only.
 type Context = QueryCtx | MutationCtx;
 const templateValidator = v.union(v.literal("firstname.lastname"), v.literal("f.lastname"));
 const providerValidator = v.union(v.literal("google"), v.literal("microsoft"), v.literal("zoho"), v.literal("none"));
 const reservedNames = new Set(["admin", "administrator", "postmaster", "abuse", "support", "security", "root", "noreply", "no-reply", "webmaster", "mailer-daemon", "hostmaster"]);
+const PAGE_MAX = 50;
+function validatePageSize(numItems: number) {
+  if (!Number.isInteger(numItems) || numItems < 1 || numItems > PAGE_MAX)
+    throw new ConvexError(`Email page size must be 1–${PAGE_MAX}`);
+}
 export function validLocalPart(value: string): boolean {
   return value.length <= 64 && /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(value) && !reservedNames.has(value);
 }
@@ -235,9 +242,12 @@ export const reviewEmailAddress = query({
 export const assignInstitutionalMailbox = mutation({
   args: { schoolId: v.id("schools"), personId: v.id("persons"), email: v.string(),
     isMinor: v.optional(v.boolean()), minorPrivacyRequested: v.optional(v.boolean()), expectedPolicyVersion: v.optional(v.number()),
-    aliasOfMailboxId: v.optional(v.id("institutionalMailboxes")) },
+    aliasOfMailboxId: v.optional(v.id("institutionalMailboxes")), draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()) },
   handler: async (ctx, args) => {
     await requireTargetAuthority(ctx, args.schoolId, args.personId);
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined))
+      throw new ConvexError("Draft identity and revision must be supplied together");
     await assertActiveTarget(ctx, args.schoolId, args.personId);
     const email = args.email.toLowerCase().trim();
     const [local, domainName, extra] = email.split("@");
@@ -260,7 +270,11 @@ export const assignInstitutionalMailbox = mutation({
     if (existing && args.aliasOfMailboxId && existing.aliasOfMailboxId !== args.aliasOfMailboxId)
       throw new ConvexError("Existing address relation cannot be silently changed");
     // Idempotent retry never reactivates or changes source ownership/provider evidence.
-    if (existing) return { success: true, mailboxId: existing._id, email, state: existing.state };
+    if (existing) {
+      if (args.draftId !== undefined && args.expectedDraftRevision !== undefined)
+        await finishFormDraft(ctx, { schoolId: args.schoolId, draftId: args.draftId, expectedRevision: args.expectedDraftRevision, expectedFormKey: "institutional_email_review" }, "committed");
+      return { success: true, mailboxId: existing._id, email, state: existing.state };
+    }
     const now = Date.now();
     const mailboxId = await ctx.db.insert("institutionalMailboxes", {
       personId: args.personId, schoolId: args.schoolId, email, address: email, state: "login_only", aliasOfMailboxId: args.aliasOfMailboxId, approvedPolicyVersion: policy?.version ?? 0,
@@ -268,6 +282,8 @@ export const assignInstitutionalMailbox = mutation({
       createdAt: now, updatedAt: now,
     });
     await auditUser(ctx, args.schoolId, args.aliasOfMailboxId ? "approve_additional_address" : "approve_address", "institutionalMailboxes", String(mailboxId));
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined)
+      await finishFormDraft(ctx, { schoolId: args.schoolId, draftId: args.draftId, expectedRevision: args.expectedDraftRevision, expectedFormKey: "institutional_email_review" }, "committed");
     return { success: true, mailboxId, email, state: "login_only" as const };
   },
 });
@@ -343,20 +359,97 @@ export const suspendOrArchiveMailbox = mutation({
     return { success: true, mailboxId: mailbox._id, email: mailbox.email, status };
   },
 });
+function canSeeKind(permissions: Awaited<ReturnType<typeof emailAccess>>["permissions"], kind: Awaited<ReturnType<typeof targetKind>>) {
+  return (kind === "staff" && permissions.staff) ||
+    (kind === "student" && permissions.student) ||
+    (kind === "unclassified" && permissions.staff && permissions.student);
+}
+async function visibleMailbox(ctx: Context, schoolId: Id<"schools">,
+  permissions: Awaited<ReturnType<typeof emailAccess>>["permissions"],
+  mailbox: Doc<"institutionalMailboxes">) {
+  const kind = await targetKind(ctx, mailbox.personId, schoolId);
+  if (!canSeeKind(permissions, kind)) return null;
+  const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
+  return { ...safe, kind, reconciliationRequired: Boolean(lastSyncError),
+    failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const };
+}
 async function visibleMailboxes(ctx: Context, schoolId: Id<"schools">) {
   const { permissions } = await emailAccess(ctx, schoolId);
   const mailboxes = await ctx.db.query("institutionalMailboxes").withIndex("by_school_and_email", q => q.eq("schoolId", schoolId)).take(100);
   const visible = [];
   for (const mailbox of mailboxes) {
-    const kind = await targetKind(ctx, mailbox.personId, schoolId);
-    if ((kind === "staff" && permissions.staff) || (kind === "student" && permissions.student) || (permissions.staff && permissions.student)) {
-      const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
-      visible.push({ ...safe, kind, reconciliationRequired: Boolean(lastSyncError),
-        failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const });
-    }
+    const row = await visibleMailbox(ctx, schoolId, permissions, mailbox);
+    if (row) visible.push(row);
   }
   return visible;
 }
+function domainMetadata(domain: {
+  _id: Id<"schoolEmailDomains">; schoolId: Id<"schools">; domain: string;
+  provider: "google" | "microsoft" | "zoho" | "none";
+  status: "pending_verification" | "verified" | "failed"; isDefault: boolean;
+  sharedGroupId?: Id<"schoolGroups">; verifiedAt?: number;
+}, groupId?: Id<"schoolGroups">) {
+  return { _id: domain._id, schoolId: domain.schoolId, domain: domain.domain,
+    provider: domain.provider, status: domain.status, isDefault: domain.isDefault,
+    sharedWithGroup: Boolean(groupId && domain.sharedGroupId === groupId), verifiedAt: domain.verifiedAt };
+}
+
+export const listEmailProposalPeoplePage = query({
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    validatePageSize(args.paginationOpts.numItems);
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    const result = await ctx.db.query("branchMemberships")
+      .withIndex("by_school_and_status", q => q.eq("schoolId", args.schoolId).eq("status", "active"))
+      .paginate(args.paginationOpts);
+    const page = [];
+    for (const member of result.page) {
+      const kind = await targetKind(ctx, member.personId, args.schoolId);
+      if (!canSeeKind(permissions, kind)) continue;
+      const person = await ctx.db.get(member.personId);
+      if (person?.status === "active" && person.identityReconciliationState !== "reconciliation_required")
+        page.push({ personId: person._id, name: person.name, kind });
+    }
+    return { ...result, page };
+  },
+});
+
+export const listInstitutionalMailboxesPage = query({
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    validatePageSize(args.paginationOpts.numItems);
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    const result = await ctx.db.query("institutionalMailboxes")
+      .withIndex("by_school_and_email", q => q.eq("schoolId", args.schoolId))
+      .paginate(args.paginationOpts);
+    const page = [];
+    for (const mailbox of result.page) {
+      const row = await visibleMailbox(ctx, args.schoolId, permissions, mailbox);
+      if (row) page.push(row);
+    }
+    return { ...result, page };
+  },
+});
+
+export const listEmailDomainsPage = query({
+  args: { schoolId: v.id("schools"), scope: v.union(v.literal("owned"), v.literal("shared")), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    validatePageSize(args.paginationOpts.numItems);
+    await emailAccess(ctx, args.schoolId);
+    const link = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
+    const group = link ? await ctx.db.get(link.groupId) : null;
+    if (args.scope === "shared" && group?.status !== "active")
+      throw new ConvexError("Active group required for shared domain pagination");
+    const result = args.scope === "owned"
+      ? await ctx.db.query("schoolEmailDomains").withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId)).paginate(args.paginationOpts)
+      : await ctx.db.query("schoolEmailDomains").withIndex("by_sharedGroupId_and_domain", q => q.eq("sharedGroupId", group!._id)).paginate(args.paginationOpts);
+    // Challenge tokens are intentionally excluded from paginated discovery.
+    return { ...result, page: result.page
+      .filter(domain => args.scope === "owned" || domain.schoolId !== args.schoolId)
+      .map(domain => domainMetadata(domain, group?._id)) };
+  },
+});
+
 export const getInstitutionalMailboxes = query({
   args: { schoolId: v.id("schools") }, handler: (ctx, args) => visibleMailboxes(ctx, args.schoolId),
 });
@@ -367,44 +460,21 @@ export const getSchoolEmailDomains = query({
       .withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId))
       .take(50);
     if (permissions.policy) return domains;
-    return domains.map(({ _id, schoolId, domain, provider, status, isDefault, sharedGroupId, verifiedAt }) => ({
-      _id,
-      schoolId,
-      domain,
-      provider,
-      status,
-      isDefault,
-      sharedWithGroup: Boolean(sharedGroupId),
-      verifiedAt,
-    }));
+    return domains.map(domain => domainMetadata(domain));
   },
 });
 export const getEmailWorkbench = query({
   args: { schoolId: v.id("schools") }, handler: async (ctx, args) => {
     const { permissions } = await emailAccess(ctx, args.schoolId);
     const policy = await policyFor(ctx, args.schoolId);
-    const domains = await ctx.db.query("schoolEmailDomains").withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId)).take(50);
     const link = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
     const group = link ? await ctx.db.get(link.groupId) : null;
-    if (link && group?.status === "active") {
-      const branches = await ctx.db.query("schoolGroupBranches").withIndex("by_group", q => q.eq("groupId", link.groupId)).take(50);
-      for (const branch of branches) if (branch.schoolId !== args.schoolId) {
-        const branchDomains = await ctx.db.query("schoolEmailDomains")
-          .withIndex("by_school_and_domain", q => q.eq("schoolId", branch.schoolId)).take(50);
-        domains.push(...branchDomains.filter(domain => domain.sharedGroupId === group._id));
-      }
+    let policyDomainUnavailable = false;
+    if (policy?.domainId) {
+      try { await resolveDomain(ctx, args.schoolId, policy.domainId); }
+      catch { policyDomainUnavailable = true; }
     }
-    const members = await ctx.db.query("branchMemberships").withIndex("by_school_and_status", q => q.eq("schoolId", args.schoolId).eq("status", "active")).take(100);
-    const people = [];
-    for (const member of members) {
-      const kind = await targetKind(ctx, member.personId, args.schoolId);
-      if (!((kind === "staff" && permissions.staff) || (kind === "student" && permissions.student) || (permissions.staff && permissions.student))) continue;
-      const person = await ctx.db.get(member.personId);
-      if (person?.status === "active") people.push({ personId: person._id, name: person.name, kind });
-    }
-    return { permissions, policy, people, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
-      mailboxes: await visibleMailboxes(ctx, args.schoolId), groupName: group?.status === "active" ? group.name : null,
-      policyDomainUnavailable: Boolean(policy?.domainId && !domains.some(domain => domain._id === policy.domainId)),
-      providerActivation: "unavailable" as const, limit: 100 };
+    return { permissions, policy, groupName: group?.status === "active" ? group.name : null,
+      policyDomainUnavailable, providerActivation: "unavailable" as const, pageSize: 25 };
   },
 });

@@ -20,7 +20,7 @@ Focused metering/action tests cover concurrent reservation, repeated retry/settl
 
 ## Execution status
 
-**PARTIAL, E0 — keep open.** Verified recorded usage/Platform cost dashboards, numeric/idempotency accounting hardening and safe gates at the named first paid-operation seams. Versioned entitlements, grace/top-up/exception flows and authoritative heavy-action confirmation/reservation dispatch/reconciliation remain substantive implementation gaps. See `../results/U5b.md` for exact operation manifest, checks and limits; unavailable controls are not completed workflows.
+**PARTIAL/GATED, E0 — keep open for provider/action adoption and U7 evidence.** Safe local productization now includes immutable entitlement versions, contract-bound cycles, separate grace/top-up/exception/group-pool sources, proprietor branch allocation, configured thresholds/task profiles, and an idempotent authoritative quote/confirm/cancel workflow. Confirmation atomically holds then releases allowance through a deliberately unavailable dispatch and charges zero. Real provider dispatch, upload/range and failed-batch adoption, timeout reconciliation, generated API/schema rollout, and browser evidence remain incomplete. See `../results/U5b.md`.
 
 ## Artifacts
 `results/U5b.md` operation/cost-call manifest, entitlement/reservation contracts, commands/self-review and provider telemetry gates. Update matrix. No provider/production/migration/deploy/credential or unapproved CLI/PR operations.

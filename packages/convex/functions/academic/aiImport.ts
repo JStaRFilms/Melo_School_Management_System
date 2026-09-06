@@ -419,131 +419,19 @@ export const approveImportWorkspace = mutation({
  * Atomically commits an explicitly reviewed workspace into supported operational tables.
  */
 export const commitImportWorkspace = mutation({
-  args: {
-    workspaceId: v.id("aiImportWorkspaces"),
-  },
+  args: { workspaceId: v.id("aiImportWorkspaces") },
   handler: async (ctx, args) => {
     const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      throw new ConvexError("Workspace not found");
-    }
+    if (!workspace) throw new ConvexError("Workspace not found");
     const actor = await requireCapability(ctx, workspace.schoolId, "enrollment.intakes.manage");
-    if (
-      workspace.ownerMembershipId &&
-      !actor.isPlatformAdmin &&
-      actor.membershipId !== workspace.ownerMembershipId
-    ) {
-      throw new ConvexError("Only the workspace owner may commit this import");
+    if (workspace.ownerMembershipId && actor.membershipId !== workspace.ownerMembershipId) {
+      throw new ConvexError("Only the workspace owner may access this import");
     }
-
-    if (workspace.status === "committed") {
-      return {
-        success: true,
-        alreadyCommitted: true,
-        committedCount: workspace.commitResult?.committedCount ?? 0,
-        workspaceId: workspace._id,
-      };
-    }
-
-    if (workspace.status !== "reviewed" || !workspace.reviewedAt || !workspace.reviewedBy) {
-      throw new ConvexError("Workspace requires explicit reviewed approval before commit");
-    }
-    if (workspace.entityType !== "students") {
-      throw new ConvexError(`AI import entity type "${workspace.entityType}" is not supported for commit`);
-    }
-
-    // Approval is only a snapshot. Re-run deterministic tenant, relationship,
-    // admission-number, and user-enrollment validation in this same commit
-    // transaction so concurrent operational writes cannot bypass review.
-    const transactionalValidationErrors = await validateStudentRows(
-      ctx,
-      workspace.schoolId,
-      workspace.stagedRows
+    throw new ConvexError(
+      "Legacy AI import commit is disabled. Use the routed migration workbench with explicit reviewed placement and H4 numbering.",
     );
-    if (transactionalValidationErrors.length > 0) {
-      throw new ConvexError(
-        `Cannot commit workspace: ${transactionalValidationErrors.length} validation errors were found during transactional revalidation.`
-      );
-    }
-
-    const now = Date.now();
-
-    // Commit operational records based on entityType
-    if (workspace.entityType === "students") {
-      // Find or create default class for intake
-      let defaultClass = await ctx.db
-        .query("classes")
-        .withIndex("by_school", (q) => q.eq("schoolId", workspace.schoolId))
-        .first();
-
-      if (!defaultClass) {
-        const classId = await ctx.db.insert("classes", {
-          schoolId: workspace.schoolId,
-          name: "General Intake",
-          level: "Junior",
-          createdAt: now,
-          updatedAt: now,
-        });
-        defaultClass = (await ctx.db.get(classId))!;
-      }
-
-      for (let i = 0; i < workspace.stagedRows.length; i++) {
-        const row = workspace.stagedRows[i];
-        const admissionNumber = row.admissionNumber || row.admission_number;
-        const userId = row.userId as Id<"users">;
-
-        // Validation and explicit approval above establish these prerequisites;
-        // this path deliberately performs no credential or H4-number fabrication.
-        await ctx.db.insert("students", {
-          schoolId: workspace.schoolId,
-          classId: defaultClass._id,
-          userId,
-          admissionNumber,
-          gender: row.gender,
-          dateOfBirth:
-            typeof row.dateOfBirth === "number" ? row.dateOfBirth : undefined,
-          guardianName: row.guardianName,
-          guardianPhone: row.guardianPhone,
-          address: row.address,
-          enrollmentStatus: "active",
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-    }
-
-    // Mark workspace committed atomically
-    await ctx.db.patch(workspace._id, {
-      status: "committed",
-      committedAt: now,
-      commitResult: {
-        committedCount: workspace.stagedRows.length,
-        timestamp: now,
-      },
-      updatedAt: now,
-    });
-
-    await recordAuditEventHelper(ctx, {
-      schoolId: workspace.schoolId,
-      actorKind: "system",
-      actorEmailSnapshot: "reviewer@melo.school",
-      module: "ai_import",
-      action: "commit_ai_import",
-      targetType: "aiImportWorkspaces",
-      targetId: String(workspace._id),
-      outcome: "success",
-      safeSummary: `Atomically committed ${workspace.stagedRows.length} ${workspace.entityType} records into operational database`,
-    });
-
-    return {
-      success: true,
-      committedCount: workspace.stagedRows.length,
-      workspaceId: workspace._id,
-    };
   },
-});
-
-/**
+});/**
  * Fetches an import workspace with its staged rows and validation errors.
  */
 export const getImportWorkspace = query({

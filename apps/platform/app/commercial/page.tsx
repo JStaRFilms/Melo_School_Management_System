@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { UsageCosts } from "./UsageCosts";
+import { EntitlementControls } from "./EntitlementControls";
 import { useState } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../../packages/convex/_generated/api";
@@ -145,6 +146,7 @@ function Workbench() {
   const publish = useMutation(commercial.publishRateVersion);
   const contract = useMutation(commercial.createContract);
   const issue = useMutation(commercial.issueSubscriptionInvoice);
+  const correct = useMutation(commercial.appendInvoiceCorrection);
   async function save(work: () => Promise<unknown>) {
     setPending(true);
     setMessage("");
@@ -229,6 +231,7 @@ function Workbench() {
               total.
             </p>
           )}
+          <EntitlementControls schoolId={schoolId} contractIds={data.contracts.map(row => row._id)} />
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">Versioned catalog</h2>
             {!data.rates.length && (
@@ -313,6 +316,13 @@ function Workbench() {
                   contract({
                     schoolId,
                     rateVersionId: rateId,
+                    ...(f.get("choiceRequestId")
+                      ? {
+                          choiceRequestId: String(
+                            f.get("choiceRequestId"),
+                          ) as Id<"commercialContractChoices">,
+                        }
+                      : {}),
                     confirmation: String(f.get("confirmation")),
                     effectiveFrom: Date.parse(String(f.get("start"))),
                     effectiveTo: Date.parse(String(f.get("end"))),
@@ -349,6 +359,20 @@ function Workbench() {
                   {data.rates.map((r) => (
                     <option key={r._id} value={r._id}>
                       {r.code} v{r.version}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Proprietor choice request (optional)
+                <select className={input} name="choiceRequestId">
+                  <option value="">No linked request</option>
+                  {data.choices.map((choice) => (
+                    <option key={choice._id} value={choice._id}>
+                      {choice.requestedCadence} ·{" "}
+                      {new Date(choice.requestedStart)
+                        .toISOString()
+                        .slice(0, 10)}
                     </option>
                   ))}
                 </select>
@@ -415,12 +439,64 @@ function Workbench() {
             </p>
             {!data.invoices.length && <p>No subscription invoices issued.</p>}
             {data.invoices.map((i) => (
-              <p key={i._id}>
-                {i.periodLabel}: {i.rate.currency} {i.totalMinor} minor ·{" "}
-                {i.studentCount} billable / {i.excludedCount} excluded ·{" "}
-                {i.status} · setup {i.setupMinor} · discount {i.discountMinor} ·
-                proration {i.prorationNumerator}/{i.prorationDenominator}
-              </p>
+              <div className="space-y-2 border-b pb-3" key={i._id}>
+                <p>
+                  {i.periodLabel}: {i.rate.currency} {i.totalMinor} minor ·{" "}
+                  {i.studentCount} billable / {i.excludedCount} excluded ·{" "}
+                  {i.status} · setup {i.setupMinor} · discount {i.discountMinor}{" "}
+                  · proration {i.prorationNumerator}/{i.prorationDenominator}
+                </p>
+                <form
+                  className="grid gap-2 sm:grid-cols-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    const kind = String(form.get("kind"));
+                    void save(() =>
+                      correct({
+                        schoolId,
+                        invoiceId: i._id,
+                        idempotencyKey: String(form.get("idempotencyKey")),
+                        kind:
+                          kind === "credit"
+                            ? "credit"
+                            : kind === "debit"
+                              ? "debit"
+                              : kind === "void"
+                                ? "void"
+                                : "note",
+                        amountMinor: Number(form.get("amountMinor")),
+                        reason: String(form.get("reason")),
+                        confirmation: String(form.get("confirmation")),
+                      }),
+                    );
+                  }}
+                >
+                  <label>
+                    Correction type
+                    <select className={input} name="kind">
+                      <option value="note">Note</option>
+                      <option value="credit">Credit (negative)</option>
+                      <option value="debit">Debit (positive)</option>
+                      <option value="void">
+                        Void (negative original total)
+                      </option>
+                    </select>
+                  </label>
+                  <Field
+                    name="amountMinor"
+                    label="Signed minor amount"
+                    type="number"
+                  />
+                  <Field
+                    name="idempotencyKey"
+                    label="Unique correction reference"
+                  />
+                  <Field name="reason" label="Correction reason" />
+                  <Field name="confirmation" label="Type CONFIRM" />
+                  <button disabled={pending}>Append correction</button>
+                </form>
+              </div>
             ))}
             <form
               className="space-y-3"

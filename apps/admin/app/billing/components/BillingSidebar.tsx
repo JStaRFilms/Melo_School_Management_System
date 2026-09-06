@@ -24,6 +24,7 @@ import type {
 import { formatMoney } from "../utils";
 import { BulkApplicationForm } from "./forms/BulkApplicationForm";
 import { FeePlanForm } from "./forms/FeePlanForm";
+import type { DraftStatus } from "@school/shared/drafts";
 
 type BillingSidebarVariant = "arsenal" | "payment" | "invoice" | "application" | "link" | "plan";
 
@@ -44,6 +45,8 @@ interface BillingSidebarProps {
   feePlanDraft: FeePlanDraft;
   onFeePlanDraftChange: (draft: FeePlanDraft) => void;
   onCreateFeePlan: (e: React.FormEvent) => void;
+  feePlanDraftStatus?: DraftStatus;
+  feePlanDraftLastSavedAt?: number | null;
 
   feePlanApplicationDraft: FeePlanApplicationDraft;
   onFeePlanApplicationDraftChange: (draft: FeePlanApplicationDraft) => void;
@@ -73,6 +76,8 @@ export function BillingSidebar({
   feePlanDraft,
   onFeePlanDraftChange,
   onCreateFeePlan,
+  feePlanDraftStatus,
+  feePlanDraftLastSavedAt,
   feePlanApplicationDraft,
   onFeePlanApplicationDraftChange,
   onApplyFeePlan,
@@ -291,6 +296,8 @@ export function BillingSidebar({
           onChange={onFeePlanDraftChange}
           onSubmit={onCreateFeePlan}
           classes={classes}
+          draftStatus={feePlanDraftStatus}
+          draftLastSavedAt={feePlanDraftLastSavedAt}
         />
       )}
 

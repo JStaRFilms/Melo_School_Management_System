@@ -128,6 +128,7 @@ async function fixture() {
       groupId,
       ownerId,
       ownerMembership,
+      ownerUser,
       memberMembership,
       grantId,
     };
@@ -139,6 +140,213 @@ async function fixture() {
     member: t.withIdentity({ tokenIdentifier: "test|member" }),
     platform: t.withIdentity({ tokenIdentifier: "test|platform" }),
   };
+}
+
+async function seedOverviewData(f: Awaited<ReturnType<typeof fixture>>) {
+  return f.t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert("academicSessions", {
+      schoolId: f.schoolId,
+      name: "2026/2027",
+      startDate: 100,
+      endDate: 900,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const termId = await ctx.db.insert("academicTerms", {
+      schoolId: f.schoolId,
+      sessionId,
+      name: "First term",
+      startDate: 200,
+      endDate: 800,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const classId = await ctx.db.insert("classes", {
+      schoolId: f.schoolId,
+      name: "JSS 1",
+      level: "JSS 1",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const studentUserId = await ctx.db.insert("users", {
+      schoolId: f.schoolId,
+      authId: "student",
+      name: "Student",
+      email: "student@example.test",
+      role: "student",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const studentId = await ctx.db.insert("students", {
+      schoolId: f.schoolId,
+      classId,
+      userId: studentUserId,
+      admissionNumber: "HQ-001",
+      enrollmentStatus: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("students", {
+      schoolId: f.schoolId,
+      classId,
+      userId: studentUserId,
+      admissionNumber: "HQ-DUPLICATE",
+      enrollmentStatus: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const archivedUserId = await ctx.db.insert("users", {
+      schoolId: f.schoolId,
+      authId: "archived-student",
+      name: "Archived Student",
+      email: "archived@example.test",
+      role: "student",
+      isArchived: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("students", {
+      schoolId: f.schoolId,
+      classId,
+      userId: archivedUserId,
+      admissionNumber: "HQ-OLD",
+      enrollmentStatus: "withdrawn",
+      isArchived: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("reportCardAttendanceClassValues", {
+      schoolId: f.schoolId,
+      classId,
+      sessionId,
+      termId,
+      timesSchoolOpened: 100,
+      createdAt: 1,
+      updatedAt: 1,
+      updatedBy: f.ownerUser,
+    });
+    await ctx.db.insert("reportCardAttendanceStudentValues", {
+      schoolId: f.schoolId,
+      classId,
+      studentId,
+      sessionId,
+      termId,
+      timesPresent: 80,
+      createdAt: 1,
+      updatedAt: 1,
+      updatedBy: f.ownerUser,
+    });
+    const feePlanId = await ctx.db.insert("feePlans", {
+      schoolId: f.schoolId,
+      name: "Tuition",
+      currency: "NGN",
+      lineItems: [],
+      installmentPolicy: {
+        enabled: false,
+        installmentCount: 1,
+        intervalDays: 0,
+        firstDueDays: 0,
+      },
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: f.ownerUser,
+      updatedBy: f.ownerUser,
+    });
+    const invoiceId = await ctx.db.insert("studentInvoices", {
+      schoolId: f.schoolId,
+      feePlanId,
+      studentId,
+      classId,
+      sessionId,
+      termId,
+      invoiceNumber: "INV-1",
+      feePlanNameSnapshot: "Tuition",
+      currency: "NGN",
+      lineItems: [],
+      installmentSchedule: [],
+      subtotal: 10000,
+      waiverAmount: 1000,
+      discountAmount: 0,
+      totalAmount: 9000,
+      amountPaid: 4000,
+      balanceDue: 5000,
+      status: "partially_paid",
+      dueDate: 700,
+      issuedAt: 400,
+      issuedBy: f.ownerUser,
+      createdAt: 400,
+      updatedAt: 500,
+    });
+    await ctx.db.insert("billingPayments", {
+      schoolId: f.schoolId,
+      invoiceId,
+      reference: "PAY-1",
+      paymentMethod: "bank_transfer",
+      amountReceived: 4000,
+      amountApplied: 4000,
+      unappliedAmount: 0,
+      applicationStatus: "applied",
+      status: "successful",
+      receivedAt: 500,
+      recordedBy: f.ownerUser,
+      reconciliationStatus: "unreconciled",
+      reconciledBy: null,
+      createdAt: 500,
+      updatedAt: 500,
+    });
+    await ctx.db.insert("issuedReportCards", {
+      schoolId: f.schoolId,
+      studentId,
+      sessionId,
+      termId,
+      classId,
+      issuedAt: 600,
+      issuedBy: f.ownerUser,
+      report: {
+        schoolName: "Headquarters",
+        schoolLogoUrl: null,
+        sessionName: "2026/2027",
+        termName: "First term",
+        classId,
+        className: "JSS 1",
+        generatedAt: 600,
+        assessmentConfig: { ca1Max: 10, ca2Max: 10, ca3Max: 10, examMax: 70 },
+        resultCalculationMode: "standalone",
+        student: {
+          _id: studentId,
+          name: "Student",
+          displayName: "Student",
+          firstName: null,
+          lastName: null,
+          admissionNumber: "HQ-001",
+          gender: null,
+          dateOfBirth: null,
+          guardianName: null,
+          guardianPhone: null,
+          address: null,
+          houseName: null,
+          nextTermBegins: null,
+          photoUrl: null,
+        },
+        summary: {
+          totalSubjects: 1,
+          recordedSubjects: 1,
+          pendingSubjects: 0,
+          averageScore: 75,
+          totalScore: 75,
+        },
+        results: [],
+        extras: [],
+        classTeacherName: null,
+        classTeacherComment: null,
+        headTeacherComment: null,
+      },
+    });
+    return { studentId };
+  });
 }
 
 describe("U1f versioned branding defaults", () => {
@@ -339,8 +547,77 @@ describe("U1f versioned branding defaults", () => {
   });
 });
 
-describe("U1g honest unavailable operational aggregates", () => {
-  it("returns null, never invented totals; distinguishes denied/inactive/module-disabled and scoped branches", async () => {
+describe("U1g bounded operational aggregates", () => {
+  it("returns genuine enrollment, attendance, finance, staffing and published-academic summaries without raw records", async () => {
+    const f = await fixture();
+    await seedOverviewData(f);
+    const args = {
+      groupId: f.groupId,
+      branchId: f.schoolId,
+      startDate: 0,
+      endDate: 1000,
+    };
+    const overview = await f.owner.query(
+      endpoints.getOperationalOverview,
+      args,
+    );
+    const branch = overview.branches[0];
+    expect(overview.limits).toEqual({
+      sourceRowsPerTable: 500,
+      termsPerBranch: 100,
+      branchesPerAggregate: 3,
+    });
+    expect(branch).toMatchObject({
+      access: "scoped",
+      drilldown: { auditPath: "/admin/audit" },
+    });
+    expect(
+      branch.metrics.find((item) => item.key === "enrollment"),
+    ).toMatchObject({ state: "available", value: 1 });
+    expect(
+      branch.metrics.find((item) => item.key === "attendance"),
+    ).toMatchObject({ state: "available", value: 80 });
+    expect(
+      branch.metrics.find((item) => item.key === "staffing"),
+    ).toMatchObject({ state: "available", value: 1 });
+    expect(
+      branch.metrics.find((item) => item.key === "academics"),
+    ).toMatchObject({ state: "available", value: 75 });
+    expect(branch.metrics.find((item) => item.key === "finance")).toMatchObject(
+      {
+        state: "available",
+        value: null,
+        details: expect.arrayContaining([
+          { label: "NGN assessed", value: 9000, unit: "minor units" },
+          { label: "NGN collected", value: 4000, unit: "minor units" },
+        ]),
+      },
+    );
+    expect(
+      overview.totals.find((item) => item.key === "enrollment")?.value,
+    ).toBe(1);
+    expect(JSON.stringify(overview)).not.toMatch(
+      /owner@example|student@example|HQ-001|invoiceNumber|payer/,
+    );
+    const outside = await f.owner.query(endpoints.getOperationalOverview, {
+      ...args,
+      startDate: 1000,
+      endDate: 2000,
+    });
+    expect(
+      outside.branches[0].metrics.find((item) => item.key === "attendance")
+        ?.state,
+    ).toBe("empty");
+    expect(
+      outside.branches[0].metrics.find((item) => item.key === "finance")?.state,
+    ).toBe("empty");
+    expect(
+      outside.branches[0].metrics.find((item) => item.key === "academics")
+        ?.state,
+    ).toBe("empty");
+  });
+
+  it("distinguishes denied, inactive and module-disabled branches without partial group totals", async () => {
     const f = await fixture();
     const args = { groupId: f.groupId, startDate: 0, endDate: 86400000 };
     const overview = await f.owner.query(
@@ -348,10 +625,9 @@ describe("U1g honest unavailable operational aggregates", () => {
       args,
     );
     expect(overview.totals).toHaveLength(5);
-    expect(overview.totals.every((metric) => metric.value === null)).toBe(true);
-    expect(
-      overview.branches.find((branch) => branch.schoolId === f.schoolId),
-    ).toMatchObject({ access: "scoped", drilldown: null });
+    expect(overview.totals.every((item) => item.state === "unavailable")).toBe(
+      true,
+    );
     expect(
       overview.branches.find((branch) => branch.schoolId === f.branchId),
     ).toMatchObject({ access: "denied", metrics: [], drilldown: null });
@@ -373,10 +649,40 @@ describe("U1g honest unavailable operational aggregates", () => {
     expect(
       next.branches
         .find((branch) => branch.schoolId === f.schoolId)
-        ?.metrics.find((metric) => metric.key === "finance")?.state,
+        ?.metrics.find((item) => item.key === "finance")?.state,
     ).toBe("module_disabled");
-    expect(JSON.stringify(next)).not.toMatch(
-      /owner@example|member@example|admissionNumber|bankAccount/,
+  });
+
+  it("withholds a source that exceeds its reviewed bound instead of returning a prefix count", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      for (let index = 0; index < 500; index += 1) {
+        await ctx.db.insert("users", {
+          schoolId: f.schoolId,
+          authId: `staff-${index}`,
+          name: `Staff ${index}`,
+          email: `staff-${index}@example.test`,
+          role: "teacher",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+      }
+    });
+    const overview = await f.owner.query(endpoints.getOperationalOverview, {
+      groupId: f.groupId,
+      branchId: f.schoolId,
+      startDate: 0,
+      endDate: 1000,
+    });
+    expect(
+      overview.branches[0].metrics.find((item) => item.key === "staffing"),
+    ).toMatchObject({
+      state: "unavailable",
+      value: null,
+      reason: expect.stringContaining("500-row"),
+    });
+    expect(overview.totals.find((item) => item.key === "staffing")?.state).toBe(
+      "unavailable",
     );
   });
 

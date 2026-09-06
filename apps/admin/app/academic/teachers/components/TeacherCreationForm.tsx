@@ -3,8 +3,11 @@
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameFinalStrict } from "@/human-name";
 import { Check,Copy,Send } from "lucide-react";
-import { useState } from "react";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useMemo, useState } from "react";
+import { useDirtyForm, type DraftConnection, type DraftPayload } from "@school/shared/drafts";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
 interface ProvisionResult {
   teacherId: string;
@@ -12,18 +15,48 @@ interface ProvisionResult {
   temporaryPassword: string;
 }
 
-interface TeacherCreationFormProps {
-  onProvision: (name: string, email: string, password: string) => Promise<ProvisionResult>;
-  isSubmitting: boolean;
+interface DraftClosure {
+  schoolId: Id<"schools">;
+  draftId: Id<"formDrafts">;
+  expectedRevision: number;
 }
 
-export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreationFormProps) {
+interface TeacherCreationFormProps {
+  onProvision: (name: string, email: string, password: string, draft?: DraftClosure) => Promise<ProvisionResult>;
+  isSubmitting: boolean;
+  draftContext?: {
+    schoolId: Id<"schools">;
+    accountId: string;
+    connection: DraftConnection;
+  };
+}
+
+export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }: TeacherCreationFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [draftInstanceKey, setDraftInstanceKey] = useState(0);
+  const draftData = useMemo<DraftPayload<"staff_onboarding">>(() => ({ name, email }), [email, name]);
+  const draftIsDirty = isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass"));
+  const draft = usePersistentFormDraft({
+    formKey: "staff_onboarding",
+    schoolId: draftContext?.schoolId,
+    accountId: draftContext?.accountId,
+    connection: draftContext?.connection ?? { connected: false, authenticated: false, accountId: null },
+    currentData: draftData,
+    isDirty: draftIsDirty,
+    instanceKey: draftInstanceKey,
+    onRestore: (payload) => {
+      setName(payload.name);
+      setEmail(payload.email);
+      setTemporaryPassword("");
+      setResult(null);
+      setSubmitError("");
+    },
+  });
 
   const resetForm = () => {
     setName("");
@@ -35,11 +68,14 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
   };
 
   useDirtyForm({
-    name: "Teacher onboarding (not saved as a draft)",
-    isDirty: isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass")),
-    discard: () => {
+    name: "Teacher onboarding",
+    isDirty: draftIsDirty,
+    save: draftContext ? draft.retrySave : undefined,
+    discard: async () => {
       if (isSubmitting) throw new Error("Wait for account creation to finish before leaving.");
+      if (draftContext) await draft.handleDiscardDraft();
       resetForm();
+      if (draftContext) setDraftInstanceKey((key) => key + 1);
     },
   });
 
@@ -48,13 +84,24 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
     if (isSubmitting || !name || !email || !temporaryPassword) return;
 
     setSubmitError("");
+    let closure: DraftClosure | null = null;
+    if (draftContext) {
+      try {
+        closure = await draft.prepareSubmission();
+      } catch {
+        setSubmitError("Save the recoverable draft before creating the account. Your current edits are still here.");
+        return;
+      }
+    }
     try {
-      const res = await onProvision(name, email, temporaryPassword);
+      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined);
       if (res) {
+        if (draftContext) draft.submissionSucceeded();
         setResult(res);
         setSubmitError("");
       }
     } catch {
+      if (draftContext) draft.submissionFailed();
       setSubmitError("We could not create that teacher account right now.");
     }
   };
@@ -99,7 +146,10 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         </div>
 
         <button 
-          onClick={resetForm}
+          onClick={() => {
+            resetForm();
+            setDraftInstanceKey((key) => key + 1);
+          }}
           className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
         >
           Provision Another
@@ -115,6 +165,20 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
         <a className="text-xs underline" href="/admin/settings/email-domains">Institutional address review after onboarding — no inbox is created here</a>
       </div>
+
+      {draftContext && (
+        <PersistentFormDraftControls
+          draft={draft}
+          formTitle="teacher onboarding"
+          isDirty={draftIsDirty}
+          excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
+          onDiscard={async () => {
+            await draft.handleDiscardDraft();
+            resetForm();
+            setDraftInstanceKey((key) => key + 1);
+          }}
+        />
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <FormField label="Name">

@@ -1,6 +1,6 @@
 # U1f — Group defaults: branding slice and remaining contract work
 
-**Status: PARTIAL / E0. The packet definition of done is NOT complete.** A real branding-only default/override API, UI and profile consumer are implemented and locally verified. Seven other requested domains have no new effective resolver in this delivery. These are remaining implementation work, not external-access blockers or completed inheritance. No migrations/backfills, production reads, providers, live Convex CLI, codegen, deployment, credentials, servers or commits were used. Existing U1a–e changes were preserved.
+**Status: SAFE LOCAL SCOPE IMPLEMENTED / E0.** Branding and grading retain their existing contracts; U2c owns admission format-only inheritance with branch-owned counters. This U1f follow-up adds typed, immutable defaults and append-only explicit branch choices for role templates, report cards, in-app notifications, academic policy and relative calendar templates, plus their real prospective consumers and one cohesive Admin section. No historical report/calendar/assignment row is rewritten. No migrations/backfills, production reads, providers, live Convex CLI, codegen, deployment, credentials or servers were used.
 
 ## Delivered schema and ownership
 
@@ -39,20 +39,24 @@ Admin `/admin/group` now mounts `GroupBranding.tsx` after selecting an owned gro
 
 Branch query denial has a local retry boundary so it does not hide the independent group-default editor. Remote group/branch revision changes retain edits and require explicit discard/load-latest; they cannot silently update the mutation's expected version. Other domains are listed as not adopted. Full U3a navigation/browser/account dirty guard is not integrated; branch/group selector changes can still discard local in-memory edits. No persistent draft claim.
 
+## 2026-09-05 resume reconciliation
+
+At the 2026-09-05 resume point, no generic group-settings schema or unrelated editor had been added: branding remained unchanged, U2a supplied grading and the other domains were still incomplete. The 2026-09-06 SAFE follow-up below supersedes that historical inventory with closed discriminated validators, immutable version rows and real prospective consumers; it does not introduce arbitrary JSON or duplicate admission counters.
+
 ## Per-domain adoption / outstanding work
 
 | Requested domain | Existing source / owner handoff | Actual status / required work |
 |---|---|---|
 | Branding | `schools.theme`, `schoolBranding`; U3d | **Partial implemented above.** U3d must integrate domain settings UI for non-proprietor branch managers, effective-origin display in its own editor, semantic tokens/public publication/print consumers and shared dirty guard. No general public group configuration API. |
-| Grading bands/colors | `gradingBands` + shared exam-recording validation; U2a/U2b | **Not implemented in group resolver.** Reuse six-band preset and actual validators; add immutable policy version references, allowed override/preview and prospective consumer adoption without changing issued results. Do not duplicate bands into an untyped group settings blob. |
-| Role templates | Existing `roleTemplates` scope/version and U1d immutable creation/evaluator | **Not implemented in group-default governance.** Reuse scoped immutable templates; explicit assignment is still required. A group default must never assign roles or expand delegation ceilings/membership by itself. |
-| Admission templates | `admissionNumbers` policies/counters; U2c | **Not implemented.** Owner must fix session-year/reset/version lifecycle and adopt prospective formatter resolution. Group template is not permission to share counters or rename historical admission numbers. |
-| Report-card templates | Existing report config/assets; U2b/U3c | **Not implemented.** Need approved immutable domain template/version and issued-report snapshot boundary; no raw document/config duplication. |
-| Notification preferences | Domain-specific notifications/audit alert recipients | **Not implemented.** Need approved typed preference/recipient resolver. No provider dispatch or audit-recipient broadening. |
-| Academic policies | Legacy `settings.ts` assessment settings | **Not implemented.** Need domain-approved policy validators, immutable version ownership and effective caller adoption. No second generic assessment-policy store. |
-| Calendar templates | Academic sessions/terms | **Not implemented.** Need typed relative template and separately validated branch date application; retain branch dates and enforce session/term ranges. No calendar writes or calendar-date acceptance tests were added. Overview UTC filter validation is NOT calendar-template validation. |
+| Grading bands/colors | `gradingBands` + shared exam-recording validation; U2a/U2b | **Implemented subsequently by U2a.** Explicit immutable group-policy references and branch inherit/override resolution reuse the six-band policy and preserve issued-report snapshots; no generic settings blob. See `results/U2a.md` and `results/U2b.md`. |
+| Role templates | Existing `roleTemplates` scope/version and U1d immutable creation/evaluator | **Implemented.** Group and branch choices reference immutable scope-checked template IDs; the permission workspace offers only the effective catalogue for future explicit assignment. Group template creation is separate and explicitly says no role is assigned. Existing assignments/evaluator/ceilings are untouched. |
+| Admission templates | `admissionNumbers` policies/counters; U2c | **Implemented by U2c and reverified here.** Format-only default plus explicit inherit/override/reset feeds the allocator formatter. Counters, claims, codes and sequences remain branch-owned; historical numbers are unchanged. |
+| Report-card templates | Existing term report settings and issued snapshots | **Implemented for approved safe fields.** Typed calculation mode and default days-open feed current report resolution after explicit adoption. Branch/class/term date values remain intact and certified `issuedReportCards.report` snapshots are unchanged. No asset/document-template sharing was inferred. |
+| Notification preferences | Portal in-app academic notifications | **Implemented for the real in-app consumer.** Typed switches cover report updates, teacher comments and upcoming events. No provider dispatch, recipient expansion, audit-alert change, email or SMS is implied. |
+| Academic policies | `schoolAssessmentSettings` exam input mode | **Implemented.** Effective mode is returned by the real settings API and consumed by report calculation. The legacy writer is blocked while inherit/override is active so it cannot bypass governance. Existing fixed assessment maxima remain domain-owned. |
+| Calendar templates | `academicSessions` / automatic term generation | **Implemented prospectively.** Typed non-overlapping relative term templates apply only to a newly created session when automatic terms are requested; fit is revalidated against that branch session. Existing session/term dates are never merged or rewritten. |
 
-These seven domain implementations, immutable historical consumers, delegated group-management authority, branch manager entry outside the proprietor directory, and U3a guards remain acceptance gaps. They are not being marked complete because the branding contract exists.
+The safe requested domain contracts now have real consumers. Remaining gates are external/runtime only for this bounded scope: authorized additive schema/function rollout; authenticated owner/delegated-branch denial and stale-save browser evidence at desktop/320px/keyboard; print/PDF confirmation that certified snapshots stay unchanged; and reviewed public publication if Sites synchronization is ever desired. Static Sites are not synchronized. Shared counters, bank data, provider dispatch, automatic role assignment, calendar merging and historical rewrites remain deliberately unavailable.
 
 ## Verification / self-review
 
@@ -72,4 +76,34 @@ Self-review removed raw group-config leakage from metadata APIs, retained canoni
 
 Created: shared `group-settings.ts`; foundation `brandingContract.ts`; academic `groupSettings.ts`; Admin `GroupBranding.tsx`; combined backend/DOM test files; this result. Modified: schema, Shared package subpath, groups registrations/metadata projection, schoolBranding profile consumer, Admin group page. U1g owns the overview helper/component in the same combined test bundle. Existing predecessor-owned schema/package/group changes remain intact.
 
-**E0:** no browser, authenticated development target or screenshots. U7 must capture synthetic/redacted owner default preview/confirmation, unconfigured, branch denied/override/reset, stale version and failed save; desktop and 320px, native keyboard and long names/colors. Confirm only an authorized schema/function rollout before runtime use. Token/print/public adoption and calendar/history acceptance remain separate work, not screenshots that can prove missing code.
+**E0:** no browser, authenticated development target or screenshots. U7 must capture synthetic/redacted owner and delegated branch default preview/confirmation, unconfigured, denied/override/reset, stale version and failed save; desktop and 320px, native keyboard and long names. Confirm only an authorized schema/function rollout before runtime use. Print/public publication remain separate evidence/decision gates; screenshots cannot substitute for the implemented calendar/history tests.
+
+## 2026-09-06 SAFE domain-default follow-up
+
+### Serialized schema/API
+
+- Added immutable discriminated `groupSettingVersions` and append-only `branchSettingOverrides`, indexed by group/domain/version and group/branch/domain/revision. Values are closed validators, not JSON: role template IDs, report calculation/default-opened fields, three in-app notification switches, exam input mode, and 1–6 relative calendar terms.
+- `groups.get/saveGroupDomainSetting` and `get/saveBranchDomainSetting` expose exact versions, revisions, origin and mode. Group saves require the canonical proprietor and slug. Branch reads/writes require an active exact link, explicit canonical membership and the domain capability; stale pins and disabled overrides fail transactionally. Reset is a new explicit `inherit` revision.
+- `groups.createGroupRoleTemplateVersion` creates an immutable group-scoped template from the closed capability catalog and does not create a membership assignment. Role IDs are revalidated against exact group/branch scope on every setting write.
+- Admission remains on U2c's dedicated typed format contract. The follow-up adds override/reset/stale/unrelated-branch coverage; it does not move admission data into the new tables.
+
+### Real consumers and history boundary
+
+- RBAC permission workspace resolves the effective future template catalogue; existing `membershipRoleAssignments`, evaluator behavior and delegation ceilings remain unchanged.
+- `settings.getSchoolAssessmentSettings` resolves effective exam mode and publishes origin/version/revision. `reportCards` uses that resolver. The legacy local writer refuses to bypass an active inherit/override choice.
+- Current report resolution consumes the effective report template. Class/term dates and explicit days-opened rows retain precedence; certified report snapshots are still returned from `issuedReportCards` and setting writes never target them.
+- Portal in-app notification construction consumes the effective typed switches. Provider delivery and audit-alert recipients are untouched.
+- Automatic term generation consumes a whole effective relative calendar template only for a new session, validating that every generated date fits. It never merges calendars or patches existing sessions/terms.
+- Admin `/admin/group` now has one domain selector and consistent default/branch review UI with source, version/revision, inherit, explicit override and reset. `/admin/settings/group-defaults` provides the same branch-choice section to explicitly authorized non-proprietor managers without exposing proprietor default writes. Admission links to its real numbering editor and explicitly states counters remain branch-owned. Branding continues in the adjacent established editor and does not imply Admin-to-Sites synchronization.
+
+### Exact local verification
+
+- Convex focused integration: `groupDomainDefaults`, `admissionNumbers`, `groupDefaultsOverview`, `reportCards`, `rbacAudit` — **5 files / 34 PASS**. The new suite is **7 PASS**, including all five new domains across inherit/override/reset/stale/disabled/unauthorized/unrelated-branch cases, role non-assignment, real consumers, immutable issued report, unchanged existing term rows and invalid/overlapping calendar validation. Admission suite remains **11 PASS** with added override/reset/stale/unrelated coverage; RBAC compatibility remains **8 PASS** after enforcing the effective future-assignment catalogue.
+- Admin DOM: `group-defaults-overview.test.tsx` — **1 file / 6 PASS**, including the cohesive typed section, review/slug confirmation, origin/reset labels and branch-owned admission counter boundary.
+- Typechecks: Convex, Shared and Admin — **PASS**.
+- Focused ESLint for all touched Convex/Admin/Shared source and tests — **PASS**. `git diff --check` — **PASS** (line-ending notices only).
+- Informational theme audit ran. New direct tenant colors were not introduced; reported hex values are pre-existing factory branding/test values, existing tenant theme values, product neutrals or semantic warning ink.
+
+### Exact remaining gates
+
+**E0 only for this U1f safe scope:** no live Convex/schema rollout, migration/backfill, authenticated browser, 320px/keyboard, physical print/PDF or production evidence was performed. A future public Static Sites publication contract remains a separate reviewed feature. Shared group counters, bank/account sharing, provider notification dispatch, automatic role assignment, calendar merging and historical report rewriting are explicit exclusions, not incomplete U1f implementation.

@@ -15,6 +15,7 @@ export interface PortalStudentOption {
   relationship: string | null;
   photoUrl: string | null;
   isActive: boolean;
+  enrollmentState: "active" | "historical";
 }
 
 export interface PortalHistoryItem {

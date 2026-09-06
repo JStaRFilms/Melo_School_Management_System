@@ -1,10 +1,22 @@
 import type { SchoolThemeInputs } from "./theme/themeDerivation";
 
-/** Branding-only effective contract. Other domains must publish their own typed adapters. */
-export interface EffectiveGroupBranding {
-  theme: SchoolThemeInputs;
-  source: "factory" | "branch_legacy" | "group" | "branch_override";
+export type GroupSettingOrigin =
+  | "factory"
+  | "branch_legacy"
+  | "group"
+  | "branch_override";
+export type GroupSettingMode = "legacy" | "inherit" | "override";
+
+/** Shared effective metadata used by typed domain adapters. */
+export interface EffectiveGroupSetting<T> {
+  value: T;
+  source: GroupSettingOrigin;
   groupVersion: number;
   revision: number;
-  mode: "legacy" | "inherit" | "override";
+  mode: GroupSettingMode;
+}
+
+export interface EffectiveGroupBranding
+  extends Omit<EffectiveGroupSetting<SchoolThemeInputs>, "value"> {
+  theme: SchoolThemeInputs;
 }

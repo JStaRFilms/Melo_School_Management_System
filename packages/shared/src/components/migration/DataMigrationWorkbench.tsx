@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import {
   Users,
   FileSpreadsheet,
@@ -15,6 +15,11 @@ import { RosterReviewTab, StagedStudentRow } from "./Tabs/RosterReviewTab";
 import { HouseholdReviewTab } from "./Tabs/HouseholdReviewTab";
 import { ResultsReviewTab } from "./Tabs/ResultsReviewTab";
 import { ClashResolutionModal } from "./Modals/ClashResolutionModal";
+import {
+  ImportRowReviewDialog,
+  type ImportReviewOptions,
+  type ImportRowReviewInput,
+} from "./Modals/ImportRowReviewDialog";
 import { ColumnMappingDialog } from "./Modals/ColumnMappingDialog";
 import { StagingActionBar } from "./StagingActionBar";
 import { appToast, getErrorMessage } from "../../toast";
@@ -34,12 +39,15 @@ export function DataMigrationWorkbench({
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"roster" | "household" | "results">("roster");
   const [isUploading, setIsUploading] = useState(false);
-  const [isGeneratingAdm, setIsGeneratingAdm] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [commitProgress, setCommitProgress] = useState<{ processed: number; total: number } | null>(null);
 
   // Modal States
   const [clashModalRecord, setClashModalRecord] = useState<StagedStudentRow | null>(null);
+  const [reviewRecord, setReviewRecord] = useState<StagedStudentRow | null>(null);
+  const [isReviewing, setIsReviewing] = useState(false);
   const [isColumnMappingOpen, setIsColumnMappingOpen] = useState(false);
   const [isResolvingClash, setIsResolvingClash] = useState(false);
 
@@ -60,16 +68,22 @@ export function DataMigrationWorkbench({
         validRecords: number;
         warningRecords: number;
         errorRecords: number;
+        reviewedAt?: number;
       }
     | null
     | undefined;
 
-  const stagedRecords = useQuery(
-    "functions/academic/migrationWorkspace:getWorkspaceRecords" as never,
-    activeWorkspaceId
-      ? ({ schoolId, workspaceId: activeWorkspaceId, limit: 1000 } as never)
-      : ("skip" as never)
-  ) as StagedStudentRow[] | undefined;
+  const stagedPage = usePaginatedQuery(
+    "functions/academic/migrationWorkspace:getWorkspaceRecordsPage" as never,
+    activeWorkspaceId ? ({ schoolId, workspaceId: activeWorkspaceId } as never) : ("skip" as never),
+    { initialNumItems: 200 },
+  ) as { results: StagedStudentRow[]; status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted"; loadMore: (count: number) => void };
+  const stagedRecords = stagedPage.results;
+
+  const reviewOptions = useQuery(
+    "functions/academic/migrationWorkspace:getWorkspaceReviewOptions" as never,
+    activeWorkspaceId ? ({ schoolId, workspaceId: activeWorkspaceId } as never) : ("skip" as never)
+  ) as ImportReviewOptions | undefined;
 
   const featureSignals = useQuery(
     "functions/academic/migrationWorkspace:getWorkspaceFeatureSignals" as never,
@@ -81,21 +95,17 @@ export function DataMigrationWorkbench({
   const stageRecordsBatch = useMutation("functions/academic/migrationIngest:stageRecordsBatch" as never);
   const patchStagedRecord = useMutation("functions/academic/migrationAutosave:patchStagedRecord" as never);
   const resolveRecordClash = useMutation("functions/academic/migrationAutosave:resolveRecordClash" as never);
-  const bulkResolveAdmissionNumbers = useMutation(
-    "functions/academic/migrationAutosave:bulkResolveAdmissionNumbers" as never
-  );
+  const reviewStagedRecord = useMutation("functions/academic/migrationAutosave:reviewStagedRecord" as never);
+  const approveImportWorkspace = useMutation("functions/academic/migrationMerge:approveImportWorkspace" as never);
+  const reopenIncompleteImportReview = useMutation("functions/academic/migrationMerge:reopenIncompleteImportReview" as never);
   const commitImportWorkspace = useMutation("functions/academic/migrationMerge:commitImportWorkspace" as never);
 
   // Handlers
   const handleStartIngest = async ({
     workspaceName,
-    admissionPrefix,
-    nextSequence,
     parseResult,
   }: {
     workspaceName: string;
-    admissionPrefix: string;
-    nextSequence: number;
     parseResult: SpreadsheetParseResult;
   }) => {
     setIsUploading(true);
@@ -104,8 +114,6 @@ export function DataMigrationWorkbench({
         schoolId,
         name: workspaceName,
         mode,
-        admissionNumberPrefix: admissionPrefix,
-        nextAdmissionSequence: nextSequence,
       } as never)) as string;
 
       // Retain the created workspace if a later staging batch fails.
@@ -135,7 +143,7 @@ export function DataMigrationWorkbench({
     }
   };
 
-  const handlePatchField = async (recordId: string, patch: Record<string, any>) => {
+  const handlePatchField = async (recordId: string, patch: Record<string, unknown>) => {
     try {
       await patchStagedRecord({
         schoolId,
@@ -149,9 +157,14 @@ export function DataMigrationWorkbench({
   };
 
   const handleResolveClash = async (
-    action: "create_new" | "merge_existing" | "link_as_sibling" | "ignore"
+    action: "create_new" | "merge_existing" | "ignore"
   ) => {
     if (!clashModalRecord) return;
+    if (action === "create_new") {
+      setReviewRecord(clashModalRecord);
+      setClashModalRecord(null);
+      return;
+    }
     setIsResolvingClash(true);
     try {
       await resolveRecordClash({
@@ -168,19 +181,55 @@ export function DataMigrationWorkbench({
     }
   };
 
-  const handleAutoGenerateAdmission = async () => {
-    if (!activeWorkspaceId) return;
-    setIsGeneratingAdm(true);
+  const handleReviewRow = async (input: ImportRowReviewInput) => {
+    if (!reviewRecord) return;
+    setIsReviewing(true);
     try {
-      const res = (await bulkResolveAdmissionNumbers({
+      await reviewStagedRecord({
         schoolId,
-        workspaceId: activeWorkspaceId,
-      } as never)) as { assignedCount: number };
-      appToast.success(`Assigned admission numbers to ${res.assignedCount} students`);
-    } catch (err) {
-      appToast.error(getErrorMessage(err, "Failed to generate admission numbers"));
+        recordId: reviewRecord._id,
+        expectedRowRevision: reviewRecord.rowRevision ?? 1,
+        ...input,
+      } as never);
+      setReviewRecord(null);
+      appToast.success(`Row #${reviewRecord.rowNumber} reviewed`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Row review failed"));
     } finally {
-      setIsGeneratingAdm(false);
+      setIsReviewing(false);
+    }
+  };
+
+  const handleApprovePlan = async () => {
+    if (!activeWorkspaceId) return;
+    setIsApproving(true);
+    try {
+      let done = false;
+      while (!done) {
+        const result = await approveImportWorkspace({ schoolId, workspaceId: activeWorkspaceId } as never) as {
+          done: boolean; processedRecords: number; totalRecords: number;
+        };
+        setCommitProgress({ processed: result.processedRecords, total: result.totalRecords });
+        done = result.done;
+      }
+      appToast.success("Reviewed import plan approved. Commit will revalidate every row.");
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Plan approval failed"));
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleReopenReview = async () => {
+    if (!activeWorkspaceId) return;
+    setIsReopening(true);
+    try {
+      const result = await reopenIncompleteImportReview({ schoolId, workspaceId: activeWorkspaceId } as never) as { firstIncompleteRow: number };
+      appToast.success(`Reopened incomplete review at row #${result.firstIncompleteRow}. Committed receipts remain immutable.`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Could not reopen incomplete review"));
+    } finally {
+      setIsReopening(false);
     }
   };
 
@@ -197,7 +246,6 @@ export function DataMigrationWorkbench({
         } as never)) as {
           done?: boolean;
           success?: boolean;
-          mergedStudents?: number;
           processedRecords?: number;
           totalRecords?: number;
         };
@@ -205,10 +253,10 @@ export function DataMigrationWorkbench({
         setCommitProgress({ processed: res.processedRecords ?? 0, total: res.totalRecords ?? 0 });
         if (res.done) {
           isDone = true;
-          totalMerged = res.mergedStudents ?? res.processedRecords ?? 0;
+          totalMerged = res.processedRecords ?? 0;
         }
       }
-      appToast.success(`Successfully merged ${totalMerged} records to live school database!`);
+      appToast.success(`Committed ${totalMerged} reviewed records with audited batch receipts.`);
       onSuccess?.();
     } catch (err) {
       appToast.error(getErrorMessage(err, "Batch failed. Earlier successful batches remain saved; retry resumes incomplete work."));
@@ -235,7 +283,7 @@ export function DataMigrationWorkbench({
               <button
                 type="button"
                 onClick={() => { setActiveWorkspaceId(null); setCommitProgress(null); }}
-                disabled={isMerging || isUploading}
+                disabled={isMerging || isUploading || isApproving || isReopening}
                 className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 title="Back to workspace list"
               >
@@ -335,6 +383,39 @@ export function DataMigrationWorkbench({
           </div>
         ) : (
           <div className="space-y-6">
+            {(stagedRecords ?? []).some((record) => record.reviewStatus === "approved") && (
+              <section aria-labelledby="approved-plan-heading" className="rounded-2xl border border-slate-200 bg-white p-4">
+                <h2 id="approved-plan-heading" className="text-sm font-bold text-slate-900">Approved row decisions and placement</h2>
+                <ul className="mt-3 grid gap-2 text-xs text-slate-700 md:grid-cols-2">
+                  {(stagedRecords ?? []).filter((record) => record.reviewStatus === "approved").slice(0, 50).map((record) => {
+                    const selectedClass = reviewOptions?.classes.find((item) => item.id === record.selectedClassId)?.name;
+                    const selectedSubject = reviewOptions?.subjects.find((item) => item.id === record.selectedSubjectId)?.name;
+                    const selectedStudent = reviewOptions?.students.find((item) => item.id === record.selectedStudentId)?.name;
+                    return (
+                      <li key={record._id} className="rounded-lg bg-slate-50 px-3 py-2">
+                        <span className="font-bold">Row #{record.rowNumber}: {record.resolutionAction?.replace(/_/g, " ")}</span>
+                        {selectedStudent && <span> • {selectedStudent}</span>}
+                        {selectedClass && <span> • Class {selectedClass}</span>}
+                        {selectedSubject && <span> • {selectedSubject}</span>}
+                        {record.proposedAdmissionNumber && <span> • ID {record.proposedAdmissionNumber}</span>}
+                        {record.commitReceiptId && <span> • Receipt {record.commitReceiptId}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {(stagedRecords ?? []).filter((record) => record.reviewStatus === "approved").length > 50 && (
+                  <p className="mt-2 text-xs text-slate-500">Showing the first 50 approved decisions in this loaded review window.</p>
+                )}
+              </section>
+            )}
+            {stagedPage.status !== "Exhausted" && (
+              <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <span>Load every row to review and approve the complete workspace. Commit remains gated while rows are outside this window.</span>
+                <button type="button" disabled={stagedPage.status !== "CanLoadMore"} onClick={() => stagedPage.loadMore(200)} className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-bold disabled:opacity-50">
+                  {stagedPage.status === "LoadingMore" || stagedPage.status === "LoadingFirstPage" ? "Loading…" : "Load 200 more rows"}
+                </button>
+              </div>
+            )}
             {/* Tabs Selector */}
             <div className="flex border-b border-slate-200 gap-6">
               <button
@@ -386,6 +467,7 @@ export function DataMigrationWorkbench({
                 records={(stagedRecords ?? []) as StagedStudentRow[]}
                 onPatchField={handlePatchField}
                 onOpenClashModal={(rec) => setClashModalRecord(rec)}
+                onReview={setReviewRecord}
               />
             )}
 
@@ -395,8 +477,9 @@ export function DataMigrationWorkbench({
 
             {activeTab === "results" && (
               <ResultsReviewTab
-                records={(stagedRecords ?? []) as any}
+                records={stagedRecords ?? []}
                 onPatchField={handlePatchField}
+                onReview={setReviewRecord}
               />
             )}
           </div>
@@ -406,14 +489,18 @@ export function DataMigrationWorkbench({
       {/* Sticky Bottom Bar */}
       {activeWorkspaceId && summary && summary.status !== "merged" && (
         <StagingActionBar
+          status={summary.status}
           totalRecords={summary.totalRecords}
+          reviewedRecords={(stagedRecords ?? []).filter((record) => record.reviewStatus === "approved").length}
           validRecords={summary.validRecords}
           warningRecords={summary.warningRecords}
           errorRecords={summary.errorRecords}
           isMerging={isMerging}
-          isGeneratingAdm={isGeneratingAdm}
-          onAutoGenerateAdmission={handleAutoGenerateAdmission}
+          isApproving={isApproving}
+          isReopening={isReopening}
+          onApprovePlan={handleApprovePlan}
           onCommitMerge={handleCommitMerge}
+          onReopenReview={handleReopenReview}
         />
       )}
 
@@ -424,6 +511,16 @@ export function DataMigrationWorkbench({
           onClose={() => setClashModalRecord(null)}
           onResolve={handleResolveClash}
           isResolving={isResolvingClash}
+        />
+      )}
+
+      {reviewRecord && reviewOptions && (
+        <ImportRowReviewDialog
+          record={reviewRecord}
+          options={reviewOptions}
+          saving={isReviewing}
+          onClose={() => setReviewRecord(null)}
+          onSave={handleReviewRow}
         />
       )}
 

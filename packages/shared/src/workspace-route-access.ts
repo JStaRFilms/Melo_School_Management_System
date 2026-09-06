@@ -40,6 +40,61 @@ function within(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+const BRANCH_SCOPED_ROUTES = {
+  admin: [
+    "/admin/audit",
+    "/admin/permissions",
+    "/admin/assets",
+    "/admin/settings/admission-numbering",
+    "/admin/settings/email-domains",
+    "/assessments/setup/grading-bands",
+  ],
+  teacher: [
+    "/assessments/exams/entry",
+    "/enrollment/subjects",
+  ],
+  portal: [],
+} as const satisfies Record<WorkspaceKey, readonly string[]>;
+
+/** Routes in this allowlist pass the selected school to every mounted data operation. */
+export function isWorkspaceBranchScopedRoute(workspace: WorkspaceKey, path: string) {
+  return BRANCH_SCOPED_ROUTES[workspace].some((prefix) => within(path, prefix));
+}
+
+function getCapabilityRule(workspace: WorkspaceKey, path: string) {
+  return WORKSPACE_CAPABILITY_MATRIX.filter(row => row.workspace === workspace && within(path, row.path))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+}
+
+function lacksRuleCapability(workspace: WorkspaceKey, path: string, access: Extract<WorkspaceAccessSummary, { state: "ready" }>) {
+  const rule = getCapabilityRule(workspace, path);
+  if (!rule) return true;
+  const caps = new Set(access.effectiveCapabilities.map(normalizeCapability));
+  return !rule.required.every(cap => caps.has(normalizeCapability(cap))) ||
+    Boolean(rule.requiredAny && !rule.requiredAny.some(cap => caps.has(normalizeCapability(cap))));
+}
+
+/** Selected-school routes require canonical membership and exact capability evidence. */
+export function getBranchScopedWorkspaceAccess(
+  workspace: WorkspaceKey,
+  path: string,
+  access: WorkspaceAccessSummary | undefined,
+): WorkspaceRouteDecision {
+  if (!access) return { state: "loading", message: "Checking workspace access…" };
+  if (access.state === "unauthenticated") return { state: access.state, message: "Sign in to open this workspace." };
+  if (access.state !== "ready") return access;
+  if (access.branch.status !== "active") return { state: "suspended", message: "This school workspace is suspended." };
+  if (workspace === "portal" || access.compatibility.mode === "platform" || !access.membership) {
+    return { state: "forbidden", message: "Explicit active branch membership is required for this scoped route." };
+  }
+  if (!isWorkspaceBranchScopedRoute(workspace, path)) {
+    return { state: "reconciliation_required", message: LEGACY_BRANCH_SWITCH_REASON };
+  }
+  return lacksRuleCapability(workspace, path, access)
+    ? { state: "forbidden", message: "Your current permissions do not allow this operation. Contact your school administrator." }
+    : { state: "allowed" };
+}
+
 /** The same closed contract gates both sidebar entries and direct URLs before child mount. */
 export function getWorkspaceCapabilityDenial(workspace: WorkspaceKey, path: string, access?: WorkspaceAccessSummary): WorkspaceRouteDecision | null {
   if (workspace === "portal") return null;
@@ -48,12 +103,11 @@ export function getWorkspaceCapabilityDenial(workspace: WorkspaceKey, path: stri
   const untouched = access.compatibility.permissionManaged === false;
   // Historical shell compatibility applies only with positive server evidence of no RBAC cutover.
   if (untouched) return null;
-  const rule = WORKSPACE_CAPABILITY_MATRIX.filter(row => row.workspace === workspace && within(path, row.path)).sort((a, b) => b.path.length - a.path.length)[0];
+  const rule = getCapabilityRule(workspace, path);
   if (!rule) return untouched ? null : { state: "forbidden", message: "This legacy route has no reviewed capability contract for managed accounts." };
-  const caps = new Set(access.effectiveCapabilities.map(normalizeCapability));
-  const hasAllRequired = rule.required.every(cap => caps.has(normalizeCapability(cap)));
-  const hasRequiredAlternative = !rule.requiredAny || rule.requiredAny.some(cap => caps.has(normalizeCapability(cap)));
-  return hasAllRequired && hasRequiredAlternative ? null : { state: "forbidden", message: "Your current permissions do not allow this operation. Contact your school administrator." };
+  return lacksRuleCapability(workspace, path, access)
+    ? { state: "forbidden", message: "Your current permissions do not allow this operation. Contact your school administrator." }
+    : null;
 }
 
 /** Only existing, verified module gates; not the illustrative platform route catalog. */

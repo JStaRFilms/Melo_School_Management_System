@@ -1,18 +1,373 @@
-import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
-import { resolveSchoolAdminActorId } from "./migrationAuth";
-import type { Doc, Id } from "../../_generated/dataModel";
+import type { Id } from "../../_generated/dataModel";
+import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
+import { validateReviewedRecord } from "./migrationAutosave";
+import {
+  allocateNextAdmissionNumberHelper,
+  commitManualAdmissionNumberHelper,
+  proposeAdmissionNumberAtSequenceHelper,
+  proposeAdmissionNumberHelper,
+} from "./admissionNumbers";
+import { recordAuditEventHelper } from "./audit";
+import {
+  deriveAssessmentFields,
+  validateScoreRanges,
+  type GradingBand,
+} from "@school/shared/exam-recording";
+
+function validateBatchSize(value: number | undefined): number {
+  const batchSize = value ?? 25;
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 50) {
+    throw new ConvexError("Batch size must be an integer between 1 and 50");
+  }
+  return batchSize;
+}
 
 /**
- * Executes atomic or batched migration merge from stagedImportRecords into live production tables.
- * Strict Invariants:
- * 1. Blocks if any unresolved error records exist in workspace (checked across full workspace).
- * 2. Blocks if any unresolved clash warnings exist in workspace.
- * 3. Never falls back to arbitrary student assignment for grade records.
- * 4. Provenance fields (createdBy, updatedBy, enteredBy) use schema-valid Id<"users">.
- * 5. Bounded, resumable batch processing within Convex transaction limits.
- * 6. Idempotent on retries.
+ * Freezes reviewed row decisions into a versioned plan in bounded batches.
+ * Generated numbers are exact read-only H4 proposals; no counter is consumed here.
+ */
+export const approveImportWorkspace = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = validateBatchSize(args.batchSize);
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (workspace.status === "ready") {
+      return {
+        success: true,
+        done: true,
+        processedRecords: workspace.totalRecords,
+        totalRecords: workspace.totalRecords,
+        reviewPlanVersion: workspace.reviewPlanVersion ?? 0,
+      };
+    }
+    if (workspace.status !== "reviewing" && workspace.status !== "analyzing") {
+      throw new ConvexError(
+        `Workspace cannot be approved from ${workspace.status} status`,
+      );
+    }
+    const firstPending = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_reviewStatus", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("reviewStatus", "pending"),
+      )
+      .first();
+    if (firstPending)
+      throw new ConvexError(
+        `Row #${firstPending.rowNumber} still requires explicit review`,
+      );
+
+    const starting = workspace.status === "reviewing";
+    const planVersion = starting
+      ? (workspace.reviewPlanVersion ?? 0) + 1
+      : workspace.reviewPlanVersion;
+    if (planVersion === undefined)
+      throw new ConvexError("Reviewed plan version is unavailable");
+    const page = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
+      .paginate({
+        numItems: batchSize,
+        cursor: starting ? null : (workspace.planningCursor ?? null),
+      });
+
+    const legacyPlanningCounter =
+      workspace.planningCounterKey !== undefined &&
+      workspace.planningPolicyVersion !== undefined &&
+      workspace.planningFormatVersion !== undefined &&
+      workspace.planningCounterVersion !== undefined &&
+      workspace.planningBaseSequence !== undefined &&
+      workspace.planningNextSequence !== undefined
+        ? {
+            key: workspace.planningCounterKey,
+            policyVersion: workspace.planningPolicyVersion,
+            formatVersion: workspace.planningFormatVersion,
+            counterVersion: workspace.planningCounterVersion,
+            baseSequence: workspace.planningBaseSequence,
+            nextSequence: workspace.planningNextSequence,
+          }
+        : undefined;
+    const planningCounters = starting
+      ? []
+      : [...(workspace.planningCounters ?? (legacyPlanningCounter ? [legacyPlanningCounter] : []))];
+    const proposals: Array<{ rowNumber: number; admissionNumber: string }> = [];
+
+    for (const record of page.page) {
+      if (record.isCommitted) {
+        await ctx.db.patch(record._id, {
+          approvedPlanVersion: planVersion,
+          updatedAt: Date.now(),
+        });
+        continue;
+      }
+      await validateReviewedRecord(ctx, args.schoolId, record);
+      let proposedAdmissionNumber: string | undefined;
+      const usesOfficialCounter =
+        record.entityType === "student" &&
+        record.resolutionAction === "create_new" &&
+        (record.admissionNumberMode === "official_generated" ||
+          record.advanceCounterTo !== undefined);
+      if (usesOfficialCounter) {
+        if (!record.selectedClassId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} requires an existing class`,
+          );
+        const selectedClass = await ctx.db.get(record.selectedClassId);
+        if (!selectedClass || selectedClass.schoolId !== args.schoolId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} class is outside this school`,
+          );
+        const current = await proposeAdmissionNumberHelper(ctx, {
+          schoolId: args.schoolId,
+          level: selectedClass.level,
+        });
+        let counterState = planningCounters.find(
+          (item) => item.key === current.counterKey,
+        );
+        if (!counterState) {
+          counterState = {
+            key: current.counterKey,
+            policyVersion: current.policyVersion,
+            formatVersion: current.formatVersion,
+            counterVersion: current.counterVersion,
+            baseSequence: current.sequenceNumber,
+            nextSequence: current.sequenceNumber,
+          };
+          planningCounters.push(counterState);
+        } else if (
+          current.sequenceNumber !== counterState.baseSequence ||
+          current.policyVersion !== counterState.policyVersion ||
+          current.formatVersion !== counterState.formatVersion ||
+          current.counterVersion !== counterState.counterVersion
+        ) {
+          throw new ConvexError(
+            `Counter ${current.counterKey} changed during review; restart approval`,
+          );
+        }
+        if (
+          record.expectedNumberPolicyVersion !== counterState.policyVersion ||
+          record.expectedNumberFormatVersion !== counterState.formatVersion ||
+          record.expectedNumberCounterKey !== counterState.key ||
+          record.expectedNumberCounterVersion !== counterState.counterVersion
+        ) {
+          throw new ConvexError(
+            `Row #${record.rowNumber} has a stale numbering review`,
+          );
+        }
+        if (record.admissionNumberMode === "official_generated") {
+          const proposalNumber = await proposeAdmissionNumberAtSequenceHelper(
+            ctx,
+            {
+              schoolId: args.schoolId,
+              level: selectedClass.level,
+              sequence: counterState.nextSequence,
+              expectedVersion: counterState.policyVersion,
+              expectedFormatVersion: counterState.formatVersion,
+              expectedCounterKey: counterState.key,
+              expectedCounterVersion: counterState.counterVersion,
+            },
+          );
+          proposedAdmissionNumber = proposalNumber;
+          const [existing, claim] = await Promise.all([
+            ctx.db
+              .query("students")
+              .withIndex("by_school_and_admission_number", (q) =>
+                q
+                  .eq("schoolId", args.schoolId)
+                  .eq("admissionNumber", proposalNumber),
+              )
+              .first(),
+            ctx.db
+              .query("admissionNumberClaims")
+              .withIndex("by_school_number", (q) =>
+                q.eq("schoolId", args.schoolId).eq("number", proposalNumber),
+              )
+              .unique(),
+          ]);
+          if (existing || claim)
+            throw new ConvexError(
+              `Official proposal for row #${record.rowNumber} is already assigned or claimed`,
+            );
+          counterState.nextSequence += 1;
+          proposals.push({
+            rowNumber: record.rowNumber,
+            admissionNumber: proposedAdmissionNumber,
+          });
+        } else if (record.advanceCounterTo !== undefined) {
+          if (record.advanceCounterTo <= counterState.nextSequence) {
+            throw new ConvexError(
+              `Counter choice on row #${record.rowNumber} does not exceed the prior reviewed sequence`,
+            );
+          }
+          counterState.nextSequence = record.advanceCounterTo;
+        }
+      }
+      await ctx.db.patch(record._id, {
+        approvedPlanVersion: planVersion,
+        proposedAdmissionNumber,
+        updatedAt: Date.now(),
+      });
+    }
+
+    const processedRecords =
+      (starting ? 0 : (workspace.planningProcessedRecords ?? 0)) +
+      page.page.length;
+    const now = Date.now();
+    const singleCounter = planningCounters.length === 1 ? planningCounters[0] : undefined;
+    if (!page.isDone) {
+      await ctx.db.patch(workspace._id, {
+        status: "analyzing",
+        reviewPlanVersion: planVersion,
+        planningCursor: page.continueCursor,
+        planningProcessedRecords: processedRecords,
+        planningBaseSequence: singleCounter?.baseSequence,
+        planningNextSequence: singleCounter?.nextSequence,
+        planningPolicyVersion: singleCounter?.policyVersion,
+        planningFormatVersion: singleCounter?.formatVersion,
+        planningCounterKey: singleCounter?.key,
+        planningCounterVersion: singleCounter?.counterVersion,
+        planningCounters,
+        reviewedAt: undefined,
+        reviewedBy: undefined,
+        updatedAt: now,
+      });
+      return {
+        success: true,
+        done: false,
+        processedRecords,
+        totalRecords: workspace.totalRecords,
+        reviewPlanVersion: planVersion,
+        proposals,
+      };
+    }
+
+    const approvalReceipt = await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: auth.isSuperAdmin ? "platform_admin" : "user",
+      actorPersonId: auth.actorPersonId,
+      actorMembershipId: auth.actorMembershipId,
+      actorEmailSnapshot: auth.email,
+      module: "migration",
+      action: "reviewed_import.plan_approved",
+      targetType: "importWorkspaces",
+      targetId: String(workspace._id),
+      outcome: "success",
+      safeSummary: `Approved reviewed import plan version ${planVersion} for ${workspace.totalRecords} rows; missing identifiers remain unallocated proposals.`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier2_warn",
+    });
+    await ctx.db.patch(workspace._id, {
+      status: "ready",
+      reviewPlanVersion: planVersion,
+      planningCursor: undefined,
+      planningProcessedRecords: workspace.totalRecords,
+      planningBaseSequence: singleCounter?.baseSequence,
+      planningNextSequence: singleCounter?.nextSequence,
+      planningPolicyVersion: singleCounter?.policyVersion,
+      planningFormatVersion: singleCounter?.formatVersion,
+      planningCounterKey: singleCounter?.key,
+      planningCounterVersion: singleCounter?.counterVersion,
+      planningCounters,
+      reviewedAt: now,
+      reviewedBy: auth.callerId,
+      reviewApprovalReceiptId: approvalReceipt.eventId,
+      commitCursor: undefined,
+      processedRecords: 0,
+      updatedAt: now,
+    });
+    return {
+      success: true,
+      done: true,
+      processedRecords: workspace.totalRecords,
+      totalRecords: workspace.totalRecords,
+      reviewPlanVersion: planVersion,
+      approvalReceiptId: approvalReceipt.eventId,
+      proposals,
+    };
+  },
+});
+
+/** Reopens only incomplete rows after a partial commit needs reviewed reconciliation. */
+export const reopenIncompleteImportReview = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+  },
+  handler: async (ctx, args) => {
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (workspace.status !== "committing") {
+      throw new ConvexError(
+        "Only a partially committed workspace can be reopened for reconciliation",
+      );
+    }
+    const incomplete = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_isCommitted", (q) =>
+        q.eq("workspaceId", workspace._id).eq("isCommitted", false),
+      )
+      .first();
+    if (!incomplete)
+      throw new ConvexError("No incomplete rows require reconciliation");
+    const receipt = await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: auth.isSuperAdmin ? "platform_admin" : "user",
+      actorPersonId: auth.actorPersonId,
+      actorMembershipId: auth.actorMembershipId,
+      actorEmailSnapshot: auth.email,
+      module: "migration",
+      action: "reviewed_import.reopen_incomplete",
+      targetType: "importWorkspaces",
+      targetId: String(workspace._id),
+      outcome: "success",
+      safeSummary: `Reopened reviewed import after ${workspace.processedRecords ?? 0} server-confirmed row outcomes; committed rows remain immutable.`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier2_warn",
+    });
+    await ctx.db.patch(workspace._id, {
+      status: "reviewing",
+      reviewPlanVersion: (workspace.reviewPlanVersion ?? 0) + 1,
+      planningCursor: undefined,
+      planningProcessedRecords: undefined,
+      planningBaseSequence: undefined,
+      planningNextSequence: undefined,
+      planningPolicyVersion: undefined,
+      planningFormatVersion: undefined,
+      planningCounterKey: undefined,
+      planningCounterVersion: undefined,
+      planningCounters: undefined,
+      reviewedAt: undefined,
+      reviewedBy: undefined,
+      reviewApprovalReceiptId: undefined,
+      commitCursor: undefined,
+      processedRecords: 0,
+      updatedAt: Date.now(),
+    });
+    return {
+      success: true,
+      receiptId: receipt.eventId,
+      firstIncompleteRow: incomplete.rowNumber,
+    };
+  },
+});
+
+/**
+ * Commits only an immutable reviewed plan. Every side effect and its receipt are
+ * in the same bounded transaction, so a failed batch is safe to retry.
  */
 export const commitImportWorkspace = mutation({
   args: {
@@ -21,478 +376,308 @@ export const commitImportWorkspace = mutation({
     batchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { auth, workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
-    if (args.batchSize !== undefined && (!Number.isInteger(args.batchSize) || args.batchSize < 1 || args.batchSize > 100)) {
-      throw new ConvexError("Batch size must be an integer between 1 and 100");
-    }
-
-    if (workspace.status === "cancelled") {
+    const batchSize = validateBatchSize(args.batchSize);
+    const { auth, workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (workspace.status === "cancelled")
       throw new ConvexError("Cannot commit a cancelled workspace");
-    }
-
     if (workspace.status === "merged") {
       return {
         success: true,
         done: true,
-        mergedStudents: workspace.totalRecords,
+        alreadyCommitted: true,
         processedRecords: workspace.totalRecords,
         totalRecords: workspace.totalRecords,
-        workspaceId: args.workspaceId,
-        mergedAt: workspace.mergedAt ?? workspace.updatedAt,
+        workspaceId: workspace._id,
+        receiptId: workspace.lastCommitReceiptId,
       };
     }
-
-    // 0. Pre-condition checks across ENTIRE workspace:
-    // A. Check for any blocking validation error records
-    const firstError = await ctx.db
-      .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_validationStatus", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("validationStatus", "error")
-      )
-      .first();
-
-    if (firstError) {
+    if (
+      (workspace.status !== "ready" && workspace.status !== "committing") ||
+      !workspace.reviewedAt ||
+      !workspace.reviewedBy ||
+      workspace.reviewPlanVersion === undefined
+    ) {
       throw new ConvexError(
-        `Cannot commit workspace with blocking validation errors. Please correct row #${firstError.rowNumber} first.`
+        "Public import commit is disabled until every row has a current approved plan",
       );
     }
 
-    // B. Check for any unresolved clash warnings
-    const firstUnresolvedWarning = await ctx.db
-      .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_validationStatus", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("validationStatus", "warning")
-      )
-      .first();
-
-    if (firstUnresolvedWarning) {
-      throw new ConvexError(
-        `Cannot commit workspace with unresolved clash warnings. Please resolve row #${firstUnresolvedWarning.rowNumber} first.`
-      );
-    }
-
-    const now = Date.now();
-    const currentYear = new Date().getFullYear();
-    const prefix = workspace.admissionNumberPrefix || `SCH/${currentYear}/`;
-    let seq = workspace.nextAdmissionSequence ?? 1;
-
-    // Resolve schema-valid Id<"users"> actor for user-required fields
-    const actorUserId = await resolveSchoolAdminActorId(ctx, args.schoolId, auth);
-
-    // --- PHASE 1: Classes & Subjects Auto-Creation Cache ---
-    const existingClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .take(100);
-
-    const classMap = new Map<string, Id<"classes">>();
-    existingClasses.forEach((c) => classMap.set(c.name.toLowerCase().trim(), c._id));
-
-    const existingSubjects = await ctx.db
-      .query("subjects")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .take(100);
-
-    const subjectMap = new Map<string, Id<"subjects">>();
-    existingSubjects.forEach((s) => subjectMap.set(s.name.toLowerCase().trim(), s._id));
-
-    // Academic session & term for grade records
-    const sessions = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .take(10);
-    const activeSession = sessions.find((s) => s.isActive) ?? sessions[0];
-
-    let activeTerm: Doc<"academicTerms"> | undefined;
-    if (activeSession) {
-      const terms = await ctx.db
-        .query("academicTerms")
-        .withIndex("by_session", (q) => q.eq("sessionId", activeSession._id))
-        .take(10);
-      activeTerm = terms.find((t) => t.isActive) ?? terms[0];
-    }
-
-    // --- PHASE 2: Process Batch of Staged Records ---
-    const batchLimit = Math.min(args.batchSize ?? 50, 100);
-    const commitPhase = workspace.commitPhase ?? "students";
-    const entityType = commitPhase === "students" ? "student" : "grade_record";
     const page = await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_entityType", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("entityType", entityType)
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
       )
-      .paginate({ numItems: batchLimit, cursor: workspace.commitCursor ?? null });
+      .paginate({
+        numItems: batchSize,
+        cursor:
+          workspace.status === "ready"
+            ? null
+            : (workspace.commitCursor ?? null),
+      });
+    const now = Date.now();
+    const outcomes: Array<{
+      recordId: Id<"stagedImportRecords">;
+      rowNumber: number;
+      outcome: "created" | "merged" | "ignored" | "grade_created";
+      studentId?: Id<"students">;
+      assessmentRecordId?: Id<"assessmentRecords">;
+    }> = [];
 
-    const familyMap = new Map<string, Id<"families">>();
-    let batchProcessedCount = 0;
-
-    for (const rec of page.page) {
-      if (rec.isCommitted) continue;
-      // Ensure target class exists
-      const cName = rec.parsedData.className.trim() || "Unassigned";
-      const cKey = cName.toLowerCase();
-      let classId = classMap.get(cKey);
-      if (!classId) {
-        classId = await ctx.db.insert("classes", {
+    for (const record of page.page) {
+      if (record.isCommitted) continue;
+      await validateReviewedRecord(
+        ctx,
+        args.schoolId,
+        record,
+        workspace.reviewPlanVersion,
+      );
+      if (record.resolutionAction === "ignore") {
+        outcomes.push({
+          recordId: record._id,
+          rowNumber: record.rowNumber,
+          outcome: "ignored",
+        });
+        continue;
+      }
+      if (
+        record.entityType === "student" &&
+        record.resolutionAction === "merge_existing"
+      ) {
+        if (!record.selectedStudentId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} requires a merge target`,
+          );
+        // Merge is an explicit reconciliation outcome. Unmapped/import text does
+        // not overwrite a canonical student profile without field-level review.
+        outcomes.push({
+          recordId: record._id,
+          rowNumber: record.rowNumber,
+          outcome: "merged",
+          studentId: record.selectedStudentId,
+        });
+        continue;
+      }
+      if (record.entityType === "student") {
+        if (!record.selectedClassId || !record.selectedUserId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} has incomplete placement`,
+          );
+        const selectedClass = await ctx.db.get(record.selectedClassId);
+        if (!selectedClass || selectedClass.schoolId !== args.schoolId)
+          throw new ConvexError(
+            `Row #${record.rowNumber} class is outside this school`,
+          );
+        let admissionNumber = record.parsedData.admissionNumber?.trim();
+        if (record.admissionNumberMode === "official_generated") {
+          const allocation = await allocateNextAdmissionNumberHelper(ctx, {
+            schoolId: args.schoolId,
+            level: selectedClass.level,
+            expectedVersion: record.expectedNumberPolicyVersion,
+            expectedFormatVersion: record.expectedNumberFormatVersion,
+            expectedCounterKey: record.expectedNumberCounterKey,
+            expectedCounterVersion: record.expectedNumberCounterVersion,
+          });
+          if (
+            !record.proposedAdmissionNumber ||
+            allocation.allocatedNumber !== record.proposedAdmissionNumber
+          ) {
+            throw new ConvexError(
+              `Official number for row #${record.rowNumber} changed; repeat approval`,
+            );
+          }
+          admissionNumber = allocation.allocatedNumber;
+        } else {
+          if (!admissionNumber)
+            throw new ConvexError(
+              `Row #${record.rowNumber} has no reviewed admission number`,
+            );
+          await commitManualAdmissionNumberHelper(ctx, {
+            schoolId: args.schoolId,
+            number: admissionNumber,
+            level: selectedClass.level,
+            confirmed: record.manualNumberConfirmed,
+            reason: record.manualNumberReason,
+            advanceTo: record.advanceCounterTo,
+            expectedVersion: record.expectedNumberPolicyVersion,
+            expectedFormatVersion: record.expectedNumberFormatVersion,
+            expectedCounterKey: record.expectedNumberCounterKey,
+            expectedCounterVersion: record.expectedNumberCounterVersion,
+          });
+        }
+        const studentId = await ctx.db.insert("students", {
           schoolId: args.schoolId,
-          name: cName,
-          level: cName,
+          classId: record.selectedClassId,
+          userId: record.selectedUserId,
+          familyId: record.selectedFamilyId,
+          admissionNumber,
+          gender: record.parsedData.gender || "Unspecified",
+          dateOfBirth: record.parsedData.dateOfBirth,
+          guardianName: record.parsedData.guardianName,
+          guardianPhone: record.parsedData.guardianPhone,
+          address: record.parsedData.address,
+          enrollmentStatus: "active",
           createdAt: now,
           updatedAt: now,
         });
-        classMap.set(cKey, classId);
-      }
-
-      // Ensure subject exists for grade records
-      let subjectId: Id<"subjects"> | undefined = undefined;
-      if (rec.parsedData.subjectName) {
-        const sName = rec.parsedData.subjectName.trim();
-        const sKey = sName.toLowerCase();
-        subjectId = subjectMap.get(sKey);
-        if (!subjectId) {
-          subjectId = await ctx.db.insert("subjects", {
-            schoolId: args.schoolId,
-            name: sName,
-            code: sName.slice(0, 4).toUpperCase(),
-            createdAt: now,
-            updatedAt: now,
-          });
-          subjectMap.set(sKey, subjectId);
-        }
-      }
-
-      // Family & Guardian handling
-      let familyId: Id<"families"> | undefined = undefined;
-      if (rec.familyClusterKey) {
-        familyId = familyMap.get(rec.familyClusterKey);
-        if (!familyId) {
-          const guardianName = rec.parsedData.guardianName || `${rec.parsedData.lastName} Household`;
-          const familyName = `${guardianName} Family`;
-
-          // Check if family already exists in this school
-          const existingFamily = await ctx.db
-            .query("families")
-            .withIndex("by_school_and_name", (q) =>
-              q.eq("schoolId", args.schoolId).eq("name", familyName)
-            )
-            .first();
-
-          if (existingFamily) {
-            familyId = existingFamily._id;
-          } else {
-            familyId = await ctx.db.insert("families", {
-              schoolId: args.schoolId,
-              name: familyName,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorUserId,
-              updatedBy: actorUserId,
-            });
-
-            if (rec.parsedData.guardianPhone || rec.parsedData.guardianEmail) {
-              const parentEmail =
-                rec.parsedData.guardianEmail ||
-                `parent_${rec.familyClusterKey}@guardians.local`;
-              const parentUserId = await ctx.db.insert("users", {
-                schoolId: args.schoolId,
-                authId: `migrated_parent_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                name: guardianName,
-                email: parentEmail,
-                phone: rec.parsedData.guardianPhone,
-                role: "parent",
-                createdAt: now,
-                updatedAt: now,
-              });
-
-              await ctx.db.insert("familyMembers", {
-                schoolId: args.schoolId,
-                familyId,
-                parentUserId,
-                relationship: "Guardian",
-                isPrimaryContact: true,
-                createdAt: now,
-                updatedAt: now,
-                createdBy: actorUserId,
-                updatedBy: actorUserId,
-              });
-            }
-          }
-          familyMap.set(rec.familyClusterKey, familyId);
-        }
-      }
-
-      // Entity processing
-      if (rec.entityType === "student") {
-        if (rec.resolutionAction === "ignore") {
-          await ctx.db.patch(rec._id, { isCommitted: true, updatedAt: now });
-          batchProcessedCount++;
-          continue;
-        }
-
-        if (rec.resolutionAction === "merge_existing") {
-          if (!rec.existingStudentId) {
-            throw new ConvexError(`Missing target student for merge_existing on row #${rec.rowNumber}`);
-          }
-          const targetStudent = await ctx.db.get(rec.existingStudentId);
-          if (!targetStudent || targetStudent.schoolId !== args.schoolId) {
-            throw new ConvexError(
-              `Cross-tenant security violation: Target student on row #${rec.rowNumber} does not belong to this school`
-            );
-          }
-
-          await ctx.db.patch(rec.existingStudentId, {
-            customAttributes: rec.parsedData.customAttributes,
-            unmappedData: rec.parsedData.unmappedFields,
-            updatedAt: now,
-          });
-
-          await ctx.db.patch(rec._id, {
-            isCommitted: true,
-            committedStudentId: rec.existingStudentId,
-            updatedAt: now,
-          });
-          batchProcessedCount++;
-          continue;
-        }
-
-        // Create or reuse student (idempotent retry check)
-        let admissionNumber = rec.parsedData.admissionNumber?.trim();
-        if (!admissionNumber) {
-          admissionNumber = `${prefix}${String(seq).padStart(4, "0")}`;
-          seq++;
-        }
-
-        let studentId = rec.committedStudentId;
-        if (!studentId) {
-          // Check if admissionNumber already exists in students table
-          const existingStudent = await ctx.db
-            .query("students")
-            .withIndex("by_school_and_admission_number", (q) =>
-              q.eq("schoolId", args.schoolId).eq("admissionNumber", admissionNumber)
-            )
-            .first();
-
-          if (existingStudent) {
-            studentId = existingStudent._id;
-          } else {
-            const studentAuthId = `migrated_student_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-            const studentEmail = `${admissionNumber.toLowerCase().replace(/[^a-z0-9]/g, "")}@students.local`;
-            const fullName = rec.parsedData.middleName
-              ? `${rec.parsedData.firstName} ${rec.parsedData.middleName} ${rec.parsedData.lastName}`
-              : `${rec.parsedData.firstName} ${rec.parsedData.lastName}`;
-
-            const studentUserId = await ctx.db.insert("users", {
-              schoolId: args.schoolId,
-              authId: studentAuthId,
-              name: fullName,
-              firstName: rec.parsedData.firstName,
-              lastName: rec.parsedData.lastName,
-              email: studentEmail,
-              phone: rec.parsedData.guardianPhone,
-              role: "student",
-              createdAt: now,
-              updatedAt: now,
-            });
-
-            studentId = await ctx.db.insert("students", {
-              schoolId: args.schoolId,
-              classId,
-              userId: studentUserId,
-              familyId,
-              admissionNumber,
-              gender: rec.parsedData.gender || "Unspecified",
-              dateOfBirth: rec.parsedData.dateOfBirth,
-              guardianName: rec.parsedData.guardianName,
-              guardianPhone: rec.parsedData.guardianPhone,
-              address: rec.parsedData.address,
-              customAttributes: rec.parsedData.customAttributes,
-              unmappedData: rec.parsedData.unmappedFields,
-              enrollmentStatus: "active",
-              createdAt: now,
-              updatedAt: now,
-            });
-          }
-        }
-
-        await ctx.db.patch(rec._id, {
-          isCommitted: true,
-          committedStudentId: studentId,
-          updatedAt: now,
+        outcomes.push({
+          recordId: record._id,
+          rowNumber: record.rowNumber,
+          outcome: "created",
+          studentId,
         });
-        batchProcessedCount++;
-      } else if (rec.entityType === "grade_record") {
-        // Deterministic student matching
-        let matchedStudentId: Id<"students"> | null = null;
-
-        // 1. Try exact matching by admission number
-        if (rec.parsedData.admissionNumber?.trim()) {
-          const studentByAdm = await ctx.db
-            .query("students")
-            .withIndex("by_school_and_admission_number", (q) =>
-              q.eq("schoolId", args.schoolId).eq("admissionNumber", rec.parsedData.admissionNumber!.trim())
-            )
-            .first();
-          if (studentByAdm) {
-            matchedStudentId = studentByAdm._id;
-          }
-        }
-
-        // 2. If no admission number match, match deterministically within class by student user names
-        if (!matchedStudentId && classId) {
-          const classStudents = await ctx.db
-            .query("students")
-            .withIndex("by_school_and_class", (q) =>
-              q.eq("schoolId", args.schoolId).eq("classId", classId)
-            )
-            .take(100);
-
-          const candidateMatches: Id<"students">[] = [];
-          for (const s of classStudents) {
-            const user = await ctx.db.get(s.userId);
-            if (user) {
-              const uFirst = (user.firstName || user.name.split(" ")[0] || "").toLowerCase().trim();
-              const uLast = (user.lastName || user.name.split(" ")[1] || "").toLowerCase().trim();
-              const recFirst = rec.parsedData.firstName.toLowerCase().trim();
-              const recLast = rec.parsedData.lastName.toLowerCase().trim();
-
-              if (
-                (uFirst === recFirst && uLast === recLast) ||
-                (user.name.toLowerCase().includes(recFirst) && user.name.toLowerCase().includes(recLast))
-              ) {
-                candidateMatches.push(s._id);
-              }
-            }
-          }
-
-          if (candidateMatches.length === 1) {
-            matchedStudentId = candidateMatches[0];
-          } else if (candidateMatches.length > 1) {
-            throw new ConvexError(
-              `Ambiguous grade match on row #${rec.rowNumber}: Multiple students in class "${cName}" match name "${rec.parsedData.firstName} ${rec.parsedData.lastName}". Please specify an admission number.`
-            );
-          }
-        }
-
-        if (!matchedStudentId) {
-          throw new ConvexError(
-            `Unmatched grade record on row #${rec.rowNumber}: No student found in class "${cName}" matching "${rec.parsedData.firstName} ${rec.parsedData.lastName}".`
-          );
-        }
-
-        if (!activeSession) {
-          throw new ConvexError(
-            `Cannot import grade row #${rec.rowNumber}: This school has no academic session.`
-          );
-        }
-        if (!activeTerm) {
-          throw new ConvexError(
-            `Cannot import grade row #${rec.rowNumber}: The selected academic session has no term.`
-          );
-        }
-        if (!subjectId) {
-          throw new ConvexError(
-            `Cannot import grade row #${rec.rowNumber}: A subject is required.`
-          );
-        }
-
-        {
-          const ca1 = rec.parsedData.ca1 ?? 0;
-          const ca2 = rec.parsedData.ca2 ?? 0;
-          const exam = rec.parsedData.exam ?? 0;
-          const total = ca1 + ca2 + exam;
-
-          await ctx.db.insert("assessmentRecords", {
-            schoolId: args.schoolId,
-            sessionId: activeSession._id,
-            termId: activeTerm._id,
-            classId,
-            subjectId,
-            studentId: matchedStudentId,
-            ca1,
-            ca2,
-            ca3: 0,
-            examRawScore: exam,
-            examScaledScore: exam,
-            total,
-            gradeLetter: total >= 70 ? "A" : total >= 60 ? "B" : total >= 50 ? "C" : "F",
-            remark: total >= 50 ? "Pass" : "Needs Improvement",
-            examInputModeSnapshot: "raw",
-            examRawMaxSnapshot: 100,
-            status: "draft",
-            enteredBy: actorUserId,
-            updatedBy: actorUserId,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        await ctx.db.patch(rec._id, { isCommitted: true, updatedAt: now });
-        batchProcessedCount++;
+        continue;
       }
-    }
 
-    const currentProcessed = (workspace.processedRecords ?? 0) + batchProcessedCount;
-
-    // --- PHASE 3: Check Completion Status ---
-    if (page.isDone && commitPhase === "students") {
-      await ctx.db.patch(args.workspaceId, {
-        status: "committing",
-        processedRecords: currentProcessed,
-        commitCursor: undefined,
-        commitPhase: "grades",
-        nextAdmissionSequence: seq,
+      if (!auth.userId)
+        throw new ConvexError(
+          "Grade import requires an authenticated school user for attribution",
+        );
+      if (
+        !record.selectedStudentId ||
+        !record.selectedClassId ||
+        !record.selectedSubjectId ||
+        !record.selectedSessionId ||
+        !record.selectedTermId
+      ) {
+        throw new ConvexError(
+          `Grade row #${record.rowNumber} has incomplete reviewed mappings`,
+        );
+      }
+      const assessmentPolicy = record.reviewedAssessmentPolicySnapshot;
+      const gradingPolicy = record.reviewedGradingPolicySnapshot;
+      if (!assessmentPolicy || !gradingPolicy) {
+        throw new ConvexError(`Grade row #${record.rowNumber} has no reviewed policy snapshot`);
+      }
+      const ca1 = record.parsedData.ca1 ?? 0;
+      const ca2 = record.parsedData.ca2 ?? 0;
+      const exam = record.parsedData.exam ?? 0;
+      const scoreErrors = validateScoreRanges(ca1, ca2, 0, exam, assessmentPolicy.examInputMode);
+      if (scoreErrors.length) {
+        throw new ConvexError(`Grade row #${record.rowNumber} has invalid canonical scores: ${scoreErrors.map(error => error.message).join("; ")}`);
+      }
+      const gradingBands: GradingBand[] = gradingPolicy.bands.map(band => ({
+        ...band,
+        schoolId: String(args.schoolId),
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: String(auth.userId),
+      }));
+      const derived = deriveAssessmentFields(
+        ca1,
+        ca2,
+        0,
+        exam,
+        assessmentPolicy.examInputMode,
+        gradingBands,
+      );
+      if (derived.total < 0 || derived.total > 100) {
+        throw new ConvexError(`Grade row #${record.rowNumber} total is outside 0–100`);
+      }
+      const assessmentRecordId = await ctx.db.insert("assessmentRecords", {
+        schoolId: args.schoolId,
+        sessionId: record.selectedSessionId,
+        termId: record.selectedTermId,
+        classId: record.selectedClassId,
+        subjectId: record.selectedSubjectId,
+        studentId: record.selectedStudentId,
+        ca1,
+        ca2,
+        ca3: 0,
+        examRawScore: exam,
+        examScaledScore: derived.examScaledScore,
+        total: derived.total,
+        gradeLetter: derived.gradeLetter,
+        remark: derived.remark,
+        examInputModeSnapshot: assessmentPolicy.examInputMode,
+        examRawMaxSnapshot: assessmentPolicy.examRawMax,
+        assessmentPolicySnapshot: assessmentPolicy,
+        gradingPolicySnapshot: gradingPolicy,
+        status: "draft",
+        enteredBy: auth.userId,
+        updatedBy: auth.userId,
+        createdAt: now,
         updatedAt: now,
       });
-
-      return {
-        success: true,
-        done: false,
-        mergedStudents: currentProcessed,
-        processedRecords: currentProcessed,
-        totalRecords: workspace.totalRecords,
-        workspaceId: args.workspaceId,
-      };
+      outcomes.push({
+        recordId: record._id,
+        rowNumber: record.rowNumber,
+        outcome: "grade_created",
+        assessmentRecordId,
+      });
     }
 
+    const receipt = await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: auth.isSuperAdmin ? "platform_admin" : "user",
+      actorPersonId: auth.actorPersonId,
+      actorMembershipId: auth.actorMembershipId,
+      actorEmailSnapshot: auth.email,
+      module: "migration",
+      action: "reviewed_import.batch_commit",
+      targetType: "importWorkspaces",
+      targetId: String(workspace._id),
+      outcome: "success",
+      safeSummary: `Reviewed import batch committed: ${outcomes.length} rows (${outcomes.filter((item) => item.outcome === "created").length} created, ${outcomes.filter((item) => item.outcome === "merged").length} merged, ${outcomes.filter((item) => item.outcome === "ignored").length} ignored, ${outcomes.filter((item) => item.outcome === "grade_created").length} grade records).`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier2_warn",
+    });
+
+    for (const outcome of outcomes) {
+      await ctx.db.patch(outcome.recordId, {
+        isCommitted: true,
+        commitOutcome: outcome.outcome,
+        commitReceiptId: receipt.eventId,
+        committedStudentId: outcome.studentId,
+        committedAssessmentRecordId: outcome.assessmentRecordId,
+        updatedAt: now,
+      });
+    }
+
+    const processedRecords =
+      (workspace.status === "ready" ? 0 : (workspace.processedRecords ?? 0)) +
+      page.page.length;
     if (page.isDone) {
-      await ctx.db.patch(args.workspaceId, {
+      await ctx.db.patch(workspace._id, {
         status: "merged",
         processedRecords: workspace.totalRecords,
         commitCursor: undefined,
-        commitPhase: undefined,
-        nextAdmissionSequence: seq,
+        lastCommitReceiptId: receipt.eventId,
         mergedAt: now,
         mergedBy: auth.callerId,
         updatedAt: now,
       });
-
-      return {
-        success: true,
-        done: true,
-        mergedStudents: currentProcessed,
-        processedRecords: workspace.totalRecords,
-        totalRecords: workspace.totalRecords,
-        workspaceId: args.workspaceId,
-        mergedAt: now,
-      };
+    } else {
+      await ctx.db.patch(workspace._id, {
+        status: "committing",
+        processedRecords,
+        commitCursor: page.continueCursor,
+        lastCommitReceiptId: receipt.eventId,
+        updatedAt: now,
+      });
     }
-
-    await ctx.db.patch(args.workspaceId, {
-      status: "committing",
-      processedRecords: currentProcessed,
-      commitCursor: page.continueCursor,
-      commitPhase,
-      nextAdmissionSequence: seq,
-      updatedAt: now,
-    });
-
     return {
       success: true,
-      done: false,
-      mergedStudents: currentProcessed,
-      processedRecords: currentProcessed,
+      done: page.isDone,
+      processedRecords: page.isDone ? workspace.totalRecords : processedRecords,
       totalRecords: workspace.totalRecords,
-      workspaceId: args.workspaceId,
+      workspaceId: workspace._id,
+      receiptId: receipt.eventId,
+      outcomes: outcomes.map(
+        ({ rowNumber, outcome, studentId, assessmentRecordId }) => ({
+          rowNumber,
+          outcome,
+          targetId: studentId
+            ? String(studentId)
+            : assessmentRecordId
+              ? String(assessmentRecordId)
+              : undefined,
+        }),
+      ),
     };
   },
 });

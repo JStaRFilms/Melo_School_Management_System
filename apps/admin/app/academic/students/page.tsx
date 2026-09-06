@@ -35,7 +35,12 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { AttestationLetterModal } from "./components/AttestationLetterModal";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
-import { useDirtyForm } from "@school/shared/drafts";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 import { GraduationConfirmationModal } from "./components/GraduationConfirmationModal";
 import { PromotionConfirmationModal } from "./components/PromotionConfirmationModal";
 import { StudentCreationForm } from "./components/StudentCreationForm";
@@ -55,6 +60,10 @@ import type {
 
 const MAX_PROMOTION_BATCH = 100;
 
+function newEnrollmentRequestKey() {
+  return globalThis.crypto.randomUUID();
+}
+
 export default function StudentsPage() {
   return (
     <Suspense fallback={<StudentsPageFallback />}>
@@ -72,6 +81,11 @@ function StudentsPageFallback() {
 }
 
 function StudentsPageContent() {
+  const { workspaceAccess, session } = useAuth();
+  const draftConnection = useDraftConnection();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? (workspaceAccess.branch.schoolId as Id<"schools">)
+    : undefined;
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
@@ -162,6 +176,8 @@ function StudentsPageContent() {
   const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
   const [isDuplicateParentLinkConfirmOpen, setIsDuplicateParentLinkConfirmOpen] = useState(false);
+  const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
+  const [familyDraftInstanceKey, setFamilyDraftInstanceKey] = useState(0);
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -551,14 +567,74 @@ function StudentsPageContent() {
     setIsParentPrimaryContact(true);
     setStudentPhotoFile(null);
     setStudentPhotoResetKey((key) => key + 1);
+    setEnrollmentRequestKey(newEnrollmentRequestKey());
   }, []);
 
+  const familyDraftData = useMemo<DraftPayload<"family_onboarding">>(() => ({
+    studentFirstName,
+    studentLastName,
+    admissionNumber,
+    gender,
+    classId: selectedClassId ?? "",
+    houseName,
+    dateOfBirth,
+    guardianName,
+    guardianPhone,
+    address,
+    parentFirstName,
+    parentLastName,
+    parentEmail,
+    parentPhone,
+    parentRelationship,
+    isParentPrimaryContact,
+    enrollmentRequestKey,
+  }), [address, admissionNumber, dateOfBirth, enrollmentRequestKey, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, selectedClassId, studentFirstName, studentLastName]);
+  const familyDraftIsDirty = creationTab === "family" && (isSubmitting || Boolean(
+    studentFirstName || studentLastName || admissionNumber || gender || houseName || dateOfBirth || guardianName ||
+    guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone ||
+    parentRelationship || !isParentPrimaryContact || studentPhotoFile
+  ));
+  const familyDraft = usePersistentFormDraft({
+    formKey: "family_onboarding",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: familyDraftData,
+    isDirty: familyDraftIsDirty,
+    instanceKey: familyDraftInstanceKey,
+    onRestore: (payload) => {
+      setStudentFirstName(payload.studentFirstName);
+      setStudentLastName(payload.studentLastName);
+      setAdmissionNumber(payload.admissionNumber);
+      setGender(payload.gender);
+      setSelectedClassId(payload.classId || null);
+      setHouseName(payload.houseName);
+      setDateOfBirth(payload.dateOfBirth);
+      setGuardianName(payload.guardianName);
+      setGuardianPhone(payload.guardianPhone);
+      setAddress(payload.address);
+      setParentFirstName(payload.parentFirstName);
+      setParentLastName(payload.parentLastName);
+      setParentEmail(payload.parentEmail);
+      setParentPhone(payload.parentPhone);
+      setParentRelationship(payload.parentRelationship);
+      setIsParentPrimaryContact(payload.isParentPrimaryContact);
+      setEnrollmentRequestKey(payload.enrollmentRequestKey ?? newEnrollmentRequestKey());
+      setStudentPhotoFile(null);
+      setCreationTab("family");
+    },
+  });
+
+  const creationIsDirty = isSubmitting || Boolean(studentFirstName || studentLastName || admissionNumber || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile);
   const requestCreationDeparture = useDirtyForm({
-    name: "Family enrollment (not saved as a draft)",
-    isDirty: isSubmitting || Boolean(studentFirstName || studentLastName || admissionNumber || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile),
-    discard: () => {
+    name: creationTab === "family" ? "Family enrollment" : "Student enrollment",
+    isDirty: creationIsDirty,
+    save: creationTab === "family" ? familyDraft.retrySave : undefined,
+    discard: async () => {
       if (isSubmitting) throw new Error("Wait for enrollment to finish before leaving.");
+      if (creationTab === "family") await familyDraft.handleDiscardDraft();
       resetStudentCreationForm();
+      if (creationTab === "family") setFamilyDraftInstanceKey((key) => key + 1);
     },
   });
   const closeCreationSheet = async () => {
@@ -636,6 +712,19 @@ function StudentsPageContent() {
       }
     }
 
+    const isFamilySubmission = creationTab === "family";
+    if (isFamilySubmission) {
+      try {
+        await familyDraft.prepareSubmission();
+      } catch {
+        showNotice({
+          tone: "error",
+          message: "Save the recoverable family draft before submitting. Your current edits are still here.",
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -645,6 +734,7 @@ function StudentsPageContent() {
           )
         : null;
       const createdStudentId = (await createStudent({
+        requestKey: enrollmentRequestKey,
         name: normalizedStudentName,
         admissionNumber: admissionNumber.trim(),
         classId: selectedClassId,
@@ -671,7 +761,9 @@ function StudentsPageContent() {
         confirmDuplicateLink: confirmDuplicateLink || undefined,
       } as never)) as string;
 
+      if (isFamilySubmission) await familyDraft.handleCommitDraft();
       resetStudentCreationForm();
+      if (isFamilySubmission) setFamilyDraftInstanceKey((key) => key + 1);
       setIsCreationSheetOpen(false);
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
@@ -687,6 +779,7 @@ function StudentsPageContent() {
         studentNameInputRef.current?.focus();
       }
     } catch (err) {
+      if (isFamilySubmission) familyDraft.submissionFailed();
       const message = getUserFacingErrorMessage(err, "Account creation failed.");
       if (message.includes("Review the duplicate-link details and confirm")) {
         setIsDuplicateParentLinkConfirmOpen(true);
@@ -980,6 +1073,22 @@ function StudentsPageContent() {
         }
       `}} />
 
+      {creationTab === "family" && (
+        <div className="relative z-20 px-4 pt-2">
+          <PersistentFormDraftControls
+            draft={familyDraft}
+            formTitle="family enrollment"
+            isDirty={familyDraftIsDirty}
+            excludedFieldsNotice="Drafts include approved student, enrollment, and family contact fields only. Photos and raw documents are not saved; reselect any photo after recovery."
+            onDiscard={async () => {
+              await familyDraft.handleDiscardDraft();
+              resetStudentCreationForm();
+              setFamilyDraftInstanceKey((key) => key + 1);
+            }}
+          />
+        </div>
+      )}
+
       {/* Unified Mobile Sheet - Rendered at Top level for avoid clipping issues */}
       <StudentUnifiedEditorSheet
         activeStudent={activeStudentForSheet}
@@ -1244,6 +1353,8 @@ function StudentsPageContent() {
                     isParentPrimaryContact={isParentPrimaryContact}
                     onIsParentPrimaryContactChange={setIsParentPrimaryContact}
                     isSubmitting={isSubmitting}
+                    draftStatus={familyDraft.status}
+                    draftLastSavedAt={familyDraft.lastSavedAt}
                     onSubmit={handleCreateStudent}
                     inputRef={studentNameInputRef}
                   />
@@ -1388,6 +1499,8 @@ function StudentsPageContent() {
                   isParentPrimaryContact={isParentPrimaryContact}
                   onIsParentPrimaryContactChange={setIsParentPrimaryContact}
                   isSubmitting={isSubmitting}
+                  draftStatus={familyDraft.status}
+                  draftLastSavedAt={familyDraft.lastSavedAt}
                   onSubmit={handleCreateStudent}
                   inputRef={studentNameInputRef}
                 />

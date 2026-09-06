@@ -1,5 +1,5 @@
 import React from "react";
-import { X, AlertTriangle, UserCheck, Users, CopyMinus, UserPlus } from "lucide-react";
+import { X, AlertTriangle, UserCheck, CopyMinus, UserPlus } from "lucide-react";
 
 export interface StagedRecordItem {
   _id: string;
@@ -26,7 +26,7 @@ export interface ClashResolutionModalProps {
   record: StagedRecordItem | null;
   candidateRecord?: StagedRecordItem | null;
   onClose: () => void;
-  onResolve: (action: "create_new" | "merge_existing" | "link_as_sibling" | "ignore") => void;
+  onResolve: (action: "create_new" | "merge_existing" | "ignore") => void;
   isResolving?: boolean;
 }
 
@@ -180,7 +180,7 @@ export function ClashResolutionModal({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-900 leading-tight">Create New Student</div>
-                <div className="text-[11px] text-slate-500">Treat as distinct individual</div>
+                <div className="text-[11px] text-slate-500">Continue to identity, class, family and numbering review</div>
               </div>
             </button>
 
@@ -195,22 +195,7 @@ export function ClashResolutionModal({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-900 leading-tight">Merge with Existing</div>
-                <div className="text-[11px] text-slate-500">Update existing profile</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              disabled={isResolving}
-              onClick={() => onResolve("link_as_sibling")}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-amber-400 hover:bg-amber-50/30 transition-all shadow-2xs group"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Link as Sibling</div>
-                <div className="text-[11px] text-slate-500">Share household family</div>
+                <div className="text-[11px] text-slate-500">Reconcile this row; imported text will not overwrite identity or placement</div>
               </div>
             </button>
 

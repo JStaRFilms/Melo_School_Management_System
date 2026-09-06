@@ -82,6 +82,10 @@ export interface WorkspaceNavbarProps {
   branchSwitcher?: ReactNode;
   leadershipAlerts?: ReactNode;
   workspaceAccess?: WorkspaceAccessSummary;
+  /** When true, navigation exposes only routes whose callers use the selected school. */
+  branchScopedOnly?: boolean;
+  /** Server assignment preflight for Teacher route and navigation admission. */
+  teacherHasAssignments?: boolean;
   /** U3a supplies save/discard/stay; rejection or failure must not depart. */
   requestDeparture?: RequestWorkspaceDeparture;
   onNavigate?: (href: string) => void;
@@ -109,6 +113,8 @@ export function WorkspaceNavbar({
   branchSwitcher,
   leadershipAlerts,
   workspaceAccess,
+  branchScopedOnly = false,
+  teacherHasAssignments,
   requestDeparture,
   onNavigate,
   onBeforeUnload,
@@ -119,7 +125,7 @@ export function WorkspaceNavbar({
   children,
 }: WorkspaceNavbarProps) {
   const def = getWorkspaceDefinition(workspace);
-  const sections = getAccessibleWorkspaceSections(workspace, { access: workspaceAccess, features: schoolBranding?.features, userRole });
+  const sections = getAccessibleWorkspaceSections(workspace, { access: workspaceAccess, features: schoolBranding?.features, userRole, branchScopedOnly, teacherHasAssignments });
   const departurePending = useRef(false);
   const [departureError, setDepartureError] = useState<string | null>(null);
   const depart = async (departure: Parameters<RequestWorkspaceDeparture>[0], action: () => void | Promise<void>) => {
