@@ -1620,14 +1620,12 @@ describe("U6 Portal canonical identity continuity", () => {
     });
     expect(sourceHistory.school.id).toBe(h.schoolA);
     expect(sourceHistory.selectedStudentId).toBe(h.studentId);
-    expect(
-      (
-        await studentLogin.query(
-          api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData,
-          { studentId: h.studentId },
-        )
-      ).classId,
-    ).toBe(h.classAId);
+    await expect(
+      studentLogin.query(
+        api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData,
+        { studentId: h.studentId },
+      ),
+    ).rejects.toThrow("Active enrollment required");
     expect(sourceHistory.selectedStudent?.enrollmentState).toBe("historical");
     expect(sourceHistory.history).toHaveLength(1);
     expect(sourceHistory.history[0].sessionName).toBe("2025/26 Source History");

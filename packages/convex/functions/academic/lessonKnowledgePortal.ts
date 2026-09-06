@@ -110,7 +110,11 @@ async function getStudentPortalContext(
   ctx: QueryCtx,
   args: { studentId?: Id<"students"> | null } = {},
 ) {
-  return resolvePortalStudentContext(ctx, args);
+  const context = await resolvePortalStudentContext(ctx, args);
+  if (context.student.enrollmentStatus && context.student.enrollmentStatus !== "active") {
+    throw new ConvexError("Active enrollment required for lesson materials");
+  }
+  return context;
 }
 
 async function patchPortalPromotionChunksForState(
