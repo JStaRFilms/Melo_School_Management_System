@@ -110,15 +110,17 @@ async function runSchoolSeed(
   });
   if (postAuthPreflight.conflicts.length) throw new ConvexError(`${profile.schoolName} auth linkage preflight failed: ${postAuthPreflight.conflicts.join("; ")}`);
 
-  await drainStorageCleanup(ctx, seedProfile);
   let resetDeletedCount = 0;
   for (let batch = 0; batch < MAX_RESET_BATCHES; batch += 1) {
     const result = await ctx.runMutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, { seedProfile });
     resetDeletedCount += result.deletedCount;
-    await acknowledgeDeletedStorage(ctx, result.storageIds);
     if (result.complete) break;
     if (batch === MAX_RESET_BATCHES - 1) throw new ConvexError(`${profile.schoolName} reset exceeded its safety batch limit.`);
   }
+  // Cleanup rows may survive an interrupted reset while school-owned rows still
+  // reference their blobs. Delete only after the bounded database reset removes
+  // every owner, then acknowledge the durable ledger idempotently.
+  await drainStorageCleanup(ctx, seedProfile);
 
   const assets = await storeDemoAssets(ctx, profile.students.length);
   let runId: Id<"demoSeedRuns"> | null = null;

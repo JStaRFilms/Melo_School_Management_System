@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, query, type MutationCtx } from "../../_generated/server";
-import type { Doc, Id } from "../../_generated/dataModel";
+import { internalMutation, query } from "../../_generated/server";
+import type { Doc } from "../../_generated/dataModel";
+import { isGroupPlatformOperator } from "./groups";
 import { requireCapability } from "./rbac";
 
 /**
@@ -27,6 +28,7 @@ export type ThresholdAlertLevel =
 
 export interface QuotaReservationResult {
   allowed: boolean;
+  status: Doc<"usageQuotaReservations">["status"];
   reservationId: string;
   shortfall?: number;
   thresholdAlert: ThresholdAlertLevel;
@@ -52,6 +54,7 @@ export function calculateThresholdAlert(
 function reservationResult(reservation: Doc<"usageQuotaReservations">): QuotaReservationResult {
   return {
     allowed: reservation.allowed,
+    status: reservation.status,
     reservationId: reservation.idempotencyKey,
     shortfall: reservation.shortfall,
     thresholdAlert: reservation.allowed ? calculateThresholdAlert(reservation.utilizationPercent) : "hard_stop",
@@ -87,10 +90,16 @@ export const allocateQuota = internalMutation({
     hardStopThresholdPercent: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    if (args.allocatedUnits <= 0) {
+    if (!Number.isSafeInteger(args.allocatedUnits) || args.allocatedUnits <= 0) {
       throw new ConvexError("Allocated units must be greater than zero");
     }
 
+    const warning = args.warningThresholdPercent ?? 75;
+    const critical = args.criticalThresholdPercent ?? 90;
+    const stop = args.hardStopThresholdPercent ?? 100;
+    if (warning !== 75 || critical !== 90 || stop !== 100) {
+      throw new ConvexError("Custom thresholds require versioned plan entitlement support; only 75/90/100 is supported");
+    }
     const now = Date.now();
     const existing = await ctx.db
       .query("usageMeterAllocations")
@@ -100,6 +109,9 @@ export const allocateQuota = internalMutation({
       .first();
 
     if (existing) {
+      if (!Number.isSafeInteger(existing.allocatedUnits + args.allocatedUnits)) {
+        throw new ConvexError("Allocation exceeds safe integer range");
+      }
       await ctx.db.patch(existing._id, {
         allocatedUnits: existing.allocatedUnits + args.allocatedUnits,
         warningThresholdPercent:
@@ -152,7 +164,10 @@ export const reserveUsageQuota = internalMutation({
     operationName: v.string(),
   },
   handler: async (ctx, args): Promise<QuotaReservationResult> => {
-    if (args.unitsRequested <= 0) throw new ConvexError("Units requested must be greater than zero");
+    if (!Number.isSafeInteger(args.unitsRequested) || args.unitsRequested <= 0) throw new ConvexError("Units requested must be a positive safe integer");
+    if (!args.idempotencyKey.trim() || args.idempotencyKey.length > 128 || !args.operationName.trim() || args.operationName.length > 128) {
+      throw new ConvexError("Bounded operation and idempotency identifiers are required");
+    }
 
     const existing = await ctx.db
       .query("usageQuotaReservations")
@@ -233,8 +248,8 @@ export const commitUsageQuota = internalMutation({
     actorPersonId: v.optional(v.id("persons")),
   },
   handler: async (ctx, args) => {
-    if (!Number.isFinite(args.actualUnits) || args.actualUnits < 0) {
-      throw new ConvexError("Actual usage must be a non-negative finite number");
+    if (!Number.isSafeInteger(args.actualUnits) || args.actualUnits < 0) {
+      throw new ConvexError("Actual usage must be a non-negative safe integer");
     }
     const reservation = await ctx.db.query("usageQuotaReservations")
       .withIndex("by_school_and_meter_and_idempotency_key", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType).eq("idempotencyKey", args.idempotencyKey))
@@ -321,8 +336,9 @@ export const getUsageStatus = query({
     } else {
       allocations = await ctx.db
         .query("usageMeterAllocations")
-        .filter((q) => q.eq(q.field("schoolId"), args.schoolId))
-        .collect();
+        .withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId))
+        .take(4);
+      if (allocations.length > 3) throw new ConvexError("Duplicate usage allocations require reconciliation");
     }
 
     const results = allocations.map((alloc) => {
@@ -341,9 +357,9 @@ export const getUsageStatus = query({
         meterType: alloc.meterType,
         allocatedUnits: alloc.allocatedUnits,
         consumedUnits: alloc.consumedUnits,
-        activeStorageBytes: alloc.activeStorageBytes ?? 0,
-        trashStorageBytes: alloc.trashStorageBytes ?? 0,
-        tempStorageBytes: alloc.tempStorageBytes ?? 0,
+        activeStorageBytes: alloc.activeStorageBytes ?? null,
+        trashStorageBytes: alloc.trashStorageBytes ?? null,
+        tempStorageBytes: alloc.tempStorageBytes ?? null,
         reservedUnits: alloc.reservedUnits,
         availableUnits,
         utilizationPercent,
@@ -377,7 +393,8 @@ export const listUsageEvents = query({
   },
   handler: async (ctx, args) => {
     await requireCapability(ctx, args.schoolId, "finance.reports.view");
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    if (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1)) throw new ConvexError("Limit must be a positive integer");
+    const limit = Math.min(args.limit ?? 50, 100);
 
     let queryBuilder = ctx.db
       .query("usageEvents")
@@ -392,5 +409,52 @@ export const listUsageEvents = query({
     }
 
     return await queryBuilder.order("desc").take(limit);
+  },
+});
+
+/** Trusted adapter seam only; this does not charge customers or prove a provider is connected. */
+export const recordProviderCost = internalMutation({
+  args: {
+    schoolId: v.id("schools"), operationId: v.string(), evidenceId: v.string(),
+    provider: v.string(), model: v.string(),
+    outcome: v.union(v.literal("succeeded"), v.literal("failed"), v.literal("unknown")),
+    currency: v.string(), costMinor: v.number(),
+    inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+    pages: v.optional(v.number()), bytes: v.optional(v.number()), measuredAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    for (const value of [args.operationId, args.evidenceId, args.provider, args.model]) {
+      if (!value.trim() || value.length > 128) throw new ConvexError("Bounded accounting identifiers required");
+    }
+    if (!/^[A-Z]{3}$/.test(args.currency)) throw new ConvexError("Explicit uppercase currency required");
+    for (const value of [args.costMinor, args.inputTokens, args.outputTokens, args.pages, args.bytes, args.measuredAt]) {
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) throw new ConvexError("Cost and dimensions must be non-negative safe integers");
+    }
+    if (!(await ctx.db.get(args.schoolId))) throw new ConvexError("School not found");
+    const existing = await ctx.db.query("usageProviderCosts")
+      .withIndex("by_provider_and_evidenceId", q => q.eq("provider", args.provider).eq("evidenceId", args.evidenceId)).unique();
+    if (existing) {
+      const keys: Array<keyof typeof args> = ["schoolId", "operationId", "evidenceId", "provider", "model", "outcome", "currency", "costMinor", "inputTokens", "outputTokens", "pages", "bytes", "measuredAt"];
+      if (keys.some(key => existing[key] !== args[key])) {
+        throw new ConvexError("Conflicting provider evidence retry");
+      }
+      return existing._id;
+    }
+    return await ctx.db.insert("usageProviderCosts", args);
+  },
+});
+
+export const getPlatformUsageCosts = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    if (!(await isGroupPlatformOperator(ctx))) throw new ConvexError("Forbidden: active Platform authority required");
+    const rows = await ctx.db.query("usageProviderCosts")
+      .withIndex("by_school_and_measuredAt", q => q.eq("schoolId", args.schoolId))
+      .order("desc").take(101);
+    return {
+      truncated: rows.length > 100,
+      providerExecutionAvailable: false,
+      rows: rows.slice(0, 100).map(({ evidenceId: _evidence, ...row }) => row),
+    };
   },
 });

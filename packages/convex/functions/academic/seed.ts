@@ -16,6 +16,7 @@ import {
 } from "./demoData";
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
+import { assertStorageClaimedOnlyBy, assertStorageUnclaimed } from "./assetStorageBoundary";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -35,7 +36,7 @@ const DEMO_SCHOOL_TABLES = [
   "curriculumUnits", "curriculumImports",
   "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterials", "knowledgeTopics",
   "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
-  "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
+  "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",
@@ -95,6 +96,10 @@ export const getPendingDemoStorageCleanupInternal = internalQuery({
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
     const rows = await ctx.db.query("demoSeedStorageCleanup").withIndex("by_school_slug", (q) => q.eq("schoolSlug", profile.schoolSlug)).take(75);
+    await Promise.all(rows.map((row) => assertStorageClaimedOnlyBy(ctx, row.storageId, {
+      purpose: "demoSeedCleanup",
+      ownerId: String(row._id),
+    })));
     return [...new Set(rows.map((row) => String(row.storageId)))].map((storageId) => storageId as Id<"_storage">);
   },
 });
@@ -230,6 +235,11 @@ export const startDemoSeedRunInternal = internalMutation({
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
     if (args.portraitStorageIds.length !== profile.students.length) throw new ConvexError(`Expected ${profile.students.length} portrait PNG assets.`);
+    const storageIds = [args.logoStorageId, ...args.portraitStorageIds];
+    if (new Set(storageIds).size !== storageIds.length) {
+      throw new ConvexError("Each demo storage object must have exactly one owning purpose");
+    }
+    await Promise.all(storageIds.map((storageId) => assertStorageUnclaimed(ctx, storageId)));
     const existing = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug)).unique();
     if (existing) throw new ConvexError(`${profile.schoolSlug} must be reset before a new seed run starts.`);
     const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });

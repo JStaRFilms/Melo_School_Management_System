@@ -1,4 +1,5 @@
 import {
+  assertStorageClaimedOnlyBy,
   getUnboundStorageUrl,
   secureUploadUnavailable,
 } from "./assetStorageBoundary";
@@ -194,6 +195,10 @@ export const removeSchoolLogo = mutation({
     }
 
     if (school.logoStorageId) {
+      await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
+        purpose: "schoolLogo",
+        ownerId: String(school._id),
+      });
       await ctx.storage.delete(school.logoStorageId);
     }
 

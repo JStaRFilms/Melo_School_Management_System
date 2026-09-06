@@ -527,7 +527,7 @@ export const saveSchoolPaystackGatewayConfig = mutation({
   args: savePaystackGatewayConfigValidator,
   returns: billingPaystackProviderModeStateValidator,
   handler: async (ctx, args): Promise<BillingPaystackProviderModeState> => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx);
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.bank_details.manage" });
     assertAdmin(viewer);
 
     const result: BillingPaystackProviderModeState = await ctx.runMutation((internal as any).functions.billingProviders.saveSchoolPaystackGatewayConfigInternal, {
@@ -546,7 +546,7 @@ export const validateSchoolPaystackGatewayConfig = action({
   args: validatePaystackGatewayConfigValidator,
   returns: billingPaystackProviderModeStateValidator,
   handler: async (ctx, args): Promise<BillingPaystackProviderModeState> => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "finance.bank_details.manage" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }

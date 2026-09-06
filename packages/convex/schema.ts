@@ -1692,7 +1692,11 @@ export default defineSchema({
     schoolLogoStorageId: v.optional(v.id("_storage")),
     studentPhotoStorageId: v.optional(v.id("_storage")),
     report: reportCardResultValidator,
-  }).index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
+  })
+    .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    .index("by_school_logo_storage", ["schoolLogoStorageId"])
+    .index("by_student_photo_storage", ["studentPhotoStorageId"])
+    .index("by_school", ["schoolId"]),
 
   gradingBands: defineTable({
     schoolId: v.id("schools"),
@@ -3418,7 +3422,9 @@ export default defineSchema({
     code: v.string(), name: v.string(), version: v.number(),
     effectiveFrom: v.number(), rate: commercialRate,
     createdAt: v.number(),
-  }).index("by_code_and_version", ["code", "version"]),
+  })
+    .index("by_code_and_version", ["code", "version"])
+    .index("by_code_and_effective_from_and_version", ["code", "effectiveFrom", "version"]),
   commercialContracts: defineTable({
     schoolId: v.id("schools"), rateVersionId: v.id("commercialRateVersions"),
     rate: commercialRate, code: v.string(), version: v.number(),
@@ -3693,6 +3699,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_trashed", ["schoolId", "isTrashed"])
+    .index("by_school_and_trashed_and_archived_at", ["schoolId", "isTrashed", "archivedAt"])
     .index("by_school_and_scan", ["schoolId", "scanStatus"])
     .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
     .index("by_rollback_expiry", ["rollbackExpiryAt"])
