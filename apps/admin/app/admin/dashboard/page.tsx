@@ -23,6 +23,7 @@ import {
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
+import { useAuth } from "@/AuthProvider";
 
 type TeacherRecord = {
   _id: string;
@@ -137,18 +138,46 @@ function formatEventDate(timestamp: number, isAllDay: boolean) {
 }
 
 export default function AdminDashboardPage() {
-  const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as TeacherRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassRecord[] | undefined;
-  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as SessionRecord[] | undefined;
-  const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
+  const { workspaceAccess } = useAuth();
+  const capabilities =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.effectiveCapabilities
+      : [];
+  const canViewDashboardDetails =
+    capabilities.includes("staff.list.view") &&
+    capabilities.includes("academic.classes.manage") &&
+    capabilities.includes("finance.reports.view");
+  const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
+  const teachers = useQuery(
+    "functions/academic/academicSetup:listTeachers" as never,
+    queryArgs,
+  ) as TeacherRecord[] | undefined;
+  const classes = useQuery(
+    "functions/academic/academicSetup:listClasses" as never,
+    queryArgs,
+  ) as ClassRecord[] | undefined;
+  const subjects = useQuery(
+    "functions/academic/academicSetup:listSubjects" as never,
+    queryArgs,
+  ) as SubjectRecord[] | undefined;
+  const sessions = useQuery(
+    "functions/academic/academicSetup:listSessions" as never,
+    queryArgs,
+  ) as SessionRecord[] | undefined;
+  const billing = useQuery(
+    "functions/billing:getBillingDashboard" as never,
+    queryArgs,
+  ) as BillingDashboard | undefined;
   const [eventsFromTimestamp] = useState(() => Date.now());
   const events = useQuery(
     "functions/academic/events:listEvents" as never,
-    { fromTimestamp: eventsFromTimestamp } as never
+    canViewDashboardDetails
+      ? ({ fromTimestamp: eventsFromTimestamp } as never)
+      : ("skip" as never),
   ) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
-    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
+    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never,
+    queryArgs,
   ) as TimelineAuditEvent[] | undefined;
 
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -266,6 +295,30 @@ export default function AdminDashboardPage() {
     sessions !== undefined &&
     billing !== undefined &&
     events !== undefined;
+
+  if (workspaceAccess?.state !== "ready") {
+    return <DashboardSkeleton />;
+  }
+
+  if (!canViewDashboardDetails) {
+    return (
+      <main className="min-h-screen bg-slate-50/50 px-4 py-8 md:px-8">
+        <section className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            School workspace
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+            Welcome to {workspaceAccess.branch.name}
+          </h1>
+          <p className="mt-3 text-sm text-slate-600">
+            Use the workspace navigation to open the areas assigned to you.
+            Operational dashboard details appear only for staff with academic,
+            directory, and finance reporting access.
+          </p>
+        </section>
+      </main>
+    );
+  }
 
   if (!isLoaded) {
     return <DashboardSkeleton />;

@@ -75,6 +75,27 @@ export default function GroupBranding({
   );
 }
 
+export function BranchBrandingEditor({
+  groupId,
+  schoolId,
+}: {
+  groupId: Id<"schoolGroups">;
+  schoolId: Id<"schools">;
+}) {
+  return (
+    <section className="space-y-4 rounded-xl border bg-white p-5">
+      <h2 className="text-lg font-semibold">Branch branding</h2>
+      <p className="text-sm text-slate-600">
+        Choose whether this branch inherits the school-group colors or uses an
+        approved branch override.
+      </p>
+      <BranchBoundary>
+        <BranchEditor groupId={groupId} schoolId={schoolId} />
+      </BranchBoundary>
+    </section>
+  );
+}
+
 class BranchBoundary extends Component<
   { children: ReactNode },
   { failed: boolean }

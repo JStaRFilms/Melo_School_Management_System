@@ -2,14 +2,22 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import PermissionsPage from "../app/admin/permissions/page";
-const mocks = vi.hoisted(() => ({ query: vi.fn(), save: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(),
+  save: vi.fn(),
+  capabilities: ["staff.permissions.manage"] as string[],
+}));
 vi.mock("convex/react", () => ({
   useQuery: mocks.query,
   useMutation: () => mocks.save,
 }));
 vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
-    workspaceAccess: { state: "ready", branch: { schoolId: "school" } },
+    workspaceAccess: {
+      state: "ready",
+      branch: { schoolId: "school" },
+      effectiveCapabilities: mocks.capabilities,
+    },
   }),
 }));
 let allowed: boolean | undefined;
@@ -18,6 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   allowed = true;
   legacyBaseline = false;
+  mocks.capabilities = ["staff.permissions.manage"];
   mocks.query.mockImplementation((ref: FunctionReference<"query">) => {
     const name = getFunctionName(ref).split(":")[1];
     if (name === "hasViewerCapability") return allowed;
@@ -44,6 +53,22 @@ beforeEach(() => {
     if (name === "previewEffectiveCapabilities") return [];
   });
 });
+it("hides governance links without their destination capabilities", () => {
+  const view = render(<PermissionsPage />);
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+
+  mocks.capabilities = [
+    "staff.permissions.manage",
+    "staff.list.view",
+    "audit.group.view",
+    "audit.branch.view",
+  ];
+  view.rerender(<PermissionsPage />);
+  expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "School group" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Audit" })).toBeInTheDocument();
+});
+
 it("distinguishes checking from denied and does not mount the editor", () => {
   allowed = undefined;
   const view = render(<PermissionsPage />);

@@ -6,7 +6,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { WorkspaceAccessSummary } from "../../shared/src/workspace-access";
 import { getAuthenticatedSchoolMembership, resolveActiveMembership, resolveLegacyViewer } from "./academic/auth";
-import { CAPABILITY_CATALOG, getContextCapabilities, isPermissionManaged } from "./academic/rbac";
+import { CAPABILITY_CATALOG, getContextCapabilities, isMembershipProprietor, isPermissionManaged } from "./academic/rbac";
 import { isTrustedLegacySubjectIssuer } from "./academic/identityResolver";
 
 export const { getAuthUser } = authComponent.clientApi();
@@ -44,7 +44,12 @@ async function resolveViewerAccess(ctx: QueryCtx, requestedSchoolId?: Id<"school
     return {
       state: "ready",
       branch: { schoolId: school._id, name: school.name, slug: school.slug, status: school.status ?? "active" },
-      membership: membership ? { membershipId: membership._id, personId: membership.personId, displayTitle: membership.displayTitle ?? null } : null,
+      membership: membership ? {
+        membershipId: membership._id,
+        personId: membership.personId,
+        displayTitle: membership.displayTitle ?? null,
+        isProprietor: await isMembershipProprietor(ctx, membership),
+      } : null,
       displayTitle: membership?.displayTitle ?? null,
       effectiveCapabilities: await getContextCapabilities(ctx, context),
       compatibility: {

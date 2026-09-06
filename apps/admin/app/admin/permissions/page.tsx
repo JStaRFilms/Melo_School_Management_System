@@ -26,6 +26,10 @@ export default function PermissionsPage() {
     workspaceAccess?.state === "ready"
       ? (workspaceAccess.branch.schoolId as Id<"schools">)
       : undefined;
+  const capabilities =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.effectiveCapabilities
+      : [];
   const allowed = useQuery(
     rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "staff.permissions.manage" } : "skip",
@@ -33,15 +37,22 @@ export default function PermissionsPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <nav className="flex flex-wrap gap-4 text-sm">
-        <Link href="/admin" className="underline">
-          Administration
-        </Link>
-        <Link href="/admin/group" className="underline">
-          School group
-        </Link>
-        <Link href="/admin/audit" className="underline">
-          Audit
-        </Link>
+        {capabilities.includes("staff.list.view") && (
+          <Link href="/admin" className="underline">
+            Administration
+          </Link>
+        )}
+        {capabilities.includes("audit.group.view") && (
+          <Link href="/admin/group" className="underline">
+            School group
+          </Link>
+        )}
+        {(capabilities.includes("audit.branch.view") ||
+          capabilities.includes("audit.view")) && (
+          <Link href="/admin/audit" className="underline">
+            Audit
+          </Link>
+        )}
       </nav>
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

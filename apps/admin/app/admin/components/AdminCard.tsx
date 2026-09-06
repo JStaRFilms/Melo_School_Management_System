@@ -18,6 +18,8 @@ export function AdminCard({
   viewerIsLead,
   leadAdminId,
   busyAdminId,
+  canManagePermissions,
+  canSuspendAdmins,
   onPromote,
   onDemote,
   onArchive,
@@ -29,6 +31,8 @@ export function AdminCard({
   viewerIsLead: boolean;
   leadAdminId: string | null;
   busyAdminId: string | null;
+  canManagePermissions: boolean;
+  canSuspendAdmins: boolean;
   onPromote: () => void;
   onDemote?: () => void;
   onArchive: () => void;
@@ -36,10 +40,11 @@ export function AdminCard({
   onTransferLeadership: () => void;
 }) {
   const isViewerSelf = admin._id === viewerUserId;
-  const canPromote = !admin.isArchived && !isViewerSelf;
-  const canDemote = !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
-  const canArchive = !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
+  const canPromote = canManagePermissions && !admin.isArchived && !isViewerSelf;
+  const canDemote = canManagePermissions && !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
+  const canArchive = canSuspendAdmins && !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
   const canTransfer =
+    canManagePermissions &&
     viewerIsLead &&
     leadAdminId === viewerUserId &&
     !admin.isArchived &&
@@ -100,7 +105,7 @@ export function AdminCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          {admin.isArchived && onRestore && (
+          {canSuspendAdmins && admin.isArchived && onRestore && (
             <button
               type="button"
               onClick={onRestore}

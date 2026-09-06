@@ -70,7 +70,11 @@ describe("U1a selected workspace contract", () => {
   it("returns one capability summary matching enforcement and ignores cosmetic titles", async () => {
     const f = await fixture();
     const access = await f.viewer.query(accessQuery, {});
-    expect(access).toMatchObject({ state: "ready", displayTitle: "Custom title" });
+    expect(access).toMatchObject({
+      state: "ready",
+      displayTitle: "Custom title",
+      membership: { isProprietor: false },
+    });
     if (access.state !== "ready") throw new Error("Expected ready summary");
     for (const capability of ["academic.classes.manage", "finance.bank_details.manage", "staff.permissions.manage"]) {
       expect(await f.viewer.query(api.functions.academic.rbac.hasViewerCapability, { schoolId: f.schoolA, capability })).toBe(access.effectiveCapabilities.includes(capability));

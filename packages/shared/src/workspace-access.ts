@@ -8,7 +8,12 @@ export type WorkspaceAccessSummary =
   | {
       state: "ready";
       branch: { schoolId: string; name: string; slug: string; status: string };
-      membership: { membershipId: string; personId: string; displayTitle: string | null } | null;
+      membership: {
+        membershipId: string;
+        personId: string;
+        displayTitle: string | null;
+        isProprietor: boolean;
+      } | null;
       displayTitle: string | null;
       effectiveCapabilities: string[];
       compatibility: {

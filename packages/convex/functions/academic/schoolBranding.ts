@@ -21,6 +21,7 @@ export const schoolFeaturesValidator = v.object({
 
 export const schoolBrandingSummaryValidator = v.object({
   schoolId: v.id("schools"),
+  groupId: v.optional(v.id("schoolGroups")),
   name: v.string(),
   slug: v.string(),
   status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
@@ -68,8 +69,14 @@ export const getCurrentSchoolBranding = query({
       }
 
       const effectiveTheme = await resolveEffectiveTheme(ctx, school);
+      const groupLink = await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .unique();
+      const group = groupLink ? await ctx.db.get(groupLink.groupId) : null;
       return {
         schoolId,
+        groupId: group?.status === "active" ? group._id : undefined,
         name: normalizeHumanName(school.name),
         slug: school.slug,
         status: school.status ?? "active",

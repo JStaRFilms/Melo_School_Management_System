@@ -227,7 +227,11 @@ describe("U1f versioned branding defaults", () => {
       api.functions.academic.schoolBranding.getCurrentSchoolBranding,
       {},
     );
-    expect(currentBranding).toMatchObject({ schoolId: f.schoolId, theme });
+    expect(currentBranding).toMatchObject({
+      schoolId: f.schoolId,
+      groupId: f.groupId,
+      theme,
+    });
     if (!currentBranding) throw new Error("Missing branding fixture");
     await f.owner.mutation(
       api.functions.academic.schoolBranding.updateSchoolProfile,
