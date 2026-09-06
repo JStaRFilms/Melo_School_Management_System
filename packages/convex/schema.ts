@@ -3673,8 +3673,15 @@ export default defineSchema({
   usageCycles: defineTable({
     schoolId: v.id("schools"), contractId: v.id("commercialContracts"), entitlementVersionId: v.id("usageEntitlementVersions"),
     code: v.string(), version: v.number(), entitlement: usageEntitlement,
-    startAt: v.number(), endAt: v.number(), status: v.literal("active"), createdAt: v.number(),
+    startAt: v.number(), endAt: v.number(), status: v.union(v.literal("active"), v.literal("closed")), createdAt: v.number(),
+    closedAt: v.optional(v.number()), reconciliationNote: v.optional(v.string()),
   }).index("by_school", ["schoolId"]),
+  usageCycleMeterSnapshots: defineTable({
+    schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
+    allocatedUnits: v.number(), baseUnits: v.number(), graceUnits: v.number(), topUpUnits: v.number(), exceptionUnits: v.number(), poolUnits: v.number(),
+    consumedUnits: v.number(), reservedUnits: v.number(), activeStorageBytes: v.number(), trashStorageBytes: v.number(), tempStorageBytes: v.number(),
+    reconciledAt: v.number(),
+  }).index("by_cycle", ["cycleId"]).index("by_cycle_and_meter", ["cycleId", "meterType"]),
   usageGroupPools: defineTable({
     groupId: v.id("schoolGroups"), entitlementVersionId: v.id("usageEntitlementVersions"), meterType: usageMeterType,
     totalUnits: v.number(), startAt: v.number(), endAt: v.number(), reason: v.string(), createdAt: v.number(),

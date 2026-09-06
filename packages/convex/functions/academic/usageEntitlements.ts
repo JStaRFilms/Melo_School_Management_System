@@ -33,7 +33,7 @@ async function audit(ctx: MutationCtx, schoolId: Id<"schools">, action: string, 
 async function currentCycle(ctx: Context, schoolId: Id<"schools">, now = Date.now()) {
   const cycles = await ctx.db.query("usageCycles").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(101);
   if (cycles.length > 100) throw new ConvexError("Usage cycle history exceeds review bound");
-  const active = cycles.filter(row => row.startAt <= now && row.endAt > now);
+  const active = cycles.filter(row => row.status === "active" && row.startAt <= now && row.endAt > now);
   if (active.length > 1) throw new ConvexError("Overlapping usage cycles require reconciliation");
   return active[0] ?? null;
 }
@@ -41,12 +41,25 @@ export async function effectiveAllowance(ctx: Context, cycle: Doc<"usageCycles">
   const base = cycle.entitlement.allowances.find(row => row.meterType === meterType);
   if (!base) return null;
   const grants = await ctx.db.query("usageAllowanceGrants").withIndex("by_cycle", q => q.eq("cycleId", cycle._id)).take(101);
-  const pools = await ctx.db.query("usageBranchPoolAllocations").withIndex("by_cycle", q => q.eq("cycleId", cycle._id)).take(101);
-  if (grants.length > 100 || pools.length > 100) throw new ConvexError("Allowance grant history exceeds review bound");
+  const allocations = await ctx.db.query("usageBranchPoolAllocations").withIndex("by_cycle", q => q.eq("cycleId", cycle._id)).take(101);
+  if (grants.length > 100 || allocations.length > 100) throw new ConvexError("Allowance grant history exceeds review bound");
   const activeGrants = grants.filter(row => row.meterType === meterType && (row.expiresAt === undefined || row.expiresAt > now));
   const topUpUnits = activeGrants.filter(row => row.kind === "top_up").reduce((sum, row) => sum + row.units, 0);
   const exceptionUnits = activeGrants.filter(row => row.kind === "exception").reduce((sum, row) => sum + row.units, 0);
-  const poolUnits = pools.reduce((sum, row) => sum + row.units, 0);
+  let poolUnits = 0;
+  for (const row of allocations) {
+    if (row.schoolId !== cycle.schoolId) throw new ConvexError("Branch pool allocation requires reconciliation");
+    const pool = await ctx.db.get(row.poolId);
+    if (!pool) throw new ConvexError("Branch pool provenance is unavailable");
+    if (
+      pool.meterType !== meterType ||
+      pool.entitlementVersionId !== cycle.entitlementVersionId ||
+      pool.startAt > now ||
+      pool.endAt <= now
+    ) continue;
+    const link = await ctx.db.query("schoolGroupBranches").withIndex("by_group_and_school", q => q.eq("groupId", pool.groupId).eq("schoolId", cycle.schoolId)).unique();
+    if (link) poolUnits += row.units;
+  }
   return { baseUnits: base.baseUnits, graceUnits: base.graceUnits, topUpUnits, exceptionUnits, poolUnits, allocatedUnits: base.baseUnits + base.graceUnits + topUpUnits + exceptionUnits + poolUnits };
 }
 async function allocation(ctx: Context, schoolId: Id<"schools">, meterType: Doc<"usageMeterAllocations">["meterType"]) {
@@ -77,14 +90,57 @@ export const startUsageCycle = mutation({
     if (!contract || contract.schoolId !== args.schoolId || contract.effectiveFrom > args.startAt || (contract.effectiveTo !== undefined && contract.effectiveTo < args.endAt) || !version || version.effectiveFrom > args.startAt) throw new ConvexError("Matching effective contract and entitlement version required for the complete cycle");
     const cycles = await ctx.db.query("usageCycles").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).take(101);
     if (cycles.length > 100 || cycles.some(row => args.startAt < row.endAt && args.endAt > row.startAt)) throw new ConvexError("Usage cycle overlaps history or exceeds review bound");
+    if (cycles.some(row => row.status !== "closed")) throw new ConvexError("Close and reconcile the prior usage cycle before starting another");
     const id = await ctx.db.insert("usageCycles", { schoolId: args.schoolId, contractId: contract._id, entitlementVersionId: version._id, code: version.code, version: version.version, entitlement: version.entitlement, startAt: args.startAt, endAt: args.endAt, status: "active", createdAt: Date.now() });
     for (const row of version.entitlement.allowances) {
       const existing = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", row.meterType)).take(2);
-      if (existing.length > 1 || (existing[0] && (existing[0].consumedUnits !== 0 || existing[0].reservedUnits !== 0 || existing[0].cycleId))) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
+      if (existing.length > 1 || existing[0]?.reservedUnits) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
+      if (existing[0]?.cycleId) {
+        const [priorCycle, snapshot] = await Promise.all([
+          ctx.db.get(existing[0].cycleId),
+          ctx.db.query("usageCycleMeterSnapshots").withIndex("by_cycle_and_meter", q => q.eq("cycleId", existing[0]!.cycleId!).eq("meterType", row.meterType)).unique(),
+        ]);
+        if (!priorCycle || priorCycle.status !== "closed" || !snapshot) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
+      }
       const value = { schoolId: args.schoolId, cycleId: id, meterType: row.meterType, allocatedUnits: row.baseUnits + row.graceUnits, baseUnits: row.baseUnits, graceUnits: row.graceUnits, topUpUnits: 0, exceptionUnits: 0, poolUnits: 0, consumedUnits: 0, reservedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0, warningThresholdPercent: version.entitlement.warningPercent, criticalThresholdPercent: version.entitlement.criticalPercent, hardStopThresholdPercent: version.entitlement.hardStopPercent, resetCadence: contract.rate.cadence === "annually" ? "termly" as const : "termly" as const, lastResetAt: args.startAt, updatedAt: Date.now() };
       if (existing[0]) await ctx.db.replace(existing[0]._id, value); else await ctx.db.insert("usageMeterAllocations", value);
     }
     await audit(ctx, args.schoolId, "usage.cycle_started", id, "Activated explicit contract-bound entitlement cycle; no payment inferred"); return id;
+  },
+});
+export const closeUsageCycle = mutation({
+  args: {
+    schoolId: v.id("schools"), cycleId: v.id("usageCycles"),
+    expectedMeters: v.array(v.object({ meterType: usageMeterType, allocatedUnits: v.number(), consumedUnits: v.number() })),
+    reconciliationNote: v.string(), confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.confirmation !== "CLOSE") throw new ConvexError("Type CLOSE after reviewing final meter balances");
+    await platform(ctx, args.schoolId, "CONFIRM");
+    const cycle = await ctx.db.get(args.cycleId);
+    if (!cycle || cycle.schoolId !== args.schoolId) throw new ConvexError("Usage cycle unavailable");
+    if (cycle.status === "closed") return cycle._id;
+    if (Date.now() < cycle.endAt) throw new ConvexError("Usage cycle cannot close before its end boundary");
+    const note = bounded(args.reconciliationNote, "Reconciliation note", 8);
+    const expected = new Map(args.expectedMeters.map(row => [row.meterType, row]));
+    if (expected.size !== args.expectedMeters.length || expected.size !== cycle.entitlement.allowances.length) throw new ConvexError("Review one closing balance for every cycle meter");
+    for (const allowance of cycle.entitlement.allowances) {
+      const meter = await allocation(ctx, args.schoolId, allowance.meterType);
+      const reviewed = expected.get(allowance.meterType);
+      if (meter.cycleId !== cycle._id || !reviewed || meter.allocatedUnits !== reviewed.allocatedUnits || meter.consumedUnits !== reviewed.consumedUnits) throw new ConvexError("Usage closing balances changed; reload and reconcile");
+      if (meter.reservedUnits !== 0) throw new ConvexError("Usage cycle has active reservations");
+      await ctx.db.insert("usageCycleMeterSnapshots", {
+        schoolId: args.schoolId, cycleId: cycle._id, meterType: meter.meterType,
+        allocatedUnits: meter.allocatedUnits, baseUnits: meter.baseUnits ?? 0, graceUnits: meter.graceUnits ?? 0,
+        topUpUnits: meter.topUpUnits ?? 0, exceptionUnits: meter.exceptionUnits ?? 0, poolUnits: meter.poolUnits ?? 0,
+        consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits,
+        activeStorageBytes: meter.activeStorageBytes ?? 0, trashStorageBytes: meter.trashStorageBytes ?? 0, tempStorageBytes: meter.tempStorageBytes ?? 0,
+        reconciledAt: Date.now(),
+      });
+    }
+    await ctx.db.patch(cycle._id, { status: "closed", closedAt: Date.now(), reconciliationNote: note });
+    await audit(ctx, args.schoolId, "usage.cycle_closed", cycle._id, "Closed and snapshotted reviewed usage balances with no active reservations");
+    return cycle._id;
   },
 });
 export const recordTopUpGrant = mutation({

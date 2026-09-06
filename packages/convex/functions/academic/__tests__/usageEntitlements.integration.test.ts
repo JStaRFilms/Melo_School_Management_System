@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import schema from "../../../schema";
 import type { Id } from "../../../_generated/dataModel";
 import type { UsageEntitlement } from "../../foundation/usageContract";
@@ -9,6 +9,7 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 const fn = {
   publish: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:publishEntitlementVersion"),
   cycle: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:startUsageCycle"),
+  closeCycle: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:closeUsageCycle"),
   topUp: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:recordTopUpGrant"),
   request: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:requestUsageException"),
   decide: makeFunctionReference<"mutation">("functions/academic/usageEntitlements:decideUsageException"),
@@ -87,5 +88,64 @@ it("creates a bounded group pool and only the proprietor can allocate matching-c
   const poolId = await f.platform.mutation(fn.pool, { journalSchoolId: f.schoolId, groupId: f.groupId, entitlementVersionId: f.versionId, meterType: "ai_tokens", totalUnits: 50, startAt: today - day, endAt: today + 20 * day, reason: "Reviewed shared group pool", confirmation: "CONFIRM" }) as Id<"usageGroupPools">;
   await f.owner.mutation(fn.allocatePool, { poolId, schoolId: f.schoolId, cycleId: f.cycleId, units: 40, reason: "Allocate to headquarters need", confirmation: "ALLOCATE" });
   await expect(f.owner.mutation(fn.allocatePool, { poolId, schoolId: f.schoolId, cycleId: f.cycleId, units: 11, reason: "Exceeds remaining pool", confirmation: "ALLOCATE" })).rejects.toThrow("exceeds");
-  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; poolUnits: number }> }; expect(view.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(40);
+  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; poolUnits: number }> };
+  expect(view.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(40);
+  expect(view.meters.find(row => row.meterType === "ocr_pages")?.poolUnits).toBe(0);
+
+  const clock = vi.spyOn(Date, "now").mockReturnValue(today + 21 * day);
+  try {
+    const expired = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view;
+    expect(expired.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(0);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it("closes an ended cycle with no active reservations, preserves its balances, and starts a clean next cycle", async () => {
+  const f = await setup();
+  await f.t.run(async ctx => {
+    const meter = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", f.schoolId).eq("meterType", "ai_tokens")).unique();
+    if (!meter) throw new Error("missing meter");
+    await ctx.db.patch(meter._id, { consumedUnits: 30, reservedUnits: 1 });
+  });
+  const closeArgs = {
+    schoolId: f.schoolId,
+    cycleId: f.cycleId,
+    expectedMeters: [
+      { meterType: "ai_tokens" as const, allocatedUnits: 120, consumedUnits: 30 },
+      { meterType: "ocr_pages" as const, allocatedUnits: 10, consumedUnits: 0 },
+      { meterType: "storage_bytes" as const, allocatedUnits: 1100, consumedUnits: 0 },
+    ],
+    reconciliationNote: "Reviewed final synthetic balances",
+    confirmation: "CLOSE",
+  };
+  const clock = vi.spyOn(Date, "now").mockReturnValue(today + 30 * day);
+  try {
+    await expect(f.platform.mutation(fn.closeCycle, closeArgs)).rejects.toThrow("active reservations");
+    await f.t.run(async ctx => {
+      const meter = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", f.schoolId).eq("meterType", "ai_tokens")).unique();
+      if (!meter) throw new Error("missing meter");
+      await ctx.db.patch(meter._id, { reservedUnits: 0 });
+    });
+    await f.platform.mutation(fn.closeCycle, closeArgs);
+    const nextCycleId = await f.platform.mutation(fn.cycle, {
+      schoolId: f.schoolId,
+      contractId: f.contractId,
+      entitlementVersionId: f.versionId,
+      startAt: today + 30 * day,
+      endAt: today + 60 * day,
+      confirmation: "CONFIRM",
+    });
+    const state = await f.t.run(async ctx => ({
+      prior: await ctx.db.get(f.cycleId),
+      snapshots: await ctx.db.query("usageCycleMeterSnapshots").withIndex("by_cycle", q => q.eq("cycleId", f.cycleId)).take(4),
+      current: await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", f.schoolId).eq("meterType", "ai_tokens")).unique(),
+    }));
+    expect(state.prior).toMatchObject({ status: "closed" });
+    expect(state.snapshots).toHaveLength(3);
+    expect(state.snapshots.find(row => row.meterType === "ai_tokens")).toMatchObject({ consumedUnits: 30, reservedUnits: 0 });
+    expect(state.current).toMatchObject({ cycleId: nextCycleId, consumedUnits: 0, reservedUnits: 0, allocatedUnits: 120 });
+  } finally {
+    clock.mockRestore();
+  }
 });

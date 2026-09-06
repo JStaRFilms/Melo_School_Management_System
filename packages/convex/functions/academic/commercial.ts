@@ -1005,15 +1005,14 @@ export const appendInvoiceCorrection = mutation({
       throw new ConvexError(
         "Bounded idempotency key, integer amount and reason are required",
       );
+    const idempotencyKey = args.idempotencyKey.trim();
     const invoice = await ctx.db.get(args.invoiceId);
     if (!invoice || invoice.schoolId !== args.schoolId)
       throw new ConvexError("Subscription invoice unavailable");
     const existing = await ctx.db
       .query("subscriptionInvoiceCorrections")
       .withIndex("by_invoice_and_idempotency", (q) =>
-        q
-          .eq("invoiceId", invoice._id)
-          .eq("idempotencyKey", args.idempotencyKey),
+        q.eq("invoiceId", invoice._id).eq("idempotencyKey", idempotencyKey),
       )
       .unique();
     if (existing) {
@@ -1028,8 +1027,7 @@ export const appendInvoiceCorrection = mutation({
     if (
       (args.kind === "credit" && args.amountMinor >= 0) ||
       (args.kind === "debit" && args.amountMinor <= 0) ||
-      (args.kind === "note" && args.amountMinor !== 0) ||
-      (args.kind === "void" && args.amountMinor !== -invoice.totalMinor)
+      (args.kind === "note" && args.amountMinor !== 0)
     )
       throw new ConvexError("Correction kind and signed amount do not match");
     const prior = await ctx.db
@@ -1040,10 +1038,14 @@ export const appendInvoiceCorrection = mutation({
       throw new ConvexError("Correction history exceeds review bound");
     if (prior.some((c) => c.kind === "void"))
       throw new ConvexError("A voided invoice accepts no later corrections");
-    const effective =
+    const priorEffective =
       invoice.totalMinor +
-      prior.reduce((sum, row) => sum + row.amountMinor, 0) +
-      args.amountMinor;
+      prior.reduce((sum, row) => sum + row.amountMinor, 0);
+    if (args.kind === "void" && args.amountMinor !== -priorEffective)
+      throw new ConvexError(
+        "Void must reduce the current effective invoice amount to zero",
+      );
+    const effective = priorEffective + args.amountMinor;
     if (effective < 0)
       throw new ConvexError(
         "Correction cannot produce a negative invoice amount",
@@ -1051,7 +1053,7 @@ export const appendInvoiceCorrection = mutation({
     const id = await ctx.db.insert("subscriptionInvoiceCorrections", {
       schoolId: args.schoolId,
       invoiceId: invoice._id,
-      idempotencyKey: args.idempotencyKey.trim(),
+      idempotencyKey,
       kind: args.kind,
       amountMinor: args.amountMinor,
       reason: args.reason.trim(),

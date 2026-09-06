@@ -560,6 +560,86 @@ it("records proprietor catalog choice, paginates history, aggregates currencies 
   expect(summary.basis).toContain("no school-fee, usage or settlement rows");
 });
 
+it("normalizes accepted correction keys before lookup and insertion", async () => {
+  const f = await fixture();
+  const invoiceId = await f.platform.mutation(
+    commercial.issueSubscriptionInvoice,
+    f.invoiceArgs,
+  );
+  const correction = await f.platform.mutation(
+    commercial.appendInvoiceCorrection,
+    {
+      schoolId: f.schoolId,
+      invoiceId,
+      idempotencyKey: "  normalized-correction  ",
+      kind: "credit",
+      amountMinor: -100000,
+      reason: "Reviewed normalized correction retry",
+      confirmation: "CONFIRM",
+    },
+  );
+  expect(
+    await f.platform.mutation(commercial.appendInvoiceCorrection, {
+      schoolId: f.schoolId,
+      invoiceId,
+      idempotencyKey: "normalized-correction",
+      kind: "credit",
+      amountMinor: -100000,
+      reason: "Reviewed normalized correction retry",
+      confirmation: "CONFIRM",
+    }),
+  ).toBe(correction);
+  expect(
+    await f.t.run(ctx =>
+      ctx.db.query("subscriptionInvoiceCorrections").withIndex("by_invoice", q => q.eq("invoiceId", invoiceId)).take(10),
+    ),
+  ).toHaveLength(1);
+});
+
+it.each([
+  ["credit", -100000, -3000000],
+  ["debit", 100000, -3200000],
+] as const)("voids the complete effective balance after a prior %s", async (kind, adjustment, voidAmount) => {
+  const f = await fixture();
+  const invoiceId = await f.platform.mutation(
+    commercial.issueSubscriptionInvoice,
+    f.invoiceArgs,
+  );
+  await f.platform.mutation(commercial.appendInvoiceCorrection, {
+    schoolId: f.schoolId,
+    invoiceId,
+    idempotencyKey: `${kind}-before-void`,
+    kind,
+    amountMinor: adjustment,
+    reason: `Reviewed ${kind} before complete void`,
+    confirmation: "CONFIRM",
+  });
+  await expect(
+    f.platform.mutation(commercial.appendInvoiceCorrection, {
+      schoolId: f.schoolId,
+      invoiceId,
+      idempotencyKey: `wrong-${kind}-void`,
+      kind: "void",
+      amountMinor: -3100000,
+      reason: "Incorrect original-total void amount",
+      confirmation: "CONFIRM",
+    }),
+  ).rejects.toThrow("current effective invoice amount");
+  await f.platform.mutation(commercial.appendInvoiceCorrection, {
+    schoolId: f.schoolId,
+    invoiceId,
+    idempotencyKey: `${kind}-complete-void`,
+    kind: "void",
+    amountMinor: voidAmount,
+    reason: "Reviewed complete effective-balance void",
+    confirmation: "CONFIRM",
+  });
+  const corrections = await f.t.run(ctx =>
+    ctx.db.query("subscriptionInvoiceCorrections").withIndex("by_invoice", q => q.eq("invoiceId", invoiceId)).take(10),
+  );
+  expect(3100000 + corrections.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(0);
+});
+
 it("validates rates and computes explicit volume/minimum/discount/proration without hidden fees", () => {
   expect(() => validateRate({ ...rate, discountBps: 10001 })).toThrow();
   expect(() => validateRate({ ...rate, setupMinor: NaN })).toThrow();
