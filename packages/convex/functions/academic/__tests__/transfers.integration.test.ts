@@ -34,6 +34,7 @@ const getTransferRef = transfersApi.getTransfer;
 const listTransfersBySchoolRef = transfersApi.listTransfersBySchool;
 const listTransfersByGroupRef = transfersApi.listTransfersByGroup;
 const getStudentTransferHistoryRef = transfersApi.getStudentTransferHistory;
+const portalApi = api.functions.portal;
 
 interface TestHarness {
   schoolA: Id<"schools">;
@@ -280,6 +281,16 @@ async function setupTestHarness(
       email: "seun.adeyemi@family.test",
       role: "student",
       createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("branchMemberships", {
+      personId: studentPerson,
+      schoolId: schoolA,
+      status: "active",
+      isDefaultBranch: true,
+      legacyUserId: studentUserId,
+      joinedAt: now,
       updatedAt: now,
     });
 
@@ -902,7 +913,8 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         membershipId: harness.adminBMembershipId,
         capability: "enrollment.intakes.manage",
         grantedAt: Date.now(),
-        reason: "Managed transfer authority is explicit, not the legacy admin role",
+        reason:
+          "Managed transfer authority is explicit, not the legacy admin role",
       });
     });
 
@@ -1139,6 +1151,12 @@ describe("U6 routed workflow contracts", () => {
         .collect(),
       claims: await ctx.db.query("admissionNumberClaims").collect(),
       policy: await ctx.db.query("admissionNumberPolicies").first(),
+      destinationMemberships: await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_school_and_status", (q) =>
+          q.eq("schoolId", h.schoolB).eq("status", "active"),
+        )
+        .collect(),
       audits: await ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>
@@ -1152,6 +1170,7 @@ describe("U6 routed workflow contracts", () => {
     expect(rows.claims).toHaveLength(1);
     expect(rows.policy?.currentSequence).toBe(2);
     expect(rows.audits).toHaveLength(1);
+    expect(rows.destinationMemberships).toHaveLength(2);
     expect(rows.students[0].guardianPhone).toBeUndefined();
     const sourceView = await source.query(getTransferRef, {
       transferId: first.transferId,
@@ -1430,5 +1449,356 @@ describe("U6 continuous history and current branch authority", () => {
     await expect(
       destination.mutation(acceptDestinationTransferRef, acceptance),
     ).rejects.toThrow("Forbidden");
+  });
+});
+
+describe("U6 Portal canonical identity continuity", () => {
+  async function completeTransfer(
+    t: ReturnType<typeof convexTest>,
+    h: TestHarness,
+  ) {
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const initiated = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Reviewed written guardian consent",
+    });
+    await source.mutation(authorizeSourceReleaseRef, {
+      transferId: initiated.transferId,
+    });
+    const acceptanceArgs = {
+      transferId: initiated.transferId,
+      destinationClassId: h.classBId,
+    };
+    const accepted = await destination.mutation(
+      acceptDestinationTransferRef,
+      acceptanceArgs,
+    );
+    return { accepted, acceptanceArgs, destination };
+  }
+
+  it("opens the current destination with the same canonical login and keeps source history explicitly selectable", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert("academicSessions", {
+        schoolId: h.schoolA,
+        name: "2025/26 source history",
+        startDate: 1,
+        endDate: 2,
+        isActive: false,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("academicTerms", {
+        schoolId: h.schoolA,
+        sessionId,
+        name: "Source historical term",
+        startDate: 1,
+        endDate: 2,
+        isActive: false,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const { accepted, acceptanceArgs, destination } = await completeTransfer(
+      t,
+      h,
+    );
+    const studentLogin = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|student-seun",
+      subject: "auth-student-seun",
+      email: "different-contact-value@invalid.test",
+    });
+
+    expect(await studentLogin.query(portalApi.canAccessPortal, {})).toBe(true);
+    expect(
+      await studentLogin.query(portalApi.getPortalShellContext, {}),
+    ).toEqual({
+      schoolId: h.schoolB,
+      selectedStudentId: accepted.destinationStudentId,
+    });
+    const current = await studentLogin.query(portalApi.getWorkspaceData, {});
+    expect(current.selectedStudentId).toBe(accepted.destinationStudentId);
+    expect(current.school.id).toBe(h.schoolB);
+    expect(current.viewer.schoolId).toBe(h.schoolB);
+    expect(current.history).toHaveLength(0);
+    expect(
+      (
+        await studentLogin.query(
+          api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData,
+          {},
+        )
+      ).classId,
+    ).toBe(h.classBId);
+    expect(
+      current.students.map((student) => [
+        student.studentId,
+        student.schoolId,
+        student.enrollmentState,
+      ]),
+    ).toEqual([
+      [accepted.destinationStudentId, h.schoolB, "active"],
+      [h.studentId, h.schoolA, "historical"],
+    ]);
+
+    expect(
+      await studentLogin.query(portalApi.getPortalShellContext, {
+        studentId: h.studentId,
+      }),
+    ).toEqual({ schoolId: h.schoolA, selectedStudentId: h.studentId });
+    const sourceHistory = await studentLogin.query(portalApi.getWorkspaceData, {
+      studentId: h.studentId,
+    });
+    expect(sourceHistory.school.id).toBe(h.schoolA);
+    expect(sourceHistory.selectedStudentId).toBe(h.studentId);
+    expect(
+      (
+        await studentLogin.query(
+          api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData,
+          { studentId: h.studentId },
+        )
+      ).classId,
+    ).toBe(h.classAId);
+    expect(sourceHistory.selectedStudent?.enrollmentState).toBe("historical");
+    expect(sourceHistory.history).toHaveLength(1);
+    expect(sourceHistory.history[0].sessionName).toBe("2025/26 Source History");
+    expect(sourceHistory.students).toHaveLength(2);
+
+    const replay = await destination.mutation(
+      acceptDestinationTransferRef,
+      acceptanceArgs,
+    );
+    expect(replay).toEqual(accepted);
+    const counts = await t.run(async (ctx) => {
+      const sourceUser = await ctx.db.get(h.studentUserId);
+      if (!sourceUser?.personId)
+        throw new Error("Missing canonical source fixture");
+      const personId = sourceUser.personId;
+      return {
+        people: await ctx.db
+          .query("persons")
+          .withIndex("by_token_identifier", (q) =>
+            q.eq("authTokenIdentifier", "https://auth.melo.test|student-seun"),
+          )
+          .collect(),
+        users: await ctx.db
+          .query("users")
+          .withIndex("by_auth_token_identifier", (q) =>
+            q.eq("authTokenIdentifier", "https://auth.melo.test|student-seun"),
+          )
+          .collect(),
+        memberships: await ctx.db
+          .query("branchMemberships")
+          .withIndex("by_person_and_status", (q) =>
+            q.eq("personId", personId),
+          )
+          .collect(),
+        destinationStudents: await ctx.db
+          .query("students")
+          .withIndex("by_school", (q) => q.eq("schoolId", h.schoolB))
+          .collect(),
+      };
+    });
+    expect(counts.people).toHaveLength(1);
+    expect(counts.users).toHaveLength(2);
+    expect(new Set(counts.users.map((user) => user.authId))).toEqual(
+      new Set(["auth-student-seun"]),
+    );
+    expect(counts.memberships).toHaveLength(2);
+    expect(counts.destinationStudents).toHaveLength(1);
+  });
+
+  it("omits unrelated projections and fails selected destination access after membership revocation", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const { accepted } = await completeTransfer(t, h);
+    const studentLogin = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|student-seun",
+      subject: "auth-student-seun",
+    });
+    const unrelated = await t.run(async (ctx) => {
+      const classId = await ctx.db.insert("classes", {
+        schoolId: h.schoolC,
+        name: "Unrelated",
+        level: "Y6",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const userId = await ctx.db.insert("users", {
+        schoolId: h.schoolC,
+        authId: "unrelated-subject",
+        authTokenIdentifier: "https://auth.melo.test|student-seun",
+        name: "Wrong branch projection",
+        email: "seun.adeyemi@family.test",
+        role: "student",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      return await ctx.db.insert("students", {
+        schoolId: h.schoolC,
+        classId,
+        userId,
+        admissionNumber: "WRONG-1",
+        enrollmentStatus: "active",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const before = await studentLogin.query(portalApi.getWorkspaceData, {});
+    expect(before.students.map((student) => student.studentId)).not.toContain(
+      unrelated,
+    );
+
+    await t.run(async (ctx) => {
+      const destinationStudent = await ctx.db.get(
+        accepted.destinationStudentId,
+      );
+      const destinationUser =
+        destinationStudent && (await ctx.db.get(destinationStudent.userId));
+      if (!destinationUser?.personId)
+        throw new Error("Missing canonical destination fixture");
+      const personId = destinationUser.personId;
+      const membership = await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) =>
+          q.eq("personId", personId).eq("schoolId", h.schoolB),
+        )
+        .unique();
+      if (!membership)
+        throw new Error("Missing destination membership fixture");
+      await ctx.db.patch(membership._id, { status: "suspended" });
+    });
+    const after = await studentLogin.query(portalApi.getWorkspaceData, {});
+    expect(after.selectedStudentId).toBe(h.studentId);
+    expect(after.students.map((student) => student.studentId)).toEqual([
+      h.studentId,
+    ]);
+    await expect(
+      studentLogin.query(portalApi.getWorkspaceData, {
+        studentId: accepted.destinationStudentId,
+      }),
+    ).rejects.toThrow("Student not found");
+  });
+
+  it("denies a suspended canonical person and never falls back to a same-email legacy row", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const login = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|student-seun",
+      subject: "auth-student-seun",
+    });
+    await t.run(async (ctx) => {
+      const user = await ctx.db.get(h.studentUserId);
+      if (!user?.personId) throw new Error("Missing person fixture");
+      await ctx.db.insert("users", {
+        schoolId: h.schoolB,
+        authId: "auth-student-seun",
+        name: "Same email is not identity",
+        email: user.email,
+        role: "student",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.patch(user.personId, { status: "suspended" });
+    });
+    expect(await login.query(portalApi.canAccessPortal, {})).toBe(false);
+    await expect(login.query(portalApi.getWorkspaceData, {})).rejects.toThrow(
+      "Canonical account is inactive",
+    );
+  });
+
+  it("retains only exact trusted-subject compatibility for an unlinked legacy Portal row", async () => {
+    const t = convexTest(schema, modules);
+    const { studentId } = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Legacy Portal School",
+        slug: "legacy-portal-school",
+        status: "active",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const classId = await ctx.db.insert("classes", {
+        schoolId,
+        name: "Legacy Class",
+        level: "Y5",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const userId = await ctx.db.insert("users", {
+        schoolId,
+        authId: "exact-legacy-student",
+        name: "Legacy Student",
+        email: "contact-only@legacy.test",
+        role: "student",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const studentId = await ctx.db.insert("students", {
+        schoolId,
+        classId,
+        userId,
+        admissionNumber: "LEGACY-1",
+        enrollmentStatus: "active",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      return { studentId };
+    });
+    const trusted = t.withIdentity({
+      tokenIdentifier: "https://legacy-auth.test|not-prelinked",
+      subject: "exact-legacy-student",
+      issuer: "https://legacy-auth.test",
+      email: "not-the-contact@legacy.test",
+    });
+    expect(await trusted.query(portalApi.canAccessPortal, {})).toBe(true);
+    expect((await trusted.query(portalApi.getWorkspaceData, {})).selectedStudentId).toBe(studentId);
+    const wrongSubject = t.withIdentity({
+      tokenIdentifier: "https://legacy-auth.test|not-prelinked",
+      subject: "wrong-subject",
+      issuer: "https://legacy-auth.test",
+      email: "contact-only@legacy.test",
+    });
+    expect(await wrongSubject.query(portalApi.canAccessPortal, {})).toBe(false);
+  });
+
+  it("fails acceptance closed when reviewed canonical source linkage is missing and consumes nothing", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const destination = t.withIdentity(h.adminBIdentity);
+    const { transferId } = await source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Reviewed written guardian consent",
+    });
+    await source.mutation(authorizeSourceReleaseRef, { transferId });
+    await t.run((ctx) =>
+      ctx.db.patch(h.studentUserId, { personId: undefined }),
+    );
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: h.classBId,
+      }),
+    ).rejects.toThrow("reviewed canonical person");
+    const state = await t.run(async (ctx) => ({
+      transfer: await ctx.db.get(transferId),
+      students: await ctx.db
+        .query("students")
+        .withIndex("by_school", (q) => q.eq("schoolId", h.schoolB))
+        .collect(),
+      claims: await ctx.db.query("admissionNumberClaims").collect(),
+      policy: await ctx.db.query("admissionNumberPolicies").first(),
+    }));
+    expect(state.transfer?.status).toBe("source_released");
+    expect(state.students).toHaveLength(0);
+    expect(state.claims).toHaveLength(0);
+    expect(state.policy?.currentSequence).toBe(1);
   });
 });

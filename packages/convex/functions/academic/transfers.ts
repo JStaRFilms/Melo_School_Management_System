@@ -612,29 +612,71 @@ export const acceptDestinationTransfer = mutation({
         "Source student account is unavailable for transfer",
       );
     }
+    const canonicalIdentity = await resolveTransferStudentIdentity(ctx, {
+      sourceUser: sourceStudentUser,
+      sourceSchoolId: transfer.sourceSchoolId,
+      destinationSchoolId: transfer.destinationSchoolId,
+    });
 
     const now = Date.now();
-    const destinationStudentUserId = await ctx.db.insert("users", {
-      schoolId: transfer.destinationSchoolId,
-      authId: `student:${transfer.destinationSchoolId}:${destinationAdmissionNumber.toLowerCase()}`,
-      ...(sourceStudentUser.authTokenIdentifier
-        ? { authTokenIdentifier: sourceStudentUser.authTokenIdentifier }
-        : {}),
-      ...(sourceStudentUser.personId
-        ? { personId: sourceStudentUser.personId }
-        : {}),
-      name: sourceStudentUser.name,
-      ...(sourceStudentUser.firstName
-        ? { firstName: sourceStudentUser.firstName }
-        : {}),
-      ...(sourceStudentUser.lastName
-        ? { lastName: sourceStudentUser.lastName }
-        : {}),
-      email: sourceStudentUser.email,
-      role: "student",
-      createdAt: now,
-      updatedAt: now,
-    });
+    let destinationStudentUserId = canonicalIdentity.destinationUser?._id;
+    const existingDestinationUserId = destinationStudentUserId;
+    if (existingDestinationUserId) {
+      const existingEnrollments = await ctx.db
+        .query("students")
+        .withIndex("by_school_and_user", (q) =>
+          q
+            .eq("schoolId", transfer.destinationSchoolId)
+            .eq("userId", existingDestinationUserId),
+        )
+        .take(101);
+      if (existingEnrollments.length > 100) {
+        throw new ConvexError(
+          "Canonical student enrollment history exceeds supported bounds; reviewed repair required",
+        );
+      }
+      if (
+        existingEnrollments.some(
+          (student) =>
+            !student.isArchived && student.enrollmentStatus === "active",
+        )
+      ) {
+        throw new ConvexError(
+          "Canonical student already has an active destination enrollment; reviewed repair required",
+        );
+      }
+    } else {
+      destinationStudentUserId = await ctx.db.insert("users", {
+        schoolId: transfer.destinationSchoolId,
+        // authId is a compatibility projection, never a new credential owner.
+        authId: sourceStudentUser.authId,
+        authTokenIdentifier: canonicalIdentity.tokenIdentifier,
+        personId: canonicalIdentity.person._id,
+        name: sourceStudentUser.name,
+        ...(sourceStudentUser.firstName
+          ? { firstName: sourceStudentUser.firstName }
+          : {}),
+        ...(sourceStudentUser.lastName
+          ? { lastName: sourceStudentUser.lastName }
+          : {}),
+        email: sourceStudentUser.email,
+        role: "student",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("branchMemberships", {
+        personId: canonicalIdentity.person._id,
+        schoolId: transfer.destinationSchoolId,
+        status: "active",
+        isDefaultBranch: false,
+        legacyUserId: destinationStudentUserId,
+        joinedAt: now,
+        updatedAt: now,
+      });
+    }
+    if (!destinationStudentUserId) {
+      throw new ConvexError("Destination student projection was not created");
+    }
     const destinationStudentId = await ctx.db.insert("students", {
       schoolId: transfer.destinationSchoolId,
       classId: args.destinationClassId,
@@ -1010,6 +1052,93 @@ export const getStudentTransferHistory = query({
     return [...visible.values()].sort((a, b) => b.createdAt - a.createdAt);
   },
 });
+
+async function resolveTransferStudentIdentity(
+  ctx: MutationCtx,
+  args: {
+    sourceUser: Doc<"users">;
+    sourceSchoolId: Id<"schools">;
+    destinationSchoolId: Id<"schools">;
+  },
+) {
+  if (!args.sourceUser.personId || !args.sourceUser.authTokenIdentifier) {
+    throw new ConvexError(
+      "Student identity requires reviewed canonical person and source membership repair before transfer acceptance",
+    );
+  }
+  const person = await ctx.db.get(args.sourceUser.personId);
+  if (
+    !person ||
+    person.status !== "active" ||
+    person.identityReconciliationState === "reconciliation_required" ||
+    !person.authTokenIdentifier ||
+    person.authTokenIdentifier !== args.sourceUser.authTokenIdentifier
+  ) {
+    throw new ConvexError(
+      "Student canonical identity is inactive or inconsistent; reviewed repair required",
+    );
+  }
+  const sourceMemberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_school", (q) =>
+      q.eq("personId", person._id).eq("schoolId", args.sourceSchoolId),
+    )
+    .take(2);
+  if (
+    sourceMemberships.length !== 1 ||
+    sourceMemberships[0].status !== "active" ||
+    sourceMemberships[0].legacyUserId !== args.sourceUser._id
+  ) {
+    throw new ConvexError(
+      "Student source membership requires reviewed canonical repair before transfer acceptance",
+    );
+  }
+
+  const destinationMemberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_school", (q) =>
+      q.eq("personId", person._id).eq("schoolId", args.destinationSchoolId),
+    )
+    .take(2);
+  if (destinationMemberships.length > 1) {
+    throw new ConvexError(
+      "Ambiguous destination membership; reviewed repair required",
+    );
+  }
+  const destinationMembership = destinationMemberships[0];
+  if (!destinationMembership)
+    return {
+      person,
+      tokenIdentifier: person.authTokenIdentifier,
+      destinationUser: null,
+    };
+  if (
+    destinationMembership.status !== "active" ||
+    !destinationMembership.legacyUserId
+  ) {
+    throw new ConvexError(
+      "Destination membership is inactive or incomplete; reviewed repair required",
+    );
+  }
+  const destinationUser = await ctx.db.get(destinationMembership.legacyUserId);
+  if (
+    !destinationUser ||
+    destinationUser.isArchived ||
+    destinationUser.schoolId !== args.destinationSchoolId ||
+    destinationUser.personId !== person._id ||
+    destinationUser.authTokenIdentifier !== person.authTokenIdentifier ||
+    destinationUser.role !== "student"
+  ) {
+    throw new ConvexError(
+      "Destination portal projection is inconsistent; reviewed repair required",
+    );
+  }
+  return {
+    person,
+    tokenIdentifier: person.authTokenIdentifier,
+    destinationUser,
+  };
+}
 
 async function assertActiveTransferGroup(
   ctx: QueryCtx | MutationCtx,

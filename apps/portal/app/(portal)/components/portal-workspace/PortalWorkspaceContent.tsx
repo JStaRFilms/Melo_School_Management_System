@@ -250,6 +250,7 @@ function PortalGreetingBar({
                 key={student.studentId}
                 type="button"
                 onClick={() => onSelectStudent(student.studentId)}
+                aria-pressed={student.isActive}
                 className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors cursor-pointer ${
                   student.isActive
                     ? "bg-slate-900 text-white"
@@ -257,9 +258,9 @@ function PortalGreetingBar({
                 }`}
               >
                 <span>{student.name.split(" ")[0]}</span>
-                {student.schoolName !== workspace.school.name && (
-                  <span className="ml-1 text-[10px] opacity-80">· {student.schoolName}</span>
-                )}
+                <span className="ml-1 text-[10px] opacity-80">
+                  · {student.schoolName} · {student.enrollmentState === "active" ? "Current" : "History"}
+                </span>
               </button>
             ))}
           </div>
@@ -480,6 +481,7 @@ function PortalReportCardLayout({
                       <button
                         key={student.studentId}
                         onClick={() => onSelectStudent(student.studentId)}
+                        aria-pressed={student.isActive}
                         className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition text-sm ${
                           student.isActive
                             ? "border-slate-300 bg-slate-50 font-bold text-slate-900 shadow-sm"
@@ -489,7 +491,7 @@ function PortalReportCardLayout({
                         <span>
                           <span className="block">{student.name}</span>
                           <span className="mt-0.5 block text-xs font-medium text-slate-500">
-                            {student.schoolName} · {student.className}
+                            {student.schoolName} · {student.className} · {student.enrollmentState === "active" ? "Current enrollment" : "Historical enrollment"}
                           </span>
                         </span>
                       </button>

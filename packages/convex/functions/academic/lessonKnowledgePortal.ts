@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { query, mutation, type MutationCtx } from "../../_generated/server";
+import { query, mutation, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
-import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
+import { resolvePortalStudentContext } from "./portalIdentity";
 import {
   canCreateKnowledgeMaterialDraft,
   canPromoteKnowledgeMaterial,
@@ -107,92 +107,11 @@ const portalSupplementalFinalizeValidator = v.object({
 });
 
 async function getStudentPortalContext(
-  ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0],
-  args: { studentId?: Id<"students"> | null } = {}
+  ctx: QueryCtx,
+  args: { studentId?: Id<"students"> | null } = {},
 ) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new ConvexError("Unauthorized");
-  }
-
-  const membership = await resolveTokenFirstTrustedLegacyRow<Doc<"users">>(identity, {
-    byTokenIdentifier: (tokenIdentifier) =>
-      ctx.db
-        .query("users")
-        .withIndex("by_auth_token_identifier", (q: any) =>
-          q.eq("authTokenIdentifier", tokenIdentifier)
-        )
-        .take(2),
-    bySubject: (subject) =>
-      ctx.db
-        .query("users")
-        .withIndex("by_auth", (q: any) => q.eq("authId", subject))
-        .take(2),
-  });
-  if (!membership || membership.isArchived) {
-    throw new ConvexError("Portal account not found");
-  }
-
-  const studentMembership = membership.role === "student" ? membership : null;
-  if (studentMembership) {
-    const studentRows = await ctx.db
-      .query("students")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", studentMembership.schoolId))
-      .collect();
-    const student = studentRows.find(
-      (entry: Doc<"students">) =>
-        !entry.isArchived &&
-        String(entry.userId) === String(studentMembership._id) &&
-        (!args.studentId || String(entry._id) === String(args.studentId))
-    ) ?? null;
-    if (!student) {
-      throw new ConvexError("Student record not found");
-    }
-    return {
-      userId: studentMembership._id,
-      schoolId: studentMembership.schoolId,
-      role: "student" as const,
-      isSchoolAdmin: false,
-      student,
-    };
-  }
-
-  if (membership.role !== "parent") {
-    throw new ConvexError("Portal topic pages are available to students and parents only");
-  }
-
-  const accessible: Array<{ student: Doc<"students">; parentUser: Doc<"users"> }> = [];
-  const familyLinks = await ctx.db
-    .query("familyMembers")
-    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", membership._id))
-    .collect();
-  for (const familyLink of familyLinks) {
-    const familyStudents = await ctx.db
-      .query("students")
-      .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
-      .collect();
-    for (const student of familyStudents) {
-      if (student.schoolId === membership.schoolId && !student.isArchived) {
-        accessible.push({ student: student as Doc<"students">, parentUser: membership });
-      }
-    }
-  }
-
-  const selected = args.studentId
-    ? accessible.find((entry) => String(entry.student._id) === String(args.studentId)) ?? null
-    : accessible[0] ?? null;
-  if (!selected) {
-    throw new ConvexError("Student record not found");
-  }
-  return {
-    userId: selected.parentUser._id,
-    schoolId: selected.student.schoolId,
-    role: "parent" as const,
-    isSchoolAdmin: false,
-    student: selected.student,
-  };
+  return resolvePortalStudentContext(ctx, args);
 }
-
 
 async function patchPortalPromotionChunksForState(
   ctx: Pick<MutationCtx, "db">,
