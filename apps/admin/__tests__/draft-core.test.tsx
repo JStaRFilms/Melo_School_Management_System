@@ -133,6 +133,18 @@ describe("departure handshake and accessibility", () => {
     act(() => window.dispatchEvent(new PopStateEvent("popstate"))); expect(await screen.findByRole("dialog")).toBeInTheDocument();
     forward.mockRestore();
   });
+  it("consumes the duplicate history sentinel before confirmed link navigation", async () => {
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const discard = vi.fn().mockResolvedValue(undefined);
+    render(<DepartureGuardProvider><Guarded discard={discard} /></DepartureGuardProvider>);
+
+    fireEvent.click(screen.getByRole("link", { name: "Sidebar link" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard and leave" }));
+
+    await waitFor(() => expect(discard).toHaveBeenCalledOnce());
+    expect(back).toHaveBeenCalledOnce();
+    back.mockRestore();
+  });
   it("connects the actual navbar sign-out seam to awaited save/discard/stay", async () => {
     Element.prototype.scrollIntoView = vi.fn(); const signOut = vi.fn(); const discard = vi.fn().mockResolvedValue(undefined);
     function Shell() { const guard = useDepartureGuard(); return <WorkspaceNavbar workspace="admin" currentPath="/admin/dashboard" requestDeparture={guard.requestDeparture} onSignOut={signOut} renderLink={props => <a key={props.href} href={props.href}>{props.children}</a>}><Guarded discard={discard} /></WorkspaceNavbar>; }

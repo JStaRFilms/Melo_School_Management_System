@@ -10,7 +10,7 @@ const scope = { schoolId: v.id("schools"), formKey: v.string(), entityId: v.opti
 const instance = { schoolId: v.id("schools"), draftId: v.id("formDrafts"), expectedRevision: v.number() };
 function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
 async function authority(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, formKey: string, entityId?: string) {
-  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId, membershipOnly: true });
+  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId });
   if (!isDraftFormKey(formKey)) return fail("SCHEMA_REJECTED", "This form has no reviewed draft schema.");
   const policy = draftRegistry[formKey];
   if (!auth.isSchoolAdmin && !(policy.authority === "staff" && auth.role === "teacher")) fail("FORBIDDEN", "Draft creation is not permitted for this form.");
@@ -28,7 +28,7 @@ async function authority(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, f
 }
 async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number }) {
   const draft = await ctx.db.get(args.draftId);
-  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, membershipOnly: true });
+  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
   if (!draft || draft.userId !== auth.userId || draft.schoolId !== args.schoolId) return fail("FORBIDDEN", "Draft unavailable.");
   await authority(ctx, args.schoolId, draft.formKey, draft.entityId);
   if (draft.status !== "active") fail("CLOSED", "This draft has already been submitted or discarded.");
