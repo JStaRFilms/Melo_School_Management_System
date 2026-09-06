@@ -1,7 +1,4 @@
 import {
-  assertSecureUploadTransportAvailable,
-  assertStorageClaimedOnlyBy,
-  assertStorageUnclaimed,
   getUnboundStorageUrl,
   secureUploadUnavailable,
 } from "./assetStorageBoundary";
@@ -65,7 +62,6 @@ export const getCurrentSchoolBranding = query({
     try {
       const { schoolId } = await getAuthenticatedSchoolMembership(ctx, {
         allowSuspended: true,
-        membershipOnly: true,
       });
       const school = await ctx.db.get(schoolId);
       if (!school) {
@@ -172,33 +168,13 @@ export const saveSchoolLogo = mutation({
     logoContentType: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "settings.branding.manage",
       });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    assertSecureUploadTransportAvailable();
-
-    if (!args.logoContentType.startsWith("image/")) {
-      throw new ConvexError("School logo must be an image file");
-    }
-
-    const school = await ctx.db.get(schoolId);
-    if (!school) {
-      throw new ConvexError("School not found");
-    }
-
-    await assertStorageUnclaimed(ctx, args.logoStorageId);
-    await ctx.db.patch(schoolId, {
-      logoStorageId: args.logoStorageId,
-      logoFileName: args.logoFileName,
-      logoContentType: args.logoContentType,
-      logoUpdatedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    return null;
+    return secureUploadUnavailable<null>();
   },
 });
 
@@ -218,10 +194,6 @@ export const removeSchoolLogo = mutation({
     }
 
     if (school.logoStorageId) {
-      await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
-        purpose: "schoolLogo",
-        ownerId: String(school._id),
-      });
       await ctx.storage.delete(school.logoStorageId);
     }
 

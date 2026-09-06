@@ -266,6 +266,75 @@ describe("U1f versioned branding defaults", () => {
     ).toBe(true);
   });
 
+  it("saves profile fields against an effective branch override without copying it into the school theme", async () => {
+    const f = await fixture();
+    await f.owner.mutation(endpoints.saveGroupBranding, {
+      groupId: f.groupId,
+      expectedVersion: 0,
+      theme,
+      allowBranchOverride: true,
+      confirmation: "group",
+    });
+    const overrideTheme = {
+      primaryColor: "#654321",
+      accentColor: "#fedcba",
+    };
+    await f.owner.mutation(endpoints.saveBranchBranding, {
+      groupId: f.groupId,
+      schoolId: f.schoolId,
+      expectedVersion: 1,
+      expectedRevision: 0,
+      confirmation: "hq",
+      change: { mode: "override", theme: overrideTheme },
+    });
+
+    const currentBranding = await f.owner.query(
+      api.functions.academic.schoolBranding.getCurrentSchoolBranding,
+      {},
+    );
+    expect(currentBranding?.theme).toEqual(overrideTheme);
+    const before = await f.t.run(async (ctx) => ({
+      school: await ctx.db.get(f.schoolId),
+      link: await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_group_and_school", (q) =>
+          q.eq("groupId", f.groupId).eq("schoolId", f.schoolId),
+        )
+        .unique(),
+    }));
+
+    await f.owner.mutation(
+      api.functions.academic.schoolBranding.updateSchoolProfile,
+      {
+        name: "Renamed branch",
+        motto: "Learn well",
+        theme: overrideTheme,
+        contactEmail: "office@example.test",
+        contactPhone: "+234 800 000 0000",
+        address: "1 School Road",
+      },
+    );
+
+    const after = await f.t.run(async (ctx) => ({
+      school: await ctx.db.get(f.schoolId),
+      link: await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_group_and_school", (q) =>
+          q.eq("groupId", f.groupId).eq("schoolId", f.schoolId),
+        )
+        .unique(),
+    }));
+    expect(after.school).toMatchObject({
+      name: "Renamed branch",
+      motto: "Learn well",
+      contactEmail: "office@example.test",
+      contactPhone: "+234 800 000 0000",
+      address: "1 School Road",
+      theme: before.school?.theme,
+    });
+    expect(after.link).toEqual(before.link);
+  });
+
   it("rejects outsiders/platform defaults and group linkage as branch authority, rechecks capability/revocation", async () => {
     const f = await fixture();
     const args = {

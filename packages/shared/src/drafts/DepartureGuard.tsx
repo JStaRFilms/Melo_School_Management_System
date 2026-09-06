@@ -35,6 +35,9 @@ export function useDirtyForm(form: DirtyFormRegistration) {
 export function DepartureGuardProvider({ children }: { children: ReactNode }) {
   const forms = useRef(new Map<symbol, () => DirtyFormRegistration>());
   const armHistory = useRef<() => void>(() => {});
+  const navigateLink = useRef<(href: string) => void>((href) => {
+    window.location.assign(href);
+  });
   const refresh = useCallback(() => armHistory.current(), []);
   const pending = useRef<((approved: boolean) => void) | null>(null);
   const [prompt, setPrompt] = useState<{ departure: FormDeparture; forms: DirtyFormRegistration[] } | null>(null);
@@ -71,7 +74,9 @@ export function DepartureGuardProvider({ children }: { children: ReactNode }) {
       const url = new URL(anchor.href);
       if (!["http:", "https:"].includes(url.protocol)) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      void requestDeparture({ kind: "link", href: url.href }).then(ok => { if (ok) { forms.current.clear(); window.location.assign(url.href); } });
+      void requestDeparture({ kind: "link", href: url.href }).then(ok => {
+        if (ok) navigateLink.current(url.href);
+      });
     };
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", click, true);
@@ -92,6 +97,26 @@ export function DepartureGuardProvider({ children }: { children: ReactNode }) {
         armed = true;
       }
     };
+    let pendingLinkNavigation: (() => void) | null = null;
+    const navigate = (href: string) => {
+      forms.current.clear();
+      if (!armed || window.location.href !== originalUrl) {
+        window.location.assign(href);
+        return;
+      }
+
+      // Return to the real form entry before adding the destination. Otherwise the
+      // duplicate sentinel remains behind it and Back appears to revisit the form.
+      armed = false;
+      bypass = true;
+      pendingLinkNavigation = () => {
+        pendingLinkNavigation = null;
+        window.location.assign(href);
+      };
+      window.addEventListener("popstate", pendingLinkNavigation, { once: true });
+      window.history.back();
+    };
+    navigateLink.current = navigate;
     const pop = (event: PopStateEvent) => {
       if (bypass || !armed) return;
       // An approved router navigation may have added clean routes beyond this sentinel.
@@ -116,7 +141,14 @@ export function DepartureGuardProvider({ children }: { children: ReactNode }) {
     armHistory.current = arm;
     arm();
     window.addEventListener("popstate", pop, true);
-    return () => { armHistory.current = () => {}; window.removeEventListener("popstate", pop, true); };
+    return () => {
+      armHistory.current = () => {};
+      navigateLink.current = (href) => window.location.assign(href);
+      window.removeEventListener("popstate", pop, true);
+      if (pendingLinkNavigation) {
+        window.removeEventListener("popstate", pendingLinkNavigation);
+      }
+    };
   }, [dirty, requestDeparture]);
 
   return <Context.Provider value={guard}><DraftMemoryProvider>{children}</DraftMemoryProvider>{prompt && <UnsavedBranchSwitchModal
