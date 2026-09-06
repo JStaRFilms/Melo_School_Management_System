@@ -1,6 +1,6 @@
 # Product-Wide Module Registry and School Entitlements
 
-**Status:** Proposed architecture follow-up  
+**Status:** Proposed architecture follow-up
 **Scope:** Optional Melo features that are implemented once product-wide and enabled for selected schools or all schools.
 
 ## Purpose
