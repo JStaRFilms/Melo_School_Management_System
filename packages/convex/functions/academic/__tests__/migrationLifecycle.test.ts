@@ -20,6 +20,7 @@ type MutationRef = FunctionReference<"mutation", "public", any, any>;
 type QueryRef = FunctionReference<"query", "public", any, any>;
 
 const createWorkspace = migrationWorkspace.createWorkspace as unknown as MutationRef;
+const listWorkspaces = migrationWorkspace.listWorkspaces as unknown as QueryRef;
 const getWorkspaceRecords = migrationWorkspace.getWorkspaceRecords as unknown as QueryRef;
 const getWorkspaceFeatureSignals = migrationWorkspace.getWorkspaceFeatureSignals as unknown as QueryRef;
 const stageRecordsBatch = migrationIngest.stageRecordsBatch as unknown as MutationRef;
@@ -144,6 +145,73 @@ describe("Migration Lifecycle Engine", () => {
     await expect(owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("committing");
     await expect(owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] })).rejects.toThrow("committing");
     await expect(owner.mutation(bulkResolveAdmissionNumbers, { schoolId: schoolA, workspaceId })).rejects.toThrow("committing");
+  });
+
+  it("filters private workspaces before limiting and scopes feature signals to each creator workspace", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const peerId = await t.run((ctx) => ctx.db.insert("users", {
+      schoolId: schoolA,
+      authId: "auth-peer-a",
+      name: "Peer Admin",
+      email: "peer@greenwood.test",
+      role: "admin",
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    const owner = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const peer = t.withIdentity({ subject: "auth-peer-a", issuer: "https://legacy-auth.test" });
+    const ownerWorkspaceId = await owner.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Older private workspace",
+      mode: "school_admin",
+    });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 50; index += 1) {
+        await ctx.db.insert("importWorkspaces", {
+          schoolId: schoolA,
+          name: `Peer workspace ${index}`,
+          mode: "school_admin",
+          status: "draft",
+          totalRecords: 0,
+          validRecords: 0,
+          warningRecords: 0,
+          errorRecords: 0,
+          sourceFiles: [],
+          nextAdmissionSequence: 1,
+          createdAt: index + 2,
+          updatedAt: index + 2,
+          createdBy: peerId,
+        });
+      }
+    });
+    expect(await owner.query(listWorkspaces, { schoolId: schoolA })).toEqual([
+      expect.objectContaining({ _id: ownerWorkspaceId }),
+    ]);
+
+    const peerWorkspaceId = await peer.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Peer signal workspace",
+      mode: "school_admin",
+    });
+    const record = (rowNumber: number) => ({
+      rowNumber,
+      rawPayload: {},
+      parsedData: { firstName: `Student${rowNumber}`, lastName: "Example", gender: "Female", className: "JSS 1A" },
+      entityType: "student" as const,
+      unrecognizedHeaders: [{ header: "Transport Route", detectedType: "string" }],
+    });
+    await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: ownerWorkspaceId, records: [record(1)] });
+    await peer.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: peerWorkspaceId, records: [record(2)] });
+    await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: ownerWorkspaceId, records: [record(3)] });
+
+    expect(await owner.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: ownerWorkspaceId })).toEqual([
+      expect.objectContaining({ workspaceId: ownerWorkspaceId, rawHeader: "Transport Route" }),
+    ]);
+    expect(await peer.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: peerWorkspaceId })).toEqual([
+      expect.objectContaining({ workspaceId: peerWorkspaceId, rawHeader: "Transport Route" }),
+    ]);
+    await expect(peer.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: ownerWorkspaceId })).rejects.toThrow("Workspace not found");
+    expect(await t.run((ctx) => ctx.db.query("migrationFeatureSignals").collect())).toHaveLength(2);
   });
 
   it("Authentication Guard: rejects non-admins and Platform while allowing each school's admin", async () => {

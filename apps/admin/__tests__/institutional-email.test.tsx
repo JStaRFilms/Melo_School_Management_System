@@ -4,7 +4,7 @@ import { getFunctionName } from "convex/server";
 import EmailDomainsPage from "../app/admin/settings/email-domains/page";
 
 const mocks = vi.hoisted(() => ({
-  allowed: true as boolean | undefined, loading: false, empty: false, policy: true, version: 1, candidate: "ada.example2",
+  allowed: true as boolean | undefined, loading: false, empty: false, inheritedOnly: false, policy: true, version: 1, candidate: "ada.example2",
   save: vi.fn(), guard: vi.fn(),
 }));
 vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" } } }) }));
@@ -17,9 +17,11 @@ vi.mock("convex/react", () => ({
     if (name.endsWith("hasViewerCapability")) return mocks.allowed;
     if (name.endsWith("getEmailWorkbench")) return mocks.loading ? undefined : {
       permissions: { policy: mocks.policy, staff: true, student: true, lifecycle: true },
-      policy: mocks.empty ? null : { domainId: "domain", staffTemplate: "firstname.lastname", studentTemplate: "firstname.lastname", version: mocks.version },
+      policy: mocks.empty || mocks.inheritedOnly ? null : { domainId: "domain", staffTemplate: "firstname.lastname", studentTemplate: "firstname.lastname", version: mocks.version },
       people: mocks.empty ? [] : [{ personId: "person", name: "Ada Example", kind: "student" }],
-      domains: mocks.empty ? [] : [{ _id: "domain", schoolId: "school", domain: "school.example", provider: "google", status: "pending_verification", isDefault: true }],
+      domains: mocks.empty ? [] : mocks.inheritedOnly
+        ? [{ _id: "inherited-domain", schoolId: "sibling-school", domain: "group.example", provider: "none", status: "pending_verification", isDefault: false, sharedWithGroup: true }]
+        : [{ _id: "domain", schoolId: "school", domain: "school.example", provider: "google", status: "pending_verification", isDefault: true }],
       mailboxes: mocks.empty ? [] : [
         { _id: "login", personId: "person", email: "login@school.example", kind: "student", state: "login_only", providerType: "none", status: "active" },
         { _id: "external", personId: "person", email: "external@school.example", kind: "student", state: "external_verified", providerType: "none", status: "suspended", aliasOfMailboxId: "login" },
@@ -35,7 +37,7 @@ vi.mock("convex/react", () => ({
   },
 }));
 afterEach(() => {
-  cleanup(); mocks.allowed = true; mocks.loading = false; mocks.empty = false; mocks.policy = true; mocks.version = 1; mocks.candidate = "ada.example2";
+  cleanup(); mocks.allowed = true; mocks.loading = false; mocks.empty = false; mocks.inheritedOnly = false; mocks.policy = true; mocks.version = 1; mocks.candidate = "ada.example2";
   mocks.save.mockReset(); mocks.guard.mockReset();
 });
 it("distinguishes permission loading, denied, data loading and empty states without exposing controls", () => {
@@ -50,6 +52,14 @@ it("distinguishes permission loading, denied, data loading and empty states with
   expect(screen.getByText(/No domains registered/)).toBeTruthy();
   expect(screen.getByText(/No approved address allocations/)).toBeTruthy();
   expect(screen.getByText("Run address dry run").closest("fieldset")?.disabled).toBe(true);
+});
+it("allows an eligible inherited group domain to seed the first branch policy", () => {
+  mocks.inheritedOnly = true;
+  render(<EmailDomainsPage />);
+  const domain = screen.getByLabelText("Branch domain / explicit inheritance") as HTMLSelectElement;
+  expect(domain.value).toBe("inherited-domain");
+  expect(domain.closest("fieldset")?.disabled).toBe(false);
+  expect(screen.getByRole("option", { name: /group\.example — inherit shared group domain/ })).toBeTruthy();
 });
 it("shows three distinct evidence badges and failure/alias/lifecycle gates without provider controls", () => {
   render(<EmailDomainsPage />);
