@@ -1,3 +1,6 @@
+import type { WorkspaceAccessSummary } from "./workspace-access";
+import { getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, type WorkspaceFeatures } from "./workspace-route-access";
+
 export type WorkspaceKey = "admin" | "teacher" | "portal";
 
 export interface WorkspaceSection {
@@ -95,7 +98,10 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       },
 
       // 4. Finance & Invoicing
-      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing"] },
+      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing$"] },
+      { href: "/admin/group", label: "School group", matchers: ["/admin/group"] },
+      { href: "/admin/audit", label: "Audit", matchers: ["/admin/audit"] },
+      { href: "/admin/permissions", label: "Permissions", matchers: ["/admin/permissions"] },
 
       // 5. Setup & Settings
       { href: "/academic/sessions", label: "Sessions & Terms", matchers: ["/academic/sessions"] },
@@ -204,12 +210,25 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
   return workspaceDefinitions[workspace].sections;
 }
 
+/** Navigation uses the same legacy/module decision as the owning layout, not guessed RBAC mappings. */
+export function getAccessibleWorkspaceSections(
+  workspace: WorkspaceKey,
+  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null } = {},
+) {
+  if (workspace !== "portal" && options.access && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
+  return getWorkspaceSections(workspace).filter(section =>
+    !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
+    (!options.access || !getWorkspaceCapabilityDenial(workspace, section.href, options.access)) &&
+    !(workspace === "portal" && section.href === "/learning/topics" && options.userRole !== "student")
+  );
+}
+
 export function isWorkspaceSectionActive(section: WorkspaceSection, pathname: string) {
   return section.matchers.some((matcher) => {
     if (matcher.endsWith("$")) {
       return pathname === matcher.slice(0, -1);
     }
-    return matcher === "/" ? pathname === "/" : pathname.startsWith(matcher);
+    return matcher === "/" ? pathname === "/" : pathname === matcher || pathname.startsWith(`${matcher}/`);
   });
 }
 

@@ -297,7 +297,7 @@ export const listInstructionTemplates = query({
   },
   returns: instructionTemplateListResponseValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const templates = await loadInstructionTemplateRows(ctx, schoolId, args.outputType, args.searchQuery ?? null);
@@ -340,7 +340,7 @@ export const saveInstructionTemplate = mutation({
   args: instructionTemplateDraftValidator,
   returns: v.id("instructionTemplates"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     assertSupportedOutputType(args.outputType);

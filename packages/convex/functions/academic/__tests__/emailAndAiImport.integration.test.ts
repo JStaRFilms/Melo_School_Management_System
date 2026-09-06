@@ -26,11 +26,12 @@ const institutionalEmailApi = api.functions.academic.institutionalEmail;
 const aiImportApi = api.functions.academic.aiImport;
 const assetsApi = api.functions.academic.assets;
 const institutionalEmailInternal = internal.functions.academic.institutionalEmail;
+const tenantOperatorToken = "https://auth.school.test|tenant-operator";
 
-function platformSession(t: ReturnType<typeof convexTest>) {
+function tenantSession(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({
-    tokenIdentifier: "https://auth.school.test|platform-admin",
-    subject: "platform-admin",
+    tokenIdentifier: tenantOperatorToken,
+    subject: "tenant-operator",
   });
 }
 
@@ -53,27 +54,56 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       updatedAt: now,
     });
 
-    await ctx.db.insert("platformAdmins", {
-      authId: "platform-admin",
-      authTokenIdentifier: "https://auth.school.test|platform-admin",
-      email: "platform-admin@school.test",
-      name: "Test Platform Administrator",
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // 2. Create Admin User
+    // 2. Create an explicitly scoped tenant operator.
     const adminUserId = await ctx.db.insert("users", {
       schoolId,
-      authId: "auth-admin-1",
-      authTokenIdentifier: "https://auth.school.test|admin-1",
+      authId: "tenant-operator",
+      authTokenIdentifier: tenantOperatorToken,
       name: "Principal Oladipo",
       email: "principal@cedarwood.edu.ng",
       role: "admin",
       isSchoolAdmin: true,
       createdAt: now,
       updatedAt: now,
+    });
+    const operatorPersonId = await ctx.db.insert("persons", {
+      authTokenIdentifier: tenantOperatorToken,
+      email: "principal@cedarwood.edu.ng",
+      name: "Principal Oladipo",
+      status: "active",
+      primarySchoolId: schoolId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const operatorMembershipId = await ctx.db.insert("branchMemberships", {
+      personId: operatorPersonId,
+      schoolId,
+      legacyUserId: adminUserId,
+      status: "active",
+      isDefaultBranch: true,
+      permissionsManagedAt: now,
+      joinedAt: now,
+      updatedAt: now,
+    });
+    const operatorRoleId = await ctx.db.insert("roleTemplates", {
+      code: "email_import_test_operator",
+      name: "Email and import test operator",
+      scope: "branch",
+      schoolId,
+      capabilities: [
+        "settings.domains.manage",
+        "staff.onboard",
+        "staff.list.view",
+        "staff.account.suspend",
+        "enrollment.intakes.manage",
+      ],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("membershipRoleAssignments", {
+      membershipId: operatorMembershipId,
+      roleTemplateId: operatorRoleId,
+      assignedAt: now,
     });
 
     const importStudentUserIds = await Promise.all(
@@ -177,7 +207,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         await setupTestHarness(t);
 
       // Register and verify institutional domain
-      const reg = await platformSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
+      const reg = await tenantSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
         schoolId,
         domain: "cedarwood.edu.ng",
         provider: "google",
@@ -191,7 +221,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
 
       // Propose batch of 3 persons sharing the same base name 'John Doe'
-      const proposals = await platformSession(t).query(
+      const proposals = await tenantSession(t).query(
         institutionalEmailApi.proposeEmailAddresses,
         {
           schoolId,
@@ -255,7 +285,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       const { schoolId, person1Id, person2Id, person3Id } =
         await setupTestHarness(t);
 
-      const reg = await platformSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
+      const reg = await tenantSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
         schoolId,
         domain: "cedarwood.edu.ng",
         provider: "microsoft",
@@ -269,17 +299,17 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
 
       // Pre-allocate requested addresses. Provisioning state is internal and not
       // needed for collision detection.
-      await platformSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
+      await tenantSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
         schoolId,
         personId: person1Id,
         email: "john.doe@cedarwood.edu.ng",
       });
-      await platformSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
+      await tenantSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
         schoolId,
         personId: person2Id,
         email: "john.m.doe@cedarwood.edu.ng",
       });
-      await platformSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
+      await tenantSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
         schoolId,
         personId: person3Id,
         email: "john.doe2@cedarwood.edu.ng",
@@ -301,7 +331,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         await ctx.db.insert("branchMemberships", { personId: fourthPersonId, schoolId, status: "active", isDefaultBranch: false, joinedAt: now, updatedAt: now });
       });
 
-      const proposals = await platformSession(t).query(
+      const proposals = await tenantSession(t).query(
         institutionalEmailApi.proposeEmailAddresses,
         {
           schoolId,
@@ -331,7 +361,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       const t = convexTest(schema, modules);
       const { schoolId, person4Id } = await setupTestHarness(t);
 
-      const reg = await platformSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
+      const reg = await tenantSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
         schoolId,
         domain: "cedarwood.edu.ng",
         provider: "zoho",
@@ -343,7 +373,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         providerOperationId: "dns-op-3",
       });
 
-      const proposals = await platformSession(t).query(
+      const proposals = await tenantSession(t).query(
         institutionalEmailApi.proposeEmailAddresses,
         {
           schoolId,
@@ -377,7 +407,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       const { schoolId } = await setupTestHarness(t);
 
       // 1. Register domain
-      const reg = await platformSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
+      const reg = await tenantSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
         schoolId,
         domain: "stgregorys.edu.ng",
         provider: "google",
@@ -387,7 +417,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(reg.dnsTxtRecord).toMatch(/^melo-verify=/);
 
       // Verify domain state before verification
-      const domainsBefore = await platformSession(t).query(
+      const domainsBefore = await tenantSession(t).query(
         institutionalEmailApi.getSchoolEmailDomains,
         { schoolId }
       );
@@ -403,7 +433,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(verified.status).toBe("verified");
       expect(verified.verified).toBe(true);
 
-      const domainsAfter = await platformSession(t).query(
+      const domainsAfter = await tenantSession(t).query(
         institutionalEmailApi.getSchoolEmailDomains,
         { schoolId }
       );
@@ -411,7 +441,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(domainsAfter[0].verifiedAt).toBeDefined();
 
       // 3. Failed verification test
-      const failedReg = await platformSession(t).mutation(
+      const failedReg = await tenantSession(t).mutation(
         institutionalEmailApi.registerEmailDomain,
         {
           schoolId,
@@ -478,7 +508,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       ];
 
       // 1. Stage raw data
-      const stageResult = await platformSession(t).mutation(aiImportApi.stageImportData, {
+      const stageResult = await tenantSession(t).mutation(aiImportApi.stageImportData, {
         schoolId,
         importerUserId: adminUserId,
         entityType: "students",
@@ -490,7 +520,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(stageResult.errorCount).toBeGreaterThanOrEqual(3);
 
       // Sensitive credentials must be stripped from staged rows
-      const workspace = await platformSession(t).query(aiImportApi.getImportWorkspace, {
+      const workspace = await tenantSession(t).query(aiImportApi.getImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       assertExists(workspace);
@@ -509,7 +539,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
 
       // 2. Committing with unresolved validation errors must be strictly rejected
       await expect(
-        platformSession(t).mutation(aiImportApi.commitImportWorkspace, {
+        tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
           workspaceId: stageResult.workspaceId,
         })
       ).rejects.toThrow("Workspace requires explicit reviewed approval");
@@ -527,14 +557,14 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
 
       // 3. Human reviewer fixes errors on staged rows
       // Fix Row 1 (missing lastName)
-      await platformSession(t).mutation(aiImportApi.updateStagedRow, {
+      await tenantSession(t).mutation(aiImportApi.updateStagedRow, {
         workspaceId: stageResult.workspaceId,
         rowIndex: 1,
         updatedFields: { lastName: "Abdullahi" },
       });
 
       // Fix Row 2 (future dateOfBirth -> past date)
-      await platformSession(t).mutation(aiImportApi.updateStagedRow, {
+      await tenantSession(t).mutation(aiImportApi.updateStagedRow, {
         workspaceId: stageResult.workspaceId,
         rowIndex: 2,
         updatedFields: {
@@ -543,7 +573,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
 
       // Fix Row 3 (duplicate admissionNumber -> unique)
-      const fixResult = await platformSession(t).mutation(aiImportApi.updateStagedRow, {
+      const fixResult = await tenantSession(t).mutation(aiImportApi.updateStagedRow, {
         workspaceId: stageResult.workspaceId,
         rowIndex: 3,
         updatedFields: { admissionNumber: "ADM-2026-004" },
@@ -552,7 +582,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(fixResult.remainingErrors).toHaveLength(0);
 
       // Row edits leave the workspace staged until a reviewer explicitly approves it.
-      const reviewedWorkspace = await platformSession(t).query(aiImportApi.getImportWorkspace, {
+      const reviewedWorkspace = await tenantSession(t).query(aiImportApi.getImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       assertExists(reviewedWorkspace);
@@ -560,13 +590,13 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(reviewedWorkspace.validationErrors).toHaveLength(0);
 
       // 4. A human explicitly approves the clean workspace before commit.
-      const approval = await platformSession(t).mutation(aiImportApi.approveImportWorkspace, {
+      const approval = await tenantSession(t).mutation(aiImportApi.approveImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       expect(approval.status).toBe("reviewed");
 
       // 5. Commit workspace atomically into official operational tables
-      const commitResult = await platformSession(t).mutation(aiImportApi.commitImportWorkspace, {
+      const commitResult = await tenantSession(t).mutation(aiImportApi.commitImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
 
@@ -583,7 +613,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       expect(operationalStudents).toHaveLength(4);
 
       // Verify final workspace status is 'committed'
-      const finalWorkspace = await platformSession(t).query(aiImportApi.getImportWorkspace, {
+      const finalWorkspace = await tenantSession(t).query(aiImportApi.getImportWorkspace, {
         workspaceId: stageResult.workspaceId,
       });
       assertExists(finalWorkspace);
@@ -596,7 +626,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
     it("blocks unapproved and allocator-incomplete imports without fabricating identities", async () => {
       const t = convexTest(schema, modules);
       const { schoolId, importStudentUserIds } = await setupTestHarness(t);
-      const session = platformSession(t);
+      const session = tenantSession(t);
 
       const validWorkspace = await session.mutation(aiImportApi.stageImportData, {
         schoolId,
@@ -655,7 +685,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       const crossTenant = t.withIdentity({ tokenIdentifier: "https://auth.school.test|school-a", subject: "school-a" });
       const expectDenied = async (operation: () => Promise<unknown>) => {
-        await expect(operation()).rejects.toThrow("Not authorized");
+        await expect(operation()).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Not authorized|Forbidden/);
       };
       const emailOperations = (client: TestClient) => [
         () => client.mutation(institutionalEmailApi.registerEmailDomain, { schoolId: schoolB, domain: "other.edu.ng", provider: "google" }),
@@ -695,7 +725,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       const t = convexTest(schema, modules);
       const { schoolId, person1Id, person2Id, membership1Id } =
         await setupTestHarness(t);
-      const domain = await platformSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
+      const domain = await tenantSession(t).mutation(institutionalEmailApi.registerEmailDomain, {
         schoolId,
         domain: "cedarwood.edu.ng",
         provider: "google",
@@ -706,7 +736,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         providerOperationId: "dns-op-provider",
       });
 
-      const request = await platformSession(t).mutation(
+      const request = await tenantSession(t).mutation(
         institutionalEmailApi.assignInstitutionalMailbox,
         { schoolId, personId: person1Id, email: "john.doe@cedarwood.edu.ng" }
       );
@@ -725,20 +755,20 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       });
       expect(provisioned.state).toBe("provider_provisioned");
 
-      const suspendResult = await platformSession(t).mutation(
+      const suspendResult = await tenantSession(t).mutation(
         institutionalEmailApi.suspendOrArchiveMailbox,
         { mailboxId: request.mailboxId, action: "suspend", reason: "Student graduated" }
       );
       expect(suspendResult.status).toBe("suspended");
 
-      const archiveResult = await platformSession(t).mutation(
+      const archiveResult = await tenantSession(t).mutation(
         institutionalEmailApi.suspendOrArchiveMailbox,
         { mailboxId: request.mailboxId, action: "archive", reason: "Statutory retention window reached" }
       );
       expect(archiveResult.status).toBe("archived");
 
       await expect(
-        platformSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
+        tenantSession(t).mutation(institutionalEmailApi.assignInstitutionalMailbox, {
           schoolId,
           personId: person2Id,
           email: "john.doe@cedarwood.edu.ng",

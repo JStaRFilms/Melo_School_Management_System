@@ -1,6 +1,7 @@
 "use node";
 
 import { ConvexError, v } from "convex/values";
+import { assertPaidUsageAvailable } from "../foundation/paidUsageGate";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
@@ -343,6 +344,7 @@ export const processKnowledgeMaterialOcrJobInternal = internalAction({
     });
 
     try {
+      assertPaidUsageAvailable();
       const apiKey = process.env.OPENROUTER_API_KEY?.trim();
       if (!apiKey) {
         throw new ConvexError("OCR provider is not configured");

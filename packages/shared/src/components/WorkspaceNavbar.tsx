@@ -3,7 +3,7 @@
 import { type ReactNode, useState, useRef, useEffect, useMemo } from "react";
 import {
   getWorkspaceDefinition,
-  getWorkspaceSections,
+  getAccessibleWorkspaceSections,
   isWorkspaceSectionActive,
   type WorkspaceKey,
   type WorkspaceSection,
@@ -43,6 +43,9 @@ import {
   History,
 } from "lucide-react";
 import { ChangePasswordModal } from "./ChangePasswordModal";
+import type { WorkspaceAccessSummary } from "../workspace-access";
+import type { RequestWorkspaceDeparture } from "../workspace-route-access";
+import { deriveSchoolTheme } from "../theme/themeDerivation";
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -77,7 +80,14 @@ export interface WorkspaceNavbarProps {
   userRole?: string | null;
   schoolBranding?: WorkspaceSchoolBranding | null;
   branchSwitcher?: ReactNode;
-  onSignOut?: () => void;
+  leadershipAlerts?: ReactNode;
+  workspaceAccess?: WorkspaceAccessSummary;
+  /** U3a supplies save/discard/stay; rejection or failure must not depart. */
+  requestDeparture?: RequestWorkspaceDeparture;
+  onNavigate?: (href: string) => void;
+  onBeforeUnload?: (event: BeforeUnloadEvent) => void;
+  onPopState?: (event: PopStateEvent) => void;
+  onSignOut?: () => void | Promise<void>;
   onChangePassword?: (args: {
     currentPassword: string;
     newPassword: string;
@@ -89,21 +99,6 @@ export interface WorkspaceNavbarProps {
 
 /* ─── Component ──────────────────────────────────────────────── */
 
-function hexToRgba(hex: string, alpha: number) {
-  let c = hex.replace("#", "");
-  if (c.length === 3) {
-    c = c.split("").map((x) => x + x).join("");
-  }
-  const num = parseInt(c, 16);
-  if (Number.isNaN(num) || c.length !== 6) {
-    return `rgba(15, 23, 42, ${alpha})`;
-  }
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export function WorkspaceNavbar({
   workspace,
   currentPath,
@@ -112,19 +107,51 @@ export function WorkspaceNavbar({
   userRole,
   schoolBranding,
   branchSwitcher,
+  leadershipAlerts,
+  workspaceAccess,
+  requestDeparture,
+  onNavigate,
+  onBeforeUnload,
+  onPopState,
   onSignOut,
   onChangePassword,
   renderLink,
   children,
 }: WorkspaceNavbarProps) {
   const def = getWorkspaceDefinition(workspace);
-  const sections = getWorkspaceSections(workspace);
+  const sections = getAccessibleWorkspaceSections(workspace, { access: workspaceAccess, features: schoolBranding?.features, userRole });
+  const departurePending = useRef(false);
+  const [departureError, setDepartureError] = useState<string | null>(null);
+  const depart = async (departure: Parameters<RequestWorkspaceDeparture>[0], action: () => void | Promise<void>) => {
+    if (departurePending.current) return;
+    departurePending.current = true;
+    setDepartureError(null);
+    try {
+      if (!requestDeparture || await requestDeparture(departure)) await action();
+    } catch {
+      setDepartureError("Could not complete departure. Your workspace is still open. Please retry.");
+    } finally {
+      departurePending.current = false;
+    }
+  };
+  useEffect(() => {
+    if (onBeforeUnload) window.addEventListener("beforeunload", onBeforeUnload);
+    if (onPopState) window.addEventListener("popstate", onPopState);
+    return () => {
+      if (onBeforeUnload) window.removeEventListener("beforeunload", onBeforeUnload);
+      if (onPopState) window.removeEventListener("popstate", onPopState);
+    };
+  }, [onBeforeUnload, onPopState]);
   const initials =
     userName?.trim().charAt(0).toUpperCase() ?? def.label.charAt(0);
   const schoolName = schoolBranding?.name?.trim() || null;
   const schoolInitials = buildSchoolInitials(schoolName ?? def.label);
-  const primaryColor = schoolBranding?.theme?.primaryColor || "#0f172a";
-  const accentColor = schoolBranding?.theme?.accentColor || "#2563eb";
+  const themeTokens = useMemo(
+    () => deriveSchoolTheme(schoolBranding?.theme?.primaryColor, schoolBranding?.theme?.accentColor),
+    [schoolBranding?.theme?.primaryColor, schoolBranding?.theme?.accentColor],
+  );
+  const primaryColor = themeTokens["--school-primary"];
+  const accentColor = themeTokens["--school-accent"];
   const workspaceTitle = schoolName
     ? `${schoolName} · ${def.label}`
     : `${def.label} Portal`;
@@ -258,6 +285,13 @@ export function WorkspaceNavbar({
               links: schoolBranding?.features?.billing !== false
                 ? sections.filter((s) => s.href === "/billing")
                 : [],
+            },
+            governance: {
+              label: "Governance",
+              icon: <ShieldCheck className="h-4 w-4" />,
+              links: sections.filter((s) =>
+                ["/admin/group", "/admin/audit", "/admin/permissions"].includes(s.href)
+              ),
             },
             settings: {
               label: "Setup & Settings",
@@ -405,13 +439,20 @@ export function WorkspaceNavbar({
 
   return (
     <div
+      onClickCapture={event => {
+        if (!requestDeparture || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+        if (!(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void depart({ kind: "link", href: anchor.href }, () => {
+          if (onNavigate && anchor.origin === window.location.origin) onNavigate(`${anchor.pathname}${anchor.search}${anchor.hash}`);
+          else window.location.assign(anchor.href);
+        });
+      }}
       className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans"
       style={{
-        "--school-primary": primaryColor,
-        "--school-accent": accentColor,
-        "--school-primary-light": hexToRgba(primaryColor, 0.06),
-        "--school-primary-border": hexToRgba(primaryColor, 0.15),
-        "--school-accent-light": hexToRgba(accentColor, 0.10),
+        ...themeTokens,
       } as React.CSSProperties}
     >
       
@@ -610,11 +651,7 @@ export function WorkspaceNavbar({
                 </span>
               )}
             </div>
-            {branchSwitcher && (
-              <div className="shrink-0">
-                {branchSwitcher}
-              </div>
-            )}
+
           </div>
 
           {/* ── TOP DOMAIN SWITCHER TABS (Rendered only when navLayout === 'domain_tabs') ── */}
@@ -649,11 +686,13 @@ export function WorkspaceNavbar({
           <div className="flex items-center gap-3">
             <div className="relative" ref={profileRef}>
               <button
+                aria-label="Account menu"
+                aria-expanded={profileOpen}
                 onClick={() => setProfileOpen(!profileOpen)}
                 className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 transition-all hover:border-slate-300 hover:shadow-sm"
               >
                 <div
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-white transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-[color:var(--school-primary-contrast)] transition-colors"
                   style={{ backgroundColor: primaryColor }}
                 >
                   {initials}
@@ -686,7 +725,7 @@ export function WorkspaceNavbar({
                     </button>
                   )}
                   <button
-                    onClick={onSignOut}
+                    onClick={() => void depart({ kind: "sign_out" }, () => onSignOut?.())}
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50"
                   >
                     <LogOut className="h-4 w-4" />
@@ -698,6 +737,8 @@ export function WorkspaceNavbar({
 
             <button
               ref={toggleRef}
+              aria-label="Open navigation"
+              aria-expanded={open}
               onClick={() => setOpen(!open)}
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 xl:hidden"
             >
@@ -705,6 +746,10 @@ export function WorkspaceNavbar({
             </button>
           </div>
         </header>
+
+        {branchSwitcher && <div className="rc-no-print shrink-0 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">{branchSwitcher}</div>}
+        {leadershipAlerts && <div className="rc-no-print shrink-0 px-4 py-2 sm:px-6">{leadershipAlerts}</div>}
+        {departureError && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{departureError}</p>}
 
         {/* ── MAIN SCROLL AREA ── */}
         <main
@@ -734,7 +779,8 @@ export function WorkspaceNavbar({
                     {schoolName ?? "Navigation"}
                   </span>
                </div>
-               <button 
+               <button
+                  aria-label="Close navigation"
                   onClick={() => setOpen(false)}
                   className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-950"
                >
@@ -745,7 +791,7 @@ export function WorkspaceNavbar({
             <div ref={mobileNavRef} className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide pb-32 scroll-smooth">
               <div className="mb-8 flex items-center gap-4 px-2">
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-base font-bold text-white shadow-xl shadow-slate-950/20"
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-base font-bold text-[color:var(--school-accent-contrast)] shadow-xl shadow-slate-950/20"
                   style={{ backgroundColor: accentColor }}
                 >
                   {initials}
@@ -916,7 +962,7 @@ export function WorkspaceNavbar({
                 </button>
               )}
               <button
-                onClick={onSignOut}
+                onClick={() => void depart({ kind: "sign_out" }, () => onSignOut?.())}
                 className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 py-3.5 text-sm font-bold text-white shadow-lg shadow-slate-950/20"
               >
                 <LogOut className="h-4 w-4" />
@@ -980,7 +1026,7 @@ function SchoolBrandMark({
 
   return (
     <div
-      className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black tracking-tighter text-white shadow-lg shadow-slate-950/20"
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black tracking-tighter text-[color:var(--school-primary-contrast)] shadow-lg shadow-slate-950/20"
       style={{ backgroundColor: primaryColor }}
       aria-label={name}
     >
@@ -1064,9 +1110,9 @@ function SidebarLink({
   primaryColor,
   accentColor,
 }: {
-  section: any;
+  section: WorkspaceSection;
   active: boolean;
-  renderLink: any;
+  renderLink: WorkspaceNavbarProps["renderLink"];
   isNested?: boolean;
   primaryColor?: string;
   accentColor?: string;
@@ -1081,7 +1127,7 @@ function SidebarLink({
           isNested ? "px-3 py-2 text-[12.5px]" : "px-3.5 py-2.5 text-[13px]"
         } font-bold ${
           active 
-            ? "text-white shadow-sm" 
+            ? "text-[color:var(--school-primary-contrast)] shadow-sm"
             : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-950"
         }`}
       >
@@ -1113,9 +1159,9 @@ function MobileLink({
   primaryColor,
   accentColor,
 }: {
-  section: any;
+  section: WorkspaceSection;
   active: boolean;
-  renderLink: any;
+  renderLink: WorkspaceNavbarProps["renderLink"];
   isNested?: boolean;
   primaryColor?: string;
   accentColor?: string;
@@ -1130,7 +1176,7 @@ function MobileLink({
           isNested ? "px-3.5 py-2.5 text-[13px]" : "px-4 py-3.5 text-sm"
         } font-bold ${
           active 
-            ? "text-white shadow-lg shadow-slate-950/10" 
+            ? "text-[color:var(--school-primary-contrast)] shadow-lg shadow-slate-950/10"
             : "text-slate-600 hover:bg-slate-50"
         }`}
       >

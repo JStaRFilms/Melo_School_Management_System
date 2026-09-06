@@ -1,4 +1,4 @@
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
@@ -35,11 +35,12 @@ const commercialInternal = internal.functions.academic.commercial;
 const meteringInternal = internal.functions.academic.metering;
 const assetsInternal = internal.functions.academic.assets;
 const assetsMigrationInternal = internal.functions.academic.assetsMigration;
+const tenantOperatorToken = "https://auth.school.test|commercial-asset-operator";
 
-function platformSession(t: ReturnType<typeof convexTest>) {
+function tenantSession(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({
-    tokenIdentifier: "https://auth.school.test|platform-admin",
-    subject: "platform-admin",
+    tokenIdentifier: tenantOperatorToken,
+    subject: "commercial-asset-operator",
   });
 }
 
@@ -59,6 +60,43 @@ async function storeTypedBlob(t: ReturnType<typeof convexTest>, blob: Blob) {
   });
 }
 
+async function grantTenantOperatorAccess(
+  t: TestConvex<typeof schema>,
+  schoolId: Id<"schools">,
+) {
+  await t.run(async (ctx) => {
+    const person = await ctx.db
+      .query("persons")
+      .withIndex("by_token_identifier", (q) => q.eq("authTokenIdentifier", tenantOperatorToken))
+      .unique();
+    const role = await ctx.db
+      .query("roleTemplates")
+      .withIndex("by_code", (q) => q.eq("code", "commercial_asset_test_operator"))
+      .unique();
+    if (!person || !role) throw new Error("Tenant operator fixture is incomplete");
+    const existing = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q) => q.eq("personId", person._id).eq("schoolId", schoolId))
+      .unique();
+    if (existing) return;
+    const now = Date.now();
+    const membershipId = await ctx.db.insert("branchMemberships", {
+      personId: person._id,
+      schoolId,
+      status: "active",
+      permissionsManagedAt: now,
+      isDefaultBranch: false,
+      joinedAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("membershipRoleAssignments", {
+      membershipId,
+      roleTemplateId: role._id,
+      assignedAt: now,
+    });
+  });
+}
+
 async function finalizeAsset(
   t: ReturnType<typeof convexTest>,
   schoolId: Id<"schools">,
@@ -66,14 +104,15 @@ async function finalizeAsset(
   category: string,
   blob: Blob
 ) {
+  await grantTenantOperatorAccess(t, schoolId);
   await t.mutation(meteringInternal.allocateQuota, {
     schoolId,
     meterType: "storage_bytes",
     allocatedUnits: 100 * 1024 * 1024,
   });
-  const intent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+  const intent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
   const storageId = await storeTypedBlob(t, blob);
-  const finalized = await platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+  const finalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
     schoolId,
     uploadIntentId: intent.intentId,
     storageId,
@@ -95,21 +134,11 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       updatedAt: now,
     });
 
-    await ctx.db.insert("platformAdmins", {
-      authId: "platform-admin",
-      authTokenIdentifier: "https://auth.school.test|platform-admin",
-      email: "platform-admin@school.test",
-      name: "Test Platform Administrator",
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // 2. Create Admin User
+    // 2. Create an explicitly scoped tenant operator.
     const adminUserId = await ctx.db.insert("users", {
       schoolId,
-      authId: "auth-admin-comm",
-      authTokenIdentifier: "https://auth.school.test|admin-comm",
+      authId: "commercial-asset-operator",
+      authTokenIdentifier: tenantOperatorToken,
       name: "Bursar Adeleke",
       email: "bursar@olivecrest.edu.ng",
       role: "admin",
@@ -120,13 +149,44 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
 
     // 3. Create Person
     const personId = await ctx.db.insert("persons", {
-      authTokenIdentifier: "https://auth.school.test|person-comm",
+      authTokenIdentifier: tenantOperatorToken,
       email: "bursar.personal@gmail.com",
       name: "Babatunde Adeleke",
       status: "active",
       primarySchoolId: schoolId,
       createdAt: now,
       updatedAt: now,
+    });
+    const membershipId = await ctx.db.insert("branchMemberships", {
+      personId,
+      schoolId,
+      legacyUserId: adminUserId,
+      status: "active",
+      permissionsManagedAt: now,
+      isDefaultBranch: true,
+      joinedAt: now,
+      updatedAt: now,
+    });
+    const roleTemplateId = await ctx.db.insert("roleTemplates", {
+      code: "commercial_asset_test_operator",
+      name: "Commercial and asset test operator",
+      scope: "global",
+      capabilities: [
+        "finance.settlements.view",
+        "finance.reports.view",
+        "assets.upload",
+        "assets.download.standard",
+        "assets.library.view",
+        "assets.trash.manage",
+        "assets.permanent_delete",
+      ],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("membershipRoleAssignments", {
+      membershipId,
+      roleTemplateId,
+      assignedAt: now,
     });
 
     return {
@@ -291,7 +351,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(providerReported.record.clearingCycle).toBe("provider_reported");
       expect(providerReported.record.providerSettlementReference).toBe("paystack-settlement-1");
 
-      const ledger = await platformSession(t).query(commercialApi.getSettlementLedger, {
+      const ledger = await tenantSession(t).query(commercialApi.getSettlementLedger, {
         schoolId,
       });
       expect(ledger).toHaveLength(2);
@@ -311,7 +371,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
       const crossTenant = t.withIdentity({ tokenIdentifier: "https://auth.school.test|finance-a", subject: "finance-a" });
       const expectDenied = async (operation: () => Promise<unknown>) => {
-        await expect(operation()).rejects.toThrow("Not authorized");
+        await expect(operation()).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Not authorized|Forbidden/);
       };
       const operations = (client: TestClient) => [
         () => client.query(commercialApi.getSettlementLedger, { schoolId: schoolB }),
@@ -338,7 +398,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
 
       // 2. Initial state: 0% utilized -> Normal tier
-      let status = await platformSession(t).query(meteringApi.getUsageStatus, {
+      let status = await tenantSession(t).query(meteringApi.getUsageStatus, {
         schoolId,
         meterType: "ai_tokens",
       });
@@ -380,7 +440,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(commit1.remainingUnits).toBe(5_500);
 
       // Verify zero raw prompt text stored in billing usage events
-      const events = await platformSession(t).query(meteringApi.listUsageEvents, {
+      const events = await tenantSession(t).query(meteringApi.listUsageEvents, {
         schoolId,
         meterType: "ai_tokens",
       });
@@ -448,7 +508,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(res4.shortfall).toBe(100); // 1,000 requested - 900 available = 100 shortfall
 
       // Verify quota was NOT reserved on denial
-      status = await platformSession(t).query(meteringApi.getUsageStatus, {
+      status = await tenantSession(t).query(meteringApi.getUsageStatus, {
         schoolId,
         meterType: "ai_tokens",
       });
@@ -507,7 +567,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
 
       // 2. Unscanned asset download MUST be rejected
       await expect(
-        platformSession(t).query(assetsApi.getDownloadableAssetUrl, {
+        tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
           schoolId,
           assetId: asset._id,
         })
@@ -524,7 +584,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
 
       // Infected asset download MUST also be rejected
       await expect(
-        platformSession(t).query(assetsApi.getDownloadableAssetUrl, {
+        tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
           schoolId,
           assetId: asset._id,
         })
@@ -548,7 +608,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         scannerEngine: "approved-test-scanner",
       });
 
-      const downloadable = await platformSession(t).query(assetsApi.getDownloadableAssetUrl, {
+      const downloadable = await tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
         schoolId,
         assetId: cleanAsset._id,
       });
@@ -564,7 +624,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         meterType: "storage_bytes",
         allocatedUnits: 10_000,
       });
-      const intent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+      const intent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
       const storageId = await t.run((ctx) =>
         ctx.storage.store(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])]))
       );
@@ -572,7 +632,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(metadata?.contentType).toBeFalsy();
 
       await expect(
-        platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+        tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
           schoolId,
           uploadIntentId: intent.intentId,
           storageId,
@@ -612,7 +672,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
 
       // 1. Move to Trash
-      const trashed = await platformSession(t).mutation(assetsApi.trashAsset, {
+      const trashed = await tenantSession(t).mutation(assetsApi.trashAsset, {
         schoolId,
         assetId: asset._id,
         userId: adminUserId,
@@ -634,27 +694,27 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
 
       // Verify download is blocked while in trash
       await expect(
-        platformSession(t).query(assetsApi.getDownloadableAssetUrl, {
+        tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
           schoolId,
           assetId: asset._id,
         })
       ).rejects.toThrow("Trash workspace");
 
       // Verify listed in Trash workspace with 30-day countdown
-      const trashList = await platformSession(t).query(assetsApi.listTrashedAssets, {
+      const trashList = await tenantSession(t).query(assetsApi.listTrashedAssets, {
         schoolId,
       });
       expect(trashList).toHaveLength(1);
       expect(trashList[0].daysRemainingUntilPurge).toBe(30);
       expect(trashList[0].hasRetentionHold).toBe(false);
-      await expect(platformSession(t).mutation(assetsApi.permanentPurgeAsset, {
+      await expect(tenantSession(t).mutation(assetsApi.permanentPurgeAsset, {
         schoolId,
         assetId: asset._id,
         confirmation: "PURGE wrong-name.xlsx",
       })).rejects.toThrow("requires confirmation");
 
       // 2. Apply Retention Hold
-      const hold = await platformSession(t).mutation(assetsApi.applyRetentionHold, {
+      const hold = await tenantSession(t).mutation(assetsApi.applyRetentionHold, {
         schoolId,
         assetId: asset._id,
         holdReason: "Statutory Tax & Financial Audit",
@@ -664,7 +724,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       assertExists(hold);
 
       // Verify trash list updates to reflect active retention hold
-      const trashListWithHold = await platformSession(t).query(assetsApi.listTrashedAssets, {
+      const trashListWithHold = await tenantSession(t).query(assetsApi.listTrashedAssets, {
         schoolId,
       });
       expect(trashListWithHold[0].hasRetentionHold).toBe(true);
@@ -672,7 +732,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
 
       // 3. Attempt Permanent Purge: MUST BE STRICTLY BLOCKED BY RETENTION HOLD
       await expect(
-        platformSession(t).mutation(assetsApi.permanentPurgeAsset, {
+        tenantSession(t).mutation(assetsApi.permanentPurgeAsset, {
           schoolId,
           assetId: asset._id,
           confirmation: "PURGE Audited_School_Accounts_2025.xlsx",
@@ -680,7 +740,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       ).rejects.toThrow("active retention hold");
 
       // 4. Restore asset from trash
-      const restored = await platformSession(t).mutation(assetsApi.restoreAsset, {
+      const restored = await tenantSession(t).mutation(assetsApi.restoreAsset, {
         schoolId,
         assetId: asset._id,
         userId: adminUserId,
@@ -701,27 +761,27 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
 
       // Download is now accessible again
-      const downloadable = await platformSession(t).query(assetsApi.getDownloadableAssetUrl, {
+      const downloadable = await tenantSession(t).query(assetsApi.getDownloadableAssetUrl, {
         schoolId,
         assetId: asset._id,
       });
       expect(downloadable.fileName).toBe("Audited_School_Accounts_2025.xlsx");
 
       // 5. Remove hold, trash again, and purge permanently
-      await platformSession(t).mutation(assetsApi.removeRetentionHold, {
+      await tenantSession(t).mutation(assetsApi.removeRetentionHold, {
         schoolId,
         holdId: hold._id,
         userId: adminUserId,
       });
 
-      await platformSession(t).mutation(assetsApi.trashAsset, {
+      await tenantSession(t).mutation(assetsApi.trashAsset, {
         schoolId,
         assetId: asset._id,
         userId: adminUserId,
       });
 
       // Storage mock delete in test environment
-      const purgeResult = await platformSession(t).mutation(assetsApi.permanentPurgeAsset, {
+      const purgeResult = await tenantSession(t).mutation(assetsApi.permanentPurgeAsset, {
         schoolId,
         assetId: asset._id,
         confirmation: "PURGE Audited_School_Accounts_2025.xlsx",
@@ -741,7 +801,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
 
       // Confirm record was deleted from database
-      const finalTrashList = await platformSession(t).query(assetsApi.listTrashedAssets, {
+      const finalTrashList = await tenantSession(t).query(assetsApi.listTrashedAssets, {
         schoolId,
       });
       expect(finalTrashList).toHaveLength(0);
@@ -762,28 +822,29 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
           updatedAt: now,
         });
       });
+      await grantTenantOperatorAccess(t, schoolB);
       await t.mutation(meteringInternal.allocateQuota, { schoolId, meterType: "storage_bytes", allocatedUnits: 10_000 });
       await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
       const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" });
       const storageId = await storeTypedBlob(t, blob);
-      const firstIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      const secondIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      const foreignIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
-      const finalized = await platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+      const firstIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+      const secondIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+      const foreignIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
+      const finalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
         schoolId,
         uploadIntentId: firstIntent.intentId,
         storageId,
         fileName: "bound.png",
         category: "test",
       });
-      await expect(platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
         schoolId,
         uploadIntentId: secondIntent.intentId,
         storageId,
         fileName: "duplicate.png",
         category: "test",
       })).rejects.toThrow("already bound");
-      await expect(platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
         schoolId: schoolB,
         uploadIntentId: foreignIntent.intentId,
         storageId,
@@ -793,7 +854,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
 
       const asset = await t.run((ctx) => ctx.db.get(finalized.assetId));
       assertExists(asset);
-      await platformSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: asset._id });
+      await tenantSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: asset._id });
       await t.run((ctx) => ctx.db.patch(asset._id, { purgeScheduledAt: Date.now() - 1 }));
       await t.mutation(assetsInternal.cleanupExpiredAssetStorage, { limit: 10 });
       expect(await t.run((ctx) => ctx.db.get(asset._id))).toBeNull();
@@ -842,7 +903,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         });
       });
 
-      await expect(platformSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId })).rejects.toThrow("accounting migration");
+      await expect(tenantSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId })).rejects.toThrow("accounting migration");
       const first = await t.mutation(assetsMigrationInternal.backfillSchoolAssetMetadataBatch, { schoolId, batchSize: 10 });
       expect(first).toMatchObject({ isDone: true, migratedCount: 1, missingStorageCount: 0 });
       const metadata = await t.run((ctx) => ctx.db.system.get("_storage", storageId));
@@ -859,7 +920,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       let allocation = await t.run((ctx) => ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique());
       expect(allocation).toMatchObject({ consumedUnits: metadata?.size, activeStorageBytes: metadata?.size, trashStorageBytes: 0, tempStorageBytes: 0 });
 
-      await platformSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId });
+      await tenantSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId });
       allocation = await t.run((ctx) => ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique());
       expect(allocation).toMatchObject({ consumedUnits: metadata?.size, activeStorageBytes: 0, trashStorageBytes: metadata?.size });
     });
@@ -907,7 +968,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(asset?.storageAccountingInitializedAt).toBeUndefined();
       expect(issue).toMatchObject({ status: "open", code: "missing_storage" });
       expect(allocation).toMatchObject({ consumedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0 });
-      await expect(platformSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId })).rejects.toThrow("accounting migration");
+      await expect(tenantSession(t).mutation(assetsApi.trashAsset, { schoolId, assetId: legacyAssetId })).rejects.toThrow("accounting migration");
     });
 
     it("marks every legacy duplicate storage owner unresolved before bucket accounting", async () => {
@@ -959,11 +1020,12 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
         const now = Date.now();
         return await ctx.db.insert("schools", { name: "Candidate Boundary Academy", slug: "candidate-boundary", status: "active", createdAt: now, updatedAt: now });
       });
+      await grantTenantOperatorAccess(t, schoolB);
       const sourceA = await finalizeAsset(t, schoolId, "source-a.png", "test", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }));
       await t.mutation(meteringInternal.allocateQuota, { schoolId: schoolB, meterType: "storage_bytes", allocatedUnits: 10_000 });
-      const intentB = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
+      const intentB = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB });
       const sourceBStorageId = await storeTypedBlob(t, new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4])], { type: "image/png" }));
-      const sourceBFinalized = await platformSession(t).mutation(assetsApi.finalizeAssetUpload, { schoolId: schoolB, uploadIntentId: intentB.intentId, storageId: sourceBStorageId, fileName: "source-b.png", category: "test" });
+      const sourceBFinalized = await tenantSession(t).mutation(assetsApi.finalizeAssetUpload, { schoolId: schoolB, uploadIntentId: intentB.intentId, storageId: sourceBStorageId, fileName: "source-b.png", category: "test" });
       const sourceB = await t.run((ctx) => ctx.db.get(sourceBFinalized.assetId));
       assertExists(sourceA);
       assertExists(sourceB);
@@ -990,8 +1052,8 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(1);
       expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(1);
 
-      const reverseIntent = await platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
-      await expect(platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+      const reverseIntent = await tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId });
+      await expect(tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
         schoolId, uploadIntentId: reverseIntent.intentId, storageId: candidateStorageId, fileName: "reused.pdf", category: "test",
       })).rejects.toThrow("already bound");
       await expect(t.mutation(assetsInternal.recordPdfCompressionCandidateEvidence, {
@@ -1036,18 +1098,18 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       })).rejects.toThrow("already bound");
 
       const [intentA, intentB] = await Promise.all([
-        platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId }),
-        platformSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB }),
+        tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId }),
+        tenantSession(t).mutation(assetsApi.createAssetUploadIntent, { schoolId: schoolB }),
       ]);
       const claims = await Promise.allSettled([
-        platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+        tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
           schoolId,
           uploadIntentId: intentA.intentId,
           storageId: retainedOriginalId,
           fileName: "claimed-a.pdf",
           category: "test",
         }),
-        platformSession(t).mutation(assetsApi.finalizeAssetUpload, {
+        tenantSession(t).mutation(assetsApi.finalizeAssetUpload, {
           schoolId: schoolB,
           uploadIntentId: intentB.intentId,
           storageId: retainedOriginalId,
@@ -1066,7 +1128,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
     it("rejects unauthenticated asset uploads and denies cross-tenant reads", async () => {
       const t = convexTest(schema, modules);
       const { schoolId } = await setupTestHarness(t);
-      await expect(t.mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow("Not authorized");
+      await expect(t.mutation(assetsApi.createAssetUploadIntent, { schoolId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required/);
 
       const schoolB = await t.run(async (ctx) => {
         const now = Date.now();
@@ -1115,7 +1177,7 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       });
       await expect(
         schoolAUser.query(assetsApi.listSchoolAssets, { schoolId: schoolB })
-      ).rejects.toThrow("Not authorized");
+      ).rejects.toThrow(/active membership|Forbidden/);
     });
   });
 

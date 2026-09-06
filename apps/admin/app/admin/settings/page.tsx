@@ -6,6 +6,8 @@ import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { BranchBrandingEditor } from "../group/GroupBranding";
 import {
   Building2,
   Upload,
@@ -28,6 +30,7 @@ import {
 
 interface SchoolBrandingData {
   schoolId: string;
+  groupId?: string;
   name: string;
   slug: string;
   logoUrl: string | null;
@@ -458,6 +461,19 @@ export default function SchoolSettingsPage() {
         </div>
 
         {/* Section 3: Brand Colors */}
+        {branding.groupId ? (
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs">
+            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+              <Palette className="h-4 w-4 text-indigo-600" />
+              <span>Brand Color Palette</span>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              This branch is linked to an active school group. Save profile and
+              contact changes here, then use the branch branding controls below
+              for color inheritance or overrides.
+            </p>
+          </div>
+        ) : (
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
           <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
             <Palette className="h-4 w-4 text-indigo-600" />
@@ -547,6 +563,7 @@ export default function SchoolSettingsPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Section 4: Contact & Letterhead Details */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
@@ -703,6 +720,13 @@ export default function SchoolSettingsPage() {
           </div>
         </div>
       </form>
+
+      {branding.groupId && (
+        <BranchBrandingEditor
+          groupId={branding.groupId as Id<"schoolGroups">}
+          schoolId={branding.schoolId as Id<"schools">}
+        />
+      )}
 
       <ConfirmationModal
         isOpen={isLogoRemovalOpen}

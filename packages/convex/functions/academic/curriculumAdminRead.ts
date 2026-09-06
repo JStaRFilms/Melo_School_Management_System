@@ -13,7 +13,7 @@ export const listCurriculumImportContext = query({
     imports: v.array(v.object({ _id: v.id("curriculumImports"), materialId: v.id("knowledgeMaterials"), sourceLabel: v.string(), subjectLabel: v.string(), termLabel: v.string(), level: v.string(), status: importStatus, provider: v.optional(v.string()), modelId: v.optional(v.string()), errorMessage: v.optional(v.string()), proposedUnitCount: v.number(), approvedUnitCount: v.number(), rejectedUnitCount: v.number(), updatedAt: v.number() })),
   }),
   handler: async (ctx) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const [readyMaterials, imports] = await Promise.all([
       ctx.db.query("knowledgeMaterials").withIndex("by_school_curriculum_ready_approved_indexed", (q) => q.eq("schoolId", schoolId).eq("sourceType", "imported_curriculum").eq("processingStatus", "ready").eq("reviewStatus", "approved").eq("searchStatus", "indexed")).take(60),
@@ -34,7 +34,7 @@ export const getCurriculumImportReview = query({
   args: { importId: v.id("curriculumImports") },
   returns: v.object({ status: importStatus, provider: v.optional(v.string()), modelId: v.optional(v.string()), errorMessage: v.optional(v.string()), units: v.array(v.object({ _id: v.id("curriculumUnits"), weekNumber: v.optional(v.number()), title: v.string(), subtopics: v.array(v.string()), learningObjectives: v.array(v.string()), suggestedDuration: v.optional(v.string()), sourcePages: v.array(v.number()), supportingExcerpt: v.string(), confidence: v.number(), reviewStatus: unitStatus, validationWarnings: v.array(v.string()), duplicateWarnings: v.array(v.string()) })) }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const record = await ctx.db.get(args.importId);
     if (!record || record.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");

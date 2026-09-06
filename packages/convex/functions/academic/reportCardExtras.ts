@@ -616,7 +616,9 @@ export const saveStudentReportCardExtrasEntry = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "academic.assessments.enter",
+    });
     const access = await getExtrasWorkspaceAccess(ctx, {
       userId,
       schoolId,

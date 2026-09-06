@@ -35,10 +35,10 @@ const proposalValidator = v.object({
   sourcePages: v.array(v.number()), sourceChunkHash: v.string(), supportingExcerpt: v.string(), confidence: v.number(),
 });
 
-async function loadContext(ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0], importId: string) {
-  const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+async function loadContext(ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0], importId: Id<"curriculumImports">) {
+  const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
   await assertAdminForSchool(ctx, userId, schoolId, role);
-  const importRecord = await ctx.db.get(importId as never);
+  const importRecord = await ctx.db.get(importId);
   if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
   const [material, subject, term] = await Promise.all([
     ctx.db.get(importRecord.materialId), ctx.db.get(importRecord.subjectId), ctx.db.get(importRecord.termId),
@@ -112,7 +112,7 @@ export const failGeneration = internalMutation({
   args: { ...importIdValidator, aiRunLogId: v.id("aiRunLogs"), errorCode: v.string(), errorMessage: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const importRecord = await ctx.db.get(args.importId);
     if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
@@ -128,7 +128,7 @@ export const failGeneration = internalMutation({
 export const failUnstartedGeneration = internalMutation({
   args: { ...importIdValidator, errorCode: v.string(), errorMessage: v.string() }, returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const record = await ctx.db.get(args.importId);
     if (record && record.schoolId === schoolId && record.status === "draft") await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: Date.now() });

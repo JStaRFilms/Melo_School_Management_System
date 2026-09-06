@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { query, mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -34,7 +35,7 @@ export const getSchoolAssessmentSettings = query({
     v.null()
   ),
   handler: async (ctx: any) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
 
     const settings = await ctx.db
       .query("schoolAssessmentSettings")
@@ -63,9 +64,7 @@ export const saveSchoolAssessmentSettings = mutation({
   },
   returns: v.id("schoolAssessmentSettings"),
   handler: async (ctx: any, args: { examInputMode: string }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
 
     // Verify admin access
     await assertAdminForSchool(ctx, userId, schoolId, role);

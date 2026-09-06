@@ -1,14 +1,14 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@/AuthProvider";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import {
   ArrowRightLeft,
   ShieldAlert,
   Sparkles,
-  X,
 } from "lucide-react";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
@@ -46,6 +46,18 @@ type TeacherRecord = {
 };
 
 export default function AdminManagementPage() {
+  const { workspaceAccess } = useAuth();
+  const capabilities = workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
+  const canManagePermissions =
+    capabilities.includes("staff.permissions.manage") ||
+    capabilities.includes("permissions.manage");
+  const canOnboardAdmins =
+    capabilities.includes("staff.onboard") &&
+    (workspaceAccess?.state === "ready" &&
+    workspaceAccess.compatibility.permissionManaged
+      ? canManagePermissions && workspaceAccess.membership?.isProprietor === true
+      : true);
+  const canSuspendAdmins = capabilities.includes("staff.account.suspend");
   const data = useQuery(
     "functions/academic/adminLeadership:listSchoolAdmins" as never
   ) as AdminDashboardData | undefined;
@@ -119,6 +131,11 @@ export default function AdminManagementPage() {
 
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-[#f8fafc]">
+      <nav aria-label="Governance" className="flex flex-wrap gap-4 border-b bg-white px-4 py-3 text-sm">
+        {capabilities.includes("audit.group.view") && <Link className="underline" href="/admin/group">School group</Link>}
+        {(capabilities.includes("staff.permissions.manage") || capabilities.includes("permissions.manage")) && <Link className="underline" href="/admin/permissions">Staff permissions</Link>}
+        {(capabilities.includes("audit.branch.view") || capabilities.includes("audit.view")) && <Link className="underline" href="/admin/audit">Audit explorer</Link>}
+      </nav>
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 5px;
@@ -139,24 +156,28 @@ export default function AdminManagementPage() {
         {/* Sidebar Bucket */}
         <aside className="w-full lg:w-[400px] lg:h-full lg:overflow-y-auto border-l border-slate-200/60 bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0">
           <div className="p-4 py-6 md:p-8 space-y-4 md:space-y-6">
-            <AdminCreationForm
-              onSuccess={(msg) =>
-                showNotice({ tone: "success", title: "Success", message: msg })
-              }
-              onError={(title, msg) =>
-                showNotice({ tone: "error", title, message: msg })
-              }
-            />
+            {canOnboardAdmins && (
+              <AdminCreationForm
+                onSuccess={(msg) =>
+                  showNotice({ tone: "success", title: "Success", message: msg })
+                }
+                onError={(title, msg) =>
+                  showNotice({ tone: "error", title, message: msg })
+                }
+              />
+            )}
 
-            <TeacherPromotionSection
-              teachers={teachers ?? []}
-              onSuccess={(msg) =>
-                showNotice({ tone: "success", title: "Success", message: msg })
-              }
-              onError={(title, msg) =>
-                showNotice({ tone: "error", title, message: msg })
-              }
-            />
+            {canManagePermissions && (
+              <TeacherPromotionSection
+                teachers={teachers ?? []}
+                onSuccess={(msg) =>
+                  showNotice({ tone: "success", title: "Success", message: msg })
+                }
+                onError={(title, msg) =>
+                  showNotice({ tone: "error", title, message: msg })
+                }
+              />
+            )}
 
             <div className="pt-4 border-t border-slate-200/60 p-1">
               <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
@@ -205,6 +226,8 @@ export default function AdminManagementPage() {
               viewerUserId={viewerUserId}
               viewerIsLead={viewerIsLead}
               leadAdminId={leadAdmin?._id ?? null}
+              canManagePermissions={canManagePermissions}
+              canSuspendAdmins={canSuspendAdmins}
               onRunAction={runAdminAction}
             />
           </div>

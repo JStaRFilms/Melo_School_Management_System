@@ -5,6 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
 
 const schoolBrandingThemeValidator = v.object({
   primaryColor: v.string(),
@@ -20,6 +21,7 @@ export const schoolFeaturesValidator = v.object({
 
 export const schoolBrandingSummaryValidator = v.object({
   schoolId: v.id("schools"),
+  groupId: v.optional(v.id("schoolGroups")),
   name: v.string(),
   slug: v.string(),
   status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
@@ -66,14 +68,21 @@ export const getCurrentSchoolBranding = query({
         return null;
       }
 
+      const effectiveTheme = await resolveEffectiveTheme(ctx, school);
+      const groupLink = await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .unique();
+      const group = groupLink ? await ctx.db.get(groupLink.groupId) : null;
       return {
         schoolId,
+        groupId: group?.status === "active" ? group._id : undefined,
         name: normalizeHumanName(school.name),
         slug: school.slug,
         status: school.status ?? "active",
         logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
         motto: school.motto,
-        theme: fallbackTheme(school.theme),
+        theme: fallbackTheme(effectiveTheme.theme),
         contactEmail: school.contactEmail,
         contactPhone: school.contactPhone,
         address: school.address,
@@ -104,11 +113,27 @@ export const updateSchoolProfile = mutation({
     if (!trimmedName) {
       throw new ConvexError("School name is required");
     }
+    const groupBrandingControlled = args.theme
+      ? await hasActiveGroupBranding(ctx, schoolId)
+      : false;
+    if (args.theme && groupBrandingControlled) {
+      const school = await ctx.db.get(schoolId);
+      if (!school) throw new ConvexError("School not found");
+      const effectiveTheme = (await resolveEffectiveTheme(ctx, school)).theme;
+      if (
+        args.theme.primaryColor.toLowerCase() !== effectiveTheme.primaryColor.toLowerCase() ||
+        args.theme.accentColor.toLowerCase() !== effectiveTheme.accentColor.toLowerCase()
+      ) {
+        throw new ConvexError(
+          "School group branding must be changed through the branch branding controls",
+        );
+      }
+    }
 
     await ctx.db.patch(schoolId, {
       name: trimmedName,
       motto: args.motto?.trim() || undefined,
-      theme: args.theme,
+      ...(args.theme && !groupBrandingControlled ? { theme: args.theme } : {}),
       contactEmail: args.contactEmail?.trim() || undefined,
       contactPhone: args.contactPhone?.trim() || undefined,
       address: args.address?.trim() || undefined,

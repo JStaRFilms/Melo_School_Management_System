@@ -123,9 +123,7 @@ export const getExamEntrySheet = query({
     editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -333,9 +331,7 @@ export const upsertAssessmentRecordsBulk = mutation({
     ),
   }),
   handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
