@@ -124,7 +124,7 @@ export default function AdminManagementPage() {
   return (
     <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-[#f8fafc]">
       <nav aria-label="Governance" className="flex flex-wrap gap-4 border-b bg-white px-4 py-3 text-sm">
-        <Link className="underline" href="/admin/group">School group</Link>
+        {capabilities.includes("audit.group.view") && <Link className="underline" href="/admin/group">School group</Link>}
         {(capabilities.includes("staff.permissions.manage") || capabilities.includes("permissions.manage")) && <Link className="underline" href="/admin/permissions">Staff permissions</Link>}
         {(capabilities.includes("audit.branch.view") || capabilities.includes("audit.view")) && <Link className="underline" href="/admin/audit">Audit explorer</Link>}
       </nav>

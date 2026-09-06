@@ -286,6 +286,13 @@ export function WorkspaceNavbar({
                 ? sections.filter((s) => s.href === "/billing")
                 : [],
             },
+            governance: {
+              label: "Governance",
+              icon: <ShieldCheck className="h-4 w-4" />,
+              links: sections.filter((s) =>
+                ["/admin/audit", "/admin/permissions"].includes(s.href)
+              ),
+            },
             settings: {
               label: "Setup & Settings",
               icon: <Settings className="h-4 w-4" />,

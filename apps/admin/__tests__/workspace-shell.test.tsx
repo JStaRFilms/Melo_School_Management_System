@@ -15,6 +15,7 @@ vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(.
 vi.mock("next/navigation", () => ({ usePathname: () => path, useRouter: () => ({ replace: mocks.replace, push: mocks.push }) }));
 vi.mock("@/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/auth-client", () => ({ authClient: { changePassword: vi.fn() } }));
+vi.mock("../app/admin/audit/LeadershipAlerts", () => ({ LeadershipAlerts: () => null }));
 vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ session: { user: { id: "account", name: "Test Admin", role: "admin" } }, workspaceAccess: access, isLoading: loading, isAuthenticated: true, signOut: mocks.signOut }) }));
 vi.mock("@school/shared", async () => ({
   ...await import("../../../packages/shared/src/workspace-route-access"),
@@ -53,6 +54,7 @@ describe("default-school shell", () => {
   });
   it.each([
     ["/academic/students/onboarding", "enrollment.intakes.manage"],
+    ["/students/import", "system.migration.execute"],
     ["/billing/bank-accounts", "finance.bank_details.manage"],
     ["/admin/permissions", "staff.permissions.manage"],
     ["/admin/assets/trash", "assets.trash.manage"],
@@ -66,6 +68,18 @@ describe("default-school shell", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("permissions");
     expect(mocks.query.mock.calls.at(-1)?.[1]).toBe("skip");
     expect(access.effectiveCapabilities).not.toContain(capability);
+  });
+  it.each([
+    ["audit.branch.view", "Audit"],
+    ["staff.permissions.manage", "Permissions"],
+  ])("renders the governance destination for managed capability %s", (capability, label) => {
+    access = {
+      ...ready,
+      compatibility: { ...ready.compatibility, mode: "canonical", permissionManaged: true },
+      effectiveCapabilities: [capability],
+    };
+    render(<StaffWorkspace><p>Dashboard overview</p></StaffWorkspace>);
+    expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
   });
   it("does not mount domain content or request branding during loading or denied access", () => {
     loading = true;
