@@ -100,6 +100,16 @@ async function setup() {
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("users", {
+      schoolId,
+      authId: "legacy-audit-admin",
+      authTokenIdentifier: "https://auth.melo.test|legacy-audit-admin",
+      name: "Legacy audit admin",
+      email: "legacy-audit@example.test",
+      role: "admin",
+      createdAt: now,
+      updatedAt: now,
+    });
     return {
       schoolId,
       otherSchoolId,
@@ -120,8 +130,38 @@ async function setup() {
     operator: t.withIdentity({
       tokenIdentifier: "https://auth.melo.test|operator",
     }),
+    legacyAdmin: t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|legacy-audit-admin",
+    }),
   };
 }
+
+it("preserves school audit visibility for an untouched legacy administrator", async () => {
+  const f = await setup();
+  await f.t.run((ctx) =>
+    recordAuditEventHelper(ctx, {
+      schoolId: f.schoolId,
+      actorKind: "user",
+      actorEmailSnapshot: "finance@example.test",
+      module: "finance",
+      action: "invoice_reviewed",
+      targetType: "invoice",
+      targetId: "invoice_1",
+      outcome: "success",
+      safeSummary: "Reviewed invoice",
+    }),
+  );
+  const access = await f.legacyAdmin.query(audit.getAuditAccess, {
+    scope: { kind: "branch", schoolId: f.schoolId },
+  });
+  expect(access.modules).toContain("finance");
+  const page = await f.legacyAdmin.query(audit.queryAuditPage, {
+    scope: { kind: "branch", schoolId: f.schoolId },
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(page.page).toHaveLength(1);
+  expect(page.page[0]).toMatchObject({ module: "finance" });
+});
 
 it("paginates past recent nonmatches, enforces branch/module boundaries and keeps export projections identical", async () => {
   const f = await setup();

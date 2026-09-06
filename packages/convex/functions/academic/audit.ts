@@ -302,8 +302,11 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
   const owner = Boolean(
     membership && (await isMembershipProprietor(ctx, membership)),
   );
+  const legacyAdmin = !auth.membershipId && Boolean(auth.userId);
   const modules =
-    owner || auth.isPlatformAdmin ? null : (membership?.auditModules ?? []);
+    owner || auth.isPlatformAdmin || legacyAdmin
+      ? null
+      : (membership?.auditModules ?? []);
   const caps = auth.effectiveCapabilities;
   return {
     schoolIds: [scope.schoolId],
