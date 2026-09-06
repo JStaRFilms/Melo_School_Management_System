@@ -1,7 +1,22 @@
 import { mutation, query } from "../../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { assertMigrationAccess } from "./migrationAuth";
+import { assertMigrationAccess, type MigrationCtx } from "./migrationAuth";
+import type { Id } from "../../_generated/dataModel";
+
+/** Staging content is private even to other administrators of the same branch. */
+export async function getPrivateMigrationWorkspace(
+  ctx: MigrationCtx,
+  schoolId: Id<"schools">,
+  workspaceId: Id<"importWorkspaces">
+) {
+  const auth = await assertMigrationAccess(ctx, schoolId);
+  const workspace = await ctx.db.get(workspaceId);
+  if (!workspace || workspace.schoolId !== schoolId || workspace.createdBy !== auth.callerId) {
+    throw new ConvexError("Workspace not found");
+  }
+  return { auth, workspace };
+}
 
 /**
  * Creates a new Data Migration Workspace for a school.
@@ -26,6 +41,12 @@ export const createWorkspace = mutation({
   },
   handler: async (ctx, args) => {
     const auth = await assertMigrationAccess(ctx, args.schoolId);
+    if (args.sourceFiles?.length) {
+      throw new ConvexError("Temporary file storage is unavailable until private upload controls are configured");
+    }
+    if ((args.mode === "super_admin") !== auth.isSuperAdmin) {
+      throw new ConvexError("Workspace mode does not match authenticated actor");
+    }
     const now = Date.now();
 
     const workspaceId = await ctx.db.insert("importWorkspaces", {
@@ -57,15 +78,15 @@ export const listWorkspaces = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
+    const auth = await assertMigrationAccess(ctx, args.schoolId);
 
-    const workspaces = await ctx.db
+    return await ctx.db
       .query("importWorkspaces")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_schoolId_and_createdBy", (q) =>
+        q.eq("schoolId", args.schoolId).eq("createdBy", auth.callerId)
+      )
       .order("desc")
       .take(50);
-
-    return workspaces;
   },
 });
 
@@ -78,13 +99,7 @@ export const getWorkspaceSummary = query({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      return null;
-    }
-
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
     return workspace;
   },
 });
@@ -105,13 +120,7 @@ export const getWorkspaceRecords = query({
     paginationOpts: v.optional(paginationOptsValidator),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    // Enforce workspace tenant ownership
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
     if (args.paginationOpts) {
       if (args.validationStatus) {
@@ -184,19 +193,16 @@ export const getWorkspaceFeatureSignals = query({
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
-    if (args.workspaceId) {
-      const workspace = await ctx.db.get(args.workspaceId);
-      if (!workspace || workspace.schoolId !== args.schoolId) {
-        throw new ConvexError("Workspace not found");
-      }
-    }
+    if (!args.workspaceId) return [];
+    const workspaceId = args.workspaceId;
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, workspaceId);
 
     const signals = await ctx.db
       .query("migrationFeatureSignals")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", workspaceId))
       .take(100);
 
-    return signals;
+    return signals.map(({ sampleValue: _sampleValue, ...signal }) => signal);
   },
 });
 
@@ -209,12 +215,7 @@ export const cancelWorkspace = mutation({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
     if (workspace.status === "merged") {
       throw new ConvexError("Cannot cancel an already merged workspace");

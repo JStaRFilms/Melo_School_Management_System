@@ -1,6 +1,7 @@
+import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
-import { assertMigrationAccess, resolveSchoolAdminActorId } from "./migrationAuth";
+import { resolveSchoolAdminActorId } from "./migrationAuth";
 import type { Doc, Id } from "../../_generated/dataModel";
 
 /**
@@ -20,11 +21,9 @@ export const commitImportWorkspace = mutation({
     batchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const auth = await assertMigrationAccess(ctx, args.schoolId);
-
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
+    const { auth, workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    if (args.batchSize !== undefined && (!Number.isInteger(args.batchSize) || args.batchSize < 1 || args.batchSize > 100)) {
+      throw new ConvexError("Batch size must be an integer between 1 and 100");
     }
 
     if (workspace.status === "cancelled") {
@@ -128,6 +127,7 @@ export const commitImportWorkspace = mutation({
     let batchProcessedCount = 0;
 
     for (const rec of page.page) {
+      if (rec.isCommitted) continue;
       // Ensure target class exists
       const cName = rec.parsedData.className.trim() || "Unassigned";
       const cKey = cName.toLowerCase();
