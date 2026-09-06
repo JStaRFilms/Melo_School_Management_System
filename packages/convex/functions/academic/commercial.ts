@@ -642,6 +642,15 @@ export const createContract = mutation({
     const version = await ctx.db.get(args.rateVersionId);
     if (!version || version.effectiveFrom > args.effectiveFrom)
       throw new ConvexError("Rate is not effective at contract start");
+    const effectiveVersion = await ctx.db
+      .query("commercialRateVersions")
+      .withIndex("by_code_and_effective_from_and_version", (q) =>
+        q.eq("code", version.code).lte("effectiveFrom", args.effectiveFrom),
+      )
+      .order("desc")
+      .first();
+    if (effectiveVersion?._id !== version._id)
+      throw new ConvexError("Select the latest catalog version effective at contract start");
     if (
       args.overrideRate &&
       (!args.overrideReason ||

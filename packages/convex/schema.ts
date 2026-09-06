@@ -3422,7 +3422,9 @@ export default defineSchema({
     code: v.string(), name: v.string(), version: v.number(),
     effectiveFrom: v.number(), rate: commercialRate,
     createdAt: v.number(),
-  }).index("by_code_and_version", ["code", "version"]),
+  })
+    .index("by_code_and_version", ["code", "version"])
+    .index("by_code_and_effective_from_and_version", ["code", "effectiveFrom", "version"]),
   commercialContracts: defineTable({
     schoolId: v.id("schools"), rateVersionId: v.id("commercialRateVersions"),
     rate: commercialRate, code: v.string(), version: v.number(),

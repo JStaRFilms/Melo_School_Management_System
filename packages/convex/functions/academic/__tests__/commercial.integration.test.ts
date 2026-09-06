@@ -241,6 +241,36 @@ it("requires Platform-only confirmed writes, delegated school reads and separate
     }),
   ).rejects.toThrow();
 });
+it("requires the latest catalog version effective at contract start", async () => {
+  const f = await fixture();
+  const latestRateVersionId = await f.platform.mutation(
+    commercial.publishRateVersion,
+    {
+      ...f.publishArgs,
+      expectedVersion: 1,
+      effectiveFrom: today + day,
+      rate: { ...rate, perStudentMinor: 120000 },
+    },
+  );
+  const contract = {
+    ...f.contractArgs,
+    schoolId: f.otherSchoolId,
+    effectiveFrom: today + 2 * day,
+    effectiveTo: today + 30 * day,
+    setupHandling: "waived" as const,
+  };
+
+  await expect(
+    f.platform.mutation(commercial.createContract, contract),
+  ).rejects.toThrow("latest catalog version");
+  await expect(
+    f.platform.mutation(commercial.createContract, {
+      ...contract,
+      rateVersionId: latestRateVersionId,
+    }),
+  ).resolves.toBeDefined();
+});
+
 it("keeps version/effective dates, contracts and issued snapshots immutable; invoices exclude inactive and duplicate students", async () => {
   const f = await fixture();
   await expect(
