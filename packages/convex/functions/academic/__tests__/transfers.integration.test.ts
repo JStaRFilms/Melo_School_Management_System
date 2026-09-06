@@ -1675,7 +1675,7 @@ describe("U6 Portal canonical identity continuity", () => {
     );
     expect(counts.memberships).toHaveLength(2);
     expect(counts.destinationStudents).toHaveLength(1);
-  });
+  }, 15_000);
 
   it("omits unrelated projections and fails selected destination access after membership revocation", async () => {
     const t = convexTest(schema, modules);

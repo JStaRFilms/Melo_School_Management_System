@@ -55,16 +55,20 @@ describe("demo-school phased seed integration", () => {
     expect(inspection.conflicts.join(" ")).toContain("other-school");
   });
 
-  test("storage cleanup deduplicates IDs and acknowledges legacy duplicate rows", async () => {
+  test("storage cleanup rejects conflicting legacy claims and deduplicates retry acknowledgements", async () => {
     const t = convexTest(schema, modules);
     const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["portrait"], { type: "image/png" })));
-    await t.run(async (ctx) => {
+    const duplicateId = await t.run(async (ctx) => {
       const schoolId = await ctx.db.insert("schools", { name: "Demo", slug: "demo-school", status: "active", createdAt: 1, updatedAt: 1 });
       await ctx.db.insert("demoSeedStorageCleanup", { schoolId, schoolSlug: "demo-school", storageId, createdAt: 1 });
-      await ctx.db.insert("demoSeedStorageCleanup", { schoolId, schoolSlug: "demo-school", storageId, createdAt: 2 });
+      return await ctx.db.insert("demoSeedStorageCleanup", { schoolId, schoolSlug: "demo-school", storageId, createdAt: 2 });
     });
+    await expect(
+      t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {}),
+    ).rejects.toThrow("conflicting ownership");
+    await t.run((ctx) => ctx.db.delete(duplicateId));
     expect(await t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {})).toEqual([storageId]);
-    // A failed storage delete leaves one deduplicated ID available to the next retry.
+    // A failed storage delete leaves the ID available to the next retry.
     expect(await t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {})).toEqual([storageId]);
     await t.mutation(internal.functions.academic.seed.acknowledgeDemoStorageCleanupInternal, { storageIds: [storageId, storageId] });
     expect(await t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {})).toEqual([]);
