@@ -4,6 +4,7 @@ import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameFinalStrict } from "@/human-name";
 import { Check,Copy,Send } from "lucide-react";
 import { useState } from "react";
+import { useDirtyForm } from "@school/shared/drafts";
 
 interface ProvisionResult {
   teacherId: string;
@@ -33,9 +34,18 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
     setCopied(false);
   };
 
+  useDirtyForm({
+    name: "Teacher onboarding (not saved as a draft)",
+    isDirty: isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass")),
+    discard: () => {
+      if (isSubmitting) throw new Error("Wait for account creation to finish before leaving.");
+      resetForm();
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !temporaryPassword) return;
+    if (isSubmitting || !name || !email || !temporaryPassword) return;
 
     setSubmitError("");
     try {
@@ -44,8 +54,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         setResult(res);
         setSubmitError("");
       }
-    } catch (error) {
-      console.error("TeacherCreationForm:onProvision error", error);
+    } catch {
       setSubmitError("We could not create that teacher account right now.");
     }
   };
@@ -104,6 +113,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
       <div className="space-y-0.5">
         <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
         <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
+        <a className="text-xs underline" href="/admin/settings/email-domains">Institutional address review after onboarding — no inbox is created here</a>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -132,7 +142,8 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
 
         <FormField label="Temporary Password">
           <input
-            type="text"
+            type="password"
+            autoComplete="new-password"
             required
             value={temporaryPassword}
             onChange={(e) => setTemporaryPassword(e.target.value)}

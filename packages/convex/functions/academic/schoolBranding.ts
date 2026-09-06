@@ -1,3 +1,7 @@
+import {
+  getUnboundStorageUrl,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
 import { mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import {
@@ -5,12 +9,8 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { schoolThemeValidator as schoolBrandingThemeValidator } from "../foundation/brandingContract";
 import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
-
-const schoolBrandingThemeValidator = v.object({
-  primaryColor: v.string(),
-  accentColor: v.string(),
-});
 
 export const schoolFeaturesValidator = v.object({
   billing: v.boolean(),
@@ -80,7 +80,9 @@ export const getCurrentSchoolBranding = query({
         name: normalizeHumanName(school.name),
         slug: school.slug,
         status: school.status ?? "active",
-        logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+        logoUrl: school.logoStorageId
+          ? await getUnboundStorageUrl(ctx, school.logoStorageId)
+          : null,
         motto: school.motto,
         theme: fallbackTheme(effectiveTheme.theme),
         contactEmail: school.contactEmail,
@@ -106,7 +108,9 @@ export const updateSchoolProfile = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const trimmedName = args.name.trim();
@@ -149,10 +153,11 @@ export const generateSchoolLogoUploadUrl = mutation({
   returns: v.string(),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    return await ctx.storage.generateUploadUrl();
+    return secureUploadUnavailable<string>();
   },
 });
 
@@ -163,29 +168,13 @@ export const saveSchoolLogo = mutation({
     logoContentType: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    if (!args.logoContentType.startsWith("image/")) {
-      throw new ConvexError("School logo must be an image file");
-    }
-
-    const school = await ctx.db.get(schoolId);
-    if (!school) {
-      throw new ConvexError("School not found");
-    }
-
-    await ctx.db.patch(schoolId, {
-      logoStorageId: args.logoStorageId,
-      logoFileName: args.logoFileName,
-      logoContentType: args.logoContentType,
-      logoUpdatedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    return null;
+    return secureUploadUnavailable<null>();
   },
 });
 
@@ -194,7 +183,9 @@ export const removeSchoolLogo = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "settings.branding.manage",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const school = await ctx.db.get(schoolId);

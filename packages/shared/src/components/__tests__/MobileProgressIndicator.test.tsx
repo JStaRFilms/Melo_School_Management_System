@@ -13,7 +13,7 @@ describe("MobileProgressIndicator Component", () => {
         })
       );
 
-      expect(html).toContain("Page 64%");
+      expect(html).toContain("Page position 64% (not completion)");
       expect(html).toContain('style="width:64%"');
       expect(html).toContain('aria-valuenow="64"');
     });
@@ -25,7 +25,7 @@ describe("MobileProgressIndicator Component", () => {
           scrollPercentage: 150,
         })
       );
-      expect(htmlOver).toContain("Page 100%");
+      expect(htmlOver).toContain("Page position 100% (not completion)");
       expect(htmlOver).toContain('style="width:100%"');
 
       const htmlUnder = renderToStaticMarkup(
@@ -34,7 +34,7 @@ describe("MobileProgressIndicator Component", () => {
           scrollPercentage: -20,
         })
       );
-      expect(htmlUnder).toContain("Page 0%");
+      expect(htmlUnder).toContain("Page position 0% (not completion)");
       expect(htmlUnder).toContain('style="width:0%"');
     });
   });

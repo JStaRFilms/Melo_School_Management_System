@@ -1,273 +1,107 @@
-import { mutation, query } from "../../_generated/server";
+import { mutation, query, internalMutation, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
+import { draftRegistry, isDraftFormKey, parseDraftPayload } from "../../../shared/src/drafts/registry";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { recordAuditEventHelper } from "./audit";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 
-/**
- * Status of a draft form
- */
-export const formDraftStatusValidator = v.union(
-  v.literal("active"),
-  v.literal("committed"),
-  v.literal("discarded")
-);
+const scope = { schoolId: v.id("schools"), formKey: v.string(), entityId: v.optional(v.string()) };
+const instance = { schoolId: v.id("schools"), draftId: v.id("formDrafts"), expectedRevision: v.number() };
+function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
+async function authority(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, formKey: string, entityId?: string) {
+  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId });
+  if (!isDraftFormKey(formKey)) return fail("SCHEMA_REJECTED", "This form has no reviewed draft schema.");
+  const policy = draftRegistry[formKey];
+  if (!auth.isSchoolAdmin && !(policy.authority === "staff" && auth.role === "teacher")) fail("FORBIDDEN", "Draft creation is not permitted for this form.");
+  const capability = formKey === "curriculum_plan" ? TEACHER_PLANNING_CAPABILITIES : ({
+    student_onboarding: "enrollment.intakes.manage", family_onboarding: "enrollment.intakes.manage",
+    staff_onboarding: "staff.onboard", fee_plan_builder: "finance.fee_plans.manage",
+    academic_setup: "academic.classes.manage", report_card_configuration: "academic.grading_bands.manage",
+    import_review: "system.migration.execute",
+  } as const)[formKey];
+  // Managed teachers are subject to the same restrictions as managed administrators.
+  await getAuthenticatedSchoolMembership(ctx, { schoolId, capability });
+  // Entity editing requires a domain-specific ownership resolver, not arbitrary string IDs.
+  if (entityId !== undefined) fail("SCHEMA_REJECTED", "This draft schema supports new records only.");
+  return { auth, policy, formKey };
+}
+async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number }) {
+  const draft = await ctx.db.get(args.draftId);
+  const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
+  if (!draft || draft.userId !== auth.userId || draft.schoolId !== args.schoolId) return fail("FORBIDDEN", "Draft unavailable.");
+  await authority(ctx, args.schoolId, draft.formKey, draft.entityId);
+  if (draft.status !== "active") fail("CLOSED", "This draft has already been submitted or discarded.");
+  if (!draft.expiresAt || draft.expiresAt <= Date.now()) fail("EXPIRED", "This draft has expired.");
+  if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision !== draft.revision) fail("CONFLICT", "Conflict detected: load the latest draft before saving.");
+  return { draft, auth };
+}
+async function audit(ctx: MutationCtx, schoolId: Id<"schools">, userId: Id<"users">, draftId: Id<"formDrafts">, action: string) {
+  const user = await ctx.db.get(userId);
+  await recordAuditEventHelper(ctx, { schoolId, actorKind: action === "expired" ? "system" : "user", actorEmailSnapshot: action === "expired" ? "system" : user?.email ?? "", module: "drafts", action, targetType: "formDraft", targetId: draftId, outcome: "success", safeSummary: `Private draft ${action}; content omitted.` });
+}
 
-/**
- * Save or update an active form draft for the authenticated user.
- * Performs an upsert: if an active draft already exists for the given (user, formKey, entityId),
- * it updates the payload, increments revision, and refreshes timestamps.
- */
+/** Explicit allocation. Autosave NEVER allocates an instance. Closed IDs stay closed forever. */
+export const beginFormDraft = mutation({
+  args: { ...scope, schemaVersion: v.number() },
+  handler: async (ctx, args) => {
+    const { auth, policy } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
+    if (args.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
+    const existing = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
+    if (existing.some(d => d.schoolId === args.schoolId && d.status === "active" && d.expiresAt && d.expiresAt > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
+    const now = Date.now();
+    const expiresAt = now + policy.retentionDays * 86400000;
+    const draftId = await ctx.db.insert("formDrafts", { schoolId: args.schoolId, userId: auth.userId, formKey: args.formKey, payload: {}, schemaVersion: policy.version, expiresAt, status: "active", revision: 0, lastSavedAt: now, createdAt: now, updatedAt: now });
+    await audit(ctx, args.schoolId, auth.userId, draftId, "created");
+    return { draftId, revision: 0, expiresAt };
+  },
+});
 export const saveFormDraft = mutation({
-  args: {
-    formKey: v.string(),
-    entityId: v.optional(v.string()),
-    payload: v.any(),
-    expectedRevision: v.optional(v.number()),
-  },
+  args: { ...instance, schemaVersion: v.number(), payload: v.any() },
   handler: async (ctx, args) => {
-    const auth = await getAuthenticatedSchoolMembership(ctx);
-    const now = Date.now();
-
-    // Query drafts for this user and formKey
-    const existingDrafts = await ctx.db
-      .query("formDrafts")
-      .withIndex("by_user_and_form", (q) =>
-        q.eq("userId", auth.userId).eq("formKey", args.formKey)
-      )
-      .collect();
-
-    // Filter to find matching active draft
-    const activeDraft = existingDrafts.find((doc) => {
-      if (doc.status !== "active") return false;
-      if (args.entityId !== undefined) {
-        return doc.entityId === args.entityId;
-      }
-      return !doc.entityId;
-    });
-
-    if (activeDraft) {
-      if (
-        args.expectedRevision !== undefined &&
-        activeDraft.revision !== undefined &&
-        activeDraft.revision !== args.expectedRevision
-      ) {
-        throw new ConvexError({
-          code: "CONFLICT",
-          message: "Conflict detected: Draft revision mismatch on server",
-          serverRevision: activeDraft.revision,
-          clientRevision: args.expectedRevision,
-        });
-      }
-
-      const nextRevision = (activeDraft.revision ?? 1) + 1;
-      await ctx.db.patch(activeDraft._id, {
-        payload: args.payload,
-        entityId: args.entityId,
-        revision: nextRevision,
-        lastSavedAt: now,
-        updatedAt: now,
-      });
-
-      return {
-        draftId: activeDraft._id,
-        revision: nextRevision,
-        lastSavedAt: now,
-        isNew: false,
-      };
-    }
-
-    // Insert brand new active draft
-    const draftId = await ctx.db.insert("formDrafts", {
-      schoolId: auth.schoolId,
-      userId: auth.userId,
-      formKey: args.formKey,
-      entityId: args.entityId,
-      payload: args.payload,
-      status: "active",
-      revision: 1,
-      lastSavedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return {
-      draftId,
-      revision: 1,
-      lastSavedAt: now,
-      isNew: true,
-    };
+    const { draft } = await owned(ctx, args);
+    if (!isDraftFormKey(draft.formKey) || args.schemaVersion !== draft.schemaVersion) return fail("SCHEMA_REJECTED", "Unsupported draft version.");
+    let payload;
+    try { payload = parseDraftPayload(draft.formKey, args.payload); }
+    catch { return fail("SCHEMA_REJECTED", "Draft contains unapproved fields or invalid values."); }
+    if (JSON.stringify(payload).length > 64000) fail("SCHEMA_REJECTED", "Draft exceeds the size limit.");
+    const revision = args.expectedRevision + 1;
+    const lastSavedAt = Date.now();
+    await ctx.db.patch(args.draftId, { payload, revision, lastSavedAt, updatedAt: lastSavedAt });
+    return { draftId: args.draftId, revision, lastSavedAt };
   },
 });
-
-/**
- * Retrieve the active form draft for the authenticated user and formKey.
- * Returns null if no active draft exists.
- */
 export const getFormDraft = query({
-  args: {
-    formKey: v.string(),
-    entityId: v.optional(v.string()),
-  },
+  args: scope,
   handler: async (ctx, args) => {
-    let auth;
-    try {
-      auth = await getAuthenticatedSchoolMembership(ctx, {
-        allowSuspended: true,
-      });
-    } catch {
-      return null;
-    }
-
-    const drafts = await ctx.db
-      .query("formDrafts")
-      .withIndex("by_user_and_form", (q) =>
-        q.eq("userId", auth.userId).eq("formKey", args.formKey)
-      )
-      .collect();
-
-    // Find active draft matching entityId criteria
-    const activeDrafts = drafts
-      .filter((doc) => {
-        if (doc.status !== "active") return false;
-        if (args.entityId !== undefined) {
-          return doc.entityId === args.entityId;
-        }
-        return !doc.entityId;
-      })
-      .sort((a, b) => b.lastSavedAt - a.lastSavedAt);
-
-    if (activeDrafts.length === 0) {
-      return null;
-    }
-
-    const draft = activeDrafts[0];
-    return {
-      _id: draft._id,
-      schoolId: draft.schoolId,
-      userId: draft.userId,
-      formKey: draft.formKey,
-      entityId: draft.entityId,
-      payload: draft.payload,
-      status: draft.status,
-      revision: draft.revision ?? 1,
-      lastSavedAt: draft.lastSavedAt,
-      createdAt: draft.createdAt,
-      updatedAt: draft.updatedAt,
-    };
+    const { auth, policy } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
+    const rows = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
+    const draft = rows.find(d => d.schoolId === args.schoolId && d.status === "active" && d.schemaVersion === policy.version && d.expiresAt && d.expiresAt > Date.now());
+    return draft ? { ...draft, draftId: draft._id } : null;
   },
 });
-
-/**
- * Discard an active draft.
- * Accepts either a specific draftId or (formKey, entityId).
- */
-export const discardFormDraft = mutation({
-  args: {
-    formKey: v.optional(v.string()),
-    draftId: v.optional(v.id("formDrafts")),
-    entityId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const auth = await getAuthenticatedSchoolMembership(ctx);
-    const now = Date.now();
-
-    if (args.draftId) {
-      const draft = await ctx.db.get(args.draftId);
-      if (!draft || draft.userId !== auth.userId) {
-        return { success: false, discardedCount: 0 };
-      }
-      await ctx.db.patch(draft._id, {
-        status: "discarded",
-        updatedAt: now,
-      });
-      return { success: true, discardedCount: 1 };
+/** Call this helper INSIDE a domain's successful submission transaction. Never before submission. */
+export async function finishFormDraft(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number }, status: "committed" | "discarded") {
+  const { draft, auth } = await owned(ctx, args);
+  await ctx.db.patch(draft._id, { status, payload: {}, revision: args.expectedRevision + 1, updatedAt: Date.now() });
+  await audit(ctx, args.schoolId, auth.userId, draft._id, status);
+  return { success: true as const };
+}
+export const discardFormDraft = mutation({ args: instance, handler: (ctx, args) => finishFormDraft(ctx, args, "discarded") });
+// Compatibility endpoint for non-atomic legacy submit adapters; new domain mutations use the helper.
+export const commitFormDraft = mutation({ args: instance, handler: (ctx, args) => finishFormDraft(ctx, args, "committed") });
+/** Retention contract only: bounded and internal; no cron/scheduler is installed or run. */
+export const expireFormDrafts = internalMutation({
+  args: {},
+  handler: async ctx => {
+    const rows = await ctx.db.query("formDrafts").withIndex("by_expiresAt", q => q.gt("expiresAt", 0).lte("expiresAt", Date.now())).take(100);
+    for (const draft of rows) {
+      await ctx.db.patch(draft._id, { payload: {}, status: draft.status === "active" ? "discarded" : draft.status, expiresAt: undefined, updatedAt: Date.now() });
+      await audit(ctx, draft.schoolId, draft.userId, draft._id, "expired");
     }
-
-    if (args.formKey) {
-      const drafts = await ctx.db
-        .query("formDrafts")
-        .withIndex("by_user_and_form", (q) =>
-          q.eq("userId", auth.userId).eq("formKey", args.formKey!)
-        )
-        .collect();
-
-      const toDiscard = drafts.filter((doc) => {
-        if (doc.status !== "active") return false;
-        if (args.entityId !== undefined) {
-          return doc.entityId === args.entityId;
-        }
-        return !doc.entityId;
-      });
-
-      for (const draft of toDiscard) {
-        await ctx.db.patch(draft._id, {
-          status: "discarded",
-          updatedAt: now,
-        });
-      }
-
-      return { success: true, discardedCount: toDiscard.length };
-    }
-
-    return { success: false, discardedCount: 0 };
+    return { processed: rows.length, mayHaveMore: rows.length === 100 };
   },
 });
-
-/**
- * Mark a form draft as committed (e.g. upon successful final submission).
- */
-export const commitFormDraft = mutation({
-  args: {
-    formKey: v.optional(v.string()),
-    draftId: v.optional(v.id("formDrafts")),
-    entityId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const auth = await getAuthenticatedSchoolMembership(ctx);
-    const now = Date.now();
-
-    if (args.draftId) {
-      const draft = await ctx.db.get(args.draftId);
-      if (!draft || draft.userId !== auth.userId) {
-        return { success: false, committedCount: 0 };
-      }
-      await ctx.db.patch(draft._id, {
-        status: "committed",
-        updatedAt: now,
-      });
-      return { success: true, committedCount: 1 };
-    }
-
-    if (args.formKey) {
-      const drafts = await ctx.db
-        .query("formDrafts")
-        .withIndex("by_user_and_form", (q) =>
-          q.eq("userId", auth.userId).eq("formKey", args.formKey!)
-        )
-        .collect();
-
-      const toCommit = drafts.filter((doc) => {
-        if (doc.status !== "active") return false;
-        if (args.entityId !== undefined) {
-          return doc.entityId === args.entityId;
-        }
-        return !doc.entityId;
-      });
-
-      for (const draft of toCommit) {
-        await ctx.db.patch(draft._id, {
-          status: "committed",
-          updatedAt: now,
-        });
-      }
-
-      return { success: true, committedCount: toCommit.length };
-    }
-
-    return { success: false, committedCount: 0 };
-  },
-});
-
-// Backward-compatible aliases as referenced in task specifications
 export const saveDraft = saveFormDraft;
 export const getDraft = getFormDraft;
 export const discardDraft = discardFormDraft;

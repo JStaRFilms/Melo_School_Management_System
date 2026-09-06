@@ -10,6 +10,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import type { ExamInputMode } from "@school/shared";
+import { useDirtyForm } from "@school/shared/drafts";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ExamModeSelector } from "./components/ExamModeSelector";
@@ -218,15 +219,11 @@ function LiveExamSettingsPage() {
     setPolicyDraft(savedPolicyDraft);
   }, [savedMode, savedPolicyDraft]);
 
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasUnsavedChanges) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
+  useDirtyForm({
+    name: "Exam recording settings",
+    isDirty: hasUnsavedChanges,
+    discard: handleDiscard,
+  });
 
   return (
     <ExamSettingsContent
@@ -306,15 +303,11 @@ function MockExamSettingsPage() {
     setPolicyDraft(savedPolicyDraft);
   }, [savedMode, savedPolicyDraft]);
 
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasUnsavedChanges) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
+  useDirtyForm({
+    name: "Exam recording settings",
+    isDirty: hasUnsavedChanges,
+    discard: handleDiscard,
+  });
 
   return (
     <ExamSettingsContent
