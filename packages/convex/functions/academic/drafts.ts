@@ -2,7 +2,7 @@ import { mutation, query, internalMutation, type MutationCtx, type QueryCtx } fr
 import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { draftRegistry, isDraftFormKey, parseDraftPayload } from "../../../shared/src/drafts/registry";
+import { draftRegistry, isDraftFormKey, parseDraftPayload, type DraftFormKey } from "../../../shared/src/drafts/registry";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import { recordAuditEventHelper } from "./audit";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
@@ -24,6 +24,7 @@ async function authority(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, f
     staff_onboarding: "staff.onboard", fee_plan_builder: "finance.fee_plans.manage",
     academic_setup: "academic.classes.manage", report_card_configuration: "academic.grading_bands.manage",
     import_review: "system.migration.execute",
+    institutional_email_review: ["settings.domains.manage", "staff.onboard", "enrollment.intakes.manage"],
   } as const)[formKey];
   // Managed teachers are subject to the same restrictions as managed administrators.
   await getAuthenticatedSchoolMembership(ctx, { schoolId, capability });
@@ -96,8 +97,10 @@ export const getFormDraft = query({
   },
 });
 /** Call this helper INSIDE a domain's successful submission transaction. Never before submission. */
-export async function finishFormDraft(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number }, status: "committed" | "discarded") {
+export async function finishFormDraft(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number; expectedFormKey?: DraftFormKey }, status: "committed" | "discarded") {
   const { draft, auth } = await owned(ctx, args);
+  if (args.expectedFormKey && draft.formKey !== args.expectedFormKey)
+    return fail("SCHEMA_REJECTED", "Submission cannot close a draft for another form.");
   await ctx.db.patch(draft._id, { status, activeScopeKey: undefined, payload: {}, revision: args.expectedRevision + 1, updatedAt: Date.now() });
   await audit(ctx, args.schoolId, auth.userId, draft._id, status);
   return { success: true as const };

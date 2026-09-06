@@ -2,7 +2,7 @@
 
 ## Status and safety boundary
 
-**Local safe workbench implemented and locally tested. P/G, screenshot evidence E0. Not approval of the complete H5 provider program.** No provider, DNS, network delivery, migration, seed, deployment, production, credential or commit action was performed. Existing unrelated working-tree changes were preserved. No subagents or additional writers were launched.
+**Local safe workbench, private review recovery and cursor pagination implemented and locally tested. P/G, screenshot evidence E0. Not approval of the complete H5 provider program.** No provider, DNS, network delivery, migration, seed, deployment, production or credential action was performed. Existing unrelated working-tree changes were preserved.
 
 Read: packet U4a, normative H5 product decisions, D01 privacy/release gates, D03 directory spike contracts, D04 badge contract, Convex generated guidance, actual email/schema/RBAC/auth/audit APIs and U3a/U3b guard patterns.
 
@@ -18,7 +18,9 @@ Read: packet U4a, normative H5 product decisions, D01 privacy/release gates, D03
 - Separate login-only/no inbox, externally evidenced mailbox, and provider-provisioned evidence badges. Last recorded evidence is not a live delivery/access assertion.
 - Local suspend/archive intent with confirmation and permanent reservation. Copy explicitly states that neither external access nor Melo login access is revoked by these controls.
 - Failure/reconciliation display exposes only safe transient/permanent/unknown classifications. Unknown outcomes require reconciliation before create retry; no fabricated retry/provision/verify/send action exists.
-- Loading, empty, denied, duplicate registration, unavailable inherited domain, stale review, manual collision, confirmation and mutation-failure states. Failed mutation edits remain in the mounted form. U3a dirty/departure guard protects in-memory policy/review work and blocks departure during mutation; no credentials or approval state are persisted to drafts/browser storage.
+- Loading, empty, denied, duplicate registration, unavailable inherited domain, stale review, manual collision, confirmation and mutation-failure states. Failed mutation edits remain in the mounted form.
+- U3 private review recovery persists only the strict person/name, minor/privacy, manual local-part and related-mailbox projection for 30 days. Preview/Resume/Discard and optimistic revision conflict states use the shared adapter. Recovery deliberately clears dry-run and approval confirmations; approval first saves the exact revision and atomically closes that draft in the mailbox mutation. DNS challenges, provider identifiers/operations, credentials, approval email/confirmation and evidence are excluded. Policy/domain/sharing/lifecycle confirmations remain guard-only.
+- Owned domains, explicitly shared domains, eligible proposal people and visible mailboxes use explicit cursor pages of 25 with a server-enforced 1–50 page bound. Authorization filtering remains server-side. Pagination DTOs omit DNS challenges, raw provider identifiers/operations and raw errors.
 
 ## API / permission contract
 
@@ -29,11 +31,14 @@ All public functions derive authenticated membership/capabilities on the server.
 | `registerEmailDomain` | `settings.domains.manage`; validates normalized ASCII DNS name, idempotent same-branch registration, rejects an already-registered namespace elsewhere (use explicit inheritance/ownership reconciliation). Writes pending intent only. |
 | `setEmailDomainSharing` | Derives source school from domain; source `settings.domains.manage` + explicit confirmation. Grant is pinned to exact active `schoolGroups` ID. No provider delegation implied. |
 | `saveEmailPolicy` | `settings.domains.manage`; active owned/shared-domain resolver, confirmation, expected version. Audits immutable version/domain-reference/template summary. |
-| `getEmailWorkbench` | Domain policy OR staff approval OR student approval authority; returns permissions, policy, minimized owned/explicitly shared domain context, eligible local people, scoped allocations, provider unavailable marker. No provider account/operation IDs, DNS challenge or raw failure payloads. |
+| `getEmailWorkbench` | Domain policy OR staff approval OR student approval authority; returns permissions, policy, active-group label, policy-domain availability and provider-unavailable marker. Collections are not embedded. |
+| `listEmailDomainsPage` | Cursor-paginates branch-owned or exact actively shared-group domain metadata, 1–50 rows. DNS challenge is omitted. |
+| `listEmailProposalPeoplePage` | Cursor-paginates active branch memberships, then returns only active/reconciled people within the viewer's staff/student classification authority. |
+| `listInstitutionalMailboxesPage` | Cursor-paginates branch allocations and applies the same per-recipient authority filter. Omits provider account/operation IDs and raw errors. |
 | `getSchoolEmailDomains` | Same email workspace read authority; own-branch domain records only. DNS TXT challenge is a public challenge, not provider credentials; does not verify anything. |
 | `proposeEmailAddresses` | Staff recipients require `staff.onboard`; student recipients require `enrollment.intakes.manage`; unclassified membership requires both. Active canonical person/membership; at most 100 supplied people. Requires registered/configured domain; custom arbitrary/fallback domains are rejected. Returns stage, alternatives, reason, policy version, `retainedExistingAddress` and proposal/login-only state (not the state of a retained mailbox). No writes. |
 | `reviewEmailAddress` | Same target authority; expected policy version, normalized local part, syntax/reserved/uniqueness review across global `by_email`. Returns valid/email/reason, no reservation. |
-| `assignInstitutionalMailbox` | Same target authority + active target + server domain/policy/length/reserved/global uniqueness validation. Configured policies require matching `expectedPolicyVersion`. Legacy unconfigured callers retain version-zero compatibility with an explicitly registered branch domain. New rows include approved policy version and optional same-person/branch alias relation. Does not touch persons/users/memberships/auth. |
+| `assignInstitutionalMailbox` | Same target authority + active target + server domain/policy/length/reserved/global uniqueness validation. Configured policies require matching `expectedPolicyVersion`. Legacy unconfigured callers retain version-zero compatibility with an explicitly registered branch domain. New rows include approved policy version and optional same-person/branch alias relation. Optional draft ID/revision must be paired, creator-owned, current and for `institutional_email_review`; successful creation or idempotent replay atomically tombstones its payload. Does not touch persons/users/memberships/auth. |
 | Approval replay | Returns original mailbox/state for same-person reservation; never reactivates status, changes source school, updates alias relation or erases provider failure/evidence. Other-person allocation remains permanently frozen. |
 | `getInstitutionalMailboxes` | Same recipient classification used to filter branch rows; not coarse `staff.list.view`. No raw provider identifiers/error payloads returned. |
 | `suspendOrArchiveMailbox` | Appropriate recipient authority; staff/unclassified also requires `staff.account.suspend`. Registrar may record student lifecycle. Same-state replay is no-op; archived cannot be moved back to suspended. Local metadata only. |
@@ -47,7 +52,8 @@ Recipient kind derives from reviewed `branchMemberships.legacyUserId` mapping an
 - Created `apps/admin/app/admin/settings/email-domains/page.tsx` and `error.tsx`.
 - Created `apps/admin/__tests__/institutional-email.test.tsx`.
 - Modified `packages/convex/functions/academic/institutionalEmail.ts` and its existing `emailAndAiImport.integration.test.ts`.
-- Narrow additions to existing dirty `packages/convex/schema.ts`: `emailAddressPolicies` table/index; optional domain `sharedGroupId`; optional mailbox `aliasOfMailboxId`, `approvedPolicyVersion`, `lastProviderOperationId`. No RBAC catalog, auth, identity migration or generated API file changed.
+- Added the strict `institutional_email_review` projection in `packages/shared/src/drafts/registry.ts` and its OR-scoped domain/staff/enrollment authority in `packages/convex/functions/academic/drafts.ts`.
+- Narrow additions to existing dirty `packages/convex/schema.ts`: `emailAddressPolicies` table/index; optional domain `sharedGroupId` plus shared-group pagination index; optional mailbox `aliasOfMailboxId`, `approvedPolicyVersion`, `lastProviderOperationId`. No RBAC catalog, auth, identity migration or generated API file changed.
 - Added links only in existing dirty `apps/admin/app/admin/settings/page.tsx`, `StudentFirstOnboardingForm.tsx`, `TeacherCreationForm.tsx`; preserved earlier changes.
 - Updated this result, U4a packet notes and the H5 coverage-matrix row.
 
@@ -56,11 +62,10 @@ Classification: policies/domain-sharing metadata are internal administrative pol
 ## Local verification
 
 Final focused commands:
-- `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/emailAndAiImport.integration.test.ts` — **12 passed** (8 existing + 4 substantial U4a cases).
-- `pnpm --filter @school/admin exec vitest run __tests__/institutional-email.test.tsx __tests__/form-adoption-guards.test.tsx` — **12 passed** (8 email + 4 existing guard regressions).
-- `pnpm --filter @school/convex typecheck` — **PASS**.
-- `pnpm --filter @school/admin typecheck` — **PASS**.
-- Focused ESLint: new email route/error/test and email backend/integration tests — **PASS**.
+- `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/emailAndAiImport.integration.test.ts` — **15 passed** (including pagination beyond 50, bound rejection/redaction, strict draft schema, stale revision rollback, atomic close and discard/no-resurrection).
+- `pnpm --filter @school/admin exec vitest run __tests__/institutional-email.test.tsx __tests__/form-adoption-guards.test.tsx` — **17 passed** (12 email/recovery/pagination + 5 existing guard regressions).
+- `pnpm --filter @school/shared typecheck`, `pnpm --filter @school/convex typecheck`, `pnpm --filter @school/admin typecheck` — **PASS**.
+- Focused ESLint: touched email route/test, draft registry/authority, schema and email backend/integration test — **PASS**.
 - `git diff --check` — **PASS**; existing CRLF conversion warnings only.
 - `node scripts/audit-theme-colors.mjs` — ran, informational. Link additions introduce no colors. Existing onboarding emerald/rose/amber/blue are semantic success/error/warning/info; settings presets are existing tenant inputs. New workbench slate/white are product neutrals, amber is semantic provider/privacy warning. Script scans tracked diffs only; new route was manually classified. No global color replacement.
 
@@ -73,8 +78,10 @@ An initial `pnpm ... test -- <file>` invocation passed a literal `--` to Vitest 
 - Registrar versus staff approvals/reads and policy/sharing denial tested; public unauthenticated/cross-tenant reads/proposals/writes still denied.
 - Canonical person/membership snapshots unchanged through approval, new-name additional-address relation, provider failure and lifecycle.
 - Approval retry preserves archived allocation and external evidence; trusted success replay cannot clear a later unknown failure; late inactive provider result rejected.
-- Safe attributable immutable approval/alias/failure audit and omission of provider operation ID from DTO checked.
-- DOM proves distinct badges, no provider activation controls, unavailable/denied/empty/loading, duplicate prevention, confirmation, failed-edit retention, source sharing confirmation and U3a dirty registration.
+- Safe attributable immutable approval/alias/failure audit and omission of DNS challenge, provider operation/account IDs and approved address from paginated/audit serialization checked.
+- Multi-page retrieval exceeds the old 50-row window; invalid page sizes fail before reads. Authority remains applied per returned person/mailbox.
+- Strict draft parser rejects provider/DNS/approval additions. Stale revision prevents mailbox creation; successful approval closes and erases the exact draft atomically; discard erases payload and stale save cannot resurrect it.
+- DOM proves explicit page loading, Preview/Resume/Discard, restored private fields with mandatory fresh dry run, visible conflict with edits retained, exact revision closure, distinct badges, no provider activation controls, unavailable/denied/empty/loading, duplicate prevention, confirmation, failed-edit retention and source sharing confirmation.
 - Self-review found and fixed: group linkage alone permitting inheritance; reactive policy or collision updates silently refreshing an already-confirmed approval; stale approval reactivating lifecycle; raw failure/provider IDs in read DTOs.
 
 ## U4b address proposal handoff
@@ -84,10 +91,10 @@ AI never provisions. For already-created canonical members, call `proposeEmailAd
 ## Remaining code/program gates and U7 capture contract
 
 - No provider outbox worker, delegated connection, live DNS check, mailbox creation/send, external alias activation, forwarding, recovery or external suspension/archive implementation is enabled. Last-operation replay metadata is **not** a complete out-of-order provider operation ledger. A reviewed provider/outbox program must supply D03 operation idempotency/history/reconciliation before activation.
-- Policy/review edits have guarded in-memory retention only, not server draft recovery, multi-tab recovery or durable resume. Do not label this full U3a persistence adoption. Query error boundary may require re-entry; arbitrary browser/history/account behavior still follows U3a limitations.
-- Workbench intentionally retains bounded discovery (first 100 local memberships/allocations, first 50 group branches/domains per branch), explicitly labelled. Pagination/search beyond these windows is follow-up code, not a provider gate.
+- Address-review fields now adopt the U3 private draft lifecycle and cursor pagination. Policy/domain/sharing/lifecycle confirmations intentionally remain guard-only. Authenticated reload, multi-tab/browser history, account/branch transition and 320px evidence remain U7 E0; query error boundary behavior still follows U3 limitations.
+- Cursor pages are bounded to 50 and the UI loads 25 at a time. Search/jump-to-person and maintained aggregate counts are not implemented; filtered pages can contain fewer visible records and require explicit continuation.
 - Templates support the two declared patterns, not arbitrary token-language templates or group-wide template defaults.
 - Admin shell retains U1b default-school legacy compatibility restrictions; this page does not activate branch switching or solve capability-only legacy-shell parity.
-- **E0: no screenshots captured.** U7 needs an authorized no-seed local browser fixture/target; existing global Playwright setup invokes seed CLI and was not run. Required desktop/320px captures: owner policy + sharing confirmation; registrar student dry-run + manual collision; staff-only denial of student actions; all three evidence badges + unknown/permanent/transient failure; empty/denied/loading; approval/lifecycle confirmation; failed save with preserved edits; Stay/discard departure and keyboard focus/reflow. No image should imply a live mailbox or connected provider.
+- **E0: no screenshots captured.** U7 needs an authorized no-seed local browser fixture/target; existing global Playwright setup invokes seed CLI and was not run. Required desktop/320px captures: owner policy + sharing confirmation; registrar student dry-run + manual collision; private draft Preview/Resume/Discard and conflict; multi-page Load more states; staff-only denial of student actions; all three evidence badges + unknown/permanent/transient failure; empty/denied/loading; approval/lifecycle confirmation; failed save with preserved edits; Stay/discard departure and keyboard focus/reflow. No image should imply a live mailbox or connected provider.
 
 D01 counsel/minor naming/notice, school controller authority, provider-specific control/licensing/scopes/DPA and D03 sandbox/failure/retry evidence remain unfulfilled. No launch or external activation claim.

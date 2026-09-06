@@ -1,30 +1,45 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import EmailDomainsPage from "../app/admin/settings/email-domains/page";
 
 const mocks = vi.hoisted(() => ({
   allowed: true as boolean | undefined, loading: false, empty: false, policy: true, version: 1, candidate: "ada.example2",
-  save: vi.fn(), guard: vi.fn(),
+  pageStatus: "Exhausted" as "Exhausted" | "CanLoadMore" | "LoadingMore", draft: null as null | Record<string, unknown>,
+  save: vi.fn(), guard: vi.fn(), loadMore: vi.fn(), begin: vi.fn(), draftSave: vi.fn(), draftDiscard: vi.fn(), draftCommit: vi.fn(),
 }));
-vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" } } }) }));
-vi.mock("@school/shared/drafts", () => ({ useDirtyForm: (options: unknown) => mocks.guard(options) }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" } }, session: { user: { id: "account" } } }) }));
+vi.mock("@/useDraftConnection", () => ({ useDraftConnection: () => ({ connected: true, authenticated: true, accountId: "account" }) }));
+vi.mock("@school/shared/drafts", async importOriginal => ({ ...(await importOriginal<typeof import("@school/shared/drafts")>()), useDirtyForm: (options: unknown) => mocks.guard(options) }));
 vi.mock("convex/react", () => ({
-  useMutation: (reference: Parameters<typeof getFunctionName>[0]) => (args: unknown) => mocks.save(getFunctionName(reference), args),
+  useMutation: (reference: Parameters<typeof getFunctionName>[0]) => {
+    const name = getFunctionName(reference);
+    if (name.endsWith("beginFormDraft")) return mocks.begin;
+    if (name.endsWith("saveFormDraft")) return mocks.draftSave;
+    if (name.endsWith("discardFormDraft")) return mocks.draftDiscard;
+    if (name.endsWith("commitFormDraft")) return mocks.draftCommit;
+    return (args: unknown) => mocks.save(name, args);
+  },
+  usePaginatedQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
+    const name = getFunctionName(reference);
+    if (args === "skip") return { results: [], status: "Exhausted", loadMore: mocks.loadMore };
+    if (name.endsWith("listEmailDomainsPage")) return { results: mocks.empty ? [] : [{ _id: "domain", schoolId: "school", domain: "school.example", provider: "google", status: "pending_verification", isDefault: true }], status: mocks.pageStatus, loadMore: mocks.loadMore };
+    if (name.endsWith("listEmailProposalPeoplePage")) return { results: mocks.empty ? [] : [{ personId: "person", name: "Ada Example", kind: "student" }], status: mocks.pageStatus, loadMore: mocks.loadMore };
+    return { results: mocks.empty ? [] : [
+      { _id: "login", personId: "person", email: "login@school.example", kind: "student", state: "login_only", providerType: "none", status: "active" },
+      { _id: "external", personId: "person", email: "external@school.example", kind: "student", state: "external_verified", providerType: "none", status: "suspended", aliasOfMailboxId: "login" },
+      { _id: "managed", personId: "person", email: "managed@school.example", kind: "staff", state: "provider_provisioned", providerType: "google", status: "active", reconciliationRequired: true },
+    ], status: mocks.pageStatus, loadMore: mocks.loadMore };
+  },
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
     if (args === "skip") return undefined;
     const name = getFunctionName(reference);
+    if (name.endsWith("getFormDraft")) return mocks.draft;
     if (name.endsWith("hasViewerCapability")) return mocks.allowed;
     if (name.endsWith("getEmailWorkbench")) return mocks.loading ? undefined : {
       permissions: { policy: mocks.policy, staff: true, student: true, lifecycle: true },
       policy: mocks.empty ? null : { domainId: "domain", staffTemplate: "firstname.lastname", studentTemplate: "firstname.lastname", version: mocks.version },
-      people: mocks.empty ? [] : [{ personId: "person", name: "Ada Example", kind: "student" }],
-      domains: mocks.empty ? [] : [{ _id: "domain", schoolId: "school", domain: "school.example", provider: "google", status: "pending_verification", isDefault: true }],
-      mailboxes: mocks.empty ? [] : [
-        { _id: "login", personId: "person", email: "login@school.example", kind: "student", state: "login_only", providerType: "none", status: "active" },
-        { _id: "external", personId: "person", email: "external@school.example", kind: "student", state: "external_verified", providerType: "none", status: "suspended", aliasOfMailboxId: "login" },
-        { _id: "managed", personId: "person", email: "managed@school.example", kind: "staff", state: "provider_provisioned", providerType: "google", status: "active", reconciliationRequired: true },
-      ], groupName: "Synthetic group", providerActivation: "unavailable", limit: 100,
+      groupName: "Synthetic group", providerActivation: "unavailable", policyDomainUnavailable: false, pageSize: 25,
     };
     if (name.endsWith("proposeEmailAddresses")) return [{ personId: "person", proposedEmail: `${mocks.candidate}@school.example`, localPart: mocks.candidate, domain: "school.example", stage: 3, reason: "Collision: deterministic alternative proposed", alternatives: ["ada.example@school.example", "ada.example2@school.example"], policyVersion: mocks.version }];
     if (name.endsWith("reviewEmailAddress") && typeof args === "object" && args !== null && "localPart" in args && "expectedPolicyVersion" in args) {
@@ -34,10 +49,14 @@ vi.mock("convex/react", () => ({
     return undefined;
   },
 }));
-afterEach(() => {
-  cleanup(); mocks.allowed = true; mocks.loading = false; mocks.empty = false; mocks.policy = true; mocks.version = 1; mocks.candidate = "ada.example2";
-  mocks.save.mockReset(); mocks.guard.mockReset();
+beforeEach(() => {
+  mocks.allowed = true; mocks.loading = false; mocks.empty = false; mocks.policy = true; mocks.version = 1; mocks.candidate = "ada.example2"; mocks.pageStatus = "Exhausted"; mocks.draft = null;
+  mocks.save.mockReset(); mocks.guard.mockReset(); mocks.loadMore.mockReset(); mocks.begin.mockReset(); mocks.draftSave.mockReset(); mocks.draftDiscard.mockReset(); mocks.draftCommit.mockReset();
+  mocks.begin.mockResolvedValue({ draftId: "review-draft", revision: 0, expiresAt: Date.now() + 10000 });
+  mocks.draftSave.mockResolvedValue({ draftId: "review-draft", revision: 1, lastSavedAt: 100 });
+  mocks.draftDiscard.mockResolvedValue({ success: true }); mocks.draftCommit.mockResolvedValue({ success: true });
 });
+afterEach(cleanup);
 it("distinguishes permission loading, denied, data loading and empty states without exposing controls", () => {
   mocks.allowed = undefined; render(<EmailDomainsPage />);
   expect(screen.getByText("Checking email permissions…")).toBeTruthy(); cleanup();
@@ -86,11 +105,14 @@ it("requires dry-run/manual review and human approval, retaining failed edits wi
   fireEvent.click(screen.getByText("Review approval"));
   expect(mocks.save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText("Confirm login-only approval"));
-  await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(expect.stringContaining("assignInstitutionalMailbox"), {
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(expect.stringContaining("assignInstitutionalMailbox"), expect.objectContaining({
     schoolId: "school", personId: "person", email: "ada.reviewed@school.example", expectedPolicyVersion: 1,
     aliasOfMailboxId: "login", isMinor: true, minorPrivacyRequested: false,
-  }));
-  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Your edits remain here"));
+    draftId: "review-draft", expectedDraftRevision: 1,
+  })));
+  const approvalArgs = mocks.save.mock.calls.find(([name]) => String(name).endsWith("assignInstitutionalMailbox"))?.[1];
+  expect(JSON.stringify(approvalArgs)).not.toMatch(/dnsTxtRecord|providerAccountId|providerOperation|approvalEmail/);
+  await waitFor(() => expect(screen.getByText(/Operation failed or permission\/policy changed/).textContent).toContain("Your edits remain here"));
   expect((screen.getByLabelText("Review / manually edit local part") as HTMLInputElement).value).toBe("ada.reviewed");
 });
 it("a reactive policy change cannot silently refresh an already-reviewed approval version", () => {
@@ -118,6 +140,50 @@ it("requires source-owner confirmation before enabling group domain inheritance"
   expect(mocks.save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText("Confirm sharing policy"));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(expect.stringContaining("setEmailDomainSharing"), { domainId: "domain", sharedWithGroup: true, confirmed: true }));
+});
+it("loads bounded cursor pages explicitly for domains, proposal candidates and allocations", () => {
+  mocks.pageStatus = "CanLoadMore";
+  render(<EmailDomainsPage />);
+  fireEvent.click(screen.getByText("Load more branch domains"));
+  fireEvent.click(screen.getByText("Load more shared domains"));
+  fireEvent.click(screen.getByText("Load more proposal candidates"));
+  fireEvent.click(screen.getByText("Load more allocations"));
+  expect(mocks.loadMore).toHaveBeenCalledTimes(4);
+  expect(mocks.loadMore).toHaveBeenCalledWith(25);
+});
+it("offers explicit private recovery, restores only approved fields and requires a fresh dry run", () => {
+  mocks.draft = { schoolId: "school", draftId: "recovered-draft", formKey: "institutional_email_review", revision: 3, lastSavedAt: 100,
+    expiresAt: Date.now() + 10000, schemaVersion: 1, payload: { personId: "person", firstName: "Recovered", middleName: "M", lastName: "Minor", isMinor: true, minorPrivacyRequested: true, localPart: "r.minor", aliasOfMailboxId: "login" } };
+  render(<EmailDomainsPage />);
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.click(screen.getByText("Preview Draft"));
+  expect(screen.getByText((content, element) => element?.tagName === "PRE" && content.includes('\"localPart\": \"r.minor\"'))).toBeTruthy();
+  expect(screen.queryByText(/dnsTxtRecord|providerAccountId|providerOperationId/)).toBeNull();
+  fireEvent.click(screen.getByText("Resume Editing Draft"));
+  expect((screen.getByLabelText("First name") as HTMLInputElement).value).toBe("Recovered");
+  expect(screen.queryByLabelText("Review / manually edit local part")).toBeNull();
+  expect(screen.queryByText(/Collision: deterministic alternative proposed/)).toBeNull();
+  fireEvent.click(screen.getByText("Run address dry run"));
+  expect(screen.getByText(/Collision: deterministic alternative proposed/)).toBeTruthy();
+  expect((screen.getByLabelText("Review / manually edit local part") as HTMLInputElement).value).toBe("r.minor");
+});
+it("discards the exact recovered revision and clears private review fields", async () => {
+  mocks.draft = { schoolId: "school", draftId: "recovered-draft", formKey: "institutional_email_review", revision: 3, lastSavedAt: 100,
+    expiresAt: Date.now() + 10000, schemaVersion: 1, payload: { personId: "person", firstName: "Private", middleName: "", lastName: "Minor", isMinor: true, minorPrivacyRequested: true, localPart: "p.minor", aliasOfMailboxId: "" } };
+  render(<EmailDomainsPage />);
+  fireEvent.click(screen.getByText("Discard Draft & Start Fresh"));
+  await waitFor(() => expect(mocks.draftDiscard).toHaveBeenCalledWith({ schoolId: "school", draftId: "recovered-draft", expectedRevision: 3 }));
+  expect((screen.getByLabelText("First name") as HTMLInputElement).value).toBe("");
+});
+it("surfaces a stale draft revision conflict without clearing current review data", async () => {
+  mocks.draftSave.mockRejectedValue({ data: { code: "CONFLICT" } });
+  render(<EmailDomainsPage />);
+  fireEvent.change(screen.getByLabelText("Person"), { target: { value: "person" } });
+  await waitFor(() => expect(mocks.begin).toHaveBeenCalled());
+  fireEvent.click(screen.getByText("Save draft"));
+  await waitFor(() => expect(screen.getByText("Conflict detected")).toBeTruthy());
+  expect((screen.getByLabelText("First name") as HTMLInputElement).value).toBe("Ada");
+  expect(mocks.save).not.toHaveBeenCalledWith(expect.stringContaining("assignInstitutionalMailbox"), expect.anything());
 });
 it("lifecycle is confirmed local intent only and domain policy is read-only without its capability", async () => {
   mocks.policy = false; render(<EmailDomainsPage />);

@@ -53,6 +53,16 @@ const feePlan = z.object({
     isOptional: z.boolean().default(false),
   }).strict()).min(1).max(100),
 }).strict();
+const institutionalEmailReview = z.object({
+  personId: identifier.default(""),
+  firstName: text.default(""),
+  middleName: text.default(""),
+  lastName: text.default(""),
+  isMinor: z.boolean().default(false),
+  minorPrivacyRequested: z.boolean().default(false),
+  localPart: identifier.default(""),
+  aliasOfMailboxId: identifier.default(""),
+}).strict();
 const academicSession = z.object({
   name: text.default(""),
   startDate: identifier.default(""),
@@ -95,6 +105,7 @@ export const draftRegistry = {
   report_card_configuration: definition(z.object({ name: text.optional(), description: notes.optional() }).strict(), "operational", 30, "admin"),
   curriculum_plan: definition(z.object({ week: z.number().int().min(1).max(53).optional(), topic: text.optional(), objectives: notes.optional(), activities: notes.optional() }).strict(), "operational", 90, "staff"),
   import_review: definition(z.object({ mappings: z.array(z.object({ column: text, target: text }).strict()).max(200).optional() }).strict(), "operational", 90, "admin"),
+  institutional_email_review: definition(institutionalEmailReview, "personal", 30, "admin"),
 } as const;
 export type DraftFormKey = keyof typeof draftRegistry;
 export type DraftPayload<K extends DraftFormKey> = z.infer<(typeof draftRegistry)[K]["schema"]>;

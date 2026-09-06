@@ -3426,7 +3426,8 @@ export default defineSchema({
   })
     .index("by_school_and_domain", ["schoolId", "domain"])
     .index("by_school_and_default", ["schoolId", "isDefault"])
-    .index("by_domain", ["domain"]),
+    .index("by_domain", ["domain"])
+    .index("by_sharedGroupId_and_domain", ["sharedGroupId", "domain"]),
 
   institutionalMailboxes: defineTable({
     // Approved additional-address relation only, never a provider alias activation.
