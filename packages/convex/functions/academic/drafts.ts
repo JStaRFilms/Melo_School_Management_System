@@ -18,7 +18,9 @@ async function authority(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, f
   const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId, membershipOnly: true });
   if (!isDraftFormKey(formKey)) return fail("SCHEMA_REJECTED", "This form has no reviewed draft schema.");
   const policy = draftRegistry[formKey];
-  if (!auth.isSchoolAdmin && !(policy.authority === "staff" && auth.role === "teacher")) fail("FORBIDDEN", "Draft creation is not permitted for this form.");
+  const admitsDelegatedEmailReviewer = formKey === "institutional_email_review";
+  if (!auth.isSchoolAdmin && !(policy.authority === "staff" && auth.role === "teacher") && !admitsDelegatedEmailReviewer)
+    fail("FORBIDDEN", "Draft creation is not permitted for this form.");
   const capability = formKey === "curriculum_plan" ? TEACHER_PLANNING_CAPABILITIES : ({
     student_onboarding: "enrollment.intakes.manage", family_onboarding: "enrollment.intakes.manage",
     staff_onboarding: "staff.onboard", fee_plan_builder: "finance.fee_plans.manage",

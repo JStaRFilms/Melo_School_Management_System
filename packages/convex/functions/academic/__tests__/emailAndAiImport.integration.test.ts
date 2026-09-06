@@ -742,15 +742,21 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
           const membership = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", schoolId)).unique(); assertExists(membership);
           await ctx.db.patch(membership._id, { legacyUserId: userId });
         }
-        for (const [name, capability] of [["registrar", "enrollment.intakes.manage"], ["staff", "staff.onboard"]]) {
+        for (const [name, capability] of [["registrar", "enrollment.intakes.manage"], ["staff", "staff.onboard"], ["domain", "settings.domains.manage"]]) {
           const personId = await ctx.db.insert("persons", { name, email: `${name}@example.test`, authTokenIdentifier: `test|${name}`, status: "active", createdAt: 1, updatedAt: 1 });
-          const membershipId = await ctx.db.insert("branchMemberships", { schoolId, personId, status: "active", isDefaultBranch: true, joinedAt: 1, updatedAt: 1 });
+          const userId = await ctx.db.insert("users", { schoolId, personId, name, email: `${name}@example.test`, authId: name, authTokenIdentifier: `test|${name}`, role: "teacher", createdAt: 1, updatedAt: 1 });
+          const membershipId = await ctx.db.insert("branchMemberships", { schoolId, personId, legacyUserId: userId, status: "active", isDefaultBranch: true, joinedAt: 1, updatedAt: 1 });
           await ctx.db.insert("membershipDirectGrants", { membershipId, capability, grantedAt: 1 });
         }
       });
       const registrar = t.withIdentity({ subject: "registrar", tokenIdentifier: "test|registrar" });
       await expect(registrar.mutation(institutionalEmailApi.setEmailDomainSharing, { domainId: domain.domainId, sharedWithGroup: true, confirmed: true })).rejects.toThrow("settings.domains.manage");
       const staff = t.withIdentity({ subject: "staff", tokenIdentifier: "test|staff" });
+      const domainReviewer = t.withIdentity({ subject: "domain", tokenIdentifier: "test|domain" });
+      for (const reviewer of [registrar, staff, domainReviewer]) {
+        const draft = await reviewer.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+        await reviewer.mutation(draftsApi.discardFormDraft, { schoolId, draftId: draft.draftId, expectedRevision: 0 });
+      }
       const studentProposal = await registrar.query(institutionalEmailApi.proposeEmailAddresses, { schoolId, persons: [{ personId: person1Id, firstName: "John", lastName: "Doe" }] });
       expect(studentProposal[0].localPart).toBe("j.doe");
       const staffProposal = await staff.query(institutionalEmailApi.proposeEmailAddresses, { schoolId, persons: [{ personId: person2Id, firstName: "John", lastName: "Doe" }] });
@@ -758,7 +764,10 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
       await expect(staff.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: "student@scoped.example", expectedPolicyVersion: 1 })).rejects.toThrow("scoped");
       await expect(registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person2Id, email: "teacher@scoped.example", expectedPolicyVersion: 1 })).rejects.toThrow("scoped");
       await expect(registrar.mutation(institutionalEmailApi.saveEmailPolicy, { schoolId, domainId: domain.domainId, staffTemplate: "f.lastname", studentTemplate: "f.lastname", expectedVersion: 1, confirmed: true })).rejects.toThrow("settings.domains.manage");
-      await registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: studentProposal[0].proposedEmail, expectedPolicyVersion: 1 });
+      const approvalDraft = await registrar.mutation(draftsApi.beginFormDraft, { schoolId, formKey: "institutional_email_review", schemaVersion: 1 });
+      const savedApprovalDraft = await registrar.mutation(draftsApi.saveFormDraft, { schoolId, draftId: approvalDraft.draftId, expectedRevision: 0, schemaVersion: 1, payload: { personId: person1Id, firstName: "John", lastName: "Doe", localPart: studentProposal[0].localPart } });
+      await registrar.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person1Id, email: studentProposal[0].proposedEmail, expectedPolicyVersion: 1, draftId: approvalDraft.draftId, expectedDraftRevision: savedApprovalDraft.revision });
+      expect(await t.run(ctx => ctx.db.get(approvalDraft.draftId))).toMatchObject({ status: "committed", payload: {} });
       await staff.mutation(institutionalEmailApi.assignInstitutionalMailbox, { schoolId, personId: person2Id, email: staffProposal[0].proposedEmail, expectedPolicyVersion: 1 });
       expect((await registrar.query(institutionalEmailApi.getInstitutionalMailboxes, { schoolId })).map(m => m.personId)).toEqual([person1Id]);
       expect((await staff.query(institutionalEmailApi.getInstitutionalMailboxes, { schoolId })).map(m => m.personId)).toEqual([person2Id]);
