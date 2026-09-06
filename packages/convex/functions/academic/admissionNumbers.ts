@@ -1,13 +1,33 @@
-import { internalMutation, mutation, query, type MutationCtx } from "../../_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 
-/**
- * Token Formatter for Admission Numbers.
- * Supports {SCHOOL}, {CAMPUS}, {LEVEL}, {YEAR}, {SEQ:n}
- */
+export function validateSequence(value: number) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 999999999)
+    throw new ConvexError("Sequence must be an integer from 1 to 999999999");
+}
+export function validatePattern(pattern: string): void {
+  const tokens = pattern.match(/\{[^}]+\}/g) ?? [];
+  if (
+    pattern.length > 120 ||
+    tokens.filter((t) => /^\{SEQ:[1-9]\}$/.test(t)).length !== 1 ||
+    !/^[A-Za-z0-9/_. -]*$/.test(
+      pattern.replace(/\{(SCHOOL|CAMPUS|LEVEL|YEAR|SEQ:[1-9])\}/g, ""),
+    )
+  ) {
+    throw new ConvexError(
+      "Use exactly one {SEQ:1}–{SEQ:9} and only SCHOOL, CAMPUS, LEVEL, YEAR tokens or letters, numbers, / _ . - separators",
+    );
+  }
+}
 export function formatAdmissionNumber(
   pattern: string,
   tokens: {
@@ -16,102 +36,78 @@ export function formatAdmissionNumber(
     level: string;
     year: number | string;
     seq: number;
-  }
-): string {
-  let result = pattern;
-  result = result.replace(/\{SCHOOL\}/g, tokens.school);
-  result = result.replace(/\{CAMPUS\}/g, tokens.campus);
-  result = result.replace(/\{LEVEL\}/g, tokens.level);
-  result = result.replace(/\{YEAR\}/g, String(tokens.year));
-  result = result.replace(/\{SEQ:(\d+)\}/g, (_match, p1) => {
-    const width = parseInt(p1, 10);
-    return String(tokens.seq).padStart(width, "0");
-  });
-  return result;
-}
-
-/**
- * Validates format pattern tokens.
- */
-export function validatePattern(pattern: string): void {
-  if (!pattern || typeof pattern !== "string") {
-    throw new ConvexError("Pattern must be a non-empty string");
-  }
-
-  // Must contain a sequence token: {SEQ:n}
-  if (!/\{SEQ:\d+\}/.test(pattern)) {
-    throw new ConvexError(
-      "Admission number pattern must contain a sequence token, e.g. {SEQ:4}"
-    );
-  }
-
-  // Verify all bracketed tokens are allowed
-  const tokenMatches = pattern.match(/\{[^}]+\}/g) || [];
-  for (const token of tokenMatches) {
-    if (
-      token === "{SCHOOL}" ||
-      token === "{CAMPUS}" ||
-      token === "{LEVEL}" ||
-      token === "{YEAR}" ||
-      /^\{SEQ:\d+\}$/.test(token)
-    ) {
-      continue;
-    }
-    throw new ConvexError(
-      `Unsupported token '${token}'. Allowed tokens are: {SCHOOL}, {CAMPUS}, {LEVEL}, {YEAR}, and {SEQ:n}`
-    );
-  }
-}
-
-/**
- * Query active admission number policy with dynamic live preview.
- */
-export const getAdmissionNumberPolicy = query({
-  args: {
-    schoolId: v.id("schools"),
   },
+): string {
+  validatePattern(pattern);
+  validateSequence(tokens.seq);
+  return pattern.replace(
+    /\{(SCHOOL|CAMPUS|LEVEL|YEAR|SEQ:([1-9]))\}/g,
+    (_, token: string, width: string) =>
+      token.startsWith("SEQ:")
+        ? String(tokens.seq).padStart(Number(width), "0")
+        : token === "SCHOOL"
+          ? tokens.school
+          : token === "CAMPUS"
+            ? tokens.campus
+            : token === "LEVEL"
+              ? tokens.level
+              : String(tokens.year),
+  );
+}
+async function getContext(
+  ctx: QueryCtx | MutationCtx,
+  schoolId: Id<"schools">,
+) {
+  const policy = await ctx.db
+    .query("admissionNumberPolicies")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  const sessions = await ctx.db
+    .query("academicSessions")
+    .withIndex("by_school_active", (q) =>
+      q.eq("schoolId", schoolId).eq("isActive", true),
+    )
+    .take(2);
+  const session =
+    sessions.length === 1 && !sessions[0].isArchived ? sessions[0] : null;
+  const period =
+    policy?.resetFrequency === "session"
+      ? session?._id
+      : policy?.resetFrequency === "calendar"
+        ? String(new Date().getUTCFullYear())
+        : "continuous";
+  // An uninitialized legacy reset marker never implies permission to rewind its counter.
+  const sequence =
+    policy && policy.resetPeriod !== undefined && policy.resetPeriod !== period
+      ? 1
+      : (policy?.currentSequence ?? 1);
+  return { policy, session, period, sequence };
+}
+export const getAdmissionNumberPolicy = query({
+  args: { schoolId: v.id("schools"), level: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const policy = await ctx.db
-      .query("admissionNumberPolicies")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .first();
-
-    const school = await ctx.db.get(args.schoolId);
-    const defaultSchoolCode = school?.slug
-      ? school.slug.toUpperCase().slice(0, 3)
-      : "OBC";
-    const defaultCampusCode = "LAG";
-    const defaultPattern = "{SCHOOL}-{CAMPUS}-{LEVEL}-{YEAR}-{SEQ:4}";
-
-    const activePolicy = policy ?? {
-      schoolId: args.schoolId,
-      pattern: defaultPattern,
-      schoolCode: defaultSchoolCode,
-      campusCode: defaultCampusCode,
-      currentSequence: 1,
-      resetFrequency: "continuous" as const,
-      isDefaultPreset: true,
-    };
-
-    const currentYear = new Date().getFullYear();
-    const preview = formatAdmissionNumber(activePolicy.pattern, {
-      school: activePolicy.schoolCode,
-      campus: activePolicy.campusCode,
-      level: "JSS1",
-      year: currentYear,
-      seq: activePolicy.currentSequence,
-    });
-
+    await requireCapability(ctx, args.schoolId, "enrollment.intakes.manage");
+    const { policy, session, sequence } = await getContext(ctx, args.schoolId);
     return {
-      ...activePolicy,
-      preview,
+      policy,
+      version: policy?.version ?? 0,
+      nextSequence: sequence,
+      sessionYear: session
+        ? new Date(session.startDate).getUTCFullYear()
+        : null,
+      preview:
+        policy && session && (!policy.pattern.includes("{LEVEL}") || args.level)
+          ? formatAdmissionNumber(policy.pattern, {
+              school: policy.schoolCode,
+              campus: policy.campusCode,
+              level: args.level ?? "",
+              year: new Date(session.startDate).getUTCFullYear(),
+              seq: sequence,
+            })
+          : null,
     };
   },
 });
-
-/**
- * Mutation to update admission number policy with token validation and audit logging.
- */
 export const updateAdmissionNumberPolicy = mutation({
   args: {
     schoolId: v.id("schools"),
@@ -122,84 +118,110 @@ export const updateAdmissionNumberPolicy = mutation({
       v.union(
         v.literal("continuous"),
         v.literal("session"),
-        v.literal("calendar")
-      )
+        v.literal("calendar"),
+      ),
     ),
     currentSequence: v.optional(v.number()),
+    expectedVersion: v.number(),
+    confirmedNextSequence: v.number(),
   },
   handler: async (ctx, args) => {
-    // 1. Authorization: check settings / admissions capability
-    const authContext = await requireCapability(
+    const actor = await requireCapability(
       ctx,
       args.schoolId,
-      "enrollment.intakes.manage"
+      "enrollment.intakes.manage",
     );
-
-    // 2. Validate pattern
     validatePattern(args.pattern);
-
-    if (args.currentSequence !== undefined && args.currentSequence < 1) {
-      throw new ConvexError("currentSequence must be at least 1");
-    }
-
-    const existing = await ctx.db
-      .query("admissionNumberPolicies")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .first();
-
-    const now = Date.now();
-    let policyId;
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        pattern: args.pattern,
-        schoolCode: args.schoolCode,
-        campusCode: args.campusCode,
-        resetFrequency:
-          args.resetFrequency ?? existing.resetFrequency ?? "continuous",
-        currentSequence: args.currentSequence ?? existing.currentSequence,
-        updatedAt: now,
-      });
-      policyId = existing._id;
-    } else {
-      policyId = await ctx.db.insert("admissionNumberPolicies", {
-        schoolId: args.schoolId,
-        pattern: args.pattern,
-        schoolCode: args.schoolCode,
-        campusCode: args.campusCode,
-        resetFrequency: args.resetFrequency ?? "continuous",
-        currentSequence: args.currentSequence ?? 1,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-
-    // 3. Audit event
+    for (const code of [args.schoolCode, args.campusCode])
+      if (!/^[A-Za-z0-9_-]{1,24}$/.test(code))
+        throw new ConvexError(
+          "School and branch codes require 1–24 letters, digits, underscores or hyphens",
+        );
+    const { policy, sequence, session } = await getContext(ctx, args.schoolId);
+    if ((policy?.version ?? 0) !== args.expectedVersion)
+      throw new ConvexError("Policy changed; reload and review again");
+    const next = args.currentSequence ?? sequence;
+    validateSequence(next);
+    if (next !== args.confirmedNextSequence)
+      throw new ConvexError("Confirm the exact next sequence");
+    if (next < sequence)
+      throw new ConvexError("The next sequence cannot be moved backwards");
+    const frequency = args.resetFrequency ?? "continuous";
+    if (!session)
+      throw new ConvexError("One active academic session is required");
+    const data = {
+      pattern: args.pattern,
+      schoolCode: args.schoolCode,
+      campusCode: args.campusCode,
+      resetFrequency: frequency,
+      currentSequence: next,
+      version: (policy?.version ?? 0) + 1,
+      resetPeriod:
+        frequency === "session"
+          ? String(session._id)
+          : frequency === "calendar"
+            ? String(new Date().getUTCFullYear())
+            : "continuous",
+      updatedAt: Date.now(),
+    };
+    const id = policy
+      ? policy._id
+      : await ctx.db.insert("admissionNumberPolicies", {
+          schoolId: args.schoolId,
+          ...data,
+          createdAt: Date.now(),
+        });
+    if (policy) await ctx.db.patch(id, data);
     await recordAuditEventHelper(ctx, {
       schoolId: args.schoolId,
-      actorKind: authContext.isPlatformAdmin ? "platform_admin" : "user",
-      actorPersonId: authContext.personId,
-      actorMembershipId: authContext.membershipId,
-      actorEmailSnapshot: authContext.role ?? "user@school",
+      actorKind: "user",
+      actorPersonId: actor.personId,
+      actorMembershipId: actor.membershipId,
+      actorEmailSnapshot: actor.role ?? "staff",
       module: "enrollment",
       action: "admission_policy.update",
       targetType: "admissionNumberPolicies",
-      targetId: policyId,
+      targetId: id,
       outcome: "success",
-      safeSummary: `Updated admission number policy: ${args.pattern} (Next Seq: ${
-        args.currentSequence ?? existing?.currentSequence ?? 1
-      })`,
+      safeSummary: `Admission policy version ${data.version}; next sequence ${next}. Historical identifiers unchanged.`,
       alertTier: "tier2_warn",
+      retentionClass: "permanent_statutory",
     });
-
-    return policyId;
+    return id;
   },
 });
 
-/**
- * Core helper to allocate the next admission number.
- * Callable directly within mutations to maintain atomic transactions.
- */
+/** Nonmutating proposal; callers authorize their enrollment/import/transfer audience first. */
+export async function proposeAdmissionNumberHelper(
+  ctx: QueryCtx | MutationCtx,
+  args: { schoolId: Id<"schools">; level?: string },
+) {
+  const { policy, session, period, sequence } = await getContext(
+    ctx,
+    args.schoolId,
+  );
+  if (!policy || !session || !period)
+    throw new ConvexError(
+      "Configure numbering and one active academic session before allocation",
+    );
+  if (policy.pattern.includes("{LEVEL}") && !args.level)
+    throw new ConvexError("An explicit enrollment level is required");
+  const allocatedNumber = formatAdmissionNumber(policy.pattern, {
+    school: policy.schoolCode,
+    campus: policy.campusCode,
+    level: args.level ?? "",
+    year: new Date(session.startDate).getUTCFullYear(),
+    seq: sequence,
+  });
+  return {
+    allocatedNumber,
+    sequenceNumber: sequence,
+    policyVersion: policy.version ?? 0,
+    period,
+    policyId: policy._id,
+  };
+}
+/** Commit ONLY inside the successful record-creation transaction. No gapless promise. */
 export async function allocateNextAdmissionNumberHelper(
   ctx: MutationCtx,
   args: {
@@ -208,66 +230,130 @@ export async function allocateNextAdmissionNumberHelper(
     year?: number;
     campusCodeOverride?: string;
     schoolCodeOverride?: string;
-  }
-): Promise<{
-  allocatedNumber: string;
-  sequenceNumber: number;
-}> {
-  let policy = await ctx.db
-    .query("admissionNumberPolicies")
-    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-    .first();
-
-  const now = Date.now();
-  if (!policy) {
-    const school = await ctx.db.get(args.schoolId);
-    const schoolCode = school?.slug
-      ? school.slug.toUpperCase().slice(0, 3)
-      : "OBC";
-    const campusCode = "LAG";
-    const policyId = await ctx.db.insert("admissionNumberPolicies", {
-      schoolId: args.schoolId,
-      pattern: "{SCHOOL}-{CAMPUS}-{LEVEL}-{YEAR}-{SEQ:4}",
-      schoolCode,
-      campusCode,
-      currentSequence: 1,
-      resetFrequency: "continuous",
-      createdAt: now,
-      updatedAt: now,
-    });
-    policy = (await ctx.db.get(policyId))!;
-  }
-
-  const currentSeq = policy.currentSequence;
-  const year = args.year ?? new Date().getFullYear();
-  const level = args.level ?? "JSS1";
-  const schoolCode = args.schoolCodeOverride ?? policy.schoolCode;
-  const campusCode = args.campusCodeOverride ?? policy.campusCode;
-
-  const allocatedNumber = formatAdmissionNumber(policy.pattern, {
-    school: schoolCode,
-    campus: campusCode,
-    level,
-    year,
-    seq: currentSeq,
+    expectedVersion?: number;
+  },
+) {
+  if (
+    args.campusCodeOverride ||
+    args.schoolCodeOverride ||
+    args.year !== undefined
+  )
+    throw new ConvexError(
+      "Allocation uses the reviewed policy and academic session, not caller token overrides",
+    );
+  const proposal = await proposeAdmissionNumberHelper(ctx, args);
+  if (
+    args.expectedVersion !== undefined &&
+    args.expectedVersion !== proposal.policyVersion
+  )
+    throw new ConvexError("Numbering policy changed; review again");
+  await claimAdmissionNumberHelper(
+    ctx,
+    args.schoolId,
+    proposal.allocatedNumber,
+  );
+  await ctx.db.patch(proposal.policyId, {
+    currentSequence: proposal.sequenceNumber + 1,
+    resetPeriod: proposal.period,
+    updatedAt: Date.now(),
   });
-
-  // Advance sequence atomically
-  await ctx.db.patch(policy._id, {
-    currentSequence: currentSeq + 1,
-    updatedAt: now,
-  });
-
-  return {
-    allocatedNumber,
-    sequenceNumber: currentSeq,
-  };
+  return proposal;
 }
-
-/**
- * Atomic counter allocator evaluated during enrollment intake.
- * Increments currentSequence strictly without gaps or race conditions.
- */
+export async function claimAdmissionNumberHelper(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  number: string,
+) {
+  const existing = await ctx.db
+    .query("students")
+    .withIndex("by_school_and_admission_number", (q) =>
+      q.eq("schoolId", schoolId).eq("admissionNumber", number),
+    )
+    .first();
+  const claim = await ctx.db
+    .query("admissionNumberClaims")
+    .withIndex("by_school_number", (q) =>
+      q.eq("schoolId", schoolId).eq("number", number),
+    )
+    .unique();
+  if (existing || claim)
+    throw new ConvexError(
+      "Admission number already assigned; review the explicit next sequence. Numbers are never reused.",
+    );
+  await ctx.db.insert("admissionNumberClaims", {
+    schoolId,
+    number,
+    createdAt: Date.now(),
+  });
+}
+export async function commitManualAdmissionNumberHelper(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    number: string;
+    reason?: string;
+    confirmed?: boolean;
+    counterDecision?: "keep" | "advance";
+    advanceTo?: number;
+  },
+) {
+  const actor = await requireCapability(
+    ctx,
+    args.schoolId,
+    "enrollment.admissions.override_number",
+  );
+  if (
+    !args.confirmed ||
+    !args.reason ||
+    args.reason.trim().length < 8 ||
+    args.reason.length > 240
+  )
+    throw new ConvexError(
+      "Confirm manual override and provide an 8–240 character reason",
+    );
+  if (!args.counterDecision)
+    throw new ConvexError(
+      "Choose explicitly whether to keep or advance the automatic counter",
+    );
+  if (
+    (args.counterDecision === "keep" && args.advanceTo !== undefined) ||
+    (args.counterDecision === "advance" && args.advanceTo === undefined)
+  )
+    throw new ConvexError(
+      "The counter decision and next sequence must agree",
+    );
+  if (!args.number.trim() || args.number.length > 160)
+    throw new ConvexError("Admission number requires 1–160 characters");
+  await claimAdmissionNumberHelper(ctx, args.schoolId, args.number);
+  if (args.counterDecision === "advance" && args.advanceTo !== undefined) {
+    validateSequence(args.advanceTo);
+    const { policy, sequence, period } = await getContext(ctx, args.schoolId);
+    if (!policy || !period || args.advanceTo <= sequence)
+      throw new ConvexError(
+        "Explicit advancement must exceed the current next sequence",
+      );
+    await ctx.db.patch(policy._id, {
+      currentSequence: args.advanceTo,
+      resetPeriod: period,
+      updatedAt: Date.now(),
+    });
+  }
+  await recordAuditEventHelper(ctx, {
+    schoolId: args.schoolId,
+    actorKind: "user",
+    actorPersonId: actor.personId,
+    actorMembershipId: actor.membershipId,
+    actorEmailSnapshot: actor.role ?? "staff",
+    module: "enrollment",
+    action: "admission_number.override",
+    targetType: "admissionNumberClaims",
+    targetId: args.number,
+    outcome: "success",
+    safeSummary: `Manual admission override. Reason: ${args.reason.trim()}. Counter: ${args.counterDecision === "keep" ? "unchanged" : `explicit next ${args.advanceTo}`}`,
+    alertTier: "tier2_warn",
+    retentionClass: "permanent_statutory",
+  });
+}
 export const allocateNextAdmissionNumber = internalMutation({
   args: {
     schoolId: v.id("schools"),
@@ -276,7 +362,5 @@ export const allocateNextAdmissionNumber = internalMutation({
     campusCodeOverride: v.optional(v.string()),
     schoolCodeOverride: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    return await allocateNextAdmissionNumberHelper(ctx, args);
-  },
+  handler: async (ctx, args) => allocateNextAdmissionNumberHelper(ctx, args),
 });

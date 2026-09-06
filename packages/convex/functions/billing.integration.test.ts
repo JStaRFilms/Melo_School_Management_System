@@ -78,6 +78,11 @@ describe("billing registered functions", () => {
         createdAt: now,
         updatedAt: now,
       });
+      const personId = await ctx.db.insert("persons", { name: "Billing Owner", email: "admin@snapshot-billing.test", authTokenIdentifier: adminIdentity.tokenIdentifier, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.patch(adminId, { personId });
+      await ctx.db.insert("branchMemberships", { schoolId, personId, legacyUserId: adminId, isDefaultBranch: true, status: "active", joinedAt: now, updatedAt: now });
+      const groupId = await ctx.db.insert("schoolGroups", { name: "Synthetic group", slug: "synthetic-billing-group", proprietorPersonId: personId, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("schoolGroupBranches", { schoolId, groupId, isHeadquarters: true, linkedAt: now });
       const classId = await ctx.db.insert("classes", {
         schoolId,
         name: "Primary 1",
@@ -317,6 +322,21 @@ describe("billing registered functions", () => {
       bankName: "First Bank",
       accountNumber: "0123456789",
     });
+    // Explicit alternate selection, not whichever account became default most recently.
+    const alternatePlan = await t.withIdentity(adminIdentity).mutation(api.functions.billing.createFeePlan, { name: "Synthetic alternate", billingMode: "manual_extra", lineItems });
+    const alternateInvoice = await t.withIdentity(adminIdentity).mutation(api.functions.billing.createInvoiceFromFeePlan, { feePlanId: alternatePlan._id, studentId: ids.studentIds[0], classId: ids.classId, sessionId: ids.sessionId, termId: ids.termId, bankAccountId: ids.firstBankId });
+    expect(alternateInvoice.paymentInstructions?.bankAccountId).toBe(ids.firstBankId);
+    await t.run(ctx => ctx.db.patch(ids.firstBankId, { accountNumber: "1111111111", status: "archived" }));
+    const immutable = await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: alternateInvoice._id });
+    expect(immutable.paymentInstructions?.accountNumber).toBe("0123456789");
+    await t.run(ctx => ctx.db.patch(draftInvoiceId, { status: "issued" }));
+    expect(await t.mutation(internal.functions.academic.bankAccounts.snapshotInvoicePaymentInstructions, { invoiceId: draftInvoiceId })).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: draftInvoiceId })).paymentInstructions).toBeNull();
+    await t.run(ctx => ctx.db.patch(alternateInvoice._id, { status: "paid", balanceDue: 0, amountPaid: 5000 }));
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: alternateInvoice._id })).paymentInstructions).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoiceReceipt, { invoiceId: directInvoice._id })).paymentInstructions).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: waivedInvoice._id })).paymentInstructions).toBeNull();
+    await expect(t.withIdentity({ subject: "snapshot-student-1", tokenIdentifier: "https://auth.school.test|snapshot-student-1" }).query(api.functions.portal.resolvePortalInvoicePaymentContext, { invoiceId: directInvoice._id })).rejects.toThrow();
     expect(bulkInvoices).toHaveLength(2);
     for (const invoice of bulkInvoices) {
       expect(invoice.paymentInstructionsSnapshot).toMatchObject({

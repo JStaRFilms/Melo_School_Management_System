@@ -1,3 +1,5 @@
+import { resolveGradeColor } from "@school/shared/exam-recording";
+import { FACTORY_DEFAULT_GRADING_BANDS, isGradeHex } from "@school/shared/exam-recording";
 import type { ExamInputMode, GradingBand } from "../../../packages/shared/src/exam-recording";
 import {
   examScaledScore as computeExamScaled,
@@ -49,6 +51,7 @@ export function computeDerivedValues(
   examScaledScore: number | null;
   total: number | null;
   gradeLetter: string | null;
+  gradeColor?: string;
   remark: string | null;
 } {
   if (ca1 === null || ca2 === null || ca3 === null || examRaw === null) {
@@ -73,6 +76,7 @@ export function computeDerivedValues(
         minScore: b.minScore,
         maxScore: b.maxScore,
         gradeLetter: b.gradeLetter,
+    colorHex: b.colorHex ?? b.color,
         remark: b.remark,
         isActive: b.isActive,
         createdAt: b.createdAt,
@@ -92,6 +96,7 @@ export function computeDerivedValues(
     examScaledScore: scaled,
     total: totalValue,
     gradeLetter,
+    gradeColor: resolveGradeColor(gradeLetter, gradingBands),
     remark,
   };
 }
@@ -169,46 +174,6 @@ export function buildErrorSummaries(
 }
 
 /**
- * Get grade color class based on grade letter
- */
-export function getGradeColorClass(gradeLetter: string | null): string {
-  switch (gradeLetter) {
-    case "A":
-      return "text-emerald-600";
-    case "B":
-      return "text-blue-600";
-    case "C":
-      return "text-amber-600";
-    case "D":
-      return "text-orange-600";
-    case "F":
-      return "text-red-600";
-    default:
-      return "text-slate-300";
-  }
-}
-
-/**
- * Get grade badge background color class
- */
-export function getGradeBadgeColorClass(gradeLetter: string): string {
-  switch (gradeLetter) {
-    case "A":
-      return "bg-emerald-100 text-emerald-800";
-    case "B":
-      return "bg-blue-100 text-blue-800";
-    case "C":
-      return "bg-amber-100 text-amber-800";
-    case "D":
-      return "bg-slate-100 text-slate-800";
-    case "F":
-      return "bg-red-100 text-red-800";
-    default:
-      return "bg-slate-100 text-slate-600";
-  }
-}
-
-/**
  * Validate grading bands (client-side)
  */
 export function validateBandsClient(
@@ -228,6 +193,7 @@ export function validateBandsClient(
   // Check for missing values, out-of-range, and ordering violations on individual rows
   for (let i = 0; i < bands.length; i++) {
     const band = bands[i];
+    if (band.colorHex !== undefined && !isGradeHex(band.colorHex)) errors.push({type: "ordering", message: `Tier #${i + 1}: use a six-digit hex color.`, bandIndices: [i], field: "all"});
     if (band.gradeLetter.trim().length === 0) {
       errors.push({
         type: "ordering",
@@ -392,10 +358,4 @@ export function getInitials(name: string): string {
 /**
  * Standard default grading bands scale covering 0-100
  */
-export const STANDARD_DEFAULT_GRADING_BANDS: GradingBandDraft[] = [
-  { minScore: 75, maxScore: 100, gradeLetter: "A", remark: "Distinction" },
-  { minScore: 65, maxScore: 74, gradeLetter: "B", remark: "Very Good" },
-  { minScore: 50, maxScore: 64, gradeLetter: "C", remark: "Credit" },
-  { minScore: 40, maxScore: 49, gradeLetter: "D", remark: "Pass" },
-  { minScore: 0, maxScore: 39, gradeLetter: "F", remark: "Fail" },
-];
+export const STANDARD_DEFAULT_GRADING_BANDS: GradingBandDraft[] = FACTORY_DEFAULT_GRADING_BANDS.map(band => ({ ...band }));

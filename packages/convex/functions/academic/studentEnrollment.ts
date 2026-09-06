@@ -1,4 +1,13 @@
-import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
+import {
+  getUnboundStorageUrl,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
+import {
+  allocateNextAdmissionNumberHelper,
+  claimAdmissionNumberHelper,
+  commitManualAdmissionNumberHelper,
+} from "./admissionNumbers";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
@@ -127,13 +136,13 @@ function normalizeGender(
 }
 
 async function getValidatedPhotoMetadata(
-  ctx: { db: { system: { get: (id: Id<"_storage">) => Promise<any> } } },
+  _ctx: MutationCtx,
   args: {
     photoStorageId?: Id<"_storage"> | null;
     photoFileName?: string | null;
     photoContentType?: string | null;
   }
-) {
+): Promise<{ fileName: string; contentType: string } | null> {
   if (
     args.photoStorageId === undefined &&
     (args.photoFileName !== undefined || args.photoContentType !== undefined)
@@ -145,26 +154,7 @@ async function getValidatedPhotoMetadata(
     return null;
   }
 
-  const storageDoc = await ctx.db.system.get(args.photoStorageId);
-  if (!storageDoc) {
-    throw new ConvexError("Uploaded student photo was not found");
-  }
-
-  const fileName = args.photoFileName?.trim() || storageDoc.name || "student-photo";
-  const contentType = String(storageDoc.contentType ?? args.photoContentType ?? "").trim();
-  const allowedContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-  if (!allowedContentTypes.has(contentType)) {
-    throw new ConvexError("Student photo must be a JPG, PNG, or WebP image");
-  }
-
-  if (typeof storageDoc.size !== "number" || storageDoc.size > 1_048_576) {
-    throw new ConvexError("Student photo must be 1 MB or smaller");
-  }
-
-  return {
-    fileName,
-    contentType,
-  };
+  return secureUploadUnavailable<{ fileName: string; contentType: string }>();
 }
 
 function normalizeOptionalEmail(value: string | null | undefined) {
@@ -408,6 +398,14 @@ async function deleteFamilyIfEmpty(ctx: any, familyId: Id<"families">) {
 
 export const createStudent = mutation({
   args: {
+    requestKey: v.optional(v.string()),
+    numberingVersion: v.optional(v.number()),
+    overrideReason: v.optional(v.string()),
+    overrideConfirmed: v.optional(v.boolean()),
+    overrideCounterDecision: v.optional(
+      v.union(v.literal("keep"), v.literal("advance")),
+    ),
+    advanceCounterTo: v.optional(v.number()),
     name: v.optional(v.union(v.string(), v.null())),
     firstName: v.optional(v.union(v.string(), v.null())),
     lastName: v.optional(v.union(v.string(), v.null())),
@@ -438,16 +436,25 @@ export const createStudent = mutation({
   returns: v.id("students"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
+    if (args.requestKey) {
+      if (args.requestKey.length > 100) throw new ConvexError("Invalid enrollment request key");
+      const key = args.requestKey;
+      const prior = await ctx.db.query("enrollmentRequests").withIndex("by_school_key", q => q.eq("schoolId", schoolId).eq("key", key)).unique();
+      if (prior) {
+        if (prior.userId !== userId) throw new ConvexError("Enrollment request belongs to a different operator");
+        return prior.studentId;
+      }
+    }
     const studentName = resolveStoredUserNameFields({
       name: args.name,
       firstName: args.firstName,
       lastName: args.lastName,
       requiredMessage: "Student name is required",
     });
-    const admissionNumber = normalizeAdmissionNumber(args.admissionNumber);
+    let admissionNumber = args.admissionNumber.trim();
     const gender = normalizeGender(args.gender, { required: true });
     const houseName = normalizeOptionalHouseName(args.houseName);
     const dateOfBirth = args.dateOfBirth ?? undefined;
@@ -459,6 +466,34 @@ export const createStudent = mutation({
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Selected class is not available");
+    }
+
+    if (admissionNumber) {
+      const numberingPolicy = await ctx.db
+        .query("admissionNumberPolicies")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .unique();
+      if (numberingPolicy) {
+        await commitManualAdmissionNumberHelper(ctx, {
+          schoolId,
+          number: admissionNumber,
+          reason: args.overrideReason,
+          confirmed: args.overrideConfirmed,
+          counterDecision: args.overrideCounterDecision,
+          advanceTo: args.advanceCounterTo,
+        });
+      } else {
+        // Until a branch configures governed numbering, retain its existing required
+        // manual-ID creation contract while still claiming identifiers permanently.
+        await claimAdmissionNumberHelper(ctx, schoolId, admissionNumber);
+      }
+    } else {
+      const allocation = await allocateNextAdmissionNumberHelper(ctx, {
+        schoolId,
+        level: classDoc.level,
+        expectedVersion: args.numberingVersion,
+      });
+      admissionNumber = allocation.allocatedNumber;
     }
 
     // Check for duplicate admission number
@@ -541,6 +576,7 @@ export const createStudent = mutation({
     }
 
     const studentId = await ctx.db.insert("students", studentRecord as any);
+    if (args.requestKey) await ctx.db.insert("enrollmentRequests", { schoolId, key: args.requestKey, userId, studentId });
 
     if (args.parentLink) {
       await ctx.runMutation(api.functions.academic.studentEnrollment.upsertStudentFamilyLink, {
@@ -567,7 +603,7 @@ export const listStudentsByClass = query({
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -610,6 +646,12 @@ export const listStudentsByClass = query({
 
 export const updateStudent = mutation({
   args: {
+    overrideReason: v.optional(v.string()),
+    overrideConfirmed: v.optional(v.boolean()),
+    overrideCounterDecision: v.optional(
+      v.union(v.literal("keep"), v.literal("advance")),
+    ),
+    advanceCounterTo: v.optional(v.number()),
     studentId: v.id("students"),
     name: v.optional(v.union(v.string(), v.null())),
     firstName: v.optional(v.union(v.string(), v.null())),
@@ -629,7 +671,7 @@ export const updateStudent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -660,6 +702,17 @@ export const updateStudent = mutation({
         : normalizeAdmissionNumber(args.admissionNumber);
 
     if (nextAdmissionNumber !== student.admissionNumber) {
+      await commitManualAdmissionNumberHelper(ctx, {
+        schoolId,
+        number: nextAdmissionNumber,
+        reason: args.overrideReason,
+        confirmed: args.overrideConfirmed,
+        counterDecision: args.overrideCounterDecision,
+        advanceTo: args.advanceCounterTo,
+      });
+      // Retain the original legacy identifier as a permanent claim before an explicit correction.
+      const previousClaim = await ctx.db.query("admissionNumberClaims").withIndex("by_school_number", q => q.eq("schoolId", schoolId).eq("number", student.admissionNumber)).unique();
+      if (!previousClaim) await ctx.db.insert("admissionNumberClaims", { schoolId, number: student.admissionNumber, createdAt: Date.now() });
       const existingStudents = await findStudentsByAdmissionNumber(
         ctx,
         schoolId,
@@ -836,7 +889,7 @@ export const getStudentProfile = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -847,7 +900,7 @@ export const getStudentProfile = query({
     const [studentUser, classDoc, photoUrl, gradSessionDoc, gradClassDoc] = await Promise.all([
       ctx.db.get(student.userId),
       ctx.db.get(student.classId),
-      student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+      student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
       student.graduatingSessionId ? ctx.db.get(student.graduatingSessionId) : null,
       student.graduatingClassId ? ctx.db.get(student.graduatingClassId) : null,
     ]);
@@ -901,10 +954,9 @@ export const generateStudentPhotoUploadUrl = mutation({
   returns: v.string(),
   handler: async (ctx) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    return await ctx.storage.generateUploadUrl();
+    return secureUploadUnavailable<string>();
   },
 });
 
@@ -954,7 +1006,7 @@ export const archiveStudent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await archiveStudentRecord(ctx, {
@@ -970,7 +1022,7 @@ export const deleteStudent = mutation({
   args: { studentId: v.id("students") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     await archiveStudentRecord(ctx, {
@@ -986,7 +1038,7 @@ export const restoreStudent = mutation({
   args: { studentId: v.id("students") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -1069,7 +1121,7 @@ export const reconcileArchivedStudents = mutation({
     isDone: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const dryRun = args.dryRun ?? false;
@@ -1204,7 +1256,7 @@ export const promoteStudents = mutation({
     subjectSelectionCount: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const uniqueStudentIds = [...new Set(args.studentIds.map((id) => String(id)))] as Array<Id<"students">>;
@@ -1403,7 +1455,7 @@ export const cancelStudentPromotion = mutation({
     cancelled: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const promotion = await ctx.db
@@ -1452,7 +1504,7 @@ export const graduateStudents = mutation({
     graduatedCount: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const uniqueStudentIds = [...new Set(args.studentIds.map((id) => String(id)))] as Array<Id<"students">>;
@@ -1560,7 +1612,7 @@ export const cancelStudentGraduation = mutation({
     cancelled: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -1604,7 +1656,7 @@ export const setStudentSubjectSelections = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
 
     // Teachers can edit subject selections for their assigned classes
     if (role === "teacher") {
@@ -1798,7 +1850,7 @@ export const getStudentSubjectSelections = query({
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
 
     const student = await ctx.db.get(args.studentId);
     if (!student || student.schoolId !== schoolId || student.isArchived) {
@@ -1880,7 +1932,7 @@ export const getClassStudentSubjectMatrix = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
 
     // Teachers can view their assigned classes
     if (role === "teacher") {
@@ -2081,7 +2133,7 @@ export const getClassStudentSubjectMatrix = query({
       .map(async (student) => {
         const [studentUser, photoUrl] = await Promise.all([
           ctx.db.get(student.userId),
-          student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+          student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
         ]);
         if (!studentUser || studentUser.isArchived) {
           return null;
@@ -2301,7 +2353,7 @@ export const getStudentFamilyProfile = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     return await loadStudentFamilyProfile(ctx, schoolId, args.studentId);
@@ -2339,7 +2391,7 @@ export const getParentEmailReview = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const trimmed = (args.email ?? "").trim().toLowerCase();
@@ -2395,7 +2447,7 @@ export const upsertStudentFamilyLink = mutation({
     familyMemberId: v.id("familyMembers"),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -2639,7 +2691,7 @@ export const updateStudentFamilyParentContact = mutation({
     familyMemberId: v.id("familyMembers"),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const familyMember = await ctx.db.get(args.familyMemberId);
@@ -2832,7 +2884,7 @@ export const unlinkStudentFromFamily = mutation({
   args: { studentId: v.id("students") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { schoolId, role, userId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, role, userId } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const student = await ctx.db.get(args.studentId);
@@ -2859,7 +2911,7 @@ export const removeStudentFamilyLink = mutation({
   args: { familyMemberId: v.id("familyMembers") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const familyMember = await ctx.db.get(args.familyMemberId);
@@ -2926,7 +2978,7 @@ async function upsertPortalCredentialsHandler(
     temporaryPassword: string;
   }
 ): Promise<PortalCredentialProvisionResult> {
-  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "enrollment.intakes.manage" });
   if (!viewer) {
     throw new ConvexError("Unauthorized");
   }
@@ -3032,7 +3084,7 @@ const upsertStudentPortalCredentialsByStudentIdHandler = async (
     temporaryPassword: string;
   }
 ): Promise<PortalCredentialProvisionResult> => {
-  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "enrollment.intakes.manage" });
   if (!viewer) {
     throw new ConvexError("Unauthorized");
   }
@@ -3112,7 +3164,7 @@ export const getStudentAttestationData = query({
     referenceCode: v.string(),
   }),
   handler: async (ctx, args) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     const student = await ctx.db.get(args.studentId);
     if (!student || student.schoolId !== schoolId || student.isArchived) {
       throw new ConvexError("Student not found");
@@ -3122,7 +3174,7 @@ export const getStudentAttestationData = query({
       ctx.db.get(student.userId),
       ctx.db.get(student.classId),
       ctx.db.get(schoolId),
-      student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+      student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
       student.graduatingSessionId
         ? ctx.db
             .query("studentGraduations")
@@ -3142,7 +3194,7 @@ export const getStudentAttestationData = query({
 
     const studentName = getReadableUserName(studentUser);
     const schoolLogoUrl = schoolDoc.logoStorageId
-      ? await ctx.storage.getUrl(schoolDoc.logoStorageId)
+      ? await getUnboundStorageUrl(ctx, schoolDoc.logoStorageId)
       : null;
 
     let principalName: string | null = null;

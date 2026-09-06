@@ -280,3 +280,11 @@ describe("ScoreInput validation", () => {
     ).toBeDefined();
   });
 });
+
+it("uses custom policy ink consistently in mobile and desktop without changing totals", () => {
+  render(<RosterGrid roster={[createStudent("custom", "Custom Student", {ca1:20,ca2:20,ca3:20,examRawScore:20})]} examInputMode="raw40" gradingBands={standardBands.map(b => ({...b,gradeLetter:b.gradeLetter === "A" ? "OUT" : b.gradeLetter,colorHex:"#7c2d12"}))} draftScores={new Map()} validationErrors={new Map()} onScoreChange={mockOnScoreChange} />);
+  const grades=screen.getAllByText("OUT");
+  expect(grades).toHaveLength(2);
+  for (const grade of grades) expect(grade.style.color).toBe("rgb(124, 45, 18)");
+  expect(screen.getAllByText("80.00")).toHaveLength(2);
+});

@@ -1,4 +1,5 @@
 import React from "react";
+import { BankAccountsPanel } from "./BankAccountsPanel";
 import { Settings2, ShieldCheck, Landmark } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BillingSettingsDraft, PaystackProviderOverview, PaystackGatewayConfigDraft } from "../types";
@@ -35,6 +36,7 @@ export function SettingsPanel({
 
   return (
     <div className="space-y-6">
+      <BankAccountsPanel />
       <AdminSurface className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 rounded-xl bg-slate-900 text-white">

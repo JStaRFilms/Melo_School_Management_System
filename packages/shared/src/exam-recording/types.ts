@@ -44,6 +44,10 @@ export interface AssessmentEditingState {
 }
 
 export interface GradingBand {
+  colorHex?: string;
+  color?: string;
+  gradePoints?: number;
+  version?: number;
   schoolId: string;
   minScore: number;
   maxScore: number;
@@ -87,6 +91,7 @@ export interface ScoreInput {
 }
 
 export interface DerivedAssessmentFields {
+  colorHex?: string;
   caTotal: number;
   examScaledScore: number;
   total: number;

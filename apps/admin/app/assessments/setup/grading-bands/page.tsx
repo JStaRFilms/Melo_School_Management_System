@@ -1,10 +1,17 @@
 "use client";
 
+import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
+import { api } from "../../../../../../packages/convex/_generated/api";
+import { useAuth } from "@/AuthProvider";
+import { GradeGovernance } from "./components/GradeGovernance";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { isConvexConfigured } from "@/convex-runtime";
-import { validateBandsClient, STANDARD_DEFAULT_GRADING_BANDS } from "@/exam-helpers";
+import {
+  validateBandsClient,
+  STANDARD_DEFAULT_GRADING_BANDS,
+} from "@/exam-helpers";
 import { getMockGradingBands } from "@/mock-data";
-import type { BandValidationError, GradingBandDraft, GradingBandResponse } from "@/types";
+import type { BandValidationError, GradingBandDraft } from "@/types";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowUpDown,
@@ -16,7 +23,7 @@ import {
   Sparkles,
   Trophy,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BandTable } from "./components/BandTable";
 import { BandValidationBanner } from "./components/BandValidationBanner";
 import { BandsActionBar } from "./components/BandsActionBar";
@@ -30,22 +37,41 @@ export default function GradingBandsPage() {
 }
 
 function LiveGradingBandsPage() {
-  const bands = useQuery(
-    "functions/academic/gradingBands:getActiveGradingBands" as never
-  ) as GradingBandResponse[] | undefined;
-  const saveBands = useMutation(
-    "functions/academic/gradingBands:saveGradingBands" as never
+  const { workspaceAccess } = useAuth();
+  const schoolId =
+    workspaceAccess?.state === "ready"
+      ? (workspaceAccess.branch.schoolId as Id<"schools">)
+      : undefined;
+  const allowed = useQuery(
+    api.functions.academic.rbac.hasViewerCapability,
+    schoolId
+      ? { schoolId, capability: "academic.grading_bands.manage" }
+      : "skip",
   );
+  const bands = useQuery(
+    api.functions.academic.gradingBands.getActiveGradingBands,
+    schoolId && allowed ? { schoolId } : "skip",
+  );
+  const governance = useQuery(
+    api.functions.academic.gradingBands.getPolicyGovernance,
+    schoolId && allowed ? { schoolId } : "skip",
+  );
+  const saveBands = useMutation(
+    api.functions.academic.gradingBands.saveGradingBands,
+  );
+  const [loadedVersion, setLoadedVersion] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [draftBands, setDraftBands] = useState<GradingBandDraft[]>([]);
-  const [validationErrors, setValidationErrors] = useState<BandValidationError[]>([]);
+  const [validationErrors, setValidationErrors] = useState<
+    BandValidationError[]
+  >([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showErrors, setShowErrors] = useState(true);
-  const isLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (bands && !isLoadedRef.current) {
-      isLoadedRef.current = true;
+    if (bands && !hasUnsavedChanges) {
+      setLoadedVersion(Math.max(0, ...bands.map((b) => b.version ?? 0)));
       if (bands.length > 0) {
         setDraftBands(
           bands.map((b) => ({
@@ -53,28 +79,33 @@ function LiveGradingBandsPage() {
             maxScore: b.maxScore,
             gradeLetter: b.gradeLetter,
             remark: b.remark,
-          }))
+            colorHex: b.colorHex ?? b.color,
+            gradePoints: b.gradePoints,
+          })),
         );
       } else {
         setDraftBands([]);
       }
     }
-  }, [bands]);
+  }, [bands, hasUnsavedChanges]);
 
   const handleBandsChange = useCallback((next: GradingBandDraft[]) => {
     setDraftBands(next);
     setHasUnsavedChanges(true);
   }, []);
 
-  const handleValidationChange = useCallback((errors: BandValidationError[]) => {
-    setValidationErrors(errors);
-    setShowErrors(true);
-  }, []);
+  const handleValidationChange = useCallback(
+    (errors: BandValidationError[]) => {
+      setValidationErrors(errors);
+      setShowErrors(true);
+    },
+    [],
+  );
 
   const handleSave = useCallback(async () => {
     // Automatically sort tiers by score before saving
     const sorted = [...draftBands].sort(
-      (a, b) => (a.minScore ?? 0) - (b.minScore ?? 0)
+      (a, b) => (a.minScore ?? 0) - (b.minScore ?? 0),
     );
     const errors = validateBandsClient(sorted);
     if (errors.length > 0) {
@@ -83,19 +114,29 @@ function LiveGradingBandsPage() {
       throw new Error("Validation failed. Please resolve policy errors.");
     }
 
-    await saveBands({
-      bands: sorted.map((b) => ({
-        minScore: b.minScore!,
-        maxScore: b.maxScore!,
-        gradeLetter: b.gradeLetter,
-        remark: b.remark,
-      })),
-    } as never);
+    setIsSaving(true);
+    try {
+      await saveBands({
+        schoolId,
+        expectedVersion: loadedVersion,
+        bands: sorted.map((b) => ({
+          minScore: b.minScore!,
+          maxScore: b.maxScore!,
+          gradeLetter: b.gradeLetter,
+          remark: b.remark,
+          colorHex: b.colorHex ?? b.color,
+          gradePoints: b.gradePoints,
+        })),
+      });
+    } finally {
+      setIsSaving(false);
+    }
     setDraftBands(sorted);
     setHasUnsavedChanges(false);
-  }, [draftBands, saveBands]);
+  }, [draftBands, saveBands, schoolId, loadedVersion]);
 
   const handleDiscard = useCallback(() => {
+    setLoadedVersion(Math.max(0, ...(bands ?? []).map((b) => b.version ?? 0)));
     if (bands && bands.length > 0) {
       setDraftBands(
         bands.map((b) => ({
@@ -103,7 +144,9 @@ function LiveGradingBandsPage() {
           maxScore: b.maxScore,
           gradeLetter: b.gradeLetter,
           remark: b.remark,
-        }))
+          colorHex: b.colorHex ?? b.color,
+          gradePoints: b.gradePoints,
+        })),
       );
     } else {
       setDraftBands([]);
@@ -122,23 +165,45 @@ function LiveGradingBandsPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  if (allowed === false)
+    return (
+      <div role="alert" className="p-6">
+        Permission denied: managing grading bands is required.
+      </div>
+    );
   if (bands === undefined) {
     return <PageLoadingState />;
   }
 
   return (
-    <GradingBandsContent
-      bands={draftBands}
-      validationErrors={validationErrors}
-      hasUnsavedChanges={hasUnsavedChanges}
-      hasActivePolicy={bands.length > 0}
-      showErrors={showErrors}
-      onBandsChange={handleBandsChange}
-      onValidationChange={handleValidationChange}
-      onSave={handleSave}
-      onDiscard={handleDiscard}
-      onDismissErrors={() => setShowErrors(false)}
-    />
+    <>
+      {schoolId && (
+        <GradeGovernance
+          schoolId={schoolId}
+          dirty={hasUnsavedChanges || isSaving}
+          onChanged={(nextBands) => {
+            setDraftBands(nextBands);
+            setLoadedVersion(
+              Math.max(0, ...nextBands.map((b) => b.version ?? 0)),
+            );
+            setValidationErrors([]);
+          }}
+        />
+      )}
+      <GradingBandsContent
+        disabled={isSaving || governance?.mode === "inherit"}
+        bands={draftBands}
+        validationErrors={validationErrors}
+        hasUnsavedChanges={hasUnsavedChanges}
+        hasActivePolicy={bands.length > 0}
+        showErrors={showErrors}
+        onBandsChange={handleBandsChange}
+        onValidationChange={handleValidationChange}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+        onDismissErrors={() => setShowErrors(false)}
+      />
+    </>
   );
 }
 
@@ -151,6 +216,8 @@ function MockGradingBandsPage() {
           maxScore: b.maxScore,
           gradeLetter: b.gradeLetter,
           remark: b.remark,
+            colorHex: b.colorHex ?? b.color,
+            gradePoints: b.gradePoints,
         }))
       : []
   );
@@ -191,6 +258,8 @@ function MockGradingBandsPage() {
             maxScore: b.maxScore,
             gradeLetter: b.gradeLetter,
             remark: b.remark,
+            colorHex: b.colorHex ?? b.color,
+            gradePoints: b.gradePoints,
           }))
         : []
     );
@@ -215,6 +284,7 @@ function MockGradingBandsPage() {
 }
 
 function GradingBandsContent({
+  disabled = false,
   bands,
   validationErrors,
   hasUnsavedChanges,
@@ -240,14 +310,14 @@ function GradingBandsContent({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 w-full bg-slate-50/30">
+    <fieldset disabled={disabled} className="flex flex-col h-full min-h-0 min-w-0 w-full bg-slate-50/30">
       {/* 1. Guaranteed Pinned Top Bar on Mobile & Desktop */}
       <div className="shrink-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3.5 space-y-3">
           {/* Top Line: Breadcrumb + Title + Badges */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
-              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
                 <a href="/admin" className="hover:text-slate-900 transition-colors">
                   Admin
                 </a>
@@ -293,10 +363,10 @@ function GradingBandsContent({
           {/* Bottom Line: Action Buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
             <p className="hidden md:block text-xs font-medium text-slate-500 truncate">
-              Define the official score cutoffs (0–100%), letter grades, and transcript remarks.
+              Colors supplement scores and labels. Light hues use readable display ink; issued snapshots do not change.
             </p>
 
-            <div className="grid grid-cols-3 sm:flex sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-3 sm:flex sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
               <button
                 type="button"
                 onClick={handleSortBands}
@@ -364,7 +434,7 @@ function GradingBandsContent({
           />
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -380,6 +450,7 @@ function PageLoadingState() {
 }
 
 interface GradingBandsContentProps {
+  disabled?: boolean;
   bands: GradingBandDraft[];
   validationErrors: BandValidationError[];
   hasUnsavedChanges: boolean;

@@ -9,6 +9,7 @@ interface ComputedColumnsProps {
   examScaledScore: number | null;
   total: number | null;
   gradeLetter: string | null;
+  gradeColor?: string;
   remark: string | null;
   examInputMode: ExamInputMode;
 }
@@ -20,6 +21,7 @@ export function ComputedColumns({
   examScaledScore,
   total,
   gradeLetter,
+  gradeColor,
   remark,
   examInputMode,
 }: ComputedColumnsProps) {
@@ -44,7 +46,7 @@ export function ComputedColumns({
       {/* Grade - exact mockup: text-sm font-black text-emerald-600 italic lg:not-italic */}
       <td>
         <span
-          className={`text-sm font-black ${gradeLetter === "A" ? "text-emerald-600" : gradeLetter === "B" ? "text-blue-600" : gradeLetter === "C" ? "text-amber-600" : gradeLetter === "D" ? "text-orange-600" : gradeLetter === "F" ? "text-red-600" : "text-obsidian-300"} italic lg:not-italic`}
+          className="text-sm font-black italic lg:not-italic" style={{color: gradeColor}}
         >
           {gradeLetter ?? "--"}
         </span>

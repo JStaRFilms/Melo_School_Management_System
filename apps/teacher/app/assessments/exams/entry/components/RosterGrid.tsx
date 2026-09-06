@@ -297,19 +297,7 @@ export function RosterGrid({
                     Grade
                   </span>
                   <span
-                    className={`text-sm font-black ${
-                      derived.gradeLetter === "A"
-                        ? "text-emerald-600"
-                        : derived.gradeLetter === "B"
-                          ? "text-blue-600"
-                          : derived.gradeLetter === "C"
-                            ? "text-amber-600"
-                            : derived.gradeLetter === "D"
-                              ? "text-orange-600"
-                              : derived.gradeLetter === "F"
-                                ? "text-red-600"
-                                : "text-obsidian-300"
-                    } italic`}
+                    className="text-sm font-black" style={{color: derived.gradeColor}}
                   >
                     {derived.gradeLetter ?? "--"}
                   </span>

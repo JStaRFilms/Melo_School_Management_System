@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CertifyReportCard } from "./CertifyReportCard";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
@@ -333,6 +334,7 @@ export function ReportCardAdminPanel({
 
   return (
     <div className="rc-no-print space-y-10">
+      <CertifyReportCard key={`${studentId}:${sessionId}:${termId}`} reportCard={reportCard} sessionId={sessionId} termId={termId} />
       {reportCard.resultCalculationMode === "cumulative_annual" && missingDataSubjects.length > 0 && (
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
           <div className="flex items-start gap-3">
